@@ -26,16 +26,15 @@ function createLoadingFeedback() {
   return { timer: null, visible: false };
 }
 
-function createSelection() {
+// What a person picked during this editing lifetime, and null where they
+// picked nothing. Everything the control shows is worked out again from this,
+// what the Task or Section last ran under, and the lists the agents answered.
+function createChoice() {
   return {
-    provider: "",
-    model: "",
-    effort: "",
-    fastMode: false,
-    modelExplicit: false,
-    fastModeExplicit: false,
-    permissionMode: "",
-    permissionExplicit: false,
+    model: null,
+    effort: null,
+    fastMode: null,
+    permissionMode: null,
   };
 }
 
@@ -50,14 +49,9 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     }
     this.ensureRendered();
-    this.render();
     void this.loadModels();
-    // Which permission modes to offer depends on which agent will run the
-    // Task. A Task that exists already says; a new one is decided by the model
-    // that is chosen, so its modes are asked for once the list arrives.
-    if (this.context.provider) {
-      void this.loadPermissions(this.context.cwd);
-    }
+    this.requestPermissionList();
+    this.render();
   }
 
   disconnectedCallback() {
@@ -70,10 +64,11 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.removeEventListener("beforetoggle", this.boundBeforeToggle, true);
     this.removeEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    // A list still on its way is asked for again when the control returns.
     this.modelRequestId += 1;
     this.permissionRequestId += 1;
     this.modelLoading = false;
-    this.permissionLoading = false;
+    this.permissionRequest = null;
     this.endLoadingFeedback(this.modelLoadingFeedback);
     this.endLoadingFeedback(this.permissionLoadingFeedback);
   }
@@ -90,6 +85,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.permissionAnchorName = `--caffold-task-permission-anchor-${instanceId}`;
     this.context = {
       cwd: ".",
+      // What the Task or Section last ran under.
       initialSelection: {},
       locked: false,
       placement: "below",
@@ -98,24 +94,22 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       // agent's models are on offer.
       provider: "",
     };
-    this.selection = createSelection();
+    this.choice = createChoice();
     // Browsing an agent does not choose a model or change submission options.
     this.browsedProvider = "";
     this.modelOptions = [];
+    this.unavailableAgents = [];
     this.modelLoading = false;
     this.modelLoaded = false;
     this.modelError = null;
     this.modelRequestId = 0;
     this.modelLoadingFeedback = createLoadingFeedback();
-    this.permissionOptions = [];
-    this.permissionCwd = "";
-    this.permissionLoading = false;
-    this.permissionLoaded = false;
-    this.permissionError = null;
+    // The last permission list answered or refused, kept with the directory,
+    // agent, and model it was asked for; and the one on its way.
+    this.permissionList = null;
+    this.permissionRequest = null;
     this.permissionRequestId = 0;
     this.permissionLoadingFeedback = createLoadingFeedback();
-    this.defaultPermissionMode = "";
-    this.permissionFixedWhenConversationStarts = false;
     this.boundClick = (event) => this.handleClick(event);
     this.boundBeforeToggle = (event) => this.handleBeforeToggle(event);
     this.boundDismiss = (event) => this.handleDismiss(event);
@@ -190,40 +184,28 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       placement: context.placement === "above" ? "above" : "below",
       provider: `${context.provider ?? this.context.provider ?? ""}`.trim(),
     };
-    const cwdChanged = next.cwd !== this.context.cwd;
-    const lockedChanged = next.locked !== this.context.locked;
-    const placementChanged = next.placement !== this.context.placement;
-    const providerChanged = next.provider !== this.context.provider;
-    if (providerChanged) {
+    const changed =
+      next.cwd !== this.context.cwd ||
+      next.locked !== this.context.locked ||
+      next.placement !== this.context.placement ||
+      next.provider !== this.context.provider ||
+      !sameSelection(next.initialSelection, this.context.initialSelection);
+    if (next.provider !== this.context.provider) {
       this.browsedProvider = "";
     }
     this.context = next;
-    const selectionChanged = this.applyInitialSelection(next.initialSelection);
     if (next.locked) {
       this.hidePopovers();
     }
-    if (this.isConnected && (selectionChanged || lockedChanged || placementChanged)) {
-      this.render();
+    if (changed) {
+      this.update();
     }
-    if (this.isConnected && (cwdChanged || providerChanged)) {
-      void this.loadPermissions(next.cwd);
-    }
-    if (this.isConnected && providerChanged) {
-      this.applyDefaultModelSelection();
-      this.render();
-    }
-    return (
-      cwdChanged ||
-      selectionChanged ||
-      lockedChanged ||
-      placementChanged ||
-      providerChanged
-    );
+    return changed;
   }
 
   reset(context = {}) {
     this.ensureState();
-    this.selection = createSelection();
+    this.choice = createChoice();
     this.browsedProvider = "";
     this.context = {
       ...this.context,
@@ -233,51 +215,28 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       placement: context.placement === "above" ? "above" : "below",
       provider: `${context.provider ?? ""}`.trim(),
     };
-    this.applyInitialSelection(this.context.initialSelection);
-    this.applyDefaultModelSelection();
-    this.applyDefaultPermissionSelection();
     this.hidePopovers();
-    if (this.isConnected) {
-      this.render();
-      void this.loadPermissions(this.context.cwd);
-    }
+    this.update();
   }
 
-  applyInitialSelection(initial = {}) {
-    const selection = this.selection;
-    let changed = false;
-    if (initial.model && !selection.modelExplicit && selection.model !== `${initial.model}`) {
-      selection.model = `${initial.model}`;
-      changed = true;
+  // Any input the selection is worked out from may have changed: the list the
+  // selection now needs is asked for, and the control and its owner catch up.
+  update() {
+    if (!this.isConnected) {
+      return;
     }
-    if (initial.effort && !selection.modelExplicit && selection.effort !== `${initial.effort}`) {
-      selection.effort = `${initial.effort}`;
-      changed = true;
-    }
-    if (
-      Object.hasOwn(initial, "fastMode") &&
-      !selection.fastModeExplicit &&
-      selection.fastMode !== Boolean(initial.fastMode)
-    ) {
-      selection.fastMode = Boolean(initial.fastMode);
-      changed = true;
-    }
-    if (
-      initial.permissionMode &&
-      !selection.permissionExplicit &&
-      selection.permissionMode !== `${initial.permissionMode}`
-    ) {
-      selection.permissionMode = `${initial.permissionMode}`;
-      changed = true;
-    }
-    return changed;
+    this.requestPermissionList();
+    this.render();
+    this.emitChange();
   }
 
+  // What a turn started now would run under, which is what the control shows.
+  // Owners send it only once readyForSubmission() allows it.
   submissionOptions() {
     this.ensureState();
     const options = {};
     const model = this.selectedModel();
-    if (model?.model) {
+    if (model) {
       options.model = model.model;
       // Which agent runs the Task comes from the model that was chosen. The
       // list said which agent offers each one, so nothing has to be inferred
@@ -289,58 +248,49 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       options.effort = effort;
     }
     options.fastMode = this.selectedFastMode();
-    // The mode the picker shows is the mode the turn runs under, so it is sent
-    // whether or not a person touched it. It is sent only while the list that
-    // offered it is the one in hand: a list still arriving describes the agent
-    // or model chosen before, and a mode this one cannot work under would be
-    // refused at the moment the turn starts. Sending nothing then leaves the
-    // agent's own default standing, which is what the picker says it will.
-    const permission = this.permissionLoading ? null : this.selectedPermission();
-    if (permission?.allowed) {
+    const permission = this.selectedPermission();
+    if (permission) {
       options.permissionMode = permission.mode;
     }
     return options;
   }
 
-  // A permission list still arriving would leave its mode out of the
-  // submission, so the submission waits for it. A list that could not be read
-  // does not hold it: the agent's own default stands.
+  // A turn carries a mode from the list answered for the chosen model, so it
+  // waits for that list. A list that could not be read, or that allows no
+  // mode, holds it as well: nothing is sent under a mode nobody was shown.
   readyForSubmission() {
     this.ensureState();
-    return this.modelLoaded && !this.modelLoading && !this.permissionLoading;
+    return Boolean(this.selectedPermission());
   }
 
   resetOverrides() {
-    this.selection.modelExplicit = false;
-    this.selection.fastModeExplicit = false;
-    this.selection.permissionExplicit = false;
+    this.ensureState();
+    this.choice = createChoice();
+    this.update();
   }
 
   holdSubmissionOptions(options = {}) {
     this.ensureState();
-    if (options.model || options.effort) {
-      this.selection.model = `${options.model ?? this.selection.model}`;
-      this.selection.effort = `${options.effort ?? this.selection.effort}`;
-      this.selection.modelExplicit = true;
-    }
-    if (Object.hasOwn(options, "fastMode")) {
-      this.selection.fastMode = Boolean(options.fastMode);
-      this.selection.fastModeExplicit = true;
+    if (options.model) {
+      this.choice.model = {
+        provider: `${options.provider ?? ""}`,
+        model: `${options.model}`,
+      };
+      this.choice.effort = options.effort ? `${options.effort}` : null;
+      this.choice.fastMode = Object.hasOwn(options, "fastMode")
+        ? Boolean(options.fastMode)
+        : null;
     }
     if (options.permissionMode) {
-      this.selection.permissionMode = `${options.permissionMode}`;
-      this.selection.permissionExplicit = true;
+      this.choice.permissionMode = `${options.permissionMode}`;
     }
-    if (this.isConnected) {
-      this.render();
-    }
+    this.update();
   }
 
   resetFastMode() {
-    this.selection.fastMode = false;
-    this.selection.fastModeExplicit = false;
-    this.render();
-    this.emitChange();
+    this.ensureState();
+    this.choice.fastMode = null;
+    this.update();
   }
 
   snapshot() {
@@ -348,10 +298,10 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       model: this.selectedModel()?.model ?? "",
       effort: this.selectedEffort(),
       fastMode: this.selectedFastMode(),
-      permissionMode: this.selectedPermissionMode(),
-      modelExplicit: this.selection.modelExplicit,
-      fastModeExplicit: this.selection.fastModeExplicit,
-      permissionExplicit: this.selection.permissionExplicit,
+      permissionMode: this.selectedPermission()?.mode ?? "",
+      modelExplicit: this.choice.model !== null,
+      fastModeExplicit: this.choice.fastMode !== null,
+      permissionExplicit: this.choice.permissionMode !== null,
     };
   }
 
@@ -370,99 +320,81 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         return;
       }
       this.modelOptions = normalizeModelOptions(response);
-      this.modelLoaded = true;
-      this.applyDefaultModelSelection();
+      this.unavailableAgents = normalizeUnavailableAgents(response);
     } catch (error) {
       if (requestId !== this.modelRequestId) {
         return;
       }
       this.modelError = error;
-      this.modelLoaded = true;
     } finally {
       if (requestId === this.modelRequestId) {
         this.modelLoading = false;
+        this.modelLoaded = true;
         this.endLoadingFeedback(this.modelLoadingFeedback);
-        this.render();
-        this.emitChange();
-        void this.loadPermissions(this.context.cwd);
+        this.update();
       }
     }
   }
 
-  async loadPermissions(cwd) {
-    const targetCwd = cleanLogicalPath(cwd || ".");
-    const chosen = this.selectedModel();
-    const targetProvider = chosen?.provider ?? this.context.provider ?? "";
-    // One agent's modes depend on the model: only some models can decide
-    // permissions for themselves, so the list is asked for again when the
-    // choice changes.
-    const targetModel = chosen?.model ?? "";
-    if (
-      this.permissionCwd === targetCwd &&
-      this.permissionProvider === targetProvider &&
-      this.permissionModel === targetModel &&
-      (this.permissionLoaded || this.permissionLoading)
-    ) {
+  // At most one permission list is on its way, and it is the one the current
+  // choice needs. A list already answered or refused for that choice is not
+  // asked for again; another model, or a reload, asks again.
+  requestPermissionList() {
+    const target = this.isConnected ? this.permissionTarget() : null;
+    const needed =
+      target && this.permissionList?.target.key !== target.key ? target : null;
+    if (this.permissionRequest && this.permissionRequest.key === needed?.key) {
       return;
     }
+    if (this.permissionRequest) {
+      this.permissionRequestId += 1;
+      this.permissionRequest = null;
+    }
+    if (needed) {
+      void this.loadPermissions(needed);
+    } else {
+      this.endLoadingFeedback(this.permissionLoadingFeedback);
+    }
+  }
+
+  async loadPermissions(target) {
     const requestId = ++this.permissionRequestId;
-    this.permissionCwd = targetCwd;
-    this.permissionProvider = targetProvider;
-    this.permissionModel = targetModel;
-    this.permissionLoading = true;
-    this.permissionLoaded = false;
-    this.permissionError = null;
+    this.permissionRequest = target;
     this.startLoadingFeedback(this.permissionLoadingFeedback);
     this.render();
     // Announced as it goes out, so an owner holding a submission for this list
     // stops before the list returns rather than after.
     this.emitChange();
+    let list;
     try {
       const response = await getAgentPermissions(
-        targetCwd,
-        targetProvider,
-        targetModel,
+        target.cwd,
+        target.provider,
+        target.model,
       );
-      if (
-        requestId !== this.permissionRequestId ||
-        targetCwd !== this.permissionCwd
-      ) {
-        return;
-      }
-      this.permissionOptions = normalizePermissionOptions(response);
-      this.permissionFixedWhenConversationStarts = Boolean(
-        response?.fixedWhenConversationStarts,
-      );
-      const requestedDefault = `${response?.defaultMode ?? ""}`.trim();
-      const defaultOption =
-        this.permissionOptions.find(
-          (option) => option.mode === requestedDefault && option.allowed,
-        ) ?? this.permissionOptions.find((option) => option.allowed);
-      this.defaultPermissionMode = defaultOption?.mode ?? "";
-      this.applyDefaultPermissionSelection();
-      this.permissionLoaded = true;
+      list = { target, ...normalizePermissionList(response), error: null };
     } catch (error) {
-      if (requestId !== this.permissionRequestId) {
-        return;
-      }
-      this.permissionOptions = [];
-      this.permissionError = error;
-      this.permissionLoaded = true;
-      this.defaultPermissionMode = "";
-      this.permissionFixedWhenConversationStarts = false;
-    } finally {
-      if (requestId === this.permissionRequestId) {
-        this.permissionLoading = false;
-        this.endLoadingFeedback(this.permissionLoadingFeedback);
-        this.render();
-        this.emitChange();
-      }
+      list = {
+        target,
+        options: [],
+        defaultMode: "",
+        fixedWhenConversationStarts: false,
+        error,
+      };
     }
+    if (requestId !== this.permissionRequestId) {
+      return;
+    }
+    this.permissionList = list;
+    this.permissionRequest = null;
+    this.endLoadingFeedback(this.permissionLoadingFeedback);
+    this.update();
   }
 
   // Feedback follows the list, not the request. A request superseded while
   // its list is still pending hands the count on rather than starting over;
-  // only a settled list or a disconnected control ends it.
+  // only a settled list, a choice that needs none, or a disconnected control
+  // ends it.
   startLoadingFeedback(feedback) {
     if (feedback.timer !== null || feedback.visible) {
       return;
@@ -492,100 +424,126 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     return this.modelOptions.filter((option) => option.provider === provider);
   }
 
-  applyDefaultModelSelection() {
-    const offered = this.offeredModels();
-    if (!offered.length) {
-      return;
-    }
-    const selection = this.selection;
-    const model =
-      offered.find((option) =>
-        option.model === selection.model &&
-        (!selection.provider || option.provider === selection.provider)
-      ) ??
-      offered.find((option) => option.isDefault) ??
-      offered[0];
-    selection.model ||= model.model;
-    selection.provider = model.provider;
-    selection.effort ||=
-      model.defaultReasoningEffort ||
-      model.supportedReasoningEfforts[0]?.value ||
-      "";
-    if (!model.supportsFast) {
-      selection.fastMode = false;
-    }
-  }
-
-  applyDefaultPermissionSelection() {
-    const selection = this.selection;
-    const selected = this.permissionOptions.find(
-      (option) => option.mode === selection.permissionMode,
-    );
-    // What the Task last ran under, unless this list withholds it. A model
-    // change can leave the remembered mode one the chosen model cannot work
-    // under, and showing it then would name a mode no turn could start under.
-    const canonical = selection.permissionExplicit
-      ? null
-      : this.permissionOptions.find(
-          (option) =>
-            option.mode ===
-            `${this.context.initialSelection?.permissionMode ?? ""}`.trim(),
-        );
-    if (canonical?.allowed) {
-      selection.permissionMode = canonical.mode;
-    } else if (!selection.permissionExplicit || !selected?.allowed) {
-      selection.permissionMode = this.defaultPermissionMode;
-      selection.permissionExplicit = false;
-    }
-  }
-
   selectedModel() {
     const offered = this.offeredModels();
-    const selectedModel = this.selection.model;
     return (
-      offered.find((option) =>
-        option.model === selectedModel &&
-        (!this.selection.provider ||
-          option.provider === this.selection.provider)
-      ) ??
+      offered.find((option) => sameModel(option, this.choice.model)) ??
+      rememberedModel(offered, this.context.initialSelection?.model) ??
       offered.find((option) => option.isDefault) ??
       offered[0] ??
       null
     );
   }
 
+  // Reasoning and speed belong to the model they were set on: a person's to
+  // the model they picked, the remembered ones to the remembered model.
   selectedEffort() {
     const model = this.selectedModel();
-    const supported = model?.supportedReasoningEfforts ?? [];
+    const efforts = model?.supportedReasoningEfforts ?? [];
+    const offered = (value) =>
+      efforts.find((option) => option.value === value)?.value ?? "";
     return (
-      supported.find((option) => option.value === this.selection.effort)?.value ||
-      supported.find((option) =>
-        option.value === model?.defaultReasoningEffort
-      )?.value ||
-      supported[0]?.value ||
+      (sameModel(model, this.choice.model) && offered(this.choice.effort)) ||
+      (this.isRememberedModel(model) &&
+        offered(this.context.initialSelection?.effort)) ||
+      offered(model?.defaultReasoningEffort) ||
+      efforts[0]?.value ||
       ""
     );
   }
 
   selectedFastMode() {
-    return Boolean(
-      this.selection.fastMode && this.selectedModel()?.supportsFast,
+    const model = this.selectedModel();
+    if (!model?.supportsFast) {
+      return false;
+    }
+    if (sameModel(model, this.choice.model) && this.choice.fastMode !== null) {
+      return this.choice.fastMode;
+    }
+    return (
+      this.isRememberedModel(model) &&
+      Boolean(this.context.initialSelection?.fastMode)
     );
   }
 
-  // The mode a turn would run under: what a person chose, or what the agent
-  // said it does when nobody has. Empty until a list of modes has said one.
-  selectedPermissionMode() {
-    return this.selection.permissionMode || this.defaultPermissionMode;
+  isRememberedModel(model) {
+    return Boolean(
+      model &&
+        rememberedModel(
+          this.offeredModels(),
+          this.context.initialSelection?.model,
+        ) === model,
+    );
   }
 
-  // That mode as the list of modes describes it, and nothing when no list
-  // describes it. A list still arriving is the previous one, which keeps the
-  // control steady across a refresh rather than blinking through every model
-  // change; whether it is current enough to send is asked where it is sent.
+  // The mode a turn would run under, from the list answered for the chosen
+  // model: a person's pick, then what the Task or Section last ran under,
+  // then the list's own default, passing over any mode the list withholds.
   selectedPermission() {
-    return this.permissionOptions.find(
-      (option) => option.mode === this.selectedPermissionMode(),
+    const list = this.answeredPermissionList();
+    if (!list) {
+      return null;
+    }
+    const allowed = (mode) =>
+      list.options.find(
+        (option) => option.allowed && option.mode === `${mode ?? ""}`,
+      );
+    return (
+      allowed(this.choice.permissionMode) ??
+      allowed(this.context.initialSelection?.permissionMode) ??
+      allowed(list.defaultMode) ??
+      list.options.find((option) => option.allowed) ??
+      null
+    );
+  }
+
+  // The list settled for the chosen model in this directory, answered or
+  // refused; nothing while that list is still to come.
+  settledPermissionList() {
+    const target = this.permissionTarget();
+    return target && this.permissionList?.target.key === target.key
+      ? this.permissionList
+      : null;
+  }
+
+  answeredPermissionList() {
+    const list = this.settledPermissionList();
+    return list && !list.error ? list : null;
+  }
+
+  permissionTarget() {
+    const model = this.selectedModel();
+    if (!model) {
+      return null;
+    }
+    const cwd = cleanLogicalPath(this.context.cwd || ".");
+    return {
+      cwd,
+      provider: model.provider,
+      model: model.model,
+      key: JSON.stringify([cwd, model.provider, model.model]),
+    };
+  }
+
+  // Whether the agent takes its mode only when the conversation starts is the
+  // agent's, not one model's, so the last list answered says so while another
+  // model's list is on its way.
+  permissionFixed() {
+    return permissionFixedAfterStart(
+      this.context,
+      this.permissionList?.fixedWhenConversationStarts,
+    );
+  }
+
+  // Why no model can be chosen once the model list has settled without one.
+  modelUnavailableReason() {
+    if (this.modelError) {
+      return errorMessage(this.modelError);
+    }
+    const provider = `${this.context.provider ?? ""}`.trim();
+    return (
+      this.unavailableAgents.find((agent) => agent.provider === provider)
+        ?.message || "No agent offered a model."
     );
   }
 
@@ -595,13 +553,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       return;
     }
     const type = action.dataset.turnOptionsAction;
-    if (
-      type === "select-permission" &&
-      permissionFixedAfterStart(
-        this.context,
-        this.permissionFixedWhenConversationStarts,
-      )
-    ) {
+    if (type === "select-permission" && this.permissionFixed()) {
       return;
     }
     if (type === "browse-provider") {
@@ -640,11 +592,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     }
     if (
       popover === this.permissionPopover() &&
-      (this.context.locked ||
-        permissionFixedAfterStart(
-          this.context,
-          this.permissionFixedWhenConversationStarts,
-        ))
+      (this.context.locked || this.permissionFixed())
     ) {
       event.preventDefault();
       return;
@@ -698,58 +646,54 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     if (!model) {
       return;
     }
-    const previous = this.selectedModel();
-    const selection = this.selection;
-    selection.model = model.model;
-    selection.provider = model.provider;
-    selection.modelExplicit = true;
-    // Identical effort names do not establish equivalent settings on another
-    // model. A new model starts with its own advertised default and Normal speed.
-    if (previous?.provider !== model.provider || previous?.model !== model.model) {
-      selection.effort =
-        model.defaultReasoningEffort ||
-        model.supportedReasoningEfforts[0]?.value ||
-        "";
-      selection.fastMode = false;
-      selection.fastModeExplicit = true;
-    }
+    this.chooseModel(model);
     this.browsedProvider = model.provider;
-    this.render();
-    this.emitChange();
-    // Choosing a model can choose an agent, and the ways an agent can be
-    // allowed to work are its own. Leaving the old list up would offer modes
-    // the chosen agent has never heard of.
-    void this.loadPermissions(this.context.cwd);
+    this.update();
   }
 
   selectEffort(effort) {
-    this.selection.effort = `${effort ?? ""}`;
-    this.selection.modelExplicit = true;
+    const model = this.selectedModel();
+    if (!model) {
+      return;
+    }
+    this.chooseModel(model);
+    this.choice.effort = `${effort ?? ""}`;
     this.hidePopover(this.modelPopover());
-    this.render();
-    this.emitChange();
+    this.update();
   }
 
   selectFastMode(fastMode) {
-    this.selection.fastMode = Boolean(
-      fastMode && this.selectedModel()?.supportsFast,
-    );
-    this.selection.fastModeExplicit = true;
+    const model = this.selectedModel();
+    if (!model) {
+      return;
+    }
+    this.chooseModel(model);
+    this.choice.fastMode = Boolean(fastMode && model.supportsFast);
     this.hidePopover(this.modelPopover());
-    this.render();
-    this.emitChange();
+    this.update();
+  }
+
+  // Picking the model on show, or one of its settings, makes the reasoning and
+  // speed shown with it the person's own. Identical effort names do not
+  // establish equivalent settings on another model, so another model starts
+  // from its own.
+  chooseModel(model) {
+    if (sameModel(model, this.choice.model)) {
+      return;
+    }
+    const shown = this.selectedModel() === model;
+    const effort = shown ? this.selectedEffort() : "";
+    const fastMode = shown ? this.selectedFastMode() : null;
+    this.choice.model = { provider: model.provider, model: model.model };
+    this.choice.effort = effort || null;
+    this.choice.fastMode = fastMode;
   }
 
   selectPermission(permissionMode, control = null) {
-    if (
-      permissionFixedAfterStart(
-        this.context,
-        this.permissionFixedWhenConversationStarts,
-      )
-    ) {
+    if (this.permissionFixed()) {
       return;
     }
-    const option = this.permissionOptions.find(
+    const option = this.answeredPermissionList()?.options.find(
       (candidate) => candidate.mode === permissionMode,
     );
     if (!option?.allowed) {
@@ -757,7 +701,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     }
     if (
       option.dangerous &&
-      this.selection.permissionMode !== permissionMode &&
+      this.selectedPermission()?.mode !== permissionMode &&
       !window.confirm(
         "Full access removes sandbox restrictions and approval prompts for subsequent turns. Continue?",
       )
@@ -765,11 +709,9 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       this.restorePermissionOptionFocus(control, permissionMode);
       return;
     }
-    this.selection.permissionMode = permissionMode;
-    this.selection.permissionExplicit = true;
+    this.choice.permissionMode = permissionMode;
     this.hidePopover(this.permissionPopover());
-    this.render();
-    this.emitChange();
+    this.update();
   }
 
   restorePermissionOptionFocus(control, permissionMode) {
@@ -819,17 +761,11 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     const model = this.selectedModel();
     const effort = this.selectedEffort();
     const fastMode = this.selectedFastMode();
-    const permissionMode = this.selectedPermissionMode();
-    const permission = this.selectedPermission();
     const locked = this.context.locked;
-    const permissionFixed = permissionFixedAfterStart(
-      this.context,
-      this.permissionFixedWhenConversationStarts,
-    );
-    const permissionLocked = locked || permissionFixed;
     this.dataset.placement = this.context.placement;
 
-    const modelPending = !model && this.modelLoading;
+    const modelPending = !model && !this.modelLoaded;
+    const modelUnavailable = !model && this.modelLoaded;
     const modelLabel = model?.displayName ?? "Model";
     // Not every model works at more than one depth. One that does not has
     // nothing to choose, and a placeholder in the summary would read as a
@@ -848,6 +784,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     const modelButton = this.modelButton();
     modelButton.classList.toggle("is-fast", fastMode);
     modelButton.classList.toggle("has-effort", Boolean(effortValue));
+    modelButton.classList.toggle("is-unavailable", modelUnavailable);
     modelButton.disabled = locked;
     modelButton.setAttribute("aria-label", pickerLabel);
     this.patchPickerButton(modelButton, {
@@ -858,8 +795,12 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         ? "Model, reasoning, and speed can be changed after the active turn finishes."
         : modelPending
           ? "Loading models"
-          : summaryLabel,
-      html: `
+          : modelUnavailable
+            ? `Models could not be loaded. ${this.modelUnavailableReason()}`
+            : summaryLabel,
+      html: modelUnavailable
+        ? `<span class="task-model-name">Unavailable</span>`
+        : `
       <span class="task-model-name">${escapeHtml(compactModel)}</span>
       ${
         effortValue
@@ -882,54 +823,56 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     );
     this.renderModelPopover(offered, model, effort, fastMode);
 
-    const permissionPending = !permission && this.permissionLoading;
-    const permissionLabel =
-      permission?.label ??
-      (permissionMode ? permissionModeLabel(permissionMode) : "Agent default");
-    const compactPermission = permission
-      ? compactPermissionModeLabel(permissionMode, permission.label)
-      : permissionMode
-        ? compactPermissionModeLabel(permissionMode)
-        : "Agent default";
+    const settled = this.settledPermissionList();
+    const permission = this.selectedPermission();
+    const permissionFixed = this.permissionFixed();
+    const permissionLocked = locked || permissionFixed;
     const permissionButton = this.permissionButton();
-    permissionButton.classList.toggle("is-dangerous", Boolean(permission?.dangerous));
+    const feedback = this.permissionLoadingFeedback;
+    // Until the delay passes, a list on its way leaves the closed control as
+    // it was; a first list has nothing to leave, so it shows the slot.
+    const keepShown =
+      Boolean(model) &&
+      !settled &&
+      !feedback.visible &&
+      Boolean(permissionButton.renderedHtml) &&
+      permissionButton.renderedHtml !== LOADING_SLOT_HTML;
+    const permissionUnavailable = Boolean(settled) && !permission;
     permissionButton.disabled = permissionLocked;
     if (permissionLocked) {
       this.hidePopover(this.permissionPopover());
     }
-    // A list being fetched again keeps the previous list's label in place, so
-    // the control stays busy without a slot.
+    if (!keepShown) {
+      permissionButton.classList.toggle("is-dangerous", Boolean(permission?.dangerous));
+      permissionButton.classList.toggle("is-unavailable", permissionUnavailable);
+    }
     this.patchPickerButton(permissionButton, {
-      busy: this.permissionLoading,
-      pending: permissionPending,
-      feedback: this.permissionLoadingFeedback,
+      busy: !settled,
+      pending: !settled && !keepShown,
+      feedback,
       title: permissionFixed
         ? PERMISSION_FIXED_WHEN_CONVERSATION_STARTS
         : locked
           ? "Approval mode can be changed after the active turn finishes."
-          : permissionPending
+          : !settled
             ? "Loading permission modes"
-            : permissionLabel,
-      html: `<span>${escapeHtml(compactPermission)}</span>`,
+            : settled.error
+              ? `Permission modes could not be loaded. ${errorMessage(settled.error)}`
+              : permission?.label ?? "No approval mode is available here.",
+      html: keepShown
+        ? permissionButton.renderedHtml
+        : permissionUnavailable
+          ? "<span>Unavailable</span>"
+          : `<span>${escapeHtml(compactPermissionModeLabel(permission?.mode, permission?.label))}</span>`,
     });
     // Until the model is known its width is not, and a control sitting to the
-    // right of it would be carried along when the label lands.
-    this.permissionPicker().hidden = modelPending;
+    // right of it would be carried along when the label lands. Without a model
+    // there is no list to show.
+    this.permissionPicker().hidden = !model;
     this.patchPopover(
       this.permissionPopover(),
       `<p class="task-permission-heading">Permissions</p>
-      ${
-        this.permissionOptions.length
-          ? this.permissionOptions
-              .map((option) =>
-                renderPermissionOption(option, permissionMode),
-              )
-              .join("")
-          : renderPermissionFallback(
-              this.permissionLoading,
-              this.permissionError,
-            )
-      }`,
+      ${renderPermissionBody(settled, permission)}`,
     );
   }
 
@@ -951,7 +894,9 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     if (!offered.length) {
       this.patchPopover(popover, `<section>
         <p>Model</p>
-        ${renderModelFallback(this.modelLoading, this.modelError)}
+        ${renderModelFallback(
+          this.modelLoaded ? this.modelUnavailableReason() : "",
+        )}
       </section>`);
       return;
     }
@@ -1072,10 +1017,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         control.getAttribute("popovertarget") === popover.id &&
         control.getAttribute("popovertargetaction") === "toggle" &&
         !this.context.locked &&
-        !permissionFixedAfterStart(
-          this.context,
-          this.permissionFixedWhenConversationStarts,
-        ) &&
+        !this.permissionFixed() &&
         !this.permissionPicker()?.hidden &&
         !control.disabled &&
         !this.permissionPopover()?.matches(":popover-open"),
@@ -1317,6 +1259,35 @@ function patchHtml(node, html) {
   return true;
 }
 
+function sameModel(option, identity) {
+  return Boolean(
+    option &&
+      identity &&
+      option.model === identity.model &&
+      (!identity.provider || option.provider === identity.provider),
+  );
+}
+
+// What a Task or Section remembers names a model but not the agent offering
+// it, so the name counts only when exactly one agent offers a model by it.
+function rememberedModel(offered, model) {
+  const name = `${model ?? ""}`.trim();
+  const matches = name ? offered.filter((option) => option.model === name) : [];
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function sameSelection(left, right) {
+  return (
+    ["model", "effort", "permissionMode"].every(
+      (key) => `${left?.[key] ?? ""}` === `${right?.[key] ?? ""}`,
+    ) && Boolean(left?.fastMode) === Boolean(right?.fastMode)
+  );
+}
+
+function errorMessage(error) {
+  return `${error?.message ?? ""}`.trim() || "The request failed.";
+}
+
 function normalizeModelOptions(response) {
   const models = Array.isArray(response?.models) ? response.models : [];
   return models
@@ -1337,6 +1308,16 @@ function normalizeModelOptions(response) {
       };
     })
     .filter(Boolean);
+}
+
+function normalizeUnavailableAgents(response) {
+  const agents = Array.isArray(response?.unavailable) ? response.unavailable : [];
+  return agents
+    .map((agent) => ({
+      provider: `${agent?.provider ?? ""}`.trim(),
+      message: `${agent?.message ?? ""}`.trim(),
+    }))
+    .filter((agent) => agent.provider);
 }
 
 function compactModelLabel(label) {
@@ -1369,6 +1350,14 @@ function permissionFixedAfterStart(context, fixedWhenConversationStarts) {
     Boolean(`${context?.provider ?? ""}`.trim()) &&
     Boolean(fixedWhenConversationStarts)
   );
+}
+
+function normalizePermissionList(response) {
+  return {
+    options: normalizePermissionOptions(response),
+    defaultMode: `${response?.defaultMode ?? ""}`.trim(),
+    fixedWhenConversationStarts: Boolean(response?.fixedWhenConversationStarts),
+  };
 }
 
 function normalizePermissionOptions(response) {
@@ -1513,24 +1502,28 @@ function renderPermissionOption(option, selectedMode) {
   `;
 }
 
-function renderModelFallback(loading, error) {
-  if (loading) {
+// A list that cannot be read is a failure to report, not a gap to fill; a
+// reload asks again.
+function renderModelFallback(reason) {
+  if (!reason) {
     return `<p class="task-model-note">Loading models...</p>`;
   }
-  if (error) {
-    return `<p class="task-model-note">Model list unavailable. The agent's default model will be used.</p>`;
-  }
-  return `<p class="task-model-note">Open this menu after an agent is connected.</p>`;
+  return `<p class="task-model-note">Models could not be loaded. ${escapeHtml(reason)} Reload the page to try again.</p>`;
 }
 
-function renderPermissionFallback(loading, error) {
-  if (loading) {
+function renderPermissionBody(list, selected) {
+  if (!list) {
     return `<p class="task-model-note">Loading permission modes...</p>`;
   }
-  if (error) {
-    return `<p class="task-model-note">Permission modes are unavailable. The agent's own default will be used.</p>`;
+  if (list.error) {
+    return `<p class="task-model-note">Permission modes could not be loaded. ${escapeHtml(errorMessage(list.error))} Reload the page to try again.</p>`;
   }
-  return `<p class="task-model-note">Open this menu after an agent is connected.</p>`;
+  return (
+    list.options
+      .map((option) => renderPermissionOption(option, selected?.mode ?? ""))
+      .join("") ||
+    `<p class="task-model-note">No approval mode is available here.</p>`
+  );
 }
 
 // A mode is named by the agent that offers it, and the agent sends a label

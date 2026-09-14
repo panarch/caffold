@@ -136,6 +136,11 @@ caffold-task-turn-options {
     color: var(--danger);
   }
 
+  & .task-model-button.is-unavailable,
+  & .task-permission-button.is-unavailable {
+    color: var(--danger);
+  }
+
   & .task-model-button:disabled,
   & .task-permission-button:disabled {
     cursor: not-allowed;

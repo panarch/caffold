@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { actionHintDialog } from "../support/action-hints.js";
+import { installAgentCatalog } from "../support/agent-catalog-fixture.js";
 import {
   installTaskApiFixture,
   TASK_PERMISSION_FIXTURE,
@@ -899,17 +900,21 @@ test("the mode a new task starts under follows the model, not the agent's own de
   });
 });
 
-test("an unreadable mode list leaves the agent's own default standing", { tag: "@all-viewports" }, async ({
+test("an unreadable mode list reads as unavailable and holds the prompt", { tag: "@all-viewports" }, async ({
   page,
 }) => {
-  // Nothing here knows what the agent would do, so nothing is claimed and
-  // nothing is sent. Naming a mode anyway would send one this agent may not
-  // have, and the control would promise a mode the Task never started under.
+  // A list that cannot be read is a failure to show, not a gap to fill with
+  // whatever the agent might do: the prompt waits, and the control says why.
   await installTaskApiFixture(page);
   await installClaudeAgent(page, (model, route) =>
     route.fulfill({
       status: 503,
-      json: { code: "no_agent_available", message: "No agent offered a model." },
+      json: {
+        error: {
+          code: "claude_unavailable",
+          message: "Claude could not be reached.",
+        },
+      },
     }),
   );
   const created = await captureTaskCreation(page);
@@ -917,7 +922,11 @@ test("an unreadable mode list leaves the agent's own default standing", { tag: "
   await page.goto("/tasks/new?cwd=src");
   const form = page.locator('.task-new-form[data-task-form="create"]');
   const permissionPicker = form.getByRole("button", { name: "Choose approval mode" });
-  await expect(permissionPicker).toContainText("Agent default");
+  await expect(permissionPicker).toContainText("Unavailable");
+  await expect(permissionPicker).toHaveAttribute(
+    "title",
+    "Permission modes could not be loaded. Claude could not be reached.",
+  );
   // A label this toolbar has not had to fit before, at every width.
   await expect
     .poll(() =>
@@ -928,15 +937,19 @@ test("an unreadable mode list leaves the agent's own default standing", { tag: "
     .toBe(true);
   await permissionPicker.click();
   await expect(form.locator(".task-permission-popover")).toContainText(
-    "The agent's own default will be used.",
+    "Reload the page to try again.",
   );
   await page.keyboard.press("Escape");
 
-  await form.getByRole("textbox", { name: "New task prompt" }).fill("Inspect the task");
-  await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
-
-  await expect.poll(() => created.body).not.toBeNull();
-  expect(created.body).not.toHaveProperty("permissionMode");
+  const prompt = form.getByRole("textbox", { name: "New task prompt" });
+  await prompt.fill("Inspect the task");
+  await expect(form.getByRole("button", { name: "Start task" })).toBeDisabled();
+  await prompt.press("Enter");
+  expect(await composerSubmission(form)).toEqual({
+    pending: false,
+    draft: "Inspect the task",
+  });
+  expect(created.body).toBeNull();
 });
 
 test("a new task waits for the chosen model's mode list before it starts", { tag: "@desktop" }, async ({
@@ -944,7 +957,7 @@ test("a new task waits for the chosen model's mode list before it starts", { tag
 }) => {
   // A list in flight describes the model chosen before this one. The task
   // waits for the list that describes the chosen model, so it starts under a
-  // mode that model offers rather than the agent's own default.
+  // mode that model offers.
   await installTaskApiFixture(page);
   const asked = Promise.withResolvers();
   const answered = Promise.withResolvers();
@@ -1465,6 +1478,65 @@ test("a follow-up waits for the chosen model's mode list before it is sent", { t
   });
 });
 
+test("a New Task picker detached while its mode list is on its way asks for it again when it returns", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const held = [];
+  await installAgentCatalog(page, {
+    answer: async ({ provider, modes, route }) => {
+      if (provider === "grok") {
+        const release = Promise.withResolvers();
+        held.push(release);
+        await release.promise;
+      }
+      return route.fulfill({ json: modes });
+    },
+  });
+  const created = await captureTaskCreation(page);
+
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const permissionButton = form.getByRole("button", { name: "Choose approval mode" });
+  const start = form.getByRole("button", { name: "Start task" });
+  const prompt = form.getByRole("textbox", { name: "New task prompt" });
+  await expect(permissionButton).toContainText("Auto review");
+  await prompt.fill("Inspect with Grok");
+
+  await form.getByRole("button", { name: /Choose model/ }).click();
+  await form.locator('[data-turn-options-action="browse-provider"][data-provider="grok"]').click();
+  await form.locator('.task-model-popover [data-model="grok-4.6"]').click();
+  await expect.poll(() => held.length).toBe(1);
+  await page.keyboard.press("Escape");
+
+  await page.locator("caffold-tasks-page").evaluate((element) => {
+    const parent = element.parentNode;
+    const nextSibling = element.nextSibling;
+    element.remove();
+    parent.insertBefore(element, nextSibling);
+  });
+  await expect.poll(() => held.length).toBe(2);
+  held[0].resolve();
+  await expect(start).toBeDisabled();
+  await prompt.press("Enter");
+  expect(await composerSubmission(form)).toEqual({
+    pending: false,
+    draft: "Inspect with Grok",
+  });
+
+  held[1].resolve();
+  await expect(permissionButton).toContainText("Ask first");
+  await expect(start).toBeEnabled();
+  await prompt.press("Enter");
+
+  await expect.poll(() => created.body).not.toBeNull();
+  expect(created.body).toMatchObject({
+    provider: "grok",
+    model: "grok-4.6",
+    permissionMode: "ask",
+  });
+});
+
 test("send button does not return focus to the prompt after submission", { tag: "@all-viewports" }, async ({
   page,
 }) => {
@@ -1597,11 +1669,7 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       form.evaluate((element) => {
         const turnOptions = element.querySelector("caffold-task-turn-options");
         return Boolean(
-          turnOptions?.isConnected &&
-            turnOptions.modelLoaded &&
-            !turnOptions.modelLoading &&
-            turnOptions.permissionLoaded &&
-            !turnOptions.permissionLoading,
+          turnOptions?.isConnected && turnOptions.readyForSubmission(),
         );
       }),
     )

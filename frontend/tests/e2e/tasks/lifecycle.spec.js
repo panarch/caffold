@@ -1737,6 +1737,15 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     tasksPage.locator("caffold-task-directory-picker > dialog"),
   ).not.toHaveAttribute("open", "");
 
+  // A picker whose lists have settled has nothing to ask for when it returns.
+  await expect
+    .poll(() =>
+      tasksPage
+        .locator("caffold-task-new caffold-task-turn-options")
+        .evaluate((element) => element.readyForSubmission()),
+    )
+    .toBe(true);
+
   const lifecycle = await taskWorkspace.evaluate((workspace) => {
     const element = workspace.querySelector("caffold-tasks-page");
     const parent = element.parentNode;
@@ -1747,12 +1756,19 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     const composer = taskNew.querySelector("caffold-task-composer");
     const turnOptions = composer.querySelector("caffold-task-turn-options");
     turnOptions.modelLoading = true;
-    turnOptions.permissionLoading = true;
+    turnOptions.permissionRequest = { key: "still-on-its-way" };
     turnOptions.modelLoadingFeedback.visible = true;
     turnOptions.permissionLoadingFeedback.visible = true;
 
     element.remove();
     const detached = !element.isConnected;
+    const turnOptionRequestsReleased =
+      !turnOptions.modelLoading &&
+      turnOptions.permissionRequest === null &&
+      !turnOptions.modelLoadingFeedback.visible &&
+      turnOptions.modelLoadingFeedback.timer === null &&
+      !turnOptions.permissionLoadingFeedback.visible &&
+      turnOptions.permissionLoadingFeedback.timer === null;
     parent.insertBefore(element, nextSibling);
     const attached = element.isConnected;
     window.dispatchEvent(new CustomEvent("caffold:icons-ready"));
@@ -1764,13 +1780,10 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
       navigatorStillConnected: element.taskNavigator() === navigator,
       sameTaskNew: taskNew === element.querySelector("caffold-task-new"),
       sameDetail: detail === element.querySelector("caffold-task-detail"),
-      turnOptionRequestsReleased:
-        !turnOptions.modelLoading &&
-        !turnOptions.permissionLoading &&
-        !turnOptions.modelLoadingFeedback.visible &&
-        turnOptions.modelLoadingFeedback.timer === null &&
-        !turnOptions.permissionLoadingFeedback.visible &&
-        turnOptions.permissionLoadingFeedback.timer === null,
+      turnOptionRequestsReleased,
+      settledTurnOptionsNotAskedAgain:
+        turnOptions.permissionRequest === null &&
+        turnOptions.readyForSubmission(),
     };
   });
 
@@ -1782,6 +1795,7 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     sameTaskNew: true,
     sameDetail: true,
     turnOptionRequestsReleased: true,
+    settledTurnOptionsNotAskedAgain: true,
   });
 });
 test("keeps task list and detail revisions independent", { tag: "@desktop" }, async ({ page }, testInfo) => {

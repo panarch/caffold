@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { installAgentCatalog } from "../support/agent-catalog-fixture.js";
 import {
   TASK_PERMISSION_FIXTURE,
   installTaskApiFixture,
@@ -97,7 +98,7 @@ test("a model list still pending after the delay earns a spinner without moving 
   expect(settled.send).toEqual(deferred.send);
 });
 
-test("a first follow-up composer keeps its model spinner while the permission list lands first", { tag: "@desktop" }, async ({
+test("a follow-up composer asks for no mode list until its model is known", { tag: "@desktop" }, async ({
   page,
 }) => {
   const { models, permissions } = await installGatedTurnOptions(page, {
@@ -109,33 +110,24 @@ test("a first follow-up composer keeps its model spinner while the permission li
   const form = followUpForm(page);
   const { modelButton, spinner, permissionPicker, permissionButton } =
     pickerLocators(form);
-  await expect(spinner).toHaveCount(1);
-  await expect(permissionPicker).toBeHidden();
   await page.clock.runFor(LOADING_DELAY_MS);
   await expect(spinner).toBeVisible();
-  const turning = await spinner.elementHandle();
-
-  permissions.resolve();
-  await expect
-    .poll(() => turnOptionsState(form))
-    .toEqual(
-      expect.objectContaining({ modelLoaded: false, permissionLoaded: true }),
-    );
   await expect(permissionPicker).toBeHidden();
-  expect(
-    await spinner.evaluate((node, previous) => node === previous, turning),
-  ).toBe(true);
-  await expect(spinner).toBeVisible();
+  // The modes on offer belong to a model, so there is nothing to ask for yet.
+  expect(await turnOptionsState(form)).toEqual(
+    expect.objectContaining({ modelLoaded: false, permissionAsked: false }),
+  );
 
   models.resolve();
   await expect(modelButton).toContainText("5.6 Sol");
-  await expect(modelButton).toContainText("low");
-  await expect(spinner).toHaveCount(0);
-  await expect(permissionPicker).toBeVisible();
+  await expect
+    .poll(() => turnOptionsState(form))
+    .toEqual(expect.objectContaining({ modelLoaded: true, permissionAsked: true }));
+  permissions.resolve();
   await expect(permissionButton).toContainText("Auto review");
 });
 
-test("a first follow-up permission pill appears where it will stay, already turning", { tag: "@desktop" }, async ({
+test("a first permission pill appears where it will stay and turns once its own list is late", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
   const { models, permissions } = await installGatedTurnOptions(page, {
@@ -153,15 +145,12 @@ test("a first follow-up permission pill appears where it will stay, already turn
     send,
   } = pickerLocators(form);
   await expect(permissionPicker).toBeHidden();
-  // The permission list has been pending as long as the model list. When the
-  // model lands and asks for the list again, that wait carries over.
-  await page.clock.runFor(LOADING_DELAY_MS);
 
   models.resolve();
   await expect(modelButton).toContainText("5.6 Sol");
   await expect(permissionPicker).toBeVisible();
-  await expect(permissionSpinner).toBeVisible();
-  await expect(permissionButton).not.toHaveClass(/is-deferred/);
+  await expect(permissionButton).toHaveClass(/is-deferred/);
+  await expect(permissionSpinner).toBeHidden();
   await expect(permissionButton).toHaveAttribute("aria-busy", "true");
   await expect(permissionButton).toHaveAccessibleDescription(
     "Loading permission modes",
@@ -171,6 +160,11 @@ test("a first follow-up permission pill appears where it will stay, already turn
     permission: await permissionButton.boundingBox(),
     send: await send.boundingBox(),
   };
+
+  await page.clock.runFor(LOADING_DELAY_MS);
+  await expect(permissionSpinner).toBeVisible();
+  await expect(permissionButton).not.toHaveClass(/is-deferred/);
+  expect(await permissionButton.boundingBox()).toEqual(appeared.permission);
   await captureReviewScreenshot(
     page,
     testInfo,
@@ -190,6 +184,75 @@ test("a first follow-up permission pill appears where it will stay, already turn
   expect(settled.permission.x).toBe(appeared.permission.x);
   expect(settled.permission.height).toBe(appeared.permission.height);
   expect(settled.send).toEqual(appeared.send);
+});
+
+test("a mode list asked for again keeps the label it replaces until the delay", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const asked = Promise.withResolvers();
+  const answered = Promise.withResolvers();
+  await installPausedAgentCatalog(page, async ({ provider, modes, route }) => {
+    if (provider === "claude") {
+      asked.resolve();
+      await answered.promise;
+    }
+    return route.fulfill({ json: modes });
+  });
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const { modelButton, permissionButton, permissionSpinner, send } =
+    pickerLocators(form);
+  await expect(permissionButton).toContainText("Auto review");
+  await form.getByRole("textbox", { name: "New task prompt" }).fill("Inspect the task");
+  await expect(send).toBeEnabled();
+
+  await modelButton.click();
+  await form.locator('[data-turn-options-action="browse-provider"][data-provider="claude"]').click();
+  await form.locator('.task-model-popover [data-model="opus[1m]"]').click();
+  await asked.promise;
+  await expect(send).toBeDisabled();
+  await expect(permissionButton).toContainText("Auto review");
+  await expect(permissionButton).toHaveAttribute("aria-busy", "true");
+
+  await page.clock.runFor(LOADING_DELAY_MS - 1);
+  await expect(permissionButton).toContainText("Auto review");
+  await page.clock.runFor(1);
+  await expect(permissionSpinner).toBeVisible();
+  await expect(permissionButton).not.toContainText("Auto review");
+
+  answered.resolve();
+  await expect(permissionButton).toContainText("Automatic");
+  await expect(permissionSpinner).toHaveCount(0);
+  await expect(send).toBeEnabled();
+});
+
+test("a mode list that returns before the delay swaps the label without a spinner", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const answered = Promise.withResolvers();
+  await installPausedAgentCatalog(page, async ({ provider, modes, route }) => {
+    if (provider === "claude") {
+      await answered.promise;
+    }
+    return route.fulfill({ json: modes });
+  });
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const { modelButton, permissionButton, permissionSpinner } =
+    pickerLocators(form);
+  await expect(permissionButton).toContainText("Auto review");
+
+  await modelButton.click();
+  await form.locator('[data-turn-options-action="browse-provider"][data-provider="claude"]').click();
+  await form.locator('.task-model-popover [data-model="opus[1m]"]').click();
+  await expect(permissionButton).toHaveAttribute("aria-busy", "true");
+  await page.clock.runFor(LOADING_DELAY_MS - 1);
+  answered.resolve();
+  await expect(permissionButton).toContainText("Automatic");
+
+  await page.clock.runFor(1);
+  await expect(permissionSpinner).toHaveCount(0);
+  await expect(permissionButton).not.toHaveAttribute("aria-busy");
 });
 
 // The clock is paused before navigation so that the delay is measured from a
@@ -214,6 +277,13 @@ async function installGatedTurnOptions(page, { gatePermissions = false } = {}) {
     });
   }
   return { models, permissions };
+}
+
+async function installPausedAgentCatalog(page, answer) {
+  await page.clock.install({ time: INSTALLED_AT });
+  await page.clock.pauseAt(PAUSED_AT);
+  await installTaskApiFixture(page);
+  await installAgentCatalog(page, { answer });
 }
 
 async function installFollowUpTask(page) {
@@ -256,7 +326,9 @@ function turnOptionsState(form) {
     const turnOptions = element.querySelector("caffold-task-turn-options");
     return {
       modelLoaded: turnOptions.modelLoaded,
-      permissionLoaded: turnOptions.permissionLoaded,
+      permissionAsked: Boolean(
+        turnOptions.permissionRequest || turnOptions.permissionList,
+      ),
       modelFeedback: { ...turnOptions.modelLoadingFeedback },
     };
   });

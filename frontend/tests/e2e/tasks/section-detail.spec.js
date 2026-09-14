@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { installAgentCatalog } from "../support/agent-catalog-fixture.js";
 import {
   installBrowserDefaults,
   mockCodexStatus,
@@ -1387,6 +1388,109 @@ test("falls back stale Section settings and applies targeted updates without rel
   await expect(form.locator('input[name="effort"]')).toHaveValue("xhigh");
   await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
   expect(taskListReads).toBe(1);
+});
+
+test("moves Section New to the agent whose model a Section update names", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, { registryKey: "__sectionAgentSwitchSources" });
+  await installAgentCatalog(page);
+  const sectionId = "section-agent-switch";
+  const rootPath = "frontend/tests/e2e/fixtures/home";
+  const task = {
+    id: "thread_section_agent_switch",
+    threadId: "thread_section_agent_switch",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Section agent switch",
+    cwd: rootPath,
+    cwdPath: rootPath,
+    relativeCwd: "",
+    worktree: null,
+    createdMs: Date.now(),
+    updatedMs: Date.now(),
+    lastEventSummary: "Section agent switch",
+  };
+  let createdBody = null;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    if (route.request().method() === "POST") {
+      createdBody = route.request().postDataJSON();
+      return route.fulfill({ json: taskDetailFixture() });
+    }
+    return route.fulfill({
+      json: {
+        sections: [{
+          id: sectionId,
+          name: rootPath,
+          repository: false,
+          composerSettings: {
+            model: "gpt-6-astra",
+            effort: "max",
+            fastMode: false,
+            permissionMode: "askForApproval",
+          },
+          tasks: [task],
+        }],
+        unsectioned: [],
+      },
+    });
+  });
+  await page.route("**/api/tasks/*/prompts", (route) =>
+    route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-section-agent-switch",
+        userMessageId: "message-section-agent-switch",
+        steered: false,
+      },
+    })
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: [], nextCursor: null } })
+  );
+
+  await page.goto(`/?section=${sectionId}`);
+  const form = page.locator('caffold-section-detail .task-new-form[data-task-form="create"]');
+  const modelButton = form.getByRole("button", { name: /Choose model/ });
+  const permissionButton = form.getByRole("button", { name: "Choose approval mode" });
+  await expect(modelButton).toContainText("6 Astra · max");
+  await expect(permissionButton).toContainText("Ask approval");
+  await expect.poll(() => page.evaluate(() =>
+    window.__sectionAgentSwitchSources.some((source) =>
+      source.url.startsWith("/api/tasks/stream")
+    )
+  )).toBe(true);
+
+  // Another Task in this Section started its turn on Claude.
+  await page.evaluate((id) => {
+    const source = window.__sectionAgentSwitchSources.find((candidate) =>
+      candidate.url.startsWith("/api/tasks/stream")
+    );
+    source.emit("section-composer-settings", {
+      sectionId: id,
+      composerSettings: {
+        model: "opus[1m]",
+        effort: "max",
+        fastMode: false,
+        permissionMode: "auto",
+      },
+    });
+  }, sectionId);
+
+  await expect(modelButton).toContainText("Opus 5 with 1M context · max");
+  await expect(permissionButton).toContainText("Automatic");
+  const prompt = form.getByRole("textbox", { name: "New task prompt" });
+  await prompt.fill("Continue on Claude");
+  await expect(form.locator(".task-primary-action-button")).toBeEnabled();
+  await prompt.press("Enter");
+
+  await expect.poll(() => createdBody).not.toBeNull();
+  expect(createdBody).toMatchObject({
+    cwd: rootPath,
+    provider: "claude",
+    model: "opus[1m]",
+    effort: "max",
+    permissionMode: "auto",
+  });
 });
 
 test("clears shared repository context when the selected Section loses capability", { tag: "@all-viewports" }, async ({
