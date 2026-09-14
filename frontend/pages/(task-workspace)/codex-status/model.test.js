@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   codexBlocksTaskOperations,
+  codexRateWindows,
   codexRuntimeRestartAvailable,
   codexSetupVisible,
   createCodexStatusSnapshot,
   formatRateWindowLabel,
+  sameCodexStatus,
   taskStoreOperationsPresentation,
   taskStoreRecoveryVisible,
 } from "./model.js";
@@ -145,4 +147,69 @@ test("a rate window is labelled by the period it meters, never by a guess", () =
     assert.equal(formatRateWindowLabel(window, "primary"), "Primary limit");
     assert.equal(formatRateWindowLabel(window, "secondary"), "Secondary limit");
   }
+});
+
+test("every limit Codex reports keeps its windows, and its single-bucket limit leads", () => {
+  const codexLimit = {
+    limitId: "codex",
+    limitName: null,
+    primary: { usedPercent: 86, windowDurationMins: 10080, resetsAt: 1914709200 },
+    secondary: null,
+  };
+  const sparkLimit = {
+    limitId: "codex_bengalfox",
+    limitName: "GPT-5.3-Codex-Spark",
+    primary: { usedPercent: 0, windowDurationMins: 300, resetsAt: 1914709200 },
+    secondary: { usedPercent: 12, windowDurationMins: 10080, resetsAt: 1915243200 },
+  };
+
+  assert.deepEqual(
+    codexRateWindows({
+      rateLimits: {
+        rateLimits: codexLimit,
+        rateLimitsByLimitId: { codex_bengalfox: sparkLimit, codex: codexLimit },
+      },
+    }),
+    [
+      { limitId: "codex", limitName: null, name: "primary", window: codexLimit.primary },
+      {
+        limitId: "codex_bengalfox",
+        limitName: "GPT-5.3-Codex-Spark",
+        name: "primary",
+        window: sparkLimit.primary,
+      },
+      {
+        limitId: "codex_bengalfox",
+        limitName: "GPT-5.3-Codex-Spark",
+        name: "secondary",
+        window: sparkLimit.secondary,
+      },
+    ],
+  );
+  assert.deepEqual(
+    codexRateWindows({ rateLimits: { rateLimits: codexLimit, rateLimitsByLimitId: null } }),
+    [{ limitId: "codex", limitName: null, name: "primary", window: codexLimit.primary }],
+  );
+  assert.deepEqual(codexRateWindows({}), []);
+});
+
+test("a usage change in any reported limit is a different status", () => {
+  const status = () => ({
+    rateLimits: {
+      rateLimits: { limitId: "codex", primary: { usedPercent: 86, windowDurationMins: 10080 } },
+      rateLimitsByLimitId: {
+        codex: { limitId: "codex", primary: { usedPercent: 86, windowDurationMins: 10080 } },
+        codex_bengalfox: {
+          limitId: "codex_bengalfox",
+          limitName: "GPT-5.3-Codex-Spark",
+          secondary: { usedPercent: 12, windowDurationMins: 10080 },
+        },
+      },
+    },
+  });
+  const changed = status();
+  changed.rateLimits.rateLimitsByLimitId.codex_bengalfox.secondary.usedPercent = 13;
+
+  assert.equal(sameCodexStatus(status(), status()), true);
+  assert.equal(sameCodexStatus(status(), changed), false);
 });

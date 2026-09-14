@@ -10,8 +10,7 @@ export function sameCodexStatus(left, right) {
     left.account?.email === right.account?.email &&
     left.account?.planType === right.account?.planType &&
     daemonSignature(left) === daemonSignature(right) &&
-    usageSignature(left, "primary") === usageSignature(right, "primary") &&
-    usageSignature(left, "secondary") === usageSignature(right, "secondary") &&
+    usageSignature(left) === usageSignature(right) &&
     formatResetCredits(left) === formatResetCredits(right)
   );
 }
@@ -229,38 +228,27 @@ export function formatCodexPlan(status) {
   return status?.account?.planType ?? "-";
 }
 
-export function findRateWindow(value, name) {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      const found = findRateWindow(entry, name);
-      if (found) {
-        return found;
-      }
-    }
-    return null;
-  }
-
-  const direct = value[name];
-  if (direct && typeof direct === "object") {
-    if (Number.isFinite(Number(direct.usedPercent))) {
-      return direct;
-    }
-    const nested = findRateWindow(direct, name);
-    if (nested) {
-      return nested;
-    }
-  }
-
-  for (const key of ["rateLimits", "rateLimitsByLimitId"]) {
-    const nested = findRateWindow(value[key], name);
-    if (nested) {
-      return nested;
-    }
-  }
-  return null;
+/// Every window Codex reported, limit by limit. The limit Codex also reports as
+/// its single-bucket view leads; the by-limit map carries no order of its own.
+export function codexRateWindows(status) {
+  const reported = status?.rateLimits;
+  const single = reported?.rateLimits;
+  const limits = reported?.rateLimitsByLimitId
+    ? Object.entries(reported.rateLimitsByLimitId)
+    : [[single?.limitId, single]];
+  return [
+    ...limits.filter(([limitId]) => limitId === single?.limitId),
+    ...limits.filter(([limitId]) => limitId !== single?.limitId),
+  ].flatMap(([limitId, limit]) =>
+    ["primary", "secondary"]
+      .filter((name) => limit?.[name])
+      .map((name) => ({
+        limitId,
+        limitName: limit.limitName,
+        name,
+        window: limit[name],
+      })),
+  );
 }
 
 export function formatRateWindowLabel(window, name) {
@@ -308,11 +296,15 @@ export function formatResetCredits(status) {
   return Number.isFinite(count) ? `${count} available` : "-";
 }
 
-function usageSignature(status, name) {
-  const window = findRateWindow(status?.rateLimits, name);
-  return [
-    formatRateWindowLabel(window, name),
-    formatUsedPercent(window),
-    formatRateReset(window),
-  ].join("|");
+function usageSignature(status) {
+  return codexRateWindows(status)
+    .map(({ limitId, limitName, name, window }) => [
+      limitId,
+      limitName,
+      name,
+      formatRateWindowLabel(window, name),
+      formatUsedPercent(window),
+      formatRateReset(window),
+    ].join("|"))
+    .join("\n");
 }

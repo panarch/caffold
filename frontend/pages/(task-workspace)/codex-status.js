@@ -6,10 +6,10 @@ import {
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,
+  codexRateWindows,
   codexRuntimeRestartAvailable,
   codexSetupVisible,
   codexState,
-  findRateWindow,
   formatCodexAccount,
   formatCodexPlan,
   formatCodexReadiness,
@@ -33,10 +33,10 @@ export const CODEX_RUNTIME_RESTART_REQUEST_EVENT =
 export {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,
+  codexRateWindows,
   codexRuntimeRestartAvailable,
   codexSetupVisible,
   codexState,
-  findRateWindow,
   formatCodexAccount,
   formatCodexPlan,
   formatCodexReadiness,
