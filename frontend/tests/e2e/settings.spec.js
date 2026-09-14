@@ -667,7 +667,9 @@ test("holds the Codex rows while its first readiness check is still running", { 
     "1 week",
     "Reset credits",
   ]);
-  await expect(usage.locator("[data-key='primary'] dd")).toContainText("17% left");
+  await expect(usage.locator("[data-key='primary'] dd")).toHaveText(
+    /83% used · resets .+\d:\d{2}/,
+  );
 });
 
 test("holds the Claude agent rows while its first report is still loading", { tag: "@desktop" }, async ({
