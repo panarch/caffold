@@ -46,6 +46,7 @@ canonical query route; Task URLs use path routes:
 /settings/files
 /settings/notifications
 /settings/remote-access
+/settings/voice
 /settings/codex
 /settings/claude
 /settings/grok

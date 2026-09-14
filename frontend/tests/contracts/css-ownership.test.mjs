@@ -359,6 +359,10 @@ const ownership = new Map([
     ["caffold-claude-runtime-restart-dialog"],
   ],
   [
+    "pages/(task-workspace)/settings/voice/page.css",
+    ["caffold-settings-voice-page"],
+  ],
+  [
     "pages/(task-workspace)/settings/grok/page.css",
     ["caffold-settings-grok-page"],
   ],
@@ -782,6 +786,7 @@ test("workspace navigation uses in-flow pane ownership without padding compensat
     "pages/(task-workspace)/settings/codex/page.css",
     "pages/(task-workspace)/settings/claude/page.css",
     "pages/(task-workspace)/settings/grok/page.css",
+    "pages/(task-workspace)/settings/voice/page.css",
     "pages/(task-workspace)/settings/about/page.css",
   ];
   for (const path of paths) {

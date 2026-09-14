@@ -236,14 +236,8 @@ export async function installShowcaseFixture(page) {
   await page.route(/\/api\/voice\/status(?:\?|$)/, (route) =>
     route.fulfill({
       json: {
-        supported: true,
-        model: {
-          id: "large-v3-turbo",
-          bytes: 1_624_555_275,
-          installed: true,
-          loaded: true,
-          downloading: false,
-        },
+        provider: "whisper",
+        ready: true,
         maxRecordingSeconds: 300,
       },
     }),

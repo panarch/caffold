@@ -48,16 +48,9 @@ private struct CodexStatusResponse: Decodable {
     let account: Account?
 }
 
-struct WhisperStatusResponse: Decodable {
-    struct Model: Decodable {
-        let id: String
-        let installed: Bool
-        let loaded: Bool
-        let downloading: Bool
-    }
-
-    let supported: Bool
-    let model: Model
+struct VoiceStatusResponse: Decodable {
+    let provider: String
+    let ready: Bool
     let maxRecordingSeconds: Int
 }
 
@@ -262,53 +255,22 @@ func probeCodexStatus(
     }.resume()
 }
 
-func whisperIntegrationStatus(_ response: WhisperStatusResponse) -> IntegrationStatus {
-    guard response.supported else {
-        return IntegrationStatus(
-            name: "Whisper",
-            state: .unavailable,
-            status: "Unsupported",
-            details: []
-        )
-    }
-
-    let modelState: String
-    let state: IntegrationState
-    let status: String
-    if response.model.downloading {
-        modelState = "Downloading"
-        state = .attention
-        status = "Downloading model"
-    } else if !response.model.installed {
-        modelState = "Not installed"
-        state = .attention
-        status = "Setup required"
-    } else if response.model.loaded {
-        modelState = "Loaded"
-        state = .ready
-        status = "Ready"
-    } else {
-        modelState = "Installed · loads on first use"
-        state = .ready
-        status = "Ready"
-    }
-
-    return IntegrationStatus(
-        name: "Whisper",
-        state: state,
-        status: status,
+func voiceIntegrationStatus(_ response: VoiceStatusResponse) -> IntegrationStatus {
+    IntegrationStatus(
+        name: "Voice",
+        state: response.ready ? .ready : .attention,
+        status: response.ready ? "Ready" : "Setup required",
         details: [
-            IntegrationDetail(label: "Model", value: response.model.id),
-            IntegrationDetail(label: "State", value: modelState),
+            IntegrationDetail(label: "Provider", value: voiceProviderName(response.provider)),
             IntegrationDetail(
                 label: "Limit",
-                value: formatWhisperRecordingLimit(response.maxRecordingSeconds)
+                value: formatVoiceRecordingLimit(response.maxRecordingSeconds)
             ),
         ]
     )
 }
 
-func probeWhisperStatus(
+func probeVoiceStatus(
     url: URL,
     session: URLSession = .shared,
     completion: @escaping (IntegrationStatus) -> Void
@@ -321,12 +283,12 @@ func probeWhisperStatus(
             let response = response as? HTTPURLResponse,
             response.statusCode == 200,
             let data,
-            let voice = try? JSONDecoder().decode(WhisperStatusResponse.self, from: data)
+            let voice = try? JSONDecoder().decode(VoiceStatusResponse.self, from: data)
         {
-            statusResult = whisperIntegrationStatus(voice)
+            statusResult = voiceIntegrationStatus(voice)
         } else {
             statusResult = IntegrationStatus(
-                name: "Whisper",
+                name: "Voice",
                 state: .unavailable,
                 status: "Server unavailable",
                 details: []
@@ -338,7 +300,16 @@ func probeWhisperStatus(
     }.resume()
 }
 
-private func formatWhisperRecordingLimit(_ seconds: Int) -> String {
+private func voiceProviderName(_ provider: String) -> String {
+    switch provider {
+    case "whisper": return "Whisper"
+    case "openai": return "OpenAI"
+    case "gemini": return "Gemini"
+    default: return provider
+    }
+}
+
+private func formatVoiceRecordingLimit(_ seconds: Int) -> String {
     guard seconds > 0 else { return "Unavailable" }
     if seconds.isMultiple(of: 60) {
         let minutes = seconds / 60

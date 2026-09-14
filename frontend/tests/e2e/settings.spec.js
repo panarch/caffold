@@ -1167,6 +1167,7 @@ test("gives every Settings route one page title and landmark hierarchy", { tag: 
     ["/settings/files", "Files", "caffold-settings-files-page"],
     ["/settings/notifications", "Notifications", "caffold-settings-notifications-page"],
     ["/settings/remote-access", "Remote Access", "caffold-settings-remote-access-page"],
+    ["/settings/voice", "Voice Input", "caffold-settings-voice-page"],
     ["/settings/codex", "Codex", "caffold-settings-codex-page"],
     ["/settings/about", "About Caffold", "caffold-settings-about-page"],
   ];
@@ -1280,6 +1281,29 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
     page,
     testInfo,
     "settings-files-roles-interface-120",
+  );
+
+  await page.goto("/settings/voice");
+  const voice = page.locator("caffold-settings-voice-page");
+  await expect(voice.getByRole("radio", { name: /^Whisper/ })).toBeVisible();
+  const voiceMetrics = await voice.evaluate((element) => {
+    const option = element.querySelector(".settings-voice-options label");
+    const copy = element.querySelector(".settings-voice-option-copy");
+    return {
+      overflowX: element.scrollWidth > element.clientWidth,
+      optionOverflowX: option.scrollWidth > option.clientWidth,
+      copyOverflowX: copy.scrollWidth > copy.clientWidth,
+    };
+  });
+  expect(voiceMetrics).toEqual({
+    overflowX: false,
+    optionOverflowX: false,
+    copyOverflowX: false,
+  });
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "settings-voice-roles-interface-120",
   );
 
   await page.goto("/settings/codex");

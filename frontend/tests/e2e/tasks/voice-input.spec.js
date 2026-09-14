@@ -11,9 +11,6 @@ import {
   emitTaskDetailBootstrap,
 } from "../support/task-fixtures.js";
 
-const MODEL_ID = "large-v3-turbo";
-const MODEL_BYTES = 1_624_555_275;
-
 test.use({
   launchOptions: {
     args: [
@@ -424,23 +421,118 @@ test("shows the elapsed duration and automatically transcribes at the recording 
   expect(transcriptionRequests).toBe(1);
 });
 
-test("requires explicit confirmation before the one-time model install", { tag: "@desktop" }, async ({
+test("sends voice input that is not ready to Voice Input settings without downloading anything", { tag: "@desktop" }, async ({
   page,
-}, testInfo) => {
+}) => {
   await installTaskLoopFixture(page);
   await mockVoiceStatus(page, false);
   let installRequests = 0;
-  await page.route("**/api/voice/model/install", async (route) => {
+  await page.route("**/api/voice/model/install", (route) => {
     installRequests += 1;
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(voiceStatus(true)),
-    });
+    return route.abort();
   });
-  page.once("dialog", async (dialog) => {
-    expect(dialog.type()).toBe("confirm");
-    expect(dialog.message()).toContain("Whisper large-v3-turbo model (1.5 GB)");
-    await dialog.accept();
+  const dialogs = [];
+  page.on("dialog", async (dialog) => {
+    dialogs.push(dialog.type());
+    await dialog.dismiss();
+  });
+
+  await page.goto("/tasks/new?cwd=src");
+  const composer = page.locator(
+    'caffold-task-new caffold-task-composer form[data-task-form="create"]',
+  );
+  await expect(composer).toHaveAttribute("data-voice-state", "notReady");
+  await composer.getByRole("button", { name: "Set up voice input" }).click();
+
+  await expect(page).toHaveURL(/\/settings\/voice$/);
+  await expect(page.locator("caffold-settings-voice-page")).toBeVisible();
+  expect(dialogs).toEqual([]);
+  expect(installRequests).toBe(0);
+});
+
+test("returns to Voice Input settings when the provider rejects its setup during transcription", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installTaskLoopFixture(page);
+  await mockVoiceStatus(page, true);
+  await page.route("**/api/voice/transcribe", (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: {
+          code: "voice_provider_not_ready",
+          message: "OpenAI rejected the API key. Update it in Settings → Voice Input.",
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/tasks/new?cwd=src");
+  const composer = page.locator(
+    'caffold-task-new caffold-task-composer form[data-task-form="create"]',
+  );
+  const prompt = composer.locator('textarea[name="prompt"]');
+  await prompt.fill("보존할 초안");
+  await composer.getByRole("button", { name: "Start voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "recording");
+  await expect
+    .poll(() =>
+      composer.evaluate(
+        (form) =>
+          form.closest("caffold-task-composer")?.voiceRecorder?.sampleCount ?? 0,
+      ),
+    )
+    .toBeGreaterThan(0);
+  await composer.getByRole("button", { name: "Stop recording" }).click();
+
+  await expect(composer).toHaveAttribute("data-voice-state", "notReady");
+  await expect(composer.getByRole("alert")).toContainText(
+    "OpenAI rejected the API key.",
+  );
+  await expect(prompt).toHaveValue("보존할 초안");
+  await composer.getByRole("button", { name: "Set up voice input" }).click();
+  await expect(page).toHaveURL(/\/settings\/voice$/);
+});
+
+test("offers voice input again once Voice Input settings finish its setup", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installTaskLoopFixture(page);
+  const voice = { selected: "whisper", openaiKey: false };
+  const settings = () => ({
+    selected: voice.selected,
+    whisper: {
+      model: "large-v3-turbo",
+      revision: "5359861c739e955e79d9a303bcbc70fb988958b1",
+      bytes: 1_624_555_275,
+      installed: false,
+      loaded: false,
+      downloading: false,
+      downloadError: null,
+    },
+    openai: { model: "gpt-transcribe", keyConfigured: voice.openaiKey },
+    gemini: { model: "gemini-3.5-transcribe", keyConfigured: false },
+  });
+  await page.route("**/api/voice/status", (route) =>
+    route.fulfill({
+      json: {
+        provider: voice.selected,
+        ready: voice.selected === "openai" && voice.openaiKey,
+        maxRecordingSeconds: 300,
+      },
+    }),
+  );
+  await page.route("**/api/voice/settings", (route) =>
+    route.fulfill({ json: settings() }),
+  );
+  await page.route("**/api/voice/provider", (route) => {
+    voice.selected = route.request().postDataJSON().provider;
+    return route.fulfill({ json: settings() });
+  });
+  await page.route("**/api/voice/keys/openai", (route) => {
+    voice.openaiKey = route.request().method() === "PUT";
+    return route.fulfill({ json: settings() });
   });
 
   await page.goto("/tasks/new?cwd=src");
@@ -448,12 +540,23 @@ test("requires explicit confirmation before the one-time model install", { tag: 
     'caffold-task-new caffold-task-composer form[data-task-form="create"]',
   );
   await composer.getByRole("button", { name: "Set up voice input" }).click();
+  const voicePage = page.locator("caffold-settings-voice-page");
+  const openaiChoice = voicePage.getByRole("radio", { name: /^OpenAI/ });
+  await openaiChoice.click();
+  await expect(openaiChoice).toBeChecked();
+  const openai = voicePage.locator('[data-provider="openai"]');
+  await openai.getByLabel("API key").fill("sk-e2e-voice");
+  await openai.getByRole("button", { name: "Save key" }).click();
+  await expect(
+    openai.locator('caffold-settings-detail-list [data-key="api-key"] dd'),
+  ).toHaveText("Saved");
 
+  await page.goBack();
+  await expect(page).toHaveURL(/\/tasks\/new/);
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
   await expect(
     composer.getByRole("button", { name: "Start voice input" }),
   ).toBeEnabled();
-  expect(installRequests).toBe(1);
 });
 
 test("finishes transcription before sending when Send is tapped during recording", { tag: "@all-viewports" }, async ({
@@ -692,14 +795,171 @@ test("keeps a follow-up draft and releases microphone tracks when recording is c
   expect(scenario.followUpRequests).toBe(0);
 });
 
-test("reports microphone permission denial without changing the draft", { tag: "@desktop" }, async ({
+test("reads voice status again when Voice Input settings change, but not while recording", { tag: "@desktop" }, async ({
   page,
-}, testInfo) => {
+}) => {
+  await installTaskLoopFixture(page);
+  let status = null;
+  await page.route("**/api/voice/status", (route) =>
+    status
+      ? route.fulfill({
+          json: { provider: "whisper", maxRecordingSeconds: 300, ...status },
+        })
+      : route.fulfill({
+          status: 500,
+          json: {
+            error: {
+              code: "voice_settings_unavailable",
+              message: "Caffold could not read its voice settings.",
+            },
+          },
+        }),
+  );
+  const announceSettingsChange = () =>
+    page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("caffold:voice-settings-changed"));
+    });
+
+  await page.goto("/tasks/new?cwd=src");
+  const composer = page.locator(
+    'caffold-task-new caffold-task-composer form[data-task-form="create"]',
+  );
+  await expect(composer).toHaveAttribute("data-voice-state", "error");
+  await expect(composer.getByRole("alert")).toContainText(
+    "Caffold could not read its voice settings.",
+  );
+  await expect(
+    composer.getByRole("button", { name: "Set up voice input" }),
+  ).toBeEnabled();
+
+  status = { ready: true };
+  await announceSettingsChange();
+  await expect(composer).toHaveAttribute("data-voice-state", "idle");
+
+  status = { ready: false };
+  await announceSettingsChange();
+  await expect(composer).toHaveAttribute("data-voice-state", "notReady");
+
+  status = { ready: true };
+  await announceSettingsChange();
+  await expect(composer).toHaveAttribute("data-voice-state", "idle");
+  await composer.getByRole("button", { name: "Start voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "recording");
+  status = { ready: false };
+  expect(
+    await composer.evaluate((form) => {
+      const host = form.closest("caffold-task-composer");
+      window.dispatchEvent(new CustomEvent("caffold:voice-settings-changed"));
+      return host.voice.phase;
+    }),
+  ).toBe("recording");
+  await composer.getByRole("button", { name: "Cancel voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "idle");
+});
+
+test("cancels voice input while microphone permission is still pending", { tag: "@desktop" }, async ({
+  page,
+}) => {
   await page.addInitScript(() => {
+    const originalGetUserMedia =
+      navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    let releasePermission;
+    const permissionGate = new Promise((resolve) => {
+      releasePermission = resolve;
+    });
+    window.__releaseVoicePermission = () => releasePermission();
+    window.__caffoldStoppedVoiceTracks = 0;
+    if (window.MediaStreamTrack) {
+      const originalStop = MediaStreamTrack.prototype.stop;
+      MediaStreamTrack.prototype.stop = function stop() {
+        window.__caffoldStoppedVoiceTracks += 1;
+        return originalStop.call(this);
+      };
+    }
     Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
       configurable: true,
-      value: async () => {
-        throw new DOMException("Permission denied", "NotAllowedError");
+      value: async (...args) => {
+        await permissionGate;
+        return originalGetUserMedia(...args);
+      },
+    });
+  });
+  await installTaskLoopFixture(page);
+  await mockVoiceStatus(page, true);
+  await page.goto("/tasks/new?cwd=src");
+
+  const composer = page.locator(
+    'caffold-task-new caffold-task-composer form[data-task-form="create"]',
+  );
+  await composer.getByRole("button", { name: "Start voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "requesting");
+  await composer.getByRole("button", { name: "Cancel voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "idle");
+
+  await page.evaluate(() => window.__releaseVoicePermission());
+  await expect
+    .poll(() => page.evaluate(() => window.__caffoldStoppedVoiceTracks))
+    .toBeGreaterThan(0);
+  await expect(composer).toHaveAttribute("data-voice-state", "idle");
+  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+});
+
+test("returns to idle and releases the microphone when the composer is moved while recording", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__caffoldStoppedVoiceTracks = 0;
+    if (window.MediaStreamTrack) {
+      const originalStop = MediaStreamTrack.prototype.stop;
+      MediaStreamTrack.prototype.stop = function stop() {
+        window.__caffoldStoppedVoiceTracks += 1;
+        return originalStop.call(this);
+      };
+    }
+  });
+  await installTaskLoopFixture(page);
+  await mockVoiceStatus(page, true);
+  await page.goto("/tasks/new?cwd=src");
+
+  const composer = page.locator(
+    'caffold-task-new caffold-task-composer form[data-task-form="create"]',
+  );
+  await composer.getByRole("button", { name: "Start voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "recording");
+
+  await composer.evaluate((form) => {
+    const host = form.closest("caffold-task-composer");
+    const parent = host.parentNode;
+    const next = host.nextSibling;
+    host.remove();
+    parent.insertBefore(host, next);
+  });
+
+  await expect
+    .poll(() => page.evaluate(() => window.__caffoldStoppedVoiceTracks))
+    .toBeGreaterThan(0);
+  await expect(composer).toHaveAttribute("data-voice-state", "idle");
+  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(
+    composer.getByRole("button", { name: "Start voice input" }),
+  ).toBeEnabled();
+});
+
+test("reports microphone permission denial without changing the draft and records once access is allowed", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const originalGetUserMedia =
+      navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    let denied = false;
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      configurable: true,
+      value: async (...args) => {
+        if (!denied) {
+          denied = true;
+          throw new DOMException("Permission denied", "NotAllowedError");
+        }
+        return originalGetUserMedia(...args);
       },
     });
   });
@@ -720,27 +980,24 @@ test("reports microphone permission denial without changing the draft", { tag: "
     "Microphone access was denied",
   );
   await expect(prompt).toHaveValue("보존할 초안");
+
+  await composer.getByRole("button", { name: "Start voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "recording");
+  await expect(composer.getByRole("alert")).toHaveCount(0);
+  await composer.getByRole("button", { name: "Cancel voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "idle");
+  await expect(prompt).toHaveValue("보존할 초안");
 });
 
-async function mockVoiceStatus(page, installed, maxRecordingSeconds = 300) {
+async function mockVoiceStatus(page, ready, maxRecordingSeconds = 300) {
   await page.route("**/api/voice/status", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify(voiceStatus(installed, maxRecordingSeconds)),
+      body: JSON.stringify({
+        provider: "whisper",
+        ready,
+        maxRecordingSeconds,
+      }),
     }),
   );
-}
-
-function voiceStatus(installed, maxRecordingSeconds = 300) {
-  return {
-    supported: true,
-    model: {
-      id: MODEL_ID,
-      bytes: MODEL_BYTES,
-      installed,
-      loaded: false,
-      downloading: false,
-    },
-    maxRecordingSeconds,
-  };
 }

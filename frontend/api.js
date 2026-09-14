@@ -91,8 +91,36 @@ export async function removePushInstallation(clientId) {
   );
 }
 
-export async function installVoiceModel() {
+export async function getVoiceSettings() {
+  return requestJson("/api/voice/settings");
+}
+
+export async function selectVoiceProvider(provider) {
+  return requestJson("/api/voice/provider", {}, {
+    method: "PUT",
+    body: { provider },
+  });
+}
+
+export async function startVoiceModelDownload() {
   return requestJson("/api/voice/model/install", {}, { method: "POST" });
+}
+
+export async function removeVoiceModel() {
+  return requestJson("/api/voice/model", {}, { method: "DELETE" });
+}
+
+export async function storeVoiceKey(provider, key) {
+  return requestJson(`/api/voice/keys/${encodeURIComponent(provider)}`, {}, {
+    method: "PUT",
+    body: { key },
+  });
+}
+
+export async function removeVoiceKey(provider) {
+  return requestJson(`/api/voice/keys/${encodeURIComponent(provider)}`, {}, {
+    method: "DELETE",
+  });
 }
 
 export async function transcribeVoice(recording, signal) {

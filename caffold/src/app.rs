@@ -51,7 +51,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let shell_router = shell::router(fs.clone(), server_settings, initial_path.clone(), home_path);
     let workspace_router = workspace::router(fs.clone());
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
-    let voice_router = voice::router(data_dir.join("models/whisper"));
+    let voice_router = voice::router(&data_dir);
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
     let codex_mcp = tasks::CodexMcpHost::persistent(mcp_origin(addr), data_dir.join("codex-mcp"));
@@ -121,7 +121,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     );
     let workspace_router = workspace::router(fs.clone());
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
-    let voice_router = voice::router(fs.root().join(".caffold-test/models/whisper"));
+    let voice_router = voice::router(&fs.root().join(".caffold-test"));
     let tailscale_router = tailscale::router(5_178);
     let codex_mcp =
         tasks::CodexMcpHost::memory(mcp_origin(SocketAddr::from((Ipv4Addr::LOCALHOST, 5_178))));

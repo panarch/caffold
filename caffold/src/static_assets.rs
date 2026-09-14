@@ -274,6 +274,15 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/claude/display.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/claude/display.js"
         ))),
+        "pages/(task-workspace)/settings/voice/page.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/voice/page.css"
+        ))),
+        "pages/(task-workspace)/settings/voice/page.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/voice/page.js"
+        ))),
+        "pages/(task-workspace)/settings/voice/lifecycle.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/voice/lifecycle.js"
+        ))),
         "pages/(task-workspace)/settings/grok/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/grok/page.css"
         ))),
@@ -1349,6 +1358,8 @@ mod tests {
             "pages/(task-workspace)/settings/notifications/page.js",
             "pages/(task-workspace)/settings/remote-access/page.js",
             "pages/(task-workspace)/settings/remote-access/tailscale.js",
+            "pages/(task-workspace)/settings/voice/page.js",
+            "pages/(task-workspace)/settings/voice/lifecycle.js",
             "pages/(task-workspace)/settings/codex/page.js",
             "pages/(task-workspace)/settings/claude/page.js",
             "pages/(task-workspace)/settings/claude/display.js",

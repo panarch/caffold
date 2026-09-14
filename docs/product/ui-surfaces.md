@@ -149,8 +149,10 @@ open and restores its text, attachments, and selected options for retry; an
 outcome-unknown transport failure keeps the unconfirmed entry visible without
 automatic replay.
 
-The Composer owns its draft, attachments, selection, and voice capture. Task
-child switching does not interrupt the selected Task's stream.
+The Composer owns its draft, attachments, selection, and voice capture. When
+the selected voice provider is not ready, its voice action opens
+**Settings → Voice Input** instead of recording. Task child switching does
+not interrupt the selected Task's stream.
 
 When the selected Task's effective working directory contains the valid
 [current plan document pair](workflows.md#current-plan-documents), a compact
@@ -234,6 +236,10 @@ Settings includes:
   plus the active browser-installation count, labels, short IDs, and removal;
 - Remote Access status and constrained Tailscale Serve controls, with the ready
   private Tailnet URL, copy/open actions, QR handoff, and same-tailnet guidance;
+- Voice provider choice among host-local Whisper, OpenAI, and Gemini, with the
+  model each provider uses, Whisper's pinned revision, model download,
+  cancellation, and deletion, and API keys that can be saved, replaced, or
+  removed but never shown again;
 - Codex installation readiness, repair guidance, runtime status, Refresh,
   diagnostics, and an explicit confirmed runtime restart available while the
   canonical runtime is ready or requires restart; the ready-state action is

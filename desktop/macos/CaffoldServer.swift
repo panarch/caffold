@@ -21,7 +21,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var codexStatusMenuItem: NSMenuItem?
     private var gitStatusMenuItem: NSMenuItem?
     private var githubStatusMenuItem: NSMenuItem?
-    private var whisperStatusMenuItem: NSMenuItem?
+    private var voiceStatusMenuItem: NSMenuItem?
     private var updateMenuItem: NSMenuItem?
     private var updater: ApplicationUpdater?
     private var preferences = ServerRuntimePreferences.load()
@@ -52,7 +52,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         localURL.appendingPathComponent("settings/codex")
     }
 
-    private var whisperStatusURL: URL {
+    private var voiceStatusURL: URL {
         localURL.appendingPathComponent("api/voice/status")
     }
 
@@ -183,9 +183,9 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(githubStatus)
         githubStatusMenuItem = githubStatus
 
-        let whisperStatus = makeIntegrationItem("Whisper")
-        menu.addItem(whisperStatus)
-        whisperStatusMenuItem = whisperStatus
+        let voiceStatus = makeIntegrationItem("Voice")
+        menu.addItem(voiceStatus)
+        voiceStatusMenuItem = voiceStatus
 
         menu.addItem(.separator())
         menu.addItem(sectionItem("Application"))
@@ -315,7 +315,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyIntegrationStatus(.checking("Codex"), to: codexStatusMenuItem)
         applyIntegrationStatus(.checking("Git"), to: gitStatusMenuItem)
         applyIntegrationStatus(.checking("GitHub CLI"), to: githubStatusMenuItem)
-        applyIntegrationStatus(.checking("Whisper"), to: whisperStatusMenuItem)
+        applyIntegrationStatus(.checking("Voice"), to: voiceStatusMenuItem)
         tailscaleStatusMenuItem?.title = "Tailscale · Checking..."
         tailscaleToggleMenuItem?.isEnabled = false
         tailnetURLMenuItem?.isEnabled = false
@@ -342,8 +342,8 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         probeGithubStatus { [weak self] status in
             self?.applyIntegrationStatus(status, to: self?.githubStatusMenuItem)
         }
-        probeWhisperStatus(url: whisperStatusURL) { [weak self] status in
-            self?.applyIntegrationStatus(status, to: self?.whisperStatusMenuItem)
+        probeVoiceStatus(url: voiceStatusURL) { [weak self] status in
+            self?.applyIntegrationStatus(status, to: self?.voiceStatusMenuItem)
         }
         probeTailscaleStatus(url: tailscaleStatusURL) { [weak self] status in
             self?.applyTailscaleStatus(status)

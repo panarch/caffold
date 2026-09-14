@@ -267,7 +267,8 @@ product-intent path.
 Product-owned native controls use distinct closed action kinds rather than
 pretending to be buttons. Appearance declares non-current Theme radios, its
 Interface and Code typeface selects, and the three size ranges; Files declares
-its non-current ordering radio; Keyboard declares its enabled On/Off switch;
+its non-current ordering radio; Voice Input declares its non-current provider
+radios; Keyboard declares its enabled On/Off switch;
 Git Compare declares its visible Base and Head selects; and the Branch Review
 Compare Tree declares its comparison-base select while the Review owner injects
 the action meaning. The Branch target remains available while its compared File
@@ -1045,14 +1046,16 @@ Settings navigator. Desktop may therefore expose independent navigator and page
 Scroll surfaces, while foldable and phone layouts contribute only the pane with
 a layout box. Appearance registers non-current Theme choices, both typeface
 choices, and its three ranges; Files registers the non-current ordering choice;
-and Keyboard registers its switch only while keyboard navigation is enabled.
+Voice Input registers its non-current provider choices; and Keyboard registers
+its switch only while keyboard navigation is enabled.
 These controls keep their native editing, choice, and persistence behavior
 after the Action Hint coordinator hands off focus or click ownership.
 
 `caffold-settings-detail-list` renders the label and value rows that Codex,
-Claude, Grok, and About report. It owns row identity, the placeholder a row shows
-before its value is known, and the width at which a label and its value
-stack. Each page publishes a row snapshot and owns its wording.
+Claude, Grok, Voice Input, and About report. It owns row identity, the
+placeholder a row shows before its value is known, and the width at which a
+label and its value stack. Each page publishes a row snapshot and owns its
+wording.
 
 Settings Claude owns a route-scoped diagnostic request for the installed
 binary, account, usage windows, and runner. Each block can fail independently
@@ -1096,6 +1099,35 @@ control until a later server response makes it current again. The page retains
 one DOM and renders the ready URL into text and link actions. Its QR image uses
 the same canonical URL as input to the server's constrained SVG resource; the
 browser owns when and where that derived image is presented.
+
+Settings Voice Input owns a route-scoped request lifecycle over the server's
+voice settings: the selected provider, the model each provider uses, whether
+each API key is configured, and the Whisper model's download and memory state.
+Server responses are the only writers of those settings, and the page never
+receives a saved key. The provider radios show only the server's selection: a
+change locks the controls while its request is in flight, and the new choice
+appears once the server accepts it. A key form clears its field only after the
+server accepts the key. A server rejection keeps the settings current and shows
+its message. A transport or server failure keeps the last settings visible but
+locks the controls until a later read succeeds.
+
+The lifecycle nodes and complete allowed edges are:
+
+- `inactive -> loading`;
+- `loading -> idle | polling | inactive`;
+- `idle -> loading | mutating | inactive`;
+- `mutating -> idle | polling | inactive`; and
+- `polling -> mutating | idle | inactive`.
+
+`loading` owns one settings GET and `mutating` owns one change request.
+`polling` follows a server-reported Whisper download with one settings GET per
+second; the download itself runs on the server and continues after the page is
+left. Entering `inactive` invalidates the request generation and clears the
+timer. Task Composers stay mounted while Settings is shown, so the page
+dispatches `caffold:voice-settings-changed` when the selected provider, the
+installed model, or a configured key changes. Each Composer that supports voice
+input and is not capturing or transcribing a recording then reads voice status
+again.
 
 ## Physical hierarchy
 
