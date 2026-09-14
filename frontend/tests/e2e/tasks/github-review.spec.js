@@ -1653,9 +1653,6 @@ test("holds Start Task while the chosen model's permission modes are still arriv
   await expect(modelPopover).toBeHidden();
   await asked.promise;
   await expect(start).toBeDisabled();
-  // The picker keeps the mode it last read in place while the list is out.
-  await expect(permissionButton).toContainText("Auto review");
-  await expect(permissionButton).toHaveAttribute("aria-busy", "true");
   // The same submission, made without the button, is held while the list is
   // out and goes through once it has arrived.
   const submit = () =>

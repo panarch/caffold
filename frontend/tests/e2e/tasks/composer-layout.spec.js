@@ -120,11 +120,7 @@ function composerReady(form) {
   return form.evaluate((element) => {
     const turnOptions = element.querySelector("caffold-task-turn-options");
     return Boolean(
-      turnOptions?.isConnected &&
-        turnOptions.modelLoaded &&
-        !turnOptions.modelLoading &&
-        turnOptions.permissionLoaded &&
-        !turnOptions.permissionLoading,
+      turnOptions?.isConnected && turnOptions.readyForSubmission(),
     );
   });
 }

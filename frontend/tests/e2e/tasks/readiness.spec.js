@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { activateActionHint } from "../support/action-hints.js";
+import { installAgentCatalog } from "../support/agent-catalog-fixture.js";
 import {
   installBrowserDefaults,
   mockCodexStatus,
@@ -780,6 +781,7 @@ test("a Claude Task never looks at Codex readiness", { tag: "@all-viewports" }, 
 }) => {
   const detail = { ...taskDetailFixture(), provider: "claude" };
   await installTaskApiFixture(page);
+  await installAgentCatalog(page);
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",

@@ -157,18 +157,19 @@ already persisted on a pre-MCP thread, never through the current MCP endpoint.
 ## The Mode a Turn Runs Under
 
 A turn runs under the mode its composer shows. The modes on offer are the
-driver's answer for the agent and the model that were chosen, and the one on
-display travels back with the prompt whether or not a person touched the
-control, so a Task never starts under something the composer did not say.
+driver's answer for the working directory, agent, and model that are chosen,
+and the mode on display travels back with the prompt whether or not a person
+touched the control, so a Task never starts under something the composer did
+not say.
 
-Caffold names no mode of its own, and sends one only while the list that
-offered it is the list in hand and still allows it. A first list still being
-fetched, a model change still being answered, or an agent that could not be
-reached leaves the prompt carrying no mode, and the control says the agent's
-own default will be used. A mode the current list withholds — one the chosen
-model cannot work under — is replaced by the one that list names instead.
-Sending a name the list does not stand behind would be refused at the moment
-the turn starts.
+Caffold names no mode of its own. The composer takes a mode only from the list
+answered for the current choice: the mode a person picked, then the one the
+Task or Section last ran under, then the list's default, passing over any mode
+that list withholds, such as one the chosen model cannot work under. The prompt
+waits while that list is on its way. A list that cannot be read, or that allows
+no mode, is shown as unavailable with its reason and holds the prompt until
+another model is chosen or the page is reloaded, so a prompt never leaves
+without a mode.
 
 ## Codex Execution Approvals
 

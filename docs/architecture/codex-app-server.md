@@ -585,10 +585,15 @@ The Active Tasks API is local-first. `GET /api/tasks` joins Caffold's
 Section order, Section membership, dense within-Section order, stable display
 name, and Task provider without an agent RPC or persistent write. A Section
 with a recorded composer selection also includes that model, reasoning effort,
-and Fast-mode value. Section Task Create and Section-owned GitHub Task Start
-use that selection as their initial value; Global New and Task-owned actions
-keep their existing defaults. If the recorded model or effort is no longer
-offered, the model picker applies its normal current-model fallback.
+Fast-mode value, and permission mode. Section Task Create and Section-owned
+GitHub Task Start apply that selection, including one recorded while they are
+open, to the model until a person picks the model or one of its settings, and
+to the permission mode until a person picks a mode; Global New and Task-owned
+actions keep their existing defaults. The selection does not name the agent,
+so its model applies only when exactly one offered model has that name, and its
+reasoning effort and Fast-mode value apply only with that model; otherwise the
+model picker applies its normal defaults. Its permission mode follows
+[The Mode a Turn Runs Under](security-and-approvals.md#the-mode-a-turn-runs-under).
 Repository/worktree presentation remains an asynchronous Git-derived projection
 and is not stored with the Section. Rows without a complete placement are
 returned in an explicit recovery group instead of being silently dropped.
