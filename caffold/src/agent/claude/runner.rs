@@ -698,6 +698,8 @@ struct MockSession {
     reject_next_send: Option<String>,
     distrusts_moves: bool,
     refuses_moves: u32,
+    holds_next_move: bool,
+    held_move_answer: Option<Value>,
 }
 
 /// What a test speaks to a stand-in runner through.
@@ -736,6 +738,8 @@ impl MockRunner {
                 reject_next_send: None,
                 distrusts_moves: false,
                 refuses_moves: 0,
+                holds_next_move: false,
+                held_move_answer: None,
             },
         );
         Ok(RunnerSession {
@@ -808,11 +812,16 @@ impl MockRunner {
             } else {
                 serde_json::json!({ "response": {} })
             };
+            let moved =
+                frame["request"]["subtype"] == "set_cwd" && body["response"]["status"] == "ok";
             body["subtype"] = serde_json::json!("success");
             body["request_id"] = serde_json::json!(request_id);
-            let _ = existing.agent.send(RunnerEvent::Frame(
-                serde_json::json!({ "type": "control_response", "response": body }).to_string(),
-            ));
+            let answer = serde_json::json!({ "type": "control_response", "response": body });
+            if moved && std::mem::take(&mut existing.holds_next_move) {
+                existing.held_move_answer = Some(answer);
+            } else {
+                let _ = existing.agent.send(RunnerEvent::Frame(answer.to_string()));
+            }
         }
         // A session started with `--replay-user-messages` hands a prompt back
         // under the name it was sent with. Sessions started now are not, and
@@ -920,6 +929,29 @@ impl MockRunnerHandle {
         let mut state = self.0.state.lock().await;
         if let Some(held) = state.sessions.get_mut(session) {
             held.refuses_moves = times;
+        }
+    }
+
+    /// Hold back the answer to the next move that lands, until
+    /// [`Self::answer_held_move`].
+    ///
+    /// The real agent moves what it wrote into the new directory first and
+    /// answers only once it has settled there, so a move can be done and not
+    /// yet answered.
+    pub(crate) async fn hold_next_move_answer(&self, session: &str) {
+        let mut state = self.0.state.lock().await;
+        if let Some(held) = state.sessions.get_mut(session) {
+            held.holds_next_move = true;
+        }
+    }
+
+    /// Send the move answer held back.
+    pub(crate) async fn answer_held_move(&self, session: &str) {
+        let mut state = self.0.state.lock().await;
+        if let Some(held) = state.sessions.get_mut(session)
+            && let Some(answer) = held.held_move_answer.take()
+        {
+            let _ = held.agent.send(RunnerEvent::Frame(answer.to_string()));
         }
     }
 
