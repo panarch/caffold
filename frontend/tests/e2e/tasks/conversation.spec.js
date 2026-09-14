@@ -257,6 +257,9 @@ for (const delivery of [
     });
     const composer = page.locator('.task-follow-up-form textarea[name="prompt"]');
     await composer.fill(question.payload.text);
+    await expect(
+      page.locator(".task-follow-up-form .task-primary-action-button"),
+    ).toBeEnabled();
     await composer.press("Enter");
     await started;
     // The answer can arrive while the POST still has not supplied prompt identity.

@@ -522,6 +522,9 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   await expect(page).toHaveURL("/tasks/new?cwd=src");
   await expect(prompt).toHaveValue("Say hello globally");
   await expect(tasksPage.locator(".task-composer-context")).toContainText("src");
+  await expect(
+    tasksPage.locator(".task-new-form .task-primary-action-button"),
+  ).toBeEnabled();
   await prompt.press("Enter");
 
   await expect.poll(() => createdTaskRequest?.titleSource).toBe("Say hello globally");
@@ -722,6 +725,7 @@ test("runs a minimal task from creation through follow-up", { tag: "@all-viewpor
   await prompt.fill("Inspect the planner changes");
   await pasteImage(prompt, "planner-layout.png");
   await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
+  await expect(composer.locator(".task-primary-action-button")).toBeEnabled();
   await prompt.press("Enter");
 
   await expect.poll(() => scenario.createTaskRequests).toBe(1);
@@ -741,6 +745,9 @@ test("runs a minimal task from creation through follow-up", { tag: "@all-viewpor
     '.task-follow-up-form textarea[name="prompt"]',
   );
   await followUp.fill("한글 버튼 제출");
+  await expect(
+    tasksPage.locator(".task-follow-up-form .task-primary-action-button"),
+  ).toBeEnabled();
   await followUp.press("Enter");
   await expect.poll(() => scenario.followUpRequests).toBe(1);
   await expect(followUp).toHaveValue("");
@@ -866,5 +873,6 @@ async function startTaskFromNewSurface(
   await prompt.fill("Inspect the planner changes");
   await pasteImage(prompt, "planner-layout.png");
   await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
+  await expect(composer.locator(".task-primary-action-button")).toBeEnabled();
   await prompt.press("Enter");
 }

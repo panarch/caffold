@@ -127,6 +127,7 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
   const form = tasksPage.locator(".task-follow-up-form");
   const prompt = form.locator('textarea[name="prompt"]');
   await prompt.fill("Start a fresh timed turn");
+  await expect(form.locator(".task-primary-action-button")).toBeEnabled();
   await prompt.press("Enter");
   await promptRequested;
 
@@ -905,6 +906,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   form = tasksPage.locator(".task-follow-up-form");
   prompt = form.locator('textarea[name="prompt"]');
   await prompt.fill("Steer B while A response is pending");
+  await expect(send).toBeEnabled();
   await prompt.press("Enter");
   await expect.poll(() => submittedBPrompts).toEqual([
     "Steer B while A response is pending",

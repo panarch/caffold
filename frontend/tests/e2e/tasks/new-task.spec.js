@@ -864,6 +864,7 @@ test("says that a new task is starting until creation is answered", { tag: "@all
       .locator(".task-composer-panel")
       .evaluate((element) => Math.round(element.getBoundingClientRect().top));
   const topBeforeSubmit = await panelTop();
+  await expect(composer.locator(".task-primary-action-button")).toBeEnabled();
   await prompt.press("Enter");
 
   await scenario.createRequested;
@@ -908,6 +909,7 @@ test("restores the exact new task draft when creation is rejected", { tag: "@des
   await prompt.fill("Inspect the planner changes");
   await pasteImage(prompt, "rejected-create.png");
   await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
+  await expect(composer.locator(".task-primary-action-button")).toBeEnabled();
   await prompt.press("Enter");
   await scenario.createRequested;
 

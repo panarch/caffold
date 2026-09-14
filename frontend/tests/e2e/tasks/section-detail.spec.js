@@ -1146,6 +1146,7 @@ test("uses the Section's last composer settings for its next Task request", { ta
   await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
 
   await form.getByRole("textbox", { name: "New task prompt" }).fill("Use the Section settings");
+  await expect(form.locator(".task-primary-action-button")).toBeEnabled();
   await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
 
   await expect.poll(() => createdBody).not.toBeNull();
@@ -1284,6 +1285,9 @@ test("keeps the first prompt when the created Task opens before creation answers
     'caffold-section-detail textarea[name="prompt"]',
   );
   await sectionPrompt.fill("Keep this first prompt");
+  await expect(
+    page.locator("caffold-section-detail .task-new-form .task-primary-action-button"),
+  ).toBeEnabled();
   await sectionPrompt.press("Enter");
   await createRequested;
 
