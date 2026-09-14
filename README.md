@@ -127,10 +127,11 @@ menu-bar menu.
 
 ## Work without a keyboard
 
-The Task composer supports host-local multilingual voice input. On first use,
-Caffold asks before downloading the pinned Whisper `large-v3-turbo` model
-(about 1.5 GiB). Audio is sent only to the same Caffold host, processed in
-memory, and never stored or sent to an external speech service.
+The Task composer supports multilingual voice input. Under
+**Settings → Voice Input**, choose Whisper to transcribe on the Mac after a
+one-time model download (about 1.5 GiB), or OpenAI or Gemini to transcribe with
+your own API key. Audio goes from the browser to your Mac, which transcribes it
+or forwards it to the chosen provider; Caffold never stores the recordings.
 
 Voice is useful here for the same reason the browser interface is useful: much
 of the work is giving direction, reading what happened, and following up. A

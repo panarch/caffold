@@ -9,6 +9,9 @@ boundaries.
 - browser/PWA access on the trusted host and tailnet-only Tailscale Serve;
 - responsive **Settings → Remote Access** status, private URL/QR handoff, and
   localhost-only control of Caffold's Tailscale Serve mapping;
+- **Settings → Voice Input** choice of host-local Whisper, OpenAI, or Gemini for
+  voice transcription, with Whisper model download and deletion and write-only
+  API keys;
 - Tasks backed by Codex, Claude Code, or Grok, with the agent selected by model
   when the Task is created and fixed for the Task's lifetime;
 - native Codex app-server integration, including its persistent daemon and
@@ -19,8 +22,8 @@ boundaries.
   itself that holds sessions and running turns across backend replacement,
   with worktree moves carried out by forking the session;
 - shared prompts, active-turn steering, interruption, command and permission
-  approvals, images, model/effort/permission choices, and local voice input in
-  the Conversation surface;
+  approvals, images, model/effort/permission choices, and voice input in the
+  Conversation surface;
 - an optional provider-neutral Markdown current plan in each Task working
   directory, with live checklist progress and read-only Plan/Checklist viewing
   above the follow-up Composer;

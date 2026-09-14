@@ -19,6 +19,7 @@ flowchart TD
     ClaudeSession["claude session process"]
     Git["Git checkout / worktree"]
     Whisper["Host-local Whisper model"]
+    SpeechApi["OpenAI or Gemini speech-to-text API"]
     Tailscale["Tailscale CLI / Serve"]
 
     PWA -->|"HTTP / SSE"| Backend
@@ -30,6 +31,7 @@ flowchart TD
     Runner -->|"stdio"| ClaudeSession
     Backend --> Git
     Backend --> Whisper
+    Backend -->|"recording with the saved API key"| SpeechApi
     Backend -->|"fixed status and Serve commands"| Tailscale
     Backend -->|"encrypted Web Push"| PushService
     PushService -->|"Push API delivery"| PWA
@@ -64,7 +66,9 @@ The backend owns:
 - translation from each agent into Caffold's conversation, event, approval,
   and failure vocabulary;
 - live file, Git, GitHub, and managed-worktree operations;
-- host-local Whisper model installation, verification, and transcription;
+- voice provider selection, saved speech-to-text API keys, the Whisper model's
+  download, verification, and memory lifetime, and transcription through the
+  selected provider;
 - canonical Tailscale status, constrained Serve operations, and private URL/QR
   derivation;
 - browser Push subscription persistence and delivery; and
@@ -130,11 +134,20 @@ ownership contract.
 ### Voice input
 
 The shared Task composer captures a bounded 16 kHz mono 16-bit PCM WAV and sends
-it over the existing same-origin Caffold connection. The backend validates and
-decodes it in memory, lazily loads the pinned multilingual Whisper
-`large-v3-turbo` model, serializes inference, and returns text for insertion at
-the saved selection. It never stores recordings or calls an external
-speech-to-text service.
+it over the existing same-origin Caffold connection. The backend validates the
+recording in memory and transcribes it with the provider selected in
+**Settings → Voice Input**:
+
+- Whisper runs the pinned multilingual `large-v3-turbo` model on the host. The
+  backend downloads and verifies the model in a background task, loads it on the
+  first transcription, serializes inference, and releases it when another
+  provider is selected or the model is deleted.
+- OpenAI (`gpt-transcribe`) and Gemini (`gemini-3.5-transcribe`) receive the
+  recording from the backend with the API key saved on the host.
+
+The resulting text is inserted at the saved selection. Caffold never stores
+recordings. [Security and Approvals](security-and-approvals.md#voice-input)
+defines the key storage and request rules.
 
 ## Application ownership
 
@@ -166,7 +179,7 @@ caffold/src/agent.rs                   shared agent vocabulary
 caffold/src/agent/driver.rs            closed driver choice and shared operations
 caffold/src/agent/codex.rs             Codex app-server boundary
 caffold/src/agent/claude.rs            Claude CLI boundary
-caffold/src/app/voice.rs               model lifecycle, WAV validation, transcription
+caffold/src/app/voice.rs               voice settings, Whisper lifecycle, WAV validation, provider routing
 caffold/src/app/tailscale.rs           status and constrained Serve orchestration
 caffold/src/watch.rs                   reference-counted native filesystem watches
 caffold/src/task_store.rs              Caffold-owned durable Task and recovery data
@@ -190,6 +203,7 @@ writers for provider state.
 | Current plan documents and checklist markers | Filesystem under the Task's effective working directory |
 | Files, diffs, branches, commits, and worktree contents | Git and the filesystem |
 | Tailscale connection, Serve mapping, and Tailnet address | Tailscale CLI and Serve configuration |
+| Voice provider selection, saved API keys, and the Whisper model | Files under the Caffold data directory |
 | Browser presentation, selection, and local Push identity | Browser/PWA |
 
 Caffold does not persist provider transcripts, active-turn state, or derived

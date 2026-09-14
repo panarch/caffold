@@ -322,14 +322,24 @@ are not exposed.
 
 ## Voice Input
 
-- Model installation is an explicit first-use action and uses a pinned URL,
-  byte length, and SHA-256 checksum.
 - The browser sends microphone audio only to its same-origin Caffold host.
 - The backend bounds duration and request size, accepts only the browser's
   16 kHz mono 16-bit PCM WAV contract, processes samples in memory, and never
   persists raw recordings.
-- Transcription is host-local. Tailscale protects remote transport but is not a
-  speech service or inference dependency.
+- Whisper transcription is host-local. Its model download starts only from an
+  explicit Settings action and uses a pinned URL, byte length, and SHA-256
+  checksum.
+- When OpenAI or Gemini is selected, the backend sends each recording to that
+  provider's API with the saved key. Gemini interactions are created with
+  `store: false`. Tailscale protects remote transport to the host but is not a
+  speech service.
+- Saved API keys live in the data directory's `voice/keys.json`, with an
+  owner-only directory (`0700`) and file (`0600`); a symbolic link at that path
+  is refused. API responses report only whether a key is configured. Keys are
+  not written to logs or error messages, and provider error bodies are not
+  relayed.
+- Downloading or deleting the model, selecting a provider, and saving or
+  removing a key require a same-origin request.
 
 ## Web Push
 

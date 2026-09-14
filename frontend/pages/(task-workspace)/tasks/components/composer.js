@@ -1,8 +1,4 @@
-import {
-  getVoiceStatus,
-  installVoiceModel,
-  transcribeVoice,
-} from "../../../../api.js";
+import { getVoiceStatus, transcribeVoice } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
@@ -24,6 +20,22 @@ import {
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_MAX_RECORDING_SECONDS = 5 * 60;
+const VOICE_PHASE_EDGES = new Map([
+  ["checking", new Set(["unavailable", "notReady", "idle", "error"])],
+  ["unavailable", new Set()],
+  ["notReady", new Set(["checking"])],
+  ["idle", new Set(["requesting", "checking"])],
+  ["error", new Set(["requesting", "checking"])],
+  ["requesting", new Set(["recording", "error", "idle"])],
+  ["recording", new Set(["transcribing", "idle"])],
+  ["transcribing", new Set(["idle", "notReady", "error"])],
+]);
+const VOICE_STATUS_REFRESH_PHASES = new Set([
+  "checking",
+  "notReady",
+  "idle",
+  "error",
+]);
 const IMAGE_TYPES = new Set([
   "image/avif",
   "image/gif",
@@ -63,6 +75,10 @@ class CaffoldTaskComposer extends HTMLElement {
       this.boundTurnOptionsChange,
     );
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
+    window.addEventListener(
+      "caffold:voice-settings-changed",
+      this.boundVoiceSettingsChanged,
+    );
     this.render();
     void this.loadVoiceStatus();
   }
@@ -86,12 +102,19 @@ class CaffoldTaskComposer extends HTMLElement {
       this.boundTurnOptionsChange,
     );
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    window.removeEventListener(
+      "caffold:voice-settings-changed",
+      this.boundVoiceSettingsChanged,
+    );
     this.voiceStatusRequestId += 1;
     this.voiceOperationId += 1;
     this.voiceRequest?.abort();
     this.voiceRequest = null;
     void this.voiceRecorder?.cancel();
     this.voiceRecorder = null;
+    if (["requesting", "recording", "transcribing"].includes(this.voice.phase)) {
+      this.setVoicePhase("idle");
+    }
     this.compositionActive = false;
     this.pendingRender = false;
     window.clearTimeout(this.compositionRenderTimer);
@@ -127,9 +150,7 @@ class CaffoldTaskComposer extends HTMLElement {
     this.voice = {
       phase: "checking",
       error: "",
-      modelId: "",
-      modelInstalled: false,
-      modelBytes: 0,
+      ready: false,
       maxRecordingSeconds: DEFAULT_MAX_RECORDING_SECONDS,
       elapsedSeconds: 0,
       recordingLimitReached: false,
@@ -173,6 +194,11 @@ class CaffoldTaskComposer extends HTMLElement {
     };
     this.boundSubmit = (event) => this.handleSubmit(event);
     this.boundIconsReady = () => this.render();
+    this.boundVoiceSettingsChanged = () => {
+      if (VOICE_STATUS_REFRESH_PHASES.has(this.voice.phase)) {
+        void this.loadVoiceStatus();
+      }
+    };
     this.boundTurnOptionsChange = (event) => {
       if (event.target !== this.turnOptions()) {
         return;
@@ -611,13 +637,13 @@ class CaffoldTaskComposer extends HTMLElement {
   async loadVoiceStatus() {
     const support = voiceCaptureSupport();
     if (!support.supported) {
-      this.voice.phase = "unavailable";
+      this.setVoicePhase("unavailable");
       this.voice.error = support.message;
       this.render();
       return;
     }
     const requestId = ++this.voiceStatusRequestId;
-    this.voice.phase = "checking";
+    this.setVoicePhase("checking");
     this.voice.error = "";
     this.render();
     try {
@@ -626,21 +652,40 @@ class CaffoldTaskComposer extends HTMLElement {
         return;
       }
       this.applyVoiceStatus(response);
-      this.voice.phase = response?.model?.downloading ? "downloading" : "idle";
+      this.setVoicePhase(this.voice.ready ? "idle" : "notReady");
     } catch (error) {
       if (requestId !== this.voiceStatusRequestId) {
         return;
       }
-      this.voice.phase = "error";
+      this.setVoicePhase("error");
       this.voice.error = `${error?.message ?? "Voice input is unavailable."}`;
     }
     this.render();
   }
 
+  setVoicePhase(next) {
+    const current = this.voice.phase;
+    if (next === current) {
+      return;
+    }
+    if (!VOICE_PHASE_EDGES.get(current)?.has(next)) {
+      throw new Error(`Invalid voice input transition: ${current} -> ${next}`);
+    }
+    this.voice.phase = next;
+  }
+
+  openVoiceSettings() {
+    this.dispatchEvent(
+      new CustomEvent("caffold:open-settings", {
+        bubbles: true,
+        composed: true,
+        detail: { section: "voice" },
+      }),
+    );
+  }
+
   applyVoiceStatus(response) {
-    this.voice.modelId = `${response?.model?.id ?? ""}`;
-    this.voice.modelInstalled = Boolean(response?.model?.installed);
-    this.voice.modelBytes = Number(response?.model?.bytes ?? 0);
+    this.voice.ready = response?.ready === true;
     const maxRecordingSeconds = Number(
       response?.maxRecordingSeconds ?? DEFAULT_MAX_RECORDING_SECONDS,
     );
@@ -765,7 +810,7 @@ class CaffoldTaskComposer extends HTMLElement {
       !action ||
       !this.contains(action) ||
       action.dataset.composerAction !== "voice" ||
-      !this.voice.modelInstalled ||
+      !this.voice.ready ||
       !["idle", "error"].includes(this.voice.phase)
     ) {
       return;
@@ -788,49 +833,18 @@ class CaffoldTaskComposer extends HTMLElement {
   }
 
   async handleVoiceAction() {
-    if (this.voice.phase === "recording") {
+    const phase = this.voice.phase;
+    if (phase === "recording") {
       await this.stopVoiceRecording();
       return;
     }
-    if (!["idle", "error"].includes(this.voice.phase)) {
+    if (phase === "notReady" || (phase === "error" && !this.voice.ready)) {
+      this.openVoiceSettings();
       return;
     }
-    if (!this.voice.modelInstalled) {
-      await this.installVoiceModel();
-      return;
+    if (["idle", "error"].includes(phase)) {
+      await this.startVoiceRecording();
     }
-    await this.startVoiceRecording();
-  }
-
-  async installVoiceModel() {
-    const size = formatBytes(this.voice.modelBytes);
-    const model = this.voice.modelId || "configured";
-    if (
-      !window.confirm(
-        `Download the multilingual Whisper ${model} model (${size}) to this Caffold host?`,
-      )
-    ) {
-      return;
-    }
-    const operationId = ++this.voiceOperationId;
-    this.voice.phase = "downloading";
-    this.voice.error = "";
-    this.render();
-    try {
-      const response = await installVoiceModel();
-      if (operationId !== this.voiceOperationId) {
-        return;
-      }
-      this.applyVoiceStatus(response);
-      this.voice.phase = "idle";
-    } catch (error) {
-      if (operationId !== this.voiceOperationId) {
-        return;
-      }
-      this.voice.phase = "error";
-      this.voice.error = `${error?.message ?? "Could not download the voice model."}`;
-    }
-    this.render();
   }
 
   async startVoiceRecording() {
@@ -866,7 +880,7 @@ class CaffoldTaskComposer extends HTMLElement {
       },
     });
     this.voiceRecorder = recorder;
-    this.voice.phase = "requesting";
+    this.setVoicePhase("requesting");
     this.voice.error = "";
     this.render();
     try {
@@ -875,14 +889,14 @@ class CaffoldTaskComposer extends HTMLElement {
         await recorder.cancel();
         return;
       }
-      this.voice.phase = "recording";
+      this.setVoicePhase("recording");
       this.render();
     } catch (error) {
       if (operationId !== this.voiceOperationId) {
         return;
       }
       this.voiceRecorder = null;
-      this.voice.phase = "error";
+      this.setVoicePhase("error");
       this.voice.error = voiceCaptureError(error);
       this.render();
     }
@@ -913,7 +927,7 @@ class CaffoldTaskComposer extends HTMLElement {
     const operationId = this.voiceOperationId;
     const recorder = this.voiceRecorder;
     this.voiceRecorder = null;
-    this.voice.phase = "transcribing";
+    this.setVoicePhase("transcribing");
     this.render();
     let shouldSubmit = false;
     try {
@@ -933,7 +947,7 @@ class CaffoldTaskComposer extends HTMLElement {
         throw new Error("No speech was detected in the recording.");
       }
       this.insertVoiceTranscript(transcript);
-      this.voice.phase = "idle";
+      this.setVoicePhase("idle");
       this.voice.error = "";
       this.voice.elapsedSeconds = 0;
       this.voice.recordingLimitReached = false;
@@ -944,7 +958,12 @@ class CaffoldTaskComposer extends HTMLElement {
         return;
       }
       this.voiceRequest = null;
-      this.voice.phase = "error";
+      if (error?.code === "voice_provider_not_ready") {
+        this.voice.ready = false;
+        this.setVoicePhase("notReady");
+      } else {
+        this.setVoicePhase("error");
+      }
       this.voice.error = `${error?.message ?? "Could not transcribe the recording."}`;
       this.voice.elapsedSeconds = 0;
       this.voice.recordingLimitReached = false;
@@ -963,7 +982,9 @@ class CaffoldTaskComposer extends HTMLElement {
     const recorder = this.voiceRecorder;
     this.voiceRecorder = null;
     await recorder?.cancel();
-    this.voice.phase = "idle";
+    if (["requesting", "recording", "transcribing"].includes(this.voice.phase)) {
+      this.setVoicePhase("idle");
+    }
     this.voice.error = "";
     this.voice.elapsedSeconds = 0;
     this.voice.recordingLimitReached = false;
@@ -1350,13 +1371,11 @@ class CaffoldTaskComposer extends HTMLElement {
       submitting ||
       this.context.disabled ||
       this.context.interrupting ||
-      ["checking", "requesting", "downloading", "transcribing", "unavailable"].includes(
-        phase,
-      );
-    const label = voiceActionLabel(phase, this.voice.modelInstalled);
+      ["checking", "requesting", "transcribing", "unavailable"].includes(phase);
+    const label = voiceActionLabel(phase, this.voice.ready);
     const icon = recording
       ? "Square"
-      : ["checking", "downloading", "requesting", "transcribing"].includes(phase)
+      : ["checking", "requesting", "transcribing"].includes(phase)
           ? "LoaderCircle"
           : "Mic";
     return `
@@ -1383,7 +1402,7 @@ class CaffoldTaskComposer extends HTMLElement {
       }
       <button
         type="button"
-        class="task-voice-button ${recording ? "is-recording" : ""} ${["checking", "requesting", "downloading", "transcribing"].includes(phase) ? "is-busy" : ""}"
+        class="task-voice-button ${recording ? "is-recording" : ""} ${["checking", "requesting", "transcribing"].includes(phase) ? "is-busy" : ""}"
         data-composer-action="voice"
         aria-label="${escapeHtml(label)}"
         title="${escapeHtml(label)}"
@@ -1399,7 +1418,7 @@ class CaffoldTaskComposer extends HTMLElement {
     if (!message) {
       return "";
     }
-    const alert = ["error", "unavailable"].includes(this.voice.phase);
+    const alert = ["error", "unavailable", "notReady"].includes(this.voice.phase);
     return `<p class="task-composer-voice-status ${alert ? "is-error" : ""}" role="${alert ? "alert" : "status"}">${escapeHtml(message)}</p>`;
   }
 
@@ -1453,12 +1472,9 @@ function renderImages(images) {
   `;
 }
 
-function voiceActionLabel(phase, modelInstalled) {
+function voiceActionLabel(phase, ready) {
   if (phase === "recording") {
     return "Stop recording";
-  }
-  if (phase === "downloading") {
-    return "Downloading voice model";
   }
   if (phase === "transcribing") {
     return "Transcribing recording";
@@ -1472,16 +1488,15 @@ function voiceActionLabel(phase, modelInstalled) {
   if (phase === "unavailable") {
     return "Voice input unavailable";
   }
-  return modelInstalled ? "Start voice input" : "Set up voice input";
+  return ready ? "Start voice input" : "Set up voice input";
 }
 
 function voiceStatusMessage(voice) {
-  if (voice.phase === "downloading") {
-    const model = voice.modelId ? `Whisper ${voice.modelId}` : "Whisper";
-    return `Downloading the ${model} model to this Caffold host...`;
-  }
   if (["error", "unavailable"].includes(voice.phase)) {
     return voice.error || "Voice input is unavailable.";
+  }
+  if (voice.phase === "notReady") {
+    return voice.error;
   }
   return "";
 }
@@ -1497,17 +1512,6 @@ function voiceCaptureError(error) {
     return "The microphone is busy or unavailable.";
   }
   return `${error?.message ?? "Could not start microphone capture."}`;
-}
-
-function formatBytes(bytes) {
-  const value = Number(bytes);
-  if (!Number.isFinite(value) || value <= 0) {
-    return "unknown size";
-  }
-  if (value < 1024 * 1024 * 1024) {
-    return `${Math.round(value / (1024 * 1024))} MB`;
-  }
-  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 function readFileAsDataUrl(file) {

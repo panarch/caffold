@@ -77,7 +77,7 @@ common protocol's smallest subset. The implemented boundary is described in
 - Read the actual changes instead of relying only on an assistant's summary.
 - Use the same workflow on a desktop, foldable, tablet, or phone instead of a
   separate reduced companion surface.
-- Give direction by text, images, or host-local voice input.
+- Give direction by text, images, or voice.
 - Create an isolated worktree when separation is useful, without making it a
   prerequisite for every Task.
 

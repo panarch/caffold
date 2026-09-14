@@ -92,14 +92,18 @@ setup fails.
 - The app checks the latest stable GitHub Release at launch and when its menu is reopened after six hours.
 - `Check for Updates…` installs an approved update through Homebrew, then relaunches Caffold and confirms that its owned local server becomes ready.
 - Data is stored in `~/Library/Application Support/Caffold/data`.
-- The first voice-input use asks before downloading the pinned multilingual
-  Whisper `large-v3-turbo` model (about 1.5 GiB) under
-  `~/Library/Application Support/Caffold/data/models/whisper`. Caffold verifies
-  the download checksum before publishing it, then loads it lazily on the first
-  transcription and retains it until the backend exits.
-- Voice recordings are captured as 16 kHz mono PCM WAV, sent to this Caffold
-  host, processed in memory, and never persisted or sent to an external speech
-  service. Localhost needs no Tailscale; remote mobile access uses the same
+- Voice input uses the provider chosen in **Settings → Voice Input**.
+  Downloading the pinned multilingual Whisper `large-v3-turbo` model (about
+  1.5 GiB) places it under
+  `~/Library/Application Support/Caffold/data/models/whisper`. Caffold
+  verifies the download checksum before publishing it, loads it on the first
+  transcription, and releases it when another provider is chosen or the model
+  is deleted. OpenAI and Gemini API keys are saved under
+  `~/Library/Application Support/Caffold/data/voice`.
+- Voice recordings are captured as 16 kHz mono PCM WAV and sent to this Caffold
+  host, which processes them in memory and never persists them. With Whisper
+  they stay on the Mac; with OpenAI or Gemini the host forwards them to that
+  provider. Localhost needs no Tailscale; remote mobile access uses the same
   tailnet-only HTTPS Serve URL as the rest of Caffold.
 - Logs are stored in `~/Library/Logs/Caffold/caffold.log`.
 - Caffold ensures the persistent Codex app-server daemon is running, then owns
@@ -115,7 +119,7 @@ setup fails.
 
 `Server Settings...` controls the installed PWA name, bind mode, port, and automatic Tailscale Serve startup. Use a distinct name before installing the PWA to distinguish multiple Caffold servers; existing installations may need to be reinstalled after a name change. Local-only binding is the default. LAN binding is an explicit opt-in and is not required for Tailscale Serve.
 
-The menu reports stable status rows for Codex, Git, GitHub CLI, Whisper model
+The menu reports stable status rows for Codex, Git, GitHub CLI, voice
 readiness, Tailscale connectivity, and the Caffold Serve URL. Codex and
 Tailscale both use backend-owned status. Swift does not locate the Tailscale
 CLI, classify its output, derive the Tailnet URL, or issue Serve commands; it

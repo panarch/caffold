@@ -53,22 +53,8 @@ private func requestBody(_ request: URLRequest) throws -> Data {
     return data
 }
 
-private func voiceResponse(
-    supported: Bool = true,
-    installed: Bool = false,
-    loaded: Bool = false,
-    downloading: Bool = false
-) -> WhisperStatusResponse {
-    WhisperStatusResponse(
-        supported: supported,
-        model: WhisperStatusResponse.Model(
-            id: "large-v3-turbo",
-            installed: installed,
-            loaded: loaded,
-            downloading: downloading
-        ),
-        maxRecordingSeconds: 300
-    )
+private func voiceResponse(provider: String = "whisper", ready: Bool = false) -> VoiceStatusResponse {
+    VoiceStatusResponse(provider: provider, ready: ready, maxRecordingSeconds: 300)
 }
 
 private func detail(_ label: String, in status: IntegrationStatus) -> String? {
@@ -433,39 +419,21 @@ private func runTests() throws {
         "restart guidance must expose the running runtime"
     )
 
-    let setup = whisperIntegrationStatus(voiceResponse())
-    try require(setup.name == "Whisper", "voice status must use the Whisper integration name")
-    try require(setup.state == .attention, "a missing model must need attention")
-    try require(setup.status == "Setup required", "a missing model must require setup")
-    try require(
-        detail("Model", in: setup) == "large-v3-turbo",
-        "the model ID must remain visible"
-    )
-    try require(detail("State", in: setup) == "Not installed", "setup must explain the model state")
+    let setup = voiceIntegrationStatus(voiceResponse())
+    try require(setup.name == "Voice", "voice status must use the Voice integration name")
+    try require(setup.state == .attention, "a provider that is not ready must need attention")
+    try require(setup.status == "Setup required", "a provider that is not ready must require setup")
+    try require(detail("Provider", in: setup) == "Whisper", "the selected provider must be readable")
     try require(detail("Limit", in: setup) == "5 minutes", "the recording limit must be readable")
 
-    let downloading = whisperIntegrationStatus(voiceResponse(downloading: true))
-    try require(downloading.state == .attention, "a download in progress must need attention")
-    try require(downloading.status == "Downloading model", "download progress must be explicit")
-
-    let installed = whisperIntegrationStatus(voiceResponse(installed: true))
-    try require(installed.state == .ready, "an installed model must be ready")
-    try require(installed.status == "Ready", "an installed model must report ready")
-    try require(
-        detail("State", in: installed) == "Installed · loads on first use",
-        "lazy loading must not be mistaken for an unavailable model"
-    )
-
-    let loaded = whisperIntegrationStatus(voiceResponse(installed: true, loaded: true))
-    try require(detail("State", in: loaded) == "Loaded", "a resident model must report loaded")
-
-    let unsupported = whisperIntegrationStatus(voiceResponse(supported: false))
-    try require(unsupported.state == .unavailable, "unsupported hosts must be unavailable")
-    try require(unsupported.status == "Unsupported", "unsupported hosts must be explicit")
+    let ready = voiceIntegrationStatus(voiceResponse(provider: "openai", ready: true))
+    try require(ready.state == .ready, "a ready provider must be ready")
+    try require(ready.status == "Ready", "a ready provider must report ready")
+    try require(detail("Provider", in: ready) == "OpenAI", "a cloud provider must be named")
 
     let statusURL = URL(string: "http://127.0.0.1:5178/api/voice/status")!
     let readyData = Data(
-        #"{"supported":true,"model":{"id":"large-v3-turbo","bytes":1624555275,"installed":true,"loaded":false,"downloading":false},"maxRecordingSeconds":300}"#.utf8
+        #"{"provider":"gemini","ready":true,"maxRecordingSeconds":300}"#.utf8
     )
     MockURLProtocol.handler = { request in
         try require(request.url == statusURL, "the menu must probe the local voice endpoint")
@@ -478,7 +446,7 @@ private func runTests() throws {
         return (response, readyData)
     }
     var probed: IntegrationStatus?
-    probeWhisperStatus(url: statusURL, session: session) { status in
+    probeVoiceStatus(url: statusURL, session: session) { status in
         probed = status
     }
     var deadline = Date().addingTimeInterval(2)
@@ -487,8 +455,8 @@ private func runTests() throws {
     }
     try require(probed?.state == .ready, "the local voice response must decode as ready")
     try require(
-        probed.flatMap { detail("State", in: $0) } == "Installed · loads on first use",
-        "the endpoint projection must preserve lazy loading"
+        probed.flatMap { detail("Provider", in: $0) } == "Gemini",
+        "the endpoint projection must name the selected provider"
     )
 
     MockURLProtocol.handler = { request in
@@ -502,7 +470,7 @@ private func runTests() throws {
         return (response, Data())
     }
     var unavailable: IntegrationStatus?
-    probeWhisperStatus(url: statusURL, session: session) { status in
+    probeVoiceStatus(url: statusURL, session: session) { status in
         unavailable = status
     }
     deadline = Date().addingTimeInterval(2)
@@ -510,9 +478,10 @@ private func runTests() throws {
         RunLoop.main.run(until: Date().addingTimeInterval(0.01))
     }
     try require(unavailable?.state == .unavailable, "server failures must be unavailable")
+    try require(unavailable?.name == "Voice", "server failures must keep the Voice row")
     try require(
         unavailable?.status == "Server unavailable",
-        "server failures must remain distinct from model setup"
+        "server failures must remain distinct from provider setup"
     )
 }
 

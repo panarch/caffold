@@ -202,18 +202,22 @@ remote mutations remain outside the product boundary.
 
 ## Voice input
 
-The Task composer supports multilingual voice input processed by the Caffold
-host. On first use, Caffold asks before downloading the pinned Whisper
-`large-v3-turbo` model (about 1.5 GiB) under:
+The Task composer supports multilingual voice input. Choose how recordings
+become text under **Settings → Voice Input**:
 
-```text
-~/Library/Application Support/Caffold/data/models/whisper
-```
+- **Whisper** transcribes on the Mac. **Download** fetches the pinned
+  `large-v3-turbo` model (about 1.5 GiB) into
+  `~/Library/Application Support/Caffold/data/models/whisper` and continues on
+  the Mac after the page is closed; Caffold verifies the model before using it.
+  **Cancel download** stops a download in progress, and **Delete model**
+  removes the downloaded model.
+- **OpenAI** and **Gemini** transcribe with an API key from that provider. Save
+  the key on the page, which afterwards shows only whether a key is saved. Each
+  recording is sent from the Mac to the selected provider.
 
-Caffold verifies the download before publishing it and loads the model lazily
-for the first transcription. Voice recordings are sent only to the same
-Caffold host, processed in memory, and never persisted or sent to an external
-speech service.
+Whisper is selected until another provider is chosen. When the selected
+provider is not ready, the composer's voice button opens
+**Settings → Voice Input**. Caffold never stores recordings.
 
 ## Updates and runtime continuity
 
@@ -245,9 +249,10 @@ Caffold stores its runtime data and downloaded models under:
 ~/Library/Application Support/Caffold/data
 ```
 
-Caffold keeps Task membership and its own UI/recovery metadata there. Codex
-and Claude remain responsible for their own conversation records; Caffold does
-not persist a second transcript.
+Caffold keeps Task membership, its own UI/recovery metadata, and voice settings
+with any saved speech-to-text API keys there. Codex and Claude remain
+responsible for their own conversation records; Caffold does not persist a
+second transcript.
 
 Logs are stored under `~/Library/Logs/Caffold`. Remove the installed app and
 CLI with:

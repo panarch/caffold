@@ -108,6 +108,17 @@ const ROUTE_DEFINITIONS = [
     parent: () => settingsRoute(),
   }),
   routeDefinition({
+    id: "settings-voice",
+    kind: "settings",
+    pattern: "/settings/voice",
+    surface: "task-workspace",
+    target: "voice",
+    toRoute: () => settingsRoute("voice"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "voice",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
     id: "settings-codex",
     kind: "settings",
     pattern: "/settings/codex",
@@ -770,6 +781,7 @@ function settingsRoute(section = "") {
       "files",
       "notifications",
       "remote-access",
+      "voice",
       "codex",
       "claude",
       "grok",
