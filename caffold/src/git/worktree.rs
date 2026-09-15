@@ -18,6 +18,7 @@ pub(crate) struct ManagedRepository {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WorktreeCheckout {
     pub path: PathBuf,
+    pub git_dir: PathBuf,
     pub common_dir: PathBuf,
     pub branch_name: String,
     pub head_sha: String,
@@ -533,6 +534,7 @@ pub(crate) fn inspect_attached_worktree(
 
     Ok(WorktreeCheckout {
         path: target.canonicalize()?,
+        git_dir: metadata.git_dir,
         common_dir: metadata.common_dir,
         branch_name,
         head_sha,

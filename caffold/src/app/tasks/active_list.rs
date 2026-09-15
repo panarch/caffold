@@ -22,8 +22,7 @@ use super::{
     TaskRecord,
     detail::project_managed_worktree_cwd,
     projection::{
-        apply_canonical_turn_projection, resolve_conversation_cwd, task_activity_ms,
-        task_record_from_conversation,
+        apply_canonical_turn_projection, task_activity_ms, task_record_from_conversation,
     },
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason},
 };
@@ -242,8 +241,7 @@ fn live_task_row(
     managed: &ManagedThread,
     conversation: Conversation,
 ) -> Result<TaskRecord, ApiError> {
-    let projected = project_managed_worktree_cwd(store, conversation)?;
-    let resolved = resolve_conversation_cwd(fs, &projected);
+    let (projected, resolved) = project_managed_worktree_cwd(fs, store, conversation)?;
     let mut task = task_record_from_conversation(&projected, &[], resolved.as_ref());
     apply_canonical_turn_projection(&mut task, &projected);
     apply_managed_runtime_metadata(&mut task, managed);
