@@ -284,11 +284,11 @@ focus. The native control and its product owner continue to own option
 selection, value changes, persistence, and subsequent keyboard input.
 
 Keyboard-operable split separators follow the same focus-only handoff. Task
-Workspace owns its navigation separator, Git Compare owns its tree/viewer
-separator, and the reusable Review Panel Resizer publishes a child scope that
-Integrated Review, Git Log Commit, and GitHub Pull Files merge. Actual layout
-and resizing capability are required, so single-pane or hidden separators do
-not become targets. Arrow, Shift+Arrow, Home, and End remain component-owned.
+Workspace owns its navigation separator, and the reusable Review Panel Resizer
+publishes a child scope that Integrated Review, Git Compare, Git Log Commit, and
+GitHub Pull Files merge. Actual layout and resizing capability are required, so
+single-pane or hidden separators do not become targets. Arrow, Shift+Arrow,
+Home, and End remain component-owned.
 
 Product-owned disclosure uses the same one-shot flow through a distinct
 `disclosure.toggle` action and `disclosure` control kind. The shared File Tree

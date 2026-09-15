@@ -2,12 +2,12 @@ import { getGitCompare, getGitCompareDiff, getGitRefs } from "../api.js";
 import { diffViewerPresentation } from "./file-viewer-presentation.js";
 import "./file-viewer.js";
 import "./git-compare-browser/compare-tree.js";
+import { REVIEW_PANEL_DEFAULT_WIDTH } from "./review-panel-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.js";
 import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-  separatorActionHintTarget,
 } from "../action-hint-scope.js";
 import {
   emptyScrollSurfaceScope,
@@ -16,10 +16,6 @@ import {
 } from "../scroll-scope.js";
 
 const LOADING_DELAY_MS = 180;
-const PANEL_DEFAULT_WIDTH = 320;
-const PANEL_MIN_WIDTH = 180;
-const VIEWER_MIN_WIDTH = 320;
-const PANEL_MAX_RATIO = 0.7;
 
 class CaffoldGitCompareBrowser extends HTMLElement {
   connectedCallback() {
@@ -42,43 +38,25 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     this.rendered = true;
     this.innerHTML = `
       <caffold-git-compare-tree></caffold-git-compare-tree>
-      <div
-        class="git-compare-panel-resizer"
-        role="separator"
+      <caffold-review-panel-resizer
         aria-label="Resize review side panel"
-        aria-orientation="vertical"
-        tabindex="0"
-      ></div>
+      ></caffold-review-panel-resizer>
       <caffold-review-file-viewer refresh-action="refresh-git-review"></caffold-review-file-viewer>
     `;
     this.compareTree = this.querySelector("caffold-git-compare-tree");
-    this.panelResizer = this.querySelector(".git-compare-panel-resizer");
+    this.panelResizer = this.querySelector("caffold-review-panel-resizer");
     this.viewer = this.querySelector("caffold-review-file-viewer");
     this.viewer.setCloseLabel("Back to compare");
     this.refsRequestId ??= 0;
     this.compareRequestId ??= 0;
     this.diffRequestId ??= 0;
     this.compareScrollTop ??= 0;
-    this.panelWidth ??= PANEL_DEFAULT_WIDTH;
-    this.resizePointerId ??= null;
+    this.panelWidth ??= REVIEW_PANEL_DEFAULT_WIDTH;
     this.setView(this.detailView ?? "list");
+    this.panelResizer.addEventListener("caffold:review-panel-resize", (event) => {
+      this.handlePanelResize(event);
+    });
     this.applyPanelWidth(this.panelWidth);
-
-    this.panelResizer.addEventListener("pointerdown", (event) => {
-      this.startPanelResize(event);
-    });
-    this.panelResizer.addEventListener("pointermove", (event) => {
-      this.movePanelResize(event);
-    });
-    this.panelResizer.addEventListener("pointerup", (event) => {
-      this.endPanelResize(event);
-    });
-    this.panelResizer.addEventListener("pointercancel", (event) => {
-      this.endPanelResize(event);
-    });
-    this.panelResizer.addEventListener("keydown", (event) => {
-      this.adjustPanelWidthFromKeyboard(event);
-    });
   }
 
   reset() {
@@ -120,7 +98,6 @@ class CaffoldGitCompareBrowser extends HTMLElement {
       selectedPath: this.compareTree.selectedPath ?? "",
       detailView: this.detailView,
       compareScrollTop: this.compareScrollTop ?? 0,
-      panelWidth: this.panelWidth ?? PANEL_DEFAULT_WIDTH,
     };
   }
 
@@ -141,7 +118,6 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     this.baseRef = state.baseRef ?? null;
     this.headRef = state.headRef ?? null;
     this.compareScrollTop = state.compareScrollTop ?? 0;
-    this.applyPanelWidth(state.panelWidth ?? PANEL_DEFAULT_WIDTH);
     if (this.compare) {
       this.compareTree.setCompare(this.compare);
       this.compareTree.setSelectedPath(state.selectedPath ?? "");
@@ -523,11 +499,18 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     const listActive = this.detailView === "list" ||
       !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
     const viewerActive = this.detailView === "viewer";
-    const separatorScope = gitCompareSeparatorActionHintScope(this, {
-      scopeId,
-      actionId: separatorActionId,
-      clipRoots: [this, ...clipRoots],
-    });
+    const resizer = this.panelResizer;
+    const separatorScope = hasActionHintLayoutBox(resizer)
+      ? resizer.actionHintScope?.({
+          scopeId,
+          actionId: separatorActionId,
+          clipRoots: [this, ...clipRoots],
+          isCurrent: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.panelResizer === resizer,
+        })
+      : null;
     return mergeActionHintScopes(
       listActive
         ? this.compareTree.actionHintScope({
@@ -668,93 +651,25 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     });
   }
 
-  startPanelResize(event) {
-    if (!this.canResizePanel()) {
+  handlePanelResize(event) {
+    event.stopPropagation();
+    if (event.detail.phase === "start") {
+      this.classList.add("is-resizing-panel");
       return;
     }
-
-    event.preventDefault();
-    this.resizePointerId = event.pointerId;
-    this.panelResizer.setPointerCapture(event.pointerId);
-    this.classList.add("is-resizing-panel");
-    this.updatePanelWidthFromPointer(event);
-  }
-
-  movePanelResize(event) {
-    if (this.resizePointerId !== event.pointerId) {
+    if (event.detail.phase === "end") {
+      this.classList.remove("is-resizing-panel");
       return;
     }
-
-    event.preventDefault();
-    this.updatePanelWidthFromPointer(event);
-  }
-
-  endPanelResize(event) {
-    if (this.resizePointerId !== event.pointerId) {
-      return;
+    if (event.detail.phase === "update") {
+      this.applyPanelWidth(event.detail.value);
     }
-
-    this.resizePointerId = null;
-    this.classList.remove("is-resizing-panel");
-    if (this.panelResizer.hasPointerCapture(event.pointerId)) {
-      this.panelResizer.releasePointerCapture(event.pointerId);
-    }
-  }
-
-  adjustPanelWidthFromKeyboard(event) {
-    if (!this.canResizePanel()) {
-      return;
-    }
-
-    const step = event.shiftKey ? 72 : 24;
-    let nextWidth = this.panelWidth;
-    if (event.key === "ArrowLeft") {
-      nextWidth -= step;
-    } else if (event.key === "ArrowRight") {
-      nextWidth += step;
-    } else if (event.key === "Home") {
-      nextWidth = PANEL_MIN_WIDTH;
-    } else if (event.key === "End") {
-      nextWidth = this.panelMaxWidth();
-    } else {
-      return;
-    }
-
-    event.preventDefault();
-    this.applyPanelWidth(nextWidth);
-  }
-
-  updatePanelWidthFromPointer(event) {
-    const rect = this.getBoundingClientRect();
-    this.applyPanelWidth(event.clientX - rect.left);
   }
 
   applyPanelWidth(width) {
-    const nextWidth = this.clampPanelWidth(width);
+    const nextWidth = this.panelResizer.setValue(width);
     this.panelWidth = nextWidth;
     this.style.setProperty("--git-compare-panel-width", `${nextWidth}px`);
-    this.panelResizer.setAttribute("aria-valuemin", `${PANEL_MIN_WIDTH}`);
-    this.panelResizer.setAttribute("aria-valuemax", `${this.panelMaxWidth()}`);
-    this.panelResizer.setAttribute("aria-valuenow", `${nextWidth}`);
-  }
-
-  clampPanelWidth(width) {
-    return Math.min(Math.max(Math.round(width), PANEL_MIN_WIDTH), this.panelMaxWidth());
-  }
-
-  panelMaxWidth() {
-    const width = this.getBoundingClientRect().width;
-    if (!width) {
-      return PANEL_DEFAULT_WIDTH;
-    }
-
-    const ratioMax = Math.round(width * PANEL_MAX_RATIO);
-    const viewerMax = Math.max(PANEL_MIN_WIDTH, width - VIEWER_MIN_WIDTH);
-    return Math.max(PANEL_MIN_WIDTH, Math.min(ratioMax, viewerMax));
-  }
-
-  canResizePanel() {
-    return window.matchMedia("(min-width: 861px)").matches;
   }
 
   emitStateChange() {
@@ -771,40 +686,6 @@ class CaffoldGitCompareBrowser extends HTMLElement {
       }),
     );
   }
-}
-
-function gitCompareSeparatorActionHintScope(
-  owner,
-  { scopeId, actionId, clipRoots },
-) {
-  const control = owner.panelResizer;
-  if (
-    !actionId ||
-    !control ||
-    !owner.canResizePanel?.() ||
-    !hasActionHintLayoutBox(control)
-  ) {
-    return null;
-  }
-  return {
-    blocked: false,
-    targets: [separatorActionHintTarget({
-      invalidationOwner: owner,
-      id: `${scopeId}:separator`,
-      actionId,
-      label: control.getAttribute("aria-label") || "Resize review side panel",
-      control,
-      clipRoots,
-      isActionable: () =>
-        owner.isConnected &&
-        !owner.hidden &&
-        owner.panelResizer === control &&
-        owner.canResizePanel() &&
-        hasActionHintLayoutBox(control),
-    })],
-    mutationRoots: [owner, control],
-    scrollRoots: [],
-  };
 }
 
 customElements.define("caffold-git-compare-browser", CaffoldGitCompareBrowser);

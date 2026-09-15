@@ -265,7 +265,6 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
   }
 
   for (const path of [
-    "components/git-compare-browser.css",
     "components/review-panel-resizer.css",
     "pages/(task-workspace)/tasks/(detail)/(review)/layout.css",
   ]) {

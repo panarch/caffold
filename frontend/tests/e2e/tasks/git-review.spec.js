@@ -518,6 +518,33 @@ test("hands Compare ref and separator Hints to their native controls", { tag: "@
   ).toBeGreaterThan(before);
 });
 
+test("clamps the Compare tree when the window narrows so the viewer keeps its minimum width", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installTaskGitFixture(page);
+  await page.goto(
+    `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`,
+  );
+
+  const compareBrowser = page.locator("caffold-git-compare-browser");
+  const separator = compareBrowser.getByRole("separator", {
+    name: "Resize review side panel",
+  });
+  await expect(separator).toBeVisible();
+  await separator.press("End");
+  const widened = Number(await separator.getAttribute("aria-valuenow"));
+
+  await page.setViewportSize({ ...page.viewportSize(), width: 900 });
+  await expect.poll(async () =>
+    Number(await separator.getAttribute("aria-valuenow"))
+  ).toBeLessThan(widened);
+  const besideTree = await compareBrowser.evaluate((browser) => Math.round(
+    browser.querySelector(":scope > caffold-review-panel-resizer").getBoundingClientRect().width +
+      browser.querySelector(":scope > caffold-review-file-viewer").getBoundingClientRect().width,
+  ));
+  expect(besideTree).toBeGreaterThanOrEqual(320);
+});
+
 test("refreshes Git and scrolls the exact visible Compare tree and diff from the root", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {

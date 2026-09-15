@@ -515,7 +515,11 @@ const componentChildren = new Map([
   ],
   [
     "caffold-git-compare-browser",
-    ["caffold-git-compare-tree", "caffold-review-file-viewer"],
+    [
+      "caffold-git-compare-tree",
+      "caffold-review-panel-resizer",
+      "caffold-review-file-viewer",
+    ],
   ],
   [
     "caffold-task-git-layout",
