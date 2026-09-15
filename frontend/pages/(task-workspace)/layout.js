@@ -72,7 +72,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.mode = "tasks";
     this.route = { kind: "tasks" };
     this.lastTaskRoute = { kind: "tasks" };
-    this.navigationPaneWidth = NAVIGATION_PANE_DEFAULT_WIDTH;
     this.currentOpenOptions = {};
     this.codexRestartStateValue = { state: "idle", message: "" };
     this.liveUpdates = new WorkspaceLiveUpdates();
@@ -108,9 +107,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
             <caffold-task-workspace-navigation></caffold-task-workspace-navigation>
           </aside>
           <caffold-pane-resizer
+            start-default="${NAVIGATION_PANE_DEFAULT_WIDTH}"
             start-min="${NAVIGATION_PANE_MIN_WIDTH}"
             start-max="${NAVIGATION_PANE_MAX_WIDTH}"
             end-min="${WORKSPACE_DETAIL_MIN_WIDTH}"
+            storage-key="caffold:pane-width:task-workspace"
             aria-label="Resize navigation pane"
           ></caffold-pane-resizer>
           <div class="task-workspace-detail-pane">
@@ -257,7 +258,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
       event.stopPropagation();
       this.syncPresentationState();
     });
-    this.masterResizer.setValue(this.navigationPaneWidth);
     this.applyNavigationPaneWidth();
     this.updateChrome();
   }
@@ -649,7 +649,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
       return;
     }
     if (event.detail.phase === "update") {
-      this.navigationPaneWidth = event.detail.value;
       this.applyNavigationPaneWidth();
     }
   }
@@ -657,7 +656,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
   applyNavigationPaneWidth() {
     this.style.setProperty(
       "--task-workspace-master-width",
-      `${this.navigationPaneWidth}px`,
+      `${this.masterResizer.value}px`,
     );
   }
 }

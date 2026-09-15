@@ -42,8 +42,6 @@ import {
   mergeScrollSurfaceScopes,
 } from "../../../../../scroll-scope.js";
 
-const REVIEW_PANEL_DEFAULT_WIDTH = 320;
-
 class CaffoldTaskReview extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
@@ -81,7 +79,6 @@ class CaffoldTaskReview extends HTMLElement {
     this.watchUnsubscribe = null;
     this.watchPath = "";
     this.pendingWatchViewerRefresh = false;
-    this.panelWidth = REVIEW_PANEL_DEFAULT_WIDTH;
     this.navigatorScroll = new Map();
     this.viewerScroll = new Map();
     this.pendingRepresentationLine = new Map();
@@ -115,6 +112,7 @@ class CaffoldTaskReview extends HTMLElement {
           <caffold-pane-resizer
             start-min="220"
             end-min="360"
+            storage-key="caffold:pane-width:task-review"
             aria-label="Resize review navigator"
           ></caffold-pane-resizer>
           <section class="task-review-viewer-pane" aria-label="Review file">
@@ -134,7 +132,6 @@ class CaffoldTaskReview extends HTMLElement {
     this.fileNavigator()?.setRefreshVisible(false);
     this.viewer()?.setCloseLabel("Back to navigator");
     this.viewer()?.setCloseMode("back");
-    this.resizer()?.setValue(this.panelWidth);
     this.applyPanelWidth();
 
     this.addEventListener("click", (event) => this.handleClick(event));
@@ -175,7 +172,6 @@ class CaffoldTaskReview extends HTMLElement {
     this.addEventListener("caffold:pane-resize", (event) => {
       event.stopPropagation();
       if (Number.isFinite(event.detail?.value)) {
-        this.panelWidth = event.detail.value;
         this.applyPanelWidth();
       }
     });
@@ -1141,7 +1137,7 @@ class CaffoldTaskReview extends HTMLElement {
   applyPanelWidth() {
     this.querySelector(".task-review-layout")?.style.setProperty(
       "--task-review-panel-width",
-      `${this.panelWidth}px`,
+      `${this.resizer().value}px`,
     );
   }
 

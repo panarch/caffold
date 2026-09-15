@@ -1,7 +1,7 @@
 import { getGitHubPullFile, getGitHubPullFiles } from "../../../../../../../api.js";
 import { diffViewerPresentation } from "../../../../../../../components/file-viewer-presentation.js";
 import "../../../../../../../components/file-viewer.js";
-import { PANE_RESIZER_DEFAULT_WIDTH } from "../../../../../../../components/pane-resizer.js";
+import "../../../../../../../components/pane-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "../../../../../../../components/review-responsive.js";
 import "./components/tree.js";
 import {
@@ -32,6 +32,7 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     this.innerHTML = `
       <caffold-github-pull-files-tree></caffold-github-pull-files-tree>
       <caffold-pane-resizer
+        storage-key="caffold:pane-width:github-pull-files"
         aria-label="Resize review side panel"
       ></caffold-pane-resizer>
       <caffold-review-file-viewer></caffold-review-file-viewer>
@@ -44,11 +45,10 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     this.fileRequestId ??= 0;
     this.viewerPresentation ??= null;
     this.detailView ??= "list";
-    this.panelWidth ??= PANE_RESIZER_DEFAULT_WIDTH;
     this.panelResizer.addEventListener("caffold:pane-resize", (event) => {
       this.handlePanelResize(event);
     });
-    this.applyPanelWidth(this.panelWidth);
+    this.applyPanelWidth();
   }
 
   handlePanelResize(event) {
@@ -62,14 +62,12 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
       return;
     }
     if (event.detail.phase === "update") {
-      this.applyPanelWidth(event.detail.value);
+      this.applyPanelWidth();
     }
   }
 
-  applyPanelWidth(width) {
-    const nextWidth = this.panelResizer.setValue(width);
-    this.panelWidth = nextWidth;
-    this.style.setProperty("--github-pull-files-panel-width", `${nextWidth}px`);
+  applyPanelWidth() {
+    this.style.setProperty("--github-pull-files-panel-width", `${this.panelResizer.value}px`);
   }
 
   reset() {

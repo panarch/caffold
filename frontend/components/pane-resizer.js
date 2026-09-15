@@ -4,7 +4,7 @@ import {
   separatorActionHintTarget,
 } from "../action-hint-scope.js";
 
-export const PANE_RESIZER_DEFAULT_WIDTH = 320;
+const START_DEFAULT_WIDTH = 320;
 const START_MIN_WIDTH = 180;
 const END_MIN_WIDTH = 320;
 const START_MAX_RATIO = 0.7;
@@ -12,7 +12,8 @@ const START_MAX_RATIO = 0.7;
 export class CaffoldPaneResizer extends HTMLElement {
   constructor() {
     super();
-    this.currentValue = PANE_RESIZER_DEFAULT_WIDTH;
+    this.currentValue = START_DEFAULT_WIDTH;
+    this.preferredValue = null;
     this.resizePointerId = null;
     this.boundPointerDown = (event) => this.startResize(event);
     this.boundPointerMove = (event) => this.moveResize(event);
@@ -49,7 +50,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     if (this.parentElement) {
       this.resizeObserver.observe(this.parentElement);
     }
-    this.syncRange();
+    this.restorePreferredValue();
   }
 
   disconnectedCallback() {
@@ -103,9 +104,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     };
   }
 
-  setValue(value) {
-    this.currentValue = this.clampValue(value);
-    this.syncRange();
+  get value() {
     return this.currentValue;
   }
 
@@ -142,6 +141,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     if (this.hasPointerCapture(pointerId)) {
       this.releasePointerCapture(pointerId);
     }
+    this.storePreferredValue();
     this.emitResize("end");
   }
 
@@ -156,6 +156,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     if (this.hasPointerCapture(pointerId)) {
       this.releasePointerCapture(pointerId);
     }
+    this.storePreferredValue();
     this.emitResize("end");
   }
 
@@ -180,6 +181,7 @@ export class CaffoldPaneResizer extends HTMLElement {
 
     event.preventDefault();
     this.updateValue(nextValue);
+    this.storePreferredValue();
   }
 
   updateFromPointer(event) {
@@ -194,6 +196,7 @@ export class CaffoldPaneResizer extends HTMLElement {
 
   updateValue(value) {
     this.currentValue = this.clampValue(value);
+    this.preferredValue = this.currentValue;
     this.syncRange();
     this.emitResize("update", this.currentValue);
   }
@@ -204,12 +207,31 @@ export class CaffoldPaneResizer extends HTMLElement {
       return;
     }
 
-    const nextValue = this.clampValue(this.currentValue);
-    if (nextValue !== this.currentValue) {
-      this.updateValue(nextValue);
+    this.applyPreferredValue();
+  }
+
+  restorePreferredValue() {
+    this.preferredValue =
+      readStoredWidth(this.getAttribute("storage-key")) ??
+      this.preferredValue ??
+      numericAttribute(this, "start-default", START_DEFAULT_WIDTH);
+    this.applyPreferredValue();
+  }
+
+  applyPreferredValue() {
+    const nextValue = this.clampValue(this.preferredValue);
+    if (nextValue === this.currentValue) {
+      this.syncRange();
       return;
     }
+
+    this.currentValue = nextValue;
     this.syncRange();
+    this.emitResize("update", nextValue);
+  }
+
+  storePreferredValue() {
+    writeStoredWidth(this.getAttribute("storage-key"), this.preferredValue);
   }
 
   syncRange() {
@@ -226,7 +248,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     const numericValue = Number(value);
     const normalizedValue = Number.isFinite(numericValue)
       ? numericValue
-      : PANE_RESIZER_DEFAULT_WIDTH;
+      : START_DEFAULT_WIDTH;
     const minimumClampedValue = Math.max(
       Math.round(normalizedValue),
       this.minimumValue(),
@@ -239,7 +261,7 @@ export class CaffoldPaneResizer extends HTMLElement {
   maxValue() {
     const width = this.parentElement?.getBoundingClientRect().width ?? 0;
     if (!width) {
-      return PANE_RESIZER_DEFAULT_WIDTH;
+      return START_DEFAULT_WIDTH;
     }
 
     const ratioMax = Math.round(width * START_MAX_RATIO);
@@ -276,6 +298,32 @@ export class CaffoldPaneResizer extends HTMLElement {
 customElements.define("caffold-pane-resizer", CaffoldPaneResizer);
 
 function numericAttribute(element, name, fallback) {
-  const value = Number(element.getAttribute(name));
-  return Number.isFinite(value) && value > 0 ? Math.round(value) : fallback;
+  return positiveWidth(element.getAttribute(name)) ?? fallback;
+}
+
+function readStoredWidth(key) {
+  if (!key) {
+    return null;
+  }
+  try {
+    return positiveWidth(window.localStorage.getItem(key));
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredWidth(key, width) {
+  if (!key || !Number.isFinite(width)) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(key, `${width}`);
+  } catch {
+    // localStorage can be unavailable in private or restricted contexts.
+  }
+}
+
+function positiveWidth(value) {
+  const width = Number(value);
+  return Number.isFinite(width) && width > 0 ? Math.round(width) : null;
 }

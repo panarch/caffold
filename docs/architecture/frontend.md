@@ -890,7 +890,7 @@ review. It owns:
 - Git status, branch refs/compare, file, diff, and source requests;
 - one root watch while active;
 - Changes/Files, Diff, and file-capability-aware Source/Preview reconciliation;
-- pane width, disclosure, selection, and scroll.
+- disclosure, selection, and scroll.
 
 The Integrated Review owner resolves file-open intents to a path and supported
 representation together. Text files support Source, Markdown adds text-only
@@ -1287,6 +1287,18 @@ themselves; code faces are bundled as static Regular and Bold.
 owner. It patches value-keyed buttons from a choices snapshot, owns pressed
 semantics and visual separators, and emits value intent. Task Detail and
 Integrated Review retain route state, choice availability, and host placement.
+
+`caffold-pane-resizer` is the shared split separator and the only owner of the
+start pane width. It keeps the width last chosen by pointer or keyboard apart
+from the applied width: a narrower container clamps the applied width, and a
+wider one returns to the chosen width. Its host sets `start-default`,
+`start-min`, `start-max`, and `end-min` where it needs them, names a
+`storage-key`, applies the published width to its own grid variable, and keeps
+no copy. The resizer restores the chosen width from `localStorage` whenever it
+connects and stores it when a drag or key adjustment ends. Each kind of pane
+has its own `caffold:pane-width:*` key: `task-workspace`, `task-review` (shared
+by every Task and Section), `git-compare`, `git-log-commit`, and
+`github-pull-files`.
 
 Every production JavaScript/CSS asset must be registered consistently in:
 

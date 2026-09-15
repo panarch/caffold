@@ -14,6 +14,12 @@ use the available detail width. Foldable and phone layouts use the same
 master-detail system and show one contextual Back appropriate to the deepest
 visible route.
 
+Split panes remember the width the user last chose in this browser, one width
+for each kind of pane: the navigation pane shared by Tasks and Settings,
+Integrated Review for every Task and Section, Git Compare, Git Log commits, and
+GitHub Pull Request files. A window too narrow for that width narrows the pane,
+and the chosen width returns when the window widens again.
+
 ## Task Navigator
 
 The Task navigator provides:
@@ -222,10 +228,10 @@ Task. The complete sequence and safety boundary are defined in
 ### Surface state
 
 Switching among Integrated Review, Git, and GitHub may preserve selection,
-disclosure, scroll, and pane widths within the same Task or Section. Returning
-to a surface reconciles current source state. Changing Task, Section, or
-repository context discards retained external context. The implementation
-contract is defined in [Frontend Architecture](../architecture/frontend.md).
+disclosure, and scroll within the same Task or Section. Returning to a surface
+reconciles current source state. Changing Task, Section, or repository context
+discards retained external context. The implementation contract is defined in
+[Frontend Architecture](../architecture/frontend.md).
 
 ## Settings
 

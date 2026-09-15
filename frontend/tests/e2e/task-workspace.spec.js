@@ -451,7 +451,7 @@ test("shares navigation pane resizing across Tasks and Settings", { tag: "@all-v
   await expect(detailPane).toBeVisible();
 });
 
-test("clamps the shared navigation pane across the desktop boundary", { tag: "@desktop" }, async ({
+test("clamps the shared navigation pane across the desktop boundary and restores the chosen width", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
 
@@ -514,6 +514,58 @@ test("clamps the shared navigation pane across the desktop boundary", { tag: "@d
     hasHorizontalOverflow: false,
     navigationWidth: 380,
   });
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(separator).toHaveAttribute("aria-valuemax", "520");
+  await expect(separator).toHaveAttribute("aria-valuenow", "520");
+  await expect
+    .poll(() =>
+      navigationPane.evaluate((element) =>
+        Math.round(element.getBoundingClientRect().width),
+      ),
+    )
+    .toBe(520);
+});
+
+test("remembers the shared navigation pane width across reloads", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await installTaskRoutes(page, workspaceTask());
+  await page.goto("/");
+
+  const taskWorkspace = page.locator("caffold-task-workspace");
+  const navigationPane = taskWorkspace.locator(".task-workspace-master-pane");
+  const separator = taskWorkspace.locator(".task-workspace-master-detail > caffold-pane-resizer");
+  await expect(separator).toHaveAttribute("aria-valuenow", "380");
+
+  const separatorBox = await separator.boundingBox();
+  expect(separatorBox).not.toBeNull();
+  await page.mouse.move(
+    separatorBox.x + separatorBox.width / 2,
+    separatorBox.y + separatorBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    separatorBox.x + separatorBox.width / 2 + 64,
+    separatorBox.y + separatorBox.height / 2,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  await expect(separator).toHaveAttribute("aria-valuenow", "444");
+
+  await page.reload();
+  await expect(separator).toHaveAttribute("aria-valuenow", "444");
+  await expect
+    .poll(() =>
+      navigationPane.evaluate((element) =>
+        Math.round(element.getBoundingClientRect().width),
+      ),
+    )
+    .toBe(444);
+
+  await page.goto("/settings/about");
+  await expect(separator).toHaveAttribute("aria-valuenow", "444");
 });
 
 test("preserves Tasks and Settings DOM while hidden task updates arrive", { tag: "@all-viewports" }, async ({

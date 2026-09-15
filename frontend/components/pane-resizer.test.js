@@ -74,3 +74,81 @@ test("keeps the start pane within its maximum, the end minimum, and 70% of the c
   assert.equal(panel(700, navigation).clampValue(10_000), 280);
   assert.equal(panel(1280).clampValue(10_000), 896);
 });
+
+test("returns to the chosen width when its container widens again", () => {
+  let containerWidth = 1280;
+  const updates = [];
+  const attributes = {
+    "start-min": "280",
+    "start-max": "520",
+    "end-min": "520",
+  };
+  const pane = Object.assign(Object.create(resizer), {
+    currentValue: 380,
+    preferredValue: 380,
+    parentElement: { getBoundingClientRect: () => ({ width: containerWidth }) },
+    getAttribute: (name) => attributes[name] ?? null,
+    getClientRects: () => [{}],
+    setAttribute() {},
+    dispatchEvent: (event) => updates.push(event.detail.value),
+  });
+
+  pane.updateValue(500);
+  containerWidth = 900;
+  pane.handleContainerResize();
+  assert.equal(pane.value, 380);
+  containerWidth = 1280;
+  pane.handleContainerResize();
+  assert.equal(pane.value, 500);
+  assert.deepEqual(updates, [500, 380, 500]);
+});
+
+test("remembers the chosen width under its storage key", () => {
+  const previousWindow = globalThis.window;
+  const stored = new Map();
+  globalThis.window = {
+    localStorage: {
+      getItem: (key) => stored.get(key) ?? null,
+      setItem: (key, value) => stored.set(key, value),
+    },
+  };
+  const attributes = {
+    "start-default": "380",
+    "storage-key": "caffold:pane-width:test",
+  };
+  const connect = () => {
+    const pane = Object.assign(Object.create(resizer), {
+      currentValue: 320,
+      preferredValue: null,
+      parentElement: { getBoundingClientRect: () => ({ width: 1280 }) },
+      getAttribute: (name) => attributes[name] ?? null,
+      getClientRects: () => [{}],
+      setAttribute() {},
+      dispatchEvent() {},
+    });
+    pane.restorePreferredValue();
+    return pane;
+  };
+
+  try {
+    const first = connect();
+    assert.equal(first.value, 380);
+    first.adjustFromKeyboard({
+      key: "ArrowRight",
+      shiftKey: false,
+      preventDefault() {},
+    });
+    assert.equal(stored.get("caffold:pane-width:test"), "404");
+    assert.equal(connect().value, 404);
+
+    globalThis.window = {
+      get localStorage() {
+        throw new Error("Storage is unavailable");
+      },
+    };
+    first.restorePreferredValue();
+    assert.equal(first.value, 404);
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});

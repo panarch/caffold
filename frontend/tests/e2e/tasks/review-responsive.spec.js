@@ -328,17 +328,40 @@ test("clamps the navigator so the shared viewer keeps its minimum width", { tag:
   await expect.poll(async () =>
     Number(await separator.getAttribute("aria-valuenow"))
   ).toBeGreaterThan(before);
-  await taskReview.evaluate((review) => {
-    review.resizer().setValue(10_000);
-    review.panelWidth = review.resizer().currentValue;
-    review.applyPanelWidth();
-  });
+  await separator.press("End");
   const widths = await taskReview.evaluate((review) => ({
     navigator: review.querySelector(".task-review-navigator-pane").getBoundingClientRect().width,
     viewer: review.querySelector(".task-review-viewer-pane").getBoundingClientRect().width,
   }));
   expect(widths.navigator).toBeGreaterThanOrEqual(220);
   expect(widths.viewer).toBeGreaterThanOrEqual(360);
+});
+
+test("remembers the review navigator width across reloads", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const separator = taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  });
+  await expect(separator).toHaveAttribute("aria-valuenow", "320");
+  await separator.focus();
+  await separator.press("ArrowRight");
+  await separator.press("ArrowRight");
+  await expect(separator).toHaveAttribute("aria-valuenow", "368");
+
+  await page.reload();
+  await expect(separator).toHaveAttribute("aria-valuenow", "368");
+  await expect
+    .poll(() =>
+      taskReview.evaluate((review) =>
+        Math.round(
+          review.querySelector(".task-review-navigator-pane").getBoundingClientRect().width,
+        ),
+      ),
+    )
+    .toBe(368);
 });
 
 test("draws the shared separator as the pane line with a centered handle and a 3px highlight", { tag: "@desktop" }, async ({
