@@ -1469,29 +1469,17 @@ mod tests {
                 .body
                 .starts_with(b"caffold-git-review-controls")
         );
-        let pane_resizer =
-            get("components/pane-resizer.js").expect("pane resizer js");
-        assert_eq!(
-            pane_resizer.content_type,
-            "text/javascript; charset=utf-8"
-        );
+        let pane_resizer = get("components/pane-resizer.js").expect("pane resizer js");
+        assert_eq!(pane_resizer.content_type, "text/javascript; charset=utf-8");
         assert!(
             pane_resizer
                 .body
                 .windows(b"caffold-pane-resizer".len())
                 .any(|window| window == b"caffold-pane-resizer")
         );
-        let pane_resizer_css =
-            get("components/pane-resizer.css").expect("pane resizer css");
-        assert_eq!(
-            pane_resizer_css.content_type,
-            "text/css; charset=utf-8"
-        );
-        assert!(
-            pane_resizer_css
-                .body
-                .starts_with(b"caffold-pane-resizer")
-        );
+        let pane_resizer_css = get("components/pane-resizer.css").expect("pane resizer css");
+        assert_eq!(pane_resizer_css.content_type, "text/css; charset=utf-8");
+        assert!(pane_resizer_css.body.starts_with(b"caffold-pane-resizer"));
 
         let compare_page = get("pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js")
             .expect("compare page js");
