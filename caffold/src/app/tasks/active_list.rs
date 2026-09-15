@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
 };
 
+use futures_util::{StreamExt, stream};
 use serde::Serialize;
 
 use crate::{
@@ -22,8 +23,7 @@ use super::{
     TaskRecord,
     detail::project_managed_worktree_cwd,
     projection::{
-        apply_canonical_turn_projection, resolve_conversation_cwd, task_activity_ms,
-        task_record_from_conversation,
+        apply_canonical_turn_projection, task_activity_ms, task_record_from_conversation,
     },
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason},
 };
@@ -193,18 +193,13 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
         }
     }
 
-    let mut tasks = Vec::new();
+    let mut rows = Vec::new();
     let mut observed_threads = Vec::new();
     for thread in super::recovery::list_all_global_threads(client).await? {
         let Some(managed) = managed.get(&thread.id) else {
             continue;
         };
-        tasks.push(live_task_row(
-            &fs,
-            &store,
-            managed,
-            Conversation::from(&thread),
-        )?);
+        rows.push((managed.clone(), Conversation::from(&thread)));
         observed_threads.push(thread);
     }
     // Codex answers for every thread it has in one list. Claude has no list to
@@ -225,14 +220,41 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
         let Some(conversation) = conversation else {
             continue;
         };
-        tasks.push(live_task_row(&fs, &store, managed, conversation)?);
+        rows.push((managed.clone(), conversation));
     }
+    let mut tasks = live_task_rows(fs, store, rows).await?;
     tasks.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
     observed_threads.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(ActiveTaskRuntimeProjection {
         snapshot: ActiveTaskRuntimeSnapshot { tasks },
         observed_threads,
     })
+}
+
+/// Building a row waits on the task store and on Git, so the rows are built on
+/// blocking threads, several at a time.
+async fn live_task_rows(
+    fs: Arc<RootedFs>,
+    store: TaskStore,
+    rows: Vec<(ManagedThread, Conversation)>,
+) -> Result<Vec<TaskRecord>, ApiError> {
+    stream::iter(rows)
+        .map(|(managed, conversation)| {
+            let fs = fs.clone();
+            let store = store.clone();
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    live_task_row(&fs, &store, &managed, conversation)
+                })
+                .await
+                .map_err(|error| ApiError::Internal(format!("task row worker failed: {error}")))?
+            }
+        })
+        .buffer_unordered(8)
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect()
 }
 
 /// One list row for a conversation as its agent reports it now.
@@ -242,8 +264,7 @@ fn live_task_row(
     managed: &ManagedThread,
     conversation: Conversation,
 ) -> Result<TaskRecord, ApiError> {
-    let projected = project_managed_worktree_cwd(store, conversation)?;
-    let resolved = resolve_conversation_cwd(fs, &projected);
+    let (projected, resolved) = project_managed_worktree_cwd(fs, store, conversation)?;
     let mut task = task_record_from_conversation(&projected, &[], resolved.as_ref());
     apply_canonical_turn_projection(&mut task, &projected);
     apply_managed_runtime_metadata(&mut task, managed);

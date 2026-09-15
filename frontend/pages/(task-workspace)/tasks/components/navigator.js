@@ -391,7 +391,17 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.ensureState();
     this.render();
     this.active = true;
-    const tasksRequest = this.activeTaskList.activate({ force });
+    const tasksRequest = this.activeTaskList.activate({ force }).then((tasks) => {
+      // Task list events need the active rows loaded, not Archived.
+      if (
+        this.active &&
+        this.isConnected &&
+        document.visibilityState === "visible"
+      ) {
+        this.activeTaskList.connectStream();
+      }
+      return tasks;
+    });
     const archivedRequest = this.taskOperations.blocked
       ? Promise.resolve(null)
       : this.archivedTaskList.activate({ force });
@@ -399,13 +409,6 @@ class CaffoldTaskNavigator extends HTMLElement {
       tasksRequest,
       archivedRequest,
     ]);
-    if (
-      this.active &&
-      this.isConnected &&
-      document.visibilityState === "visible"
-    ) {
-      this.activeTaskList.connectStream();
-    }
     return { tasks, archived };
   }
 

@@ -1642,7 +1642,6 @@ mod tests {
         let repository = git::Repository {
             root: local.clone(),
             branch: Some("test".to_string()),
-            dirty: true,
         };
         let prepared =
             prepare_pull_head_from_remote(&repository, "upstream", 17, &first_oid).unwrap();

@@ -10,10 +10,10 @@ use std::{
 mod worktree;
 
 pub(crate) use worktree::{
-    WorktreeCheckout, WorktreeError, WorktreeIsolationMode, delete_local_branch_if_matches,
-    delete_transfer_snapshot, execute_worktree_transfer, inspect_attached_worktree,
-    prepare_worktree_transfer, recover_worktree_transfer, remove_attached_worktree,
-    restore_attached_worktree,
+    WorktreeCheckout, WorktreeError, WorktreeIsolationMode, attached_worktree_is_dirty,
+    delete_local_branch_if_matches, delete_transfer_snapshot, execute_worktree_transfer,
+    inspect_attached_worktree, prepare_worktree_transfer, recover_worktree_transfer,
+    remove_attached_worktree, restore_attached_worktree,
 };
 #[cfg(test)]
 pub(crate) use worktree::{create_attached_worktree, managed_repository};
@@ -22,7 +22,6 @@ pub(crate) use worktree::{create_attached_worktree, managed_repository};
 pub(crate) struct Repository {
     pub root: PathBuf,
     pub branch: Option<String>,
-    pub dirty: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,18 +110,8 @@ pub(crate) fn repository_for(path: &Path) -> Option<Repository> {
         .canonicalize()
         .ok()?;
     let branch = current_branch(path);
-    let dirty = run_git(
-        path,
-        &["status", "--porcelain=v1", "--untracked-files=normal"],
-    )
-    .map(|output| !output.is_empty())
-    .unwrap_or(false);
 
-    Some(Repository {
-        root,
-        branch,
-        dirty,
-    })
+    Some(Repository { root, branch })
 }
 
 pub(crate) fn has_git_marker(path: &Path) -> bool {
@@ -153,6 +142,14 @@ pub(crate) fn repository_metadata_paths(
 
 pub(crate) fn head_sha(repository: &Repository) -> Option<String> {
     run_git(&repository.root, &["rev-parse", "HEAD"]).filter(|head| !head.is_empty())
+}
+
+pub(crate) fn is_dirty(repository: &Repository) -> bool {
+    run_git(
+        &repository.root,
+        &["status", "--porcelain=v1", "--untracked-files=normal"],
+    )
+    .is_some_and(|output| !output.is_empty())
 }
 
 pub(crate) fn status_entries(repository: &Repository) -> Option<Vec<StatusEntry>> {
@@ -1083,7 +1080,7 @@ mod tests {
 
         assert_eq!(repository.root, temp.path().canonicalize().unwrap());
         assert!(repository.branch.is_some());
-        assert!(repository.dirty);
+        assert!(is_dirty(&repository));
     }
 
     #[test]

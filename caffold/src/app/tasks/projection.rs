@@ -177,18 +177,7 @@ pub(in crate::app::tasks) fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Optio
     let metadata = git::repository_metadata_paths(&repository);
     let repository_root_path = metadata
         .as_ref()
-        .and_then(|paths| {
-            if paths
-                .common_dir
-                .file_name()
-                .is_some_and(|name| name == ".git")
-            {
-                paths.common_dir.parent()
-            } else {
-                None
-            }
-        })
-        .and_then(|root| fs.logical_path_for_absolute(root).ok())
+        .map(|paths| repository_root_path_for(fs, &paths.common_dir, &root_path))
         .unwrap_or_else(|| root_path.clone());
     let linked = metadata
         .as_ref()
@@ -217,6 +206,41 @@ pub(in crate::app::tasks) fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Optio
         worktree_root: Some(repository.root),
         repository_common_dir: metadata.map(|paths| paths.common_dir),
     })
+}
+
+/// Resolve the directory of a worktree that was just inspected, from what the
+/// inspection read rather than by asking Git about the same directory again.
+pub(in crate::app::tasks) fn resolve_checkout_cwd(
+    fs: &RootedFs,
+    checkout: &git::WorktreeCheckout,
+) -> Option<ResolvedTaskCwd> {
+    let root_path = fs.logical_path_for_absolute(&checkout.path).ok()?;
+    let repository_root_path = repository_root_path_for(fs, &checkout.common_dir, &root_path);
+
+    Some(ResolvedTaskCwd {
+        canonical_cwd: checkout.path.clone(),
+        logical_cwd: Some(root_path.clone()),
+        worktree: Some(TaskWorktreeContext {
+            root_path,
+            repository_root_path,
+            branch: Some(checkout.branch_name.clone()),
+            head_sha: checkout.head_sha.clone(),
+            relative_cwd: String::new(),
+            linked: checkout.git_dir != checkout.common_dir,
+        }),
+        worktree_root: Some(checkout.path.clone()),
+        repository_common_dir: Some(checkout.common_dir.clone()),
+    })
+}
+
+fn repository_root_path_for(fs: &RootedFs, common_dir: &Path, root_path: &str) -> String {
+    if common_dir.file_name().is_some_and(|name| name == ".git")
+        && let Some(repository_root) = common_dir.parent()
+        && let Ok(repository_root_path) = fs.logical_path_for_absolute(repository_root)
+    {
+        return repository_root_path;
+    }
+    root_path.to_string()
 }
 
 pub(in crate::app::tasks) fn has_git_ancestor(path: &Path) -> bool {
@@ -529,6 +553,57 @@ mod tests {
             run_test_git(&outside, &["init", "-b", "main"]);
             assert!(resolve_task_cwd(&fs, outside.to_str().unwrap()).is_none());
         }
+    }
+
+    #[test]
+    fn a_worktree_checkout_resolves_as_its_directory_does() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let main_root = temp.path().join("main");
+        let worktrees = temp.path().join("worktrees");
+        let linked_root = worktrees.join("linked");
+        std::fs::create_dir(&main_root).unwrap();
+        std::fs::create_dir(&worktrees).unwrap();
+        run_test_git(&main_root, &["init", "-b", "main"]);
+        std::fs::write(main_root.join("README.md"), "initial\n").unwrap();
+        run_test_git(&main_root, &["add", "."]);
+        commit_test_git_repo(&main_root, "Initial commit");
+        run_test_git(
+            &main_root,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feature/review",
+                linked_root.to_str().unwrap(),
+            ],
+        );
+        let checkout =
+            git::inspect_attached_worktree(&linked_root, &main_root.join(".git"), None).unwrap();
+        let linked = linked_root.to_str().unwrap();
+        let repository_root_path = |resolved: &Option<ResolvedTaskCwd>| {
+            resolved
+                .as_ref()
+                .and_then(|resolved| resolved.worktree.as_ref())
+                .map(|worktree| worktree.repository_root_path.clone())
+        };
+
+        let both = RootedFs::new(temp.path()).unwrap();
+        let resolved = resolve_checkout_cwd(&both, &checkout);
+        assert_eq!(repository_root_path(&resolved).as_deref(), Some("main"));
+        assert_eq!(resolved, resolve_task_cwd(&both, linked));
+
+        let worktree_only = RootedFs::new(&worktrees).unwrap();
+        let resolved = resolve_checkout_cwd(&worktree_only, &checkout);
+        assert_eq!(repository_root_path(&resolved).as_deref(), Some("linked"));
+        assert_eq!(resolved, resolve_task_cwd(&worktree_only, linked));
+
+        let main_only = RootedFs::new(&main_root).unwrap();
+        assert_eq!(resolve_checkout_cwd(&main_only, &checkout), None);
+        assert_eq!(resolve_task_cwd(&main_only, linked), None);
     }
 
     #[test]

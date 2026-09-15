@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
+  activeLiveUpdateChannels,
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
@@ -281,6 +282,32 @@ test("shows active Tasks first and appends a settled Archived section without re
     row === window.__initialActiveRow &&
     row.querySelector(".task-status-spinner") === window.__initialActiveSpinner,
   )).toBe(true);
+});
+
+test("subscribes to Task list updates once active Tasks settle, before Archived", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const activeTask = initialNavigatorTask(
+    "thread_stream_before_archived",
+    "Streams before Archived",
+  );
+  const gates = await installInitialTaskListGates(page);
+
+  await page.goto("/tasks");
+  await gates.started;
+  expect(await activeLiveUpdateChannels(page)).not.toContain("task-list");
+
+  gates.settleActive({ tasks: [activeTask], nextCursor: null });
+  await expect.poll(() => activeLiveUpdateChannels(page)).toContain("task-list");
+  const archivedSection = page.locator(
+    'caffold-task-navigator .task-list-section[data-task-section="archived"]',
+  );
+  await expect(archivedSection).toHaveCount(0);
+
+  gates.settleArchived({ tasks: [], nextCursor: null });
+  await expect(archivedSection).toBeVisible();
 });
 
 test("reveals confirmed empty active and Archived states only after both initial requests settle", { tag: "@all-viewports" }, async ({

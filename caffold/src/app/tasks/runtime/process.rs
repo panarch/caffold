@@ -46,6 +46,11 @@ impl TaskRuntime {
     pub(in crate::app::tasks) async fn connection(
         &self,
     ) -> Result<CodexConnection, CodexThreadError> {
+        // A usable connection does not wait for a status check holding the
+        // readiness lock; any other answer waits, since that check may change it.
+        if let Ok(Some(connection)) = self.classified_connection().await {
+            return Ok(connection);
+        }
         let _readiness_check = self.process.readiness_check.lock().await;
         if let Some(connection) = self.classified_connection().await? {
             return Ok(connection);
@@ -376,7 +381,9 @@ impl CodexProcess {
 mod tests {
     use crate::app::tasks::runtime::TaskAgent;
     use serde_json::json;
+    use std::time::Duration;
     use tokio::sync::broadcast;
+    use tokio::time::timeout;
 
     use super::*;
     use crate::{
@@ -527,5 +534,48 @@ mod tests {
             .await;
         assert_eq!(runtime.diagnostics().await, (9, true));
         runtime.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn a_usable_connection_does_not_wait_for_a_status_check_in_flight() {
+        let runtime = test_runtime();
+        runtime
+            .install_test_client(11, CodexThreadClient::mock(Vec::new()))
+            .await;
+        let _status_check = runtime.process.readiness_check.lock().await;
+
+        let connection = timeout(Duration::from_secs(1), runtime.connection())
+            .await
+            .expect("a usable connection answers while a status check holds the lock")
+            .expect("the installed client is usable");
+
+        assert_eq!(connection.generation, 11);
+    }
+
+    #[tokio::test]
+    async fn a_blocked_answer_takes_what_the_status_check_in_flight_leaves() {
+        let runtime = test_runtime();
+        runtime
+            .install_test_client(12, CodexThreadClient::mock(Vec::new()))
+            .await;
+        runtime.hold_codex_readiness_for_tests().await;
+        let status_check = runtime.process.readiness_check.lock().await;
+        let mut connection = Box::pin(runtime.connection());
+
+        assert!(
+            timeout(Duration::from_millis(50), &mut connection)
+                .await
+                .is_err(),
+            "a blocked answer waits for the check that may clear it"
+        );
+
+        runtime
+            .install_test_client(13, CodexThreadClient::mock(Vec::new()))
+            .await;
+        drop(status_check);
+        let connection = connection
+            .await
+            .expect("the check left a usable connection");
+        assert_eq!(connection.generation, 13);
     }
 }

@@ -15,8 +15,8 @@ use super::{
     },
     lifecycle::ActiveTaskTopPlacement,
     projection::{
-        TaskRecord, apply_turn_states_projection, resolve_conversation_cwd,
-        task_record_from_conversation,
+        ResolvedTaskCwd, TaskRecord, apply_turn_states_projection, resolve_checkout_cwd,
+        resolve_conversation_cwd, task_record_from_conversation,
     },
     runtime::{CodexConnection, TaskAgent, TaskRuntime, TaskRuntimeSignal},
     sync::TaskSync,
@@ -448,11 +448,10 @@ impl DetailContext {
         let conversation = snapshot
             .conversation
             .expect("conversation metadata was checked above");
-        let conversation = self.project_managed_worktree_cwd(conversation)?;
+        let (conversation, resolved_cwd) = self.project_managed_worktree_cwd(conversation)?;
         let pending_approvals = self.runtime.approval_events(&thread_id).await;
         events = compose_pending_approval_events(events, pending_approvals.clone());
         sort_task_events(&mut events);
-        let resolved_cwd = resolve_conversation_cwd(&self.fs, &conversation);
         let mut task = task_record_from_conversation(&conversation, &events, resolved_cwd.as_ref());
         let turn_states = snapshot
             .turns_page
@@ -504,8 +503,7 @@ impl DetailContext {
         &self,
         conversation: &Conversation,
     ) -> Result<TaskRecord, ApiError> {
-        let conversation = self.project_managed_worktree_cwd(conversation.clone())?;
-        let resolved = resolve_conversation_cwd(&self.fs, &conversation);
+        let (conversation, resolved) = self.project_managed_worktree_cwd(conversation.clone())?;
         Ok(task_record_from_conversation(
             &conversation,
             &[],
@@ -516,8 +514,8 @@ impl DetailContext {
     fn project_managed_worktree_cwd(
         &self,
         conversation: Conversation,
-    ) -> Result<Conversation, ApiError> {
-        project_managed_worktree_cwd(&self.store, conversation)
+    ) -> Result<(Conversation, Option<ResolvedTaskCwd>), ApiError> {
+        project_managed_worktree_cwd(&self.fs, &self.store, conversation)
     }
 
     async fn ensure_runtime_signal_driver(&self) {
@@ -618,16 +616,17 @@ impl DetailContext {
 /// the work happens once a Task has been isolated. Everything downstream — Git,
 /// review, file links — resolves from this one field.
 pub(in crate::app::tasks) fn project_managed_worktree_cwd(
+    fs: &RootedFs,
     store: &TaskStore,
     mut conversation: Conversation,
-) -> Result<Conversation, ApiError> {
+) -> Result<(Conversation, Option<ResolvedTaskCwd>), ApiError> {
     let worktree = store
         .worktree_for_thread(&conversation.id)
         .map_err(|error| ApiError::Internal(error.to_string()))?;
     if let Some(worktree) = worktree
         && worktree.state == ManagedWorktreeState::Ready
     {
-        inspect_ready_worktree(&worktree).map_err(|error| ApiError::BadRequest {
+        let checkout = inspect_ready_worktree(&worktree).map_err(|error| ApiError::BadRequest {
             code: "managed_worktree_unavailable",
             message: format!(
                 "the managed worktree is unavailable at {}: {error}",
@@ -635,8 +634,11 @@ pub(in crate::app::tasks) fn project_managed_worktree_cwd(
             ),
         })?;
         conversation.cwd = worktree.worktree_path;
+        let resolved = resolve_checkout_cwd(fs, &checkout);
+        return Ok((conversation, resolved));
     }
-    Ok(conversation)
+    let resolved = resolve_conversation_cwd(fs, &conversation);
+    Ok((conversation, resolved))
 }
 
 pub(in crate::app::tasks) fn loading_detail(
@@ -1153,15 +1155,12 @@ mod inline_tests {
         git(&managed, &["commit", "-m", "Advance next branch"]);
         let live_head = git_output(&managed, &["rev-parse", "HEAD"]);
 
-        let projected =
-            project_managed_worktree_cwd(&store, codex_thread("/stale/source")).unwrap();
+        let fs = RootedFs::new(temp.path()).unwrap();
+        let (projected, resolved) =
+            project_managed_worktree_cwd(&fs, &store, codex_thread("/stale/source")).unwrap();
 
         assert_eq!(projected.cwd, managed.display().to_string());
-        let fs = RootedFs::new(temp.path()).unwrap();
-        let context = resolve_conversation_cwd(&fs, &projected)
-            .unwrap()
-            .worktree
-            .unwrap();
+        let context = resolved.unwrap().worktree.unwrap();
         assert_eq!(context.branch.as_deref(), Some("review/next"));
         assert_eq!(context.head_sha, live_head);
         assert_eq!(
@@ -1190,9 +1189,10 @@ mod inline_tests {
                 updated_at_ms: 1,
             })
             .unwrap();
+        let fs = RootedFs::new(temp.path()).unwrap();
 
         let error =
-            project_managed_worktree_cwd(&store, codex_thread("/stale/source")).unwrap_err();
+            project_managed_worktree_cwd(&fs, &store, codex_thread("/stale/source")).unwrap_err();
 
         assert!(matches!(
             error,
@@ -1225,8 +1225,9 @@ mod inline_tests {
             })
             .unwrap();
 
-        let projected =
-            project_managed_worktree_cwd(&store, codex_thread("/original/source")).unwrap();
+        let fs = RootedFs::new(temp.path()).unwrap();
+        let (projected, _) =
+            project_managed_worktree_cwd(&fs, &store, codex_thread("/original/source")).unwrap();
 
         assert_eq!(projected.cwd, "/original/source");
     }
