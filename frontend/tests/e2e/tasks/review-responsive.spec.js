@@ -466,6 +466,66 @@ test("gives the shared separator handle the Interface touch target", { tag: ["@d
   await captureReviewScreenshot(page, testInfo, "tasks-review-separator-handle");
 });
 
+test("lights the shared separator on touch only while a drag holds it", { tag: "@foldable" }, async ({
+  page,
+  context,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const separator = taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  });
+  await expect(separator).toBeVisible();
+  expect(await page.evaluate(() => matchMedia("(hover: hover)").matches)).toBe(false);
+
+  const colors = await separator.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement("i"));
+    probe.style.color = "var(--resizer-hover-bg)";
+    const active = getComputedStyle(probe).color;
+    probe.style.color = "var(--border-strong)";
+    const idle = getComputedStyle(probe).color;
+    probe.remove();
+    return { active, idle };
+  });
+  const lit = { line: colors.active, handle: colors.active };
+  const unlit = { line: "rgba(0, 0, 0, 0)", handle: colors.idle };
+  const highlight = () =>
+    separator.evaluate((resizer) => ({
+      line: getComputedStyle(resizer, "::after").backgroundColor,
+      handle: getComputedStyle(
+        resizer.querySelector(":scope > .pane-resizer-handle"),
+      ).backgroundColor,
+    }));
+  const afterFrames = () =>
+    page.evaluate(() => new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
+
+  const handle = await separator.locator(":scope > .pane-resizer-handle").boundingBox();
+  const x = handle.x + handle.width / 2;
+  const y = handle.y + handle.height / 2;
+  const devtools = await context.newCDPSession(page);
+  const touch = (type, touchPoints) =>
+    devtools.send("Input.dispatchTouchEvent", { type, touchPoints });
+
+  await touch("touchStart", [{ x, y }]);
+  await touch("touchMove", [{ x: x + 24, y }]);
+  await expect.poll(highlight).toEqual(lit);
+  await touch("touchEnd", []);
+  await afterFrames();
+  expect(await highlight()).toEqual(unlit);
+
+  const tapped = await separator.evaluateHandle((resizer) => ({
+    done: new Promise((resolve) => {
+      resizer.addEventListener("click", () => resolve(), { once: true });
+    }),
+  }));
+  await page.touchscreen.tap(x + 24, y);
+  await tapped.evaluate((state) => state.done);
+  await afterFrames();
+  expect(await highlight()).toEqual(unlit);
+});
+
 test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();

@@ -32,10 +32,17 @@ caffold-pane-resizer {
     content: "";
   }
 
-  &:hover::after,
+  /* Touch keeps :hover after a tap, so only a hover-capable pointer takes the
+     hover highlight. */
+  @media (hover: hover) {
+    &:hover::after,
+    &:hover > .pane-resizer-handle {
+      background: var(--resizer-hover-bg);
+    }
+  }
+
   &:focus-visible::after,
   &[data-resizing]::after,
-  &:hover > .pane-resizer-handle,
   &:focus-visible > .pane-resizer-handle,
   &[data-resizing] > .pane-resizer-handle {
     background: var(--resizer-hover-bg);
