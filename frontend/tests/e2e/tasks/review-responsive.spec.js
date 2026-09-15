@@ -466,7 +466,7 @@ test("gives the shared separator handle the Interface touch target", { tag: ["@d
   await captureReviewScreenshot(page, testInfo, "tasks-review-separator-handle");
 });
 
-test("lights the shared separator on touch only while a drag holds it", { tag: "@foldable" }, async ({
+test("keeps the shared separator unlit on touch unless a drag holds it", { tag: "@foldable" }, async ({
   page,
   context,
 }) => {
@@ -496,34 +496,27 @@ test("lights the shared separator on touch only while a drag holds it", { tag: "
         resizer.querySelector(":scope > .pane-resizer-handle"),
       ).backgroundColor,
     }));
-  const afterFrames = () =>
-    page.evaluate(() => new Promise((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-    }));
 
   const handle = await separator.locator(":scope > .pane-resizer-handle").boundingBox();
   const x = handle.x + handle.width / 2;
   const y = handle.y + handle.height / 2;
+
+  // A touch screen keeps :hover on whatever a tap landed on; the mouse sets that
+  // state directly instead of depending on how a browser synthesizes a tap.
+  await page.mouse.move(x, y);
+  await expect
+    .poll(() => separator.evaluate((resizer) => resizer.matches(":hover")))
+    .toBe(true);
+  expect(await highlight()).toEqual(unlit);
+
   const devtools = await context.newCDPSession(page);
   const touch = (type, touchPoints) =>
     devtools.send("Input.dispatchTouchEvent", { type, touchPoints });
-
   await touch("touchStart", [{ x, y }]);
   await touch("touchMove", [{ x: x + 24, y }]);
   await expect.poll(highlight).toEqual(lit);
   await touch("touchEnd", []);
-  await afterFrames();
-  expect(await highlight()).toEqual(unlit);
-
-  const tapped = await separator.evaluateHandle((resizer) => ({
-    done: new Promise((resolve) => {
-      resizer.addEventListener("click", () => resolve(), { once: true });
-    }),
-  }));
-  await page.touchscreen.tap(x + 24, y);
-  await tapped.evaluate((state) => state.done);
-  await afterFrames();
-  expect(await highlight()).toEqual(unlit);
+  await expect.poll(highlight).toEqual(unlit);
 });
 
 test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
