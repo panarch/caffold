@@ -21,7 +21,6 @@ pub(crate) struct WorktreeCheckout {
     pub common_dir: PathBuf,
     pub branch_name: String,
     pub head_sha: String,
-    pub dirty: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -342,7 +341,7 @@ pub(crate) fn recover_worktree_transfer(
 
     let checkout = if target.exists() {
         let checkout = inspect_attached_worktree(target, common_dir, Some(branch_name))?;
-        if checkout.dirty {
+        if attached_worktree_is_dirty(target)? {
             return Err(WorktreeError::Dirty(target.display().to_string()));
         }
         if checkout.head_sha != expected_head_sha {
@@ -531,20 +530,22 @@ pub(crate) fn inspect_attached_worktree(
         });
     }
     let head_sha = run_git_text(target, "HEAD inspection", ["rev-parse", "HEAD"])?;
-    let dirty = !run_git_text(
-        target,
-        "status inspection",
-        ["status", "--porcelain=v1", "--untracked-files=normal"],
-    )?
-    .is_empty();
 
     Ok(WorktreeCheckout {
         path: target.canonicalize()?,
         common_dir: metadata.common_dir,
         branch_name,
         head_sha,
-        dirty,
     })
+}
+
+pub(crate) fn attached_worktree_is_dirty(target: &Path) -> Result<bool, WorktreeError> {
+    Ok(!run_git_text(
+        target,
+        "status inspection",
+        ["status", "--porcelain=v1", "--untracked-files=normal"],
+    )?
+    .is_empty())
 }
 
 pub(crate) fn remove_attached_worktree(
@@ -553,7 +554,7 @@ pub(crate) fn remove_attached_worktree(
     expected_branch: &str,
 ) -> Result<WorktreeCheckout, WorktreeError> {
     let checkout = inspect_attached_worktree(target, expected_common_dir, Some(expected_branch))?;
-    if checkout.dirty {
+    if attached_worktree_is_dirty(target)? {
         return Err(WorktreeError::Dirty(target.display().to_string()));
     }
     run_git_dir(
@@ -1102,7 +1103,7 @@ mod tests {
         assert_eq!(created.common_dir, repository.common_dir);
         assert_eq!(created.branch_name, "caffold/test");
         assert_eq!(created.head_sha, repository.head_sha);
-        assert!(!created.dirty);
+        assert!(!attached_worktree_is_dirty(&target).unwrap());
 
         let removed = remove_attached_worktree(
             &target,
@@ -1218,6 +1219,22 @@ mod tests {
             Err(WorktreeError::BranchMismatch { .. })
         ));
         assert!(target.exists());
+    }
+
+    #[test]
+    fn refuses_to_call_a_worktree_clean_when_its_status_cannot_be_read() {
+        if !git_is_available() {
+            return;
+        }
+        let temp = tempfile::tempdir().unwrap();
+
+        assert!(matches!(
+            attached_worktree_is_dirty(&temp.path().join("missing")),
+            Err(WorktreeError::Command {
+                operation: "status inspection",
+                ..
+            })
+        ));
     }
 
     #[cfg(unix)]

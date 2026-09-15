@@ -10,10 +10,10 @@ use uuid::Uuid;
 use crate::{
     fs::{FsError, RootedFs},
     git::{
-        WorktreeCheckout, WorktreeError, WorktreeIsolationMode, delete_local_branch_if_matches,
-        delete_transfer_snapshot, execute_worktree_transfer, inspect_attached_worktree,
-        prepare_worktree_transfer, recover_worktree_transfer, remove_attached_worktree,
-        restore_attached_worktree,
+        WorktreeCheckout, WorktreeError, WorktreeIsolationMode, attached_worktree_is_dirty,
+        delete_local_branch_if_matches, delete_transfer_snapshot, execute_worktree_transfer,
+        inspect_attached_worktree, prepare_worktree_transfer, recover_worktree_transfer,
+        remove_attached_worktree, restore_attached_worktree,
     },
     task_store::{
         CheckoutAnchor, ManagedWorktree, ManagedWorktreeState, TaskStore, TaskStoreError,
@@ -290,7 +290,7 @@ impl ManagedWorktrees {
         let path = self.owned_path(&record)?;
         let common_dir = PathBuf::from(&record.repository_git_dir);
         let checkout = inspect_attached_worktree(&path, &common_dir, None)?;
-        if checkout.dirty {
+        if attached_worktree_is_dirty(&path)? {
             return Err(WorktreeError::Dirty(path.display().to_string()).into());
         }
         let anchor = CheckoutAnchor {
@@ -332,9 +332,8 @@ impl ManagedWorktrees {
         };
         require_state(&record, ManagedWorktreeState::Ready)?;
         let path = self.owned_path(&record)?;
-        let checkout =
-            inspect_attached_worktree(&path, Path::new(&record.repository_git_dir), None)?;
-        if checkout.dirty {
+        inspect_attached_worktree(&path, Path::new(&record.repository_git_dir), None)?;
+        if attached_worktree_is_dirty(&path)? {
             return Err(WorktreeError::Dirty(path.display().to_string()).into());
         }
         Ok(())

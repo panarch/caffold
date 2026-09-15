@@ -1642,7 +1642,7 @@ impl RootedFs {
         Ok(DirectoryGitInfo {
             root_path: relative_path_string(root_path),
             branch: repository.branch.clone(),
-            dirty: repository.dirty,
+            dirty: git::is_dirty(repository),
         })
     }
 
