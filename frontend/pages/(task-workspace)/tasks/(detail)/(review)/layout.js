@@ -22,7 +22,7 @@ import {
   isPdfPath,
   isPreviewableImagePath,
 } from "../../../../../components/dom.js";
-import "../../../../../components/review-panel-resizer.js";
+import "../../../../../components/pane-resizer.js";
 import {
   subscribeToWatch,
   watchChangeAffectsPath,
@@ -41,8 +41,6 @@ import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
 } from "../../../../../scroll-scope.js";
-
-const REVIEW_PANEL_DEFAULT_WIDTH = 320;
 
 class CaffoldTaskReview extends HTMLElement {
   connectedCallback() {
@@ -81,7 +79,6 @@ class CaffoldTaskReview extends HTMLElement {
     this.watchUnsubscribe = null;
     this.watchPath = "";
     this.pendingWatchViewerRefresh = false;
-    this.panelWidth = REVIEW_PANEL_DEFAULT_WIDTH;
     this.navigatorScroll = new Map();
     this.viewerScroll = new Map();
     this.pendingRepresentationLine = new Map();
@@ -112,11 +109,12 @@ class CaffoldTaskReview extends HTMLElement {
               <caffold-file-navigator></caffold-file-navigator>
             </div>
           </aside>
-          <caffold-review-panel-resizer
-            panel-min="220"
-            viewer-min="360"
+          <caffold-pane-resizer
+            start-min="220"
+            end-min="360"
+            storage-key="caffold:pane-width:task-review"
             aria-label="Resize review navigator"
-          ></caffold-review-panel-resizer>
+          ></caffold-pane-resizer>
           <section class="task-review-viewer-pane" aria-label="Review file">
             <div class="task-review-viewer-empty-header" aria-hidden="true"></div>
             <div class="task-review-pane-axis task-review-viewer-axis">
@@ -134,7 +132,6 @@ class CaffoldTaskReview extends HTMLElement {
     this.fileNavigator()?.setRefreshVisible(false);
     this.viewer()?.setCloseLabel("Back to navigator");
     this.viewer()?.setCloseMode("back");
-    this.resizer()?.setValue(this.panelWidth);
     this.applyPanelWidth();
 
     this.addEventListener("click", (event) => this.handleClick(event));
@@ -172,10 +169,9 @@ class CaffoldTaskReview extends HTMLElement {
         void this.loadViewer({ background: true });
       }
     });
-    this.addEventListener("caffold:review-panel-resize", (event) => {
+    this.addEventListener("caffold:pane-resize", (event) => {
       event.stopPropagation();
       if (Number.isFinite(event.detail?.value)) {
-        this.panelWidth = event.detail.value;
         this.applyPanelWidth();
       }
     });
@@ -1141,7 +1137,7 @@ class CaffoldTaskReview extends HTMLElement {
   applyPanelWidth() {
     this.querySelector(".task-review-layout")?.style.setProperty(
       "--task-review-panel-width",
-      `${this.panelWidth}px`,
+      `${this.resizer().value}px`,
     );
   }
 
@@ -1184,7 +1180,7 @@ class CaffoldTaskReview extends HTMLElement {
   }
 
   resizer() {
-    return this.querySelector("caffold-review-panel-resizer");
+    return this.querySelector("caffold-pane-resizer");
   }
 
   axisControl(axis) {

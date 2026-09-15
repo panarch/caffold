@@ -82,10 +82,11 @@ One integrated review workspace must have one selected-path owner. Reusing
 change-tree, file-tree, source, and diff presentation components is preferred.
 The active review surface owns their selection, watcher, and request lifetime.
 
-The route owns reloadable semantic review state. Panel width, tree disclosure,
-and navigator/viewer scroll belong to the component instance. A cached inactive
-review may retain those DOM-local values, but it must release filesystem
-watches, pending requests, and other active lifecycle work.
+The route owns reloadable semantic review state. Tree disclosure and
+navigator/viewer scroll belong to the component instance, while panel width
+belongs to the shared pane resizer, which remembers it for each kind of pane.
+A cached inactive review may retain those DOM-local values, but it must release
+filesystem watches, pending requests, and other active lifecycle work.
 
 Responsive review tests must cover both list and viewer roles. Desktop and
 foldable layouts preserve a usable navigator and viewer simultaneously; phone

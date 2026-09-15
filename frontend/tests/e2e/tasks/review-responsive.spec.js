@@ -328,17 +328,195 @@ test("clamps the navigator so the shared viewer keeps its minimum width", { tag:
   await expect.poll(async () =>
     Number(await separator.getAttribute("aria-valuenow"))
   ).toBeGreaterThan(before);
-  await taskReview.evaluate((review) => {
-    review.resizer().setValue(10_000);
-    review.panelWidth = review.resizer().currentValue;
-    review.applyPanelWidth();
-  });
+  await separator.press("End");
   const widths = await taskReview.evaluate((review) => ({
     navigator: review.querySelector(".task-review-navigator-pane").getBoundingClientRect().width,
     viewer: review.querySelector(".task-review-viewer-pane").getBoundingClientRect().width,
   }));
   expect(widths.navigator).toBeGreaterThanOrEqual(220);
   expect(widths.viewer).toBeGreaterThanOrEqual(360);
+});
+
+test("remembers the review navigator width across reloads", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const separator = taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  });
+  await expect(separator).toHaveAttribute("aria-valuenow", "320");
+  await separator.focus();
+  await separator.press("ArrowRight");
+  await separator.press("ArrowRight");
+  await expect(separator).toHaveAttribute("aria-valuenow", "368");
+
+  await page.reload();
+  await expect(separator).toHaveAttribute("aria-valuenow", "368");
+  await expect
+    .poll(() =>
+      taskReview.evaluate((review) =>
+        Math.round(
+          review.querySelector(".task-review-navigator-pane").getBoundingClientRect().width,
+        ),
+      ),
+    )
+    .toBe(368);
+});
+
+test("draws the shared separator as the pane line with a centered handle and a 3px highlight", { tag: "@desktop" }, async ({
+  page,
+}, testInfo) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const separator = taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  });
+  await expect(separator).toBeVisible();
+
+  const split = await taskReview.evaluate((review) => {
+    const layout = review.querySelector(".task-review-layout").getBoundingClientRect();
+    const navigator = review.querySelector(".task-review-navigator-pane").getBoundingClientRect();
+    const viewer = review.querySelector(".task-review-viewer-pane").getBoundingClientRect();
+    const resizer = review.querySelector("caffold-pane-resizer");
+    const bounds = resizer.getBoundingClientRect();
+    const center = bounds.left + bounds.width / 2;
+    const middle = bounds.top + bounds.height / 2;
+    const handle = resizer.querySelector(":scope > .pane-resizer-handle");
+    const handleBounds = handle.getBoundingClientRect();
+    const probe = document.body.appendChild(document.createElement("i"));
+    probe.style.color = "var(--border-strong)";
+    const idleHandleExpected = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      layoutWidth: layout.width,
+      panesWidth: navigator.width + viewer.width,
+      navigatorEnd: navigator.right,
+      separatorCenter: center,
+      separatorMiddle: middle,
+      hitsSeparator: resizer.contains(document.elementFromPoint(center, middle)),
+      idleHighlight: getComputedStyle(resizer, "::after").backgroundColor,
+      handleCenterX: handleBounds.left + handleBounds.width / 2,
+      handleCenterY: handleBounds.top + handleBounds.height / 2,
+      handleWidth: handleBounds.width,
+      handleHeight: handleBounds.height,
+      rootFontSize: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+      idleHandle: getComputedStyle(handle).backgroundColor,
+      idleHandleExpected,
+    };
+  });
+  expect(split.panesWidth).toBeCloseTo(split.layoutWidth, 0);
+  expect(split.separatorCenter).toBeCloseTo(split.navigatorEnd, 0);
+  expect(split.hitsSeparator).toBe(true);
+  expect(split.idleHighlight).toBe("rgba(0, 0, 0, 0)");
+  expect(split.handleWidth).toBe(5);
+  expect(split.handleHeight).toBeCloseTo(split.rootFontSize * 1.5, 1);
+  expect(split.handleCenterX).toBeCloseTo(split.navigatorEnd - 0.5, 1);
+  expect(split.handleCenterY).toBeCloseTo(split.separatorMiddle, 0);
+  expect(split.idleHandle).toBe(split.idleHandleExpected);
+
+  await separator.hover();
+  const highlight = await separator.evaluate((resizer) => {
+    const probe = document.body.appendChild(document.createElement("i"));
+    probe.style.color = "var(--resizer-hover-bg)";
+    const expected = getComputedStyle(probe).color;
+    probe.remove();
+    const line = getComputedStyle(resizer, "::after");
+    const handle = getComputedStyle(resizer.querySelector(":scope > .pane-resizer-handle"));
+    return {
+      width: line.width,
+      color: line.backgroundColor,
+      handleColor: handle.backgroundColor,
+      expected,
+    };
+  });
+  expect(highlight.width).toBe("3px");
+  expect(highlight.color).toBe(highlight.expected);
+  expect(highlight.handleColor).toBe(highlight.expected);
+  await captureReviewScreenshot(page, testInfo, "tasks-review-separator-highlight");
+});
+
+test("gives the shared separator handle the Interface touch target", { tag: ["@desktop", "@foldable"] }, async ({
+  page,
+}, testInfo) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await expect(taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  })).toBeVisible();
+
+  const touch = await taskReview.evaluate((review) => {
+    const resizer = review.querySelector(".task-review-layout > caffold-pane-resizer");
+    const handle = resizer.querySelector(":scope > .pane-resizer-handle").getBoundingClientRect();
+    const centerX = handle.left + handle.width / 2;
+    const centerY = handle.top + handle.height / 2;
+    const hits = (dx, dy) =>
+      resizer.contains(document.elementFromPoint(centerX + dx, centerY + dy));
+    return {
+      targetFloor: Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--interface-target-floor"),
+      ) || 0,
+      withinTouchFloor: [hits(-18, 0), hits(18, 0), hits(-18, -18), hits(18, 18)],
+      beyondTouchFloor: [hits(-18, -22), hits(18, 22)],
+    };
+  });
+  expect(touch.targetFloor).toBe(testInfo.project.name === "desktop" ? 0 : 40);
+  expect(touch.withinTouchFloor).toEqual(Array(4).fill(touch.targetFloor === 40));
+  expect(touch.beyondTouchFloor).toEqual([false, false]);
+  await captureReviewScreenshot(page, testInfo, "tasks-review-separator-handle");
+});
+
+test("keeps the shared separator unlit on touch unless a drag holds it", { tag: "@foldable" }, async ({
+  page,
+  context,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const separator = taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  });
+  await expect(separator).toBeVisible();
+  expect(await page.evaluate(() => matchMedia("(hover: hover)").matches)).toBe(false);
+
+  const colors = await separator.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement("i"));
+    probe.style.color = "var(--resizer-hover-bg)";
+    const active = getComputedStyle(probe).color;
+    probe.style.color = "var(--border-strong)";
+    const idle = getComputedStyle(probe).color;
+    probe.remove();
+    return { active, idle };
+  });
+  const lit = { line: colors.active, handle: colors.active };
+  const unlit = { line: "rgba(0, 0, 0, 0)", handle: colors.idle };
+  const highlight = () =>
+    separator.evaluate((resizer) => ({
+      line: getComputedStyle(resizer, "::after").backgroundColor,
+      handle: getComputedStyle(
+        resizer.querySelector(":scope > .pane-resizer-handle"),
+      ).backgroundColor,
+    }));
+
+  const handle = await separator.locator(":scope > .pane-resizer-handle").boundingBox();
+  const x = handle.x + handle.width / 2;
+  const y = handle.y + handle.height / 2;
+
+  // A touch screen keeps :hover on whatever a tap landed on; the mouse sets that
+  // state directly instead of depending on how a browser synthesizes a tap.
+  await page.mouse.move(x, y);
+  await expect
+    .poll(() => separator.evaluate((resizer) => resizer.matches(":hover")))
+    .toBe(true);
+  expect(await highlight()).toEqual(unlit);
+
+  const devtools = await context.newCDPSession(page);
+  const touch = (type, touchPoints) =>
+    devtools.send("Input.dispatchTouchEvent", { type, touchPoints });
+  await touch("touchStart", [{ x, y }]);
+  await touch("touchMove", [{ x: x + 24, y }]);
+  await expect.poll(highlight).toEqual(lit);
+  await touch("touchEnd", []);
+  await expect.poll(highlight).toEqual(unlit);
 });
 
 test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports" }, async ({ page }, testInfo) => {

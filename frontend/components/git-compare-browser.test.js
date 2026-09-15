@@ -75,14 +75,14 @@ test("composes only active Compare tree/viewer leaves", () => {
   assert.deepEqual(browser.scrollSurfaceScope.call(owner, actionOptions).surfaces, [viewerSurface]);
 });
 
-test("composes its visible panel separator without owning resize keys", () => {
-  let canResize = true;
-  let focused = 0;
+test("composes the shared panel resizer through its public scope", () => {
+  let options = null;
+  let hasLayoutBox = true;
   const panelResizer = {
-    getAttribute: () => "Resize review side panel",
-    getClientRects: () => canResize ? [{}] : [],
-    focus() {
-      focused += 1;
+    getClientRects: () => hasLayoutBox ? [{}] : [],
+    actionHintScope(input) {
+      options = input;
+      return { targets: [{ id: "separator" }] };
     },
   };
   const owner = {
@@ -92,20 +92,24 @@ test("composes its visible panel separator without owning resize keys", () => {
     panelResizer,
     compareTree: { actionHintScope: () => ({ targets: [] }) },
     viewer: { actionHintScope: () => ({ targets: [] }) },
-    canResizePanel: () => canResize,
     ensureRendered() {},
   };
-  const options = {
+  const actionOptions = {
     scopeId: "git:compare",
     separatorActionId: "control.separator.focus",
   };
 
-  const scope = browser.actionHintScope.call(owner, options);
-  assert.equal(scope.targets.length, 1);
-  assert.equal(scope.targets[0].id, "git:compare:separator");
-  scope.targets[0].activate();
-  assert.equal(focused, 1);
-  canResize = false;
-  assert.equal(scope.targets[0].isActionable(), false);
-  assert.deepEqual(browser.actionHintScope.call(owner, options).targets, []);
+  assert.deepEqual(browser.actionHintScope.call(owner, actionOptions).targets, [
+    { id: "separator" },
+  ]);
+  assert.equal(options.scopeId, "git:compare");
+  assert.equal(options.actionId, "control.separator.focus");
+  assert.equal(options.clipRoots[0], owner);
+  assert.equal(options.isCurrent(), true);
+  owner.panelResizer = {};
+  assert.equal(options.isCurrent(), false);
+
+  owner.panelResizer = panelResizer;
+  hasLayoutBox = false;
+  assert.deepEqual(browser.actionHintScope.call(owner, actionOptions).targets, []);
 });

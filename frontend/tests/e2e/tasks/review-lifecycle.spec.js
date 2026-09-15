@@ -38,9 +38,6 @@ test("preserves conversation and thread-local Review state while lifecycles deac
   await expect(review).toBeVisible();
   await review.evaluate((element) => {
     element.setAttribute("data-persist-probe", "kept");
-    element.panelWidth = 360;
-    element.resizer().setValue(360);
-    element.applyPanelWidth();
   });
   await expect(conversation).toBeHidden();
   await expect
@@ -70,11 +67,6 @@ test("preserves conversation and thread-local Review state while lifecycles deac
 
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await expect(review).toHaveAttribute("data-persist-probe", "kept");
-  await expect
-    .poll(() =>
-      review.evaluate((element) => Math.round(element.panelWidth)),
-    )
-    .toBe(360);
 });
 
 test("reopens the selected Review scope at its last semantic route", { tag: "@all-viewports" }, async ({

@@ -1,0 +1,54 @@
+caffold-pane-resizer {
+  position: absolute;
+  z-index: 3;
+  inset-block: 0;
+  width: 0.375rem;
+  margin-left: -0.1875rem;
+  cursor: col-resize;
+  touch-action: none;
+
+  &::after {
+    position: absolute;
+    inset-block: 0;
+    left: calc(50% - 2px);
+    width: 3px;
+    content: "";
+  }
+
+  & > .pane-resizer-handle {
+    position: absolute;
+    inset-block: 0;
+    left: calc(50% - 3px);
+    width: 5px;
+    height: 1.5rem;
+    margin-block: auto;
+    border-radius: 999px;
+    background: var(--border-strong);
+  }
+
+  & > .pane-resizer-handle::before {
+    position: absolute;
+    inset: min(0px, calc(50% - var(--interface-target-floor) / 2));
+    content: "";
+  }
+
+  /* Touch keeps :hover after a tap, so only a hover-capable pointer takes the
+     hover highlight. */
+  @media (hover: hover) {
+    &:hover::after,
+    &:hover > .pane-resizer-handle {
+      background: var(--resizer-hover-bg);
+    }
+  }
+
+  &:focus-visible::after,
+  &[data-resizing]::after,
+  &:focus-visible > .pane-resizer-handle,
+  &[data-resizing] > .pane-resizer-handle {
+    background: var(--resizer-hover-bg);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}

@@ -264,21 +264,10 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
     );
   }
 
-  for (const path of [
-    "components/git-compare-browser.css",
-    "components/review-panel-resizer.css",
-    "pages/(task-workspace)/tasks/(detail)/(review)/layout.css",
-  ]) {
-    assert.match(
-      readFrontend(path),
-      /background: var\(--resizer-hover-bg\)/,
-      `${path} must use the neutral resizer interaction role`,
-    );
-  }
   assert.match(
-    readFrontend("pages/(task-workspace)/layout.css"),
-    /border-right-color: var\(--resizer-hover-bg\)/,
-    "The Tasks resize hit area must highlight its owning panel border",
+    readFrontend("components/pane-resizer.css"),
+    /background: var\(--resizer-hover-bg\)/,
+    "The shared pane resizer must use the neutral resizer interaction role",
   );
 
   const diffViewer = readFrontend("components/diff-viewer.css");
@@ -348,23 +337,12 @@ test("structural shadows separate fixed regions from floating elevation", () => 
     /background: var\(--structural-shadow-inline-end\)/,
     /pointer-events: none/,
   ]);
-  cssBlockMatching(taskWorkspace, ".task-workspace-master-resizer", [
-    /position: absolute/,
-    /var\(--task-workspace-master-width, 380px\)/,
-    /0\.1875rem/,
-    /z-index: 3/,
-    /width: 0\.375rem/,
-  ]);
-  assert.doesNotMatch(
-    cssBlock(taskWorkspace, ".task-workspace-master-resizer"),
-    /border-/,
-  );
-  assert.doesNotMatch(taskWorkspace, /\.task-workspace-master-resizer::after/);
   cssBlockMatching(
     taskWorkspace,
-    ":has(.task-workspace-master-resizer:hover) .task-workspace-master-pane",
-    [/border-right-color: var\(--resizer-hover-bg\)/],
+    ".task-workspace-master-detail > caffold-pane-resizer",
+    [/left: var\(--task-workspace-master-width, 380px\)/],
   );
+  assert.doesNotMatch(taskWorkspace, /border-right-color/);
 
   const composer = readFrontend("pages/(task-workspace)/tasks/components/composer.css");
   cssBlockMatching(composer, ".task-composer-panel", [

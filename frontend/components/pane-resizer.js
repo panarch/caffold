@@ -4,15 +4,16 @@ import {
   separatorActionHintTarget,
 } from "../action-hint-scope.js";
 
-export const REVIEW_PANEL_DEFAULT_WIDTH = 320;
-const PANEL_MIN_WIDTH = 180;
-const VIEWER_MIN_WIDTH = 320;
-const PANEL_MAX_RATIO = 0.7;
+const START_DEFAULT_WIDTH = 320;
+const START_MIN_WIDTH = 180;
+const END_MIN_WIDTH = 320;
+const START_MAX_RATIO = 0.7;
 
-export class CaffoldReviewPanelResizer extends HTMLElement {
+export class CaffoldPaneResizer extends HTMLElement {
   constructor() {
     super();
-    this.currentValue = REVIEW_PANEL_DEFAULT_WIDTH;
+    this.currentValue = START_DEFAULT_WIDTH;
+    this.preferredValue = null;
     this.resizePointerId = null;
     this.boundPointerDown = (event) => this.startResize(event);
     this.boundPointerMove = (event) => this.moveResize(event);
@@ -27,10 +28,16 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     this.setAttribute("role", "separator");
     this.setAttribute("aria-orientation", "vertical");
     if (!this.hasAttribute("aria-label")) {
-      this.setAttribute("aria-label", "Resize side panel");
+      this.setAttribute("aria-label", "Resize pane");
     }
     if (!this.hasAttribute("tabindex")) {
       this.tabIndex = 0;
+    }
+    if (!this.handle) {
+      this.handle = document.createElement("span");
+      this.handle.className = "pane-resizer-handle";
+      this.handle.setAttribute("aria-hidden", "true");
+      this.append(this.handle);
     }
 
     this.addEventListener("pointerdown", this.boundPointerDown);
@@ -43,7 +50,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     if (this.parentElement) {
       this.resizeObserver.observe(this.parentElement);
     }
-    this.syncRange();
+    this.restorePreferredValue();
   }
 
   disconnectedCallback() {
@@ -80,8 +87,9 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
         invalidationOwner: this,
         id: `${scopeId}:separator`,
         actionId,
-        label: this.getAttribute("aria-label") || "Resize side panel",
+        label: this.getAttribute("aria-label") || "Resize pane",
         control: this,
+        anchor: this.handle,
         clipRoots: [this, ...clipRoots].filter(Boolean),
         isActionable: () =>
           this.isConnected &&
@@ -96,9 +104,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     };
   }
 
-  setValue(value) {
-    this.currentValue = this.clampValue(value);
-    this.syncRange();
+  get value() {
     return this.currentValue;
   }
 
@@ -135,6 +141,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     if (this.hasPointerCapture(pointerId)) {
       this.releasePointerCapture(pointerId);
     }
+    this.storePreferredValue();
     this.emitResize("end");
   }
 
@@ -149,6 +156,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     if (this.hasPointerCapture(pointerId)) {
       this.releasePointerCapture(pointerId);
     }
+    this.storePreferredValue();
     this.emitResize("end");
   }
 
@@ -173,6 +181,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
 
     event.preventDefault();
     this.updateValue(nextValue);
+    this.storePreferredValue();
   }
 
   updateFromPointer(event) {
@@ -187,6 +196,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
 
   updateValue(value) {
     this.currentValue = this.clampValue(value);
+    this.preferredValue = this.currentValue;
     this.syncRange();
     this.emitResize("update", this.currentValue);
   }
@@ -197,12 +207,31 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
       return;
     }
 
-    const nextValue = this.clampValue(this.currentValue);
-    if (nextValue !== this.currentValue) {
-      this.updateValue(nextValue);
+    this.applyPreferredValue();
+  }
+
+  restorePreferredValue() {
+    this.preferredValue =
+      readStoredWidth(this.getAttribute("storage-key")) ??
+      this.preferredValue ??
+      numericAttribute(this, "start-default", START_DEFAULT_WIDTH);
+    this.applyPreferredValue();
+  }
+
+  applyPreferredValue() {
+    const nextValue = this.clampValue(this.preferredValue);
+    if (nextValue === this.currentValue) {
+      this.syncRange();
       return;
     }
+
+    this.currentValue = nextValue;
     this.syncRange();
+    this.emitResize("update", nextValue);
+  }
+
+  storePreferredValue() {
+    writeStoredWidth(this.getAttribute("storage-key"), this.preferredValue);
   }
 
   syncRange() {
@@ -219,7 +248,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     const numericValue = Number(value);
     const normalizedValue = Number.isFinite(numericValue)
       ? numericValue
-      : REVIEW_PANEL_DEFAULT_WIDTH;
+      : START_DEFAULT_WIDTH;
     const minimumClampedValue = Math.max(
       Math.round(normalizedValue),
       this.minimumValue(),
@@ -232,21 +261,22 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
   maxValue() {
     const width = this.parentElement?.getBoundingClientRect().width ?? 0;
     if (!width) {
-      return REVIEW_PANEL_DEFAULT_WIDTH;
+      return START_DEFAULT_WIDTH;
     }
 
-    const ratioMax = Math.round(width * PANEL_MAX_RATIO);
+    const ratioMax = Math.round(width * START_MAX_RATIO);
     const minimum = this.minimumValue();
-    const viewerMax = Math.max(minimum, width - this.viewerMinimumValue());
-    return Math.max(minimum, Math.min(ratioMax, viewerMax));
+    const startMax = numericAttribute(this, "start-max", Number.POSITIVE_INFINITY);
+    const endMinimumLimit = Math.max(minimum, width - this.endMinimumValue());
+    return Math.max(minimum, Math.min(startMax, ratioMax, endMinimumLimit));
   }
 
   minimumValue() {
-    return numericAttribute(this, "panel-min", PANEL_MIN_WIDTH);
+    return numericAttribute(this, "start-min", START_MIN_WIDTH);
   }
 
-  viewerMinimumValue() {
-    return numericAttribute(this, "viewer-min", VIEWER_MIN_WIDTH);
+  endMinimumValue() {
+    return numericAttribute(this, "end-min", END_MIN_WIDTH);
   }
 
   canResize() {
@@ -256,7 +286,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
   emitResize(phase, value = null) {
     const detail = value === null ? { phase } : { phase, value };
     this.dispatchEvent(
-      new CustomEvent("caffold:review-panel-resize", {
+      new CustomEvent("caffold:pane-resize", {
         bubbles: true,
         composed: true,
         detail,
@@ -265,9 +295,35 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
   }
 }
 
-customElements.define("caffold-review-panel-resizer", CaffoldReviewPanelResizer);
+customElements.define("caffold-pane-resizer", CaffoldPaneResizer);
 
 function numericAttribute(element, name, fallback) {
-  const value = Number(element.getAttribute(name));
-  return Number.isFinite(value) && value > 0 ? Math.round(value) : fallback;
+  return positiveWidth(element.getAttribute(name)) ?? fallback;
+}
+
+function readStoredWidth(key) {
+  if (!key) {
+    return null;
+  }
+  try {
+    return positiveWidth(window.localStorage.getItem(key));
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredWidth(key, width) {
+  if (!key || !Number.isFinite(width)) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(key, `${width}`);
+  } catch {
+    // localStorage can be unavailable in private or restricted contexts.
+  }
+}
+
+function positiveWidth(value) {
+  const width = Number(value);
+  return Number.isFinite(width) && width > 0 ? Math.round(width) : null;
 }

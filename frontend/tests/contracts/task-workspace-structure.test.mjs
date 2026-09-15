@@ -1048,3 +1048,27 @@ test("Codex status and Task recovery keep explicit lifecycle and UI owners", () 
     }
   }
 });
+
+test("split panes remember their widths under one key per kind of pane", () => {
+  const storageKeys = [
+    "pages/(task-workspace)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",
+    "components/git-compare-browser.js",
+    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js",
+  ].map((path) => {
+    const keys = [...readFrontend(path).matchAll(
+      /<caffold-pane-resizer[^>]*\sstorage-key="([^"]+)"/g,
+    )].map((match) => match[1]);
+    assert.equal(keys.length, 1, `${path} mounts one remembered pane resizer`);
+    return keys[0];
+  });
+
+  assert.deepEqual(storageKeys, [
+    "caffold:pane-width:task-workspace",
+    "caffold:pane-width:task-review",
+    "caffold:pane-width:git-compare",
+    "caffold:pane-width:git-log-commit",
+    "caffold:pane-width:github-pull-files",
+  ]);
+});

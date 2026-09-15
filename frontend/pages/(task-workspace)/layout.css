@@ -67,31 +67,19 @@ caffold-task-workspace {
     pointer-events: none;
   }
 
-  & .task-workspace-master-resizer {
-    position: absolute;
-    inset:
-      0 auto 0
-      calc(var(--task-workspace-master-width, 380px) - 0.1875rem);
-    z-index: 3;
-    width: 0.375rem;
+  & .task-workspace-master-detail > caffold-pane-resizer {
+    left: var(--task-workspace-master-width, 380px);
+  }
+
+  &.is-resizing-navigation-pane {
     cursor: col-resize;
-    touch-action: none;
-  }
-
-  &:has(.task-workspace-master-resizer:hover) .task-workspace-master-pane,
-  &:has(.task-workspace-master-resizer:focus-visible) .task-workspace-master-pane,
-  &.is-resizing-navigation-pane .task-workspace-master-pane {
-    border-right-color: var(--resizer-hover-bg);
-  }
-
-  & .task-workspace-master-resizer:focus-visible {
-    outline: none;
+    user-select: none;
   }
 
   &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]
     .task-workspace-master-pane,
   &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]
-    .task-workspace-master-resizer {
+    .task-workspace-master-detail > caffold-pane-resizer {
     display: none;
   }
 
@@ -159,7 +147,7 @@ caffold-task-workspace {
       grid-template-columns: minmax(0, 1fr);
     }
 
-    & .task-workspace-master-resizer {
+    & .task-workspace-master-detail > caffold-pane-resizer {
       display: none;
     }
 

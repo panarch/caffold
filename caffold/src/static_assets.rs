@@ -195,11 +195,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/file-navigator/list.js" => Some(js(include_str!(
             "../../frontend/components/file-navigator/list.js"
         ))),
-        "components/review-panel-resizer.css" => Some(css(include_str!(
-            "../../frontend/components/review-panel-resizer.css"
+        "components/pane-resizer.css" => Some(css(include_str!(
+            "../../frontend/components/pane-resizer.css"
         ))),
-        "components/review-panel-resizer.js" => Some(js(include_str!(
-            "../../frontend/components/review-panel-resizer.js"
+        "components/pane-resizer.js" => Some(js(include_str!(
+            "../../frontend/components/pane-resizer.js"
         ))),
         "components/review-responsive.js" => Some(js(include_str!(
             "../../frontend/components/review-responsive.js"
@@ -1469,29 +1469,17 @@ mod tests {
                 .body
                 .starts_with(b"caffold-git-review-controls")
         );
-        let review_panel_resizer =
-            get("components/review-panel-resizer.js").expect("review panel resizer js");
-        assert_eq!(
-            review_panel_resizer.content_type,
-            "text/javascript; charset=utf-8"
-        );
+        let pane_resizer = get("components/pane-resizer.js").expect("pane resizer js");
+        assert_eq!(pane_resizer.content_type, "text/javascript; charset=utf-8");
         assert!(
-            review_panel_resizer
+            pane_resizer
                 .body
-                .windows(b"caffold-review-panel-resizer".len())
-                .any(|window| window == b"caffold-review-panel-resizer")
+                .windows(b"caffold-pane-resizer".len())
+                .any(|window| window == b"caffold-pane-resizer")
         );
-        let review_panel_resizer_css =
-            get("components/review-panel-resizer.css").expect("review panel resizer css");
-        assert_eq!(
-            review_panel_resizer_css.content_type,
-            "text/css; charset=utf-8"
-        );
-        assert!(
-            review_panel_resizer_css
-                .body
-                .starts_with(b"caffold-review-panel-resizer")
-        );
+        let pane_resizer_css = get("components/pane-resizer.css").expect("pane resizer css");
+        assert_eq!(pane_resizer_css.content_type, "text/css; charset=utf-8");
+        assert!(pane_resizer_css.body.starts_with(b"caffold-pane-resizer"));
 
         let compare_page = get("pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js")
             .expect("compare page js");

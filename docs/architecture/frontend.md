@@ -283,10 +283,10 @@ focus-only fallback when the browser cannot open it. A range target only receive
 focus. The native control and its product owner continue to own option
 selection, value changes, persistence, and subsequent keyboard input.
 
-Keyboard-operable split separators follow the same focus-only handoff. Task
-Workspace owns its navigation separator, Git Compare owns its tree/viewer
-separator, and the reusable Review Panel Resizer publishes a child scope that
-Integrated Review, Git Log Commit, and GitHub Pull Files merge. Actual layout
+Keyboard-operable split separators follow the same focus-only handoff. The
+reusable Pane Resizer publishes a child scope that Task Workspace, Integrated
+Review, Git Compare, Git Log Commit, and GitHub Pull Files merge; its badge is
+anchored to the resize handle at the separator's vertical center. Actual layout
 and resizing capability are required, so single-pane or hidden separators do
 not become targets. Arrow, Shift+Arrow, Home, and End remain component-owned.
 
@@ -890,7 +890,7 @@ review. It owns:
 - Git status, branch refs/compare, file, diff, and source requests;
 - one root watch while active;
 - Changes/Files, Diff, and file-capability-aware Source/Preview reconciliation;
-- pane width, disclosure, selection, and scroll.
+- disclosure, selection, and scroll.
 
 The Integrated Review owner resolves file-open intents to a path and supported
 representation together. Text files support Source, Markdown adds text-only
@@ -1234,7 +1234,7 @@ frontend/
     |-- markdown-preview.js
     |-- pagination.js
     |-- pdf-viewer.js
-    |-- review-panel-resizer.js
+    |-- pane-resizer.js
     `-- segmented-control.js
 ```
 
@@ -1287,6 +1287,18 @@ themselves; code faces are bundled as static Regular and Bold.
 owner. It patches value-keyed buttons from a choices snapshot, owns pressed
 semantics and visual separators, and emits value intent. Task Detail and
 Integrated Review retain route state, choice availability, and host placement.
+
+`caffold-pane-resizer` is the shared split separator and the only owner of the
+start pane width. It keeps the width last chosen by pointer or keyboard apart
+from the applied width: a narrower container clamps the applied width, and a
+wider one returns to the chosen width. Its host sets `start-default`,
+`start-min`, `start-max`, and `end-min` where it needs them, names a
+`storage-key`, applies the published width to its own grid variable, and keeps
+no copy. The resizer restores the chosen width from `localStorage` whenever it
+connects and stores it when a drag or key adjustment ends. Each kind of pane
+has its own `caffold:pane-width:*` key: `task-workspace`, `task-review` (shared
+by every Task and Section), `git-compare`, `git-log-commit`, and
+`github-pull-files`.
 
 Every production JavaScript/CSS asset must be registered consistently in:
 

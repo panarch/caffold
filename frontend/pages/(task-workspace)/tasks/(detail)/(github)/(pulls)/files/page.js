@@ -1,7 +1,7 @@
 import { getGitHubPullFile, getGitHubPullFiles } from "../../../../../../../api.js";
 import { diffViewerPresentation } from "../../../../../../../components/file-viewer-presentation.js";
 import "../../../../../../../components/file-viewer.js";
-import { REVIEW_PANEL_DEFAULT_WIDTH } from "../../../../../../../components/review-panel-resizer.js";
+import "../../../../../../../components/pane-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "../../../../../../../components/review-responsive.js";
 import "./components/tree.js";
 import {
@@ -31,24 +31,24 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     this.rendered = true;
     this.innerHTML = `
       <caffold-github-pull-files-tree></caffold-github-pull-files-tree>
-      <caffold-review-panel-resizer
+      <caffold-pane-resizer
+        storage-key="caffold:pane-width:github-pull-files"
         aria-label="Resize review side panel"
-      ></caffold-review-panel-resizer>
+      ></caffold-pane-resizer>
       <caffold-review-file-viewer></caffold-review-file-viewer>
     `;
     this.tree = this.querySelector("caffold-github-pull-files-tree");
-    this.panelResizer = this.querySelector("caffold-review-panel-resizer");
+    this.panelResizer = this.querySelector("caffold-pane-resizer");
     this.fileViewer = this.querySelector("caffold-review-file-viewer");
     this.fileViewer.setCloseLabel("Back to PR files");
     this.filesRequestId ??= 0;
     this.fileRequestId ??= 0;
     this.viewerPresentation ??= null;
     this.detailView ??= "list";
-    this.panelWidth ??= REVIEW_PANEL_DEFAULT_WIDTH;
-    this.panelResizer.addEventListener("caffold:review-panel-resize", (event) => {
+    this.panelResizer.addEventListener("caffold:pane-resize", (event) => {
       this.handlePanelResize(event);
     });
-    this.applyPanelWidth(this.panelWidth);
+    this.applyPanelWidth();
   }
 
   handlePanelResize(event) {
@@ -62,14 +62,12 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
       return;
     }
     if (event.detail.phase === "update") {
-      this.applyPanelWidth(event.detail.value);
+      this.applyPanelWidth();
     }
   }
 
-  applyPanelWidth(width) {
-    const nextWidth = this.panelResizer.setValue(width);
-    this.panelWidth = nextWidth;
-    this.style.setProperty("--github-pull-files-panel-width", `${nextWidth}px`);
+  applyPanelWidth() {
+    this.style.setProperty("--github-pull-files-panel-width", `${this.panelResizer.value}px`);
   }
 
   reset() {

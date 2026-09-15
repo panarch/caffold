@@ -1,4 +1,5 @@
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
+import "../../components/pane-resizer.js";
 import { routeDomain, routeTarget } from "../../navigation-routes.js";
 import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
@@ -22,7 +23,6 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-  separatorActionHintTarget,
 } from "../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
@@ -52,7 +52,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.boundIconsReady ??= () => this.renderIcons();
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.ensureRendered();
-    this.attachGlobalListeners();
     this.liveUpdates.connect();
     this.codexStatusLifecycle.connect();
     void warmIcons();
@@ -62,8 +61,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.liveUpdates.disconnect();
     this.codexStatusLifecycle.disconnect();
-    this.stopNavigationPaneResize();
-    this.detachGlobalListeners();
   }
 
   ensureRendered() {
@@ -75,8 +72,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.mode = "tasks";
     this.route = { kind: "tasks" };
     this.lastTaskRoute = { kind: "tasks" };
-    this.navigationPaneWidth = NAVIGATION_PANE_DEFAULT_WIDTH;
-    this.globalListenersAttached = false;
     this.currentOpenOptions = {};
     this.codexRestartStateValue = { state: "idle", message: "" };
     this.liveUpdates = new WorkspaceLiveUpdates();
@@ -85,9 +80,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
       onRestartStateChange: (state) => this.setCodexRestartState(state),
     });
     this.codexStatusSnapshotValue = this.codexStatusLifecycle.snapshot();
-    this.boundResize = () => this.syncNavigationPaneWidth();
-    this.boundPointerMove = (event) => this.resizeNavigationPane(event);
-    this.boundPointerUp = () => this.stopNavigationPaneResize();
     this.innerHTML = `
       <button
         type="button"
@@ -114,16 +106,14 @@ class CaffoldTaskWorkspace extends HTMLElement {
             <caffold-settings-navigator hidden></caffold-settings-navigator>
             <caffold-task-workspace-navigation></caffold-task-workspace-navigation>
           </aside>
-          <div
-            class="task-workspace-master-resizer"
-            role="separator"
-            tabindex="0"
+          <caffold-pane-resizer
+            start-default="${NAVIGATION_PANE_DEFAULT_WIDTH}"
+            start-min="${NAVIGATION_PANE_MIN_WIDTH}"
+            start-max="${NAVIGATION_PANE_MAX_WIDTH}"
+            end-min="${WORKSPACE_DETAIL_MIN_WIDTH}"
+            storage-key="caffold:pane-width:task-workspace"
             aria-label="Resize navigation pane"
-            aria-orientation="vertical"
-            aria-valuemin="${NAVIGATION_PANE_MIN_WIDTH}"
-            aria-valuemax="${NAVIGATION_PANE_MAX_WIDTH}"
-            aria-valuenow="${this.navigationPaneWidth}"
-          ></div>
+          ></caffold-pane-resizer>
           <div class="task-workspace-detail-pane">
             <caffold-tasks-page></caffold-tasks-page>
             <caffold-settings-workspace hidden></caffold-settings-workspace>
@@ -142,7 +132,9 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.detailPane = this.querySelector(".task-workspace-detail-pane");
     this.taskNavigator = this.querySelector("caffold-task-navigator");
     this.settingsNavigator = this.querySelector("caffold-settings-navigator");
-    this.masterResizer = this.querySelector(".task-workspace-master-resizer");
+    this.masterResizer = this.querySelector(
+      ":scope > .task-workspace-surface > .task-workspace-master-detail > caffold-pane-resizer",
+    );
     this.tasksPage = this.querySelector("caffold-tasks-page");
     this.settingsWorkspace = this.querySelector("caffold-settings-workspace");
     this.navigation = this.querySelector("caffold-task-workspace-navigation");
@@ -249,13 +241,8 @@ class CaffoldTaskWorkspace extends HTMLElement {
         void this.restartClaudeRuntimeNow();
       },
     );
-    this.masterResizer.addEventListener("pointerdown", (event) => {
-      this.startNavigationPaneResize(event, this.masterResizer);
-    });
-    this.masterResizer.addEventListener("keydown", (event) => {
-      if (this.handleNavigationPaneResizeKeydown(event)) {
-        event.stopPropagation();
-      }
+    this.masterResizer.addEventListener("caffold:pane-resize", (event) => {
+      this.handleNavigationPaneResize(event);
     });
     this.addEventListener("caffold:tasks-presentation-change", (event) => {
       if (event.target !== this.tasksPage) {
@@ -273,22 +260,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     });
     this.applyNavigationPaneWidth();
     this.updateChrome();
-  }
-
-  attachGlobalListeners() {
-    if (this.globalListenersAttached) {
-      return;
-    }
-    this.globalListenersAttached = true;
-    window.addEventListener("resize", this.boundResize);
-  }
-
-  detachGlobalListeners() {
-    if (!this.globalListenersAttached) {
-      return;
-    }
-    this.globalListenersAttached = false;
-    window.removeEventListener("resize", this.boundResize);
   }
 
   renderIcons() {
@@ -513,9 +484,18 @@ class CaffoldTaskWorkspace extends HTMLElement {
               : null,
           )
         : null;
-    const resizerScope = workspaceResizerActionHintScope(this, {
-      clipRoots: [this, this.masterDetail].filter(Boolean),
-    });
+    const resizer = this.masterResizer;
+    const resizerScope = hasActionHintLayoutBox(resizer)
+      ? resizer.actionHintScope?.({
+          scopeId: "workspace:navigation-pane",
+          actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
+          clipRoots: [this, this.masterDetail].filter(Boolean),
+          isCurrent: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.masterResizer === resizer,
+        })
+      : null;
     return mergeActionHintScopes(
       ownScope,
       hasActionHintLayoutBox(this.navigation)
@@ -641,7 +621,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
     this.renderIcons();
     this.navigation.setMode(this.mode);
-    this.syncNavigationPaneWidth();
   }
 
   syncPresentationState() {
@@ -659,150 +638,27 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.settingsWorkspace.dataset.settingsView ?? "list";
   }
 
-  startNavigationPaneResize(event, separator) {
-    if (
-      event.button !== 0 ||
-      !["tasks", "settings"].includes(this.mode) ||
-      !window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches
-    ) {
+  handleNavigationPaneResize(event) {
+    event.stopPropagation();
+    if (event.detail.phase === "start") {
+      this.classList.add("is-resizing-navigation-pane");
       return;
     }
-    event.preventDefault();
-    this.navigationPaneResizeStart = {
-      pointerX: event.clientX,
-      width: this.navigationPaneWidth,
-    };
-    this.classList.add("is-resizing-navigation-pane");
-    separator.setPointerCapture?.(event.pointerId);
-    window.addEventListener("pointermove", this.boundPointerMove);
-    window.addEventListener("pointerup", this.boundPointerUp, { once: true });
-    window.addEventListener("pointercancel", this.boundPointerUp, { once: true });
-  }
-
-  resizeNavigationPane(event) {
-    if (!this.navigationPaneResizeStart) {
+    if (event.detail.phase === "end") {
+      this.classList.remove("is-resizing-navigation-pane");
       return;
     }
-    this.setNavigationPaneWidth(
-      this.navigationPaneResizeStart.width +
-        event.clientX -
-        this.navigationPaneResizeStart.pointerX,
-    );
-  }
-
-  stopNavigationPaneResize() {
-    this.navigationPaneResizeStart = null;
-    this.classList.remove("is-resizing-navigation-pane");
-    window.removeEventListener("pointermove", this.boundPointerMove);
-    window.removeEventListener("pointerup", this.boundPointerUp);
-    window.removeEventListener("pointercancel", this.boundPointerUp);
-  }
-
-  handleNavigationPaneResizeKeydown(event) {
-    if (
-      event.currentTarget !== this.masterResizer ||
-      !["tasks", "settings"].includes(this.mode) ||
-      !window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches
-    ) {
-      return false;
-    }
-    let nextWidth = this.navigationPaneWidth;
-    if (event.key === "ArrowLeft") {
-      nextWidth -= event.shiftKey ? 40 : 16;
-    } else if (event.key === "ArrowRight") {
-      nextWidth += event.shiftKey ? 40 : 16;
-    } else if (event.key === "Home") {
-      nextWidth = NAVIGATION_PANE_MIN_WIDTH;
-    } else if (event.key === "End") {
-      nextWidth = this.navigationPaneMaximumWidth();
-    } else {
-      return false;
-    }
-    event.preventDefault();
-    this.setNavigationPaneWidth(nextWidth);
-    return true;
-  }
-
-  navigationPaneMaximumWidth() {
-    const available =
-      (this.masterDetail?.clientWidth ?? 0) - WORKSPACE_DETAIL_MIN_WIDTH;
-    return Math.max(
-      NAVIGATION_PANE_MIN_WIDTH,
-      Math.min(NAVIGATION_PANE_MAX_WIDTH, available),
-    );
-  }
-
-  setNavigationPaneWidth(width) {
-    this.navigationPaneWidth = Math.max(
-      NAVIGATION_PANE_MIN_WIDTH,
-      Math.min(this.navigationPaneMaximumWidth(), width),
-    );
-    this.applyNavigationPaneWidth();
-  }
-
-  syncNavigationPaneWidth() {
-    const shellWidth = this.masterDetail?.clientWidth ?? 0;
-    if (
-      !window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches ||
-      shellWidth <= 0
-    ) {
+    if (event.detail.phase === "update") {
       this.applyNavigationPaneWidth();
-      return;
     }
-    this.setNavigationPaneWidth(this.navigationPaneWidth);
   }
 
   applyNavigationPaneWidth() {
     this.style.setProperty(
       "--task-workspace-master-width",
-      `${this.navigationPaneWidth}px`,
-    );
-    if (!this.masterResizer) {
-      return;
-    }
-    this.masterResizer.setAttribute(
-      "aria-valuemax",
-      `${this.navigationPaneMaximumWidth()}`,
-    );
-    this.masterResizer.setAttribute(
-      "aria-valuenow",
-      `${Math.round(this.navigationPaneWidth)}`,
+      `${this.masterResizer.value}px`,
     );
   }
-}
-
-function workspaceResizerActionHintScope(owner, { clipRoots }) {
-  const control = owner.masterResizer;
-  if (!workspaceResizerAvailable(owner, control)) {
-    return null;
-  }
-  return {
-    blocked: false,
-    targets: [separatorActionHintTarget({
-      invalidationOwner: owner,
-      id: "workspace:navigation-pane:separator",
-      actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
-      label: control.getAttribute("aria-label") || "Resize navigation pane",
-      control,
-      clipRoots,
-      isActionable: () =>
-        owner.isConnected &&
-        !owner.hidden &&
-        owner.masterResizer === control &&
-        workspaceResizerAvailable(owner, control),
-    })],
-    mutationRoots: [control],
-    scrollRoots: [],
-  };
-}
-
-function workspaceResizerAvailable(owner, control) {
-  return Boolean(
-    control &&
-      ["tasks", "settings"].includes(owner.mode) &&
-      window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches &&
-      hasActionHintLayoutBox(control),
-  );
 }
 
 customElements.define("caffold-task-workspace", CaffoldTaskWorkspace);
