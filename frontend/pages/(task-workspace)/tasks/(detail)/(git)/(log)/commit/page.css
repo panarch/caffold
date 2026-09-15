@@ -1,10 +1,10 @@
 @import "./components/changes-tree.css";
 
 caffold-git-log-commit-page {
+  position: relative;
   display: grid;
   grid-template-columns:
     var(--git-log-commit-panel-width, 320px)
-    6px
     minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
@@ -20,11 +20,11 @@ caffold-git-log-commit-page {
   }
 
   & > caffold-review-panel-resizer {
-    grid-column: 2;
+    left: var(--git-log-commit-panel-width, 320px);
   }
 
   & > caffold-review-file-viewer {
-    grid-column: 3;
+    grid-column: 2;
   }
 }
 

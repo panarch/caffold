@@ -341,6 +341,52 @@ test("clamps the navigator so the shared viewer keeps its minimum width", { tag:
   expect(widths.viewer).toBeGreaterThanOrEqual(360);
 });
 
+test("draws the shared separator as the pane line with a 3px highlight", { tag: "@desktop" }, async ({
+  page,
+}, testInfo) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const separator = taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  });
+  await expect(separator).toBeVisible();
+
+  const split = await taskReview.evaluate((review) => {
+    const layout = review.querySelector(".task-review-layout").getBoundingClientRect();
+    const navigator = review.querySelector(".task-review-navigator-pane").getBoundingClientRect();
+    const viewer = review.querySelector(".task-review-viewer-pane").getBoundingClientRect();
+    const resizer = review.querySelector("caffold-review-panel-resizer");
+    const bounds = resizer.getBoundingClientRect();
+    const center = bounds.left + bounds.width / 2;
+    return {
+      layoutWidth: layout.width,
+      panesWidth: navigator.width + viewer.width,
+      navigatorEnd: navigator.right,
+      separatorCenter: center,
+      hitsSeparator:
+        document.elementFromPoint(center, bounds.top + bounds.height / 2) === resizer,
+      idleHighlight: getComputedStyle(resizer, "::after").backgroundColor,
+    };
+  });
+  expect(split.panesWidth).toBeCloseTo(split.layoutWidth, 0);
+  expect(split.separatorCenter).toBeCloseTo(split.navigatorEnd, 0);
+  expect(split.hitsSeparator).toBe(true);
+  expect(split.idleHighlight).toBe("rgba(0, 0, 0, 0)");
+
+  await separator.hover();
+  const highlight = await separator.evaluate((resizer) => {
+    const probe = document.body.appendChild(document.createElement("i"));
+    probe.style.color = "var(--resizer-hover-bg)";
+    const expected = getComputedStyle(probe).color;
+    probe.remove();
+    const line = getComputedStyle(resizer, "::after");
+    return { width: line.width, color: line.backgroundColor, expected };
+  });
+  expect(highlight.width).toBe("3px");
+  expect(highlight.color).toBe(highlight.expected);
+  await captureReviewScreenshot(page, testInfo, "tasks-review-separator-highlight");
+});
+
 test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();

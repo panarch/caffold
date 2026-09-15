@@ -1,8 +1,8 @@
 caffold-github-pull-files-page {
+  position: relative;
   display: grid;
   grid-template-columns:
     var(--github-pull-files-panel-width, 320px)
-    6px
     minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
@@ -18,11 +18,11 @@ caffold-github-pull-files-page {
   }
 
   & > caffold-review-panel-resizer {
-    grid-column: 2;
+    left: var(--github-pull-files-panel-width, 320px);
   }
 
   & > caffold-review-file-viewer {
-    grid-column: 3;
+    grid-column: 2;
   }
 }
 

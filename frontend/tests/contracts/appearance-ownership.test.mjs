@@ -264,16 +264,11 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
     );
   }
 
-  for (const path of [
-    "components/review-panel-resizer.css",
-    "pages/(task-workspace)/tasks/(detail)/(review)/layout.css",
-  ]) {
-    assert.match(
-      readFrontend(path),
-      /background: var\(--resizer-hover-bg\)/,
-      `${path} must use the neutral resizer interaction role`,
-    );
-  }
+  assert.match(
+    readFrontend("components/review-panel-resizer.css"),
+    /background: var\(--resizer-hover-bg\)/,
+    "The shared panel resizer must use the neutral resizer interaction role",
+  );
   assert.match(
     readFrontend("pages/(task-workspace)/layout.css"),
     /border-right-color: var\(--resizer-hover-bg\)/,

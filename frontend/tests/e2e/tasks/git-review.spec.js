@@ -538,11 +538,18 @@ test("clamps the Compare tree when the window narrows so the viewer keeps its mi
   await expect.poll(async () =>
     Number(await separator.getAttribute("aria-valuenow"))
   ).toBeLessThan(widened);
-  const besideTree = await compareBrowser.evaluate((browser) => Math.round(
-    browser.querySelector(":scope > caffold-review-panel-resizer").getBoundingClientRect().width +
-      browser.querySelector(":scope > caffold-review-file-viewer").getBoundingClientRect().width,
-  ));
-  expect(besideTree).toBeGreaterThanOrEqual(320);
+  const split = await compareBrowser.evaluate((browser) => {
+    const tree = browser.querySelector(":scope > caffold-git-compare-tree").getBoundingClientRect();
+    const resizer = browser.querySelector(":scope > caffold-review-panel-resizer").getBoundingClientRect();
+    const viewer = browser.querySelector(":scope > caffold-review-file-viewer").getBoundingClientRect();
+    return {
+      treeEnd: tree.right,
+      separatorCenter: resizer.left + resizer.width / 2,
+      viewerWidth: viewer.width,
+    };
+  });
+  expect(split.separatorCenter).toBeCloseTo(split.treeEnd, 0);
+  expect(Math.round(split.viewerWidth)).toBeGreaterThanOrEqual(320);
 });
 
 test("refreshes Git and scrolls the exact visible Compare tree and diff from the root", { tag: "@all-viewports" }, async ({

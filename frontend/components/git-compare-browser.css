@@ -1,6 +1,7 @@
 caffold-git-compare-browser {
+  position: relative;
   display: grid;
-  grid-template-columns: var(--git-compare-panel-width, 320px) 6px minmax(0, 1fr);
+  grid-template-columns: var(--git-compare-panel-width, 320px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
@@ -12,7 +13,7 @@ caffold-git-compare-browser {
   }
 
   & > caffold-review-panel-resizer {
-    grid-column: 2;
+    left: var(--git-compare-panel-width, 320px);
   }
 
   & > caffold-git-compare-tree {
@@ -20,7 +21,7 @@ caffold-git-compare-browser {
   }
 
   & > caffold-review-file-viewer {
-    grid-column: 3;
+    grid-column: 2;
   }
 }
 
