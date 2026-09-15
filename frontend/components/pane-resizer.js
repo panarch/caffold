@@ -32,6 +32,12 @@ export class CaffoldPaneResizer extends HTMLElement {
     if (!this.hasAttribute("tabindex")) {
       this.tabIndex = 0;
     }
+    if (!this.handle) {
+      this.handle = document.createElement("span");
+      this.handle.className = "pane-resizer-handle";
+      this.handle.setAttribute("aria-hidden", "true");
+      this.append(this.handle);
+    }
 
     this.addEventListener("pointerdown", this.boundPointerDown);
     this.addEventListener("pointermove", this.boundPointerMove);
@@ -82,6 +88,7 @@ export class CaffoldPaneResizer extends HTMLElement {
         actionId,
         label: this.getAttribute("aria-label") || "Resize pane",
         control: this,
+        anchor: this.handle,
         clipRoots: [this, ...clipRoots].filter(Boolean),
         isActionable: () =>
           this.isConnected &&

@@ -15,9 +15,29 @@ caffold-pane-resizer {
     content: "";
   }
 
+  & > .pane-resizer-handle {
+    position: absolute;
+    inset-block: 0;
+    left: calc(50% - 3px);
+    width: 5px;
+    height: 1.5rem;
+    margin-block: auto;
+    border-radius: 999px;
+    background: var(--border-strong);
+  }
+
+  & > .pane-resizer-handle::before {
+    position: absolute;
+    inset: min(0px, calc(50% - var(--interface-target-floor) / 2));
+    content: "";
+  }
+
   &:hover::after,
   &:focus-visible::after,
-  &[data-resizing]::after {
+  &[data-resizing]::after,
+  &:hover > .pane-resizer-handle,
+  &:focus-visible > .pane-resizer-handle,
+  &[data-resizing] > .pane-resizer-handle {
     background: var(--resizer-hover-bg);
   }
 

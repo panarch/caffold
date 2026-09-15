@@ -18,6 +18,7 @@ test("provides its exact visible keyboard-operable separator", () => {
     hidden: false,
     isConnected: true,
     parentElement: parent,
+    handle: { id: "handle" },
     canResize: () => true,
     getAttribute: () => "Resize review navigator",
     getClientRects: () => [{}],
@@ -37,6 +38,8 @@ test("provides its exact visible keyboard-operable separator", () => {
   );
   assert.equal(scope.targets[0].controlKind, "separator");
   assert.equal(scope.targets[0].label, "Resize review navigator");
+  assert.equal(scope.targets[0].control, owner);
+  assert.equal(scope.targets[0].anchor, owner.handle);
   scope.targets[0].activate();
   assert.deepEqual(calls, [{ preventScroll: true }]);
 

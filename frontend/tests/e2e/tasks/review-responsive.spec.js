@@ -341,7 +341,7 @@ test("clamps the navigator so the shared viewer keeps its minimum width", { tag:
   expect(widths.viewer).toBeGreaterThanOrEqual(360);
 });
 
-test("draws the shared separator as the pane line with a 3px highlight", { tag: "@desktop" }, async ({
+test("draws the shared separator as the pane line with a centered handle and a 3px highlight", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
@@ -358,20 +358,39 @@ test("draws the shared separator as the pane line with a 3px highlight", { tag: 
     const resizer = review.querySelector("caffold-pane-resizer");
     const bounds = resizer.getBoundingClientRect();
     const center = bounds.left + bounds.width / 2;
+    const middle = bounds.top + bounds.height / 2;
+    const handle = resizer.querySelector(":scope > .pane-resizer-handle");
+    const handleBounds = handle.getBoundingClientRect();
+    const probe = document.body.appendChild(document.createElement("i"));
+    probe.style.color = "var(--border-strong)";
+    const idleHandleExpected = getComputedStyle(probe).color;
+    probe.remove();
     return {
       layoutWidth: layout.width,
       panesWidth: navigator.width + viewer.width,
       navigatorEnd: navigator.right,
       separatorCenter: center,
-      hitsSeparator:
-        document.elementFromPoint(center, bounds.top + bounds.height / 2) === resizer,
+      separatorMiddle: middle,
+      hitsSeparator: resizer.contains(document.elementFromPoint(center, middle)),
       idleHighlight: getComputedStyle(resizer, "::after").backgroundColor,
+      handleCenterX: handleBounds.left + handleBounds.width / 2,
+      handleCenterY: handleBounds.top + handleBounds.height / 2,
+      handleWidth: handleBounds.width,
+      handleHeight: handleBounds.height,
+      rootFontSize: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+      idleHandle: getComputedStyle(handle).backgroundColor,
+      idleHandleExpected,
     };
   });
   expect(split.panesWidth).toBeCloseTo(split.layoutWidth, 0);
   expect(split.separatorCenter).toBeCloseTo(split.navigatorEnd, 0);
   expect(split.hitsSeparator).toBe(true);
   expect(split.idleHighlight).toBe("rgba(0, 0, 0, 0)");
+  expect(split.handleWidth).toBe(5);
+  expect(split.handleHeight).toBeCloseTo(split.rootFontSize * 1.5, 1);
+  expect(split.handleCenterX).toBeCloseTo(split.navigatorEnd - 0.5, 1);
+  expect(split.handleCenterY).toBeCloseTo(split.separatorMiddle, 0);
+  expect(split.idleHandle).toBe(split.idleHandleExpected);
 
   await separator.hover();
   const highlight = await separator.evaluate((resizer) => {
@@ -380,11 +399,48 @@ test("draws the shared separator as the pane line with a 3px highlight", { tag: 
     const expected = getComputedStyle(probe).color;
     probe.remove();
     const line = getComputedStyle(resizer, "::after");
-    return { width: line.width, color: line.backgroundColor, expected };
+    const handle = getComputedStyle(resizer.querySelector(":scope > .pane-resizer-handle"));
+    return {
+      width: line.width,
+      color: line.backgroundColor,
+      handleColor: handle.backgroundColor,
+      expected,
+    };
   });
   expect(highlight.width).toBe("3px");
   expect(highlight.color).toBe(highlight.expected);
+  expect(highlight.handleColor).toBe(highlight.expected);
   await captureReviewScreenshot(page, testInfo, "tasks-review-separator-highlight");
+});
+
+test("gives the shared separator handle the Interface touch target", { tag: ["@desktop", "@foldable"] }, async ({
+  page,
+}, testInfo) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await expect(taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  })).toBeVisible();
+
+  const touch = await taskReview.evaluate((review) => {
+    const resizer = review.querySelector(".task-review-layout > caffold-pane-resizer");
+    const handle = resizer.querySelector(":scope > .pane-resizer-handle").getBoundingClientRect();
+    const centerX = handle.left + handle.width / 2;
+    const centerY = handle.top + handle.height / 2;
+    const hits = (dx, dy) =>
+      resizer.contains(document.elementFromPoint(centerX + dx, centerY + dy));
+    return {
+      targetFloor: Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--interface-target-floor"),
+      ) || 0,
+      withinTouchFloor: [hits(-18, 0), hits(18, 0), hits(-18, -18), hits(18, 18)],
+      beyondTouchFloor: [hits(-18, -22), hits(18, 22)],
+    };
+  });
+  expect(touch.targetFloor).toBe(testInfo.project.name === "desktop" ? 0 : 40);
+  expect(touch.withinTouchFloor).toEqual(Array(4).fill(touch.targetFloor === 40));
+  expect(touch.beyondTouchFloor).toEqual([false, false]);
+  await captureReviewScreenshot(page, testInfo, "tasks-review-separator-handle");
 });
 
 test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports" }, async ({ page }, testInfo) => {

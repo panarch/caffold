@@ -265,6 +265,7 @@ export function separatorActionHintTarget({
   label,
   invalidationOwner,
   control,
+  anchor,
   clipRoots,
   isActionable,
 }) {
@@ -275,6 +276,7 @@ export function separatorActionHintTarget({
     invalidationOwner,
     controlKind: "separator",
     control,
+    anchor,
     clipRoots,
     isActionable,
   });

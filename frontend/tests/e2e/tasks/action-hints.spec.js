@@ -1899,10 +1899,13 @@ async function captureActionHintVisualState(page) {
     const workspaceSeparator = workspace?.querySelector(
       ":scope > .task-workspace-surface > .task-workspace-master-detail > caffold-pane-resizer",
     );
-    if (workspaceSeparator && masterDetail) {
+    const workspaceHandle = workspaceSeparator?.querySelector(
+      ":scope > .pane-resizer-handle",
+    );
+    if (workspaceSeparator && workspaceHandle && masterDetail) {
       automaticTargets.set(
         workspaceSeparator.getAttribute("aria-label"),
-        target(workspaceSeparator, [workspace, masterDetail]),
+        target(workspaceHandle, [workspaceSeparator, workspace, masterDetail]),
       );
     }
     let taskIndex = 0;
