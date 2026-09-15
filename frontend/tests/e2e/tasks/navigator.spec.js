@@ -2088,7 +2088,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
   const tasksPage = page.locator("caffold-task-workspace");
   const listPane = tasksPage.locator(".task-workspace-master-pane");
   const detailPane = tasksPage.locator(".tasks-detail-pane");
-  const resizer = tasksPage.locator(".task-workspace-master-resizer");
+  const resizer = tasksPage.locator(".task-workspace-master-detail > caffold-pane-resizer");
   const workspaceNavigation = page.locator(
     "caffold-task-workspace .task-workspace-navigation",
   );
@@ -2328,7 +2328,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
         .getBoundingClientRect();
       const detail = element.querySelector(".tasks-detail-pane").getBoundingClientRect();
       const separator = element
-        .querySelector(".task-workspace-master-resizer")
+        .querySelector(".task-workspace-master-detail > caffold-pane-resizer")
         .getBoundingClientRect();
       return {
         detailOffsetFromList: detail.left - list.right,
@@ -2376,7 +2376,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     await resizer.press("Home");
     await expect(resizer).toHaveAttribute("aria-valuenow", "280");
     await resizer.press("ArrowRight");
-    await expect(resizer).toHaveAttribute("aria-valuenow", "296");
+    await expect(resizer).toHaveAttribute("aria-valuenow", "304");
     const resizedNavigationLayout = await tasksPage.evaluate((element) => {
       const list = element.querySelector(".task-workspace-master-pane");
       const navigation = list.querySelector(
@@ -2395,7 +2395,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     });
     expect(resizedNavigationLayout).toEqual({
       ownedByList: true,
-      listWidth: 296,
+      listWidth: 304,
       navigationMatchesListContent: true,
       navigationEndsWithList: true,
     });
@@ -2503,7 +2503,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     await expect(page).toHaveURL("/tasks/new?cwd=src");
     await expect(listPane).toBeVisible();
     await expect(detailPane.locator(".task-new-form")).toBeVisible();
-    await expect(resizer).toHaveAttribute("aria-valuenow", "296");
+    await expect(resizer).toHaveAttribute("aria-valuenow", "304");
     const newTaskHeaderHeight = await managedHeader.evaluate(
       (element) => element.getBoundingClientRect().height,
     );
@@ -2582,7 +2582,7 @@ test("switches Tasks to master-detail at the Fold8 landscape boundary", { tag: "
   const tasksPage = page.locator("caffold-task-workspace");
   const listPane = tasksPage.locator(".task-workspace-master-pane");
   const detailPane = tasksPage.locator(".tasks-detail-pane");
-  const resizer = tasksPage.locator(".task-workspace-master-resizer");
+  const resizer = tasksPage.locator(".task-workspace-master-detail > caffold-pane-resizer");
   await expect(listPane).toBeHidden();
   await expect(detailPane).toBeVisible();
   await expect(resizer).toBeHidden();

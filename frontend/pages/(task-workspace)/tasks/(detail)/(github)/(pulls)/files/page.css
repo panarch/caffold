@@ -17,7 +17,7 @@ caffold-github-pull-files-page {
     grid-column: 1;
   }
 
-  & > caffold-review-panel-resizer {
+  & > caffold-pane-resizer {
     left: var(--github-pull-files-panel-width, 320px);
   }
 
@@ -47,7 +47,7 @@ caffold-github-pull-files-page {
       display: none;
     }
 
-    & > caffold-review-panel-resizer {
+    & > caffold-pane-resizer {
       display: none;
     }
   }

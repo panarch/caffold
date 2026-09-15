@@ -194,7 +194,7 @@ caffold-task-review {
     margin: 0 0 var(--interface-space-4);
   }
 
-  & .task-review-layout > caffold-review-panel-resizer {
+  & .task-review-layout > caffold-pane-resizer {
     left: var(--task-review-panel-width, 320px);
   }
 
@@ -215,7 +215,7 @@ caffold-task-review {
       grid-template-columns: minmax(0, 1fr);
     }
 
-    & caffold-review-panel-resizer {
+    & caffold-pane-resizer {
       display: none;
     }
 

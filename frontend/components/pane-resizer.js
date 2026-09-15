@@ -4,15 +4,15 @@ import {
   separatorActionHintTarget,
 } from "../action-hint-scope.js";
 
-export const REVIEW_PANEL_DEFAULT_WIDTH = 320;
-const PANEL_MIN_WIDTH = 180;
-const VIEWER_MIN_WIDTH = 320;
-const PANEL_MAX_RATIO = 0.7;
+export const PANE_RESIZER_DEFAULT_WIDTH = 320;
+const START_MIN_WIDTH = 180;
+const END_MIN_WIDTH = 320;
+const START_MAX_RATIO = 0.7;
 
-export class CaffoldReviewPanelResizer extends HTMLElement {
+export class CaffoldPaneResizer extends HTMLElement {
   constructor() {
     super();
-    this.currentValue = REVIEW_PANEL_DEFAULT_WIDTH;
+    this.currentValue = PANE_RESIZER_DEFAULT_WIDTH;
     this.resizePointerId = null;
     this.boundPointerDown = (event) => this.startResize(event);
     this.boundPointerMove = (event) => this.moveResize(event);
@@ -27,7 +27,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     this.setAttribute("role", "separator");
     this.setAttribute("aria-orientation", "vertical");
     if (!this.hasAttribute("aria-label")) {
-      this.setAttribute("aria-label", "Resize side panel");
+      this.setAttribute("aria-label", "Resize pane");
     }
     if (!this.hasAttribute("tabindex")) {
       this.tabIndex = 0;
@@ -80,7 +80,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
         invalidationOwner: this,
         id: `${scopeId}:separator`,
         actionId,
-        label: this.getAttribute("aria-label") || "Resize side panel",
+        label: this.getAttribute("aria-label") || "Resize pane",
         control: this,
         clipRoots: [this, ...clipRoots].filter(Boolean),
         isActionable: () =>
@@ -219,7 +219,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     const numericValue = Number(value);
     const normalizedValue = Number.isFinite(numericValue)
       ? numericValue
-      : REVIEW_PANEL_DEFAULT_WIDTH;
+      : PANE_RESIZER_DEFAULT_WIDTH;
     const minimumClampedValue = Math.max(
       Math.round(normalizedValue),
       this.minimumValue(),
@@ -232,21 +232,22 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
   maxValue() {
     const width = this.parentElement?.getBoundingClientRect().width ?? 0;
     if (!width) {
-      return REVIEW_PANEL_DEFAULT_WIDTH;
+      return PANE_RESIZER_DEFAULT_WIDTH;
     }
 
-    const ratioMax = Math.round(width * PANEL_MAX_RATIO);
+    const ratioMax = Math.round(width * START_MAX_RATIO);
     const minimum = this.minimumValue();
-    const viewerMax = Math.max(minimum, width - this.viewerMinimumValue());
-    return Math.max(minimum, Math.min(ratioMax, viewerMax));
+    const startMax = numericAttribute(this, "start-max", Number.POSITIVE_INFINITY);
+    const endMinimumLimit = Math.max(minimum, width - this.endMinimumValue());
+    return Math.max(minimum, Math.min(startMax, ratioMax, endMinimumLimit));
   }
 
   minimumValue() {
-    return numericAttribute(this, "panel-min", PANEL_MIN_WIDTH);
+    return numericAttribute(this, "start-min", START_MIN_WIDTH);
   }
 
-  viewerMinimumValue() {
-    return numericAttribute(this, "viewer-min", VIEWER_MIN_WIDTH);
+  endMinimumValue() {
+    return numericAttribute(this, "end-min", END_MIN_WIDTH);
   }
 
   canResize() {
@@ -256,7 +257,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
   emitResize(phase, value = null) {
     const detail = value === null ? { phase } : { phase, value };
     this.dispatchEvent(
-      new CustomEvent("caffold:review-panel-resize", {
+      new CustomEvent("caffold:pane-resize", {
         bubbles: true,
         composed: true,
         detail,
@@ -265,7 +266,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
   }
 }
 
-customElements.define("caffold-review-panel-resizer", CaffoldReviewPanelResizer);
+customElements.define("caffold-pane-resizer", CaffoldPaneResizer);
 
 function numericAttribute(element, name, fallback) {
   const value = Number(element.getAttribute(name));

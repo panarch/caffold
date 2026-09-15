@@ -355,7 +355,7 @@ test("draws the shared separator as the pane line with a 3px highlight", { tag: 
     const layout = review.querySelector(".task-review-layout").getBoundingClientRect();
     const navigator = review.querySelector(".task-review-navigator-pane").getBoundingClientRect();
     const viewer = review.querySelector(".task-review-viewer-pane").getBoundingClientRect();
-    const resizer = review.querySelector("caffold-review-panel-resizer");
+    const resizer = review.querySelector("caffold-pane-resizer");
     const bounds = resizer.getBoundingClientRect();
     const center = bounds.left + bounds.width / 2;
     return {

@@ -12,7 +12,7 @@ caffold-git-compare-browser {
     user-select: none;
   }
 
-  & > caffold-review-panel-resizer {
+  & > caffold-pane-resizer {
     left: var(--git-compare-panel-width, 320px);
   }
 
@@ -46,7 +46,7 @@ caffold-git-compare-browser {
       display: none;
     }
 
-    & > caffold-review-panel-resizer {
+    & > caffold-pane-resizer {
       display: none;
     }
   }

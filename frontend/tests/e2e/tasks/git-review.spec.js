@@ -540,7 +540,7 @@ test("clamps the Compare tree when the window narrows so the viewer keeps its mi
   ).toBeLessThan(widened);
   const split = await compareBrowser.evaluate((browser) => {
     const tree = browser.querySelector(":scope > caffold-git-compare-tree").getBoundingClientRect();
-    const resizer = browser.querySelector(":scope > caffold-review-panel-resizer").getBoundingClientRect();
+    const resizer = browser.querySelector(":scope > caffold-pane-resizer").getBoundingClientRect();
     const viewer = browser.querySelector(":scope > caffold-review-file-viewer").getBoundingClientRect();
     return {
       treeEnd: tree.right,

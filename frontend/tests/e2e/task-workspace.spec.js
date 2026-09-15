@@ -268,7 +268,7 @@ test("shares navigation pane resizing across Tasks and Settings", { tag: "@all-v
   const taskWorkspace = page.locator("caffold-task-workspace");
   const navigationPane = taskWorkspace.locator(".task-workspace-master-pane");
   const detailPane = taskWorkspace.locator(".task-workspace-detail-pane");
-  const separator = taskWorkspace.locator(".task-workspace-master-resizer");
+  const separator = taskWorkspace.locator(".task-workspace-master-detail > caffold-pane-resizer");
   const navigation = taskWorkspace.locator(".task-workspace-navigation");
 
   await expect(separator).toHaveCount(1);
@@ -310,7 +310,7 @@ test("shares navigation pane resizing across Tasks and Settings", { tag: "@all-v
   await activateActionHint(page, "Resize navigation pane");
   await expect(separator).toBeFocused();
   await separator.press("ArrowRight");
-  await expect(separator).toHaveAttribute("aria-valuenow", "396");
+  await expect(separator).toHaveAttribute("aria-valuenow", "404");
   await separator.press("ArrowLeft");
   await expect(separator).toHaveAttribute("aria-valuenow", "380");
   await separator.press("Home");
@@ -378,7 +378,7 @@ test("shares navigation pane resizing across Tasks and Settings", { tag: "@all-v
 
   await separator.focus();
   await separator.press("ArrowRight");
-  await expect(separator).toHaveAttribute("aria-valuenow", "392");
+  await expect(separator).toHaveAttribute("aria-valuenow", "400");
   await separator.press("ArrowLeft");
   await expect(separator).toHaveAttribute("aria-valuenow", "376");
   await separator.press("Home");
@@ -389,7 +389,7 @@ test("shares navigation pane resizing across Tasks and Settings", { tag: "@all-v
     `${maximumWidth}`,
   );
   await separator.press("ArrowLeft");
-  const sharedWidth = maximumWidth - 16;
+  const sharedWidth = maximumWidth - 24;
   await expect(separator).toHaveAttribute(
     "aria-valuenow",
     `${sharedWidth}`,
@@ -413,7 +413,7 @@ test("shares navigation pane resizing across Tasks and Settings", { tag: "@all-v
       );
       const detailPane = element.querySelector(".task-workspace-detail-pane");
       const separator = element.querySelector(
-        ".task-workspace-master-resizer",
+        ".task-workspace-master-detail > caffold-pane-resizer",
       );
       const navigationBounds = navigationPane.getBoundingClientRect();
       const separatorBounds = separator.getBoundingClientRect();
@@ -462,7 +462,7 @@ test("clamps the shared navigation pane across the desktop boundary", { tag: "@d
   const taskWorkspace = page.locator("caffold-task-workspace");
   const navigationPane = taskWorkspace.locator(".task-workspace-master-pane");
   const detailPane = taskWorkspace.locator(".task-workspace-detail-pane");
-  const separator = taskWorkspace.locator(".task-workspace-master-resizer");
+  const separator = taskWorkspace.locator(".task-workspace-master-detail > caffold-pane-resizer");
 
   await separator.focus();
   await separator.press("End");
@@ -652,7 +652,7 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
     "caffold-task-workspace .task-workspace-master-pane",
   );
   const separator = page.locator(
-    "caffold-task-workspace .task-workspace-master-resizer",
+    "caffold-task-workspace .task-workspace-master-detail > caffold-pane-resizer",
   );
   const detail = page.locator("caffold-task-detail");
   expect(

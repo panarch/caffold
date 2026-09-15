@@ -6,8 +6,8 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./review-panel-resizer.js");
-const resizer = registry.element("caffold-review-panel-resizer").prototype;
+await import("./pane-resizer.js");
+const resizer = registry.element("caffold-pane-resizer").prototype;
 after(() => registry.restore());
 
 test("provides its exact visible keyboard-operable separator", () => {
@@ -51,4 +51,23 @@ test("provides its exact visible keyboard-operable separator", () => {
     scopeId: "review:thread:navigator",
     actionId: "control.separator.focus",
   }).targets, []);
+});
+
+test("keeps the start pane within its maximum, the end minimum, and 70% of the container", () => {
+  const panel = (container, attributes = {}) =>
+    Object.assign(Object.create(resizer), {
+      parentElement: { getBoundingClientRect: () => ({ width: container }) },
+      getAttribute: (name) => attributes[name] ?? null,
+      getClientRects: () => [{}],
+    });
+  const navigation = {
+    "start-min": "280",
+    "start-max": "520",
+    "end-min": "520",
+  };
+
+  assert.equal(panel(1280, navigation).clampValue(10_000), 520);
+  assert.equal(panel(900, navigation).clampValue(10_000), 380);
+  assert.equal(panel(700, navigation).clampValue(10_000), 280);
+  assert.equal(panel(1280).clampValue(10_000), 896);
 });

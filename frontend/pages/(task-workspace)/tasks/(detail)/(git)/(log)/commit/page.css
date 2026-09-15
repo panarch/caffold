@@ -19,7 +19,7 @@ caffold-git-log-commit-page {
     grid-column: 1;
   }
 
-  & > caffold-review-panel-resizer {
+  & > caffold-pane-resizer {
     left: var(--git-log-commit-panel-width, 320px);
   }
 
@@ -44,7 +44,7 @@ caffold-git-log-commit-page {
       display: none;
     }
 
-    & > caffold-review-panel-resizer {
+    & > caffold-pane-resizer {
       display: none;
     }
   }

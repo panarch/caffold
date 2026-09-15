@@ -2,7 +2,7 @@ import { getGitCompare, getGitCompareDiff, getGitRefs } from "../api.js";
 import { diffViewerPresentation } from "./file-viewer-presentation.js";
 import "./file-viewer.js";
 import "./git-compare-browser/compare-tree.js";
-import { REVIEW_PANEL_DEFAULT_WIDTH } from "./review-panel-resizer.js";
+import { PANE_RESIZER_DEFAULT_WIDTH } from "./pane-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.js";
 import {
   emptyActionHintScope,
@@ -38,22 +38,22 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     this.rendered = true;
     this.innerHTML = `
       <caffold-git-compare-tree></caffold-git-compare-tree>
-      <caffold-review-panel-resizer
+      <caffold-pane-resizer
         aria-label="Resize review side panel"
-      ></caffold-review-panel-resizer>
+      ></caffold-pane-resizer>
       <caffold-review-file-viewer refresh-action="refresh-git-review"></caffold-review-file-viewer>
     `;
     this.compareTree = this.querySelector("caffold-git-compare-tree");
-    this.panelResizer = this.querySelector("caffold-review-panel-resizer");
+    this.panelResizer = this.querySelector("caffold-pane-resizer");
     this.viewer = this.querySelector("caffold-review-file-viewer");
     this.viewer.setCloseLabel("Back to compare");
     this.refsRequestId ??= 0;
     this.compareRequestId ??= 0;
     this.diffRequestId ??= 0;
     this.compareScrollTop ??= 0;
-    this.panelWidth ??= REVIEW_PANEL_DEFAULT_WIDTH;
+    this.panelWidth ??= PANE_RESIZER_DEFAULT_WIDTH;
     this.setView(this.detailView ?? "list");
-    this.panelResizer.addEventListener("caffold:review-panel-resize", (event) => {
+    this.panelResizer.addEventListener("caffold:pane-resize", (event) => {
       this.handlePanelResize(event);
     });
     this.applyPanelWidth(this.panelWidth);

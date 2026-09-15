@@ -22,7 +22,7 @@ import {
   isPdfPath,
   isPreviewableImagePath,
 } from "../../../../../components/dom.js";
-import "../../../../../components/review-panel-resizer.js";
+import "../../../../../components/pane-resizer.js";
 import {
   subscribeToWatch,
   watchChangeAffectsPath,
@@ -112,11 +112,11 @@ class CaffoldTaskReview extends HTMLElement {
               <caffold-file-navigator></caffold-file-navigator>
             </div>
           </aside>
-          <caffold-review-panel-resizer
-            panel-min="220"
-            viewer-min="360"
+          <caffold-pane-resizer
+            start-min="220"
+            end-min="360"
             aria-label="Resize review navigator"
-          ></caffold-review-panel-resizer>
+          ></caffold-pane-resizer>
           <section class="task-review-viewer-pane" aria-label="Review file">
             <div class="task-review-viewer-empty-header" aria-hidden="true"></div>
             <div class="task-review-pane-axis task-review-viewer-axis">
@@ -172,7 +172,7 @@ class CaffoldTaskReview extends HTMLElement {
         void this.loadViewer({ background: true });
       }
     });
-    this.addEventListener("caffold:review-panel-resize", (event) => {
+    this.addEventListener("caffold:pane-resize", (event) => {
       event.stopPropagation();
       if (Number.isFinite(event.detail?.value)) {
         this.panelWidth = event.detail.value;
@@ -1184,7 +1184,7 @@ class CaffoldTaskReview extends HTMLElement {
   }
 
   resizer() {
-    return this.querySelector("caffold-review-panel-resizer");
+    return this.querySelector("caffold-pane-resizer");
   }
 
   axisControl(axis) {

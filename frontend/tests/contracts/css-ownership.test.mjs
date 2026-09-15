@@ -34,8 +34,8 @@ const ownership = new Map([
   ["components/pdf-viewer.css", ["caffold-pdf-viewer"]],
   ["components/pagination.css", ["caffold-pagination"]],
   [
-    "components/review-panel-resizer.css",
-    ["caffold-review-panel-resizer"],
+    "components/pane-resizer.css",
+    ["caffold-pane-resizer"],
   ],
   ["components/segmented-control.css", ["caffold-segmented-control"]],
   ["pages/(task-workspace)/layout.css", ["caffold-task-workspace"]],
@@ -405,6 +405,7 @@ const componentChildren = new Map([
     [
       "caffold-task-navigator",
       "caffold-settings-navigator",
+      "caffold-pane-resizer",
       "caffold-tasks-page",
       "caffold-settings-workspace",
       "caffold-task-archived-delete-dialog",
@@ -508,7 +509,7 @@ const componentChildren = new Map([
       "caffold-file-navigator",
       "caffold-git-diff-changes-tree",
       "caffold-git-compare-tree",
-      "caffold-review-panel-resizer",
+      "caffold-pane-resizer",
       "caffold-review-file-viewer",
       "caffold-segmented-control",
     ],
@@ -517,7 +518,7 @@ const componentChildren = new Map([
     "caffold-git-compare-browser",
     [
       "caffold-git-compare-tree",
-      "caffold-review-panel-resizer",
+      "caffold-pane-resizer",
       "caffold-review-file-viewer",
     ],
   ],
@@ -534,7 +535,7 @@ const componentChildren = new Map([
     "caffold-git-log-commit-page",
     [
       "caffold-commit-changes-tree",
-      "caffold-review-panel-resizer",
+      "caffold-pane-resizer",
       "caffold-review-file-viewer",
     ],
   ],
@@ -573,7 +574,7 @@ const componentChildren = new Map([
     "caffold-github-pull-files-page",
     [
       "caffold-github-pull-files-tree",
-      "caffold-review-panel-resizer",
+      "caffold-pane-resizer",
       "caffold-review-file-viewer",
     ],
   ],

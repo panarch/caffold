@@ -1897,7 +1897,7 @@ async function captureActionHintVisualState(page) {
       ":scope > .task-workspace-surface > .task-workspace-master-detail",
     );
     const workspaceSeparator = workspace?.querySelector(
-      ":scope > .task-workspace-surface > .task-workspace-master-detail > .task-workspace-master-resizer",
+      ":scope > .task-workspace-surface > .task-workspace-master-detail > caffold-pane-resizer",
     );
     if (workspaceSeparator && masterDetail) {
       automaticTargets.set(

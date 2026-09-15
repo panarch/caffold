@@ -283,12 +283,11 @@ focus-only fallback when the browser cannot open it. A range target only receive
 focus. The native control and its product owner continue to own option
 selection, value changes, persistence, and subsequent keyboard input.
 
-Keyboard-operable split separators follow the same focus-only handoff. Task
-Workspace owns its navigation separator, and the reusable Review Panel Resizer
-publishes a child scope that Integrated Review, Git Compare, Git Log Commit, and
-GitHub Pull Files merge. Actual layout and resizing capability are required, so
-single-pane or hidden separators do not become targets. Arrow, Shift+Arrow,
-Home, and End remain component-owned.
+Keyboard-operable split separators follow the same focus-only handoff. The
+reusable Pane Resizer publishes a child scope that Task Workspace, Integrated
+Review, Git Compare, Git Log Commit, and GitHub Pull Files merge. Actual layout
+and resizing capability are required, so single-pane or hidden separators do
+not become targets. Arrow, Shift+Arrow, Home, and End remain component-owned.
 
 Product-owned disclosure uses the same one-shot flow through a distinct
 `disclosure.toggle` action and `disclosure` control kind. The shared File Tree
@@ -1234,7 +1233,7 @@ frontend/
     |-- markdown-preview.js
     |-- pagination.js
     |-- pdf-viewer.js
-    |-- review-panel-resizer.js
+    |-- pane-resizer.js
     `-- segmented-control.js
 ```
 

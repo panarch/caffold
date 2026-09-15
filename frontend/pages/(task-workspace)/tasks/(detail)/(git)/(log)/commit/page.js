@@ -1,7 +1,7 @@
 import { getGitCommit, getGitCommitDiff } from "../../../../../../../api.js";
 import { diffViewerPresentation } from "../../../../../../../components/file-viewer-presentation.js";
 import "../../../../../../../components/file-viewer.js";
-import { REVIEW_PANEL_DEFAULT_WIDTH } from "../../../../../../../components/review-panel-resizer.js";
+import { PANE_RESIZER_DEFAULT_WIDTH } from "../../../../../../../components/pane-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "../../../../../../../components/review-responsive.js";
 import "./components/changes-tree.js";
 import {
@@ -31,13 +31,13 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.rendered = true;
     this.innerHTML = `
       <caffold-commit-changes-tree></caffold-commit-changes-tree>
-      <caffold-review-panel-resizer
+      <caffold-pane-resizer
         aria-label="Resize review side panel"
-      ></caffold-review-panel-resizer>
+      ></caffold-pane-resizer>
       <caffold-review-file-viewer refresh-action="refresh-git-review"></caffold-review-file-viewer>
     `;
     this.commitTree = this.querySelector("caffold-commit-changes-tree");
-    this.panelResizer = this.querySelector("caffold-review-panel-resizer");
+    this.panelResizer = this.querySelector("caffold-pane-resizer");
     this.fileViewer = this.querySelector("caffold-review-file-viewer");
     this.fileViewer.setCloseLabel("Back to commit");
     this.commitRequestId ??= 0;
@@ -45,8 +45,8 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.viewerPresentation ??= null;
     this.detailView ??= "list";
     this.scrollPositions ??= {};
-    this.panelWidth ??= REVIEW_PANEL_DEFAULT_WIDTH;
-    this.panelResizer.addEventListener("caffold:review-panel-resize", (event) => {
+    this.panelWidth ??= PANE_RESIZER_DEFAULT_WIDTH;
+    this.panelResizer.addEventListener("caffold:pane-resize", (event) => {
       this.handlePanelResize(event);
     });
     this.applyPanelWidth(this.panelWidth);
