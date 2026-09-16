@@ -734,6 +734,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js"
             )))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js" => {
             Some(js(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js"
@@ -1833,6 +1843,10 @@ mod tests {
                 b"caffold-task-command-dialog".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js",
+                b"caffold-task-markdown-preview-dialog".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.js",
                 b"caffold-task-approval".as_slice(),
             ),
@@ -2006,6 +2020,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
                 b"caffold-task-command-dialog".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css",
+                b"caffold-task-markdown-preview-dialog".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css",

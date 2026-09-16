@@ -26,6 +26,7 @@ import {
 import "../../components/composer.js";
 import "./components/conversation.js";
 import "./components/command-dialog.js";
+import "./components/markdown-preview-dialog.js";
 import "./components/current-plan.js";
 import { TaskDetailSession } from "./session.js";
 import { ConversationProjection, projectionRevision } from "./layout/conversation.js";
@@ -165,6 +166,13 @@ class CaffoldTaskDetail extends HTMLElement {
       } else if (event.detail?.type === "command-output") {
         this.commandDialog()?.openCommand(event.detail.command);
       }
+    });
+    this.addEventListener("caffold:task-markdown-preview-intent", (event) => {
+      if (!this.conversationComponent()?.contains(event.target)) {
+        return;
+      }
+      event.stopPropagation();
+      this.markdownPreviewDialog()?.openMarkdown(event.detail);
     });
     this.addEventListener("caffold:task-composer-submit", (event) => {
       const composer = closestElement(event.target, "caffold-task-composer");
@@ -358,6 +366,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.deactivateFollowUpComposer();
     }
     this.commandDialog()?.dismiss();
+    this.markdownPreviewDialog()?.dismiss();
     this.currentPlanComponent()?.deactivate();
     this.hidden = true;
   }
@@ -492,6 +501,7 @@ class CaffoldTaskDetail extends HTMLElement {
         : [],
       this.currentPlanComponent()?.keyboardNavigationContexts() ?? [],
       this.commandDialog()?.keyboardNavigationContexts?.() ?? [],
+      this.markdownPreviewDialog()?.keyboardNavigationContexts?.() ?? [],
     );
   }
 
@@ -1315,6 +1325,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.ensureTaskShell();
     this.renderTaskContentRegion();
     this.commandDialog()?.setThreadId(this.selectedThreadId);
+    this.markdownPreviewDialog()?.setThreadId(this.selectedThreadId);
     this.syncCurrentPlan();
     this.syncFollowUpComposer();
     this.conversationComponent()?.setActive(
@@ -1356,6 +1367,12 @@ class CaffoldTaskDetail extends HTMLElement {
   commandDialog() {
     return this.querySelector(
       ".task-conversation-pane caffold-task-command-dialog",
+    );
+  }
+
+  markdownPreviewDialog() {
+    return this.querySelector(
+      ".task-conversation-pane caffold-task-markdown-preview-dialog",
     );
   }
 
@@ -1665,6 +1682,12 @@ class CaffoldTaskDetail extends HTMLElement {
             ),
           ],
           [
+            "markdown-preview-dialog",
+            currentConversation.querySelector(
+              ":scope > caffold-task-markdown-preview-dialog",
+            ),
+          ],
+          [
             "composer-dock",
             currentConversation.querySelector(
               ":scope > .task-follow-up-composer-dock",
@@ -1676,9 +1699,11 @@ class CaffoldTaskDetail extends HTMLElement {
             ? "conversation"
             : child.matches("caffold-task-command-dialog")
               ? "command-dialog"
-              : child.matches(".task-follow-up-composer-dock")
-                ? "composer-dock"
-                : "";
+              : child.matches("caffold-task-markdown-preview-dialog")
+                ? "markdown-preview-dialog"
+                : child.matches(".task-follow-up-composer-dock")
+                  ? "composer-dock"
+                  : "";
         [...currentConversation.children].forEach((child) => {
           if (![...stableChildren.values()].includes(child)) {
             child.remove();
@@ -1812,6 +1837,7 @@ class CaffoldTaskDetail extends HTMLElement {
         <section class="task-conversation-pane" aria-label="Task conversation">
           <caffold-task-conversation></caffold-task-conversation>
           <caffold-task-command-dialog></caffold-task-command-dialog>
+          <caffold-task-markdown-preview-dialog></caffold-task-markdown-preview-dialog>
           <div class="task-follow-up-composer-dock">
             <caffold-task-current-plan></caffold-task-current-plan>
             <div class="task-follow-up-composer-slot"></div>

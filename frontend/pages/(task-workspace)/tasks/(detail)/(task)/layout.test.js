@@ -78,10 +78,11 @@ test("merges Conversation, follow-up composer, and Current Plan direct-owner sco
   });
 });
 
-test("merges composer popovers, Current Plan, and Command modal independently", () => {
+test("merges composer popovers, Current Plan, Command, and Markdown preview modals independently", () => {
   const composerContext = { id: "composer-popover" };
   const planContext = { id: "current-plan" };
   const commandContext = { id: "command-output" };
+  const markdownPreviewContext = { id: "markdown-preview" };
   const slot = {};
   const composer = {
     parentElement: slot,
@@ -104,13 +105,21 @@ test("merges composer popovers, Current Plan, and Command modal independently", 
     commandDialog: () => ({
       keyboardNavigationContexts: () => [commandContext],
     }),
+    markdownPreviewDialog: () => ({
+      keyboardNavigationContexts: () => [markdownPreviewContext],
+    }),
   };
 
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
-    [composerContext, planContext, commandContext],
+    [composerContext, planContext, commandContext, markdownPreviewContext],
   );
   owner.currentPlanComponent = () => null;
+  assert.deepEqual(
+    taskDetail.keyboardNavigationContexts.call(owner),
+    [composerContext, commandContext, markdownPreviewContext],
+  );
+  owner.markdownPreviewDialog = () => null;
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
     [composerContext, commandContext],

@@ -27,10 +27,11 @@ function button(action, label) {
   };
 }
 
-test("provides retained Wrap and Copy code buttons", () => {
+test("provides retained Preview, Wrap, and Copy code buttons", () => {
+  const preview = button("preview", "Preview Markdown");
   const wrap = button("wrap", "Wrap code lines");
   const copy = button("copy", "Copy code");
-  const controls = new Map([["wrap", wrap], ["copy", copy]]);
+  const controls = new Map([["preview", preview], ["wrap", wrap], ["copy", copy]]);
   const owner = {
     connected: true,
     hidden: false,
@@ -47,15 +48,93 @@ test("provides retained Wrap and Copy code buttons", () => {
     scopeId: "message:a:code-block:1",
   });
   assert.deepEqual(scope.targets.map(({ id }) => id), [
+    "message:a:code-block:1:preview",
     "message:a:code-block:1:wrap",
     "message:a:code-block:1:copy",
   ]);
   scope.targets.forEach((target) => target.activate());
-  assert.deepEqual([wrap.clicks, copy.clicks], [1, 1]);
+  assert.deepEqual([preview.clicks, wrap.clicks, copy.clicks], [1, 1, 1]);
   copy.attributes.set("aria-disabled", "true");
-  assert.equal(scope.targets[1].isActionable(), false);
+  assert.equal(scope.targets[2].isActionable(), false);
   owner.connected = false;
   assert.equal(scope.targets[0].isActionable(), false);
+
+  controls.delete("preview");
+  owner.connected = true;
+  assert.deepEqual(
+    codeBlock.actionHintScope.call(owner, {
+      scopeId: "message:a:code-block:2",
+    }).targets.map(({ id }) => id),
+    ["message:a:code-block:2:wrap"],
+  );
+});
+
+test("offers Preview only for a Markdown fence and never as a toggle", () => {
+  for (const [label, offered] of [
+    ["markdown", true],
+    ["Markdown", true],
+    ["md", true],
+    ["mdx", false],
+    ["rust", false],
+    ["Plain text", false],
+  ]) {
+    const inserted = [];
+    const owner = {
+      label,
+      previewButton: () => null,
+      querySelector: () => ({
+        insertAdjacentHTML: (position, html) => inserted.push({ position, html }),
+      }),
+    };
+    codeBlock.syncPreviewButton.call(owner);
+    assert.equal(inserted.length, offered ? 1 : 0, label);
+    if (offered) {
+      assert.equal(inserted[0].position, "afterbegin");
+      assert.match(inserted[0].html, /data-code-action="preview"/);
+      assert.match(inserted[0].html, /aria-label="Preview Markdown"/);
+      assert.doesNotMatch(inserted[0].html, /aria-pressed/);
+    }
+  }
+
+  const retained = {
+    removed: false,
+    remove() {
+      this.removed = true;
+    },
+  };
+  const owner = {
+    label: "markdown",
+    previewButton: () => retained,
+    querySelector: () => assert.fail("a retained Preview is not inserted again"),
+  };
+  codeBlock.syncPreviewButton.call(owner);
+  assert.equal(retained.removed, false);
+  owner.label = "text";
+  codeBlock.syncPreviewButton.call(owner);
+  assert.equal(retained.removed, true);
+});
+
+test("requests a preview of the block text from its Preview button", () => {
+  const events = [];
+  const opener = {};
+  const owner = {
+    code: () => ({ textContent: "## Notes\n\n- first\n" }),
+    previewButton: () => opener,
+    dispatchEvent: (event) => events.push(event),
+  };
+
+  codeBlock.requestPreview.call(owner);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "caffold:task-markdown-preview-intent");
+  assert.equal(events[0].bubbles, true);
+  assert.deepEqual(events[0].detail, {
+    markdown: "## Notes\n\n- first\n",
+    opener,
+  });
+
+  owner.previewButton = () => null;
+  codeBlock.requestPreview.call(owner);
+  assert.equal(events.length, 1);
 });
 
 test("provides only its exact retained horizontal code scrollport", () => {

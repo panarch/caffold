@@ -128,6 +128,10 @@ const ownership = new Map([
     ["caffold-task-command-dialog"],
   ],
   [
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css",
+    ["caffold-task-markdown-preview-dialog"],
+  ],
+  [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css",
     ["caffold-task-current-plan"],
   ],
@@ -474,12 +478,17 @@ const componentChildren = new Map([
     [
       "caffold-task-conversation",
       "caffold-task-command-dialog",
+      "caffold-task-markdown-preview-dialog",
       "caffold-task-current-plan",
       "caffold-task-composer",
       "caffold-task-review",
       "caffold-task-git-layout",
       "caffold-task-github-layout",
     ],
+  ],
+  [
+    "caffold-task-markdown-preview-dialog",
+    ["caffold-markdown-preview"],
   ],
   [
     "caffold-task-current-plan",

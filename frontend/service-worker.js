@@ -224,6 +224,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css",

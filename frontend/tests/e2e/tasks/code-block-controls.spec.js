@@ -26,6 +26,13 @@ const SECOND_CODE = [
   "",
 ].join("\n");
 
+const MARKDOWN_SOURCE = [
+  "## Release notes",
+  "",
+  "- Preview renders this list",
+  "",
+].join("\n");
+
 const RAW_LABEL = "custom-fence-label-without-highlighting";
 
 test.beforeEach(async ({ context, page }) => {
@@ -39,24 +46,31 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   const scenario = await seedCodeBlockTask(
     page,
     "thread_code_layout_" + testInfo.project.name,
+    { markdownBlock: true },
   );
   const tasksPage = page.locator("caffold-tasks-page");
   const userMessage = tasksPage.locator('.task-message[data-message-role="user"]');
   const finalMarkdown = tasksPage.locator(
     'caffold-task-assistant-message[data-message-phase="final"] caffold-task-markdown',
   );
+  const blocks = finalMarkdown.locator("caffold-task-markdown-code-block");
 
   await expect(finalMarkdown).toHaveAttribute("code-block-controls", "");
   await expect(userMessage.locator("caffold-task-markdown-code-block")).toHaveCount(0);
   await expect(userMessage.locator(".task-message-text")).toContainText("```sh");
-  await expect(finalMarkdown.locator("caffold-task-markdown-code-block")).toHaveCount(2);
+  await expect(blocks).toHaveCount(3);
   await expect(finalMarkdown.locator(".code-block-label")).toHaveText([
     "rust",
     "Plain text",
+    "markdown",
   ]);
-  await expect(finalMarkdown.getByRole("button", { name: "Wrap code lines" })).toHaveCount(2);
-  await expect(finalMarkdown.getByRole("button", { name: "Copy code" })).toHaveCount(2);
-  await expect(finalMarkdown.locator(".code-block-action-icon-svg")).toHaveCount(4);
+  await expect(finalMarkdown.getByRole("button", { name: "Wrap code lines" })).toHaveCount(3);
+  await expect(finalMarkdown.getByRole("button", { name: "Copy code" })).toHaveCount(3);
+  const previewButton = finalMarkdown.getByRole("button", { name: "Preview Markdown" });
+  await expect(previewButton).toHaveCount(1);
+  await expect(blocks.nth(2).getByRole("button", { name: "Preview Markdown" })).toHaveCount(1);
+  await expect(previewButton).not.toHaveAttribute("aria-pressed", /.*/);
+  await expect(finalMarkdown.locator(".code-block-action-icon-svg")).toHaveCount(7);
   await expect(finalMarkdown.locator("code").filter({ hasText: "inline-only" })).toHaveCount(1);
   await expect(finalMarkdown.getByRole("button", { name: "Injected control" })).toHaveCount(0);
   await expect(
@@ -78,80 +92,37 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   });
 
   const expectedTarget = testInfo.project.name === "desktop" ? 30 : 40;
-  const geometry = await finalMarkdown.locator("caffold-task-markdown-code-block").first().evaluate(
-    (wrapper) => {
-      const header = wrapper.querySelector(":scope > .code-block-header");
-      const label = header.querySelector(":scope > .code-block-label");
-      const buttons = [
-        ...header.querySelectorAll(".code-block-actions > button"),
-      ];
-      const wrapperBox = wrapper.getBoundingClientRect();
-      const headerBox = header.getBoundingClientRect();
-      const labelBox = label.getBoundingClientRect();
-      const buttonBoxes = buttons.map((button) => button.getBoundingClientRect());
-      return {
-        buttonSizes: buttonBoxes.map((box) => ({
-          height: Math.round(box.height),
-          width: Math.round(box.width),
-        })),
-        contained:
-          headerBox.left >= wrapperBox.left - 0.5 &&
-          headerBox.right <= wrapperBox.right + 0.5 &&
-          buttonBoxes.every(
-            (box) =>
-              box.left >= headerBox.left - 0.5 &&
-              box.right <= headerBox.right + 0.5,
-          ),
-        gap: Math.round(buttonBoxes[1].left - buttonBoxes[0].right),
-        labelDoesNotOverlap: labelBox.right <= buttonBoxes[0].left + 0.5,
-        scrollContained: wrapper.scrollWidth <= wrapper.clientWidth,
-      };
-    },
-  );
-  expect(geometry.buttonSizes).toEqual([
-    { height: expectedTarget, width: expectedTarget },
-    { height: expectedTarget, width: expectedTarget },
-  ]);
-  expect(geometry.contained).toBe(true);
-  expect(geometry.gap).toBeGreaterThanOrEqual(6);
-  expect(geometry.labelDoesNotOverlap).toBe(true);
-  expect(geometry.scrollContained).toBe(true);
+  const plainToolbar = await toolbarGeometry(blocks.first());
+  const markdownToolbar = await toolbarGeometry(blocks.nth(2));
+  expect(plainToolbar.actions).toEqual(["wrap", "copy"]);
+  expect(markdownToolbar.actions).toEqual(["preview", "wrap", "copy"]);
+  for (const toolbar of [plainToolbar, markdownToolbar]) {
+    expect(toolbar.buttonSizes).toEqual(
+      toolbar.actions.map(() => ({ height: expectedTarget, width: expectedTarget })),
+    );
+    expect(toolbar.contained).toBe(true);
+    expect(Math.min(...toolbar.gaps)).toBeGreaterThanOrEqual(6);
+    expect(toolbar.labelDoesNotOverlap).toBe(true);
+    expect(toolbar.scrollContained).toBe(true);
+  }
+  // Preview joins at the start of the group, so Wrap and Copy keep the same
+  // places on every block.
+  expect(markdownToolbar.endOffsets.slice(1)).toEqual(plainToolbar.endOffsets);
 
   await page.evaluate(async () => {
     const { setAppearanceRangeSetting } = await import("/assets/settings.js");
     setAppearanceRangeSetting("interfaceScalePercent", 120);
     setAppearanceRangeSetting("codeTextPx", 20);
   });
-  const expandedGeometry = await finalMarkdown.locator("caffold-task-markdown-code-block").first().evaluate(
-    (wrapper) => {
-      const header = wrapper.querySelector(":scope > .code-block-header");
-      const label = header.querySelector(":scope > .code-block-label");
-      const buttons = [
-        ...header.querySelectorAll(".code-block-actions > button"),
-      ];
-      const headerBox = header.getBoundingClientRect();
-      const labelBox = label.getBoundingClientRect();
-      const buttonBoxes = buttons.map((button) => button.getBoundingClientRect());
-      return {
-        contained: buttonBoxes.every(
-          (box) =>
-            box.left >= headerBox.left - 0.5 &&
-            box.right <= headerBox.right + 0.5,
-        ),
-        labelDoesNotOverlap: labelBox.right <= buttonBoxes[0].left + 0.5,
-        minimumTarget: Math.min(
-          ...buttonBoxes.flatMap((box) => [box.width, box.height]),
-        ),
-        scrollContained: wrapper.scrollWidth <= wrapper.clientWidth,
-      };
-    },
-  );
-  expect(expandedGeometry.contained).toBe(true);
-  expect(expandedGeometry.labelDoesNotOverlap).toBe(true);
-  expect(expandedGeometry.minimumTarget).toBeGreaterThanOrEqual(expectedTarget);
-  expect(expandedGeometry.scrollContained).toBe(true);
+  for (const block of [blocks.first(), blocks.nth(2)]) {
+    const expandedToolbar = await toolbarGeometry(block);
+    expect(expandedToolbar.contained).toBe(true);
+    expect(expandedToolbar.labelDoesNotOverlap).toBe(true);
+    expect(expandedToolbar.minimumTarget).toBeGreaterThanOrEqual(expectedTarget);
+    expect(expandedToolbar.scrollContained).toBe(true);
+  }
 
-  const firstBlock = finalMarkdown.locator("caffold-task-markdown-code-block").first();
+  const firstBlock = blocks.first();
   const firstPre = firstBlock.locator("pre");
   await firstPre.evaluate((pre) => {
     pre.scrollLeft = 80;
@@ -183,7 +154,7 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   await scroller.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
-  const lastBlock = finalMarkdown.locator("caffold-task-markdown-code-block").last();
+  const lastBlock = blocks.last();
   await lastBlock.getByRole("button", { name: "Wrap code lines" }).click();
   await expect
     .poll(() =>
@@ -449,8 +420,59 @@ test("keeps opt-in code blocks current across rerenders", { tag: "@desktop" }, a
   await expect(probe.locator(".code-block-label")).toHaveText("text");
   await expect(probe.locator("caffold-task-markdown-code-block")).toHaveCount(1);
   await expect.poll(() => page.evaluate(() => window.__standaloneCopyCalls)).toBe(1);
+
+  const previewButton = probe.getByRole("button", { name: "Preview Markdown" });
+  await expect(previewButton).toHaveCount(0);
+  await probe.evaluate((markdown) => {
+    markdown.setMarkdown("```md\n# fresh\n```");
+  });
+  await expect(probe.locator(".code-block-label")).toHaveText("md");
+  await expect(previewButton).toHaveCount(1);
+  await probe.evaluate((markdown) => {
+    markdown.setMarkdown("```text\ncurrent\n```");
+  });
+  await expect(probe.locator(".code-block-label")).toHaveText("text");
+  await expect(previewButton).toHaveCount(0);
   expect(scenario.pageErrors).toEqual([]);
 });
+
+async function toolbarGeometry(block) {
+  return block.evaluate((wrapper) => {
+    const header = wrapper.querySelector(":scope > .code-block-header");
+    const label = header.querySelector(":scope > .code-block-label");
+    const buttons = [
+      ...header.querySelectorAll(".code-block-actions > button"),
+    ];
+    const wrapperBox = wrapper.getBoundingClientRect();
+    const headerBox = header.getBoundingClientRect();
+    const labelBox = label.getBoundingClientRect();
+    const buttonBoxes = buttons.map((button) => button.getBoundingClientRect());
+    return {
+      actions: buttons.map((button) => button.dataset.codeAction),
+      buttonSizes: buttonBoxes.map((box) => ({
+        height: Math.round(box.height),
+        width: Math.round(box.width),
+      })),
+      contained:
+        headerBox.left >= wrapperBox.left - 0.5 &&
+        headerBox.right <= wrapperBox.right + 0.5 &&
+        buttonBoxes.every(
+          (box) =>
+            box.left >= headerBox.left - 0.5 &&
+            box.right <= headerBox.right + 0.5,
+        ),
+      endOffsets: buttonBoxes.map((box) => Math.round(headerBox.right - box.right)),
+      gaps: buttonBoxes.slice(1).map((box, index) =>
+        Math.round(box.left - buttonBoxes[index].right)
+      ),
+      labelDoesNotOverlap: labelBox.right <= buttonBoxes[0].left + 0.5,
+      minimumTarget: Math.min(
+        ...buttonBoxes.flatMap((box) => [box.width, box.height]),
+      ),
+      scrollContained: wrapper.scrollWidth <= wrapper.clientWidth,
+    };
+  });
+}
 
 async function scrollIntoConversationView(target) {
   await target.evaluate((element) => {
@@ -477,7 +499,11 @@ async function scrollIntoConversationView(target) {
   });
 }
 
-async function seedCodeBlockTask(page, threadId, { activeThinking = false } = {}) {
+async function seedCodeBlockTask(
+  page,
+  threadId,
+  { activeThinking = false, markdownBlock = false } = {},
+) {
   const scenario = await installTaskLoopFixture(page, {
     threadId,
     completedAssistantResponse: [
@@ -493,6 +519,9 @@ async function seedCodeBlockTask(page, threadId, { activeThinking = false } = {}
       ...SECOND_CODE.slice(0, -1).split("\n"),
       "```",
       "",
+      ...(markdownBlock
+        ? ["```markdown", ...MARKDOWN_SOURCE.slice(0, -1).split("\n"), "```", ""]
+        : []),
       '<button aria-label="Injected control">Untrusted control</button>',
       '<caffold-task-markdown-code-block data-code-wrap="on">',
       '<button aria-label="Injected component control">Untrusted component</button>',
@@ -527,7 +556,7 @@ async function seedCodeBlockTask(page, threadId, { activeThinking = false } = {}
         ...event,
         payload: {
           ...event.payload,
-          text: "Interim output\n\n```text\ninterim-only\n```",
+          text: "Interim output\n\n```markdown\ninterim-only\n```",
         },
       };
     }
@@ -550,7 +579,7 @@ async function seedCodeBlockTask(page, threadId, { activeThinking = false } = {}
         "Reasoning summary",
         {
           turnId: "turn_2",
-          summary: ["Thinking details\n\n```text\nthinking-only\n```"],
+          summary: ["Thinking details\n\n```markdown\nthinking-only\n```"],
         },
         21,
       ),
@@ -561,7 +590,7 @@ async function seedCodeBlockTask(page, threadId, { activeThinking = false } = {}
         {
           turnId: "turn_2",
           phase: "progress",
-          text: "Interim output\n\n```text\ninterim-only\n```",
+          text: "Interim output\n\n```markdown\ninterim-only\n```",
         },
         22,
       ),

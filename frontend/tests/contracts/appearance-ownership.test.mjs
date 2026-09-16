@@ -798,6 +798,11 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-control-hit-size",
     ],
     [
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css",
+      ".task-markdown-preview-close",
+      "--interface-control-hit-size",
+    ],
+    [
       "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
       ".task-image-preview-close",
       "--interface-control-hit-size",
@@ -1000,6 +1005,11 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     [
       "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
       ".task-command-dialog-close::before",
+      "--interface-control-hit-outset",
+    ],
+    [
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css",
+      ".task-markdown-preview-close::before",
       "--interface-control-hit-outset",
     ],
     [

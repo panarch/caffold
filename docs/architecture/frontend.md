@@ -332,12 +332,12 @@ root as mutation dependencies.
 Custom children retain their own action knowledge. Work Details merges its own
 summary with its direct retained children. Command declares active disclosure
 or terminal View output from the same provider, Assistant Message Copy declares
-its one button, Markdown Code Block declares Wrap and Copy, and Conversation
-merges those public scopes through its retained Assistant Message, Markdown,
-and Work Details children. Reusable controls such as the segmented control,
-file tree, pagination, file navigator, and file viewer expose public scope
-providers; their screen owner supplies the semantic action and scope context.
-Ancestors never discover these actions by scanning descendant buttons,
+its one button, Markdown Code Block declares Wrap, Copy, and Preview, and
+Conversation merges those public scopes through its retained Assistant Message,
+Markdown, and Work Details children. Reusable controls such as the segmented
+control, file tree, pagination, file navigator, and file viewer expose public
+scope providers; their screen owner supplies the semantic action and scope
+context. Ancestors never discover these actions by scanning descendant buttons,
 `summary` elements, or `aria-expanded`.
 
 Parent layouts merge these renderer-owned link scopes through the same public
@@ -364,14 +364,15 @@ do not enumerate or reach through descendant DOM. A retained pane with no
 layout box is omitted before merge, so its hidden mutation and scroll
 dependencies cannot invalidate the visible pane's session.
 
-The nine registered Task Workspace product dialogs follow the same owner-first
+The ten registered Task Workspace product dialogs follow the same owner-first
 contract: Codex restart, Claude restart, archived-task deletion, image preview,
-directory picker, Conversation fork, command output, Current Plan document,
-and GitHub Task Start. Every currently visible and enabled button has an owner
-declaration, without semantic deduplication, and controls owned by a direct
-child compose through the same public scope interface. Fork additionally
-declares its Thread-ID textbox, while the Task Start issue child declares its
-native Base branch select. Textbox activation only focuses the retained input.
+directory picker, Conversation fork, command output, code-block Markdown
+preview, Current Plan document, and GitHub Task Start. Every currently visible
+and enabled button has an owner declaration, without semantic deduplication,
+and controls owned by a direct child compose through the same public scope
+interface. Fork additionally declares its Thread-ID textbox, while the Task
+Start issue child declares its native Base branch select. Textbox activation
+only focuses the retained input.
 The general select activation contract applies to that Base branch control;
 native options and change handling remain with the browser and product state
 owners. These registrations do not create a generic dialog registry or DOM
@@ -499,12 +500,13 @@ retained Assistant Message,
 Thinking, active Command, expanded Work Details, tool-output, and approval
 command scopes. Collapsed disclosures publish no inner surface.
 
-Five registered product dialogs publish their exact parent surface: directory
+Six registered product dialogs publish their exact parent surface: directory
 picker `.file-tree-scroll`, Conversation fork body, command-output body,
-Current Plan Markdown preview, and Task Start body. Command Output additionally
-publishes its output `pre`; Current Plan delegates the shared preview's code
-and table scopes; and Pull Task Start merges its base/head relationship
-`dl`. A modal may therefore select among parent and nested surfaces. Each
+code-block Markdown preview, Current Plan Markdown preview, and Task Start
+body. Command Output additionally publishes its output `pre`; the code-block
+and Current Plan Markdown previews delegate the shared preview's code and table
+scopes; and Pull Task Start merges its base/head relationship `dl`. A modal may
+therefore select among parent and nested surfaces. Each
 registered popover continues to publish only its own root as an optional
 surface. Composer textareas, control strips, native editable internals,
 document/window scrolling, and other undeclared overflow remain with their
@@ -628,10 +630,10 @@ gated. A Task switch, deactivation, or successful Archive clears that fallback
 identity.
 
 `caffold-task-detail` is the canonical owner of the selected Task
-snapshot and live event application, Conversation, Command dialog, current-plan
-strip, follow-up Composer, and Task mutations. It publishes a subject snapshot
-upward; it does not mount Integrated Review, Git, GitHub, or their Summary
-controls.
+snapshot and live event application, Conversation, Command dialog, code-block
+Markdown preview dialog, current-plan strip, follow-up Composer, and Task
+mutations. It publishes a subject snapshot upward; it does not mount Integrated
+Review, Git, GitHub, or their Summary controls.
 
 For keyboard navigation, each of these layout owners merges only the public
 scope of the child it currently presents. `caffold-tasks-page` composes Task
@@ -792,8 +794,11 @@ Thinking disclosure controls. Detail retry uses Conversation's coarse owner;
 each attachment preview and Thinking disclosure uses the exact retained timeline
 entry that contains it. A custom child owns its own controls: Approval owns its
 offered decisions, Command owns its active disclosure or terminal View output,
-Work Details owns its root disclosure, and Markdown Code Block owns Wrap and
-Copy. Assistant Message mounts its Copy control as a component of its own and
+Work Details owns its root disclosure, and Markdown Code Block owns Wrap,
+Copy, and Preview. Preview appears only on a `markdown` or `md` fence and asks
+Task Detail to open its code-block Markdown preview dialog with the block's text
+at that moment, rendered through the shared Markdown Preview.
+Assistant Message mounts its Copy control as a component of its own and
 hands it only the text to place on the clipboard. That component owns the
 button, the outcome it reports, and the timer that clears it. It copies the
 message snapshot's text rather than the rendered Markdown, and text arriving
