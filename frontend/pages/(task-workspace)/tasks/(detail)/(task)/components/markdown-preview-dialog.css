@@ -1,0 +1,107 @@
+caffold-task-markdown-preview-dialog {
+  position: absolute;
+
+  & > dialog {
+    width: min(56rem, calc(100vw - 2rem));
+    max-width: none;
+    height: min(48rem, calc(100dvh - 2rem));
+    max-height: none;
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 24%);
+  }
+
+  & > dialog::backdrop {
+    background: rgb(var(--scrim-rgb) / 32%);
+  }
+
+  & .task-markdown-preview-card {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    width: 100%;
+    height: 100%;
+  }
+
+  & .task-markdown-preview-header {
+    display: flex;
+    align-items: center;
+    gap: var(--interface-space-8);
+    min-width: 0;
+    padding: var(--interface-space-8) var(--interface-space-10);
+    border-bottom: 1px solid var(--border);
+  }
+
+  & .task-markdown-preview-title {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--interface-heading-font-size);
+    line-height: var(--interface-line-height);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-markdown-preview-close-form {
+    flex: 0 0 auto;
+    margin: 0 0 0 auto;
+  }
+
+  & .task-markdown-preview-close {
+    position: relative;
+    display: grid;
+    width: var(--interface-control-hit-size);
+    height: var(--interface-control-hit-size);
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    cursor: pointer;
+  }
+
+  & .task-markdown-preview-close::before {
+    position: absolute;
+    inset: var(--interface-control-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .task-markdown-preview-close:hover,
+  & .task-markdown-preview-close:focus-visible {
+    outline: none;
+  }
+
+  & .task-markdown-preview-close:hover::before,
+  & .task-markdown-preview-close:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
+
+  & .task-markdown-preview-close-icon {
+    position: relative;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 2;
+  }
+}
+
+@media (max-width: 620px) {
+  caffold-task-markdown-preview-dialog {
+    & > dialog {
+      width: calc(100vw - 0.5rem);
+      height: calc(100dvh - 0.5rem);
+    }
+
+    & .task-markdown-preview-header {
+      padding: var(--interface-space-6);
+    }
+  }
+}

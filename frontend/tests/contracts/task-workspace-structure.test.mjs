@@ -250,6 +250,7 @@ test("registered dialog contexts stay owned and compose through public providers
   assert.match(section, /this\.conversationShortcuts\(\)\?\.keyboardNavigationContexts/);
   assert.match(task, /this\.currentPlanComponent\(\)\?\.keyboardNavigationContexts/);
   assert.match(task, /this\.commandDialog\(\)\?\.keyboardNavigationContexts/);
+  assert.match(task, /this\.markdownPreviewDialog\(\)\?\.keyboardNavigationContexts/);
   assert.match(github, /this\.taskStartDialog\.keyboardNavigationContexts/);
   assert.doesNotMatch(
     workspace,
@@ -267,6 +268,7 @@ test("registered product dialogs retain one context-local keyboard presentation"
     "pages/(task-workspace)/tasks/new/components/directory-picker.js",
     "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js",
     "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js",
   ];
@@ -294,6 +296,7 @@ test("product dialog CSS does not style nested keyboard presentation dialogs", (
     "pages/(task-workspace)/tasks/new/components/directory-picker.css",
     "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css",
     "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css",
   ];
@@ -426,8 +429,10 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
 
   assert.match(taskLayout, /import "\.\/components\/conversation\.js"/);
   assert.match(taskLayout, /import "\.\/components\/command-dialog\.js"/);
+  assert.match(taskLayout, /import "\.\/components\/markdown-preview-dialog\.js"/);
   assert.match(taskLayout, /<caffold-task-conversation>/);
   assert.match(taskLayout, /<caffold-task-command-dialog>/);
+  assert.match(taskLayout, /<caffold-task-markdown-preview-dialog>/);
   assert.doesNotMatch(taskLayout, /\(review\)|\(git\)|\(github\)/);
   assert.doesNotMatch(
     taskLayout,

@@ -13,6 +13,8 @@ import {
 } from "../../../../../../../../../../scroll-scope.js";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
+const MARKDOWN_FENCE_LABELS = new Set(["markdown", "md"]);
+const PREVIEW_LABEL = "Preview Markdown";
 
 class CaffoldTaskMarkdownCodeBlock extends HTMLElement {
   constructor() {
@@ -77,13 +79,33 @@ class CaffoldTaskMarkdownCodeBlock extends HTMLElement {
     this.savedScrollLeft = 0;
     this.dataset.codeWrap = "off";
     this.querySelector(":scope > .code-block-content").replaceChildren(pre);
+    this.syncPreviewButton();
     patchWrapButton(this.wrapButton(), false);
     this.patchCopyPresentation();
+  }
+
+  syncPreviewButton() {
+    const button = this.previewButton();
+    if (!MARKDOWN_FENCE_LABELS.has(this.label.toLowerCase())) {
+      button?.remove();
+      return;
+    }
+    if (!button) {
+      this.querySelector(":scope > .code-block-header > .code-block-actions")
+        .insertAdjacentHTML(
+          "afterbegin",
+          codeActionButton("preview", PREVIEW_LABEL, "Eye"),
+        );
+    }
   }
 
   handleClick(event) {
     const action = event.target.closest?.("button[data-code-action]");
     if (!action || !this.contains(action)) {
+      return;
+    }
+    if (action.dataset.codeAction === "preview") {
+      this.requestPreview();
       return;
     }
     if (action.dataset.codeAction === "wrap") {
@@ -93,6 +115,21 @@ class CaffoldTaskMarkdownCodeBlock extends HTMLElement {
     if (action.dataset.codeAction === "copy") {
       void this.copyCode();
     }
+  }
+
+  requestPreview() {
+    const code = this.code();
+    const opener = this.previewButton();
+    if (!code || !opener) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent("caffold:task-markdown-preview-intent", {
+        bubbles: true,
+        composed: true,
+        detail: { markdown: code.textContent ?? "", opener },
+      }),
+    );
   }
 
   toggleWrap() {
@@ -180,6 +217,7 @@ class CaffoldTaskMarkdownCodeBlock extends HTMLElement {
   }
 
   refreshIcons() {
+    patchActionIcon(this.previewButton(), "Eye");
     patchActionIcon(this.wrapButton(), "WrapText");
     patchActionIcon(this.copyButton(), copyIcon(this.copyState));
   }
@@ -190,6 +228,10 @@ class CaffoldTaskMarkdownCodeBlock extends HTMLElement {
 
   code() {
     return this.querySelector(":scope > .code-block-content > pre > code");
+  }
+
+  previewButton() {
+    return this.querySelector('button[data-code-action="preview"]');
   }
 
   wrapButton() {
@@ -205,7 +247,12 @@ class CaffoldTaskMarkdownCodeBlock extends HTMLElement {
     if (!scopeId || !this.connected || this.hidden) {
       return emptyActionHintScope();
     }
-    const targets = ["wrap", "copy"].flatMap((action) => {
+    const fallbackLabels = {
+      preview: PREVIEW_LABEL,
+      wrap: "Wrap code lines",
+      copy: "Copy code",
+    };
+    const targets = ["preview", "wrap", "copy"].flatMap((action) => {
       const selector = `button[data-code-action="${action}"]`;
       const control = this.querySelector(selector);
       if (
@@ -221,7 +268,7 @@ class CaffoldTaskMarkdownCodeBlock extends HTMLElement {
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.getAttribute("aria-label") ||
           control.title ||
-          (action === "wrap" ? "Wrap code lines" : "Copy code"),
+          fallbackLabels[action],
         control,
         clipRoots: [this, ...clipRoots].filter(Boolean),
         isActionable: () =>
@@ -321,7 +368,7 @@ function copyIcon(state) {
 }
 
 function patchActionIcon(button, icon) {
-  const slot = button.querySelector(":scope > .code-block-action-icon");
+  const slot = button?.querySelector(":scope > .code-block-action-icon");
   if (slot) {
     slot.innerHTML = renderInlineIcon(icon, "", "code-block-action-icon-svg");
   }
