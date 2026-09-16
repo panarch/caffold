@@ -30,6 +30,7 @@ caffold-file-tree {
   }
 
   & .file-tree-entry {
+    position: relative;
     display: grid;
     grid-template-columns: minmax(0, max-content);
     width: 100%;
@@ -52,6 +53,29 @@ caffold-file-tree {
   &[data-status-column="true"] .file-tree-entry {
     grid-template-columns: var(--file-tree-status-slot-size) minmax(0, max-content);
     gap: var(--file-tree-status-gap);
+  }
+
+  & .file-tree-entry::before,
+  & .file-tree-status::before {
+    position: absolute;
+    inset-block: 0;
+    left: calc(
+      0.1875rem + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) / 2
+    );
+    width: calc(var(--tree-depth, 0) * var(--file-tree-indent));
+    background: repeating-linear-gradient(
+      to right,
+      var(--tree-indent-guide) 0 1px,
+      transparent 1px var(--file-tree-indent)
+    );
+    content: "";
+  }
+
+  &[data-status-column="true"] .file-tree-entry::before {
+    left: calc(
+      0.1875rem + var(--file-tree-padding-left) + var(--file-tree-status-slot-size) +
+        var(--file-tree-status-gap) + var(--file-tree-icon-slot-size) / 2
+    );
   }
 
   & .file-tree-entry:hover,
@@ -173,6 +197,7 @@ caffold-file-tree {
   }
 
   & .file-tree-status {
+    position: relative;
     width: 100%;
     min-width: 0;
     min-height: var(--file-tree-row-height);
