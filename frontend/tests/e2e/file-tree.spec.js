@@ -153,3 +153,139 @@ test("reorders existing rows while preserving structural and reconciled state", 
     entityPreserved: true,
   }));
 });
+
+for (const themeMode of ["light", "dark"]) {
+  test(`draws ${themeMode} indent guides from each directory icon through its descendants`, { tag: ["@desktop", "@phone"] }, async ({
+    page,
+  }) => {
+    await page.goto("/settings/files");
+    await page.evaluate(async (mode) => {
+      await import("/assets/components/file-tree.js");
+      const { setThemeMode } = await import("/assets/settings.js");
+      setThemeMode(mode);
+      const ready = (nodes) => ({ status: "ready", nodes });
+      const directory = (name, children) => ({
+        key: `directory:${name}`,
+        kind: "directory",
+        name,
+        expandedByDefault: true,
+        children,
+      });
+      const file = (name, status) => ({ key: `file:${name}`, kind: "file", name, status });
+
+      const fixture = document.createElement("div");
+      fixture.style.background = "var(--surface)";
+      const changes = document.createElement("caffold-file-tree");
+      const files = document.createElement("caffold-file-tree");
+      fixture.append(changes, files);
+      document.body.replaceChildren(fixture);
+
+      changes.setModel({
+        entityKey: "indent-guides-changes",
+        statusColumn: true,
+        selectedKey: "file:code-block.js",
+        nodes: [
+          {
+            key: "group:unstaged",
+            kind: "group",
+            name: "Unstaged",
+            children: ready([
+              directory("frontend", ready([
+                directory("components", ready([
+                  directory("conversation", ready([file("code-block.js", "M")])),
+                  file("dialog.js", "A"),
+                ])),
+                file("styles.css", "M"),
+              ])),
+              file("README.md", "M"),
+            ]),
+          },
+        ],
+      });
+      files.setModel({
+        entityKey: "indent-guides-files",
+        nodes: [
+          directory("src", ready([
+            directory("lazy", { status: "loading", message: "Loading lazy" }),
+            file("index.js"),
+          ])),
+        ],
+      });
+      await document.fonts.load(getComputedStyle(changes.querySelector(".file-tree-entry")).font);
+    }, themeMode);
+    const viewport = page.viewportSize();
+    await page.mouse.move(viewport.width - 1, viewport.height - 1);
+
+    const screenshot = await page.screenshot({
+      animations: "disabled",
+      caret: "hide",
+      scale: "css",
+    });
+    const guides = await page.evaluate(async (base64) => {
+      const bitmap = await createImageBitmap(
+        new Blob([Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))]),
+      );
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext("2d");
+      context.drawImage(bitmap, 0, 0);
+      const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+      const color = (x, y) => {
+        const offset = (y * bitmap.width + Math.floor(x)) * 4;
+        return [pixels[offset], pixels[offset + 1], pixels[offset + 2]];
+      };
+      const contrast = (x, y, background) => Math.max(
+        ...[x, x + 1].flatMap((column) =>
+          color(column, y).map((channel, index) => Math.abs(channel - background[index]))
+        ),
+      );
+
+      return Object.fromEntries(
+        [...document.querySelectorAll("caffold-file-tree")].flatMap((tree) => {
+          const rows = [
+            ...tree.querySelectorAll(".file-tree-rows > li:not(.file-tree-group)"),
+          ].map((row) => ({
+            row,
+            depth: Number(
+              (row.querySelector(":scope > button") ?? row).style.getPropertyValue("--tree-depth"),
+            ),
+          }));
+          const iconCenters = [];
+          for (const { row, depth } of rows) {
+            const icon = row.querySelector(".file-tree-icon")?.getBoundingClientRect();
+            if (icon) {
+              iconCenters[depth] ??= icon.left + icon.width / 2;
+            }
+          }
+          const columns = iconCenters.slice(0, Math.max(...rows.map(({ depth }) => depth)));
+          const betweenGuides = columns[0] + (columns[1] - columns[0]) / 2;
+
+          return rows.map(({ row }) => {
+            const rect = row.getBoundingClientRect();
+            const [top, bottom] = [Math.ceil(rect.top) + 1, Math.floor(rect.bottom) - 2].map((y) => {
+              const background = color(betweenGuides, y);
+              return columns.map((x) => contrast(x, y, background) >= 6);
+            });
+            return [
+              row.dataset.fileTreeRowKey,
+              top.map((guide, index) => (guide === bottom[index] ? guide : "partial")),
+            ];
+          });
+        }),
+      );
+    }, screenshot.toString("base64"));
+
+    expect(guides).toEqual({
+      "directory:frontend": [false, false, false],
+      "directory:components": [true, false, false],
+      "directory:conversation": [true, true, false],
+      "file:code-block.js": [true, true, true],
+      "file:dialog.js": [true, true, false],
+      "file:styles.css": [true, false, false],
+      "file:README.md": [false, false, false],
+      "directory:src": [false, false],
+      "directory:lazy": [true, false],
+      "directory:lazy:children-state": [true, true],
+      "file:index.js": [true, false],
+    });
+  });
+}
