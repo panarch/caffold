@@ -10,6 +10,7 @@ import {
   pasteImage,
   scrollTop,
 } from "../support/task-fixtures.js";
+import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
@@ -957,3 +958,92 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
     .poll(() => conversation.evaluate((element) => element.scrollTop))
     .toBe(savedScrollTop);
 });
+
+test("places attachment remove controls over thumbnail corners inside the attachment strip", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page);
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+  const form = page.locator('form[data-task-form="create"]');
+  const prompt = form.locator('textarea[name="prompt"]');
+  const attachments = form.locator(".task-composer-attachment");
+  for (let count = 1; count <= 4; count += 1) {
+    await pasteImage(prompt, `corner-${count}.png`);
+    await expect(attachments).toHaveCount(count);
+  }
+  const strip = form.locator(".task-composer-attachments");
+  const removes = form.locator(".task-composer-attachment-remove");
+
+  for (const interfaceScalePercent of [90, 100, 120]) {
+    await page.evaluate(async (value) => {
+      const { setAppearanceRangeSetting } = await import("/assets/settings.js");
+      setAppearanceRangeSetting("interfaceScalePercent", value);
+    }, interfaceScalePercent);
+    await prompt.focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(removes.last()).toBeFocused();
+    await strip.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+    });
+
+    const controls = await strip.evaluate(attachmentRemoveGeometry);
+    for (const [index, control] of controls.entries()) {
+      const label = `remove control ${index + 1} at ${interfaceScalePercent}%`;
+      expect(
+        control.centerInsetFromRight,
+        `${label} centers a quarter circle inside the thumbnail's right edge`,
+      ).toBeCloseTo(control.circleDiameter / 4, 0);
+      expect(
+        control.centerInsetFromTop,
+        `${label} centers a quarter circle below the thumbnail's top edge`,
+      ).toBeCloseTo(control.circleDiameter / 4, 0);
+      expect(control.reachTop, `${label} stays inside the strip's top edge`).toBeGreaterThanOrEqual(
+        control.stripTop,
+      );
+      expect(
+        control.reachRight,
+        `${label} stays clear of the next thumbnail or the strip's end`,
+      ).toBeLessThanOrEqual(control.rightLimit);
+    }
+    for (let index = 0; index < controls.length; index += 1) {
+      expect(
+        await removes.nth(index).evaluate(receivesTapOutsideThumbnail),
+        `remove control ${index + 1} at ${interfaceScalePercent}% receives taps outside its thumbnail`,
+      ).toBe(true);
+    }
+  }
+});
+
+// Only the focused control draws its ring, so it supplies the ring width for all.
+function attachmentRemoveGeometry(strip) {
+  const ring = getComputedStyle(document.activeElement, "::before");
+  const ringOutset =
+    Number.parseFloat(ring.outlineWidth) + Number.parseFloat(ring.outlineOffset);
+  const stripBox = strip.getBoundingClientRect();
+  const thumbnails = [...strip.querySelectorAll(".task-composer-attachment")];
+  return thumbnails.map((thumbnail, index) => {
+    const remove = thumbnail.querySelector(".task-composer-attachment-remove");
+    const hitBox = remove.getBoundingClientRect();
+    const circleInset = Number.parseFloat(getComputedStyle(remove, "::before").top);
+    const reachBeyondHitBox = Math.max(0, ringOutset - circleInset);
+    const thumbnailBox = thumbnail.getBoundingClientRect();
+    const nextThumbnail = thumbnails[index + 1];
+    return {
+      centerInsetFromRight: thumbnailBox.right - (hitBox.left + hitBox.width / 2),
+      centerInsetFromTop: hitBox.top + hitBox.height / 2 - thumbnailBox.top,
+      circleDiameter: hitBox.width - circleInset * 2,
+      reachTop: hitBox.top - reachBeyondHitBox,
+      reachRight: hitBox.right + reachBeyondHitBox,
+      stripTop: stripBox.top,
+      rightLimit: nextThumbnail
+        ? nextThumbnail.getBoundingClientRect().left
+        : stripBox.right,
+    };
+  });
+}
+
+function receivesTapOutsideThumbnail(remove) {
+  remove.scrollIntoView({ block: "nearest", inline: "nearest" });
+  const hitBox = remove.getBoundingClientRect();
+  return remove.contains(document.elementFromPoint(hitBox.right - 1, hitBox.top + 1));
+}
