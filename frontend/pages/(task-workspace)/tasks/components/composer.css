@@ -91,10 +91,17 @@ caffold-task-composer {
   }
 
   & .task-composer-attachments {
+    --task-composer-attachment-remove-overhang: calc(
+      var(--interface-compact-hit-size) / 2 - var(--interface-compact-visual-size) / 4
+    );
+    --task-composer-attachment-remove-clearance: calc(
+      var(--task-composer-attachment-remove-overhang) + var(--interface-space-2)
+    );
     display: flex;
-    gap: 0.5rem;
+    gap: var(--task-composer-attachment-remove-clearance);
     min-width: 0;
-    padding: 0.625rem 0.875rem 0;
+    padding: var(--task-composer-attachment-remove-clearance)
+      var(--task-composer-attachment-remove-clearance) 0 0.875rem;
     overflow-x: auto;
     overscroll-behavior-inline: contain;
   }
@@ -105,10 +112,6 @@ caffold-task-composer {
     width: 72px;
     height: 72px;
     margin: 0;
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: 7px;
-    background: var(--surface-muted);
   }
 
   & .task-composer-attachment-preview {
@@ -117,9 +120,9 @@ caffold-task-composer {
     height: 100%;
     padding: 0;
     overflow: hidden;
-    border: 0;
-    border-radius: inherit;
-    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface-muted);
     cursor: zoom-in;
   }
 
@@ -139,8 +142,8 @@ caffold-task-composer {
     display: grid;
     position: absolute;
     z-index: 1;
-    top: var(--interface-space-2);
-    right: var(--interface-space-2);
+    top: calc(-1 * var(--task-composer-attachment-remove-overhang));
+    right: calc(-1 * var(--task-composer-attachment-remove-overhang));
     place-items: center;
     width: var(--interface-compact-hit-size);
     height: var(--interface-compact-hit-size);
