@@ -1,10 +1,12 @@
 import { getClaudeStatus } from "../../../../api.js";
 import "../components/detail-list.js";
+import { SETTINGS_REFRESH_INTENT_EVENT } from "../components/refresh-button.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
+  mergeActionHintScopes,
 } from "../../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
@@ -47,6 +49,10 @@ class CaffoldSettingsClaudePage extends HTMLElement {
           new CustomEvent(CLAUDE_RUNTIME_RESTART_REQUEST_EVENT, { bubbles: true }),
         );
       }
+    });
+    this.addEventListener(SETTINGS_REFRESH_INTENT_EVENT, (event) => {
+      event.stopPropagation();
+      void this.reconcile();
     });
     this.render();
   }
@@ -100,41 +106,48 @@ class CaffoldSettingsClaudePage extends HTMLElement {
     isCurrent = () => true,
   } = {}) {
     const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    const selector = 'button[data-action="open-claude-restart"]';
-    const control = this.querySelector(selector);
-    if (
-      this.hidden ||
-      !scrollport ||
-      !control ||
-      control.disabled ||
-      control.hidden ||
-      !hasActionHintLayoutBox(control)
-    ) {
+    if (this.hidden || !scrollport) {
       return emptyActionHintScope();
     }
-    return {
-      blocked: false,
-      targets: [buttonActionHintTarget({
-        invalidationOwner: this,
-        id: `${scopeId}:restart-runtime`,
-        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-        label: control.getAttribute("aria-label") ||
-          control.textContent?.trim() ||
-          "Restart runtime",
-        control,
-        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-        isActionable: () =>
-          this.isConnected &&
-          !this.hidden &&
-          isCurrent() &&
-          this.querySelector(selector) === control &&
-          !control.disabled &&
-          !control.hidden &&
-          hasActionHintLayoutBox(control),
-      })],
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
+    const targetClipRoots = [this, scrollport, ...clipRoots].filter(Boolean);
+    const selector = 'button[data-action="open-claude-restart"]';
+    const control = this.querySelector(selector);
+    const restartActionable = Boolean(control) &&
+      !control.disabled &&
+      !control.hidden &&
+      hasActionHintLayoutBox(control);
+    return mergeActionHintScopes(
+      this.refreshButton.actionHintScope({
+        scopeId,
+        clipRoots: targetClipRoots,
+        isCurrent: () => this.isConnected && !this.hidden && isCurrent(),
+      }),
+      {
+        blocked: false,
+        targets: restartActionable
+          ? [buttonActionHintTarget({
+            invalidationOwner: this,
+            id: `${scopeId}:restart-runtime`,
+            actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            label: control.getAttribute("aria-label") ||
+              control.textContent?.trim() ||
+              "Restart runtime",
+            control,
+            clipRoots: targetClipRoots,
+            isActionable: () =>
+              this.isConnected &&
+              !this.hidden &&
+              isCurrent() &&
+              this.querySelector(selector) === control &&
+              !control.disabled &&
+              !control.hidden &&
+              hasActionHintLayoutBox(control),
+          })]
+          : [],
+        mutationRoots: [this],
+        scrollRoots: [scrollport],
+      },
+    );
   }
 
   scrollSurfaceScope({
@@ -177,6 +190,7 @@ class CaffoldSettingsClaudePage extends HTMLElement {
           <div class="settings-content-section">
             <header>
               <p>The Claude Code installation this server drives.</p>
+              <caffold-settings-refresh-button></caffold-settings-refresh-button>
             </header>
             <section aria-labelledby="settings-claude-agent-title">
               <h3 id="settings-claude-agent-title">Agent</h3>
@@ -204,6 +218,7 @@ class CaffoldSettingsClaudePage extends HTMLElement {
           </div>
         </div>
       `;
+      this.refreshButton = this.querySelector("caffold-settings-refresh-button");
       this.agentList = this.querySelector("[data-claude-agent]");
       this.usageList = this.querySelector("[data-claude-usage]");
       this.runnerList = this.querySelector("[data-claude-runner]");
@@ -213,6 +228,8 @@ class CaffoldSettingsClaudePage extends HTMLElement {
     this.agentList.setRows(unanswered ?? this.agentRows());
     this.usageList.setRows(unanswered ?? this.usageRows());
     this.runnerList.setRows(unanswered ?? this.runnerRows());
+
+    this.refreshButton.setState({ refreshing: this.statusState === "loading" });
 
     const restarting = this.restartState === "restarting";
     const restart = this.querySelector('[data-action="open-claude-restart"]');

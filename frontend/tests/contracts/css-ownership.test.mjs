@@ -376,6 +376,10 @@ const ownership = new Map([
     ["caffold-settings-detail-list"],
   ],
   [
+    "pages/(task-workspace)/settings/components/refresh-button.css",
+    ["caffold-settings-refresh-button"],
+  ],
+  [
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css",
     ["caffold-codex-runtime-restart-dialog"],
   ],

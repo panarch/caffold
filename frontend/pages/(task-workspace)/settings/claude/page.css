@@ -26,6 +26,7 @@ caffold-settings-claude-page {
   & .settings-content-section > header {
     display: flex;
     align-items: end;
+    justify-content: space-between;
     gap: var(--interface-space-7);
     border-bottom: 1px solid var(--border);
     padding-bottom: var(--interface-space-6);
@@ -135,5 +136,12 @@ caffold-settings-claude-page {
 
   & .settings-runtime-message[data-state="failed"] {
     color: var(--danger);
+  }
+
+  @container settings-claude (max-width: 520px) {
+    & .settings-content-section > header {
+      align-items: start;
+      flex-direction: column;
+    }
   }
 }

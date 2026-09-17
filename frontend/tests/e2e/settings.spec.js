@@ -591,16 +591,23 @@ test("a Grok source that could not answer costs its block and no more", { tag: "
   await captureReviewScreenshot(page, testInfo, "settings-grok-unavailable");
 });
 
-test("checking the Grok report again reads the leader that appeared and names a build behind the installed one", { tag: "@desktop" }, async ({
+test("refreshing the Grok report reads the leader that appeared and names a build behind the installed one", { tag: "@desktop" }, async ({
   page,
 }) => {
   let reports = 0;
-  await page.route(/\/api\/grok\/status(?:\?|$)/, (route) => {
-    reports += 1;
-    route.fulfill({
+  let releaseSecondReport;
+  const secondReportHeld = new Promise((resolve) => {
+    releaseSecondReport = resolve;
+  });
+  await page.route(/\/api\/grok\/status(?:\?|$)/, async (route) => {
+    const report = ++reports;
+    if (report > 1) {
+      await secondReportHeld;
+    }
+    await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(
-        reports === 1
+        report === 1
           ? mockGrokStatus({
             leader: { socketPath: "/Users/example/.grok/leader-caffold.sock", running: false, socketStale: false },
             connection: { state: "down", authMethods: [] },
@@ -621,11 +628,22 @@ test("checking the Grok report again reads the leader that appeared and names a 
   await expect(settings).toContainText("Cached sign-in present — verified once Caffold is connected");
   await expect(settings).toContainText("Reported once Caffold is connected");
 
-  await settings.getByRole("button", { name: "Check again" }).click();
+  const refresh = settings.getByRole("button", { name: "Refresh" });
+  const refreshIcon = refresh.locator(".settings-refresh-icon");
+  await refresh.click();
+  await expect(refresh).toBeDisabled();
+  await expect(refreshIcon).toHaveCSS("animation-name", "caffold-refresh-spin");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(refreshIcon).toHaveCSS("animation-name", "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+
+  releaseSecondReport();
   await expect(settings).toContainText("Running · pid 36832");
   await expect(settings).toContainText("1.0.29 — differs from the installed 1.0.30");
   await expect(settings).toContainText("user@example.com · SuperGrok");
   await expect(settings).toContainText("8% used");
+  await expect(refresh).toBeEnabled();
+  await expect(refreshIcon).toHaveCSS("animation-name", "none");
   expect(reports).toBe(2);
 });
 
@@ -670,6 +688,46 @@ test("holds the Codex rows while its first readiness check is still running", { 
   await expect(usage.locator("[data-key='primary'] dd")).toHaveText(
     /83% used · resets .+\d:\d{2}/,
   );
+});
+
+test("disables Codex Refresh and turns its icon while the readiness check runs", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  let holdStatus = false;
+  let releaseStatus;
+  const held = new Promise((resolve) => {
+    releaseStatus = resolve;
+  });
+  await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
+    if (holdStatus) {
+      await held;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus()),
+    });
+  });
+
+  await page.goto("/settings/codex");
+  const codex = page.locator("caffold-settings-codex-page");
+  const refresh = codex.getByRole("button", { name: "Refresh" });
+  const refreshIcon = refresh.locator(".settings-refresh-icon");
+  await expect(codex.locator("[data-codex-detail] [data-key='readiness'] dd"))
+    .toHaveText("Ready");
+  await expect(refresh).toBeEnabled();
+  await expect(refreshIcon).toHaveCSS("animation-name", "none");
+
+  holdStatus = true;
+  await refresh.click();
+  await expect(refresh).toBeDisabled();
+  await expect(refreshIcon).toHaveCSS("animation-name", "caffold-refresh-spin");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(refreshIcon).toHaveCSS("animation-name", "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+
+  releaseStatus();
+  await expect(refresh).toBeEnabled();
+  await expect(refreshIcon).toHaveCSS("animation-name", "none");
 });
 
 test("shows every usage limit Codex reports, its single-bucket limit first", { tag: "@all-viewports" }, async ({
@@ -823,6 +881,50 @@ test("rewrites only the Claude row whose value changed", { tag: "@desktop" }, as
       return window.claudeRunnerMutations;
     }),
   ).toEqual({ childList: 0, attributes: 0, characterData: 1 });
+});
+
+test("refreshing the Claude report keeps its rows and disables Refresh until the new report lands", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  let reports = 0;
+  let releaseSecondReport;
+  const secondReportHeld = new Promise((resolve) => {
+    releaseSecondReport = resolve;
+  });
+  await page.route(/\/api\/claude\/status(?:\?|$)/, async (route) => {
+    const report = ++reports;
+    if (report > 1) {
+      await secondReportHeld;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(
+        mockClaudeStatus(
+          report > 1 ? { runner: { running: true, pid: 5150 } } : {},
+        ),
+      ),
+    });
+  });
+
+  await page.goto("/settings/claude");
+  const settings = page.locator("caffold-settings-claude-page");
+  await expect(settings).toContainText("Running · pid 4242");
+
+  const refresh = settings.getByRole("button", { name: "Refresh" });
+  const refreshIcon = refresh.locator(".settings-refresh-icon");
+  await activateActionHint(page, /Refresh$/);
+  await expect(refresh).toBeDisabled();
+  await expect(refreshIcon).toHaveCSS("animation-name", "caffold-refresh-spin");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(refreshIcon).toHaveCSS("animation-name", "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await expect(settings).toContainText("Running · pid 4242");
+
+  releaseSecondReport();
+  await expect(settings).toContainText("Running · pid 5150");
+  await expect(refresh).toBeEnabled();
+  await expect(refreshIcon).toHaveCSS("animation-name", "none");
+  expect(reports).toBe(2);
 });
 
 test("explicitly restarts the Claude runner from its Settings item", { tag: "@all-viewports" }, async ({
@@ -1251,6 +1353,25 @@ test("gives every Settings route one page title and landmark hierarchy", { tag: 
   }
 });
 
+test("shapes Codex, Claude, and Grok Refresh like the Appearance Reset all action", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/appearance");
+  const resetAll = page.locator("caffold-settings-appearance-page .settings-reset-all");
+  await expect(resetAll.locator(".settings-reset-all-icon")).toBeVisible();
+  const reference = await pageActionShape(resetAll);
+
+  for (const section of ["codex", "claude", "grok"]) {
+    await page.goto(`/settings/${section}`);
+    const refresh = page
+      .locator(`caffold-settings-${section}-page`)
+      .getByRole("button", { name: "Refresh" });
+    await expect(refresh.locator(".settings-refresh-icon")).toBeVisible();
+    await expect(refresh).toBeEnabled();
+    expect(await pageActionShape(refresh), section).toEqual(reference);
+  }
+});
+
 test("reflows Settings from the detail pane width at maximum Interface scale", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
@@ -1372,7 +1493,7 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
     row: "caffold-settings-detail-list > dl > div",
     leading: "dt",
     trailing: "dd",
-    pageAction: '.settings-content-section > header [data-action="refresh-codex-status"]',
+    pageAction: ".settings-content-section > header > caffold-settings-refresh-button > button",
   });
   expect(codexMetrics.overflowX).toBe(false);
   expect(codexMetrics.stacked).toBe(shouldStack);
@@ -1397,9 +1518,11 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
     row: "[data-claude-agent] > dl > div",
     leading: "dt",
     trailing: "dd",
+    pageAction: ".settings-content-section > header > caffold-settings-refresh-button > button",
   });
   expect(claudeMetrics.overflowX).toBe(false);
   expect(claudeMetrics.stacked).toBe(shouldStack);
+  expectSettingsActionTiers(claudeMetrics);
   await expect(claude.locator("caffold-settings-detail-list dd").first())
     .toHaveCSS("font-size", settingsDetailFontSize);
   await captureReviewScreenshot(
@@ -2496,6 +2619,35 @@ function expectSettingsActionTiers(metrics, hasContextAction = false) {
       1,
     );
   }
+}
+
+async function pageActionShape(action) {
+  return action.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const frame = getComputedStyle(element, "::before");
+    const icon = element.querySelector("svg").getBoundingClientRect();
+    return {
+      display: style.display,
+      alignItems: style.alignItems,
+      height: element.getBoundingClientRect().height,
+      padding: [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft],
+      columnGap: style.columnGap,
+      iconColumn: element.firstElementChild.getBoundingClientRect().width,
+      iconSize: [icon.width, icon.height],
+      text: [style.fontSize, style.fontWeight, style.lineHeight, style.color],
+      frame: [
+        frame.top,
+        frame.right,
+        frame.bottom,
+        frame.left,
+        frame.borderTopWidth,
+        frame.borderTopStyle,
+        frame.borderTopColor,
+        frame.borderTopLeftRadius,
+        frame.backgroundColor,
+      ],
+    };
+  });
 }
 
 async function modelPickerMetrics(composer) {

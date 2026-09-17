@@ -137,6 +137,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/settings/navigator.js",
   "/assets/pages/(task-workspace)/settings/components/detail-list.css",
   "/assets/pages/(task-workspace)/settings/components/detail-list.js",
+  "/assets/pages/(task-workspace)/settings/components/refresh-button.css",
+  "/assets/pages/(task-workspace)/settings/components/refresh-button.js",
   "/assets/pages/(task-workspace)/settings/codex/page.css",
   "/assets/pages/(task-workspace)/settings/codex/page.js",
   "/assets/pages/(task-workspace)/settings/claude/page.css",
