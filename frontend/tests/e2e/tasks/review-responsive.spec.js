@@ -204,7 +204,6 @@ test("owns one collapsed Back across Conversation and Review modes", { tag: "@ph
   const masterPane = workspace.locator(".task-workspace-master-pane");
   const detailPane = workspace.locator(".task-workspace-detail-pane");
   const backToTasks = workspace.locator(".task-workspace-back");
-  const newTaskClose = workspace.locator(".task-workspace-close");
   const routes = [
     {
       name: "Conversation",
@@ -234,7 +233,6 @@ test("owns one collapsed Back across Conversation and Review modes", { tag: "@ph
     await expect(backToTasks, mode.name).toBeVisible();
     await expect(backToTasks).toHaveAttribute("aria-label", "Back to tasks");
     await expect(backToTasks.locator(".sr-only")).toHaveText("Back to tasks");
-    await expect(newTaskClose).toBeHidden();
 
     const historyLength = await page.evaluate(() => window.history.length);
     await backToTasks.click();

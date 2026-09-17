@@ -959,6 +959,179 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
   await expect(review.locator(".markdown-preview-body h1")).toHaveText("Fixture Home");
 });
 
+test("offers one compact Back to Tasks from every Section surface root", { tag: "@phone" }, async ({ page }, testInfo) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const rootPath = "frontend/tests/e2e/fixtures/home";
+  const repository = { rootPath, branch: "main", dirty: false };
+  const github = {
+    owner: "example",
+    name: "caffold",
+    nameWithOwner: "example/caffold",
+    url: "https://github.com/example/caffold",
+  };
+  const task = {
+    id: "thread_section_back",
+    threadId: "thread_section_back",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Section Back Task",
+    cwd: rootPath,
+    cwdPath: rootPath,
+    relativeCwd: "",
+    worktree: {
+      rootPath: `${rootPath}/.caffold-worktrees/section-back`,
+      repositoryRootPath: rootPath,
+      branch: "feature/section-back",
+      headSha: "0123456789abcdef0123456789abcdef01234567",
+    },
+    createdMs: Date.now(),
+    updatedMs: Date.now(),
+    lastEventSummary: "Section Back summary",
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) })
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: [], nextCursor: null } })
+  );
+  await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: { repository, files: [], additions: 0, deletions: 0 },
+    })
+  );
+  await page.route(/\/api\/git\/log(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        repository,
+        commits: [],
+        page: 1,
+        perPage: 50,
+        totalCommits: 0,
+        totalPages: 1,
+        hasPrevious: false,
+        hasNext: false,
+      },
+    })
+  );
+  await page.route(/\/api\/github\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        repository,
+        github,
+        ghAvailable: true,
+        authenticated: true,
+        issuesAvailable: true,
+        pullsAvailable: true,
+        message: null,
+      },
+    })
+  );
+  await page.route(/\/api\/github\/issues(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        repository,
+        github,
+        state: "open",
+        issues: [],
+        page: 1,
+        perPage: 50,
+        totalIssues: 0,
+        totalPages: 1,
+        hasPrevious: false,
+        hasNext: false,
+      },
+    })
+  );
+
+  const workspace = page.locator("caffold-task-workspace");
+  const tasksPage = page.locator("caffold-tasks-page");
+  const back = workspace.locator(".task-workspace-back");
+  const title = page.locator("caffold-section-detail-summary h2");
+  const surfaces = [
+    ["/?section=fixture-section-1", "new"],
+    ["/?section=fixture-section-1&surface=review", "review"],
+    ["/?section=fixture-section-1&surface=git&tool=log", "git"],
+    ["/?section=fixture-section-1&surface=github&tool=issues", "github"],
+  ];
+
+  for (const [url, detailView] of surfaces) {
+    await page.goto(url);
+    await expect(page).toHaveURL(url);
+    await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
+    await expect(tasksPage).toHaveAttribute("data-task-detail-view", detailView);
+    await expect(back, url).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /^Back( |$)/ }),
+      url,
+    ).toHaveCount(1);
+    await expect(title).toHaveText(rootPath);
+    const backBox = await back.boundingBox();
+    const titleBox = await title.boundingBox();
+    expect(titleBox.x, url).toBeGreaterThanOrEqual(backBox.x + backBox.width);
+    expect(
+      Math.abs(
+        backBox.y + backBox.height / 2 - (titleBox.y + titleBox.height / 2),
+      ),
+      url,
+    ).toBeLessThanOrEqual(2);
+    await captureReviewScreenshot(page, testInfo, `section-${detailView}-compact-back`);
+
+    const historyLength = await page.evaluate(() => window.history.length);
+    await back.click();
+    await expect(page).toHaveURL("/");
+    await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
+    await expect(workspace).not.toHaveAttribute(
+      "data-workspace-route-control-visible",
+      "",
+    );
+    await expect
+      .poll(() => page.evaluate(() => window.history.length))
+      .toBe(historyLength);
+  }
+});
+
+test("starts the Section composer where global New Task starts its composer", { tag: "@all-viewports" }, async ({ page }) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const rootPath = "frontend/tests/e2e/fixtures/home";
+  const task = {
+    id: "thread_section_offset",
+    threadId: "thread_section_offset",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Section offset Task",
+    cwd: rootPath,
+    cwdPath: rootPath,
+    relativeCwd: "",
+    worktree: null,
+    createdMs: Date.now(),
+    updatedMs: Date.now(),
+    lastEventSummary: "Section offset summary",
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) })
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: [], nextCursor: null } })
+  );
+  const composerOffset = (scroller) => page.evaluate((selector) => {
+    const scroll = document.querySelector(selector);
+    const create = scroll.querySelector(":scope > caffold-task-create");
+    return create.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+  }, scroller);
+
+  await page.goto("/tasks/new");
+  await expect(page.locator("caffold-task-new .task-new-form")).toBeVisible();
+  const globalOffset = await composerOffset(
+    "caffold-task-new:not([hidden]) > .task-new-workspace",
+  );
+
+  await page.goto("/?section=fixture-section-1");
+  await expect(page.locator("caffold-section-detail .task-new-form")).toBeVisible();
+  const sectionOffset = await composerOffset("caffold-section-detail:not([hidden])");
+
+  expect(Math.abs(sectionOffset - globalOffset)).toBeLessThanOrEqual(0.5);
+});
+
 test("replaces the New Task context when a selected Section path changes", { tag: "@all-viewports" }, async ({
   page,
 }) => {

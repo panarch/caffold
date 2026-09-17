@@ -214,8 +214,8 @@ not patch or reactivate a stale destination.
 Browser Back remains ordinary history traversal. Visible Back is a semantic
 parent action and follows the explicit history policy below. On compact layouts
 exactly one contextual Back is shown, with deepest-visible priority: file,
-domain detail, then Task. Desktop does not add a file Back when the
-corresponding navigator is simultaneously visible.
+domain detail, then the active Task, Section, or New Task. Desktop does not add
+a file Back when the corresponding navigator is simultaneously visible.
 
 Conversation, fixed-context New Task, Integrated Review, Git, and GitHub share
 the same parent for their active subject. A root child Back therefore targets
@@ -232,10 +232,10 @@ visited.
 
 Replacement is explicit and limited to cases that refine or canonicalize the
 current destination: `/tasks` canonicalization, invalid-route normalization,
-compact Task exit, and Integrated Review axis/base changes. Integrated Review's
-first file selection pushes its file boundary; later file selections replace
-that file entry, and clearing the selected file replaces it with the same
-Review route without `file`.
+the compact Back to Tasks home from a Task, Section, or New Task, and Integrated
+Review axis/base changes. Integrated Review's first file selection pushes its
+file boundary; later file selections replace that file entry, and clearing the
+selected file replaces it with the same Review route without `file`.
 
 Every route writer preserves all fields owned by the active domain when
 changing one field.

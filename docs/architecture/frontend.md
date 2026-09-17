@@ -215,7 +215,7 @@ owns:
 - Task versus Settings mode;
 - Task and Settings navigators;
 - the user-resizable desktop navigation pane;
-- compact top-level Task/New Task Back or Close controls;
+- the compact top-level Back for a Task, Section, or New Task;
 - the one physical live-update connection for this browser tab;
 - public Action Hint, Scroll, editing-Escape, post-activation, and registered
   product-overlay context providers for the App Shell coordinator;

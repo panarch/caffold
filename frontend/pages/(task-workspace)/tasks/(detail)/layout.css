@@ -108,6 +108,7 @@ caffold-detail-layout {
 
     & .detail-layout-summary {
       grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: minmax(var(--interface-compact-visual-size), auto);
       align-items: center;
       gap: max(
         0.375rem,

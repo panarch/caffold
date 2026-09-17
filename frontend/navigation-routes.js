@@ -735,18 +735,17 @@ function sectionRouteTarget(route) {
 }
 
 function sectionParentRoute(route) {
-  const base = { sectionId: route.sectionId };
   if (route.sectionSurface === "review") {
     return route.path
       ? sectionDetailRoute({
-          ...base,
+          sectionId: route.sectionId,
           sectionSurface: "review",
           reviewScope: route.reviewScope,
           reviewNavigator: route.reviewNavigator,
           reviewViewer: route.reviewViewer,
           baseRef: route.baseRef,
         })
-      : sectionDetailRoute(base);
+      : tasksRoute();
   }
   if (route.sectionSurface === "git") {
     if (route.path) {
@@ -755,7 +754,7 @@ function sectionParentRoute(route) {
     if (route.sectionTool === "log" && route.sha) {
       return sectionDetailRoute({ ...route, sha: "" });
     }
-    return sectionDetailRoute(base);
+    return tasksRoute();
   }
   if (route.sectionSurface === "github") {
     if (route.path) {
@@ -767,7 +766,7 @@ function sectionParentRoute(route) {
     if (route.number) {
       return sectionDetailRoute({ ...route, number: null });
     }
-    return sectionDetailRoute(base);
+    return tasksRoute();
   }
   return tasksRoute();
 }

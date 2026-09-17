@@ -90,15 +90,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
       >
         ${renderInlineIcon("ArrowLeft", "Back to tasks", "task-workspace-route-control-icon")}
       </button>
-      <button
-        type="button"
-        class="task-workspace-route-control task-workspace-close"
-        aria-label="Close new task"
-        title="Close new task"
-        hidden
-      >
-        ${renderInlineIcon("X", "Close new task", "task-workspace-route-control-icon")}
-      </button>
       <section class="task-workspace-surface" aria-label="Task workspace" tabindex="-1">
         <div class="task-workspace-master-detail">
           <aside class="task-workspace-master-pane" aria-label="Workspace navigation">
@@ -125,7 +116,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
       <caffold-claude-runtime-restart-dialog></caffold-claude-runtime-restart-dialog>
     `;
     this.backButton = this.querySelector(".task-workspace-back");
-    this.closeButton = this.querySelector(".task-workspace-close");
     this.workspaceSurface = this.querySelector(":scope > .task-workspace-surface");
     this.masterDetail = this.querySelector(".task-workspace-master-detail");
     this.masterPane = this.querySelector(".task-workspace-master-pane");
@@ -186,11 +176,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
       },
     );
 
-    this.closeButton.addEventListener("click", () => {
-      this.dispatchEvent(
-        new CustomEvent("caffold:close-task-workspace", { bubbles: true }),
-      );
-    });
     this.navigation.addEventListener(
       "caffold:workspace-navigation-intent",
       (event) => {
@@ -267,13 +252,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.backButton.innerHTML = renderInlineIcon(
         "ArrowLeft",
         "Back to tasks",
-        "task-workspace-route-control-icon",
-      );
-    }
-    if (this.closeButton) {
-      this.closeButton.innerHTML = renderInlineIcon(
-        "X",
-        "Close new task",
         "task-workspace-route-control-icon",
       );
     }
@@ -441,28 +419,28 @@ class CaffoldTaskWorkspace extends HTMLElement {
     const detailClipRoots = [this, this.querySelector(
       ":scope > .task-workspace-surface > .task-workspace-master-detail > .task-workspace-detail-pane",
     )].filter(Boolean);
-    const routeControl = [this.backButton, this.closeButton].find(
-      (control) =>
-        control && !control.hidden && hasActionHintLayoutBox(control),
-    ) ?? null;
-    const ownScope = routeControl
+    const backButton = this.backButton;
+    const backVisible = Boolean(
+      backButton && !backButton.hidden && hasActionHintLayoutBox(backButton),
+    );
+    const ownScope = backVisible
       ? {
           blocked: false,
           targets: [buttonActionHintTarget({
             invalidationOwner: this,
-            id: `workspace:parent:${routeControl === this.backButton ? "tasks" : "close"}`,
+            id: "workspace:parent:tasks",
             actionId: ACTION_HINT_ACTION.PARENT,
-            label: routeControl.getAttribute("aria-label") || "Back",
-            control: routeControl,
+            label: backButton.getAttribute("aria-label") || "Back",
+            control: backButton,
             clipRoots: [this],
             isActionable: () =>
               this.isConnected &&
               !this.hidden &&
-              !routeControl.hidden &&
-              [this.backButton, this.closeButton].includes(routeControl) &&
-              !routeControl.disabled,
+              !backButton.hidden &&
+              this.backButton === backButton &&
+              !backButton.disabled,
           })],
-          mutationRoots: [routeControl],
+          mutationRoots: [backButton],
           scrollRoots: [],
         }
       : emptyActionHintScope();
@@ -596,26 +574,19 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   updateChrome() {
-    if (!this.backButton || !this.closeButton) {
+    if (!this.backButton) {
       return;
     }
     const taskRoute = this.mode === "tasks" ? this.route : null;
     const target = taskRoute ? routeTarget(taskRoute) : null;
     const domain = routeDomain(taskRoute);
-    const showBack = Boolean(
-      taskRoute?.threadId &&
+    const showBack = target === "new" || Boolean(
+      (taskRoute?.threadId || taskRoute?.sectionId) &&
       (domain ? target === "list" : target !== "review-file"),
     );
-    const showClose = target === "new";
 
     this.backButton.hidden = !showBack;
-    this.closeButton.hidden = !showClose;
-    this.toggleAttribute(
-      "data-workspace-route-control-visible",
-      showBack || showClose,
-    );
-    this.toggleAttribute("data-workspace-back-visible", showBack);
-    this.toggleAttribute("data-workspace-close-visible", showClose);
+    this.toggleAttribute("data-workspace-route-control-visible", showBack);
     this.dataset.workspaceMode = this.mode ?? "tasks";
     this.syncPresentationState();
 
