@@ -155,7 +155,7 @@ test("reorders existing rows while preserving structural and reconciled state", 
 });
 
 for (const themeMode of ["light", "dark"]) {
-  test(`draws ${themeMode} indent guides from each directory icon through its descendants`, { tag: ["@desktop", "@phone"] }, async ({
+  test(`draws ${themeMode} tree guides that end at each directory's last child`, { tag: ["@desktop", "@phone"] }, async ({
     page,
   }) => {
     await page.goto("/settings/files");
@@ -195,7 +195,7 @@ for (const themeMode of ["light", "dark"]) {
                   directory("conversation", ready([file("code-block.js", "M")])),
                   file("dialog.js", "A"),
                 ])),
-                file("styles.css", "M"),
+                directory("styles", ready([file("layout.css", "M"), file("theme.css", "M")])),
               ])),
               file("README.md", "M"),
             ]),
@@ -257,17 +257,26 @@ for (const themeMode of ["light", "dark"]) {
             }
           }
           const columns = iconCenters.slice(0, Math.max(...rows.map(({ depth }) => depth)));
-          const betweenGuides = columns[0] + (columns[1] - columns[0]) / 2;
+          const indent = columns[1] - columns[0];
+          const betweenGuides = columns[0] + indent / 2;
 
-          return rows.map(({ row }) => {
+          return rows.map(({ row, depth }) => {
             const rect = row.getBoundingClientRect();
             const [top, bottom] = [Math.ceil(rect.top) + 1, Math.floor(rect.bottom) - 2].map((y) => {
               const background = color(betweenGuides, y);
               return columns.map((x) => contrast(x, y, background) >= 6);
             });
+            const branchX = (depth > 0 ? columns[depth - 1] : columns[0] - indent) + 4;
+            const branchBackground = color(branchX, Math.ceil(rect.top) + 1);
+            const middle = Math.floor(rect.top + rect.height / 2);
             return [
               row.dataset.fileTreeRowKey,
-              top.map((guide, index) => (guide === bottom[index] ? guide : "partial")),
+              {
+                columns: top.map((guide, index) => (guide === bottom[index] ? guide : "partial")),
+                branch: [middle - 1, middle, middle + 1].some((y) =>
+                  contrast(branchX, y, branchBackground) >= 6
+                ),
+              },
             ];
           });
         }),
@@ -275,17 +284,19 @@ for (const themeMode of ["light", "dark"]) {
     }, screenshot.toString("base64"));
 
     expect(guides).toEqual({
-      "directory:frontend": [false, false, false],
-      "directory:components": [true, false, false],
-      "directory:conversation": [true, true, false],
-      "file:code-block.js": [true, true, true],
-      "file:dialog.js": [true, true, false],
-      "file:styles.css": [true, false, false],
-      "file:README.md": [false, false, false],
-      "directory:src": [false, false],
-      "directory:lazy": [true, false],
-      "directory:lazy:children-state": [true, true],
-      "file:index.js": [true, false],
+      "directory:frontend": { columns: [false, false, false], branch: false },
+      "directory:components": { columns: [true, false, false], branch: true },
+      "directory:conversation": { columns: [true, true, false], branch: true },
+      "file:code-block.js": { columns: [true, true, "partial"], branch: true },
+      "file:dialog.js": { columns: [true, "partial", false], branch: true },
+      "directory:styles": { columns: ["partial", false, false], branch: true },
+      "file:layout.css": { columns: [false, true, false], branch: true },
+      "file:theme.css": { columns: [false, "partial", false], branch: true },
+      "file:README.md": { columns: [false, false, false], branch: false },
+      "directory:src": { columns: [false, false], branch: false },
+      "directory:lazy": { columns: [true, false], branch: true },
+      "directory:lazy:children-state": { columns: [true, "partial"], branch: true },
+      "file:index.js": { columns: ["partial", false], branch: true },
     });
   });
 }

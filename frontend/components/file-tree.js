@@ -545,10 +545,13 @@ class CaffoldFileTree extends HTMLElement {
       row.textContent = node.name ?? "";
       return;
     }
+    row.toggleAttribute("data-file-tree-last-sibling", descriptor.lastSibling);
     if (node.kind === "status") {
       row.className = `file-tree-status${node.tone === "error" ? " is-error" : ""}`;
       row.style.setProperty("--tree-depth", depth);
-      row.textContent = node.name ?? "";
+      const guides = createGuides();
+      patchGuides(guides, descriptor.passingGuideDepths);
+      row.replaceChildren(guides, node.name ?? "");
       return;
     }
 
@@ -559,6 +562,10 @@ class CaffoldFileTree extends HTMLElement {
       button = row.firstElementChild;
     }
     this.patchEntryButton(button, node, depth);
+    patchGuides(
+      button.querySelector(":scope > .file-tree-guides"),
+      descriptor.passingGuideDepths,
+    );
   }
 
   patchEntryButton(button, node, depth) {
@@ -747,7 +754,29 @@ function createEntryButton() {
       <span class="file-tree-name"></span>
     </span>
   `;
+  button.prepend(createGuides());
   return button;
+}
+
+function createGuides() {
+  const guides = document.createElement("span");
+  guides.className = "file-tree-guides";
+  guides.setAttribute("aria-hidden", "true");
+  return guides;
+}
+
+function patchGuides(guides, depths) {
+  const signature = depths.join(" ");
+  if (guides.dataset.guideDepths === signature) {
+    return;
+  }
+  guides.dataset.guideDepths = signature;
+  guides.replaceChildren(...depths.map((depth) => {
+    const guide = document.createElement("span");
+    guide.className = "file-tree-guide";
+    guide.style.setProperty("--tree-guide-depth", depth);
+    return guide;
+  }));
 }
 
 function indexNodes(nodes) {
@@ -781,8 +810,9 @@ function defaultExpandedKeys(nodeByKey) {
 
 function visibleRows(nodes, expandedKeys, fileSortMode) {
   const rows = [];
-  const visit = (items, depth = 0, parentKey = "") => {
-    for (const node of sortedNodes(items, fileSortMode)) {
+  const visit = (items, depth = 0, parentKey = "", passingGuideDepths = []) => {
+    const siblings = sortedNodes(items, fileSortMode);
+    for (const [index, node] of siblings.entries()) {
       if (node.kind === "group") {
         rows.push({ key: node.key, node, depth: 0, parentKey: "" });
         const children = childState(node);
@@ -791,13 +821,17 @@ function visibleRows(nodes, expandedKeys, fileSortMode) {
         }
         continue;
       }
-      rows.push({ key: node.key, node, depth, parentKey });
+      const lastSibling = index === siblings.length - 1;
+      rows.push({ key: node.key, node, depth, parentKey, passingGuideDepths, lastSibling });
       if (node.kind !== "directory" || !expandedKeys.has(node.key)) {
         continue;
       }
+      const childGuideDepths = depth > 0 && !lastSibling
+        ? [...passingGuideDepths, depth - 1]
+        : passingGuideDepths;
       const children = childState(node);
       if (children.status === "ready") {
-        visit(children.nodes, depth + 1, node.key);
+        visit(children.nodes, depth + 1, node.key, childGuideDepths);
       } else if (children.status === "loading" || children.status === "error") {
         rows.push({
           key: `${node.key}:children-state`,
@@ -809,6 +843,8 @@ function visibleRows(nodes, expandedKeys, fileSortMode) {
           },
           depth: depth + 1,
           parentKey: node.key,
+          passingGuideDepths: childGuideDepths,
+          lastSibling: true,
         });
       }
     }

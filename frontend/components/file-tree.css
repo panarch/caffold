@@ -1,4 +1,7 @@
 caffold-file-tree {
+  --file-tree-guide-origin: calc(
+    0.1875rem + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) / 2
+  );
   display: block;
   min-width: 0;
   min-height: 0;
@@ -51,31 +54,56 @@ caffold-file-tree {
   }
 
   &[data-status-column="true"] .file-tree-entry {
+    --file-tree-guide-origin: calc(
+      0.1875rem + var(--file-tree-padding-left) + var(--file-tree-status-slot-size) +
+        var(--file-tree-status-gap) + var(--file-tree-icon-slot-size) / 2
+    );
     grid-template-columns: var(--file-tree-status-slot-size) minmax(0, max-content);
     gap: var(--file-tree-status-gap);
   }
 
-  & .file-tree-entry::before,
-  & .file-tree-status::before {
+  & .file-tree-guides {
+    position: absolute;
+    inset: 0;
+  }
+
+  & .file-tree-guide {
     position: absolute;
     inset-block: 0;
     left: calc(
-      0.1875rem + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) / 2
+      var(--file-tree-guide-origin) + var(--tree-guide-depth) * var(--file-tree-indent)
     );
-    width: calc(var(--tree-depth, 0) * var(--file-tree-indent));
-    background: repeating-linear-gradient(
-      to right,
-      var(--tree-indent-guide) 0 1px,
-      transparent 1px var(--file-tree-indent)
-    );
+    width: 1px;
+    background: var(--tree-indent-guide);
+  }
+
+  & [data-file-tree-parent-key] .file-tree-guides::before,
+  & [data-file-tree-parent-key] .file-tree-guides::after {
+    position: absolute;
+    background: var(--tree-indent-guide);
     content: "";
   }
 
-  &[data-status-column="true"] .file-tree-entry::before {
+  & [data-file-tree-parent-key] .file-tree-guides::before {
+    inset-block: 0;
     left: calc(
-      0.1875rem + var(--file-tree-padding-left) + var(--file-tree-status-slot-size) +
-        var(--file-tree-status-gap) + var(--file-tree-icon-slot-size) / 2
+      var(--file-tree-guide-origin) + (var(--tree-depth, 0) - 1) * var(--file-tree-indent)
     );
+    width: 1px;
+  }
+
+  & [data-file-tree-last-sibling] .file-tree-guides::before {
+    bottom: calc(50% - 1px);
+  }
+
+  & [data-file-tree-parent-key] .file-tree-guides::after {
+    top: 50%;
+    left: calc(
+      var(--file-tree-guide-origin) + (var(--tree-depth, 0) - 1) * var(--file-tree-indent) +
+        1px
+    );
+    width: calc(var(--file-tree-indent) - var(--file-tree-icon-size) / 2 - 1px);
+    height: 1px;
   }
 
   & .file-tree-entry:hover,
