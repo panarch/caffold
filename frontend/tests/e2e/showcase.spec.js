@@ -58,7 +58,7 @@ test("renders a representative review-first workspace", { tag: "@desktop" }, asy
     currentPlan.getByRole("button", { name: "Open checklist: 6 of 6 complete" }),
   ).toHaveText("6 / 6");
   await expect(
-    currentPlan.locator("[data-current-plan-notice]"),
+    currentPlan.locator('[data-current-plan-action="status"]'),
   ).toBeHidden();
   await captureReviewScreenshot(
     page,

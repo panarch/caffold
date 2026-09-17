@@ -4,6 +4,7 @@ import test, { afterEach } from "node:test";
 import {
   createTaskFork,
   forkTask,
+  getCurrentPlan,
   getHealth,
   getTask,
   liveUpdatesUrl,
@@ -62,6 +63,47 @@ test("Task history cancellation reaches its own HTTP request", async () => {
   assert.equal(received.signal, controller.signal);
   controller.abort();
   await assert.rejects(pending, { name: "AbortError" });
+});
+
+test("a current-plan read honors both its caller cancellation and its timeout", async () => {
+  const timers = [];
+  const cleared = [];
+  const windowTarget = installBrowserHarness((url, options) =>
+    new Promise((resolve, reject) => {
+      const abort = () => reject(new DOMException("aborted", "AbortError"));
+      if (options.signal.aborted) {
+        abort();
+      } else {
+        options.signal.addEventListener("abort", abort, { once: true });
+      }
+    })
+  );
+  windowTarget.setTimeout = (callback, delay) => {
+    timers.push({ callback, delay });
+    return timers.length;
+  };
+  windowTarget.clearTimeout = (id) => {
+    cleared.push(id);
+  };
+
+  const timedOut = getCurrentPlan("task", new AbortController().signal);
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].delay, 8_000);
+  timers[0].callback();
+  await assert.rejects(timedOut, {
+    code: "request_timeout",
+    message: "Request timed out.",
+  });
+
+  const controller = new AbortController();
+  const cancelled = getCurrentPlan("task", controller.signal);
+  controller.abort();
+  await assert.rejects(cancelled, { name: "AbortError" });
+
+  await assert.rejects(getCurrentPlan("task", controller.signal), {
+    name: "AbortError",
+  });
+  assert.deepEqual(cleared, [1, 2, 3]);
 });
 
 test("reports origin reachability for a received API response", async () => {

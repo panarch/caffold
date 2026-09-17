@@ -216,15 +216,16 @@ test("allocates native controls through one automatic pool", () => {
   }
 });
 
-test("allocates Current Plan document openers through the automatic pool", () => {
+test("allocates Current Plan document and status openers through the automatic pool", () => {
   const allocated = allocateActionHintCodes([
     target("plan", ACTION_HINT_ACTION.CURRENT_PLAN_DOCUMENT_OPEN),
     target("checklist", ACTION_HINT_ACTION.CURRENT_PLAN_DOCUMENT_OPEN),
+    target("status", ACTION_HINT_ACTION.CURRENT_PLAN_STATUS_OPEN),
   ]);
 
   assert.deepEqual(
     allocated.map(({ id, code }) => [id, code]),
-    [["plan", "A"], ["checklist", "S"]],
+    [["plan", "A"], ["checklist", "S"], ["status", "D"]],
   );
 });
 

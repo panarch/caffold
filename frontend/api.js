@@ -311,7 +311,7 @@ export async function readFile(path, signal) {
 }
 
 export async function getCurrentPlan(path = "", signal) {
-  return requestJson("/api/current-plan", { path }, { signal });
+  return requestJson("/api/current-plan", { path }, { signal, timeoutMs: 8_000 });
 }
 
 export function imageUrl(path) {
@@ -412,12 +412,24 @@ async function requestJson(endpoint, params = {}, options = {}) {
     method: options.method ?? "GET",
   };
   const controller = options.timeoutMs ? new AbortController() : null;
+  let timedOut = false;
   const timeoutId = controller
-    ? window.setTimeout(() => controller.abort(), options.timeoutMs)
+    ? window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, options.timeoutMs)
     : null;
+  const forwardAbort = () => controller.abort();
+  if (controller && options.signal) {
+    if (options.signal.aborted) {
+      forwardAbort();
+    } else {
+      options.signal.addEventListener("abort", forwardAbort, { once: true });
+    }
+  }
 
   if (options.signal || controller) {
-    fetchOptions.signal = options.signal ?? controller.signal;
+    fetchOptions.signal = controller?.signal ?? options.signal;
   }
 
   if (options.rawBody !== undefined) {
@@ -436,7 +448,7 @@ async function requestJson(endpoint, params = {}, options = {}) {
   try {
     response = await fetch(url, fetchOptions);
   } catch (error) {
-    if (controller?.signal.aborted) {
+    if (timedOut) {
       const timeoutError = new Error("Request timed out.");
       timeoutError.code = "request_timeout";
       timeoutError.status = 0;
@@ -448,6 +460,7 @@ async function requestJson(endpoint, params = {}, options = {}) {
     if (timeoutId) {
       window.clearTimeout(timeoutId);
     }
+    options.signal?.removeEventListener("abort", forwardAbort);
   }
 
   reportOriginReachable();

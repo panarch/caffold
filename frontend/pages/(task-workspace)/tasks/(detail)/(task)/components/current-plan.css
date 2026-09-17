@@ -16,11 +16,13 @@ caffold-task-current-plan {
     max-width: min(100%, 48rem);
     min-width: 0;
     margin: 0 0 var(--interface-space-2);
+    overflow: hidden;
     border: 1px solid var(--border-subtle);
     border-radius: 14px;
     background: var(--surface-subtle);
     box-shadow: var(--structural-shadow-panel);
     color: var(--text);
+    anchor-name: --task-current-plan-strip;
   }
 
   & .task-current-plan-strip[hidden] {
@@ -33,20 +35,7 @@ caffold-task-current-plan {
     min-width: 0;
   }
 
-  & .task-current-plan-strip[data-presentation="ready"] {
-    overflow: hidden;
-  }
-
-  & .task-current-plan-strip[data-presentation="attention"] {
-    padding: var(--interface-space-3) var(--interface-space-5);
-  }
-
-  & .task-current-plan-strip[data-presentation="attention"]
-    .task-current-plan-main {
-    gap: var(--interface-space-4);
-  }
-
-  & .task-current-plan-document-action {
+  & .task-current-plan-segment {
     box-sizing: border-box;
     display: grid;
     height: var(--interface-control-hit-size);
@@ -61,17 +50,19 @@ caffold-task-current-plan {
     cursor: pointer;
   }
 
-  & .task-current-plan-document-action:hover,
-  & .task-current-plan-document-action:focus-visible {
+  & .task-current-plan-segment:hover,
+  & .task-current-plan-segment:focus-visible {
     background: var(--control-hover-bg);
     outline: none;
   }
 
-  & .task-current-plan-document-action:focus-visible {
+  & .task-current-plan-segment:focus-visible {
     box-shadow: inset 0 0 0 1px var(--border-strong);
   }
 
-  & .task-current-plan-plan-action {
+  & .task-current-plan-plan-action,
+  & .task-current-plan-strip[data-presentation="problem"]
+    .task-current-plan-status-action {
     grid-template-columns: auto minmax(0, 1fr);
     flex: 1 1 auto;
     gap: var(--interface-space-3);
@@ -79,12 +70,14 @@ caffold-task-current-plan {
     text-align: left;
   }
 
-  & .task-current-plan-checklist-action {
+  & .task-current-plan-checklist-action,
+  & .task-current-plan-strip[data-presentation="ready"]
+    .task-current-plan-status-action {
     flex: 0 0 auto;
     border-inline-start: 1px solid var(--border-subtle);
   }
 
-  & .task-current-plan-document-icon {
+  & .task-current-plan-segment-icon {
     display: grid;
     width: var(--interface-icon-slot-size);
     height: var(--interface-icon-slot-size);
@@ -92,19 +85,27 @@ caffold-task-current-plan {
     color: var(--muted);
   }
 
-  & .task-current-plan-document-icon-svg {
+  & .task-current-plan-status-icon {
+    color: var(--warning);
+  }
+
+  & .task-current-plan-segment-icon-svg {
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
     stroke-width: 2;
   }
 
-  & .task-current-plan-title {
+  & .task-current-plan-title,
+  & .task-current-plan-status-label {
     min-width: 0;
     overflow: hidden;
-    font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  & .task-current-plan-title {
+    font-weight: 500;
   }
 
   & .task-current-plan-strip[data-complete="true"]
@@ -119,46 +120,118 @@ caffold-task-current-plan {
     white-space: nowrap;
   }
 
-  & .task-current-plan-attention {
-    font-weight: 600;
+  & .task-current-plan-popover {
+    position: fixed;
+    inset: auto;
+    position-anchor: --task-current-plan-strip;
+    position-area: block-start span-inline-end;
+    position-try-fallbacks: flip-block;
+    width: max-content;
+    max-width: min(42rem, calc(100vw - 1.5rem));
+    max-height: min(75vh, 600px);
+    margin-block: var(--interface-space-3);
+    margin-inline: 0 var(--interface-space-5);
+    padding: 0.75rem;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 14px 34px rgb(var(--shadow-rgb) / 18%);
   }
 
-  & [data-current-plan-action="retry"] {
+  & .task-current-plan-popover::backdrop {
+    background: transparent;
+  }
+
+  & .task-current-plan-popover dl {
+    display: grid;
+    grid-template-columns: max-content minmax(192px, 1fr);
+    gap: 0.5625rem 0.875rem;
+    margin: 0;
+  }
+
+  & .task-current-plan-popover dl div {
+    display: contents;
+  }
+
+  & .task-current-plan-popover dt {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-current-plan-popover dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-current-plan-refresh {
+    display: grid;
+    justify-items: start;
+    margin-top: var(--interface-space-6);
+    padding-top: var(--interface-space-5);
+    border-top: 1px solid var(--border);
+  }
+
+  & .task-current-plan-refresh .task-secondary-button {
     position: relative;
-    min-height: var(--interface-compact-visual-size);
-    padding: var(--interface-space-1) var(--interface-space-4);
+    min-height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
+    border: 0;
+    background: transparent;
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-current-plan-refresh .task-secondary-button::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset) 0;
     border: 1px solid var(--border);
     border-radius: 5px;
     background: var(--surface);
-    color: var(--control-fg);
-    font: inherit;
-    cursor: pointer;
-  }
-
-  & [data-current-plan-action="retry"]::before {
-    position: absolute;
-    inset-block: calc(0px - var(--interface-compact-hit-outset));
-    inset-inline: 0;
     content: "";
   }
 
-  & [data-current-plan-action="retry"]:hover,
-  & [data-current-plan-action="retry"]:focus-visible {
+  & .task-current-plan-refresh .task-secondary-button:hover::before,
+  & .task-current-plan-refresh .task-secondary-button:focus-visible::before {
     border-color: var(--border-strong);
-    background: var(--control-hover-bg);
-    outline: none;
-  }
-
-  & .task-current-plan-notice {
-    margin: var(--interface-space-2) 0 0;
-    color: var(--warning);
-    overflow-wrap: anywhere;
   }
 }
 
 @media (max-width: 860px), (pointer: coarse) {
   caffold-task-current-plan {
     padding-inline: 0.625rem;
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-task-current-plan {
+    & .task-current-plan-popover {
+      position-area: none;
+      position-try-fallbacks: none;
+      inset: auto var(--interface-space-4);
+      bottom: calc(anchor(top) + var(--interface-space-3));
+      width: auto;
+      margin: 0;
+    }
+
+    & .task-current-plan-popover dl {
+      grid-template-columns: 1fr;
+      gap: 0.1875rem;
+    }
+
+    & .task-current-plan-popover dl div {
+      display: grid;
+      gap: 0.125rem;
+    }
+
+    & .task-current-plan-popover dl div + div {
+      margin-top: 0.5rem;
+    }
   }
 }
 
@@ -171,7 +244,9 @@ caffold-task-current-plan {
       max-width: 100%;
     }
 
-    & .task-current-plan-plan-action {
+    & .task-current-plan-plan-action,
+    & .task-current-plan-strip[data-presentation="problem"]
+      .task-current-plan-status-action {
       max-width: none;
     }
   }

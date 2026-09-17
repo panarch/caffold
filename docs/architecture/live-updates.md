@@ -117,9 +117,12 @@ Task cwd through `.caffold/plans/current`. The browser watches that
 the subscription deeper as directories appear or back outward as they are
 removed. A Watch event never supplies plan existence, title, or progress. The
 first ready event triggers one reconciliation to close the initial
-read-to-registration gap; reconnect recovery also rereads before clearing a
-degraded presentation. Leaving Conversation or replacing the Task releases the
-subscription and invalidates pending reads.
+read-to-registration gap. A failed read keeps the last accepted projection;
+while no Watch is subscribed, the browser watches the Task cwd so its ready,
+reconnect, and change events retry the read. A Watch interruption lasts until
+the current Watch reports ready or a change, which also rereads; a successful
+read alone never clears it. Leaving Conversation or replacing the Task releases
+the subscription and invalidates pending reads.
 
 ## Frontend ownership and recovery
 
