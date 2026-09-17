@@ -7,7 +7,9 @@ the stable context for local work.
 ## Task workspace
 
 The Task workspace is the only routed application workspace. It contains the
-Task navigator, Global New, Task/Section Detail, and Settings.
+Task navigator, Global New, Task/Section Detail, Notes, and Settings. The
+workspace navigation at the bottom of the navigation pane switches among Tasks,
+Notes, and Settings.
 
 Desktop reading surfaces may keep the Task navigator visible. Code surfaces
 use the available detail width. Foldable and phone layouts use the same
@@ -15,7 +17,7 @@ master-detail system and show one contextual Back appropriate to the deepest
 visible route.
 
 Split panes remember the width the user last chose in this browser, one width
-for each kind of pane: the navigation pane shared by Tasks and Settings,
+for each kind of pane: the navigation pane shared by Tasks, Notes, and Settings,
 Integrated Review for every Task and Section, Git Compare, Git Log commits, and
 GitHub Pull Request files. A window too narrow for that width narrows the pane,
 and the chosen width returns when the window widens again.
@@ -240,6 +242,37 @@ reconciles current source state. Changing Task, Section, or repository context
 discards retained external context. The implementation contract is defined in
 [Frontend Architecture](../architecture/frontend.md).
 
+## Notes
+
+Notes are Markdown documents that agents keep for the person across Tasks.
+Every Task's agent reaches the same Notes; they do not belong to a Task,
+Section, or repository. Agents create, read, rename, move, rewrite, and delete
+Notes and their directories through Caffold's Notes tools when the person asks.
+The Notes surface only reads them.
+
+- The navigation pane shows the Notes tree in the shared File Tree:
+  directories before Notes, each ordered by name, independent of the Files
+  ordering setting. Directories start closed, and opening one reads what it
+  holds; a directory that fails to load says so and is read again when it is
+  opened again. The directories that hold the open Note open so the Note stays
+  in view.
+- Choosing a Note opens it beside the tree on desktop and foldable layouts and
+  in place of the tree on a phone, where Back returns to the tree.
+- The Note header shows its name on one line and an Info button at its end.
+  Below the header are the directories that hold the Note, when it is not at
+  the top of the tree. The Info button opens when the Note last changed and
+  was created, the Task that created it, and, when a different Task changed it
+  last, that Task. An active Task links to its Conversation. A Task archived
+  since then shows its name marked archived, and a Task deleted since then is
+  named as deleted; neither has a link.
+- The content renders as Markdown. An empty Note and a Note that no longer
+  exists each say so, and a failed read offers Retry.
+- With no Notes, the tree explains that an agent in a Task can save one.
+- Entering Notes, or returning the app to the foreground while Notes is shown,
+  reads the top of the tree, every directory already opened, and the open Note
+  again, and choosing a Note reads that Note again. Nothing updates on its own
+  while Notes stays open.
+
 ## Settings
 
 Settings includes:
@@ -319,6 +352,8 @@ The browser UI does not provide:
 - split diff, hunk comments, or durable review annotations;
 - a Caffold-owned duplicate of either agent's transcript;
 - editing, checklist mutation, or archive controls for current plan documents;
+- creating, editing, renaming, moving, or deleting Notes by hand, or Note
+  history and restore;
 - native agent Plan-mode selection or structured clarification forms;
 - switching an existing Task between agents.
 

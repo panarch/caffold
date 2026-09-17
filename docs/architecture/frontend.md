@@ -59,6 +59,9 @@ caffold-app-shell
 |   |       `-- GitHub
 |   |           |-- Issues
 |   |           `-- Pull Requests
+|   |-- Notes
+|   |   |-- Notes navigator
+|   |   `-- Note
 |   `-- Settings
 |       `-- Keyboard
 |-- caffold-build-mismatch-alert
@@ -203,8 +206,9 @@ active Task or Section subject; its common Detail owns shared child instances
 and context binding. Git and GitHub own repository reconciliation and
 domain-specific Back and Refresh behavior after activation.
 
-The Rust shell fallback serves only the known Tasks and Settings frontend
-routes. Every other frontend path receives the general unknown-route response.
+The Rust shell fallback serves only the known Tasks, Notes, and Settings
+frontend routes. Every other frontend path receives the general unknown-route
+response.
 
 ## Task Workspace
 
@@ -212,14 +216,14 @@ routes. Every other frontend path receives the general unknown-route response.
 owns:
 
 - the shared master/detail presentation;
-- Task versus Settings mode;
-- Task and Settings navigators;
+- Tasks, Notes, and Settings modes;
+- Task, Notes, and Settings navigators;
 - the user-resizable desktop navigation pane;
 - the compact top-level Back for a Task, Section, or New Task;
 - the one physical live-update connection for this browser tab;
 - public Action Hint, Scroll, editing-Escape, post-activation, and registered
   product-overlay context providers for the App Shell coordinator;
-- forwarding routes to Tasks or Settings.
+- forwarding routes to Tasks, Notes, or Settings.
 
 The workspace consumes the semantic presentation snapshot published by Tasks:
 `reading` or `code`, current Task target, and Task-detail child. It does not
@@ -255,7 +259,9 @@ pulls one-shot semantic descriptors from explicitly participating owners.
 Each participating component provides its retained native control, stable
 semantic identity, action meaning, accessible name, anchor, and clip
 dependencies. This includes Workspace and Settings navigation and page
-buttons; Task and Section selection; archived-list, recovery, and Codex
+buttons; Notes tree entries, Back, Retry, the Note Info button, and the Task
+links in its popover; Task and Section selection; archived-list, recovery, and
+Codex
 readiness buttons; Composer Model, Permission, Prompt, attachment, voice,
 cancel, submit, and interrupt actions; Conversation retry, image-preview, and
 approval actions; Section Fork; Current Plan document openers, status opener,
@@ -594,11 +600,11 @@ holds; only the refreshed backend readiness snapshot can do that.
 
 The adjacent workspace-scoped live-update owner keeps one physical EventSource
 while the document is visible and injects logical Task List, Task Detail, and
-Watch capabilities into their existing domain owners. Task versus Settings
-navigation does not replace that connection. Task changes replace only the Task
-Detail generation, and independently active filesystem scopes remain separate
-logical Watch subscriptions. See [Live Updates](live-updates.md) for the wire,
-ordering, and recovery contract.
+Watch capabilities into their existing domain owners. Moving among Tasks,
+Notes, and Settings does not replace that connection. Task changes replace only
+the Task Detail generation, and independently active filesystem scopes remain
+separate logical Watch subscriptions. See [Live Updates](live-updates.md) for
+the wire, ordering, and recovery contract.
 
 This request ownership is scoped to the mounted browser component tree. It is
 not exclusive ownership of Codex settings or actions across Caffold clients.
@@ -1003,9 +1009,9 @@ revision lifetimes are independent.
 ## Route ownership
 
 `frontend/navigation-routes.js` owns the pure schema and metadata. App Shell
-forwards; Task Workspace selects Tasks/Settings; Tasks selects its subject; the
-common Detail layout selects the subject or shared child; Git and GitHub select
-their domain-local modes and leaves.
+forwards; Task Workspace selects Tasks/Notes/Settings; Tasks selects its
+subject; the common Detail layout selects the subject or shared child; Git and
+GitHub select their domain-local modes and leaves.
 
 Task-scoped Git/GitHub routes always carry `threadId` and never route `cwd`.
 Section routes carry a Managed Section ID in the root query and resolve
@@ -1047,6 +1053,43 @@ PDF leaves used by review surfaces. Navigation, presentation, and
 filesystem-watch primitives stay shared while each active surface owns its
 selection and request lifetime.
 
+## Notes
+
+Notes lives inside Task Workspace. `notes/layout.js` defines
+`caffold-notes-workspace`, which owns the routed Note id, the server reads, and
+the open Note's presentation. The tree is read one level at a time: the top,
+each directory the navigator asks for when a person opens it, and the
+directories in the open Note's `location`. Every level and the Note are
+independent reads, each with its own generation and abort controller, so a late
+answer for a superseded read is dropped without touching the others. A level
+keeps what it held while it is read again, and a directory that no longer
+exists is dropped. Leaving Notes or disconnecting cancels every read. Entering
+Notes and a foreground recovery while Notes is shown read the top, every level
+already read, and the open Note again; the recovery also restarts Notes after a
+disconnection. Choosing a Note, including the one already open, reads that
+Note again.
+
+`notes/components/navigator.js` defines `caffold-notes-navigator`. It renders
+the workspace brand and the shared File Tree from the snapshot the Notes
+workspace publishes, pins the File Tree's order to directories first, keeps
+directories closed until opened, and opens each directory that holds the open
+Note once, when its row exists. It emits open-Note, load-directory, and Retry
+intents. `notes/tree.js` maps the levels read so far to File Tree nodes: a
+directory not yet read loads when it is opened, and one that holds nothing
+opens without a read. The Notes workspace publishes
+`data-notes-view` so Task Workspace shows the tree or the Note on compact
+layouts, and it merges the navigator's and its own Action Hint and Scroll scopes
+the way Settings does.
+
+`notes/components/info.js` defines `caffold-notes-info`, the Info button at the
+end of the Note header. Its popover lists when the open Note changed and was
+created and the Tasks that wrote it. The button provides its own Action Hint,
+and the popover is a session-bound keyboard context that Task Workspace includes
+while Notes is shown, so opening it through Action Hints continues them over the
+popover's Task links. The popover closes when another Note takes the header,
+when no Note is shown, or when Notes is left, and stays open while the same Note
+is read again.
+
 ## Settings
 
 Settings lives inside Task Workspace. Appearance owns theme and Interface,
@@ -1055,8 +1098,8 @@ On/Off control; Off closes any active keyboard-navigation mode and leaves its
 keys unhandled. Settings Codex renders the shared status and runtime-restart
 request snapshots, repair guidance,
 diagnostics, and intents for Refresh or restart. The workspace Codex status
-lifecycle remains active across Tasks and Settings route changes and owns the
-HTTP request generations.
+lifecycle remains active across Tasks, Notes, and Settings route changes and
+owns the HTTP request generations.
 
 Each Settings page explicitly provides its current visible native buttons and
 exact page scrollport. The Settings workspace merges responsive Back with only
@@ -1192,6 +1235,10 @@ frontend/
 |       |-- live-updates/lifecycle.js
 |       |-- codex-status.js
 |       |-- codex-status/...
+|       |-- notes/
+|       |   |-- layout.js
+|       |   |-- tree.js
+|       |   `-- components/navigator.js
 |       |-- settings/
 |       |   |-- keyboard/page.js
 |       |   `-- ...

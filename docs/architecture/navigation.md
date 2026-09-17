@@ -40,6 +40,8 @@ canonical query route; Task URLs use path routes:
 /tasks/:threadId/github/pulls?page=...
 /tasks/:threadId/github/pulls/:number?page=...
 /tasks/:threadId/github/pulls/:number/files?page=...&file=...
+/notes
+/notes/:noteId
 /settings
 /settings/appearance
 /settings/keyboard
@@ -76,6 +78,14 @@ Selecting a managed Section opens its fixed-context New Task surface. Recovery
 group headings are not selectable. A Managed Section ID that is absent after
 the active list loads is not a recoverable remote resource and replaces the
 route with Tasks home.
+
+## Notes routes
+
+`/notes` shows the Notes tree with no Note open. `/notes/:noteId` names the
+open Note by its id and carries nothing else. Wide layouts show the tree and
+the Note together. Compact layouts show the tree for `/notes` and the Note for
+`/notes/:noteId`, whose visible Back requests `/notes`. A Note id that no longer
+exists stays on its route and reports the missing Note.
 
 ## Canonical Task context
 
@@ -209,6 +219,7 @@ not patch or reactivate a stale destination.
 - Task child root or Conversation -> Tasks home;
 - Section child root or fixed-context New Task -> Tasks home;
 - New Task -> Tasks home;
+- Note -> Notes list;
 - Settings section -> Settings list.
 
 Browser Back remains ordinary history traversal. Visible Back is a semantic
@@ -246,9 +257,9 @@ canonical Task/domain APIs.
 
 ## Server fallback and tests
 
-The Rust server serves the application shell for `/`, `/settings*`, and known
-`/tasks*` frontend routes. API and asset paths retain their own errors. Unknown
-frontend paths return the general unknown-route response.
+The Rust server serves the application shell for `/`, `/notes*`, `/settings*`,
+and known `/tasks*` frontend routes. API and asset paths retain their own
+errors. Unknown frontend paths return the general unknown-route response.
 
 Route changes require pure route-helper coverage plus browser coverage for
 direct entry, reload, internal navigation, deterministic Back, browser

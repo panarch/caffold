@@ -169,6 +169,24 @@ history names, are optional organization conventions only. Caffold does not
 parse, validate, or index them and provides no resolved-plan list; they remain
 ordinary files in Files.
 
+### Keep Notes through a Task
+
+1. In any Task, ask its agent to save something as a Note, or to change, move,
+   or delete Notes. The agent works through the Notes tools every Codex,
+   Claude, and Grok Task receives.
+2. The agent finds a Note by listing the Notes tree one directory at a time from
+   the top, then reads it. A Note's content changes only against the
+   `contentVersion` the agent read, so two Tasks changing the same Note's
+   content cannot silently overwrite each other; a stale change is refused with
+   the current version, and the agent has to read the Note again.
+3. A directory is deleted only when it is empty, so removing a subtree takes a
+   separate call for everything in it.
+4. Caffold records which Task created each Note and which Task changed it last.
+5. Open Notes to read the tree and the Note. A later Task can ask its agent to
+   read that Note before starting work.
+
+Caffold keeps no Note history: rewritten or deleted content is gone.
+
 ### Start from a GitHub Issue or Pull Request
 
 Issue and Pull Request detail expose the same `Start Task` action from a
@@ -258,6 +276,7 @@ independent objects:
 | Origin | Global New, managed Section, explicit GitHub Issue/PR Start Task, or a native fork of an existing Codex conversation. |
 | Task | Caffold-owned membership, display identity, selected agent, and review entry point. |
 | Agent conversation | Codex app-server thread or Claude session/transcript that owns prompts, turns, and agent activity. |
+| Note | Caffold-owned Markdown record shared by every Task, changed only through agents' Notes tools. |
 | Repository | Git repository in which the job is evaluated. |
 | Worktree | Git-owned execution and inspection environment. |
 | Review state | Browser/component selection, position, and presentation state. |

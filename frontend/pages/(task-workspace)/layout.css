@@ -25,6 +25,7 @@ caffold-task-workspace {
   & .task-workspace-master-pane,
   & .task-workspace-detail-pane,
   & .task-workspace-detail-pane > caffold-tasks-page,
+  & .task-workspace-detail-pane > caffold-notes-workspace,
   & .task-workspace-detail-pane > caffold-settings-workspace {
     min-width: 0;
     min-height: 0;
@@ -54,6 +55,7 @@ caffold-task-workspace {
   }
 
   & .task-workspace-master-pane > caffold-task-navigator,
+  & .task-workspace-master-pane > caffold-notes-navigator,
   & .task-workspace-master-pane > caffold-settings-navigator {
     min-height: 0;
     height: auto;
@@ -197,6 +199,10 @@ caffold-task-workspace {
       display: block;
     }
 
+    &[data-workspace-mode="notes"][data-notes-view="list"]
+      .task-workspace-detail-pane,
+    &[data-workspace-mode="notes"][data-notes-view="detail"]
+      .task-workspace-master-pane,
     &[data-workspace-mode="settings"][data-settings-view="list"]
       .task-workspace-detail-pane,
     &[data-workspace-mode="settings"][data-settings-view="detail"]

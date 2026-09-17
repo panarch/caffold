@@ -186,3 +186,24 @@ test("shows the compact Back on Task, Section, and New Task roots only", (t) => 
     assert.equal(backVisible(url), false, url);
   }
 });
+
+test("composes the keyboard contexts of the shown workspace mode", () => {
+  const tasksContext = { id: "tasks" };
+  const notesContext = { id: "notes" };
+  const owner = {
+    hidden: false,
+    mode: "notes",
+    ensureRendered() {},
+    tasksPage: { keyboardNavigationContexts: () => [tasksContext] },
+    notesWorkspace: { keyboardNavigationContexts: () => [notesContext] },
+  };
+
+  assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), [notesContext]);
+  owner.mode = "tasks";
+  assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), [tasksContext]);
+  owner.mode = "settings";
+  assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), []);
+  owner.mode = "notes";
+  owner.hidden = true;
+  assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), []);
+});

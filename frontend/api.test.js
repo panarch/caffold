@@ -6,6 +6,8 @@ import {
   forkTask,
   getCurrentPlan,
   getHealth,
+  getNote,
+  getNotes,
   getTask,
   liveUpdatesUrl,
   previewTaskForkSource,
@@ -63,6 +65,32 @@ test("Task history cancellation reaches its own HTTP request", async () => {
   assert.equal(received.signal, controller.signal);
   controller.abort();
   await assert.rejects(pending, { name: "AbortError" });
+});
+
+test("Notes reads go to their own endpoints with the caller's cancellation", async () => {
+  const received = [];
+  installBrowserHarness((url, options) => {
+    received.push({ url, signal: options.signal, method: options.method });
+    return Promise.resolve(jsonResponse({ directories: [], notes: [] }));
+  });
+  const controller = new AbortController();
+
+  await getNotes("", controller.signal);
+  await getNotes("directory with spaces", controller.signal);
+  await getNote("note with spaces", controller.signal);
+
+  assert.deepEqual(
+    received.map(({ url, signal, method }) => [
+      `${url.pathname}${url.search}`,
+      signal === controller.signal,
+      method,
+    ]),
+    [
+      ["/api/notes", true, "GET"],
+      ["/api/notes?directoryId=directory+with+spaces", true, "GET"],
+      ["/api/notes/note%20with%20spaces", true, "GET"],
+    ],
+  );
 });
 
 test("a current-plan read honors both its caller cancellation and its timeout", async () => {

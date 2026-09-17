@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use super::{
     ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ControlRequestFrame, Session, protocol,
 };
+use crate::agent::notes_tools::{NotesToolCall, notes_tool_call};
 
 /// One call of a Caffold-served tool, carrying everything answering it needs.
 #[derive(Debug, Clone)]
@@ -38,6 +39,7 @@ pub(crate) enum AskedTool {
         base_ref: Option<String>,
         include_changes: bool,
     },
+    Notes(NotesToolCall),
 }
 
 impl ClaudeClient {
@@ -141,6 +143,13 @@ fn tool_ask(message: &Value, request_id: &str, mcp_id: &Value) -> Result<ToolAsk
         .get("name")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    if let Some(call) = notes_tool_call(tool, params.get("arguments").unwrap_or(&Value::Null)) {
+        return Ok(ToolAsk {
+            request_id: request_id.to_string(),
+            mcp_id: mcp_id.clone(),
+            asked: AskedTool::Notes(call?),
+        });
+    }
     let asked = match tool {
         protocol::RENAME_CURRENT_TASK_TOOL_NAME => {
             let Some(name) = params
@@ -280,6 +289,62 @@ mod tests {
         let result = &mcp_response_in(&answered)["result"];
         assert_eq!(result["content"][0]["text"], "Renamed.");
         assert!(result.get("isError").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_notes_tool_call_is_published_with_its_checked_arguments() {
+        let (_client, runner, mut events) = watching().await;
+
+        runner
+            .say(
+                SESSION,
+                mcp_frame(
+                    6,
+                    "tools/call",
+                    json!({
+                        "name": "create_note",
+                        "arguments": { "name": " Decisions ", "content": "# Decisions\n" },
+                    }),
+                ),
+            )
+            .await;
+        let ask = tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                if let Ok(ClaudeRuntimeEvent::ToolAsked { ask, .. }) = events.recv().await {
+                    return ask;
+                }
+            }
+        })
+        .await
+        .expect("the Notes call reaches the application");
+        assert!(matches!(
+            ask.asked,
+            AskedTool::Notes(NotesToolCall::CreateNote { ref name, ref content, directory_id: None })
+                if name == "Decisions" && content == "# Decisions\n"
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_notes_tool_call_with_malformed_arguments_is_refused_with_nobody_asked() {
+        let (_client, runner, _events) = watching().await;
+
+        runner
+            .say(
+                SESSION,
+                mcp_frame(
+                    7,
+                    "tools/call",
+                    json!({ "name": "rename_note", "arguments": { "noteId": "note", "name": " " } }),
+                ),
+            )
+            .await;
+        let refused = wrote(&runner, |frame| mcp_response_in(frame)["id"] == 7).await;
+        let result = &mcp_response_in(&refused)["result"];
+        assert_eq!(result["isError"], true);
+        assert_eq!(
+            result["content"][0]["text"],
+            "`name` must be a non-empty string."
+        );
     }
 
     #[tokio::test]

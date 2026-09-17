@@ -43,6 +43,9 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   const settingsWorkspace = readFrontend(
     "pages/(task-workspace)/settings/layout.js",
   );
+  const notesWorkspace = readFrontend(
+    "pages/(task-workspace)/notes/layout.js",
+  );
   const actionHints = readFrontend(
     "action-hints.js",
   );
@@ -64,11 +67,13 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   )?.[0];
   assert.ok(masterPane, "workspace must declare its master pane");
   assert.match(masterPane, /<caffold-task-navigator/);
+  assert.match(masterPane, /<caffold-notes-navigator/);
   assert.match(masterPane, /<caffold-settings-navigator/);
   assert.match(masterPane, /<caffold-task-workspace-navigation/);
   assert.doesNotMatch(masterPane, /<nav class="task-workspace-navigation"/);
   assert.match(workspaceNavigation, /<nav class="task-workspace-navigation"/);
   assert.match(workspaceNavigation, /data-workspace-mode="tasks"/);
+  assert.match(workspaceNavigation, /data-workspace-mode="notes"/);
   assert.match(workspaceNavigation, /data-workspace-mode="settings"/);
 
   const detailPane = workspace.match(
@@ -76,6 +81,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   )?.[0];
   assert.ok(detailPane, "workspace must declare its detail pane");
   assert.match(detailPane, /<caffold-tasks-page/);
+  assert.match(detailPane, /<caffold-notes-workspace/);
   assert.match(detailPane, /<caffold-settings-workspace/);
 
   assert.doesNotMatch(workspace, /syncNavigationOwner|\.append\(|\.prepend\(/);
@@ -91,6 +97,10 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   assert.doesNotMatch(
     settingsWorkspace,
     /<caffold-settings-navigator|workspaceNavigationHost/,
+  );
+  assert.doesNotMatch(
+    notesWorkspace,
+    /<caffold-notes-navigator|workspaceNavigationHost/,
   );
   assert.equal(
     [...workspace.matchAll(/<caffold-action-hint-dialog>/g)].length,
@@ -504,7 +514,7 @@ test("Task Info keeps action presentation in its private leaf", () => {
   assert.doesNotMatch(actions, /forkTask|archiveTask/);
 });
 
-test("workspace brand owns the shared Tasks and Settings navigator identity", () => {
+test("workspace brand owns the shared Tasks, Notes, and Settings navigator identity", () => {
   const brand = readFrontend(
     "pages/(task-workspace)/components/workspace-brand.js",
   );
@@ -513,6 +523,9 @@ test("workspace brand owns the shared Tasks and Settings navigator identity", ()
   );
   const settingsNavigator = readFrontend(
     "pages/(task-workspace)/settings/navigator.js",
+  );
+  const notesNavigator = readFrontend(
+    "pages/(task-workspace)/notes/components/navigator.js",
   );
   const appearance = readFrontend(
     "pages/(task-workspace)/settings/appearance/page.js",
@@ -527,7 +540,7 @@ test("workspace brand owns the shared Tasks and Settings navigator identity", ()
   );
   assert.match(brand, /class="workspace-brand-icon"/);
   assert.match(brand, /class="workspace-brand-title">Caffold/);
-  for (const owner of [taskNavigator, settingsNavigator]) {
+  for (const owner of [taskNavigator, notesNavigator, settingsNavigator]) {
     assert.match(owner, /<caffold-workspace-brand><\/caffold-workspace-brand>/);
   }
   assert.doesNotMatch(

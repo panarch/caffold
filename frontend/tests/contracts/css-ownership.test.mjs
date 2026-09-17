@@ -324,6 +324,18 @@ const ownership = new Map([
     ["caffold-task-github-layout"],
   ],
   [
+    "pages/(task-workspace)/notes/layout.css",
+    ["caffold-notes-workspace"],
+  ],
+  [
+    "pages/(task-workspace)/notes/components/info.css",
+    ["caffold-notes-info"],
+  ],
+  [
+    "pages/(task-workspace)/notes/components/navigator.css",
+    ["caffold-notes-navigator"],
+  ],
+  [
     "pages/(task-workspace)/settings/layout.css",
     ["caffold-settings-workspace"],
   ],
@@ -412,9 +424,11 @@ const componentChildren = new Map([
     "caffold-task-workspace",
     [
       "caffold-task-navigator",
+      "caffold-notes-navigator",
       "caffold-settings-navigator",
       "caffold-pane-resizer",
       "caffold-tasks-page",
+      "caffold-notes-workspace",
       "caffold-settings-workspace",
       "caffold-task-archived-delete-dialog",
       "caffold-codex-runtime-restart-dialog",
@@ -431,6 +445,8 @@ const componentChildren = new Map([
       "caffold-settings-about-page",
     ],
   ],
+  ["caffold-notes-workspace", ["caffold-markdown-preview"]],
+  ["caffold-notes-navigator", ["caffold-workspace-brand", "caffold-file-tree"]],
   ["caffold-settings-navigator", ["caffold-workspace-brand"]],
   ["caffold-settings-appearance-page", ["caffold-workspace-brand"]],
   [

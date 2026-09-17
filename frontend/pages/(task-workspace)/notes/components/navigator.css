@@ -1,0 +1,65 @@
+caffold-notes-navigator {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+
+  & > .notes-navigator-header {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    height: var(--task-workspace-header-size);
+    border-bottom: 1px solid var(--border);
+    padding: 0 var(--interface-space-6);
+    box-shadow: var(--structural-shadow-block-end);
+  }
+
+  & > .notes-navigator-status {
+    grid-row: 2;
+    display: grid;
+    justify-items: start;
+    gap: var(--interface-space-4);
+    padding: var(--interface-space-7);
+  }
+
+  & > .notes-navigator-status > .notes-navigator-message {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    overflow-wrap: anywhere;
+  }
+
+  & > .notes-navigator-status[data-state="failed"] > .notes-navigator-message {
+    color: var(--danger);
+  }
+
+  & > .notes-navigator-status > button {
+    min-height: var(--interface-control-hit-size);
+    padding: var(--interface-space-2) var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    cursor: pointer;
+  }
+
+  & > .notes-navigator-status > button:hover,
+  & > .notes-navigator-status > button:focus-visible {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+    outline: none;
+  }
+
+  & > caffold-file-tree {
+    grid-row: 3;
+    min-height: 0;
+  }
+}

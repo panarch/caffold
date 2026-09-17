@@ -38,6 +38,8 @@ import {
 } from "./tasks/components/archived-delete-dialog.js";
 import "./tasks/components/navigator.js";
 import "./tasks/layout.js";
+import "./notes/components/navigator.js";
+import "./notes/layout.js";
 import "./settings/navigator.js";
 import "./settings/layout.js";
 
@@ -72,6 +74,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.mode = "tasks";
     this.route = { kind: "tasks" };
     this.lastTaskRoute = { kind: "tasks" };
+    this.lastNotesRoute = { kind: "notes", noteId: "" };
     this.currentOpenOptions = {};
     this.codexRestartStateValue = { state: "idle", message: "" };
     this.liveUpdates = new WorkspaceLiveUpdates();
@@ -94,6 +97,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
         <div class="task-workspace-master-detail">
           <aside class="task-workspace-master-pane" aria-label="Workspace navigation">
             <caffold-task-navigator class="tasks-list-region"></caffold-task-navigator>
+            <caffold-notes-navigator hidden></caffold-notes-navigator>
             <caffold-settings-navigator hidden></caffold-settings-navigator>
             <caffold-task-workspace-navigation></caffold-task-workspace-navigation>
           </aside>
@@ -107,6 +111,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
           ></caffold-pane-resizer>
           <div class="task-workspace-detail-pane">
             <caffold-tasks-page></caffold-tasks-page>
+            <caffold-notes-workspace hidden></caffold-notes-workspace>
             <caffold-settings-workspace hidden></caffold-settings-workspace>
           </div>
         </div>
@@ -121,11 +126,13 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.masterPane = this.querySelector(".task-workspace-master-pane");
     this.detailPane = this.querySelector(".task-workspace-detail-pane");
     this.taskNavigator = this.querySelector("caffold-task-navigator");
+    this.notesNavigator = this.querySelector("caffold-notes-navigator");
     this.settingsNavigator = this.querySelector("caffold-settings-navigator");
     this.masterResizer = this.querySelector(
       ":scope > .task-workspace-surface > .task-workspace-master-detail > caffold-pane-resizer",
     );
     this.tasksPage = this.querySelector("caffold-tasks-page");
+    this.notesWorkspace = this.querySelector("caffold-notes-workspace");
     this.settingsWorkspace = this.querySelector("caffold-settings-workspace");
     this.navigation = this.querySelector("caffold-task-workspace-navigation");
     this.archivedDeleteDialog = this.querySelector(
@@ -138,10 +145,12 @@ class CaffoldTaskWorkspace extends HTMLElement {
       ":scope > caffold-claude-runtime-restart-dialog",
     );
     this.tasksPage.ensureRendered();
+    this.notesWorkspace.ensureRendered();
     this.settingsWorkspace.ensureRendered();
     this.taskNavigator.setLiveUpdates(this.liveUpdates);
     this.tasksPage.setLiveUpdates(this.liveUpdates);
     this.tasksPage.connectTaskNavigator(this.taskNavigator);
+    this.notesWorkspace.connectNotesNavigator(this.notesNavigator);
     this.settingsWorkspace.connectSettingsNavigator(this.settingsNavigator);
     this.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
     this.tasksPage.setCodexRestartState(this.codexRestartStateValue);
@@ -180,12 +189,15 @@ class CaffoldTaskWorkspace extends HTMLElement {
       "caffold:workspace-navigation-intent",
       (event) => {
         event.stopPropagation();
-        const route = event.detail?.mode === "tasks"
+        const mode = event.detail?.mode;
+        const route = mode === "tasks"
           ? this.lastTaskRoute
-          : {
-              kind: "settings",
-              section: this.tasksPage.codexOperationsBlocked() ? "codex" : "",
-            };
+          : mode === "notes"
+            ? this.lastNotesRoute
+            : {
+                kind: "settings",
+                section: this.tasksPage.codexOperationsBlocked() ? "codex" : "",
+              };
         this.dispatchEvent(
           new CustomEvent("caffold:request-workspace-route", {
             bubbles: true,
@@ -236,6 +248,13 @@ class CaffoldTaskWorkspace extends HTMLElement {
       event.stopPropagation();
       this.syncPresentationState();
     });
+    this.addEventListener("caffold:notes-presentation-change", (event) => {
+      if (event.target !== this.notesWorkspace) {
+        return;
+      }
+      event.stopPropagation();
+      this.syncPresentationState();
+    });
     this.addEventListener("caffold:settings-presentation-change", (event) => {
       if (event.target !== this.settingsWorkspace) {
         return;
@@ -261,19 +280,27 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.ensureRendered();
     const previousMode = this.mode;
     this.route = route;
-    this.mode = route?.kind === "settings" ? "settings" : "tasks";
+    this.mode = ["settings", "notes"].includes(route?.kind) ? route.kind : "tasks";
     if (previousMode === "tasks" && this.mode !== "tasks") {
       this.tasksPage.deactivate();
+    }
+    if (previousMode === "notes" && this.mode !== "notes") {
+      this.notesWorkspace.deactivate();
     }
     if (this.mode === "tasks") {
       this.lastTaskRoute = { ...route };
       this.tasksPage.prepareRoute(route, options);
+    } else if (this.mode === "notes") {
+      this.lastNotesRoute = { ...route };
+      this.notesWorkspace.prepareRoute(route);
     } else {
       this.settingsWorkspace.prepareRoute(route);
     }
     this.taskNavigator.hidden = this.mode !== "tasks";
+    this.notesNavigator.hidden = this.mode !== "notes";
     this.settingsNavigator.hidden = this.mode !== "settings";
     this.tasksPage.hidden = this.mode !== "tasks";
+    this.notesWorkspace.hidden = this.mode !== "notes";
     this.settingsWorkspace.hidden = this.mode !== "settings";
     this.updateChrome();
   }
@@ -282,6 +309,10 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.currentOpenOptions = { ...options };
     this.prepareRoute(route, options);
     if (this.mode === "settings") {
+      return null;
+    }
+    if (this.mode === "notes") {
+      this.notesWorkspace.activate();
       return null;
     }
     void this.taskNavigator.activate();
@@ -316,6 +347,9 @@ class CaffoldTaskWorkspace extends HTMLElement {
     }
     if (!isCurrent()) {
       return { stale: true, retry: false };
+    }
+    if (this.mode === "notes" && !initialActivation) {
+      this.notesWorkspace.reload();
     }
     const tasksRecovery = this.mode === "tasks"
       ? this.tasksPage.recoverForeground({
@@ -446,7 +480,22 @@ class CaffoldTaskWorkspace extends HTMLElement {
       : emptyActionHintScope();
     const modeScope = this.mode === "tasks"
       ? this.tasksPage?.actionHintScope()
-      : this.mode === "settings"
+      : this.mode === "notes"
+        ? mergeActionHintScopes(
+            hasActionHintLayoutBox(this.notesNavigator)
+              ? this.notesNavigator.actionHintScope({
+                  scopeId: "notes",
+                  clipRoots: navigationClipRoots,
+                })
+              : null,
+            hasActionHintLayoutBox(this.notesWorkspace)
+              ? this.notesWorkspace.actionHintScope({
+                  scopeId: "notes",
+                  clipRoots: detailClipRoots,
+                })
+              : null,
+          )
+        : this.mode === "settings"
         ? mergeActionHintScopes(
             hasActionHintLayoutBox(this.settingsNavigator)
               ? this.settingsNavigator.actionHintScope({
@@ -489,10 +538,13 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   keyboardNavigationContexts() {
     this.ensureRendered();
-    const childContexts =
-      !this.hidden && this.mode === "tasks"
+    const childContexts = this.hidden
+      ? []
+      : this.mode === "tasks"
         ? this.tasksPage.keyboardNavigationContexts()
-        : [];
+        : this.mode === "notes"
+          ? this.notesWorkspace.keyboardNavigationContexts()
+          : [];
     return mergeKeyboardNavigationContexts(
       this.codexRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
       this.claudeRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
@@ -508,6 +560,22 @@ class CaffoldTaskWorkspace extends HTMLElement {
     if (this.mode === "tasks") {
       return this.tasksPage?.scrollSurfaceScope?.() ??
         emptyScrollSurfaceScope();
+    }
+    if (this.mode === "notes") {
+      return mergeScrollSurfaceScopes(
+        hasScrollLayoutBox(this.notesNavigator)
+          ? this.notesNavigator.scrollSurfaceScope({
+              scopeId: "notes",
+              clipRoots: [this.masterPane, this.workspaceSurface].filter(Boolean),
+            })
+          : null,
+        hasScrollLayoutBox(this.notesWorkspace)
+          ? this.notesWorkspace.scrollSurfaceScope({
+              scopeId: "notes",
+              clipRoots: [this.detailPane, this.workspaceSurface].filter(Boolean),
+            })
+          : null,
+      );
     }
     if (this.mode !== "settings") {
       return emptyScrollSurfaceScope();
@@ -605,6 +673,8 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.tasksPage.dataset.taskDetailView ?? "conversation";
     this.dataset.taskDetailPresentation =
       this.tasksPage.dataset.taskDetailPresentation ?? "reading";
+    this.dataset.notesView =
+      this.notesWorkspace?.dataset.notesView ?? "list";
     this.dataset.settingsView =
       this.settingsWorkspace.dataset.settingsView ?? "list";
   }

@@ -85,13 +85,16 @@ and network access, MCP tool authorization, and other permission requests still
 use their approval paths below. Provider history and live status retain their
 existing ownership; Caffold adds no clarification ledger or waiting-state overlay.
 
-## Caffold-Served Task Tools
+## Caffold-Served Tools
 
-Task naming and managed-worktree preparation are Caffold-owned operations, not
-general agent permissions. Caffold declares that closed tool set through each
-agent's native extension point and allows those calls without adding another
-approval card. The tool still enforces its own Task and Git lifecycle checks;
-an unknown tool or an unmanaged conversation is refused.
+Task naming, managed-worktree preparation, and Notes are Caffold-owned
+operations, not general agent permissions. Caffold declares that closed tool set
+through each agent's native extension point and allows those calls without
+adding another approval card. Each tool still enforces its own checks, such as
+the Task and Git lifecycle for the Task tools and a Note's content version for
+the Notes tools. An unknown tool or an unmanaged conversation is refused.
+Caffold keeps no Note history, so a Notes tool that replaces or deletes content
+cannot be undone.
 
 Codex and Grok reach this surface through HTTP MCP addresses on the Caffold
 server, `/api/codex/mcp` and `/api/grok/mcp`. Each address has its own handler
@@ -147,9 +150,11 @@ Codex or Grok or select a Task, and an unavailable key or a request without an
 install-issued capability fails closed without preventing a Caffold service
 that lacks one of the agents from starting.
 
-Codex, Claude, and Grok expose the same Task-owned MCP base names:
-`rename_current_task` and `isolate_current_task`. Claude's provider transport
-qualifies those names as `mcp__caffold__...` and Grok's as `caffold__...`;
+Codex, Claude, and Grok expose the same MCP base names: the Task-owned
+`rename_current_task` and `isolate_current_task`, and the Notes tools listed in
+[Agent Runtimes](agent-runtimes.md#caffold-served-tools-and-worktrees).
+Claude's provider transport qualifies those names as `mcp__caffold__...` and
+Grok's as `caffold__...`;
 Codex's does not. The historical Codex
 `rename_current_thread` name is accepted only for a dynamic-tool definition
 already persisted on a pre-MCP thread, never through the current MCP endpoint.

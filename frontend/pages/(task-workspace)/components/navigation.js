@@ -11,8 +11,12 @@ import { ACTION_HINT_ACTION } from "../../../action-hints.js";
 
 const ICONS = {
   tasks: "ListTodo",
+  notes: "NotebookText",
   settings: "Settings",
 };
+
+const MODES = ["tasks", "notes", "settings"];
+const MODE_LABELS = { tasks: "Tasks", notes: "Notes", settings: "Settings" };
 
 class CaffoldTaskWorkspaceNavigation extends HTMLElement {
   connectedCallback() {
@@ -42,6 +46,12 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
           </span>
           <span>Tasks</span>
         </button>
+        <button type="button" data-workspace-mode="notes">
+          <span data-workspace-navigation-icon="notes">
+            ${renderInlineIcon("NotebookText", "", "task-workspace-navigation-icon")}
+          </span>
+          <span>Notes</span>
+        </button>
         <button type="button" data-workspace-mode="settings">
           <span data-workspace-navigation-icon="settings">
             ${renderInlineIcon("Settings", "", "task-workspace-navigation-icon")}
@@ -69,7 +79,7 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
 
   setMode(mode) {
     this.ensureRendered();
-    this.mode = mode === "settings" ? "settings" : "tasks";
+    this.mode = MODES.includes(mode) ? mode : "tasks";
     this.querySelectorAll("button[data-workspace-mode]").forEach((button) => {
       button.toggleAttribute(
         "aria-current",
@@ -89,7 +99,7 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
     if (this.hidden) {
       return emptyActionHintScope();
     }
-    const targets = ["tasks", "settings"].flatMap((mode) => {
+    const targets = MODES.flatMap((mode) => {
       const control = this.querySelector(
         `:scope > .task-workspace-navigation > button[data-workspace-mode="${mode}"]`,
       );
@@ -97,7 +107,7 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
         return [];
       }
       const label = control.getAttribute("aria-label") ||
-        `Open ${mode === "tasks" ? "Tasks" : "Settings"}`;
+        `Open ${MODE_LABELS[mode]}`;
       return [buttonActionHintTarget({
         invalidationOwner: this,
         id: `${scopeId}:mode:${mode}`,

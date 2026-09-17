@@ -316,7 +316,7 @@ mod tests {
             .await,
         )
         .await;
-        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 2);
+        assert_eq!(tools["result"]["tools"], json!(caffold_mcp_tools()));
     }
 
     #[tokio::test]
@@ -561,6 +561,99 @@ mod tests {
             serde_json::from_slice(&body).unwrap()
         };
         (status, json)
+    }
+
+    /// A Grok Task keeps Notes through its own address, and the Notes record
+    /// which Task wrote them.
+    #[tokio::test]
+    async fn a_grok_task_keeps_notes_through_its_own_address() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, leader, _memory, host) = task_state_with_grok(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let store = state.task_store.clone();
+        let app = router(state);
+
+        let (status, created) = task_call(
+            &app,
+            Request::post("/api/tasks")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "titleSource": "Keep notes", "provider": "grok" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{created}");
+        let thread_id = created["threadId"].as_str().unwrap().to_string();
+        let asked = leader.wait_for("session/new").await;
+        let token = asked["mcpServers"][0]["headers"][0]["value"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let session =
+            session_header(&request(&host, Some(&token), None, initialize("2025-11-25")).await);
+        let call = |id: u64, tool: &str, arguments: Value| {
+            json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "tools/call",
+                "params": { "name": tool, "arguments": arguments },
+            })
+        };
+
+        let created_note = response_json(
+            request(
+                &host,
+                Some(&token),
+                Some(&session),
+                call(
+                    2,
+                    "create_note",
+                    json!({ "name": "Bridge", "content": "# Bridge\n" }),
+                ),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(created_note["result"]["isError"], false, "{created_note}");
+        let answer: Value = serde_json::from_str(
+            created_note["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        let note_id = answer["noteId"].as_str().unwrap().to_string();
+
+        let refused = response_json(
+            request(
+                &host,
+                Some(&token),
+                Some(&session),
+                call(
+                    3,
+                    "delete_note_directory",
+                    json!({ "directoryId": "missing" }),
+                ),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(refused["result"]["isError"], true);
+        assert_eq!(
+            refused["result"]["content"][0]["text"],
+            "No Note directory has the id `missing`."
+        );
+
+        let note = store
+            .read(|tables| tables.note(&note_id))
+            .unwrap()
+            .expect("the Note is stored");
+        assert_eq!(note.content, "# Bridge\n");
+        assert_eq!(note.created_by_thread_id, thread_id);
+        assert_eq!(note.updated_by_thread_id, thread_id);
     }
 
     /// A Grok Task calls the two Caffold tools through its own address: the

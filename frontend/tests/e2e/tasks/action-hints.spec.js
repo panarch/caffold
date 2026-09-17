@@ -1878,6 +1878,11 @@ async function captureActionHintVisualState(page) {
     const workspaceNavigation = document.querySelector(
       "caffold-task-workspace-navigation",
     );
+    const workspaceModeNames = {
+      tasks: "Tasks",
+      notes: "Notes",
+      settings: "Settings",
+    };
     for (const control of workspaceNavigation?.querySelectorAll(
       "button[data-workspace-mode]",
     ) ?? []) {
@@ -1886,7 +1891,7 @@ async function captureActionHintVisualState(page) {
       }
       const mode = control.dataset.workspaceMode;
       const label = control.getAttribute("aria-label") ||
-        `Open ${mode === "tasks" ? "Tasks" : "Settings"}`;
+        `Open ${workspaceModeNames[mode]}`;
       automaticTargets.set(label, target(control, [
         document.querySelector("caffold-task-workspace"),
         document.querySelector(".task-workspace-master-pane"),

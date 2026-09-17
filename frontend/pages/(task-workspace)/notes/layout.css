@@ -1,0 +1,169 @@
+caffold-notes-workspace {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+
+  & > .notes-workspace-detail-pane {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  & .notes-workspace-detail-header {
+    grid-row: 1;
+    anchor-name: --notes-workspace-detail-header;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: var(--task-workspace-header-size);
+    border-bottom: 1px solid var(--border);
+    padding: var(--interface-space-5) var(--interface-space-7);
+    box-shadow: var(--structural-shadow-block-end);
+  }
+
+  & .notes-workspace-detail-header > button {
+    display: none;
+  }
+
+  & .notes-workspace-detail-header > h1 {
+    grid-column: 2;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--workspace-header-title-size);
+    line-height: var(--interface-line-height);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .notes-workspace-detail-header > caffold-notes-info {
+    grid-column: 3;
+    /* The button is taller than the title row; it must not grow the header
+       past the height it shares with the Settings header. */
+    margin-block: calc(0rem - var(--interface-space-5));
+    margin-inline-start: var(--interface-space-6);
+  }
+
+  & > .notes-workspace-detail-pane > .notes-workspace-location {
+    grid-row: 2;
+    margin: 0;
+    padding: var(--interface-space-4) var(--interface-space-7) 0;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    overflow-wrap: anywhere;
+  }
+
+  & > .notes-workspace-detail-pane > .notes-workspace-status {
+    grid-row: 3;
+    display: grid;
+    justify-items: start;
+    gap: var(--interface-space-4);
+    padding: var(--interface-space-7);
+  }
+
+  & .notes-workspace-message {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    overflow-wrap: anywhere;
+  }
+
+  & .notes-workspace-status[data-state="failed"] > .notes-workspace-message {
+    color: var(--danger);
+  }
+
+  & .notes-workspace-status > button {
+    min-height: var(--interface-control-hit-size);
+    padding: var(--interface-space-2) var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    cursor: pointer;
+  }
+
+  & .notes-workspace-status > button:hover,
+  & .notes-workspace-status > button:focus-visible {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+    outline: none;
+  }
+
+  & > .notes-workspace-detail-pane > caffold-markdown-preview {
+    grid-row: 4;
+    min-height: 0;
+  }
+}
+
+@media (max-width: 899px) {
+  caffold-notes-workspace {
+    & .notes-workspace-detail-header {
+      column-gap: var(--interface-space-3);
+    }
+
+    & .notes-workspace-detail-header > button {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: var(--interface-control-hit-size);
+      height: var(--interface-control-hit-size);
+      border: 0;
+      background: transparent;
+      color: var(--control-fg);
+      padding: 0;
+      cursor: pointer;
+    }
+
+    & .notes-workspace-detail-header > button::before {
+      position: absolute;
+      inset: var(--interface-control-hit-outset);
+      border: 1px solid var(--border);
+      border-radius: 0.25rem;
+      background: var(--surface);
+      content: "";
+    }
+
+    & .notes-workspace-detail-header > button:hover,
+    & .notes-workspace-detail-header > button:focus-visible {
+      outline: none;
+    }
+
+    & .notes-workspace-detail-header > button:hover::before,
+    & .notes-workspace-detail-header > button:focus-visible::before {
+      border-color: var(--border-strong);
+      background: var(--control-hover-bg);
+    }
+
+    & .notes-workspace-back-icon {
+      position: relative;
+      display: block;
+      width: var(--interface-icon-size);
+      height: var(--interface-icon-size);
+      stroke-width: 2;
+    }
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-notes-workspace {
+    & .notes-workspace-detail-header {
+      padding-inline: var(--interface-space-5) var(--interface-space-4);
+    }
+
+    & > .notes-workspace-detail-pane > .notes-workspace-location {
+      padding-inline: var(--interface-space-5);
+    }
+  }
+}
