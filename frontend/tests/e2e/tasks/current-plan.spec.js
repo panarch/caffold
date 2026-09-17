@@ -8,7 +8,11 @@ import {
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { actionHintDialog } from "../support/action-hints.js";
+import {
+  actionHintDialog,
+  activateActionHintIntoPopover,
+  popoverActionHintDialog,
+} from "../support/action-hints.js";
 import {
   installTaskApiFixture,
   taskDetailFixture,
@@ -108,7 +112,7 @@ test("floats ignored current documents above the stable composer and updates the
     "Open checklist: 2 of 64 complete",
   );
   await expect(
-    planButton.locator(".task-current-plan-document-icon-svg"),
+    planButton.locator(".task-current-plan-segment-icon-svg"),
   ).toBeVisible();
   await expect(strip.getByText("Current plan", { exact: true })).toHaveCount(0);
   await expect(prompt).toHaveValue("Keep this draft while plan files change.");
@@ -479,7 +483,7 @@ test("floats ignored current documents above the stable composer and updates the
   ).toBe(true);
 });
 
-test("recovers a partial active-turn plan after its Watch subscription resumes", { tag: "@desktop" }, async ({
+test("shows a partial active-turn plan on one strip line with its detail in the status popover", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -487,6 +491,7 @@ test("recovers a partial active-turn plan after its Watch subscription resumes",
     workspace.absolutePath,
     ".caffold/plans/current",
   );
+  const checklistPath = `${workspace.logicalPath}/.caffold/plans/current/CHECKLIST.md`;
   mkdirSync(currentDirectory, { recursive: true });
   writeFileSync(join(currentDirectory, "PLAN.md"), "# Active turn plan\n");
   await installTaskApiFixture(page);
@@ -499,46 +504,322 @@ test("recovers a partial active-turn plan after its Watch subscription resumes",
   expect((await (await problemResponse).json()).status).toBe("problem");
 
   const currentPlan = page.locator("caffold-task-current-plan");
-  await expect(currentPlan.locator(".task-current-plan-strip")).toBeVisible();
-  await expect(currentPlan.locator("[data-current-plan-notice]")).toContainText(
-    "CHECKLIST.md",
+  const strip = currentPlan.locator(".task-current-plan-strip");
+  const status = currentPlan.locator('[data-current-plan-action="status"]');
+  await expect(strip).toHaveAttribute("data-presentation", "problem");
+  await expect(status).toHaveText("CHECKLIST.md missing");
+  await expect(status).toHaveAttribute(
+    "aria-label",
+    "Plan status: CHECKLIST.md missing",
   );
   await expect(
-    currentPlan.getByRole("button", { name: /^Open checklist:/ }),
-  ).toBeHidden();
+    currentPlan.getByRole("button", { name: /^Open (plan|checklist):/ }),
+  ).toHaveCount(0);
+  const problemLayout = await strip.evaluate((element) => {
+    const status = element.querySelector('[data-current-plan-action="status"]');
+    const label = status.querySelector("[data-current-plan-status-label]");
+    const stripBox = element.getBoundingClientRect();
+    return {
+      stripHeight: stripBox.height,
+      statusHeight: status.getBoundingClientRect().height,
+      stripRight: stripBox.right,
+      labelClipped: label.scrollWidth > label.clientWidth,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  expect(
+    Math.abs(problemLayout.stripHeight - problemLayout.statusHeight),
+  ).toBeLessThanOrEqual(2.1);
+  expect(problemLayout.labelClipped).toBe(false);
+  expect(problemLayout.stripRight).toBeLessThanOrEqual(
+    problemLayout.viewportWidth + 1,
+  );
+
+  await status.click();
+  const popover = currentPlan.locator(".task-current-plan-popover");
+  await expect(popover).toBeVisible();
+  await expect(popover.locator("dt")).toHaveText(["CHECKLIST.md missing"]);
+  await expect(popover.locator("dd")).toHaveText([
+    `path was not found: ${checklistPath}`,
+  ]);
+  await expect(popover.getByRole("button", { name: "Refresh" })).toHaveCount(0);
+  const popoverLayout = await currentPlan.evaluate((element) => {
+    const strip = element
+      .querySelector(".task-current-plan-strip")
+      .getBoundingClientRect();
+    const popover = element
+      .querySelector(".task-current-plan-popover")
+      .getBoundingClientRect();
+    return {
+      stripLeft: strip.left,
+      stripTop: strip.top,
+      popoverLeft: popover.left,
+      popoverRight: popover.right,
+      popoverTop: popover.top,
+      popoverBottom: popover.bottom,
+      popoverMarginRight: Number.parseFloat(
+        getComputedStyle(element.querySelector(".task-current-plan-popover"))
+          .marginRight,
+      ),
+      viewportWidth: window.innerWidth,
+    };
+  });
+  expect(popoverLayout.popoverBottom).toBeLessThanOrEqual(popoverLayout.stripTop);
+  expect(popoverLayout.popoverTop).toBeGreaterThanOrEqual(0);
+  expect(popoverLayout.popoverLeft).toBeGreaterThanOrEqual(0);
+  expect(popoverLayout.popoverRight).toBeLessThanOrEqual(
+    popoverLayout.viewportWidth - popoverLayout.popoverMarginRight + 1,
+  );
+  const popoverWidth = popoverLayout.popoverRight - popoverLayout.popoverLeft;
+  if (
+    testInfo.project.name !== "phone" &&
+    popoverLayout.stripLeft + popoverWidth + popoverLayout.popoverMarginRight <=
+      popoverLayout.viewportWidth
+  ) {
+    expect(
+      Math.abs(popoverLayout.popoverLeft - popoverLayout.stripLeft),
+    ).toBeLessThanOrEqual(1);
+  }
+  await captureReviewScreenshot(page, testInfo, "tasks-current-plan-problem-status");
+  await page.keyboard.press("Escape");
+  await expect(popover).toBeHidden();
+  await expect(status).toBeFocused();
 
   writeFileSync(join(currentDirectory, "CHECKLIST.md"), "- [ ] Observe active work\n");
   const readyResponse = currentPlanResponse(page, workspace.logicalPath);
   await emitWatchChange(
     page,
     `${workspace.logicalPath}/.caffold/plans/current`,
-    { paths: [`${workspace.logicalPath}/.caffold/plans/current/CHECKLIST.md`] },
+    { paths: [checklistPath] },
   );
   expect((await (await readyResponse).json()).status).toBe("ready");
+  await expect(strip).toHaveAttribute("data-presentation", "ready");
   await expect(currentPlan.locator("[data-current-plan-title]")).toHaveText(
     "Active turn plan",
   );
-  await expect(
-    currentPlan.getByRole("button", { name: /^Open plan:/ }),
-  ).toBeEnabled();
-
-  await emitWatchError(
-    page,
-    `${workspace.logicalPath}/.caffold/plans/current`,
-  );
-  await expect(currentPlan.locator("[data-current-plan-notice]")).toContainText(
-    "Plan updates unavailable",
-  );
-  const recoveredResponse = currentPlanResponse(page, workspace.logicalPath);
-  await emitWatchReady(
-    page,
-    `${workspace.logicalPath}/.caffold/plans/current`,
-  );
-  expect((await (await recoveredResponse).json()).status).toBe("ready");
-  await expect(currentPlan.locator("[data-current-plan-notice]")).toBeHidden();
   await expect(currentPlan.locator("[data-current-plan-progress]")).toHaveText(
     "0 / 1",
   );
+  await expect(status).toBeHidden();
+});
+
+test("keeps paused plan updates visible after Refresh until the Watch recovers", { tag: "@desktop" }, async ({
+  page,
+}, testInfo) => {
+  const workspace = prepareWorkspace(testInfo);
+  const watchPath = `${workspace.logicalPath}/.caffold/plans/current`;
+  writeCurrentDocuments(workspace.absolutePath, {
+    plan: "# Paused plan\n",
+    checklist: "- [x] Read the plan\n- [ ] Watch the plan\n",
+  });
+  await installTaskApiFixture(page);
+  const detail = detailFor("thread-1", workspace.logicalPath);
+  await installTaskDetails(page, [detail]);
+
+  await page.goto(`/tasks/thread-1?cwd=${encodeURIComponent(workspace.logicalPath)}`);
+  const readyResponse = currentPlanResponse(page, workspace.logicalPath);
+  await openTaskWithBootstrap(page.locator("caffold-tasks-page"), detail);
+  expect((await (await readyResponse).json()).status).toBe("ready");
+
+  const currentPlan = page.locator("caffold-task-current-plan");
+  const strip = currentPlan.locator(".task-current-plan-strip");
+  const status = currentPlan.locator('[data-current-plan-action="status"]');
+  await expect(currentPlan.locator("[data-current-plan-progress]")).toHaveText(
+    "1 / 2",
+  );
+  await expect(status).toBeHidden();
+
+  await emitWatchError(page, watchPath);
+  await expect(status).toBeVisible();
+  await expect(status).toHaveAttribute(
+    "aria-label",
+    "Plan status: Plan updates paused",
+  );
+  await expect(status.locator("[data-current-plan-status-label]")).toBeHidden();
+  const pausedLayout = await strip.evaluate((element) => ({
+    stripHeight: element.getBoundingClientRect().height,
+    statusHeight: element
+      .querySelector('[data-current-plan-action="status"]')
+      .getBoundingClientRect().height,
+  }));
+  expect(
+    Math.abs(pausedLayout.stripHeight - pausedLayout.statusHeight),
+  ).toBeLessThanOrEqual(2.1);
+
+  await activateActionHintIntoPopover(page, "Plan status: Plan updates paused");
+  const popover = currentPlan.locator(".task-current-plan-popover");
+  await expect(popover).toBeVisible();
+  await expect(popover.locator("dt")).toHaveText(["Plan updates paused"]);
+  await expect(popover.locator("dd")).toHaveText(["Fixture Watch interruption."]);
+  await captureReviewScreenshot(page, testInfo, "tasks-current-plan-updates-paused");
+
+  const popoverHint = popoverActionHintDialog(page);
+  const refreshBadge = popoverHint.getByLabel(/ — Refresh$/);
+  await expect(refreshBadge).toBeVisible();
+  const refreshCode = await refreshBadge.getAttribute("data-action-hint-code");
+  expect(refreshCode).toMatch(/^[A-Z]+$/);
+  const refreshedResponse = currentPlanResponse(page, workspace.logicalPath);
+  await page.keyboard.type(refreshCode.toLowerCase());
+  await expect(popoverHint).toBeHidden();
+  expect((await (await refreshedResponse).json()).status).toBe("ready");
+  await expect(
+    popover.locator('[data-current-plan-action="refresh"]'),
+  ).toHaveText("Refresh");
+  await expect(popover).toBeVisible();
+  await expect(status).toBeVisible();
+  await expect(popover.locator("dt")).toHaveText(["Plan updates paused"]);
+
+  const recoveredResponse = currentPlanResponse(page, workspace.logicalPath);
+  await emitWatchReady(page, watchPath);
+  expect((await (await recoveredResponse).json()).status).toBe("ready");
+  await expect(status).toBeHidden();
+  await expect(popover).toBeHidden();
+  await expect(
+    currentPlan.getByRole("button", { name: /^Open plan:/ }),
+  ).toBeFocused();
+});
+
+test("clears a failed plan read after Refresh succeeds", { tag: "@desktop" }, async ({
+  page,
+}, testInfo) => {
+  const workspace = prepareWorkspace(testInfo);
+  const checklistPath = `${workspace.logicalPath}/.caffold/plans/current/CHECKLIST.md`;
+  writeCurrentDocuments(workspace.absolutePath, {
+    plan: "# Read failure plan\n",
+    checklist: "- [ ] Refresh after a failed read\n",
+  });
+  await installTaskApiFixture(page);
+  const detail = detailFor("thread-1", workspace.logicalPath);
+  await installTaskDetails(page, [detail]);
+  let failReads = false;
+  await page.route(/\/api\/current-plan(?:\?|$)/, (route) =>
+    failReads
+      ? route.fulfill({
+          status: 500,
+          json: {
+            error: { code: "io_error", message: "Fixture plan read failure." },
+          },
+        })
+      : route.continue()
+  );
+
+  await page.goto(`/tasks/thread-1?cwd=${encodeURIComponent(workspace.logicalPath)}`);
+  const readyResponse = currentPlanResponse(page, workspace.logicalPath);
+  await openTaskWithBootstrap(page.locator("caffold-tasks-page"), detail);
+  expect((await (await readyResponse).json()).status).toBe("ready");
+
+  const currentPlan = page.locator("caffold-task-current-plan");
+  const status = currentPlan.locator('[data-current-plan-action="status"]');
+  failReads = true;
+  const failedResponse = currentPlanResponse(page, workspace.logicalPath);
+  await emitWatchChange(
+    page,
+    `${workspace.logicalPath}/.caffold/plans/current`,
+    { paths: [checklistPath] },
+  );
+  expect((await failedResponse).status()).toBe(500);
+  await expect(status).toHaveAttribute(
+    "aria-label",
+    "Plan status: Couldn't load plan",
+  );
+  await expect(currentPlan.locator("[data-current-plan-title]")).toHaveText(
+    "Read failure plan",
+  );
+
+  await status.click();
+  const popover = currentPlan.locator(".task-current-plan-popover");
+  await expect(popover.locator("dt")).toHaveText(["Couldn't load plan"]);
+  await expect(popover.locator("dd")).toHaveText(["Fixture plan read failure."]);
+
+  failReads = false;
+  const refreshedResponse = currentPlanResponse(page, workspace.logicalPath);
+  await popover.getByRole("button", { name: "Refresh" }).click();
+  expect((await (await refreshedResponse).json()).status).toBe("ready");
+  await expect(status).toBeHidden();
+  await expect(popover).toBeHidden();
+  await expect(
+    currentPlan.getByRole("button", { name: /^Open plan:/ }),
+  ).toBeFocused();
+});
+
+test("keeps a Task without a plan free of the strip while its updates pause", { tag: "@desktop" }, async ({
+  page,
+}, testInfo) => {
+  const workspace = prepareWorkspace(testInfo);
+  await installTaskApiFixture(page);
+  const detail = detailFor("thread-1", workspace.logicalPath);
+  await installTaskDetails(page, [detail]);
+
+  await page.goto(`/tasks/thread-1?cwd=${encodeURIComponent(workspace.logicalPath)}`);
+  const absentResponse = currentPlanResponse(page, workspace.logicalPath);
+  await openTaskWithBootstrap(page.locator("caffold-tasks-page"), detail);
+  expect((await (await absentResponse).json()).status).toBe("absent");
+
+  const currentPlan = page.locator("caffold-task-current-plan");
+  const strip = currentPlan.locator(".task-current-plan-strip");
+  await expect(strip).toBeHidden();
+  await emitWatchError(page, workspace.logicalPath);
+  await expect
+    .poll(() => currentPlan.evaluate((element) => element.watchError?.message))
+    .toBe("Fixture Watch interruption.");
+  await expect(strip).toBeHidden();
+
+  writeCurrentDocuments(workspace.absolutePath, {
+    plan: "# Created while updates paused\n",
+    checklist: "- [ ] Show the plan after recovery\n",
+  });
+  const readyResponse = currentPlanResponse(page, workspace.logicalPath);
+  await emitWatchReady(page, workspace.logicalPath);
+  expect((await (await readyResponse).json()).status).toBe("ready");
+  await expect(currentPlan.locator("[data-current-plan-title]")).toHaveText(
+    "Created while updates paused",
+  );
+  await expect(currentPlan.locator('[data-current-plan-action="status"]')).toBeHidden();
+});
+
+test("rereads a plan whose first read failed once the Task cwd Watch is ready", { tag: "@desktop" }, async ({
+  page,
+}, testInfo) => {
+  const workspace = prepareWorkspace(testInfo);
+  writeCurrentDocuments(workspace.absolutePath, {
+    plan: "# Recovered first read\n",
+    checklist: "- [x] Fail the first read\n- [ ] Read again\n",
+  });
+  await installTaskApiFixture(page);
+  const detail = detailFor("thread-1", workspace.logicalPath);
+  await installTaskDetails(page, [detail]);
+  let reads = 0;
+  await page.route(/\/api\/current-plan(?:\?|$)/, (route) => {
+    reads += 1;
+    return reads === 1
+      ? route.fulfill({
+          status: 503,
+          json: {
+            error: { code: "unavailable", message: "Fixture first read failure." },
+          },
+        })
+      : route.continue();
+  });
+
+  await page.goto(`/tasks/thread-1?cwd=${encodeURIComponent(workspace.logicalPath)}`);
+  const failedResponse = currentPlanResponse(page, workspace.logicalPath);
+  await openTaskWithBootstrap(page.locator("caffold-tasks-page"), detail);
+  expect((await failedResponse).status()).toBe(503);
+
+  const currentPlan = page.locator("caffold-task-current-plan");
+  await expect.poll(() => watchSourceState(page, workspace.logicalPath)).not.toBe(null);
+  await expect(currentPlan.locator(".task-current-plan-strip")).toBeHidden();
+
+  const readyResponse = currentPlanResponse(page, workspace.logicalPath);
+  await emitWatchReady(page, workspace.logicalPath);
+  expect((await (await readyResponse).json()).status).toBe("ready");
+  await expect(currentPlan.locator("[data-current-plan-title]")).toHaveText(
+    "Recovered first read",
+  );
+  await expect(currentPlan.locator("[data-current-plan-progress]")).toHaveText(
+    "1 / 2",
+  );
+  await expect(currentPlan.locator('[data-current-plan-action="status"]')).toBeHidden();
 });
 
 test("uses the Task cwd instead of its managed worktree root", { tag: "@desktop" }, async ({

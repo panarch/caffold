@@ -20,7 +20,9 @@ test("provides the exact ready Plan and Checklist opener buttons", () => {
       "checklist",
       calls,
     ),
+    status: actionControl("Plan status: Plan updates paused", "status", calls),
   };
+  controls.status.hidden = true;
   const owner = currentPlanOwner({ strip, controls });
   const outerClip = {};
 
@@ -75,12 +77,59 @@ test("provides the exact ready Plan and Checklist opener buttons", () => {
   assert.equal(scope.targets[1].isActionable(), false);
 });
 
+test("provides the status popover opener while the strip needs attention", () => {
+  const calls = [];
+  const strip = { hidden: false };
+  const controls = {
+    plan: actionControl("Open plan", "plan", calls),
+    checklist: actionControl("Open checklist", "checklist", calls),
+    status: actionControl("Plan status: CHECKLIST.md missing", "status", calls),
+  };
+  controls.plan.hidden = true;
+  controls.checklist.hidden = true;
+  const owner = currentPlanOwner({ strip, controls });
+  owner.projection = {
+    status: "problem",
+    plan: null,
+    problems: [{ document: "checklist", code: "missing", message: "Missing" }],
+  };
+
+  const scope = currentPlan.actionHintScope.call(owner, {
+    scopeId: "task:thread-a:current-plan",
+  });
+  assert.deepEqual(
+    scope.targets.map(({ id, actionId, label, control, clipRoots }) => ({
+      id,
+      actionId,
+      label,
+      control,
+      clipRoots,
+    })),
+    [{
+      id: "task:thread-a:current-plan:status",
+      actionId: "task.current-plan.status.open",
+      label: "Plan status: CHECKLIST.md missing",
+      control: controls.status,
+      clipRoots: [owner, strip],
+    }],
+  );
+  const [target] = scope.targets;
+  assert.equal(target.isActionable(), true);
+  owner.popover.open = true;
+  assert.equal(target.isActionable(), false);
+  owner.popover.open = false;
+  controls.status.hidden = true;
+  assert.equal(target.isActionable(), false);
+});
+
 test("excludes stale, hidden, and non-ready Current Plan owners", () => {
   const strip = { hidden: false };
   const controls = {
     plan: actionControl("Open plan", "plan", []),
     checklist: actionControl("Open checklist", "checklist", []),
+    status: actionControl("Plan status", "status", []),
   };
+  controls.status.hidden = true;
   const owner = currentPlanOwner({ strip, controls });
 
   const ready = currentPlan.actionHintScope.call(owner);
@@ -98,35 +147,122 @@ test("excludes stale, hidden, and non-ready Current Plan owners", () => {
   assert.deepEqual(currentPlan.actionHintScope.call(owner).targets, []);
 });
 
-test("passes through only the document dialog keyboard contexts", () => {
+test("declares Refresh as the only status popover action while it is available", () => {
+  const owner = statusPopoverOwner();
+
+  const [context] = currentPlan.statusKeyboardNavigationContexts.call(owner);
+  assert.equal(context.id, "task:thread-a:current-plan:status");
+  assert.equal(context.kind, "popover");
+  assert.equal(context.root, owner.popover);
+  assert.equal(context.actionHints.dialog, owner.presentation.dialog);
+  assert.equal(context.actionHints.sessionBound, true);
+  assert.deepEqual(
+    context.actionHints.scope.targets.map(({ id, actionId, label, control }) => ({
+      id,
+      actionId,
+      label,
+      control,
+    })),
+    [{
+      id: "task:thread-a:current-plan:status:refresh",
+      actionId: "button.activate",
+      label: "Refresh",
+      control: owner.refresh,
+    }],
+  );
+  assert.equal(context.actionHints.scope.targets[0].isActionable(), true);
+  owner.contextGeneration += 1;
+  assert.equal(context.actionHints.scope.targets[0].isActionable(), false);
+  assert.deepEqual(
+    context.scroll.scope.surfaces.map(({ id, scrollport }) => ({ id, scrollport })),
+    [{ id: "task:thread-a:current-plan:status", scrollport: owner.popover }],
+  );
+
+  owner.refresh.layoutBox = false;
+  const [withoutRefresh] = currentPlan.statusKeyboardNavigationContexts.call(owner);
+  assert.equal(withoutRefresh.actionHints.sessionBound, false);
+  assert.deepEqual(withoutRefresh.actionHints.scope.targets, []);
+});
+
+test("passes through the status popover and document dialog keyboard contexts", () => {
+  const popover = { id: "popover" };
   const modal = { id: "modal" };
   const owner = {
+    statusKeyboardNavigationContexts: () => [popover],
     documentDialog: () => ({
       keyboardNavigationContexts: () => [modal],
     }),
   };
   assert.deepEqual(
     currentPlan.keyboardNavigationContexts.call(owner),
-    [modal],
+    [popover, modal],
   );
 });
 
 function currentPlanOwner({ strip, controls }) {
+  const popover = {
+    id: "task-current-plan-status-1",
+    open: false,
+    matches(selector) {
+      return selector === ":popover-open" && this.open;
+    },
+  };
+  controls.status.popoverTarget = popover.id;
   return {
     context: { threadId: "thread-a" },
     contextGeneration: 3,
     hidden: false,
     isConnected: true,
+    popover,
     projection: readyProjection(),
     ensureState() {},
+    statusPopover() {
+      return popover;
+    },
     querySelector(selector) {
-      if (selector.includes('[data-current-plan-action="plan"]')) {
-        return controls.plan;
-      }
-      if (selector.includes('[data-current-plan-action="checklist"]')) {
-        return controls.checklist;
+      for (const [action, control] of Object.entries(controls)) {
+        if (selector.includes(`[data-current-plan-action="${action}"]`)) {
+          return control;
+        }
       }
       return selector === ":scope > .task-current-plan-strip" ? strip : null;
+    },
+  };
+}
+
+function statusPopoverOwner() {
+  const presentation = {
+    dialog: { id: "hint-dialog" },
+    actionHintDialog() {
+      return this.dialog;
+    },
+    scrollModeHud: () => ({ id: "hud" }),
+    scrollSurfaceSelector: () => ({ id: "selector" }),
+  };
+  const refresh = {
+    layoutBox: true,
+    textContent: "Refresh",
+    getClientRects() {
+      return this.layoutBox ? [{}] : [];
+    },
+  };
+  const popover = {
+    querySelector(selector) {
+      if (selector === ":scope > caffold-keyboard-navigation-presentation") {
+        return presentation;
+      }
+      return selector === '[data-current-plan-action="refresh"]' ? refresh : null;
+    },
+  };
+  return {
+    context: { threadId: "thread-a" },
+    contextGeneration: 2,
+    isConnected: true,
+    popover,
+    presentation,
+    refresh,
+    statusPopover() {
+      return popover;
     },
   };
 }
@@ -150,7 +286,11 @@ function actionControl(label, action, calls) {
     disabled: false,
     hidden: false,
     label,
+    popoverTarget: "",
     getAttribute(name) {
+      if (name === "popovertarget") {
+        return this.popoverTarget;
+      }
       return name === "aria-label" ? this.label : null;
     },
     focus(options) {

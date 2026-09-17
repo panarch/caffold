@@ -258,8 +258,9 @@ dependencies. This includes Workspace and Settings navigation and page
 buttons; Task and Section selection; archived-list, recovery, and Codex
 readiness buttons; Composer Model, Permission, Prompt, attachment, voice,
 cancel, submit, and interrupt actions; Conversation retry, image-preview, and
-approval actions; Section Fork; Current Plan document openers; and direct
-Integrated Review, Git, GitHub, file-navigation, and file-viewer actions. Git
+approval actions; Section Fork; Current Plan document openers, status opener,
+and status Refresh; and direct Integrated Review, Git, GitHub, file-navigation,
+and file-viewer actions. Git
 declares Refresh, while GitHub detail declares Start Task and Pull Files.
 Activation reuses each owner's existing native button click, form, or
 product-intent path.
@@ -863,14 +864,16 @@ the browser does not substitute the project root or initial workspace path for
 the filesystem query.
 
 The component reads `GET /api/current-plan?path=...` and owns the resulting
-`absent`, `ready`, or `problem` domain projection. It separately owns the
-`inactive`, `resolving`, `subscribed`, and `degraded` control graph, request and
-context generations, the accepted `watchPath` subscription, and cleanup.
+`absent`, `ready`, or `problem` domain projection. Its control graph has only
+`inactive`, `reading`, and `settled` nodes. The latest read failure and the
+Watch interruption stay orthogonal to that graph and to each other, alongside
+request and context generations, the Watch subscription, and cleanup.
 Task/cwd replacement rejects stale completions. Watch events and transport
 recovery trigger a fresh REST read instead of changing plan state directly;
-the first ready event also rereads once to close the gap between the initial
-read and Watch registration. An equivalent projection leaves the DOM alone,
-and `absent` has zero layout height.
+[Live Updates](live-updates.md#filesystem-watch) defines when they reread and
+when an interruption clears. An equivalent projection leaves the DOM alone, and
+without a `ready` or `problem` projection the strip has zero layout height, even
+while a read or its Watch is failing.
 
 The Plan and Checklist actions share the feature-private
 `caffold-current-plan-document-dialog`. It reads current bytes through the
@@ -881,10 +884,17 @@ uses the shared Task file-path presentation rule to show a project-root-relative
 label only when that path is contained by the root. In the ready summary, the
 Plan title and checklist progress are the two padded action segments; the
 visible `Current plan` label and duplicate document buttons do not form a
-second control row. Rendering delegates to the reusable
-`caffold-markdown-preview`, whose task-list controls are disabled. Neither
-component writes plan files. The product-level file convention belongs to
-[Product Workflows](../product/workflows.md#current-plan-documents).
+second control row. Status stays on that row. A `problem` projection replaces
+both segments with one status segment, while a Watch interruption or failed
+reread keeps the `ready` segments and adds an icon-only status segment. Either
+segment opens the component's native `popover="auto"` status panel, which lists
+each issue with its original error and offers Refresh for a Watch interruption
+or failed read. Refresh rereads the projection and never clears a Watch
+interruption. The panel publishes its own popover keyboard context, which is
+session-bound only while Refresh is available. Rendering delegates to the
+reusable `caffold-markdown-preview`, whose task-list controls are disabled.
+Neither component writes plan files. The product-level file convention belongs
+to [Product Workflows](../product/workflows.md#current-plan-documents).
 
 ### Integrated Review
 

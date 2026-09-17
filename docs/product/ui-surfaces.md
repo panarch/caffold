@@ -170,11 +170,18 @@ segment. Both actions use one shared Markdown dialog; task-list checkboxes
 remain disabled, and a document path inside the Task project root is displayed
 relative to that root while its original Files path remains the read target.
 Conversation always retains enough bottom scroll space for the floating
-control. The strip stays available while a turn is active, and when neither
-file exists it occupies no layout space. Partial, unreadable, or temporarily
-unavailable state is explicit and non-blocking rather than projected as
-progress. Other plan or history files remain available through Files without a
-dedicated resolved-plan surface.
+control. The strip stays available while a turn is active. Unless the latest
+successful read found the pair or a problem with it, the strip occupies no
+layout space, even while plan updates are paused or reads fail. Status stays on
+the same single row: a partial or unreadable pair replaces the Plan and
+Checklist segments with one warning segment such as `CHECKLIST.md missing` or
+`Plan files unreadable` instead of guessed progress, and paused updates or a
+failed reread keep the last readable plan with an added warning icon. Either
+warning opens a non-blocking popover above the strip that lists each issue with
+its original error. Paused updates and failed reads also offer Refresh, which
+rereads the plan documents; the paused-updates warning remains until live
+updates resume. Other plan or history files remain available through Files
+without a dedicated resolved-plan surface.
 
 ### Integrated Review
 

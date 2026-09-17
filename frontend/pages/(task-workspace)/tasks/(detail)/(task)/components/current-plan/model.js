@@ -1,34 +1,81 @@
 import { presentTaskFilePath } from "../../../../task-format.js";
 
+// The graph tracks only whether a projection read is in flight. The accepted
+// projection, the latest read failure, and Watch availability stay orthogonal:
+// a successful read never clears a Watch interruption.
 export const CURRENT_PLAN_NODE = Object.freeze({
   INACTIVE: "inactive",
-  RESOLVING: "resolving",
-  SUBSCRIBED: "subscribed",
-  DEGRADED: "degraded",
+  READING: "reading",
+  SETTLED: "settled",
 });
 
 const ALLOWED_TRANSITIONS = Object.freeze({
-  [CURRENT_PLAN_NODE.INACTIVE]: new Set([CURRENT_PLAN_NODE.RESOLVING]),
-  [CURRENT_PLAN_NODE.RESOLVING]: new Set([
-    CURRENT_PLAN_NODE.RESOLVING,
-    CURRENT_PLAN_NODE.SUBSCRIBED,
-    CURRENT_PLAN_NODE.DEGRADED,
+  [CURRENT_PLAN_NODE.INACTIVE]: new Set([CURRENT_PLAN_NODE.READING]),
+  [CURRENT_PLAN_NODE.READING]: new Set([
+    CURRENT_PLAN_NODE.READING,
+    CURRENT_PLAN_NODE.SETTLED,
     CURRENT_PLAN_NODE.INACTIVE,
   ]),
-  [CURRENT_PLAN_NODE.SUBSCRIBED]: new Set([
-    CURRENT_PLAN_NODE.SUBSCRIBED,
-    CURRENT_PLAN_NODE.RESOLVING,
-    CURRENT_PLAN_NODE.DEGRADED,
+  [CURRENT_PLAN_NODE.SETTLED]: new Set([
+    CURRENT_PLAN_NODE.READING,
     CURRENT_PLAN_NODE.INACTIVE,
   ]),
-  [CURRENT_PLAN_NODE.DEGRADED]: new Set([
-    CURRENT_PLAN_NODE.RESOLVING,
-    CURRENT_PLAN_NODE.INACTIVE,
-  ]),
+});
+
+const DOCUMENT_FILE_NAMES = Object.freeze({
+  plan: "PLAN.md",
+  checklist: "CHECKLIST.md",
 });
 
 export function currentPlanTransitionAllowed(from, to) {
   return ALLOWED_TRANSITIONS[from]?.has(to) ?? false;
+}
+
+export function currentPlanPresentation({
+  projection = null,
+  readError = null,
+  watchError = null,
+} = {}) {
+  const status = projection?.status;
+  if (status !== "ready" && status !== "problem") {
+    return {
+      visible: false,
+      presentation: "",
+      label: "",
+      issues: [],
+      refreshAvailable: false,
+    };
+  }
+  const problems = status === "problem" ? projection.problems : [];
+  const issues = [
+    ...problems.map((problem) => ({
+      label: documentProblemLabel(
+        DOCUMENT_FILE_NAMES[problem.document],
+        [problem],
+      ),
+      detail: problem.message,
+    })),
+    ...(watchError
+      ? [{ label: "Plan updates paused", detail: errorMessage(watchError) }]
+      : []),
+    ...(readError
+      ? [{ label: "Couldn't load plan", detail: errorMessage(readError) }]
+      : []),
+  ];
+  return {
+    visible: true,
+    presentation: status,
+    label: status === "problem"
+      ? documentProblemLabel(
+          problems.length === 1
+            ? DOCUMENT_FILE_NAMES[problems[0].document]
+            : "Plan files",
+          problems,
+        )
+      : issues[0]?.label ?? "",
+    issues,
+    refreshAvailable: Boolean(watchError || readError),
+  };
 }
 
 export function currentPlanDocumentPaths(projection) {
@@ -67,6 +114,15 @@ export function normalizeCurrentPlanProjection(value) {
       }))
     : [];
   if (status !== "ready") {
+    if (
+      status === "problem" &&
+      (problems.length === 0 ||
+        problems.some(
+          (problem) => !Object.hasOwn(DOCUMENT_FILE_NAMES, problem.document),
+        ))
+    ) {
+      throw new Error("Current plan response has invalid problems.");
+    }
     return {
       status,
       watchPath: value.watchPath,
@@ -104,8 +160,13 @@ export function normalizeCurrentPlanProjection(value) {
   };
 }
 
-export function sameCurrentPlanProjection(left, right) {
-  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+function documentProblemLabel(subject, problems) {
+  const missing = problems.every((problem) => problem.code === "missing");
+  return `${subject} ${missing ? "missing" : "unreadable"}`;
+}
+
+function errorMessage(error) {
+  return `${error?.message ?? error}`;
 }
 
 function normalizeDocument(document) {
