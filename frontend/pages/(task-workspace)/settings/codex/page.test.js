@@ -44,12 +44,11 @@ test("provides current Codex actions and its exact scrollport", () => {
     scrollHeight: 240,
     getClientRects: () => [{}],
   };
-  const refresh = button("Refresh");
+  const refreshRequests = [];
   const copy = button("Copy command");
   const restart = button("Restart runtime");
   const guide = link("Official Codex CLI guide");
   const controls = new Map([
-    ['button[data-action="refresh-codex-status"]', refresh],
     ['button[data-action="copy-codex-install"]', copy],
     ['button[data-action="open-codex-restart"]', restart],
     ['.settings-codex-repair a[href]', guide],
@@ -58,6 +57,12 @@ test("provides current Codex actions and its exact scrollport", () => {
     hidden: false,
     isConnected: true,
     getClientRects: () => [{}],
+    refreshButton: {
+      actionHintScope(request) {
+        refreshRequests.push(request);
+        return { targets: [{ id: `${request.scopeId}:refresh` }] };
+      },
+    },
     querySelector(selector) {
       if (selector === ":scope > .settings-content-scroll") return scrollport;
       return controls.get(selector) ?? null;
@@ -71,9 +76,13 @@ test("provides current Codex actions and its exact scrollport", () => {
     "settings:codex:restart-runtime",
     "settings:codex:official-guide",
   ]);
+  assert.deepEqual(refreshRequests[0].clipRoots, [owner, scrollport]);
+  assert.equal(refreshRequests[0].isCurrent(), true);
   assert.equal(codex.scrollSurfaceScope.call(owner).surfaces[0].scrollport, scrollport);
-  refresh.disabled = true;
-  assert.equal(scope.targets[0].isActionable(), false);
+  copy.disabled = true;
+  assert.equal(scope.targets[1].isActionable(), false);
   guide.hidden = true;
   assert.equal(scope.targets.at(-1).isActionable(), false);
+  owner.hidden = true;
+  assert.equal(refreshRequests[0].isCurrent(), false);
 });

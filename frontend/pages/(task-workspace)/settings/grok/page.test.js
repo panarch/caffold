@@ -10,41 +10,37 @@ await import("./page.js");
 const grok = registry.element("caffold-settings-grok-page").prototype;
 after(() => registry.restore());
 
-test("provides the check-again action and its exact scrollport", () => {
+test("provides the refresh action and its exact scrollport", () => {
   const scrollport = {
     clientHeight: 100,
     scrollHeight: 240,
     getClientRects: () => [{}],
   };
-  const refresh = {
-    disabled: false,
-    hidden: false,
-    textContent: "Check again",
-    getAttribute: () => null,
-    getClientRects: () => [{}],
-    focus() {},
-    click() {},
-  };
+  const refreshRequests = [];
   const owner = {
     hidden: false,
     isConnected: true,
     getClientRects: () => [{}],
+    refreshButton: {
+      actionHintScope(request) {
+        refreshRequests.push(request);
+        return { targets: [{ id: `${request.scopeId}:refresh` }] };
+      },
+    },
     querySelector(selector) {
       if (selector === ":scope > .settings-content-scroll") return scrollport;
-      if (selector === 'button[data-action="refresh-grok-status"]') {
-        return refresh;
-      }
       return null;
     },
   };
 
   const scope = grok.actionHintScope.call(owner);
   assert.deepEqual(scope.targets.map(({ id }) => id), ["settings:grok:refresh"]);
-  assert.equal(scope.targets[0].label, "Check again");
+  assert.deepEqual(scope.scrollRoots, [scrollport]);
+  assert.deepEqual(refreshRequests[0].clipRoots, [owner, scrollport]);
+  assert.equal(refreshRequests[0].isCurrent(), true);
   assert.equal(grok.scrollSurfaceScope.call(owner).surfaces[0].scrollport, scrollport);
-  refresh.disabled = true;
-  assert.equal(scope.targets[0].isActionable(), false);
   owner.hidden = true;
+  assert.equal(refreshRequests[0].isCurrent(), false);
   assert.deepEqual(grok.actionHintScope.call(owner).targets, []);
   assert.deepEqual(grok.scrollSurfaceScope.call(owner).surfaces, []);
 });

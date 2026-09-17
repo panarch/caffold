@@ -1076,19 +1076,25 @@ placeholder a row shows before its value is known, and the width at which a
 label and its value stack. Each page publishes a row snapshot and owns its
 wording.
 
+`caffold-settings-refresh-button` renders the **Refresh** action that Codex,
+Claude, and Grok place beside their page description, drawn like Appearance's
+**Reset all**. It owns the action's look and its Action Hint. Each page tells it
+when that page's report is being read, during which it is disabled and its icon
+turns, and decides what a Refresh request does.
+
 Settings Claude owns a route-scoped diagnostic request for the installed
 binary, account, usage windows, and runner. Each block can fail independently
-without turning the report into a readiness gate. Its confirmed Restart intent
-is forwarded to the workspace's single Claude restart dialog; that mutation
-ends every runner-held session, starts a replacement runner, and refreshes the
-diagnostic report. The page does not read credentials or call provider APIs
-itself.
+without turning the report into a readiness gate, and a **Refresh** action
+re-reads the report. Its confirmed Restart intent is forwarded to the
+workspace's single Claude restart dialog; that mutation ends every runner-held
+session, starts a replacement runner, and refreshes the diagnostic report. The
+page does not read credentials or call provider APIs itself.
 
 Settings Grok owns a route-scoped diagnostic request for the installed
 executable, the leader on Caffold's socket, Caffold's connection, the
 account as the leader confirms it, and plan usage as that leader reports it.
 Each block can fail independently without turning the report into a readiness
-gate, a **Check again** action re-reads the report, and a report that lands
+gate, a **Refresh** action re-reads the report, and a report that lands
 after the page was left is discarded. The page has no restart control: the
 leader is Grok's process. The page does not read credentials or call provider
 APIs itself.

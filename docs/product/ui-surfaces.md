@@ -260,14 +260,14 @@ Settings includes:
   neutral, while a required restart retains attention styling;
 - Claude installation status, shown and never gated on: the binary's version
   and path, the signed-in account and plan, the plan's usage windows as the
-  agent itself reports them, and the runner's process state; plus an explicit,
-  confirmed restart that stops the runner and every Claude session it holds,
-  starts a fresh runner on the installed binary, and lets conversations resume
-  when their Tasks are opened;
+  agent itself reports them, and the runner's process state, with a **Refresh**
+  action; plus an explicit, confirmed restart that stops the runner and every
+  Claude session it holds, starts a fresh runner on the installed binary, and
+  lets conversations resume when their Tasks are opened;
 - Grok installation status, shown and never gated on: the executable's version
   and path, the signed-in account as the leader confirms it, plan usage as
   that leader reports it, the leader on Caffold's socket with its own build,
-  and the state of Caffold's connection, with a **Check again** action;
+  and the state of Caffold's connection, with a **Refresh** action;
   opening the page starts no leader, session, or turn;
 - About Caffold application and build information, including shared
   checking/ready/settled update status and a **Reload to update** action while

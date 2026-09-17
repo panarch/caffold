@@ -1,0 +1,70 @@
+caffold-settings-refresh-button {
+  display: grid;
+
+  & > button {
+    position: relative;
+    isolation: isolate;
+    box-sizing: border-box;
+    display: inline-grid;
+    grid-template-columns: var(--interface-icon-size) auto;
+    align-items: center;
+    gap: var(--interface-space-3);
+    height: var(--settings-page-action-size);
+    min-height: var(--settings-page-action-size);
+    padding: 0 var(--interface-space-5);
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    cursor: pointer;
+    font-size: var(--settings-small-text-size);
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  & > button::before {
+    position: absolute;
+    z-index: -1;
+    inset: var(--interface-control-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 0.3125rem;
+    background: var(--surface);
+    content: "";
+  }
+
+  & > button:hover:not(:disabled),
+  & > button:focus-visible {
+    outline: none;
+  }
+
+  & > button:hover:not(:disabled)::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
+
+  & > button:focus-visible::before {
+    border-color: var(--focus-ring);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  & > button:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  & .settings-refresh-icon {
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+  }
+
+  & > button.is-refreshing .settings-refresh-icon {
+    animation: caffold-refresh-spin 0.8s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    & > button.is-refreshing .settings-refresh-icon {
+      animation: none;
+    }
+  }
+}

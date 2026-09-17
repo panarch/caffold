@@ -39,48 +39,6 @@ caffold-settings-grok-page {
     line-height: var(--interface-line-height);
   }
 
-  & .settings-content-section > header button {
-    position: relative;
-    isolation: isolate;
-    height: var(--settings-page-action-size);
-    min-height: var(--settings-page-action-size);
-    padding: 0 var(--interface-control-padding-inline);
-    border: 0;
-    background: transparent;
-    color: var(--control-fg);
-    font: inherit;
-    font-size: var(--settings-small-text-size);
-    line-height: 1;
-    white-space: nowrap;
-    cursor: pointer;
-  }
-
-  & .settings-content-section > header button::before {
-    position: absolute;
-    z-index: -1;
-    inset: var(--interface-control-hit-outset) 0;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface);
-    content: "";
-  }
-
-  & .settings-content-section > header button:hover:not(:disabled),
-  & .settings-content-section > header button:focus-visible {
-    outline: none;
-  }
-
-  & .settings-content-section > header button:hover:not(:disabled)::before,
-  & .settings-content-section > header button:focus-visible::before {
-    border-color: var(--border-strong);
-    background: var(--control-hover-bg);
-  }
-
-  & .settings-content-section > header button:disabled {
-    color: var(--disabled-text);
-    cursor: default;
-  }
-
   & .settings-content-section > section {
     margin-top: var(--interface-space-10);
   }

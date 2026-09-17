@@ -39,7 +39,6 @@ caffold-settings-codex-page {
     line-height: var(--interface-line-height);
   }
 
-  & .settings-content-section > header button,
   & .settings-runtime-control button {
     position: relative;
     isolation: isolate;
@@ -56,7 +55,6 @@ caffold-settings-codex-page {
     cursor: pointer;
   }
 
-  & .settings-content-section > header button::before,
   & .settings-runtime-control button::before {
     position: absolute;
     z-index: -1;
@@ -67,22 +65,17 @@ caffold-settings-codex-page {
     content: "";
   }
 
-  & .settings-content-section > header button:hover:not(:disabled),
-  & .settings-content-section > header button:focus-visible,
   & .settings-runtime-control button:hover:not(:disabled),
   & .settings-runtime-control button:focus-visible {
     outline: none;
   }
 
-  & .settings-content-section > header button:hover:not(:disabled)::before,
-  & .settings-content-section > header button:focus-visible::before,
   & .settings-runtime-control button:hover:not(:disabled)::before,
   & .settings-runtime-control button:focus-visible::before {
     border-color: var(--border-strong);
     background: var(--control-hover-bg);
   }
 
-  & .settings-content-section > header button:disabled,
   & .settings-runtime-control button:disabled {
     color: var(--disabled-text);
     cursor: default;
@@ -297,7 +290,7 @@ caffold-settings-codex-page {
       flex-direction: column;
     }
 
-    & .settings-content-section > header button {
+    & .settings-content-section > header > caffold-settings-refresh-button {
       align-self: start;
     }
 

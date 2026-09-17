@@ -1,5 +1,6 @@
 import { getGrokStatus } from "../../../../api.js";
 import "../components/detail-list.js";
+import { SETTINGS_REFRESH_INTENT_EVENT } from "../components/refresh-button.js";
 import {
   onDemandValue,
   prepaidValue,
@@ -7,10 +8,8 @@ import {
   usagePeriodValue,
 } from "./display.js";
 import {
-  ACTION_HINT_ACTION,
-  buttonActionHintTarget,
   emptyActionHintScope,
-  hasActionHintLayoutBox,
+  mergeActionHintScopes,
 } from "../../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
@@ -47,11 +46,9 @@ class CaffoldSettingsGrokPage extends HTMLElement {
     this.statusState = "idle";
     this.operation = 0;
     this.active = false;
-    this.addEventListener("click", (event) => {
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest('[data-action="refresh-grok-status"]')) {
-        void this.reconcile();
-      }
+    this.addEventListener(SETTINGS_REFRESH_INTENT_EVENT, (event) => {
+      event.stopPropagation();
+      void this.reconcile();
     });
     this.render();
   }
@@ -92,41 +89,17 @@ class CaffoldSettingsGrokPage extends HTMLElement {
     isCurrent = () => true,
   } = {}) {
     const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    const selector = 'button[data-action="refresh-grok-status"]';
-    const control = this.querySelector(selector);
-    if (
-      this.hidden ||
-      !scrollport ||
-      !control ||
-      control.disabled ||
-      control.hidden ||
-      !hasActionHintLayoutBox(control)
-    ) {
+    if (this.hidden || !scrollport) {
       return emptyActionHintScope();
     }
-    return {
-      blocked: false,
-      targets: [buttonActionHintTarget({
-        invalidationOwner: this,
-        id: `${scopeId}:refresh`,
-        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-        label: control.getAttribute("aria-label") ||
-          control.textContent?.trim() ||
-          "Check again",
-        control,
+    return mergeActionHintScopes(
+      this.refreshButton.actionHintScope({
+        scopeId,
         clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-        isActionable: () =>
-          this.isConnected &&
-          !this.hidden &&
-          isCurrent() &&
-          this.querySelector(selector) === control &&
-          !control.disabled &&
-          !control.hidden &&
-          hasActionHintLayoutBox(control),
-      })],
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
+        isCurrent: () => this.isConnected && !this.hidden && isCurrent(),
+      }),
+      { mutationRoots: [this], scrollRoots: [scrollport] },
+    );
   }
 
   scrollSurfaceScope({
@@ -169,7 +142,7 @@ class CaffoldSettingsGrokPage extends HTMLElement {
           <div class="settings-content-section">
             <header>
               <p>The Grok CLI installation this server drives.</p>
-              <button type="button" data-action="refresh-grok-status">Check again</button>
+              <caffold-settings-refresh-button></caffold-settings-refresh-button>
             </header>
             <section aria-labelledby="settings-grok-agent-title">
               <h3 id="settings-grok-agent-title">Agent</h3>
@@ -194,6 +167,7 @@ class CaffoldSettingsGrokPage extends HTMLElement {
           </div>
         </div>
       `;
+      this.refreshButton = this.querySelector("caffold-settings-refresh-button");
       this.agentList = this.querySelector("[data-grok-agent]");
       this.accountList = this.querySelector("[data-grok-account]");
       this.usageList = this.querySelector("[data-grok-usage]");
@@ -208,10 +182,7 @@ class CaffoldSettingsGrokPage extends HTMLElement {
     this.leaderList.setRows(unanswered ?? this.leaderRows());
     this.connectionList.setRows(unanswered ?? this.connectionRows());
 
-    const refresh = this.querySelector('[data-action="refresh-grok-status"]');
-    const loading = this.statusState === "loading";
-    refresh.disabled = loading;
-    refresh.textContent = loading ? "Checking…" : "Check again";
+    this.refreshButton.setState({ refreshing: this.statusState === "loading" });
   }
 
   agentRows() {

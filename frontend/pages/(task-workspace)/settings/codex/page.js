@@ -12,12 +12,14 @@ import {
   formatUsedPercent,
 } from "../../codex-status.js";
 import "../components/detail-list.js";
+import { SETTINGS_REFRESH_INTENT_EVENT } from "../components/refresh-button.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   linkActionHintTarget,
+  mergeActionHintScopes,
 } from "../../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
@@ -45,12 +47,6 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     this.copyState = "idle";
     this.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest('[data-action="refresh-codex-status"]')) {
-        this.dispatchEvent(
-          new CustomEvent(CODEX_STATUS_REFRESH_REQUEST_EVENT, { bubbles: true }),
-        );
-        return;
-      }
       if (target?.closest('[data-action="open-codex-restart"]')) {
         this.dispatchEvent(
           new CustomEvent(CODEX_RUNTIME_RESTART_REQUEST_EVENT, { bubbles: true }),
@@ -60,6 +56,12 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       if (target?.closest('[data-action="copy-codex-install"]')) {
         void this.copyInstallCommand();
       }
+    });
+    this.addEventListener(SETTINGS_REFRESH_INTENT_EVENT, (event) => {
+      event.stopPropagation();
+      this.dispatchEvent(
+        new CustomEvent(CODEX_STATUS_REFRESH_REQUEST_EVENT, { bubbles: true }),
+      );
     });
     this.render();
   }
@@ -119,10 +121,6 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       return emptyActionHintScope();
     }
     const definitions = [
-      {
-        id: "refresh",
-        selector: 'button[data-action="refresh-codex-status"]',
-      },
       {
         id: "copy-install-command",
         selector: 'button[data-action="copy-codex-install"]',
@@ -185,12 +183,19 @@ class CaffoldSettingsCodexPage extends HTMLElement {
           hasActionHintLayoutBox(guide),
       }));
     }
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
+    return mergeActionHintScopes(
+      this.refreshButton.actionHintScope({
+        scopeId,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isCurrent: () => this.isConnected && !this.hidden && isCurrent(),
+      }),
+      {
+        blocked: false,
+        targets,
+        mutationRoots: [this],
+        scrollRoots: [scrollport],
+      },
+    );
   }
 
   scrollSurfaceScope({
@@ -233,7 +238,7 @@ class CaffoldSettingsCodexPage extends HTMLElement {
           <div class="settings-content-section">
             <header>
               <p>Connection, account, plan, and local app-server usage.</p>
-              <button type="button" data-action="refresh-codex-status">Refresh</button>
+              <caffold-settings-refresh-button></caffold-settings-refresh-button>
             </header>
             <caffold-settings-detail-list data-codex-detail></caffold-settings-detail-list>
             <section class="settings-codex-repair" aria-labelledby="settings-codex-repair-title" hidden>
@@ -272,6 +277,7 @@ class CaffoldSettingsCodexPage extends HTMLElement {
           </div>
         </div>
       `;
+      this.refreshButton = this.querySelector("caffold-settings-refresh-button");
       this.detailList = this.querySelector("[data-codex-detail]");
       this.usageList = this.querySelector("[data-codex-usage]");
     }
@@ -345,8 +351,10 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     ]);
     patchRepairSurface(this, readiness, readinessLabel, this.copyState);
 
-    const refresh = this.querySelector('[data-action="refresh-codex-status"]');
-    refresh.disabled = restarting;
+    this.refreshButton.setState({
+      refreshing: snapshot?.phase === "checking",
+      disabled: restarting,
+    });
     this.querySelector(".settings-runtime-control").dataset.restartEmphasis =
       restartRequired ? "attention" : "neutral";
     const restart = this.querySelector('[data-action="open-codex-restart"]');
