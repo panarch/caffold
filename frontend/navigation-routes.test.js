@@ -18,6 +18,13 @@ globalThis.window = {
 test("parses and serializes Task-scoped routes canonically", () => {
   const cases = [
     ["/", { kind: "tasks", new: false, threadId: "", cwd: "" }, "/"],
+    ["/notes", { kind: "notes", noteId: "" }, "/notes"],
+    [
+      "/notes/0f6c3e5a-7d52-4d1a-9f3e-5b7a1c2d3e4f",
+      { kind: "notes", noteId: "0f6c3e5a-7d52-4d1a-9f3e-5b7a1c2d3e4f" },
+      "/notes/0f6c3e5a-7d52-4d1a-9f3e-5b7a1c2d3e4f",
+    ],
+    ["/notes/note%20with%20spaces", { kind: "notes", noteId: "note with spaces" }, "/notes/note%20with%20spaces"],
     ["/settings", { kind: "settings", section: "" }, "/settings"],
     ["/settings/appearance", { kind: "settings", section: "appearance" }, "/settings/appearance"],
     ["/settings/keyboard", { kind: "settings", section: "keyboard" }, "/settings/keyboard"],
@@ -220,6 +227,8 @@ test("preserves Markdown Preview as reloadable Integrated Review state", () => {
 
 test("derives deterministic Task child parents", () => {
   const cases = [
+    ["/notes", null],
+    ["/notes/note-1", "/notes"],
     ["/settings", null],
     ["/settings/appearance", "/settings"],
     ["/settings/keyboard", "/settings"],
@@ -290,6 +299,8 @@ test("exposes Task workspace, domain, mode, and target metadata", () => {
     ["/?section=repo-1&surface=review", null, "tasks", "review"],
     ["/?section=repo-1&surface=git&tool=log&sha=abcdef", "git", "log", "commit"],
     ["/?section=repo-1&surface=github&tool=pulls&number=12&files=true", "github", "pulls", "files"],
+    ["/notes", null, "notes", "list"],
+    ["/notes/note-1", null, "notes", "note"],
     ["/settings", null, "settings", "list"],
     ["/tasks/new", null, "tasks", "new"],
     ["/tasks/thread", null, "tasks", "detail"],

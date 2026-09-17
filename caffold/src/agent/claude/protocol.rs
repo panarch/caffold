@@ -21,6 +21,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::agent::CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS;
+use crate::agent::notes_tools::notes_tool_specs;
 
 /// The oldest CLI Caffold drives.
 ///
@@ -52,6 +53,28 @@ pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     RENAME_CURRENT_TASK_QUALIFIED_NAME,
     "--allowedTools",
     ISOLATE_CURRENT_TASK_QUALIFIED_NAME,
+    "--allowedTools",
+    "mcp__caffold__list_notes",
+    "--allowedTools",
+    "mcp__caffold__read_note",
+    "--allowedTools",
+    "mcp__caffold__create_note",
+    "--allowedTools",
+    "mcp__caffold__update_note_content",
+    "--allowedTools",
+    "mcp__caffold__rename_note",
+    "--allowedTools",
+    "mcp__caffold__move_note",
+    "--allowedTools",
+    "mcp__caffold__delete_note",
+    "--allowedTools",
+    "mcp__caffold__create_note_directory",
+    "--allowedTools",
+    "mcp__caffold__rename_note_directory",
+    "--allowedTools",
+    "mcp__caffold__move_note_directory",
+    "--allowedTools",
+    "mcp__caffold__delete_note_directory",
 ];
 
 /// What every session is started with beyond its arguments.
@@ -604,15 +627,17 @@ pub(crate) fn mcp_initialize_result(message: &Value) -> Value {
     })
 }
 
-/// The tools Caffold serves, described to the agent.
+/// The tools Caffold serves, described to the agent: the Task tools, then the
+/// Notes tools every agent shares.
 ///
 /// `anthropic/alwaysLoad` keeps a tool's schema in the model's context. The
 /// CLI otherwise defers MCP tools to its search pool, where a tool is only a
 /// name until the model chooses to load it — and a model instructed to call
 /// this one sometimes would not bother, measured as the first-turn rename
-/// landing on some runs and not others.
+/// landing on some runs and not others. A Notes tool answers a request the
+/// user makes, so it stays in the pool until the model looks for it.
 pub(crate) fn mcp_tool_listing() -> Value {
-    serde_json::json!({
+    let mut listing = serde_json::json!({
         "tools": [
             {
                 "name": RENAME_CURRENT_TASK_TOOL_NAME,
@@ -657,7 +682,18 @@ pub(crate) fn mcp_tool_listing() -> Value {
                 "_meta": { "anthropic/alwaysLoad": true },
             },
         ],
-    })
+    });
+    listing["tools"]
+        .as_array_mut()
+        .expect("the listing starts as an array of the Task tools")
+        .extend(notes_tool_specs().into_iter().map(|tool| {
+            serde_json::json!({
+                "name": tool.name,
+                "description": tool.description,
+                "inputSchema": tool.input_schema,
+            })
+        }));
+    listing
 }
 
 /// A tool call's outcome, spoken as MCP speaks it: text, flagged when it is a
@@ -929,13 +965,13 @@ mod tests {
             .filter(|pair| pair[0] == "--allowedTools")
             .map(|pair| pair[1])
             .collect();
-        assert_eq!(
-            granted,
-            [
-                RENAME_CURRENT_TASK_QUALIFIED_NAME,
-                ISOLATE_CURRENT_TASK_QUALIFIED_NAME
-            ]
-        );
+        let served: Vec<String> = mcp_tool_listing()["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| format!("mcp__{MCP_SERVER_NAME}__{}", tool["name"].as_str().unwrap()))
+            .collect();
+        assert_eq!(granted, served);
         // The qualified names are derived by the CLI, not chosen by Caffold,
         // so a grant only holds while the three names actually compose.
         assert_eq!(
@@ -1040,6 +1076,21 @@ mod tests {
             "a bare call isolates with the defaults"
         );
         assert_eq!(tool["_meta"]["anthropic/alwaysLoad"], true);
+    }
+
+    #[test]
+    fn the_listing_serves_every_notes_tool_after_the_task_tools_without_loading_them_up_front() {
+        let listing = mcp_tool_listing();
+        let tools = listing["tools"].as_array().unwrap();
+        let notes = &tools[2..];
+        let specs = notes_tool_specs();
+        assert_eq!(notes.len(), specs.len());
+        for (tool, spec) in notes.iter().zip(specs) {
+            assert_eq!(tool["name"], spec.name);
+            assert_eq!(tool["description"], spec.description);
+            assert_eq!(tool["inputSchema"], spec.input_schema);
+            assert!(tool.get("_meta").is_none());
+        }
     }
 
     #[test]

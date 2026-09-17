@@ -92,8 +92,8 @@ Caffold should present state without pretending to own state it does not own.
 - Grok's leader is the source of truth for Grok sessions, turns, approvals, and
   history; Caffold's driver-private binding owns only which native session a
   Task runs on.
-- Caffold storage is for Caffold-owned metadata, indexes, recovery data, and
-  UI-facing summaries.
+- Caffold storage is for Caffold-owned metadata, indexes, recovery data,
+  UI-facing summaries, and the Notes agents keep through Caffold's Notes tools.
 - The browser UI is a view and control surface, not durable state.
 
 External domain state must not be reconstructed from Caffold databases,

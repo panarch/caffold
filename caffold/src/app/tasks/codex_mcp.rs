@@ -420,7 +420,7 @@ mod tests {
             .await,
         )
         .await;
-        assert_eq!(response["result"]["tools"].as_array().unwrap().len(), 2);
+        assert_eq!(response["result"]["tools"], json!(caffold_mcp_tools()));
         assert_eq!(
             response["result"]["tools"][0]["name"],
             "rename_current_task"
@@ -993,6 +993,65 @@ mod tests {
             "Caffold does not serve the tool `rename_current_thread`."
         );
         assert_eq!(client.mock_requests().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_bound_connection_keeps_notes_for_its_task_without_asking_codex() {
+        let host = memory_host("http://127.0.0.1:5177".to_string());
+        let store = TaskStore::memory().unwrap();
+        store
+            .claim(
+                ManagedThread::new("thread_1", RunBy::Codex, None, None, None),
+                1,
+            )
+            .unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let (shutdown, _) = broadcast::channel(1);
+        let runtime = TaskRuntime::new(
+            ClaudeClient::mock().0,
+            GrokClient::unreachable(),
+            TaskSessions::default(),
+            TaskEvents::default(),
+            store.clone(),
+            shutdown,
+        );
+        runtime.install_test_client(1, client.clone()).await;
+        host.attach_runtime(runtime);
+        let managed = bind_thread(&host, "thread_1").await;
+        let unmanaged = bind_thread(&host, "thread_2").await;
+        let create_note = json!({
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {
+                "name": "create_note",
+                "arguments": { "name": "Codex findings", "content": "# Findings\n" },
+            },
+        });
+
+        let created =
+            response_json(bound_request(&host, &managed, create_note.clone()).await).await;
+        assert_eq!(created["result"]["isError"], false, "{created}");
+        let answer: Value =
+            serde_json::from_str(created["result"]["content"][0]["text"].as_str().unwrap())
+                .unwrap();
+        let note = store
+            .read(|tables| tables.note(answer["noteId"].as_str().unwrap()))
+            .unwrap()
+            .expect("the Note is stored");
+        assert_eq!(note.created_by_thread_id, "thread_1");
+
+        let refused = response_json(bound_request(&host, &unmanaged, create_note).await).await;
+        assert_eq!(refused["result"]["isError"], true);
+        assert_eq!(
+            refused["result"]["content"][0]["text"],
+            "Caffold only serves Notes to a task that it manages."
+        );
+        assert_eq!(
+            store.read(|tables| tables.note_summaries()).unwrap().len(),
+            1
+        );
+        assert!(client.mock_requests().await.is_empty());
     }
 
     #[tokio::test]

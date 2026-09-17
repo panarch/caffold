@@ -248,6 +248,7 @@ impl TaskRuntime {
                 )
                 .await
             }
+            AskedTool::Notes(call) => self.execute_notes_tool(thread_id, call.clone()).await,
         };
         if let Err(error) = self.claude.answer_tool_ask(thread_id, &ask, &outcome).await {
             eprintln!("failed to answer the agent's tool call on {thread_id}: {error}");
@@ -909,6 +910,81 @@ mod tests {
             .find(|frame| frame["request"]["subtype"] == "rename_session")
             .expect("the agent's own title is renamed too");
         assert_eq!(asked["request"]["title"], "A better name");
+    }
+
+    fn notes_call(id: u64, tool: &str, arguments: Value) -> Value {
+        json!({
+            "type": "control_request",
+            "request_id": format!("agent-{id}"),
+            "request": {
+                "subtype": "mcp_message",
+                "server_name": "caffold",
+                "message": {
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "method": "tools/call",
+                    "params": { "name": tool, "arguments": arguments },
+                },
+            },
+        })
+    }
+
+    #[tokio::test]
+    async fn the_agent_keeps_a_note_that_records_its_task() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = watched(root.path()).await;
+        state
+            .task_store
+            .claim(managed_claude_row(root.path()), 1)
+            .unwrap();
+
+        runner
+            .say(
+                SESSION,
+                notes_call(
+                    5,
+                    "create_note",
+                    json!({ "name": "Findings", "content": "# Findings\n" }),
+                ),
+            )
+            .await;
+
+        let answered = call_answered(&runner, 5).await;
+        assert!(answered.get("isError").is_none(), "{answered}");
+        let created: Value =
+            serde_json::from_str(answered["content"][0]["text"].as_str().unwrap()).unwrap();
+        let note_id = created["noteId"].as_str().unwrap();
+        let note = state
+            .task_store
+            .read(|tables| tables.note(note_id))
+            .unwrap()
+            .expect("the Note is stored");
+        assert_eq!(note.name, "Findings");
+        assert_eq!(note.created_by_thread_id, SESSION);
+    }
+
+    #[tokio::test]
+    async fn a_notes_call_from_a_task_caffold_does_not_manage_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = watched(root.path()).await;
+
+        runner
+            .say(SESSION, notes_call(6, "list_notes", json!({})))
+            .await;
+
+        let answered = call_answered(&runner, 6).await;
+        assert_eq!(answered["isError"], true);
+        assert_eq!(
+            answered["content"][0]["text"],
+            "Caffold only serves Notes to a task that it manages."
+        );
+        assert!(
+            state
+                .task_store
+                .read(|tables| tables.note_summaries())
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]

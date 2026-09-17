@@ -124,7 +124,7 @@ of these paths deletes a Git branch.
 | Conversation history | App-server thread and paged turns | Claude-owned JSONL transcript read tolerantly by Caffold | Leader-owned session record, read in turn windows |
 | Active-turn survival across backend replacement | The daemon owns the turn; a new proxy reconnects | The runner owns the child; a new backend reattaches and asks the session for current state | The leader owns the turn; a new bridge loads the session and reads the record for the turn's end |
 | Working directory | Reported and owned by the Codex thread | Persisted with the Caffold Task and supplied whenever the Claude session starts or resumes | Persisted with the Task; the driver's binding names the native session that runs there, and a worktree move forks the session |
-| Caffold-served Task tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized | Caffold-owned HTTP MCP server declared on session start and load, bound to the Task before its session exists |
+| Caffold-served tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized | Caffold-owned HTTP MCP server declared on session start and load, bound to the Task before its session exists |
 | Current-plan instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions | `_meta.rules` on a new session and the MCP `initialize` instructions on every load |
 | Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure | Diagnostic status; an attempted operation reports its own failure |
 | Idle release | A thread subscription may be dropped when no viewer, request, or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation | The session stays loaded on the bridge; the leader is not asked to unload |
@@ -454,8 +454,8 @@ application.
 
 ## Caffold-served tools and worktrees
 
-Caffold exposes Task naming and managed-worktree isolation through the native
-extension point each agent already understands:
+Caffold exposes Task naming, managed-worktree isolation, and Notes through the
+native extension point each agent already understands:
 
 - Codex receives Caffold's authenticated HTTP MCP server at `/api/codex/mcp`
   when a thread starts or resumes. New threads do not receive Caffold dynamic
@@ -468,11 +468,11 @@ extension point each agent already understands:
 - Grok receives Caffold's authenticated HTTP MCP server at `/api/grok/mcp`,
   declared on session start and load with a header bound to the Task before
   the session exists; the binding stays bound while the session is open. The
-  address serves the Task tools and no resources.
+  address serves Caffold's tools and no resources.
 
 Codex's and Grok's addresses each keep their own bindings and handler, and
 share only what does not differ between them: the header names, MCP framing,
-the Task tool catalog, and one installation-local signing key. The key is
+the tool catalog, and one installation-local signing key. The key is
 opened lazily and only for a signed session, so neither route initialization
 nor a signing-key failure makes Codex or Grok a prerequisite for a Claude-only
 Caffold service.
@@ -482,6 +482,18 @@ All three MCP catalogs use the Task-owned base names `rename_current_task` and
 `mcp__caffold__...` and Grok's as `caffold__...`, while Codex presents the base
 names directly. Only the pre-MCP Codex dynamic-tool compatibility path accepts
 the historical `rename_current_thread` name.
+
+The same catalogs serve the Notes tools: `list_notes`, `read_note`,
+`create_note`, `update_note_content`, `rename_note`, `move_note`, `delete_note`,
+`create_note_directory`, `rename_note_directory`, `move_note_directory`, and
+`delete_note_directory`. One definition in `agent/notes_tools.rs` supplies their
+names, descriptions, input schemas, and argument checks to Codex's and Grok's
+addresses and to Claude's in-process server. A Notes call does the same thing
+whichever agent makes it: it runs only for a Task Caffold manages, reads or
+changes Caffold-owned Notes through the application, and records that Task on
+a Note it creates or changes. It never touches the agent's conversation or
+process. The pre-MCP Codex
+dynamic-tool path serves no Notes tools.
 
 The application handles both requests through the same Task and Git lifecycle.
 Only delivery and cwd movement differ. Codex accepts a new cwd for the next
@@ -501,6 +513,7 @@ contract belongs to [Managed Worktree Lifecycle](worktree-lifecycle.md).
 | Grok sessions, turns, approvals, and the session record | Grok leader |
 | Which native session a Grok Task runs on, and a worktree move in progress | Caffold's driver-private binding file |
 | Task membership, provider, display name, Section placement, composer state, and managed-worktree recovery | Caffold Redb |
+| Notes, their directories, and the Tasks that created and last changed them | Caffold Redb |
 | Current plan documents and checklist markers | Filesystem under the Task's effective working directory |
 | Files, diffs, branches, and commits | Git checkout or worktree |
 | Presentation, selection, and transient request state | Browser/PWA |
@@ -546,7 +559,9 @@ caffold/src/agent/claude.rs             Claude entry point and live session stat
 caffold/src/agent/claude/               protocol, transcript, settings, tools, instruction carrier, runner client
 caffold/src/agent/grok.rs               Grok entry point, sessions, MCP carrier, and the Settings report
 caffold/src/agent/grok/                 leader transport, protocol, binding file, MCP bindings, history, translation, worktree switch
-caffold/src/agent/http_mcp.rs           HTTP MCP framing, Task tool catalog, and signing key shared by Codex and Grok
+caffold/src/agent/http_mcp.rs           HTTP MCP framing, tool catalog, and signing key shared by Codex and Grok
+caffold/src/agent/notes_tools.rs        Notes tool catalog and argument checks shared by every agent
+caffold/src/app/notes.rs                Notes operations and the answers to Notes tool calls
 caffold/src/app/tasks/runtime.rs         per-Task routing and cross-agent orchestration
 caffold/src/app/tasks/runtime/bridge.rs  Codex runtime bridge
 caffold/src/app/tasks/runtime/claude_bridge.rs

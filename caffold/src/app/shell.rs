@@ -69,6 +69,8 @@ pub(super) fn router(
         .route("/service-worker.js", get(service_worker))
         .route("/assets/manifest.webmanifest", get(manifest))
         .route("/assets/{*path}", get(asset))
+        .route("/notes", get(index))
+        .route("/notes/{*path}", get(index))
         .route("/settings", get(index))
         .route("/settings/{*path}", get(index))
         .route("/tasks", get(index))

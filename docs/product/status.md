@@ -27,6 +27,9 @@ boundaries.
 - an optional provider-neutral Markdown current plan in each Task working
   directory, with live checklist progress and read-only Plan/Checklist viewing
   above the follow-up Composer;
+- Notes shared by every Task, which agents create, read, rename, move, rewrite,
+  and delete through Caffold's Notes tools and people read as a tree in the
+  Notes tab;
 - agent-owned model and permission semantics rather than Caffold-defined
   provider profiles;
 - separate Codex, Claude, and Grok Settings diagnostics, including Claude
@@ -81,6 +84,9 @@ boundaries.
   [Product Workflows](workflows.md#current-plan-documents).
 - Web Push is best-effort while the backend is running. It has no durable
   delivery queue, provider retry, or startup catch-up.
+- Notes change only through agents, and Caffold keeps no Note history, so
+  replaced or deleted Note content cannot be recovered. The workflow is defined
+  in [Product Workflows](workflows.md#keep-notes-through-a-task).
 
 ## Supported scenarios
 
@@ -105,6 +111,8 @@ The current product supports these flows:
    branch, agent conversation, and review context.
 9. Return later and identify the Task, agent, branch, worktree, and current
    review state without remembering a terminal session.
+10. Ask an agent in any Task to save, organize, or reuse a Note, and read the
+    result in Notes.
 
 The detailed ownership and lifecycle differences are documented in
 [Agent runtimes](../architecture/agent-runtimes.md).

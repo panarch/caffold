@@ -43,6 +43,26 @@ const SECTION_DETAIL_QUERY = [
 
 const ROUTE_DEFINITIONS = [
   routeDefinition({
+    id: "notes-home",
+    kind: "notes",
+    pattern: "/notes",
+    surface: "task-workspace",
+    target: "list",
+    toRoute: () => notesRoute(),
+    matchesRoute: (route) => route?.kind === "notes" && !route.noteId,
+    parent: () => null,
+  }),
+  routeDefinition({
+    id: "notes-note",
+    kind: "notes",
+    pattern: "/notes/[noteId]",
+    surface: "task-workspace",
+    target: "note",
+    toRoute: ({ noteId }) => notesRoute(noteId),
+    matchesRoute: (route) => route?.kind === "notes" && Boolean(route.noteId),
+    parent: () => notesRoute(),
+  }),
+  routeDefinition({
     id: "settings-home",
     kind: "settings",
     pattern: "/settings",
@@ -769,6 +789,10 @@ function sectionParentRoute(route) {
     return tasksRoute();
   }
   return tasksRoute();
+}
+
+function notesRoute(noteId = "") {
+  return { kind: "notes", noteId: `${noteId ?? ""}` };
 }
 
 function settingsRoute(section = "") {

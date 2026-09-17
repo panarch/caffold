@@ -13,6 +13,8 @@ mod managed_section;
 mod managed_thread;
 mod managed_worktree;
 mod migration;
+mod note;
+mod note_directory;
 mod push_installation;
 mod push_vapid_key;
 mod schema_migration;
@@ -27,6 +29,8 @@ pub(crate) use migration::{
 };
 #[cfg(test)]
 pub(crate) use migration::{write_empty_v4_test_store, write_v4_test_store};
+pub(crate) use note::{Note, NoteContentUpdate, NoteSummary};
+pub(crate) use note_directory::NoteDirectory;
 pub(crate) use push_installation::{
     PushInstallation, PushInstallationSummary, PushSubscriptionInput,
 };
@@ -126,6 +130,23 @@ impl TaskStoreTables<'_> {
         match self {
             Self::Memory(glue) => managed_thread::list_all_active(glue),
             Self::Redb(glue) => managed_thread::list_all_active(glue),
+        }
+    }
+
+    pub(crate) fn managed_thread(&mut self, thread_id: &str) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => managed_thread::get(glue, thread_id),
+            Self::Redb(glue) => managed_thread::get(glue, thread_id),
+        }
+    }
+
+    pub(crate) fn archived_managed_thread(
+        &mut self,
+        thread_id: &str,
+    ) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => managed_thread::get_archived(glue, thread_id),
+            Self::Redb(glue) => managed_thread::get_archived(glue, thread_id),
         }
     }
 
@@ -294,6 +315,161 @@ impl TaskStoreTables<'_> {
                 next_anchor,
                 updated_at_ms,
             ),
+        }
+    }
+
+    pub(crate) fn note_directories(&mut self) -> Result<Vec<NoteDirectory>> {
+        match self {
+            Self::Memory(glue) => note_directory::list(glue),
+            Self::Redb(glue) => note_directory::list(glue),
+        }
+    }
+
+    pub(crate) fn note_directory(&mut self, directory_id: &str) -> Result<Option<NoteDirectory>> {
+        match self {
+            Self::Memory(glue) => note_directory::get(glue, directory_id),
+            Self::Redb(glue) => note_directory::get(glue, directory_id),
+        }
+    }
+
+    pub(crate) fn insert_note_directory(&mut self, directory: &NoteDirectory) -> Result<()> {
+        match self {
+            Self::Memory(glue) => note_directory::insert(glue, directory),
+            Self::Redb(glue) => note_directory::insert(glue, directory),
+        }
+    }
+
+    pub(crate) fn rename_note_directory(
+        &mut self,
+        directory_id: &str,
+        name: &str,
+        now_ms: u64,
+    ) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => note_directory::rename(glue, directory_id, name, now_ms),
+            Self::Redb(glue) => note_directory::rename(glue, directory_id, name, now_ms),
+        }
+    }
+
+    pub(crate) fn move_note_directory(
+        &mut self,
+        directory_id: &str,
+        parent_directory_id: Option<&str>,
+        now_ms: u64,
+    ) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => {
+                note_directory::move_to(glue, directory_id, parent_directory_id, now_ms)
+            }
+            Self::Redb(glue) => {
+                note_directory::move_to(glue, directory_id, parent_directory_id, now_ms)
+            }
+        }
+    }
+
+    pub(crate) fn delete_note_directory(&mut self, directory_id: &str) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => note_directory::delete(glue, directory_id),
+            Self::Redb(glue) => note_directory::delete(glue, directory_id),
+        }
+    }
+
+    pub(crate) fn note_directory_has_child_directories(
+        &mut self,
+        directory_id: &str,
+    ) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => note_directory::has_child_directories(glue, directory_id),
+            Self::Redb(glue) => note_directory::has_child_directories(glue, directory_id),
+        }
+    }
+
+    pub(crate) fn note_summaries(&mut self) -> Result<Vec<NoteSummary>> {
+        match self {
+            Self::Memory(glue) => note::list_summaries(glue),
+            Self::Redb(glue) => note::list_summaries(glue),
+        }
+    }
+
+    pub(crate) fn note(&mut self, note_id: &str) -> Result<Option<Note>> {
+        match self {
+            Self::Memory(glue) => note::get(glue, note_id),
+            Self::Redb(glue) => note::get(glue, note_id),
+        }
+    }
+
+    pub(crate) fn insert_note(&mut self, note: &Note) -> Result<()> {
+        match self {
+            Self::Memory(glue) => note::insert(glue, note),
+            Self::Redb(glue) => note::insert(glue, note),
+        }
+    }
+
+    pub(crate) fn update_note_content(
+        &mut self,
+        note_id: &str,
+        content: &str,
+        expected_content_version: i64,
+        thread_id: &str,
+        now_ms: u64,
+    ) -> Result<NoteContentUpdate> {
+        match self {
+            Self::Memory(glue) => note::update_content(
+                glue,
+                note_id,
+                content,
+                expected_content_version,
+                thread_id,
+                now_ms,
+            ),
+            Self::Redb(glue) => note::update_content(
+                glue,
+                note_id,
+                content,
+                expected_content_version,
+                thread_id,
+                now_ms,
+            ),
+        }
+    }
+
+    pub(crate) fn rename_note(
+        &mut self,
+        note_id: &str,
+        name: &str,
+        thread_id: &str,
+        now_ms: u64,
+    ) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => note::rename(glue, note_id, name, thread_id, now_ms),
+            Self::Redb(glue) => note::rename(glue, note_id, name, thread_id, now_ms),
+        }
+    }
+
+    pub(crate) fn move_note(
+        &mut self,
+        note_id: &str,
+        directory_id: Option<&str>,
+        thread_id: &str,
+        now_ms: u64,
+    ) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => note::move_to(glue, note_id, directory_id, thread_id, now_ms),
+            Self::Redb(glue) => note::move_to(glue, note_id, directory_id, thread_id, now_ms),
+        }
+    }
+
+    pub(crate) fn note_directory_has_notes(&mut self, directory_id: &str) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => note::any_in_directory(glue, directory_id),
+            Self::Redb(glue) => note::any_in_directory(glue, directory_id),
+        }
+    }
+
+    pub(crate) fn delete_note(&mut self, note_id: &str) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => note::delete(glue, note_id),
+            Self::Redb(glue) => note::delete(glue, note_id),
         }
     }
 }
@@ -918,12 +1094,65 @@ mod tests {
                     .unwrap(),
                 format!("private-key-{index}")
             );
+
+            let directory_id = format!("directory-{index}");
+            let note_id = format!("note-{index}");
+            store
+                .transaction(|tables| {
+                    tables.insert_note_directory(&NoteDirectory {
+                        directory_id: directory_id.clone(),
+                        parent_directory_id: None,
+                        name: "Decisions".to_string(),
+                        created_at_ms: 1_000,
+                        updated_at_ms: 1_000,
+                    })?;
+                    tables.insert_note(&Note {
+                        note_id: note_id.clone(),
+                        directory_id: Some(directory_id.clone()),
+                        name: "Storage".to_string(),
+                        content: "first".to_string(),
+                        content_version: 1,
+                        created_by_thread_id: "writer".to_string(),
+                        updated_by_thread_id: "writer".to_string(),
+                        created_at_ms: 1_000,
+                        updated_at_ms: 1_000,
+                    })?;
+                    assert_eq!(
+                        tables.update_note_content(&note_id, "second", 1, "editor", 2_000)?,
+                        NoteContentUpdate::Updated { content_version: 2 }
+                    );
+                    assert!(tables.note_directory_has_notes(&directory_id)?);
+                    assert!(!tables.note_directory_has_child_directories(&directory_id)?);
+                    Ok(())
+                })
+                .unwrap();
+            let (directories, summaries, note) = store
+                .read(|tables| {
+                    Ok((
+                        tables.note_directories()?,
+                        tables.note_summaries()?,
+                        tables.note(&note_id)?,
+                    ))
+                })
+                .unwrap();
+            assert_eq!(directories.len(), 1);
+            assert_eq!(summaries.len(), 1);
+            let note = note.unwrap();
+            assert_eq!(note.content, "second");
+            assert_eq!(note.updated_by_thread_id, "editor");
         }
 
         redb.claim(thread("persisted"), 200).unwrap();
         drop(redb);
         let reopened = TaskStore::redb(&path).unwrap();
         assert!(reopened.get("persisted").unwrap().is_some());
+        assert_eq!(
+            reopened
+                .read(|tables| tables.note("note-1"))
+                .unwrap()
+                .map(|note| note.content_version),
+            Some(2)
+        );
         assert!(reopened.worktree("worktree-1").unwrap().is_some());
         assert_eq!(reopened.active_push_installations().unwrap().len(), 1);
         assert_eq!(

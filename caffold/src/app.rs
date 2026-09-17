@@ -10,6 +10,7 @@ use tracing::info;
 
 mod error;
 mod live_updates;
+mod notes;
 mod shell;
 mod startup_migration;
 mod tailscale;

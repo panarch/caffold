@@ -1,6 +1,9 @@
-//! Caffold's Task tools, as both agents' MCP addresses list them.
+//! The tools Caffold serves, as both agents' MCP addresses list them: the
+//! Task-owned tools defined here and the Notes tools every agent shares.
 
 use serde_json::{Value, json};
+
+use crate::agent::notes_tools::notes_tool_specs;
 
 pub(crate) const RENAME_CURRENT_TASK_TOOL_NAME: &str = "rename_current_task";
 pub(crate) const ISOLATE_CURRENT_TASK_TOOL_NAME: &str = "isolate_current_task";
@@ -13,16 +16,21 @@ pub(in crate::agent) struct McpToolSpec {
 
 /// The catalog an MCP `tools/list` answers with.
 pub(crate) fn caffold_mcp_tools() -> Vec<Value> {
-    caffold_mcp_tool_specs()
+    let task_tools = caffold_mcp_tool_specs()
         .into_iter()
-        .map(|tool| {
-            json!({
-                "name": tool.name,
-                "description": tool.description,
-                "inputSchema": tool.input_schema,
-            })
-        })
-        .collect()
+        .map(|tool| listed_tool(tool.name, tool.description, tool.input_schema));
+    let notes_tools = notes_tool_specs()
+        .into_iter()
+        .map(|tool| listed_tool(tool.name, tool.description, tool.input_schema));
+    task_tools.chain(notes_tools).collect()
+}
+
+fn listed_tool(name: &str, description: &str, input_schema: Value) -> Value {
+    json!({
+        "name": name,
+        "description": description,
+        "inputSchema": input_schema,
+    })
 }
 
 pub(in crate::agent) fn caffold_mcp_tool_specs() -> [McpToolSpec; 2] {

@@ -776,6 +776,48 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
   }
 });
 
+test("draws a light divider only between two unselected workspace tabs", { tag: "@desktop" }, async ({
+  page,
+}, testInfo) => {
+  await page.goto("/");
+
+  const tabs = page.locator(
+    "caffold-task-workspace-navigation button[data-workspace-mode]",
+  );
+  await expect(tabs).toHaveText(["Tasks", "Notes", "Settings"]);
+  const dividers = () =>
+    tabs.evaluateAll((buttons) => {
+      const rootFontSize = Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      );
+      return buttons.map((button) => {
+        const divider = getComputedStyle(button, "::before");
+        if (divider.content === "none") {
+          return null;
+        }
+        return {
+          opacity: Number(divider.opacity),
+          width: Number.parseFloat(divider.width),
+          heightRem: Number.parseFloat(divider.height) / rootFontSize,
+        };
+      });
+    });
+  const divider = (opacity) => ({ opacity, width: 1, heightRem: 0.875 });
+
+  await expect(tabs.nth(0)).toHaveAttribute("aria-current", "");
+  expect(await dividers()).toEqual([null, divider(0), divider(0.72)]);
+  await captureReviewScreenshot(page, testInfo, "workspace-tabs-tasks");
+
+  await tabs.nth(1).click();
+  await expect(tabs.nth(1)).toHaveAttribute("aria-current", "");
+  expect(await dividers()).toEqual([null, divider(0), divider(0)]);
+
+  await tabs.nth(2).click();
+  await expect(tabs.nth(2)).toHaveAttribute("aria-current", "");
+  expect(await dividers()).toEqual([null, divider(0.72), divider(0)]);
+  await captureReviewScreenshot(page, testInfo, "workspace-tabs-settings");
+});
+
 async function installTaskRoutes(page, task) {
   await page.route("**/api/tasks**", (route) => {
     const request = route.request();

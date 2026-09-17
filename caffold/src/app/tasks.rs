@@ -188,6 +188,7 @@ impl TasksApp {
         watch_hub: WatchHub,
     ) -> anyhow::Result<Self> {
         let push = PushRuntime::new(task_store.clone())?;
+        let notes_router = super::notes::router(task_store.clone());
         grok.attach_mcp(grok_mcp.bindings(), grok_mcp.endpoint());
         let state = TaskState::new_with_push(
             fs,
@@ -207,11 +208,13 @@ impl TasksApp {
         codex_mcp.attach_runtime(runtime.clone());
         grok_mcp.attach_runtime(runtime.clone());
         Ok(Self {
-            router: routes::router(state).merge(super::live_updates::router(
-                live_source,
-                watch_hub,
-                shutdown,
-            )),
+            router: routes::router(state)
+                .merge(super::live_updates::router(
+                    live_source,
+                    watch_hub,
+                    shutdown,
+                ))
+                .merge(notes_router),
             runtime,
             push,
         })

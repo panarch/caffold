@@ -310,6 +310,14 @@ export async function readFile(path, signal) {
   return requestJson("/api/file", { path }, { signal });
 }
 
+export async function getNotes(directoryId, signal) {
+  return requestJson("/api/notes", { directoryId: directoryId || undefined }, { signal });
+}
+
+export async function getNote(noteId, signal) {
+  return requestJson(`/api/notes/${encodeURIComponent(noteId)}`, {}, { signal });
+}
+
 export async function getCurrentPlan(path = "", signal) {
   return requestJson("/api/current-plan", { path }, { signal, timeoutMs: 8_000 });
 }

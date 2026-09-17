@@ -1,9 +1,9 @@
 //! What Caffold's HTTP MCP server keeps the same at every agent's address.
 //!
-//! Codex and Grok reach Caffold's Task tools at addresses of their own,
+//! Codex and Grok reach Caffold's tools at addresses of their own,
 //! `/api/codex/mcp` and `/api/grok/mcp`, and each address has its own bindings
 //! and handler. What stays here does not differ between them: the header
-//! names, how a request is framed and answered, the Task tool catalog, and the
+//! names, how a request is framed and answered, the tool catalog, and the
 //! installation key that signs a session to the Task its binding names. Claude
 //! serves the same tools in-process and uses none of it.
 

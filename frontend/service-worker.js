@@ -131,6 +131,13 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js",
   "/assets/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css",
   "/assets/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
+  "/assets/pages/(task-workspace)/notes/components/info.css",
+  "/assets/pages/(task-workspace)/notes/components/info.js",
+  "/assets/pages/(task-workspace)/notes/components/navigator.css",
+  "/assets/pages/(task-workspace)/notes/components/navigator.js",
+  "/assets/pages/(task-workspace)/notes/layout.css",
+  "/assets/pages/(task-workspace)/notes/layout.js",
+  "/assets/pages/(task-workspace)/notes/tree.js",
   "/assets/pages/(task-workspace)/settings/layout.css",
   "/assets/pages/(task-workspace)/settings/layout.js",
   "/assets/pages/(task-workspace)/settings/navigator.css",
@@ -375,6 +382,8 @@ self.addEventListener("fetch", (event) => {
 
   if (
     url.pathname === "/" ||
+    url.pathname === "/notes" ||
+    url.pathname.startsWith("/notes/") ||
     url.pathname === "/settings" ||
     url.pathname.startsWith("/settings/") ||
     url.pathname === "/tasks" ||

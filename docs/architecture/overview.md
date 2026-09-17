@@ -71,7 +71,9 @@ The backend owns:
   selected provider;
 - canonical Tailscale status, constrained Serve operations, and private URL/QR
   derivation;
-- browser Push subscription persistence and delivery; and
+- browser Push subscription persistence and delivery;
+- Notes that agents write through Caffold's Notes tools and the browser reads;
+  and
 - shared server settings, PWA assets, and capabilities consumed by browser and
   platform clients.
 
@@ -161,6 +163,7 @@ caffold/src/app/workspace.rs           Files, current plan, images, Git, and Git
 caffold/src/app/workspace/current_plan.rs
                                       read-only current-plan filesystem projection
 caffold/src/app/live_updates.rs        tab SSE, logical controls, framing, channel lifetimes
+caffold/src/app/notes.rs               Notes operations, Notes tool answers, read-only Notes routes
 caffold/src/app/tasks.rs               private Tasks state and runtime shutdown
 caffold/src/app/tasks/routes.rs        Task/agent HTTP DTOs, handlers, REST routes
 caffold/src/app/tasks/live.rs          typed Task List and Task Detail live capabilities
@@ -177,12 +180,13 @@ caffold/src/app/tasks/projection.rs    pure conversation-to-browser Task project
 caffold/src/app/tasks/events.rs        event normalization, merge, cache, publication
 caffold/src/agent.rs                   shared agent vocabulary
 caffold/src/agent/driver.rs            closed driver choice and shared operations
+caffold/src/agent/notes_tools.rs       Notes tool catalog and argument checks for every agent
 caffold/src/agent/codex.rs             Codex app-server boundary
 caffold/src/agent/claude.rs            Claude CLI boundary
 caffold/src/app/voice.rs               voice settings, Whisper lifecycle, WAV validation, provider routing
 caffold/src/app/tailscale.rs           status and constrained Serve orchestration
 caffold/src/watch.rs                   reference-counted native filesystem watches
-caffold/src/task_store.rs              Caffold-owned durable Task and recovery data
+caffold/src/task_store.rs              Caffold-owned durable Task, Notes, and recovery data
 runners/claude/                         transport-only Claude process supervisor
 ```
 
@@ -200,6 +204,7 @@ writers for provider state.
 | Claude conversation history | Claude transcript files |
 | Live Claude process and control requests | Claude process held by the Caffold runner |
 | Task membership, provider, stable navigator name, Section placement, composer state, Push subscriptions, and managed-worktree recovery | Caffold Redb |
+| Notes, their directories, and the Tasks that created and last changed them | Caffold Redb |
 | Current plan documents and checklist markers | Filesystem under the Task's effective working directory |
 | Files, diffs, branches, commits, and worktree contents | Git and the filesystem |
 | Tailscale connection, Serve mapping, and Tailnet address | Tailscale CLI and Serve configuration |

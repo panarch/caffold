@@ -10,10 +10,12 @@ use crate::agent::codex::{
     approval_request, approval_response,
 };
 use crate::agent::http_mcp::{ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME};
+use crate::agent::notes_tools::{NotesToolCall, notes_tool_call};
 use crate::agent::{
     ApprovalDecision, ApprovalOutcome, ApprovalRequest, SessionEvent, SessionEventKind,
     ThreadStatus, TurnStatus,
 };
+use crate::app::notes;
 use crate::app::tasks::{
     events::{
         TaskEventPosition, TaskEventRecord, approval_requested_event, approval_resolved_event,
@@ -583,6 +585,9 @@ impl TaskRuntime {
         tool: &str,
         arguments: JsonValue,
     ) -> Result<String, String> {
+        if let Some(call) = notes_tool_call(tool, &arguments) {
+            return self.execute_notes_tool(thread_id, call?).await;
+        }
         let tool = mcp_task_tool(tool)?;
         let Some(managed) = self.managed_thread(thread_id).await? else {
             return Err(unmanaged_task_error(tool));
@@ -787,6 +792,19 @@ impl TaskRuntime {
                 thread.ok_or_else(|| "renamed Task is no longer managed".to_string())
             })
             .map(|_| ())
+    }
+
+    /// Carry out a Notes tool call. Notes belong to no agent, so every agent's
+    /// call is answered the same way, as long as a Task Caffold manages made it.
+    pub(super) async fn execute_notes_tool(
+        &self,
+        thread_id: &str,
+        call: NotesToolCall,
+    ) -> Result<String, String> {
+        if self.managed_thread(thread_id).await?.is_none() {
+            return Err("Caffold only serves Notes to a task that it manages.".to_string());
+        }
+        notes::execute_tool(self.task_store.clone(), thread_id.to_string(), call).await
     }
 
     async fn managed_thread(&self, thread_id: &str) -> Result<Option<ManagedThread>, String> {
