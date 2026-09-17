@@ -262,7 +262,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   await expect(tasksPage.locator(".task-new-form")).toBeVisible();
   await expect(tasksPage.locator(".tasks-header")).toHaveCount(0);
   await expect(page.locator("caffold-task-workspace")).not.toHaveAttribute(
-    "data-workspace-close-visible",
+    "data-workspace-route-control-visible",
     "",
   );
   await captureReviewScreenshot(page, testInfo, "tasks-home-new-task-detail");
@@ -270,7 +270,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
   await expect(
-    page.locator("caffold-task-workspace .task-workspace-close"),
+    page.locator("caffold-task-workspace .task-workspace-back"),
   ).toBeHidden();
 
   await page.goto("/tasks?cwd=.");
@@ -301,9 +301,10 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
 
   await page.goto("/tasks/new");
   await expect(page).toHaveURL("/tasks/new");
-  await expect(
-    page.locator("caffold-task-workspace .task-workspace-close"),
-  ).toHaveAttribute("aria-label", "Close new task");
+  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+    "data-workspace-route-control-visible",
+    "",
+  );
   await page.goBack();
   await expect(page).toHaveURL("/");
   await page.goto("/tasks/new");

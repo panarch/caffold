@@ -28,6 +28,10 @@ caffold-section-detail {
 }
 
 @media (max-width: 959px) {
+  caffold-section-detail {
+    padding-top: 0;
+  }
+
   caffold-section-detail > caffold-section-conversation-shortcuts,
   caffold-section-detail > caffold-section-github-shortcuts {
     width: min(calc(100% - 3rem), 932px);

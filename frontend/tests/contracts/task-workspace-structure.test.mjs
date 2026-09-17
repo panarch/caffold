@@ -84,8 +84,6 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     /closeActiveSubview|tasksPage\.taskDetailView|tasksPage\?\.taskDetailView/,
   );
   assert.match(workspace, /class="task-workspace-route-control task-workspace-back"/);
-  assert.match(workspace, /class="task-workspace-route-control task-workspace-close"/);
-  assert.match(workspace, /aria-label="Close new task"/);
   assert.doesNotMatch(tasksPage, /<caffold-task-navigator|workspaceNavigationHost/);
   assert.doesNotMatch(tasksPage, /closeActiveSubview/);
   assert.doesNotMatch(taskSummary, /getGitRefs|\/api\/git\/refs/);

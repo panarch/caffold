@@ -16,7 +16,6 @@ import {
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "../origin-reachability.js";
 import { getSettings } from "../settings.js";
 import {
-  parentRoute,
   parseRoute,
   routeEquals,
   routeUrl,
@@ -154,13 +153,6 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener(CAFFOLD_BUILD_MISMATCH_RELOAD_EVENT, (event) => {
       event.stopPropagation();
       window.location.reload();
-    });
-    this.addEventListener("caffold:close-task-workspace", () => {
-      const route = parseRoute(window.location.href) ?? this.currentRoute;
-      const parent = parentRoute(route);
-      if (parent) {
-        this.navigateToRoute(parent);
-      }
     });
     this.addEventListener("caffold:task-transport-status", (event) => {
       event.stopPropagation();

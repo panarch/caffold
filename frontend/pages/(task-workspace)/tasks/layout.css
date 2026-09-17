@@ -20,6 +20,12 @@ caffold-tasks-page {
     overflow: hidden;
   }
 
+  /* New Task has no header row for the compact Back to sit in, so the pane
+     leaves a header-high band above everything it shows. */
+  &[data-tasks-view="new"] .tasks-detail-pane {
+    padding-top: var(--task-header-block-space, 0rem);
+  }
+
   /* One child fills the pane; the Codex setup card shown beside the Task
      surface is the exception, taking its own height above it — capped, so
      however much the card has to say, the surface below stays reachable. */

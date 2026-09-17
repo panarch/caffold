@@ -197,6 +197,40 @@ for (const [state, heading] of BLOCKING_STATES) {
   });
 }
 
+test("keeps the Codex setup card below the compact Back on New Task", { tag: "@phone" }, async ({ page }, testInfo) => {
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(statusFor("missing")),
+    }),
+  );
+
+  await page.goto("/tasks/new");
+  const setup = page.locator("caffold-codex-readiness-recovery");
+  const back = page.locator("caffold-task-workspace .task-workspace-back");
+  await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
+    "data-tasks-view",
+    "new",
+  );
+  await expect(setup).toHaveAttribute("data-presentation", "beside");
+  await expect(setup).toBeVisible();
+  await expect(back).toBeVisible();
+  const boxes = await page.evaluate(() => {
+    const box = (selector) => {
+      const rect = document.querySelector(selector).getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    };
+    return {
+      back: box("caffold-task-workspace .task-workspace-back"),
+      setup: box("caffold-codex-readiness-recovery"),
+      newTask: box("caffold-task-new"),
+    };
+  });
+  expect(boxes.setup.top).toBeGreaterThanOrEqual(boxes.back.bottom);
+  expect(Math.abs(boxes.newTask.top - boxes.setup.bottom)).toBeLessThanOrEqual(0.5);
+  await captureReviewScreenshot(page, testInfo, "tasks-new-task-setup-compact-back");
+});
+
 test("a blocked Codex holds nothing on the Tasks home", { tag: "@all-viewports" }, async ({ page }) => {
   let taskRequests = 0;
   const cached = cachedTask();

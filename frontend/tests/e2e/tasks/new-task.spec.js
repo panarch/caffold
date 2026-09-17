@@ -160,6 +160,62 @@ test("focuses a new task prompt automatically only on desktop", { tag: "@all-vie
   await expect(prompt).toBeFocused();
 });
 
+test("keeps New Task below the compact Back to Tasks", { tag: "@phone" }, async ({ page }, testInfo) => {
+  await installTaskLoopFixture(page);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const back = page.locator("caffold-task-workspace .task-workspace-back");
+  const newTaskLayout = () => page.evaluate(() => {
+    const workspace = document.querySelector("caffold-task-workspace");
+    const probe = document.createElement("div");
+    probe.style.position = "absolute";
+    probe.style.height = "var(--task-workspace-header-size)";
+    workspace.append(probe);
+    const headerSize = probe.getBoundingClientRect().height;
+    probe.remove();
+    const pane = document
+      .querySelector("caffold-tasks-page .tasks-detail-pane")
+      .getBoundingClientRect();
+    const scroller = document
+      .querySelector("caffold-task-new > .task-new-workspace")
+      .getBoundingClientRect();
+    const backBox = document
+      .querySelector("caffold-task-workspace .task-workspace-back")
+      .getBoundingClientRect();
+    return {
+      headerSize,
+      band: scroller.top - pane.top,
+      scrollerTop: scroller.top,
+      backBottom: backBox.bottom,
+    };
+  });
+
+  await page.goto("/");
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
+  await expect(tasksPage).toHaveAttribute("data-task-list-state", "empty");
+  await expect(tasksPage.locator(".task-new-form")).toBeVisible();
+  await expect(back).toBeHidden();
+  expect(Math.abs((await newTaskLayout()).band)).toBeLessThanOrEqual(0.5);
+
+  await page.goto("/tasks/new");
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "new");
+  await expect(back).toBeVisible();
+  await expect(back).toHaveAttribute("aria-label", "Back to tasks");
+  const layout = await newTaskLayout();
+  expect(Math.abs(layout.band - layout.headerSize)).toBeLessThanOrEqual(0.5);
+  expect(layout.scrollerTop).toBeGreaterThanOrEqual(layout.backBottom);
+  await captureReviewScreenshot(page, testInfo, "tasks-new-task-compact-back");
+
+  const historyLength = await page.evaluate(() => window.history.length);
+  await back.click();
+  await expect(page).toHaveURL("/");
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
+  await expect(back).toBeHidden();
+  expect(Math.abs((await newTaskLayout()).band)).toBeLessThanOrEqual(0.5);
+  await expect
+    .poll(() => page.evaluate(() => window.history.length))
+    .toBe(historyLength);
+});
+
 test("creates a task with responsive composer controls and canonical approval state", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
@@ -186,7 +242,7 @@ test("creates a task with responsive composer controls and canonical approval st
   ).toBe(Math.round((appShellBox?.y ?? -1) + (appShellBox?.height ?? 0)));
   await expect(
     taskWorkspace.getByRole("button", { name: "Back to tasks" }),
-  ).toHaveCount(0);
+  ).toHaveCount(testInfo.project.name === "phone" ? 1 : 0);
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
     "data-tasks-view",
     "new",

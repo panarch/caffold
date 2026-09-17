@@ -14,11 +14,7 @@ caffold-task-create {
     gap: 0.5rem;
     width: min(calc(100% - 1.75rem), 952px);
     margin: 0 auto;
-    /* The compact route control floats over the leading corner of this
-       surface, the way it does over the Composer below. Its space is left for
-       it so the text starts beside the control rather than under it. */
-    padding: 0.625rem 0.75rem 0.625rem
-      calc(0.75rem + var(--task-header-leading-space, 0rem));
+    padding: 0.625rem 0.75rem;
     border: 1px solid var(--warning-border);
     border-radius: 6px;
     background: var(--warning-subtle);
