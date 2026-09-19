@@ -44,7 +44,10 @@
 //! every prompt Caffold sends, which carries no `origin`, and lose it. A report
 //! opens a turn like any prompt, because the work the agent does about it has
 //! to belong somewhere, but the report itself is drawn as nothing: nobody said
-//! it.
+//! it. A subagent can also hand its result back before its report comes, as a
+//! message from it marked `peer` with `handback` and the subagent's task id.
+//! That message is the subagent's report in its own words, so it is drawn, and
+//! noted as the task's hand-back all the same.
 //!
 //! A message sent into a turn already running is not a `user` row at all: it is
 //! an attachment the agent files as a queued command, which is why it is read
@@ -206,8 +209,17 @@ impl ToolUseResult {
 enum Marking {
     /// A word, which is how a queued command is marked.
     Word(String),
-    /// A word inside an object, which is how a prompt is marked.
-    Kind { kind: String },
+    /// A word inside an object, which is how a prompt is marked, with what a
+    /// subagent handing its result back adds to it.
+    Kind {
+        kind: String,
+        /// The subagent a message comes from, by its task id.
+        #[serde(default, rename = "senderTaskId")]
+        sender_task_id: Option<TranscriptString>,
+        /// Whether the message is that subagent's result.
+        #[serde(default)]
+        handback: bool,
+    },
     /// A shape this release does not read, which marks nothing.
     Unreadable(serde::de::IgnoredAny),
 }
@@ -216,7 +228,7 @@ impl Marking {
     /// Whether this is the agent's own name for the thing named.
     fn says(&self, name: &str) -> bool {
         match self {
-            Self::Word(marking) | Self::Kind { kind: marking } => marking == name,
+            Self::Word(marking) | Self::Kind { kind: marking, .. } => marking == name,
             Self::Unreadable(_) => false,
         }
     }
@@ -228,13 +240,17 @@ impl Marking {
 /// queued command when it is working.
 const TASK_NOTIFICATION: &str = "task-notification";
 const HUMAN_ORIGIN: &str = "human";
+/// What the agent calls a message from another session, a subagent's
+/// hand-back among them.
+const PEER_ORIGIN: &str = "peer";
 
-/// One explicitly marked background report found while reading the file.
+/// One explicitly marked background report found while reading the file, or
+/// a subagent's hand-back of its result.
 ///
-/// A prompt delivery opens its own turn. A queued delivery belongs beside a
-/// turn already running and must not manufacture another one. Keeping both in
-/// the transcript reading preserves that distinction even before a product
-/// surface decides what to do with it.
+/// A prompt delivery opens its own turn, and so does a hand-back. A queued
+/// delivery belongs beside a turn already running and must not manufacture
+/// another one. Keeping each in the transcript reading preserves that
+/// distinction even before a product surface decides what to do with it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BackgroundTaskObservation {
     pub(crate) task: BackgroundTask,
@@ -246,6 +262,7 @@ pub(crate) struct BackgroundTaskObservation {
 pub(crate) enum BackgroundTaskDelivery {
     Turn { turn_id: String },
     Queued { turn_id: Option<String> },
+    HandBack { turn_id: String },
 }
 
 /// Where the agent keeps every project's conversations.
@@ -578,6 +595,18 @@ fn turns(lines: &[&str]) -> ParsedTurns {
                     at_ms,
                 });
             }
+            if let Some(task_id) = handed_back_by(&row) {
+                background_tasks.push(BackgroundTaskObservation {
+                    task: BackgroundTask {
+                        task_id: Some(task_id.to_string()),
+                        ..BackgroundTask::default()
+                    },
+                    delivery: BackgroundTaskDelivery::HandBack {
+                        turn_id: anchor.to_string(),
+                    },
+                    at_ms,
+                });
+            }
             turns.push(Turn {
                 id: anchor.to_string(),
                 origin,
@@ -672,11 +701,24 @@ fn exact_row_prompt<'a>(
 fn prompt_origin(row: &Row, message: &Message) -> TurnOrigin {
     match row.origin.as_ref() {
         None => TurnOrigin::User,
-        Some(Marking::Kind { kind }) if kind == HUMAN_ORIGIN => TurnOrigin::User,
-        Some(Marking::Kind { kind }) if kind == TASK_NOTIFICATION => {
+        Some(Marking::Kind { kind, .. }) if kind == HUMAN_ORIGIN => TurnOrigin::User,
+        Some(Marking::Kind { kind, .. }) if kind == TASK_NOTIFICATION => {
             TurnOrigin::BackgroundTask(background_task(&message.content))
         }
         Some(_) => TurnOrigin::Unknown,
+    }
+}
+
+/// The subagent whose result a prompt row is, by its task id, when the row is
+/// a subagent handing its result back.
+fn handed_back_by(row: &Row) -> Option<&str> {
+    match row.origin.as_ref()? {
+        Marking::Kind {
+            kind,
+            sender_task_id: Some(sender),
+            handback: true,
+        } if kind == PEER_ORIGIN => sender.text(),
+        _ => None,
     }
 }
 
@@ -1323,6 +1365,74 @@ mod tests {
             BackgroundTaskDelivery::Queued { turn_id: None },
             "chronological proximity is not a causal link"
         );
+    }
+
+    #[test]
+    fn a_subagents_hand_back_is_its_tasks_delivery_and_is_still_drawn() {
+        // As Claude Code 2.1.274 files it in a Caffold session: the subagent
+        // hands its result back as a message from it, which opens a turn the
+        // agent answers before it reports the task finished.
+        let contents = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "run the tests in the background"},
+            })),
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "handback-1",
+                "timestamp": "2026-09-19T14:30:47.000Z",
+                "promptSource": "sdk",
+                "origin": {
+                    "kind": "peer",
+                    "from": "a9e595a27f526c90a",
+                    "senderTaskId": "a9e595a27f526c90a",
+                    "body": "[Subagent hand-back] Run 1: 1295 passed",
+                    "handback": true,
+                },
+                "message": {
+                    "role": "user",
+                    "content": "Another Claude session sent a message:\n<agent-message from=\"a9e595a27f526c90a\">\n[Subagent hand-back] Run 1: 1295 passed\n</agent-message>",
+                },
+            })),
+        ]
+        .join("\n");
+
+        let turns = read_turns(&contents);
+        let observations = background_tasks(&contents);
+
+        assert_eq!(turns.len(), 2);
+        assert_eq!(turns[1].id, "handback-1");
+        assert_eq!(
+            said_in(&turns[1]).len(),
+            1,
+            "the hand-back stays in the conversation"
+        );
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].task.task_id.as_deref(),
+            Some("a9e595a27f526c90a")
+        );
+        assert_eq!(
+            observations[0].delivery,
+            BackgroundTaskDelivery::HandBack {
+                turn_id: "handback-1".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn a_message_from_another_session_that_hands_nothing_back_delivers_no_task() {
+        let contents = line(serde_json::json!({
+            "type": "user",
+            "uuid": "peer-1",
+            "promptSource": "sdk",
+            "origin": {"kind": "peer", "from": "other-session", "senderTaskId": "other-task"},
+            "message": {"role": "user", "content": "Another Claude session sent a message: hello"},
+        }));
+
+        assert!(background_tasks(&contents).is_empty());
     }
 
     #[test]

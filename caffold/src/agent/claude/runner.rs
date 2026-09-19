@@ -700,6 +700,9 @@ struct MockSession {
     refuses_moves: u32,
     holds_next_move: bool,
     held_move_answer: Option<Value>,
+    holds_next_stop: bool,
+    /// The request a held-back stop is answered under.
+    held_stop: Option<String>,
 }
 
 /// What a test speaks to a stand-in runner through.
@@ -740,6 +743,8 @@ impl MockRunner {
                 refuses_moves: 0,
                 holds_next_move: false,
                 held_move_answer: None,
+                holds_next_stop: false,
+                held_stop: None,
             },
         );
         Ok(RunnerSession {
@@ -777,10 +782,17 @@ impl MockRunner {
                 "a user message sent to {session} carries no name"
             )));
         }
+        let holds_stop = frame["type"] == "control_request"
+            && frame["request"]["subtype"] == "interrupt"
+            && std::mem::take(&mut existing.holds_next_stop);
+        if holds_stop {
+            existing.held_stop = frame["request_id"].as_str().map(str::to_string);
+        }
         // The agent answers what it is asked. A stand-in that stayed silent
         // would not stand in for it: every caller waiting on a control request
         // would wait out its whole timeout.
-        if frame["type"] == "control_request"
+        if !holds_stop
+            && frame["type"] == "control_request"
             && let Some(request_id) = frame["request_id"].as_str()
         {
             let mut body = if frame["request"]["subtype"] == "initialize" {
@@ -951,6 +963,34 @@ impl MockRunnerHandle {
         if let Some(held) = state.sessions.get_mut(session)
             && let Some(answer) = held.held_move_answer.take()
         {
+            let _ = held.agent.send(RunnerEvent::Frame(answer.to_string()));
+        }
+    }
+
+    /// Hold back the answer to the next stop, until
+    /// [`Self::answer_held_stop`].
+    ///
+    /// The real agent answers a stop a moment before the stopped turn's
+    /// result, and names in that answer what it cancelled with the turn.
+    pub(crate) async fn hold_next_stop_answer(&self, session: &str) {
+        let mut state = self.0.state.lock().await;
+        if let Some(held) = state.sessions.get_mut(session) {
+            held.holds_next_stop = true;
+        }
+    }
+
+    /// Answer the stop held back with the `receipt` the agent gives, which says
+    /// what it cancelled along with the turn.
+    pub(crate) async fn answer_held_stop(&self, session: &str, receipt: Value) {
+        let mut state = self.0.state.lock().await;
+        if let Some(held) = state.sessions.get_mut(session)
+            && let Some(request_id) = held.held_stop.take()
+        {
+            let answer = serde_json::json!({ "type": "control_response", "response": {
+                "subtype": "success",
+                "request_id": request_id,
+                "response": receipt,
+            } });
             let _ = held.agent.send(RunnerEvent::Frame(answer.to_string()));
         }
     }

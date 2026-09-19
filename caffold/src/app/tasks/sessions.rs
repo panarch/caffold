@@ -400,6 +400,15 @@ impl TaskSessions {
         Some(snapshot(&state))
     }
 
+    /// Whether the agent says it is working on this Task, with a turn open or
+    /// none.
+    pub(in crate::app::tasks) async fn working(&self, thread_id: &str) -> bool {
+        self.snapshot(thread_id)
+            .await
+            .and_then(|snapshot| snapshot.conversation)
+            .is_some_and(|conversation| matches!(conversation.status, ThreadStatus::Active { .. }))
+    }
+
     pub(in crate::app::tasks) async fn forget_thread(&self, thread_id: &str) {
         let mut entries = self.entries.lock().await;
         if let Some(entry) = entries.remove(thread_id) {

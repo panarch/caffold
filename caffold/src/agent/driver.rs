@@ -338,6 +338,14 @@ pub(crate) enum TurnRejected {
     Unavailable(AgentError),
 }
 
+/// A message added to a running turn that stopping the turn cancelled before
+/// the agent took it in, as it was sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CancelledPrompt {
+    pub(crate) prompt: String,
+    pub(crate) images: Vec<String>,
+}
+
 impl Driver {
     /// Ask the agent whether it will work this way.
     pub(crate) async fn accept_turn_options(
@@ -609,16 +617,31 @@ impl Driver {
         }
     }
 
-    /// Stop a turn where it stands.
+    /// Stop what the agent is working on, the running `turn_id` when there is
+    /// one, and answer the messages added to it that the stop cancelled
+    /// before the agent took them in.
     pub(crate) async fn interrupt_turn(
         &self,
         conversation_id: &str,
-        turn_id: &str,
-    ) -> Result<(), AgentError> {
+        turn_id: Option<&str>,
+    ) -> Result<Vec<CancelledPrompt>, AgentError> {
         match self {
-            Self::Codex(client) => Ok(client.interrupt_turn(conversation_id, turn_id).await?),
+            // Codex and Grok stop a turn by its identity, so without one there
+            // is nothing of theirs to stop. Codex answers a stop with nothing,
+            // and Grok is told one without answering at all, so neither says of
+            // any message that it was cancelled.
+            Self::Codex(client) => {
+                let turn_id = turn_id.ok_or_else(|| nothing_to_stop(conversation_id))?;
+                client.interrupt_turn(conversation_id, turn_id).await?;
+                Ok(Vec::new())
+            }
+            // Claude stops its session's work with or without a turn open.
             Self::Claude(claude) => Ok(claude.client.interrupt_turn(conversation_id).await?),
-            Self::Grok(client) => Ok(client.interrupt_turn(conversation_id, turn_id).await?),
+            Self::Grok(client) => {
+                let turn_id = turn_id.ok_or_else(|| nothing_to_stop(conversation_id))?;
+                client.interrupt_turn(conversation_id, turn_id).await?;
+                Ok(Vec::new())
+            }
         }
     }
 
@@ -886,6 +909,14 @@ impl Driver {
             Self::Grok(_) => Ok(()),
         }
     }
+}
+
+/// The answer of an agent that stops only a running turn, asked to stop with
+/// none running.
+fn nothing_to_stop(conversation_id: &str) -> AgentError {
+    AgentError::TurnGone(format!(
+        "no turn is running on conversation {conversation_id} to stop"
+    ))
 }
 
 /// What Codex will accept for a turn, given what the person asked for.

@@ -62,8 +62,8 @@ impl ClaudeClient {
                     }
                 };
                 session.unowned_turn_settled.notify_waiters();
-                if let Some((turn, abandoned)) = ended {
-                    client.report_turn_ended(&session.id, turn, abandoned, gone_at_ms);
+                if let Some(ended) = ended {
+                    client.report_turn_ended(&session.id, ended, gone_at_ms);
                 }
             }
             {
@@ -128,6 +128,13 @@ impl ClaudeClient {
                 self.notice_a_turn_beginning(session).await;
             }
             Some("session_state_changed") => self.handle_session_activity(session, system).await,
+            Some("task_started") => {
+                if system.is_backgrounded
+                    && let Some(task_id) = system.task_id
+                {
+                    session.state.lock().await.backgrounded_tasks.push(task_id);
+                }
+            }
             Some("task_notification") => {
                 if let Some(task_id) = system.task_id {
                     session.state.lock().await.reported_tasks.push(task_id);
@@ -156,31 +163,35 @@ impl ClaudeClient {
     /// Take up the turn the agent began on its own, once it has filed the
     /// prompt that turn answers.
     ///
-    /// That prompt is a report, filed under the id of the task it reports on,
-    /// or messages added to a turn that ended before the agent took them in,
-    /// filed under the uuid the last of them went out with. Either is the only
-    /// thing tying the turn to anything the stream said. The agent writes a
-    /// prompt down before it asks the model anything, so one not on disk by
-    /// the time the agent `spoke` in the turn is not coming, and the turn stays
-    /// unnamed.
+    /// That prompt is a background task's result, as its report or a
+    /// subagent's hand-back, filed under the task's id, or messages added to a
+    /// turn that ended before the agent took them in, filed under the uuid the
+    /// last of them went out with. Either is the only thing tying the turn to
+    /// anything the stream said. The agent writes a prompt down before it asks
+    /// the model anything, so one not on disk by the time the agent `spoke` in
+    /// the turn is not coming, and the turn stays unnamed.
     pub(super) async fn name_unowned_turn(&self, session: &Arc<Session>, spoke: bool) {
-        let (reported, steered) = {
+        let (reported, backgrounded, steered) = {
             let state = session.state.lock().await;
             if state.unowned_turn != Some(UnownedTurn::Naming) {
                 return;
             }
-            (state.reported_tasks.clone(), state.steered.clone())
+            (
+                state.reported_tasks.clone(),
+                state.backgrounded_tasks.clone(),
+                state.steered.clone(),
+            )
         };
         let cwd = session.cwd.lock().await.clone();
         let filed = self
-            .filed_own_turn(&cwd, &session.id, &reported, &steered)
+            .filed_own_turn(&cwd, &session.id, &reported, &backgrounded, &steered)
             .await;
         let opened = {
             let mut state = session.state.lock().await;
             match filed {
                 Some((turn, answers)) => {
                     let retold = match &answers {
-                        Answers::Report { .. } => None,
+                        Answers::Report { .. } | Answers::HandBack { .. } => None,
                         Answers::LateMessages { sent_into, .. } => Some(sent_into.clone()),
                     };
                     let event = UnownedTurnEvent::Named {
@@ -260,10 +271,12 @@ impl ClaudeClient {
             let mut state = session.state.lock().await;
             state.activity = Some(activity);
             state.activity_stream_observed = true;
-            // Idle is the agent done with everything, every report and every
-            // added message answered.
+            // Idle is the agent done with what it was asked, every report and
+            // every added message answered. A backgrounded command can outlive
+            // it, and its report, coming later, is noted when it comes.
             if activity == SessionActivity::Idle {
                 state.reported_tasks.clear();
+                state.backgrounded_tasks.clear();
                 state.steered.clear();
             }
         }
@@ -373,7 +386,7 @@ impl ClaudeClient {
             end_active_turn(&mut state, status, completed_at_ms)
         };
         session.unowned_turn_settled.notify_waiters();
-        let Some((turn, abandoned)) = completed else {
+        let Some(ended) = completed else {
             // A result is the protocol's concrete boundary for work that has
             // finished. With no Caffold-owned turn open, the stream gives us
             // no evidence for what opened it; Claude's transcript does. Ask
@@ -389,12 +402,12 @@ impl ClaudeClient {
             self.report(
                 &session.id,
                 SessionEventKind::UsageReported {
-                    turn_id: turn.id.clone(),
+                    turn_id: ended.turn.id.clone(),
                     usage,
                 },
             );
         }
-        self.report_turn_ended(&session.id, turn, abandoned, completed_at_ms);
+        self.report_turn_ended(&session.id, ended, completed_at_ms);
         self.report_status(session).await;
     }
 
@@ -432,10 +445,8 @@ impl ClaudeClient {
             .find(|turn| Some(&turn.id) == named_at_hello.as_ref())
             .and_then(|turn| turn.completed_at_ms)
             .unwrap_or_else(now_ms);
-        if let Some((turn, abandoned)) =
-            end_active_turn(&mut state, TurnStatus::Completed, ended_at_ms)
-        {
-            self.report_turn_ended(&session.id, turn, abandoned, ended_at_ms);
+        if let Some(ended) = end_active_turn(&mut state, TurnStatus::Completed, ended_at_ms) {
+            self.report_turn_ended(&session.id, ended, ended_at_ms);
         }
         take_up_turn(&mut state, filed);
         if let Some(opened) = state.turns.last().cloned() {
@@ -519,8 +530,8 @@ impl ClaudeClient {
                 None => format!("claude {} exited", session.id),
             },
         });
-        if let Some((turn, abandoned)) = ended {
-            self.report_turn_ended(&session.id, turn, abandoned, exited_at_ms);
+        if let Some(ended) = ended {
+            self.report_turn_ended(&session.id, ended, exited_at_ms);
         }
         self.report(
             &session.id,
@@ -1378,6 +1389,254 @@ mod tests {
         assert_eq!(turn.id, "report-1");
     }
 
+    #[tokio::test]
+    async fn a_turn_the_agent_begins_for_a_subagents_hand_back_is_taken_up_under_it() {
+        // As Claude Code 2.1.274 does it in a Caffold session: the subagent's
+        // result comes back as a message from it, filed as the prompt of a
+        // turn the agent begins, before the agent reports the task finished.
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, runner, mut events) = watching_writing_to(projects.path().to_path_buf()).await;
+        let launch =
+            backgrounded_a_subagent_as(&client, &runner, &mut events, "a9e595a27f526c90a").await;
+
+        runner.say(SESSION, init_frame(SESSION)).await;
+        client.write_test_transcript(CWD, SESSION, &filed_hand_back(&launch, "a9e595a27f526c90a"));
+        runner
+            .say(
+                SESSION,
+                assistant_frame("answer", json!([{ "type": "text", "text": "all passed" }])),
+            )
+            .await;
+
+        let SessionEventKind::TurnStarted { turn } =
+            next_session_event(&mut events, "turn start").await
+        else {
+            unreachable!("asked for a turn start");
+        };
+        assert_eq!(turn.id, "handback-1");
+    }
+
+    #[tokio::test]
+    async fn a_turn_asked_for_while_a_hand_back_is_filed_waits_and_is_refused_as_running() {
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, runner, mut events) = watching_writing_to(projects.path().to_path_buf()).await;
+        let launch =
+            backgrounded_a_subagent_as(&client, &runner, &mut events, "a9e595a27f526c90a").await;
+        runner.say(SESSION, init_frame(SESSION)).await;
+        until_state(&client, "the agent's own turn is noticed", |state| {
+            state.unowned_turn.is_some()
+        })
+        .await;
+
+        let mut asking = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(SESSION, "meanwhile", &[], &options("opus"))
+                    .await
+            }
+        });
+        tokio::time::timeout(Duration::from_millis(20), &mut asking)
+            .await
+            .expect_err("held while the hand-back is not on disk");
+        client.write_test_transcript(CWD, SESSION, &filed_hand_back(&launch, "a9e595a27f526c90a"));
+
+        let refused = asking.await.expect("the start task finishes");
+        assert!(
+            matches!(refused, Err(ClaudeError::TurnRunning(ref message)) if message.contains("handback-1")),
+            "{refused:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_report_queued_behind_a_hand_back_turn_is_taken_up_as_its_own_turn() {
+        // As Claude Code 2.1.274 does it: the subagent's report comes while
+        // the turn taking its hand-back is working and not yet named, and
+        // waits in the queue. A turn that only writes text takes nothing in
+        // from the queue, so when it ends the report opens a turn of its own
+        // at once.
+        let task = "a16342ac2fadef370";
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, runner, mut events) = watching_writing_to(projects.path().to_path_buf()).await;
+        let launch = backgrounded_a_subagent_as(&client, &runner, &mut events, task).await;
+        runner.say(SESSION, init_frame(SESSION)).await;
+        until_state(&client, "the hand-back turn is noticed", |state| {
+            state.unowned_turn.is_some()
+        })
+        .await;
+        runner.say(SESSION, report_frame(task)).await;
+        until_state(&client, "the report is noted", |state| {
+            state.reported_tasks.contains(&task.to_string())
+        })
+        .await;
+        client.write_test_transcript(CWD, SESSION, &filed_hand_back(&launch, task));
+        runner
+            .say(
+                SESSION,
+                assistant_frame("answer", json!([{ "type": "text", "text": "all passed" }])),
+            )
+            .await;
+        let SessionEventKind::TurnStarted { turn } =
+            next_session_event(&mut events, "turn start").await
+        else {
+            unreachable!("asked for a turn start");
+        };
+        assert_eq!(turn.id, "handback-1");
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+        next_session_event(&mut events, "turn end").await;
+
+        runner.say(SESSION, init_frame(SESSION)).await;
+        until_state(&client, "the report's turn is noticed", |state| {
+            state.unowned_turn.is_some()
+        })
+        .await;
+        client.write_test_transcript(
+            CWD,
+            SESSION,
+            &filed_report_after(&filed_hand_back(&launch, task), task),
+        );
+        runner
+            .say(
+                SESSION,
+                assistant_frame("noted", json!([{ "type": "text", "text": "noted" }])),
+            )
+            .await;
+
+        let SessionEventKind::TurnStarted { turn } =
+            next_session_event(&mut events, "turn start").await
+        else {
+            unreachable!("asked for a turn start");
+        };
+        assert_eq!(turn.id, "report-1");
+    }
+
+    #[tokio::test]
+    async fn a_report_noted_after_its_hand_back_turn_was_named_is_taken_up_as_its_own_turn() {
+        // The prompt of a turn the agent begins lands on disk a moment after
+        // the turn does. Until then the newest turn there is the one before,
+        // and here that one took the same subagent's hand-back.
+        let task = "a16342ac2fadef370";
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, runner, mut events) = watching_writing_to(projects.path().to_path_buf()).await;
+        let launch = backgrounded_a_subagent_as(&client, &runner, &mut events, task).await;
+        client.write_test_transcript(CWD, SESSION, &filed_hand_back(&launch, task));
+        runner.say(SESSION, init_frame(SESSION)).await;
+        let SessionEventKind::TurnStarted { turn } =
+            next_session_event(&mut events, "turn start").await
+        else {
+            unreachable!("asked for a turn start");
+        };
+        assert_eq!(turn.id, "handback-1");
+        runner.say(SESSION, report_frame(task)).await;
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+        next_session_event(&mut events, "turn end").await;
+
+        runner.say(SESSION, init_frame(SESSION)).await;
+        until_state(&client, "the report's turn is noticed", |state| {
+            state.unowned_turn.is_some() || state.active_turn.is_some()
+        })
+        .await;
+        client.write_test_transcript(
+            CWD,
+            SESSION,
+            &filed_report_after(&filed_hand_back(&launch, task), task),
+        );
+        runner
+            .say(
+                SESSION,
+                assistant_frame("noted", json!([{ "type": "text", "text": "noted" }])),
+            )
+            .await;
+
+        let SessionEventKind::TurnStarted { turn } =
+            next_session_event(&mut events, "turn start").await
+        else {
+            unreachable!("asked for a turn start");
+        };
+        assert_eq!(turn.id, "report-1");
+    }
+
+    #[tokio::test]
+    async fn a_hand_back_turn_left_off_the_ledger_is_never_taken_for_the_reports_turn() {
+        // As after Caffold is replaced while a subagent works in the
+        // background: the frame saying it went there reached the backend
+        // before, so the turn taking its hand-back has nothing to name it by.
+        // Until the report's own prompt lands on disk, that hand-back is the
+        // newest turn there.
+        let task = "a16342ac2fadef370";
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, runner, mut events) = watching_writing_to(projects.path().to_path_buf()).await;
+        let launch = backgrounded_a_subagent(&client, &runner, &mut events).await;
+        client.write_test_transcript(CWD, SESSION, &filed_hand_back(&launch, task));
+        runner.say(SESSION, init_frame(SESSION)).await;
+        until_state(&client, "the hand-back turn is left unnamed", |state| {
+            state.unowned_turn == Some(UnownedTurn::Unnamed)
+        })
+        .await;
+        runner.say(SESSION, report_frame(task)).await;
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+        until_state(&client, "the hand-back turn ends", |state| {
+            state.unowned_turn.is_none()
+        })
+        .await;
+
+        runner.say(SESSION, init_frame(SESSION)).await;
+        until_state(&client, "the report's turn is noticed", |state| {
+            state.unowned_turn.is_some() || state.active_turn.is_some()
+        })
+        .await;
+        client.write_test_transcript(
+            CWD,
+            SESSION,
+            &filed_report_after(&filed_hand_back(&launch, task), task),
+        );
+        runner
+            .say(
+                SESSION,
+                assistant_frame("noted", json!([{ "type": "text", "text": "noted" }])),
+            )
+            .await;
+
+        let SessionEventKind::TurnStarted { turn } =
+            next_session_event(&mut events, "turn start").await
+        else {
+            unreachable!("asked for a turn start");
+        };
+        assert_eq!(turn.id, "report-1");
+    }
+
+    #[tokio::test]
+    async fn a_command_started_in_the_foreground_leaves_nothing_to_name_a_turn_by() {
+        // `task_started` also names the commands a subagent runs in the
+        // foreground, and nothing is handed back from those.
+        let (client, runner, _events) = watching().await;
+        runner.say(SESSION, session_state_frame("running")).await;
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "system", "subtype": "task_started", "task_id": "b8vbam2pa", "tool_use_id": "toolu_bash", "task_type": "local_bash", "is_backgrounded": false, "session_id": SESSION }),
+            )
+            .await;
+        runner.say(SESSION, init_frame(SESSION)).await;
+
+        until_state(&client, "the agent's own turn is noticed", |state| {
+            state.unowned_turn.is_some()
+        })
+        .await;
+        let session = client.session(SESSION).await.expect("the session");
+        assert_eq!(
+            session.state.lock().await.unowned_turn,
+            Some(UnownedTurn::Unnamed)
+        );
+    }
+
+    /// What the agent has filed once the subagent handed its result back: the
+    /// launching prompt, and the hand-back as the prompt of a turn of its own.
+    fn filed_hand_back(launch: &str, task_id: &str) -> String {
+        let hand_back = json!({ "type": "user", "uuid": "handback-1", "timestamp": "2026-09-19T14:30:47.000Z", "promptSource": "sdk", "origin": { "kind": "peer", "from": task_id, "senderTaskId": task_id, "body": "[Subagent hand-back] all passed", "handback": true }, "message": { "role": "user", "content": format!("Another Claude session sent a message:\n<agent-message from=\"{task_id}\">\n[Subagent hand-back] all passed\n</agent-message>") } });
+        format!("{}{hand_back}\n", filed_launch(launch))
+    }
+
     /// A turn Caffold opened, `messages` sent into it, and the turn ending
     /// before Claude took any of them in. Answers the turn's id and the uuid
     /// the last message went out under.
@@ -1430,6 +1689,27 @@ mod tests {
     ) -> String {
         let launch = running_turn(client, events, "launch the subagent").await;
         runner.say(SESSION, session_state_frame("running")).await;
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+        next_session_event(events, "turn end").await;
+        launch.id
+    }
+
+    /// The same, with Claude saying the subagent started in the background as
+    /// task `task_id`.
+    async fn backgrounded_a_subagent_as(
+        client: &ClaudeClient,
+        runner: &MockRunnerHandle,
+        events: &mut Receiver<ClaudeRuntimeEvent>,
+        task_id: &str,
+    ) -> String {
+        let launch = running_turn(client, events, "launch the subagent").await;
+        runner.say(SESSION, session_state_frame("running")).await;
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "system", "subtype": "task_started", "task_id": task_id, "tool_use_id": "toolu_agent", "description": "Run the tests", "task_type": "local_agent", "is_backgrounded": true, "session_id": SESSION }),
+            )
+            .await;
         runner.say(SESSION, result_frame(Some("end_turn"))).await;
         next_session_event(events, "turn end").await;
         launch.id
