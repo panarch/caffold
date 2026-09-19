@@ -9,9 +9,9 @@ boundaries.
 - browser/PWA access on the trusted host and tailnet-only Tailscale Serve;
 - responsive **Settings → Remote Access** status, private URL/QR handoff, and
   localhost-only control of Caffold's Tailscale Serve mapping;
-- **Settings → Voice Input** choice of host-local Whisper, OpenAI, or Gemini for
-  voice transcription, with Whisper model download and deletion and write-only
-  API keys;
+- **Settings → Voice Input** choice of host-local Whisper, OpenAI, Gemini, or
+  Grok for voice transcription, with Whisper model download and deletion and
+  write-only API keys;
 - Tasks backed by Codex, Claude Code, or Grok, with the agent selected by model
   when the Task is created and fixed for the Task's lifetime;
 - native Codex app-server integration, including its persistent daemon and

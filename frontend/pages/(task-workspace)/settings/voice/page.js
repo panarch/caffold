@@ -32,8 +32,13 @@ const PROVIDER_CHOICES = Object.freeze([
     label: "Gemini",
     detail: "Sends each recording to Google Gemini with the API key saved here.",
   },
+  {
+    id: "grok",
+    label: "Grok",
+    detail: "Sends each recording to Grok with the API key saved here.",
+  },
 ]);
-const KEY_PROVIDER_NAMES = Object.freeze({ openai: "OpenAI", gemini: "Gemini" });
+const KEY_PROVIDER_NAMES = Object.freeze({ openai: "OpenAI", gemini: "Gemini", grok: "Grok" });
 const ACTION_BUTTONS = Object.freeze([
   { id: "refresh", selector: 'button[data-action="refresh"]', label: "Retry loading voice settings" },
   { id: "download-model", selector: 'button[data-action="download-model"]', label: "Download the Whisper model" },
@@ -208,7 +213,7 @@ class CaffoldSettingsVoicePage extends HTMLElement {
           <header>
             <div>
               <p id="settings-voice-description">Choose how voice input from the Task composer becomes text.</p>
-              <p id="settings-voice-provider-note">Whisper runs on this Mac. OpenAI and Gemini receive each recording from this Caffold server.</p>
+              <p id="settings-voice-provider-note">Whisper runs on this Mac. OpenAI, Gemini, and Grok receive each recording from this Caffold server.</p>
             </div>
             <button type="button" data-action="refresh" hidden>Retry</button>
           </header>

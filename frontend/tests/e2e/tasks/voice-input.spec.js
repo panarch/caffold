@@ -513,6 +513,7 @@ test("offers voice input again once Voice Input settings finish its setup", { ta
     },
     openai: { model: "gpt-transcribe", keyConfigured: voice.openaiKey },
     gemini: { model: "gemini-3.5-transcribe", keyConfigured: false },
+    grok: { model: "grok-voice-transcribe-2.0", keyConfigured: false },
   });
   await page.route("**/api/voice/status", (route) =>
     route.fulfill({

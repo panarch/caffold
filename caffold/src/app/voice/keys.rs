@@ -103,6 +103,8 @@ struct StoredKeys {
     openai: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     gemini: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    grok: Option<String>,
 }
 
 impl StoredKeys {
@@ -110,6 +112,7 @@ impl StoredKeys {
         match provider {
             CloudProvider::Openai => &self.openai,
             CloudProvider::Gemini => &self.gemini,
+            CloudProvider::Grok => &self.grok,
         }
     }
 
@@ -117,6 +120,7 @@ impl StoredKeys {
         match provider {
             CloudProvider::Openai => &mut self.openai,
             CloudProvider::Gemini => &mut self.gemini,
+            CloudProvider::Grok => &mut self.grok,
         }
     }
 }
@@ -339,28 +343,28 @@ mod tests {
     }
 
     #[test]
-    fn removing_one_key_keeps_the_other() {
+    fn removing_one_key_keeps_the_others() {
         let temp = TempDir::new().unwrap();
         let store = store_in(&temp);
         store.store(CloudProvider::Openai, SECRET).unwrap();
         store.store(CloudProvider::Gemini, "gemini-key").unwrap();
+        store.store(CloudProvider::Grok, "xai-key").unwrap();
 
         store.remove(CloudProvider::Openai).unwrap();
 
         let reopened = store_in(&temp);
         assert!(!reopened.is_configured(CloudProvider::Openai).unwrap());
+        for (provider, key) in [
+            (CloudProvider::Gemini, "gemini-key"),
+            (CloudProvider::Grok, "xai-key"),
+        ] {
+            assert_eq!(reopened.key(provider).unwrap().unwrap().expose(), key);
+        }
+        let stored = fs::read_to_string(temp.path().join("voice/keys.json")).unwrap();
+        assert!(!stored.contains(SECRET));
         assert_eq!(
-            reopened
-                .key(CloudProvider::Gemini)
-                .unwrap()
-                .unwrap()
-                .expose(),
-            "gemini-key"
-        );
-        assert!(
-            !fs::read_to_string(temp.path().join("voice/keys.json"))
-                .unwrap()
-                .contains(SECRET)
+            serde_json::from_str::<serde_json::Value>(&stored).unwrap()["grok"],
+            "xai-key"
         );
     }
 

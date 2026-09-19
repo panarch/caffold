@@ -62,7 +62,7 @@ one records where it runs from and what it needs:
 | `cargo test -p caffold-claude-runner --test live -- --ignored` | repository root | authenticated Claude CLI | that Claude still returns an unanswered permission request to a client that reattaches, with model usage |
 | `cargo test -p caffold --test claude_live -- --ignored --test-threads=1` | repository root | authenticated Claude CLI | what a person sees when the backend is replaced or the runner is killed under a working Claude Task, that each permission decision does what it says, that the agent reaches the tool Caffold serves it, and that the installation reports its status, with model usage |
 | `cargo test -p caffold --lib -- agent::grok` | repository root | Rust test toolchain | the Grok driver against a scripted leader that answers as `grok 1.0.30` did: creation, turns, approvals, history, worktree moves, reconnection, and the Settings report, without an installed Grok |
-| `cargo test -p caffold --lib voice -- --ignored --list` | repository root | Rust test toolchain | discover the voice live checks; running one needs a Whisper model file or a provider API key and a speech recording |
+| `cargo test -p caffold --lib voice -- --ignored --list` | repository root | Rust test toolchain | discover the voice live checks; a transcription check needs a Whisper model file or a provider API key and a speech recording, and the Grok key check needs only internet access |
 | `node --test docs/tests/*.test.mjs` | repository root | Node | documentation index, links, entrypoints, and this command index |
 | `node --test scripts/tests/*.test.mjs` | repository root | Node | release version tooling |
 | `desktop/macos/test-contracts` | repository root | Node | macOS packaging, release, and installer contracts, from `desktop/macos/tests/` |
@@ -341,10 +341,11 @@ installation does. Such a run starts Caffold's Grok leader on
 
 ## Voice provider checks
 
-The voice suite keeps its deterministic tests inline and answers OpenAI and
-Gemini requests from local stand-in servers, so it needs no model file, API
-key, or internet access. Its ignored live checks verify what a stand-in cannot,
-using a 16 kHz mono 16-bit PCM WAV recording that contains speech:
+The voice suite keeps its deterministic tests inline and answers OpenAI,
+Gemini, and Grok requests from local stand-in servers, so it needs no model
+file, API key, or internet access. Its ignored live checks verify what a
+stand-in cannot. The transcription checks use a 16 kHz mono 16-bit PCM WAV
+recording that contains speech:
 
 ```sh
 CAFFOLD_WHISPER_MODEL=/path/to/ggml-large-v3-turbo.bin CAFFOLD_WHISPER_WAV=/path/to/speech.wav \
@@ -353,10 +354,19 @@ CAFFOLD_OPENAI_API_KEY=... CAFFOLD_VOICE_WAV=/path/to/speech.wav \
   cargo test -p caffold --lib live_openai_transcribes_a_real_wav -- --ignored
 CAFFOLD_GEMINI_API_KEY=... CAFFOLD_VOICE_WAV=/path/to/speech.wav \
   cargo test -p caffold --lib live_gemini_transcribes_a_real_wav -- --ignored
+CAFFOLD_GROK_API_KEY=... CAFFOLD_VOICE_WAV=/path/to/speech.wav \
+  cargo test -p caffold --lib live_grok_transcribes_a_real_wav -- --ignored
 ```
 
-The OpenAI and Gemini checks send the recording to that provider and spend the
-key's account usage.
+The OpenAI, Gemini, and Grok checks send the recording to that provider and
+spend the key's account usage.
+
+One more check needs only internet access. It sends xAI a key that does not
+exist and confirms that Caffold reads the answer as a rejected key:
+
+```sh
+cargo test -p caffold --lib live_grok_rejects_an_incorrect_key -- --ignored
+```
 
 ## macOS application tests
 

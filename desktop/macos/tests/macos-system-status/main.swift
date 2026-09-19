@@ -430,6 +430,8 @@ private func runTests() throws {
     try require(ready.state == .ready, "a ready provider must be ready")
     try require(ready.status == "Ready", "a ready provider must report ready")
     try require(detail("Provider", in: ready) == "OpenAI", "a cloud provider must be named")
+    let grok = voiceIntegrationStatus(voiceResponse(provider: "grok", ready: true))
+    try require(detail("Provider", in: grok) == "Grok", "Grok must be named by its product")
 
     let statusURL = URL(string: "http://127.0.0.1:5178/api/voice/status")!
     let readyData = Data(

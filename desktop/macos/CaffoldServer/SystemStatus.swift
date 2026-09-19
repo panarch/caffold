@@ -305,6 +305,7 @@ private func voiceProviderName(_ provider: String) -> String {
     case "whisper": return "Whisper"
     case "openai": return "OpenAI"
     case "gemini": return "Gemini"
+    case "grok": return "Grok"
     default: return provider
     }
 }

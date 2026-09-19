@@ -129,9 +129,10 @@ menu-bar menu.
 
 The Task composer supports multilingual voice input. Under
 **Settings → Voice Input**, choose Whisper to transcribe on the Mac after a
-one-time model download (about 1.5 GiB), or OpenAI or Gemini to transcribe with
-your own API key. Audio goes from the browser to your Mac, which transcribes it
-or forwards it to the chosen provider; Caffold never stores the recordings.
+one-time model download (about 1.5 GiB), or OpenAI, Gemini, or Grok to
+transcribe with your own API key. Audio goes from the browser to your Mac, which
+transcribes it or forwards it to the chosen provider; Caffold never stores the
+recordings.
 
 Voice is useful here for the same reason the browser interface is useful: much
 of the work is giving direction, reading what happened, and following up. A

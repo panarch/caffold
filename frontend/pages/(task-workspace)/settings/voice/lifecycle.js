@@ -7,8 +7,8 @@ import {
   storeVoiceKey,
 } from "../../../../api.js";
 
-const VOICE_PROVIDERS = Object.freeze(["whisper", "openai", "gemini"]);
-export const VOICE_KEY_PROVIDERS = Object.freeze(["openai", "gemini"]);
+const VOICE_PROVIDERS = Object.freeze(["whisper", "openai", "gemini", "grok"]);
+export const VOICE_KEY_PROVIDERS = Object.freeze(["openai", "gemini", "grok"]);
 
 const DOWNLOAD_POLL_INTERVAL_MS = 1_000;
 const PHASES = Object.freeze({
@@ -284,6 +284,10 @@ function normalizeVoiceSettings(payload) {
       model: payload.gemini.model,
       keyConfigured: payload.gemini.keyConfigured,
     },
+    grok: {
+      model: payload.grok.model,
+      keyConfigured: payload.grok.keyConfigured,
+    },
   };
 }
 
@@ -294,5 +298,6 @@ export function voiceReadinessKey(settings) {
     settings.whisper.installed,
     settings.openai.keyConfigured,
     settings.gemini.keyConfigured,
+    settings.grok.keyConfigured,
   ].join("|");
 }
