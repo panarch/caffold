@@ -19,8 +19,8 @@ use super::{
     ClaudeRuntimeEvent, ControlRequestFrame, ConversationItem, Introduction, ItemKind,
     MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame, PendingApproval, ResultFrame, Session,
     SessionActivity, SessionEventKind, StreamFrame, SystemFrame, ThreadStatus, TokenCount,
-    TokenUsage, TurnStatus, end_active_turn, now_ms, parse_timestamp_ms, place_item, protocol,
-    status_of, take_up_turn, turn_status_of,
+    TokenUsage, TurnStatus, UnownedTurn, UnownedTurnEvent, end_active_turn, move_unowned_turn,
+    now_ms, parse_timestamp_ms, place_item, protocol, status_of, take_up_turn, turn_status_of,
 };
 
 impl ClaudeClient {
@@ -51,6 +51,7 @@ impl ClaudeClient {
                 let ended = {
                     let mut state = session.state.lock().await;
                     state.ended = true;
+                    move_unowned_turn(&mut state, UnownedTurnEvent::Ended);
                     if session.closing.load(Ordering::Relaxed) {
                         // Caffold asked for this end, and the runner left
                         // before saying so. The turn is over all the same.
@@ -60,6 +61,7 @@ impl ClaudeClient {
                         None
                     }
                 };
+                session.unowned_turn_settled.notify_waiters();
                 if let Some((turn, abandoned)) = ended {
                     client.report_turn_ended(&session.id, turn, abandoned, gone_at_ms);
                 }
@@ -121,13 +123,78 @@ impl ClaudeClient {
 
     async fn handle_system(&self, session: &Arc<Session>, system: SystemFrame) {
         match system.subtype.as_deref() {
-            Some("init") => self.handle_introduction(session, system).await,
+            Some("init") => {
+                self.handle_introduction(session, system).await;
+                self.notice_a_turn_beginning(session).await;
+            }
             Some("session_state_changed") => self.handle_session_activity(session, system).await,
-            // Claude reports background work, hooks, and other optional
-            // process details on system frames too. None of them is session
-            // activity or conversation history.
+            Some("task_notification") => {
+                if let Some(task_id) = system.task_id {
+                    session.state.lock().await.reported_tasks.push(task_id);
+                }
+            }
+            // Claude reports the rest of its background work, hooks, and other
+            // optional process details on system frames too. None of them is
+            // session activity or conversation history.
             _ => {}
         }
+    }
+
+    /// Note a turn the agent began on its own, and name it if it can be.
+    ///
+    /// The agent says `init` as every turn begins. A turn Caffold opened is on
+    /// the ledger before that, and a depth change is one Caffold is waiting
+    /// on, so a turn begun with neither — while the agent says it is working —
+    /// is the agent's own.
+    async fn notice_a_turn_beginning(&self, session: &Arc<Session>) {
+        let began = move_unowned_turn(&mut *session.state.lock().await, UnownedTurnEvent::Began);
+        if began {
+            self.name_unowned_turn(session, false).await;
+        }
+    }
+
+    /// Take up the turn the agent began on its own, once it has filed the
+    /// report that turn answers.
+    ///
+    /// The report is filed as the turn's prompt under the id of the task it
+    /// reports on, which is the only thing tying the turn to anything the
+    /// stream said. The agent writes a prompt down before it asks the model
+    /// anything, so a report not on disk by the time the agent `spoke` in the
+    /// turn is not coming, and the turn stays unnamed.
+    pub(super) async fn name_unowned_turn(&self, session: &Arc<Session>, spoke: bool) {
+        let reported = {
+            let state = session.state.lock().await;
+            if state.unowned_turn != Some(UnownedTurn::Naming) {
+                return;
+            }
+            state.reported_tasks.clone()
+        };
+        let cwd = session.cwd.lock().await.clone();
+        let filed = self.filed_report_turn(&cwd, &session.id, &reported).await;
+        let opened = {
+            let mut state = session.state.lock().await;
+            match filed {
+                Some((turn, task_id)) => {
+                    let event = UnownedTurnEvent::Named {
+                        turn: Box::new(turn),
+                        task_id,
+                    };
+                    move_unowned_turn(&mut state, event)
+                        .then(|| state.turns.last().cloned())
+                        .flatten()
+                }
+                None => {
+                    if spoke {
+                        move_unowned_turn(&mut state, UnownedTurnEvent::SpokeUnfiled);
+                    }
+                    None
+                }
+            }
+        };
+        if let Some(turn) = opened {
+            self.report_turn_opened(&session.id, turn);
+        }
+        session.unowned_turn_settled.notify_waiters();
     }
 
     async fn handle_introduction(&self, session: &Arc<Session>, system: SystemFrame) {
@@ -179,6 +246,10 @@ impl ClaudeClient {
             let mut state = session.state.lock().await;
             state.activity = Some(activity);
             state.activity_stream_observed = true;
+            // Idle is the agent done with everything, every report answered.
+            if activity == SessionActivity::Idle {
+                state.reported_tasks.clear();
+            }
         }
         self.report_activity(session).await;
     }
@@ -204,6 +275,7 @@ impl ClaudeClient {
             return;
         }
         self.take_up_the_turn_the_file_names(session).await;
+        self.name_unowned_turn(session, true).await;
         // The frame, not the message. One assistant message is streamed as
         // several frames — thinking in one, its answer in the next — all
         // carrying the same message identifier and each numbering its own
@@ -278,9 +350,13 @@ impl ClaudeClient {
         self.take_up_the_turn_the_file_names(session).await;
         let completed = {
             let mut state = session.state.lock().await;
+            // The agent answers one thing at a time, so a turn it began on its
+            // own and never named ends here too.
+            move_unowned_turn(&mut state, UnownedTurnEvent::Ended);
             // Whatever the agent left open, it will not answer now.
             end_active_turn(&mut state, status, completed_at_ms)
         };
+        session.unowned_turn_settled.notify_waiters();
         let Some((turn, abandoned)) = completed else {
             // A result is the protocol's concrete boundary for work that has
             // finished. With no Caffold-owned turn open, the stream gives us
@@ -409,6 +485,7 @@ impl ClaudeClient {
         let ended = {
             let mut state = session.state.lock().await;
             state.ended = true;
+            move_unowned_turn(&mut state, UnownedTurnEvent::Ended);
             // Whatever the agent left open, it will not answer now. An exit
             // Caffold asked for is a person stopping the work; any other is
             // the agent failing it.
@@ -419,6 +496,7 @@ impl ClaudeClient {
             };
             end_active_turn(&mut state, status, exited_at_ms)
         };
+        session.unowned_turn_settled.notify_waiters();
         self.publish(ClaudeRuntimeEvent::Diagnostic {
             message: match code {
                 Some(code) => format!("claude {} exited with status {code}", session.id),
@@ -593,16 +671,17 @@ mod tests {
     use super::super::protocol::MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION;
     use super::super::runner::MockRunnerHandle;
     use super::super::{
-        ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ClaudeTurnOptions, status_of, transcript,
+        ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ClaudeTurnOptions, SessionState,
+        UnownedTurn, status_of, transcript,
     };
     use crate::agent::{
         ActivityStatus, ApprovalDecision, CAFFOLD_CLARIFICATION_FEEDBACK, ItemKind, MessageContent,
-        SessionEventKind, ThreadStatus, TurnStatus,
+        SessionEventKind, ThreadStatus, TurnOrigin, TurnStatus,
     };
     use std::time::Duration;
     use tokio::sync::broadcast::Receiver;
 
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     use super::super::test_support::*;
 
@@ -816,6 +895,336 @@ mod tests {
             },
             "and nothing reads the old idle back over the open turn"
         );
+    }
+
+    #[tokio::test]
+    async fn a_turn_sent_while_a_backgrounded_subagent_works_leaves_the_conversation_working() {
+        // The subagent outlives the turn that launched it: that turn's result
+        // comes without `idle`, and a turn sent meanwhile is answered without
+        // Claude saying `running` again.
+        let (client, runner, mut events) = watching().await;
+        backgrounded_a_subagent(&client, &runner, &mut events).await;
+
+        running_turn(&client, &mut events, "and meanwhile this").await;
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+        next_session_event(&mut events, "turn end").await;
+
+        let session = client.session(SESSION).await.expect("the session");
+        assert_eq!(
+            status_of(&*session.state.lock().await),
+            ThreadStatus::Active {
+                active_flags: Vec::new(),
+            },
+            "Claude has not said it stopped working"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_turn_the_agent_begins_to_answer_a_report_is_taken_up_under_the_report_it_filed() {
+        // As Claude Code 2.1.274 does it: the report comes, the turn begins,
+        // the report is filed as that turn's prompt a moment later, and only
+        // then does the agent speak.
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, runner, mut events) = watching_writing_to(projects.path().to_path_buf()).await;
+        let launch = backgrounded_a_subagent(&client, &runner, &mut events).await;
+        client.write_test_transcript(CWD, SESSION, &filed_launch(&launch));
+
+        runner.say(SESSION, report_frame("agent-task-1")).await;
+        runner.say(SESSION, init_frame(SESSION)).await;
+        client.write_test_transcript(CWD, SESSION, &filed_report(&launch, "agent-task-1"));
+        runner
+            .say(
+                SESSION,
+                assistant_frame("answer", json!([{ "type": "text", "text": "slept" }])),
+            )
+            .await;
+
+        let SessionEventKind::TurnStarted { turn } =
+            next_session_event(&mut events, "turn start").await
+        else {
+            unreachable!("asked for a turn start");
+        };
+        assert_eq!(turn.id, "report-1");
+        assert!(
+            matches!(turn.origin, TurnOrigin::BackgroundTask(_)),
+            "{:?}",
+            turn.origin
+        );
+        let SessionEventKind::ItemChanged { turn_id, .. } =
+            next_session_event(&mut events, "item").await
+        else {
+            unreachable!("asked for an item");
+        };
+        assert_eq!(
+            turn_id, "report-1",
+            "what the agent says next belongs to that turn"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_turn_asked_for_while_the_agent_files_its_report_waits_and_is_refused_as_running() {
+        // The prompt belongs in the agent's turn, not beside it: refused as
+        // running once that turn is named, it is steered there instead.
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, runner, mut events) = watching_writing_to(projects.path().to_path_buf()).await;
+        let launch = backgrounded_a_subagent(&client, &runner, &mut events).await;
+        client.write_test_transcript(CWD, SESSION, &filed_launch(&launch));
+        runner.say(SESSION, report_frame("agent-task-1")).await;
+        runner.say(SESSION, init_frame(SESSION)).await;
+        until_state(&client, "the agent's own turn is noticed", |state| {
+            state.unowned_turn.is_some()
+        })
+        .await;
+
+        let mut asking = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(SESSION, "meanwhile", &[], &options("opus"))
+                    .await
+            }
+        });
+        tokio::time::timeout(Duration::from_millis(20), &mut asking)
+            .await
+            .expect_err("held while the report is not on disk");
+        client.write_test_transcript(CWD, SESSION, &filed_report(&launch, "agent-task-1"));
+
+        let refused = asking.await.expect("the start task finishes");
+        assert!(
+            matches!(refused, Err(ClaudeError::TurnRunning(ref message)) if message.contains("report-1")),
+            "{refused:?}"
+        );
+        assert!(
+            !spoken(&runner).await.contains(&"meanwhile".to_string()),
+            "nothing is sent beside the agent's turn"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_turn_the_agent_begins_with_no_report_pending_refuses_a_new_one_until_it_ends() {
+        let (client, runner, _events) = watching().await;
+        runner.say(SESSION, session_state_frame("running")).await;
+        runner.say(SESSION, init_frame(SESSION)).await;
+        until_state(&client, "the agent's own turn is noticed", |state| {
+            state.unowned_turn == Some(UnownedTurn::Unnamed)
+        })
+        .await;
+
+        let refused = client
+            .start_turn(SESSION, "meanwhile", &[], &options("opus"))
+            .await;
+        assert!(
+            matches!(refused, Err(ClaudeError::TurnRunning(ref message)) if message.contains("on its own")),
+            "{refused:?}"
+        );
+
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+        until_state(&client, "the agent's own turn ends", |state| {
+            state.unowned_turn.is_none()
+        })
+        .await;
+        client
+            .start_turn(SESSION, "now", &[], &options("opus"))
+            .await
+            .expect("the turn starts once the agent's own has ended");
+    }
+
+    #[tokio::test]
+    async fn a_report_not_filed_by_the_agents_first_word_leaves_its_turn_unnamed() {
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, runner, mut events) = watching_writing_to(projects.path().to_path_buf()).await;
+        let launch = backgrounded_a_subagent(&client, &runner, &mut events).await;
+        client.write_test_transcript(CWD, SESSION, &filed_launch(&launch));
+        runner.say(SESSION, report_frame("agent-task-1")).await;
+        runner.say(SESSION, init_frame(SESSION)).await;
+        runner
+            .say(
+                SESSION,
+                assistant_frame("answer", json!([{ "type": "text", "text": "slept" }])),
+            )
+            .await;
+        until_state(&client, "the turn is left unnamed", |state| {
+            state.unowned_turn == Some(UnownedTurn::Unnamed)
+        })
+        .await;
+
+        let refused = client
+            .start_turn(SESSION, "meanwhile", &[], &options("opus"))
+            .await;
+
+        assert!(
+            matches!(refused, Err(ClaudeError::TurnRunning(_))),
+            "{refused:?}"
+        );
+        assert!(
+            std::iter::from_fn(|| events.try_recv().ok()).all(|event| !matches!(
+                event,
+                ClaudeRuntimeEvent::Session(event)
+                    if matches!(event.kind, SessionEventKind::TurnStarted { .. })
+            )),
+            "no turn is made up for it"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_command_a_subagent_ran_finishing_begins_no_turn() {
+        // `task_notification` also reports the commands a subagent runs, and
+        // no turn follows those.
+        let (client, runner, mut events) = watching().await;
+        backgrounded_a_subagent(&client, &runner, &mut events).await;
+        runner
+            .say(SESSION, report_frame("command-in-subagent"))
+            .await;
+        until_state(&client, "the report is noted", |state| {
+            !state.reported_tasks.is_empty()
+        })
+        .await;
+
+        client
+            .start_turn(SESSION, "meanwhile", &[], &options("opus"))
+            .await
+            .expect("nothing the agent began is in the way");
+    }
+
+    #[tokio::test]
+    async fn a_depth_change_is_not_a_turn_the_agent_began_on_its_own() {
+        let (client, runner, _events) = watching().await;
+        runner.say(SESSION, session_state_frame("running")).await;
+        let starting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(
+                        SESSION,
+                        "run it",
+                        &[],
+                        &ClaudeTurnOptions {
+                            effort: Some("high".to_string()),
+                            ..options("opus")
+                        },
+                    )
+                    .await
+            }
+        });
+        wrote(&runner, |frame| {
+            frame["message"]["content"][0]["text"] == "/effort high"
+        })
+        .await;
+        runner.say(SESSION, init_frame(SESSION)).await;
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+
+        starting
+            .await
+            .expect("the start task finishes")
+            .expect("the person's turn starts once the depth is set");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_turn_asked_for_while_a_report_is_never_filed_gives_up() {
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, runner, mut events) = watching_writing_to(projects.path().to_path_buf()).await;
+        let launch = backgrounded_a_subagent(&client, &runner, &mut events).await;
+        client.write_test_transcript(CWD, SESSION, &filed_launch(&launch));
+        runner.say(SESSION, report_frame("agent-task-1")).await;
+        runner.say(SESSION, init_frame(SESSION)).await;
+        until_state(&client, "the agent's own turn is noticed", |state| {
+            state.unowned_turn == Some(UnownedTurn::Naming)
+        })
+        .await;
+
+        let refused = client
+            .start_turn(SESSION, "meanwhile", &[], &options("opus"))
+            .await;
+
+        assert!(
+            matches!(refused, Err(ClaudeError::Protocol(ref message)) if message.contains("did not file the report")),
+            "{refused:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_report_without_its_task_id_names_nothing() {
+        let (client, runner, mut events) = watching().await;
+        backgrounded_a_subagent(&client, &runner, &mut events).await;
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "system", "subtype": "task_notification", "status": "completed", "session_id": SESSION }),
+            )
+            .await;
+        runner.say(SESSION, init_frame(SESSION)).await;
+        until_state(&client, "the agent's own turn is noticed", |state| {
+            state.unowned_turn.is_some()
+        })
+        .await;
+
+        let session = client.session(SESSION).await.expect("the session");
+        let state = session.state.lock().await;
+        assert!(state.reported_tasks.is_empty());
+        assert_eq!(
+            state.unowned_turn,
+            Some(UnownedTurn::Unnamed),
+            "no report is pending to name the turn"
+        );
+    }
+
+    /// A turn that backgrounds a subagent and ends while it works: its result
+    /// comes, and Claude goes on saying it is running.
+    async fn backgrounded_a_subagent(
+        client: &ClaudeClient,
+        runner: &MockRunnerHandle,
+        events: &mut Receiver<ClaudeRuntimeEvent>,
+    ) -> String {
+        let launch = running_turn(client, events, "launch the subagent").await;
+        runner.say(SESSION, session_state_frame("running")).await;
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+        next_session_event(events, "turn end").await;
+        launch.id
+    }
+
+    /// Claude saying a background task finished.
+    fn report_frame(task_id: &str) -> Value {
+        json!({
+            "type": "system",
+            "subtype": "task_notification",
+            "task_id": task_id,
+            "status": "completed",
+            "session_id": SESSION,
+        })
+    }
+
+    /// What the agent has filed of the turn that launched the subagent.
+    fn filed_launch(launch: &str) -> String {
+        format!(
+            "{}\n",
+            json!({ "type": "user", "uuid": launch, "timestamp": "2026-09-19T02:58:32.562Z", "promptSource": "sdk", "message": { "role": "user", "content": [{ "type": "text", "text": "launch the subagent" }] } })
+        )
+    }
+
+    /// The same, once the agent has filed the report on `task_id` as the
+    /// prompt of a turn it began on its own.
+    fn filed_report(launch: &str, task_id: &str) -> String {
+        let report = json!({ "type": "user", "uuid": "report-1", "timestamp": "2026-09-19T02:58:50.681Z", "promptSource": "sdk", "origin": { "kind": "task-notification" }, "message": { "role": "user", "content": format!("<task-notification>\n<task-id>{task_id}</task-id>\n<status>completed</status>\n</task-notification>") } });
+        format!("{}{report}\n", filed_launch(launch))
+    }
+
+    /// Wait until the session's state reads the way `settled` says.
+    async fn until_state(
+        client: &ClaudeClient,
+        what: &str,
+        settled: impl Fn(&SessionState) -> bool,
+    ) {
+        let session = client.session(SESSION).await.expect("the session");
+        tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                if settled(&*session.state.lock().await) {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("{what}"));
     }
 
     #[tokio::test]

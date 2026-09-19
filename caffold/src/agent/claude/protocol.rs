@@ -136,6 +136,9 @@ pub(crate) struct SystemFrame {
     /// fields above.
     #[serde(default)]
     pub(crate) state: Option<String>,
+    /// The background task a `task_notification` reports on.
+    #[serde(default)]
+    pub(crate) task_id: Option<String>,
 }
 
 /// One API message, as the agent produced it.

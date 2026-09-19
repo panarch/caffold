@@ -175,10 +175,15 @@ async fn task_prompt_owned(
         };
         match result {
             Ok(result) => break result,
+            // The turn the choice was made against ended, or one began, before
+            // the agent took the prompt. Choose again from a fresh read.
             Err(error)
-                if attempted_steer
-                    && !refreshed_stale_turn
-                    && matches!(error, AgentError::TurnGone(_)) =>
+                if !refreshed_stale_turn
+                    && match error {
+                        AgentError::TurnGone(_) => attempted_steer,
+                        AgentError::TurnRunning(_) => !attempted_steer,
+                        _ => false,
+                    } =>
             {
                 refreshed_stale_turn = true;
                 if let Err(refresh_error) = state
@@ -2877,30 +2882,15 @@ mod state_tests {
 }
 
 #[cfg(test)]
-mod grok_tests {
-    //! A Grok Task over the same HTTP surface every Task uses: the model list
-    //! names the agent, creation chooses it, a prompt reaches the leader under
-    //! the turn Caffold named, and the Task reads back through Detail.
-
-    use std::time::Duration;
+mod http_calls {
+    //! Requests through the Task router, for the agent test modules below.
 
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
-    use serde_json::{Value, json};
-    use tokio::sync::broadcast::error::RecvError;
-    use tokio::time::{Instant, sleep, timeout};
+    use serde_json::Value;
     use tower::ServiceExt;
 
-    use crate::agent::codex::{CodexThreadClient, MockCodexResponse};
-    use crate::agent::grok::test_support::update_frame;
-    use crate::app::tasks::events::TaskEventRecord;
-    use crate::app::tasks::routes::{router, test_support::current_model_list_response};
-    use crate::app::tasks::runtime::{TaskRuntime, TaskRuntimeSignal};
-    use crate::app::tasks::test_support::{task_state_with_agents, task_state_with_grok};
-    use crate::fs::RootedFs;
-    use crate::task_store::RunBy;
-
-    async fn call(app: &axum::Router, request: Request<Body>) -> (StatusCode, Value) {
+    pub(super) async fn call(app: &axum::Router, request: Request<Body>) -> (StatusCode, Value) {
         let response = app.clone().oneshot(request).await.unwrap();
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -2913,12 +2903,40 @@ mod grok_tests {
         (status, json)
     }
 
-    fn post(path: &str, body: Value) -> Request<Body> {
+    pub(super) fn post(path: &str, body: Value) -> Request<Body> {
         Request::post(path)
             .header("content-type", "application/json")
             .body(Body::from(body.to_string()))
             .unwrap()
     }
+}
+
+#[cfg(test)]
+mod grok_tests {
+    //! A Grok Task over the same HTTP surface every Task uses: the model list
+    //! names the agent, creation chooses it, a prompt reaches the leader under
+    //! the turn Caffold named, and the Task reads back through Detail.
+
+    use std::time::Duration;
+
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use serde_json::json;
+    use tokio::sync::broadcast::error::RecvError;
+    use tokio::time::{Instant, sleep, timeout};
+
+    use crate::agent::ThreadStatus;
+    use crate::agent::codex::{CodexThreadClient, MockCodexResponse};
+    use crate::agent::grok::MockLeader;
+    use crate::agent::grok::test_support::update_frame;
+    use crate::app::tasks::events::TaskEventRecord;
+    use crate::app::tasks::routes::{router, test_support::current_model_list_response};
+    use crate::app::tasks::runtime::{TaskRuntime, TaskRuntimeSignal};
+    use crate::app::tasks::test_support::{task_state_with_agents, task_state_with_grok};
+    use crate::fs::RootedFs;
+    use crate::task_store::RunBy;
+
+    use super::http_calls::{call, post};
 
     #[tokio::test]
     async fn the_model_list_names_grok_and_creation_prompting_and_detail_run_through_the_task_surface()
@@ -3076,6 +3094,113 @@ mod grok_tests {
                 .any(|event| event.to_string().contains("a.rs b.rs")),
             "and so is what the agent answered: {detail}"
         );
+    }
+
+    /// A Grok Task created over HTTP, once the leader holds its session.
+    async fn created_grok_task(app: &axum::Router, leader: &MockLeader) -> String {
+        let (status, created) = call(
+            app,
+            post(
+                "/api/tasks",
+                json!({ "titleSource": "Investigate the Grok bridge", "provider": "grok", "model": "grok-4.5", "effort": "low", "permissionMode": "ask" }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{created}");
+        leader.wait_for("session/new").await;
+        created["threadId"].as_str().unwrap().to_string()
+    }
+
+    #[tokio::test]
+    async fn a_prompt_while_a_grok_turn_runs_is_steered_into_that_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, leader, _memory, _host) = task_state_with_grok(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let app = router(state);
+        let thread_id = created_grok_task(&app, &leader).await;
+        let (status, first) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({ "prompt": "List the files here." }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{first}");
+        leader.wait_for("session/prompt").await;
+
+        let (status, second) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({ "prompt": "Only the Rust ones." }),
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{second}");
+        assert_eq!(second["steered"], true);
+        assert_eq!(second["turnId"], first["turnId"]);
+        let interjected = leader.wait_for("_x.ai/interject").await;
+        assert!(
+            interjected.to_string().contains("Only the Rust ones."),
+            "{interjected}"
+        );
+        assert_eq!(leader.requests("session/prompt").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_prompt_while_grok_says_it_is_working_without_a_turn_starts_one() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, leader, _memory, _host) = task_state_with_grok(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let sessions = state.task_sessions.clone();
+        let app = router(state);
+        let thread_id = created_grok_task(&app, &leader).await;
+        leader
+            .notify(
+                "_x.ai/sessions/changed",
+                json!({ "upserted": [{ "sessionId": thread_id, "activity": "working", "resident": true, "yolo": false }], "removed": [] }),
+            )
+            .await;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let snapshot = sessions
+                .snapshot(&thread_id)
+                .await
+                .expect("a watched session");
+            if snapshot
+                .conversation
+                .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the Task reads as working once the leader says so"
+            );
+            sleep(Duration::from_millis(10)).await;
+        }
+
+        let (status, prompted) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({ "prompt": "List the files here." }),
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        assert_eq!(prompted["steered"], false);
+        let sent = leader.wait_for("session/prompt").await;
+        assert_eq!(sent["_meta"]["promptId"], prompted["turnId"]);
     }
 
     /// The approvals a Task is waiting on, once there are `count` of them.
@@ -3267,5 +3392,325 @@ mod grok_tests {
         // An agent that cannot be reached answers as one, the way a lost
         // Codex connection or Claude runner does.
         assert_eq!(status, StatusCode::BAD_GATEWAY, "{refused}");
+    }
+}
+
+#[cfg(test)]
+mod claude_tests {
+    //! A Claude Task over the HTTP prompt surface while Claude says it is still
+    //! working on something no Caffold turn asked for: a subagent it
+    //! backgrounded, and the turn it starts on its own to answer that
+    //! subagent's report. The frames are the ones Claude Code 2.1.274 wrote in
+    //! both situations.
+
+    use std::path::Path;
+    use std::time::Duration;
+
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use serde_json::{Value, json};
+    use tokio::time::{Instant, sleep, timeout};
+
+    use crate::agent::ThreadStatus;
+    use crate::agent::claude::{ClaudeTurnOptions, MockRunnerHandle};
+    use crate::agent::codex::CodexThreadClient;
+    use crate::app::tasks::TaskState;
+    use crate::app::tasks::routes::router;
+    use crate::app::tasks::sessions::SessionSnapshot;
+    use crate::app::tasks::test_support::task_state_with_agents;
+    use crate::fs::RootedFs;
+    use crate::task_store::{ManagedThread, RunBy};
+
+    use super::http_calls::{call, post};
+
+    const SESSION: &str = "claude-thread-1";
+    const WAIT: Duration = Duration::from_secs(5);
+
+    #[tokio::test]
+    async fn a_prompt_while_a_backgrounded_subagent_keeps_claude_working_starts_a_new_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, launched) = call(&app, prompt("Start the subagent.")).await;
+        assert_eq!(status, StatusCode::OK, "{launched}");
+        background_a_subagent(&runner).await;
+        until(
+            &state,
+            "the launching turn ends while Claude still says it is working",
+            ended_while_working,
+        )
+        .await;
+
+        let (status, prompted) = call(&app, prompt("Meanwhile, list the files.")).await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        assert_eq!(prompted["steered"], false);
+        assert_ne!(prompted["turnId"], launched["turnId"]);
+        assert!(
+            runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["type"] == "user" && frame["uuid"] == prompted["turnId"]),
+            "the prompt reaches Claude under the turn it opened"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_prompt_during_the_turn_claude_starts_for_a_subagents_report_joins_that_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, launched) = call(&app, prompt("Start the subagent.")).await;
+        assert_eq!(status, StatusCode::OK, "{launched}");
+        background_a_subagent(&runner).await;
+        until(
+            &state,
+            "the launching turn ends while Claude still says it is working",
+            ended_while_working,
+        )
+        .await;
+        answer_the_report_on_its_own(&state, &runner, &cwd, launched["turnId"].as_str().unwrap())
+            .await;
+        until(
+            &state,
+            "the turn Claude started for the report is the running turn",
+            |snapshot| snapshot.active_turn_id.as_deref() == Some("report-1"),
+        )
+        .await;
+
+        let (status, prompted) = call(&app, prompt("Also list the files.")).await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        assert_eq!(prompted["steered"], true);
+        assert_eq!(prompted["turnId"], "report-1");
+        assert!(
+            runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["message"]["content"][0]["text"] == "Also list the files."),
+            "the message reaches Claude"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_prompt_sent_while_claude_files_its_report_waits_and_joins_that_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, launched) = call(&app, prompt("Start the subagent.")).await;
+        assert_eq!(status, StatusCode::OK, "{launched}");
+        background_a_subagent(&runner).await;
+        until(
+            &state,
+            "the launching turn ends while Claude still says it is working",
+            ended_while_working,
+        )
+        .await;
+        runner.say(SESSION, report_frame()).await;
+        runner.say(SESSION, init_frame()).await;
+        in_a_turn_of_its_own(&state).await;
+
+        let mut prompting = tokio::spawn({
+            let app = app.clone();
+            async move { call(&app, prompt("Also list the files.")).await }
+        });
+        timeout(Duration::from_millis(50), &mut prompting)
+            .await
+            .expect_err("held while the report is not on disk");
+        state.task_runtime.claude().write_test_transcript(
+            &cwd,
+            SESSION,
+            &filed_report(launched["turnId"].as_str().unwrap()),
+        );
+        let (status, prompted) = prompting.await.expect("the prompt request finishes");
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        assert_eq!(prompted["steered"], true);
+        assert_eq!(prompted["turnId"], "report-1");
+        assert!(
+            runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["message"]["content"][0]["text"] == "Also list the files."),
+            "the message reaches Claude"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_prompt_during_a_turn_claude_began_with_nothing_to_name_it_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, launched) = call(&app, prompt("Start the subagent.")).await;
+        assert_eq!(status, StatusCode::OK, "{launched}");
+        background_a_subagent(&runner).await;
+        until(
+            &state,
+            "the launching turn ends while Claude still says it is working",
+            ended_while_working,
+        )
+        .await;
+        runner.say(SESSION, init_frame()).await;
+        in_a_turn_of_its_own(&state).await;
+
+        let (status, refused) = call(&app, prompt("Also list the files.")).await;
+
+        assert_eq!(status, StatusCode::BAD_GATEWAY, "{refused}");
+        assert!(
+            refused.to_string().contains("began on its own"),
+            "{refused}"
+        );
+        assert!(
+            !runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["message"]["content"][0]["text"] == "Also list the files."),
+            "nothing is sent beside Claude's turn"
+        );
+    }
+
+    /// A watched Claude Task the stand-in runner speaks for.
+    async fn claude_task(root: &Path) -> (TaskState, MockRunnerHandle) {
+        let (state, runner) = task_state_with_agents(
+            RootedFs::new(root).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        state.task_runtime.watch_claude();
+        let cwd = root.display().to_string();
+        state
+            .task_store
+            .claim(
+                ManagedThread {
+                    run_by: RunBy::Claude { cwd: cwd.clone() },
+                    ..ManagedThread::new(SESSION, RunBy::Codex, Some(1_000), None, None)
+                },
+                1,
+            )
+            .unwrap();
+        state
+            .task_runtime
+            .claude()
+            .open_conversation(SESSION, &cwd, &ClaudeTurnOptions::default())
+            .await
+            .expect("the conversation opens");
+        (state, runner)
+    }
+
+    /// The turn that backgrounds a subagent: Claude says it is running,
+    /// launches the subagent, answers, and ends the turn without saying idle.
+    async fn background_a_subagent(runner: &MockRunnerHandle) {
+        for frame in [
+            json!({ "type": "system", "subtype": "session_state_changed", "state": "running", "session_id": SESSION }),
+            init_frame(),
+            json!({ "type": "assistant", "uuid": "launch-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-1", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_agent", "name": "Agent", "input": { "description": "Sleep", "prompt": "Run `sleep 20`.", "run_in_background": true } }] } }),
+            json!({ "type": "system", "subtype": "task_started", "task_id": "agent-task-1", "tool_use_id": "toolu_agent", "description": "Sleep", "task_type": "local_agent", "is_backgrounded": true, "session_id": SESSION }),
+            json!({ "type": "user", "uuid": "launch-2", "session_id": SESSION, "parent_tool_use_id": null, "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "toolu_agent", "content": "Async agent launched successfully." }] } }),
+            json!({ "type": "assistant", "uuid": "launch-3", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-2", "role": "assistant", "content": [{ "type": "text", "text": "started" }] } }),
+            json!({ "type": "result", "subtype": "success", "is_error": false, "stop_reason": "end_turn", "session_id": SESSION }),
+        ] {
+            runner.say(SESSION, frame).await;
+        }
+    }
+
+    /// The subagent's report, answered the way Claude answers it on its own:
+    /// it says the task finished, starts a turn, files the report as that
+    /// turn's prompt, and begins answering. The prompt row lands in the
+    /// transcript after `init`, before the first answer.
+    async fn answer_the_report_on_its_own(
+        state: &TaskState,
+        runner: &MockRunnerHandle,
+        cwd: &str,
+        launch_turn: &str,
+    ) {
+        runner.say(SESSION, report_frame()).await;
+        runner.say(SESSION, init_frame()).await;
+        state
+            .task_runtime
+            .claude()
+            .write_test_transcript(cwd, SESSION, &filed_report(launch_turn));
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "assistant", "uuid": "answer-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-3", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_bash", "name": "Bash", "input": { "command": "sleep 4" } }] } }),
+            )
+            .await;
+    }
+
+    /// Claude saying the subagent finished.
+    fn report_frame() -> Value {
+        json!({ "type": "system", "subtype": "task_notification", "task_id": "agent-task-1", "tool_use_id": "toolu_agent", "status": "completed", "output_file": "", "summary": "Sleep", "session_id": SESSION })
+    }
+
+    /// What Claude has written down once it filed the subagent's report: the
+    /// launching prompt, and the report as a prompt of its own.
+    fn filed_report(launch_turn: &str) -> String {
+        [
+            json!({ "type": "user", "uuid": launch_turn, "timestamp": "2026-09-19T02:58:32.562Z", "promptSource": "sdk", "promptId": "prompt-1", "parentUuid": null, "message": { "role": "user", "content": [{ "type": "text", "text": "Start the subagent." }] } }),
+            json!({ "type": "assistant", "uuid": "launch-3", "timestamp": "2026-09-19T02:58:36.100Z", "promptId": "prompt-1", "parentUuid": launch_turn, "message": { "id": "message-2", "role": "assistant", "content": [{ "type": "text", "text": "started" }] } }),
+            json!({ "type": "user", "uuid": "report-1", "timestamp": "2026-09-19T02:58:50.681Z", "promptSource": "sdk", "promptId": "prompt-2", "parentUuid": "launch-3", "origin": { "kind": "task-notification" }, "message": { "role": "user", "content": "<task-notification>\n<task-id>agent-task-1</task-id>\n<tool-use-id>toolu_agent</tool-use-id>\n<status>completed</status>\n<summary>Sleep</summary>\n</task-notification>" } }),
+        ]
+        .iter()
+        .map(|row| format!("{row}\n"))
+        .collect()
+    }
+
+    fn init_frame() -> Value {
+        json!({ "type": "system", "subtype": "init", "session_id": SESSION, "claude_code_version": "2.1.274", "model": "claude-opus-5", "permissionMode": "default" })
+    }
+
+    fn ended_while_working(snapshot: &SessionSnapshot) -> bool {
+        snapshot.active_turn_id.is_none()
+            && snapshot
+                .conversation
+                .as_ref()
+                .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
+    }
+
+    /// Wait until the Task's session reads the way `settled` says.
+    async fn until(state: &TaskState, what: &str, settled: impl Fn(&SessionSnapshot) -> bool) {
+        let deadline = Instant::now() + WAIT;
+        loop {
+            if state
+                .task_sessions
+                .snapshot(SESSION)
+                .await
+                .is_some_and(|snapshot| settled(&snapshot))
+            {
+                return;
+            }
+            assert!(Instant::now() < deadline, "{what}");
+            sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Wait until the Claude client has noticed a turn Claude began on its own.
+    async fn in_a_turn_of_its_own(state: &TaskState) {
+        let deadline = Instant::now() + WAIT;
+        while !state
+            .task_runtime
+            .claude()
+            .is_in_a_turn_of_its_own(SESSION)
+            .await
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the turn Claude began on its own is noticed"
+            );
+            sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    fn prompt(text: &str) -> Request<Body> {
+        post(
+            &format!("/api/tasks/{SESSION}/prompts"),
+            json!({ "prompt": text }),
+        )
     }
 }

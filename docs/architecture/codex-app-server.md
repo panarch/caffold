@@ -307,8 +307,9 @@ persist a second task ledger.
   model-followed policy; Caffold does not reject a completed first turn that
   omitted the call.
 - An idle or system-error thread, including a newly created empty thread,
-  accepts an ordinary prompt with `turn/start`. An active thread is
-  steered only when canonical thread status and an active turn ID agree.
+  accepts an ordinary prompt with `turn/start`, and so does an active thread
+  whose latest turns show none running. An active thread is steered only when
+  canonical thread status and an active turn ID agree.
 - If app-server rejects that pointer because the turn ended before
   `turn/steer`, Caffold refreshes one canonical resume snapshot and chooses
   Start or Steer again from that snapshot. It does not infer completion from

@@ -52,7 +52,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use serde_json::{Value, json};
-use tokio::sync::{Mutex as AsyncMutex, RwLock, broadcast, oneshot};
+use tokio::sync::{Mutex as AsyncMutex, Notify, RwLock, broadcast, oneshot};
 
 use self::protocol::{
     ControlRequestFrame, MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame, ResultFrame,
@@ -84,6 +84,11 @@ pub(crate) use self::runner::MockRunnerHandle;
 /// that never finishes loading.
 const ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// How often a prompt held behind a turn the agent began on its own looks for
+/// the report that names it. Against CLI 2.1.274 the report was on disk about
+/// a tenth of a second after that turn began.
+const REPORT_FILING_POLL: std::time::Duration = std::time::Duration::from_millis(50);
+
 /// Why an operation on a Claude session did not happen.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ClaudeError {
@@ -106,6 +111,9 @@ pub(crate) enum ClaudeError {
     /// by the turn ending.
     #[error("Nothing is waiting on approval {0}.")]
     NoSuchApproval(String),
+    /// A turn was asked for while the agent is running one.
+    #[error("{0}")]
+    TurnRunning(String),
 }
 
 /// The agent Caffold drives when a Task belongs to Claude.
@@ -185,6 +193,9 @@ struct Session {
 
     frames: AsyncMutex<SessionFrames>,
     state: AsyncMutex<SessionState>,
+    /// Woken when a turn the agent began on its own is named, can no longer
+    /// be named, or ends, which is what a held-back prompt waits to learn.
+    unowned_turn_settled: Notify,
     /// Control requests Caffold has sent and is waiting on.
     pending: AsyncMutex<HashMap<String, oneshot::Sender<Result<protocol::ControlAnswer, String>>>>,
     next_control_id: AtomicU64,
@@ -224,6 +235,14 @@ struct SessionState {
     /// its first word is when the file is sure to name the turn, and the file
     /// is asked once, then.
     turn_read_at_hello: bool,
+    /// A turn the agent began on its own, which nothing on the ledger opened.
+    unowned_turn: Option<UnownedTurn>,
+    /// The background tasks the agent said finished since it was last idle,
+    /// by task id.
+    ///
+    /// A turn the agent begins on its own to answer one files that report as
+    /// its prompt, and the task id is what ties the two together.
+    reported_tasks: Vec<String>,
     /// The turns this session has run while Caffold watched.
     turns: Vec<Turn>,
     /// Tool calls a person refused.
@@ -291,6 +310,38 @@ impl SessionActivity {
             _ => None,
         }
     }
+}
+
+/// How far a turn the agent began on its own can be tied to what Caffold knows.
+///
+/// Such a turn answers something the stream does not name. A background task's
+/// report is the one thing that names it: the agent files the report as the
+/// turn's prompt, under the id of the task it reports on. It moves only
+/// through [`move_unowned_turn`]; the reported task ids, the activity report,
+/// and the ledger stay beside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnownedTurn {
+    /// A report is pending and the turn may yet be found filed under it.
+    Naming,
+    /// Nothing ties it to anything: no report was pending, or the agent spoke
+    /// in it before a report was found filed.
+    Unnamed,
+}
+
+/// What happens to a turn the agent began on its own.
+#[derive(Debug)]
+enum UnownedTurnEvent {
+    /// The agent said `init` for a turn. It is the agent's own only while the
+    /// agent reports working, with no turn on the ledger, no depth change
+    /// waiting, and the session not ended.
+    Began,
+    /// The report it answers, on `task_id`, was found filed: the turn goes on
+    /// the ledger.
+    Named { turn: Box<Turn>, task_id: String },
+    /// The agent spoke in it before its report was found filed.
+    SpokeUnfiled,
+    /// It was answered, or the session ended.
+    Ended,
 }
 
 /// One question the agent is blocked on, and what answering it needs.
@@ -362,6 +413,16 @@ impl ClaudeClient {
             .projects()
             .expect("the test client has a projects directory");
         transcript::plant(projects, cwd, conversation_id, contents);
+    }
+
+    /// Whether the agent is in a turn it began on its own that is not on the
+    /// ledger, so a test can speak after this client has noticed it.
+    #[cfg(test)]
+    pub(crate) async fn is_in_a_turn_of_its_own(&self, conversation_id: &str) -> bool {
+        match self.session(conversation_id).await {
+            Some(session) => session.state.lock().await.unowned_turn.is_some(),
+            None => false,
+        }
     }
 
     /// Hold the start door shut, the way a start mid-passage holds it.
@@ -604,6 +665,25 @@ impl ClaudeClient {
         reading.page.turns.into_iter().next()
     }
 
+    /// The turn on disk that answers one of the `reported` tasks, once the
+    /// agent has filed it, and the task it answers.
+    async fn filed_report_turn(
+        &self,
+        cwd: &str,
+        id: &str,
+        reported: &[String],
+    ) -> Option<(Turn, String)> {
+        let newest = self.newest_filed_turn(cwd, id).await?;
+        let TurnOrigin::BackgroundTask(task) = &newest.origin else {
+            return None;
+        };
+        let task_id = task
+            .task_id
+            .clone()
+            .filter(|task_id| reported.contains(task_id))?;
+        Some((newest, task_id))
+    }
+
     fn publish(&self, event: ClaudeRuntimeEvent) {
         let _ = self.inner.events.send(event);
     }
@@ -683,6 +763,7 @@ impl ClaudeClient {
         options: &ClaudeTurnOptions,
     ) -> Result<Turn, ClaudeError> {
         let session = self.require_session(conversation_id).await?;
+        self.wait_for_no_running_turn(&session).await?;
         self.apply_settings(&session, options).await?;
 
         let (name, frame) = protocol::user_message(prompt, images);
@@ -698,10 +779,8 @@ impl ClaudeClient {
             // arriving under an identifier nothing reads any more, and it would
             // spin for as long as the conversation is shown. Adding to a
             // running turn is steering, which is a different thing to ask for.
-            if let Some(running) = state.active_turn.as_deref() {
-                return Err(ClaudeError::Protocol(format!(
-                    "turn {running} is still running on conversation {conversation_id}"
-                )));
+            if let Some(running) = turn_in_the_way(&state, conversation_id) {
+                return Err(running);
             }
             if state.ended {
                 return Err(ClaudeError::Agent(format!(
@@ -709,10 +788,14 @@ impl ClaudeClient {
                 )));
             }
             session.send(frame).await?;
-            // What the agent last said about itself was said before this
-            // prompt and says nothing about it. Until the agent speaks of this
-            // turn, the turn being open is what the conversation is doing.
-            state.activity = None;
+            // An idle the agent last reported was said before this prompt and
+            // says nothing about it; until the agent speaks of this turn, the
+            // turn being open is what the conversation is doing. A report of
+            // working stands: the agent does not say it again for a turn that
+            // begins while it is still working.
+            if state.activity == Some(SessionActivity::Idle) {
+                state.activity = None;
+            }
             open_turn(
                 &mut state,
                 &name,
@@ -733,6 +816,36 @@ impl ClaudeClient {
         );
         self.report_turn_opened(conversation_id, turn.clone());
         Ok(turn)
+    }
+
+    /// Hold a new turn while the agent is in one it began on its own that is
+    /// still being named.
+    ///
+    /// The agent files the report such a turn answers a moment after the turn
+    /// begins and before it says anything, so the turn is soon named, and a
+    /// prompt sent meanwhile belongs in it. Once it is named the refusal says
+    /// a turn is running, which is what sends the prompt there instead. A turn
+    /// that cannot be named refuses a new one for as long as it runs.
+    async fn wait_for_no_running_turn(&self, session: &Arc<Session>) -> Result<(), ClaudeError> {
+        let deadline = tokio::time::Instant::now() + ANSWER_TIMEOUT;
+        loop {
+            self.name_unowned_turn(session, false).await;
+            {
+                let state = session.state.lock().await;
+                if state.active_turn.is_some() || state.unowned_turn != Some(UnownedTurn::Naming) {
+                    return turn_in_the_way(&state, &session.id).map_or(Ok(()), Err);
+                }
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(ClaudeError::Protocol(format!(
+                    "claude did not file the report it began a turn for within {} seconds",
+                    ANSWER_TIMEOUT.as_secs()
+                )));
+            }
+            let _ =
+                tokio::time::timeout(REPORT_FILING_POLL, session.unowned_turn_settled.notified())
+                    .await;
+        }
     }
 
     /// Add to a turn already running.
@@ -1040,6 +1153,7 @@ impl From<ClaudeError> for AgentError {
             // Not watching is not unreachable: the runner is fine and the
             // conversation is simply not there to be asked about.
             ClaudeError::NotWatching(_) => AgentError::ConversationGone(error.to_string()),
+            ClaudeError::TurnRunning(_) => AgentError::TurnRunning(error.to_string()),
             ClaudeError::Protocol(_)
             | ClaudeError::Agent(_)
             | ClaudeError::History(_)
@@ -1085,9 +1199,55 @@ fn open_turn(state: &mut SessionState, turn_id: &str, said: Vec<MessageContent>)
 /// opened here or read from what the agent wrote.
 fn take_up_turn(state: &mut SessionState, mut turn: Turn) {
     turn.status = TurnStatus::InProgress;
+    turn.completed_at_ms = None;
     state.active_turn = Some(turn.id.clone());
     state.moved_at_ms = now_ms();
     state.turns.push(turn);
+}
+
+/// Move the turn the agent began on its own by `event`, and answer whether the
+/// event was one it accepts. These arms are every move there is.
+fn move_unowned_turn(state: &mut SessionState, event: UnownedTurnEvent) -> bool {
+    let began_its_own = matches!(
+        state.activity,
+        Some(SessionActivity::Running | SessionActivity::RequiresAction)
+    ) && state.active_turn.is_none()
+        && state.quiet_turn.is_none()
+        && !state.ended;
+    state.unowned_turn = match (state.unowned_turn, event) {
+        (None, UnownedTurnEvent::Began) if began_its_own => {
+            Some(if state.reported_tasks.is_empty() {
+                UnownedTurn::Unnamed
+            } else {
+                UnownedTurn::Naming
+            })
+        }
+        (Some(UnownedTurn::Naming), UnownedTurnEvent::Named { turn, task_id })
+            if state.active_turn.is_none() =>
+        {
+            state.reported_tasks.retain(|reported| *reported != task_id);
+            take_up_turn(state, *turn);
+            None
+        }
+        (Some(UnownedTurn::Naming), UnownedTurnEvent::SpokeUnfiled) => Some(UnownedTurn::Unnamed),
+        (_, UnownedTurnEvent::Ended) => None,
+        _ => return false,
+    };
+    true
+}
+
+/// The turn in the way of a new one, as the refusal that says so.
+fn turn_in_the_way(state: &SessionState, conversation_id: &str) -> Option<ClaudeError> {
+    if let Some(running) = state.active_turn.as_deref() {
+        return Some(ClaudeError::TurnRunning(format!(
+            "turn {running} is still running on conversation {conversation_id}"
+        )));
+    }
+    state.unowned_turn.map(|_| {
+        ClaudeError::TurnRunning(format!(
+            "Claude is answering something it began on its own in conversation {conversation_id}"
+        ))
+    })
 }
 
 /// Close the turn the agent has open, with whatever it left unanswered.
@@ -1371,6 +1531,24 @@ mod test_support {
             .await
             .expect("the conversation opens");
         let mut events = events;
+        next_session_event(&mut events, "settings").await;
+        (client, runner, events)
+    }
+
+    /// The same, for a client that reads the agent's transcripts from
+    /// `projects`.
+    pub(super) async fn watching_writing_to(
+        projects: std::path::PathBuf,
+    ) -> (ClaudeClient, MockRunnerHandle, Receiver<ClaudeRuntimeEvent>) {
+        let (client, runner) = ClaudeClient::mock_writing_to(projects);
+        let mut events = client.subscribe();
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
         next_session_event(&mut events, "settings").await;
         (client, runner, events)
     }
@@ -2072,7 +2250,7 @@ mod tests {
             .await;
 
         assert!(
-            matches!(refused, Err(ClaudeError::Protocol(ref message)) if message.contains(&running.id)),
+            matches!(refused, Err(ClaudeError::TurnRunning(ref message)) if message.contains(&running.id)),
             "{refused:?}"
         );
     }

@@ -86,15 +86,16 @@ impl TaskSessions {
                         return Err(error);
                     }
                 };
+                // An agent can be working with no turn a prompt could join —
+                // Claude is, while a subagent it backgrounded outlives the turn
+                // that launched it — and a prompt then starts one.
                 let Some(turn_id) = page
                     .turns
                     .iter()
                     .find(|turn| turn.status == TurnStatus::InProgress)
                     .map(|turn| turn.id.clone())
                 else {
-                    return Err(AgentError::Failed(format!(
-                        "active thread {thread_id} did not expose its active turn"
-                    )));
+                    return Ok(PromptTarget::Start { cwd: thread.cwd });
                 };
                 let mut state = entry.state.lock().await;
                 if !state.same_observation(generation, observation_epoch) {
@@ -735,6 +736,44 @@ mod tests {
         assert!(matches!(
             sessions.prepare_prompt(&client.driver(), 1, "thread-1").await,
             Ok(PromptTarget::Steer { turn_id }) if turn_id == "turn-canonical"
+        ));
+        assert_eq!(
+            methods(&client).await,
+            vec!["thread/resume", "thread/turns/list"]
+        );
+    }
+
+    #[tokio::test]
+    async fn active_status_whose_latest_turns_show_none_running_starts_a_turn() {
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                resume_response(
+                    ThreadStatus::Active {
+                        active_flags: Vec::new(),
+                    },
+                    Vec::new(),
+                    Vec::new(),
+                ),
+            ),
+            MockCodexResponse::ok(
+                "thread/turns/list",
+                wire_page(
+                    vec![wire_turn("turn-finished", TurnStatus::Completed)],
+                    None,
+                    Some("active-anchor"),
+                ),
+            ),
+        ]);
+        let sessions = TaskSessions::default();
+        let _viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .expect("viewer");
+
+        assert!(matches!(
+            sessions.prepare_prompt(&client.driver(), 1, "thread-1").await,
+            Ok(PromptTarget::Start { cwd }) if cwd == "Workspace/rust/codger"
         ));
         assert_eq!(
             methods(&client).await,

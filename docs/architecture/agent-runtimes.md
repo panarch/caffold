@@ -63,6 +63,11 @@ operations Caffold has verified for every agent:
 - archive, restore, and delete a conversation; and
 - report whether an archived conversation still exists.
 
+A prompt starts a turn or steers the running one. When the agent refuses a
+steer because that turn has ended, or a start because a turn is already
+running, the Tasks application reads the conversation once more and chooses
+again.
+
 Approval translation, readiness, diagnostics, and provider-specific controls
 remain in each driver where their meanings differ. Shared HTTP routes ask the
 recorded driver and carry back options under the agent's own identifiers.
@@ -190,14 +195,31 @@ Each Claude child reports its moves between idle, working, and requiring action;
 the same state is returned when a surviving child is initialized again. Caffold
 projects that observation onto the Task's activity without creating,
 identifying, or ending a turn; while a turn Caffold asked for on its own
-account runs, such as a depth change, the Task reads as idle. Claude's turn
-ledger is written by Caffold's prompt and steering submissions, Claude's result
-frames, the child's exit, and the transcript when a replacement takes up a
-working session. Codex status and turn lifecycle retain their app-server-owned
-coupled path through the same shared Task state. An initialize answer is only a
-current snapshot: until this backend sees a live activity frame, it retains the
-turn-based fallback for a child that may have survived from before activity
-events were enabled.
+account runs, such as a depth change, the Task reads as idle. Claude keeps
+reporting working after a turn's result while a subagent it backgrounded still
+runs, and does not report working again for a turn that begins meanwhile, so
+a turn Caffold opens clears only an idle report. Codex status and turn lifecycle
+retain their app-server-owned coupled path through the same shared Task state.
+An initialize answer is only a current snapshot: until this backend sees a live
+activity frame, it retains the turn-based fallback for a child that may have
+survived from before activity events were enabled.
+
+Claude's turn ledger is written by Caffold's prompt and steering submissions,
+Claude's result frames, the child's exit, and the transcript: when a
+replacement takes up a working session, and when Claude begins a turn on its
+own. Claude says `init` as each turn begins, and a turn that begins while
+Claude reports working, with no Caffold turn or depth change open, is Claude's
+own. To answer a background task's report, Claude files the report as that
+turn's prompt, carrying the id of the task its `task_notification` frame named;
+Caffold takes the turn up under that prompt once the transcript shows it, which
+Claude writes before its first output in the turn. A turn Claude begins that
+cannot be tied to a report this way stays off the ledger.
+
+A prompt sent while Claude works but runs no turn, as when only a subagent it
+backgrounded is working, starts a new turn. A turn requested while Claude is in
+one of its own is held until that turn is named and then refused as already
+running, so the prompt is steered into it; a turn that cannot be named refuses
+new turns until its result.
 
 The runner stops after ten minutes without a backend subscriber, ending its
 children and removing its socket. An explicit Claude runtime restart does the

@@ -61,6 +61,9 @@ pub(crate) enum AgentError {
     /// The turn asked about is no longer running.
     #[error("{0}")]
     TurnGone(String),
+    /// A turn was asked for while the agent is already running one.
+    #[error("{0}")]
+    TurnRunning(String),
     /// The agent cannot be reached at all.
     #[error("{0}")]
     Unreachable(String),
