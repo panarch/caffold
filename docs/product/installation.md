@@ -62,10 +62,10 @@ official setup, make `claude` available on the Mac app's `PATH`, then run it and
 complete sign-in. The released wrapper searches the common executable paths
 including `~/.local/bin`, `/opt/homebrew/bin`, and `/usr/local/bin`.
 
-**Settings → Claude** reports the detected binary and version, signed-in
-account and plan, usage windows as Claude reports them, and the Caffold runner
-state. The report is diagnostic rather than a separate permission gate: if a
-Claude operation cannot run, that operation returns the agent's actual error.
+**Settings → Claude** shows usage windows as Claude reports them, the detected
+binary and version, signed-in account and plan, and the Caffold runner state.
+The report is diagnostic rather than a separate permission gate: if a Claude
+operation cannot run, that operation returns the agent's actual error.
 
 Caffold uses the CLI's existing authentication context. It does not read or
 store Claude credentials, call the provider service with copied credentials,
@@ -88,10 +88,10 @@ sessions and running turns while the backend is replaced and stays running
 after Caffold stops; `grok leader list` shows it beside any leader the CLI
 started for itself. Caffold does not use or stop the CLI's own leader.
 
-**Settings → Grok** reports the detected executable and version, the
-signed-in account as the leader confirms it, plan usage as that leader
-reports it, the leader on Caffold's socket with its own build, and the state
-of Caffold's connection. Opening the page starts no leader, session, or turn:
+**Settings → Grok** shows plan usage as the leader reports it, the detected
+executable and version, the signed-in account as the leader confirms it, the
+leader on Caffold's socket with its own build, and the state of Caffold's
+connection. Opening the page starts no leader, session, or turn:
 a leader that is not running is reported as such, and the account and usage
 are asked only while a leader answers.
 

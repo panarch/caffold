@@ -312,7 +312,6 @@ class CaffoldSettingsCodexPage extends HTMLElement {
               <p>Connection, account, plan, and local app-server usage.</p>
               <caffold-settings-refresh-button></caffold-settings-refresh-button>
             </header>
-            <caffold-settings-detail-list data-codex-detail></caffold-settings-detail-list>
             <section class="settings-codex-repair" aria-labelledby="settings-codex-repair-title" hidden>
               <div>
                 <h3 id="settings-codex-repair-title"></h3>
@@ -325,6 +324,14 @@ class CaffoldSettingsCodexPage extends HTMLElement {
               </div>
               <p class="settings-codex-sign-in" hidden><code>codex</code></p>
               <a href="${CODEX_SETUP_GUIDE}" target="_blank" rel="noreferrer" hidden>Official Codex CLI guide</a>
+            </section>
+            <section aria-labelledby="settings-codex-usage-title">
+              <h3 id="settings-codex-usage-title">Usage</h3>
+              <caffold-settings-detail-list data-codex-usage></caffold-settings-detail-list>
+            </section>
+            <section aria-labelledby="settings-codex-agent-title">
+              <h3 id="settings-codex-agent-title">Agent</h3>
+              <caffold-settings-detail-list data-codex-detail></caffold-settings-detail-list>
             </section>
             <section class="settings-runtime-control" aria-labelledby="settings-codex-runtime-title">
               <div>
@@ -346,10 +353,6 @@ class CaffoldSettingsCodexPage extends HTMLElement {
               <button type="button" data-action="open-codex-update">Update Codex…</button>
             </section>
             <p class="settings-runtime-message" data-update-message role="status" hidden></p>
-            <section class="settings-usage" aria-labelledby="settings-codex-usage-title">
-              <h3 id="settings-codex-usage-title">Usage</h3>
-              <caffold-settings-detail-list data-codex-usage></caffold-settings-detail-list>
-            </section>
             <section class="settings-codex-diagnostic" aria-labelledby="settings-codex-diagnostic-title" hidden>
               <h3 id="settings-codex-diagnostic-title">Diagnostic</h3>
               <dl>

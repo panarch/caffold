@@ -287,22 +287,23 @@ Settings includes:
   the model each provider uses, Whisper's pinned revision, model download,
   cancellation, and deletion, and API keys that can be saved, replaced, or
   removed but never shown again;
-- Codex installation readiness, repair guidance, runtime status, Refresh,
-  diagnostics, and an explicit confirmed runtime restart available while the
-  canonical runtime is ready or requires restart; the ready-state action is
-  neutral, while a required restart retains attention styling; and Updates,
-  with the newest Codex release, whether Codex's own automatic updates are on,
-  and an explicit confirmed **Update Codex…** action;
-- Claude installation status, shown and never gated on: the binary's version
-  and path, the signed-in account and plan, the plan's usage windows as the
-  agent itself reports them, and the runner's process state, with a **Refresh**
-  action; plus an explicit, confirmed restart that stops the runner and every
-  Claude session it holds, starts a fresh runner on the installed binary, and
-  lets conversations resume when their Tasks are opened;
-- Grok installation status, shown and never gated on: the executable's version
-  and path, the signed-in account as the leader confirms it, plan usage as
-  that leader reports it, the leader on Caffold's socket with its own build,
-  and the state of Caffold's connection, with a **Refresh** action;
+- Codex plan usage as Codex reports it, installation readiness and repair
+  guidance, runtime status with an explicit confirmed runtime restart
+  available while the canonical runtime is ready or requires restart (the
+  ready-state action is neutral, while a required restart retains attention
+  styling), Updates with the newest Codex release, whether Codex's own
+  automatic updates are on, and an explicit confirmed **Update Codex…**
+  action, and diagnostics, with a **Refresh** action;
+- Claude installation status, shown and never gated on: the plan's usage
+  windows as the agent itself reports them, the binary's version and path, the
+  signed-in account and plan, and the runner's process state, with a
+  **Refresh** action; plus an explicit, confirmed restart that stops the runner
+  and every Claude session it holds, starts a fresh runner on the installed
+  binary, and lets conversations resume when their Tasks are opened;
+- Grok installation status, shown and never gated on: plan usage as the
+  leader reports it, the executable's version and path, the signed-in account
+  as the leader confirms it, the leader on Caffold's socket with its own
+  build, and the state of Caffold's connection, with a **Refresh** action;
   opening the page starts no leader, session, or turn;
 - About Caffold application and build information, including shared
   checking/ready/settled update status and a **Reload to update** action while
@@ -332,6 +333,10 @@ canonical status, so a failed refresh retains the last server-reported state
 for context but disables Serve controls until a later status response
 revalidates them. The surface does not administer accounts, tailnet membership,
 ACLs, arbitrary targets, or Funnel.
+
+Codex, Claude, and Grok Settings each open with plan usage, directly below the
+page description and **Refresh**. While Codex readiness reports a state other
+than `ready`, its repair guidance sits above usage.
 
 Tasks and Codex Settings present the same backend readiness and restart
 outcome. Codex Settings keeps manual restart available for `ready` and

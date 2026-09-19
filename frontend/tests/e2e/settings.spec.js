@@ -1684,6 +1684,67 @@ test("shapes Codex, Claude, and Grok Refresh like the Appearance Reset all actio
   }
 });
 
+test("puts Usage first on the Codex, Claude, and Grok Settings pages", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const pages = [
+    ["codex", ["Usage", "Agent", "Runtime", "Updates", "Diagnostic"]],
+    ["claude", ["Usage", "Agent", "Runtime"]],
+    ["grok", ["Usage", "Agent", "Account", "Leader", "Connection"]],
+  ];
+  const shapes = [];
+  for (const [name, headings] of pages) {
+    await page.goto(`/settings/${name}`);
+    const settings = page.locator(`caffold-settings-${name}-page`);
+    await expect(settings.getByRole("heading", { level: 3 })).toHaveText(headings);
+    await expect(settings.locator("dl[aria-busy]")).toHaveCount(0);
+    await expect(
+      settings.getByRole("heading", { level: 3, name: "Usage", exact: true }),
+    ).toBeInViewport();
+    const layout = await settings
+      .locator(".settings-content-section")
+      .evaluate(headedSectionLayout);
+    expect(layout.first, name).toBe("Usage");
+    for (const { heading, ...shape } of layout.sections) {
+      shapes.push([`${name} ${heading}`, shape]);
+    }
+    await captureReviewScreenshot(page, testInfo, `settings-${name}-usage-first`);
+  }
+
+  const [, reference] = shapes[0];
+  expect(reference).toMatchObject({ headingInset: 0, listGap: 0 });
+  for (const [label, shape] of shapes) {
+    expect(shape, label).toEqual(reference);
+  }
+});
+
+test("puts the Codex repair section above Usage while Codex needs action", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await serveCodexStatus(page, () => mockCodexStatus({
+    readiness: {
+      ...mockCodexStatus().readiness,
+      state: "signInRequired",
+      blocksTaskOperations: true,
+      reasonCode: "authenticationRequired",
+      diagnosticMessage: "Codex sign-in required.",
+    },
+  }));
+
+  await page.goto("/settings/codex");
+  const settings = page.locator("caffold-settings-codex-page");
+  await expect(settings.getByRole("heading", { level: 3 })).toHaveText([
+    "Sign-in required",
+    "Usage",
+    "Agent",
+    "Runtime",
+    "Updates",
+    "Diagnostic",
+  ]);
+  await expect(settings.locator(".settings-codex-repair")).toBeInViewport();
+  await captureReviewScreenshot(page, testInfo, "settings-codex-repair-first");
+});
+
 test("reflows Settings from the detail pane width at maximum Interface scale", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
@@ -2960,6 +3021,40 @@ async function pageActionShape(action) {
       ],
     };
   });
+}
+
+/** The section right under the page header, and where each headed list sits. */
+function headedSectionLayout(content) {
+  const shown = (element, step) => {
+    let current = element;
+    while (current?.hidden) {
+      current = current[step];
+    }
+    return current;
+  };
+  const round = (value) => Math.round(value * 10) / 10;
+  const header = content.querySelector(":scope > header");
+  const sections = [...content.querySelectorAll(":scope > section:not([hidden])")]
+    .filter((section) =>
+      section.querySelector(":scope > h3 + caffold-settings-detail-list"))
+    .map((section) => {
+      const heading = section.querySelector(":scope > h3");
+      const box = heading.getBoundingClientRect();
+      const above = shown(section.previousElementSibling, "previousElementSibling");
+      const style = getComputedStyle(heading);
+      return {
+        heading: heading.textContent,
+        gapAbove: round(box.top - above.getBoundingClientRect().bottom),
+        headingInset: round(box.top - section.getBoundingClientRect().top),
+        listGap: round(heading.nextElementSibling.getBoundingClientRect().top - box.bottom),
+        font: [style.fontSize, style.fontWeight, style.lineHeight],
+      };
+    });
+  const first = shown(header.nextElementSibling, "nextElementSibling");
+  return {
+    first: first.querySelector(":scope > h3")?.textContent ?? null,
+    sections,
+  };
 }
 
 async function modelPickerMetrics(composer) {

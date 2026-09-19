@@ -44,6 +44,7 @@ caffold-settings-claude-page {
   }
 
   & .settings-content-section > section > h3 {
+    margin: 0;
     font-size: var(--settings-field-label-size);
     line-height: var(--interface-line-height);
   }
