@@ -155,12 +155,14 @@ test("reorders existing rows while preserving structural and reconciled state", 
 });
 
 for (const themeMode of ["light", "dark"]) {
-  test(`draws ${themeMode} tree guides that end at each directory's last child`, { tag: ["@desktop", "@phone"] }, async ({
+  test(`draws ${themeMode} tree guides from each directory's icon to its last child`, { tag: ["@desktop", "@phone"] }, async ({
     page,
   }) => {
     await page.goto("/settings/files");
     await page.evaluate(async (mode) => {
       await import("/assets/components/file-tree.js");
+      const { warmIcons } = await import("/assets/components/icons.js");
+      await warmIcons();
       const { setThemeMode } = await import("/assets/settings.js");
       setThemeMode(mode);
       const ready = (nodes) => ({ status: "ready", nodes });
@@ -269,32 +271,39 @@ for (const themeMode of ["light", "dark"]) {
             const branchX = (depth > 0 ? columns[depth - 1] : columns[0] - indent) + 4;
             const branchBackground = color(branchX, Math.ceil(rect.top) + 1);
             const middle = Math.floor(rect.top + rect.height / 2);
-            return [
-              row.dataset.fileTreeRowKey,
-              {
-                columns: top.map((guide, index) => (guide === bottom[index] ? guide : "partial")),
-                branch: [middle - 1, middle, middle + 1].some((y) =>
-                  contrast(branchX, y, branchBackground) >= 6
-                ),
-              },
-            ];
+            const result = {
+              columns: top.map((guide, index) => (guide === bottom[index] ? guide : "partial")),
+              branch: [middle - 1, middle, middle + 1].some((y) =>
+                contrast(branchX, y, branchBackground) >= 6
+              ),
+            };
+            const directory = row.querySelector(':scope > button[aria-expanded="true"]');
+            if (directory) {
+              const icon = directory.querySelector(".entry-icon-svg").getBoundingClientRect();
+              let guideTop = Math.ceil(rect.bottom) + 1;
+              while (contrast(columns[depth], guideTop - 1, color(betweenGuides, guideTop - 1)) >= 6) {
+                guideTop -= 1;
+              }
+              result.start = Math.abs(guideTop - icon.bottom) <= 1;
+            }
+            return [row.dataset.fileTreeRowKey, result];
           });
         }),
       );
     }, screenshot.toString("base64"));
 
     expect(guides).toEqual({
-      "directory:frontend": { columns: [false, false, false], branch: false },
-      "directory:components": { columns: [true, false, false], branch: true },
-      "directory:conversation": { columns: [true, true, false], branch: true },
+      "directory:frontend": { columns: ["partial", false, false], branch: false, start: true },
+      "directory:components": { columns: [true, "partial", false], branch: true, start: true },
+      "directory:conversation": { columns: [true, true, "partial"], branch: true, start: true },
       "file:code-block.js": { columns: [true, true, "partial"], branch: true },
       "file:dialog.js": { columns: [true, "partial", false], branch: true },
-      "directory:styles": { columns: ["partial", false, false], branch: true },
+      "directory:styles": { columns: ["partial", "partial", false], branch: true, start: true },
       "file:layout.css": { columns: [false, true, false], branch: true },
       "file:theme.css": { columns: [false, "partial", false], branch: true },
       "file:README.md": { columns: [false, false, false], branch: false },
-      "directory:src": { columns: [false, false], branch: false },
-      "directory:lazy": { columns: [true, false], branch: true },
+      "directory:src": { columns: ["partial", false], branch: false, start: true },
+      "directory:lazy": { columns: [true, "partial"], branch: true, start: true },
       "directory:lazy:children-state": { columns: [true, "partial"], branch: true },
       "file:index.js": { columns: ["partial", false], branch: true },
     });
