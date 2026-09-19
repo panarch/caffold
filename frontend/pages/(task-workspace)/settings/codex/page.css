@@ -39,7 +39,8 @@ caffold-settings-codex-page {
     line-height: var(--interface-line-height);
   }
 
-  & .settings-runtime-control button {
+  & .settings-runtime-control button,
+  & .settings-codex-updates button {
     position: relative;
     isolation: isolate;
     height: var(--settings-page-action-size);
@@ -55,7 +56,8 @@ caffold-settings-codex-page {
     cursor: pointer;
   }
 
-  & .settings-runtime-control button::before {
+  & .settings-runtime-control button::before,
+  & .settings-codex-updates button::before {
     position: absolute;
     z-index: -1;
     inset: var(--interface-control-hit-outset) 0;
@@ -66,17 +68,22 @@ caffold-settings-codex-page {
   }
 
   & .settings-runtime-control button:hover:not(:disabled),
-  & .settings-runtime-control button:focus-visible {
+  & .settings-runtime-control button:focus-visible,
+  & .settings-codex-updates button:hover:not(:disabled),
+  & .settings-codex-updates button:focus-visible {
     outline: none;
   }
 
   & .settings-runtime-control button:hover:not(:disabled)::before,
-  & .settings-runtime-control button:focus-visible::before {
+  & .settings-runtime-control button:focus-visible::before,
+  & .settings-codex-updates button:hover:not(:disabled)::before,
+  & .settings-codex-updates button:focus-visible::before {
     border-color: var(--border-strong);
     background: var(--control-hover-bg);
   }
 
-  & .settings-runtime-control button:disabled {
+  & .settings-runtime-control button:disabled,
+  & .settings-codex-updates button:disabled {
     color: var(--disabled-text);
     cursor: default;
   }
@@ -116,7 +123,8 @@ caffold-settings-codex-page {
   & .settings-codex-repair h3,
   & .settings-codex-repair p,
   & .settings-codex-diagnostic h3,
-  & .settings-codex-diagnostic dl {
+  & .settings-codex-diagnostic dl,
+  & .settings-codex-updates dl {
     margin: 0;
   }
 
@@ -189,11 +197,13 @@ caffold-settings-codex-page {
     color: var(--text);
   }
 
-  & .settings-codex-diagnostic dl {
+  & .settings-codex-diagnostic dl,
+  & .settings-codex-updates dl {
     display: grid;
   }
 
-  & .settings-codex-diagnostic dl > div {
+  & .settings-codex-diagnostic dl > div,
+  & .settings-codex-updates dl > div {
     display: grid;
     grid-template-columns: minmax(8rem, 0.55fr) minmax(0, 1fr);
     gap: var(--interface-space-7);
@@ -202,22 +212,27 @@ caffold-settings-codex-page {
   }
 
   & .settings-codex-diagnostic dt,
-  & .settings-codex-diagnostic dd {
+  & .settings-codex-diagnostic dd,
+  & .settings-codex-updates dt,
+  & .settings-codex-updates dd {
     font-size: var(--settings-small-text-size);
     line-height: var(--interface-line-height);
   }
 
-  & .settings-codex-diagnostic dt {
+  & .settings-codex-diagnostic dt,
+  & .settings-codex-updates dt {
     color: var(--muted);
   }
 
-  & .settings-codex-diagnostic dd {
+  & .settings-codex-diagnostic dd,
+  & .settings-codex-updates dd {
     min-width: 0;
     margin: 0;
     overflow-wrap: anywhere;
   }
 
-  & .settings-runtime-control {
+  & .settings-runtime-control,
+  & .settings-codex-updates {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -229,24 +244,30 @@ caffold-settings-codex-page {
     background: var(--surface-subtle);
   }
 
-  & .settings-runtime-control > div {
+  & .settings-runtime-control > div,
+  & .settings-codex-updates > div {
     display: grid;
+    flex: auto;
     gap: var(--interface-space-2);
     min-width: 0;
   }
 
   & .settings-runtime-control h3,
   & .settings-runtime-control p,
+  & .settings-codex-updates h3,
+  & .settings-codex-updates p,
   & .settings-runtime-message {
     margin: 0;
   }
 
-  & .settings-runtime-control h3 {
+  & .settings-runtime-control h3,
+  & .settings-codex-updates h3 {
     font-size: var(--settings-field-label-size);
     line-height: var(--interface-line-height);
   }
 
-  & .settings-runtime-control p {
+  & .settings-runtime-control p,
+  & .settings-codex-updates p {
     color: var(--muted);
     font-size: var(--settings-small-text-size);
     line-height: var(--interface-line-height);
@@ -294,17 +315,20 @@ caffold-settings-codex-page {
       align-self: start;
     }
 
-    & .settings-runtime-control {
+    & .settings-runtime-control,
+    & .settings-codex-updates {
       align-items: stretch;
       flex-direction: column;
     }
 
-    & .settings-runtime-control button {
+    & .settings-runtime-control button,
+    & .settings-codex-updates button {
       align-self: start;
     }
 
     & .settings-codex-command,
-    & .settings-codex-diagnostic dl > div {
+    & .settings-codex-diagnostic dl > div,
+    & .settings-codex-updates dl > div {
       grid-template-columns: minmax(0, 1fr);
     }
 

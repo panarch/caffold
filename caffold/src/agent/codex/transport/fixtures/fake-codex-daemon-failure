@@ -1,6 +1,7 @@
 #!/bin/sh
 
-if [ "$1 $2 $3" != "app-server daemon restart" ]; then
+if [ "$1 $2 $3" != "app-server daemon restart" ] &&
+   [ "$1 $2 $3" != "app-server daemon update" ]; then
   echo "unexpected arguments: $*" >&2
   exit 2
 fi

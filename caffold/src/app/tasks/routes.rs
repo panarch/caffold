@@ -27,7 +27,7 @@ mod store;
 
 use agent::{agent_models, agent_permissions};
 use claude::{claude_restart, claude_status};
-use codex::{codex_mcp_diagnostics, codex_restart, codex_status};
+use codex::{codex_mcp_diagnostics, codex_restart, codex_status, codex_update, codex_updates};
 #[cfg(test)]
 use commands::managed_thread_from_task_record;
 use commands::{create_task, task_approval, task_interrupt, task_prompt};
@@ -221,6 +221,8 @@ pub(super) fn router(state: TaskState) -> Router {
         .route("/api/codex/status", get(codex_status))
         .route("/api/codex/mcp-diagnostics", get(codex_mcp_diagnostics))
         .route("/api/codex/restart", post(codex_restart))
+        .route("/api/codex/updates", get(codex_updates))
+        .route("/api/codex/update", post(codex_update))
         .route("/api/claude/status", get(claude_status))
         .route("/api/claude/restart", post(claude_restart))
         .route("/api/grok/status", get(grok_status))

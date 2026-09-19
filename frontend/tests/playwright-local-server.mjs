@@ -10,6 +10,11 @@ const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 const fakeCodexBin = fileURLToPath(
   new URL("../../caffold/tests/fixtures/fake-codex", import.meta.url),
 );
+// Caffold writes Codex's daemon settings before each daemon command; keep
+// them out of the developer's own Codex home.
+const fixtureCodexHome = fileURLToPath(
+  new URL("./e2e/fixtures/.codex-home", import.meta.url),
+);
 
 async function selectInvocationPort({
   environment,
@@ -47,6 +52,7 @@ export async function createRegularPlaywrightServer(
       env: {
         ...environment,
         CAFFOLD_CODEX_BIN: fakeCodexBin,
+        CODEX_HOME: fixtureCodexHome,
       },
       reuseExistingServer: false,
       timeout: 120_000,

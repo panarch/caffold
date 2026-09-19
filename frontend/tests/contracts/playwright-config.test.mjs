@@ -83,6 +83,17 @@ test("regular config derives command, health URL, and base URL from one port", a
   assert.equal(environment.CAFFOLD_E2E_SELECTED_PORT, String(port));
 });
 
+test("the regular server keeps Codex settings out of the developer's Codex home", async () => {
+  const config = await createRegularPlaywrightServer({
+    CODEX_HOME: "/Users/example/.codex",
+  });
+
+  assert.equal(
+    config.webServer.env.CODEX_HOME,
+    resolve(repoRoot, "frontend/tests/e2e/fixtures/.codex-home"),
+  );
+});
+
 test("reuses the invocation port when Playwright reloads its config", async (t) => {
   const environment = {};
   const firstConfig = await createRegularPlaywrightServer(environment);

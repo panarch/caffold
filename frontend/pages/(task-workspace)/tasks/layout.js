@@ -49,6 +49,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.currentOpenOptions = {};
     this.codexStatusSnapshotValue = INITIAL_CODEX_STATUS_SNAPSHOT;
     this.codexRestartStateValue = { state: "idle", message: "" };
+    this.codexRuntimeActionValue = "idle";
     this.lastPublishedTransportTargets = "";
     this.pendingTaskCreation = null;
     this.liveUpdates = null;
@@ -525,6 +526,12 @@ class CaffoldTasksPage extends HTMLElement {
     this.ensureRendered();
     this.codexRestartStateValue = state ?? { state: "idle", message: "" };
     this.codexReadinessRecovery()?.setRestartState(this.codexRestartStateValue);
+  }
+
+  setCodexRuntimeAction(action) {
+    this.ensureRendered();
+    this.codexRuntimeActionValue = action ?? "idle";
+    this.codexReadinessRecovery()?.setRuntimeAction(this.codexRuntimeActionValue);
   }
 
   codexOperationsBlocked() {

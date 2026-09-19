@@ -8,7 +8,8 @@ use crate::agent;
 use crate::agent::codex::MINIMUM_SUPPORTED_CODEX_CLI_VERSION;
 use crate::agent::codex::{
     CodexDaemonInfo, CodexInstallation, CodexReadiness, CodexReadinessReason, CodexReadinessState,
-    CodexStatusResponse, CodexThreadClient, CodexThreadError, inspect_codex_installation,
+    CodexStatusResponse, CodexThreadClient, CodexThreadError, CodexUpdateOutcome,
+    CodexUpdateReport, inspect_codex_installation,
 };
 
 #[derive(Default)]
@@ -230,6 +231,42 @@ impl TaskRuntime {
         Restart: FnOnce() -> RestartFuture,
         RestartFuture: Future<Output = Result<CodexDaemonInfo, CodexThreadError>>,
     {
+        self.replace_runtime_with("Codex runtime is restarting.", restart)
+            .await
+    }
+
+    pub(in crate::app::tasks) async fn update_daemon(
+        &self,
+    ) -> Result<CodexUpdateOutcome, CodexThreadError> {
+        self.update_daemon_with(CodexThreadClient::update_daemon)
+            .await
+    }
+
+    pub(super) async fn update_daemon_with<Update, UpdateFuture>(
+        &self,
+        update: Update,
+    ) -> Result<CodexUpdateOutcome, CodexThreadError>
+    where
+        Update: FnOnce() -> UpdateFuture,
+        UpdateFuture: Future<Output = Result<CodexUpdateOutcome, CodexThreadError>>,
+    {
+        self.replace_runtime_with("Codex runtime is updating.", update)
+            .await
+    }
+
+    /// Lets go of the Codex connection and tells every session on it why,
+    /// then runs a command that may replace the shared runtime. The next
+    /// status request connects again. Holding both locks keeps a restart and
+    /// an update from overlapping, and makes other Codex requests wait.
+    async fn replace_runtime_with<Outcome, Command, CommandFuture>(
+        &self,
+        message: &str,
+        command: Command,
+    ) -> Result<Outcome, CodexThreadError>
+    where
+        Command: FnOnce() -> CommandFuture,
+        CommandFuture: Future<Output = Result<Outcome, CodexThreadError>>,
+    {
         let _readiness_check = self.process.readiness_check.lock().await;
         let _lifecycle_change = self.process.lifecycle_change.lock().await;
         let (generation, client) = {
@@ -237,7 +274,7 @@ impl TaskRuntime {
             process.readiness = None;
             (process.generation, process.client.take())
         };
-        let message = "Codex runtime is restarting.".to_string();
+        let message = message.to_string();
         let affected = self
             .sessions
             .codex_connection_lost(generation, message.clone())
@@ -253,7 +290,25 @@ impl TaskRuntime {
             client.shutdown().await;
         }
 
-        restart().await
+        command().await
+    }
+
+    /// What Settings shows about keeping Codex current. Asking starts no
+    /// Codex connection.
+    pub(in crate::app::tasks) async fn codex_update_report(&self) -> CodexUpdateReport {
+        CodexThreadClient::update_report(self.codex_update_running_version().await).await
+    }
+
+    /// The app-server version the latest readiness check saw. Asking the
+    /// daemon itself fails whenever it is not running.
+    pub(super) async fn codex_update_running_version(&self) -> Option<String> {
+        self.process
+            .state
+            .lock()
+            .await
+            .readiness
+            .as_ref()
+            .and_then(|readiness| readiness.running_app_server_version.clone())
     }
 
     pub(in crate::app::tasks) async fn shutdown(&self) {

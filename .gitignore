@@ -4,6 +4,7 @@
 /test-results
 /frontend/tests/e2e/*-snapshots
 /frontend/tests/e2e/fixtures/.caffold-data
+/frontend/tests/e2e/fixtures/.codex-home
 /frontend/tests/e2e/fixtures/home/.caffold-worktrees
 /frontend/tests/e2e/fixtures/**/.git
 /.caffold/

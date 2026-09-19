@@ -65,7 +65,7 @@ documents backup, shutdown, health verification, and rollback behavior.
 
 - at least one supported authenticated agent:
   - the [official standalone Codex install](https://chatgpt.com/codex/install.sh),
-    version `0.147.0` or newer (the daemon command requires this installation
+    version `0.155.1` or newer (the daemon command requires this installation
     layout); or
   - Claude Code `2.1.259` or newer, available as `claude` on the wrapper's
     augmented `PATH`; or

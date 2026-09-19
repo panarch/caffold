@@ -270,6 +270,7 @@ test("registered product dialogs retain one context-local keyboard presentation"
   const dialogs = [
     "pages/components/update-dialog.js",
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
+    "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
     "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
     "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
     "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
@@ -991,6 +992,12 @@ test("Codex status and Task recovery keep explicit lifecycle and UI owners", () 
   const restartDialog = readFrontend(
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
   );
+  const updateLifecycle = readFrontend(
+    "pages/(task-workspace)/codex-status/runtime-update-lifecycle.js",
+  );
+  const updateDialog = readFrontend(
+    "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
+  );
   const tasks = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const taskRecovery = readFrontend(
     "pages/(task-workspace)/tasks/components/codex-readiness-recovery.js",
@@ -1008,6 +1015,14 @@ test("Codex status and Task recovery keep explicit lifecycle and UI owners", () 
     workspace,
     /<caffold-codex-runtime-restart-dialog><\/caffold-codex-runtime-restart-dialog>/,
   );
+  assert.match(
+    workspace,
+    /from "\.\/codex-status\/components\/runtime-update-dialog\.js"/,
+  );
+  assert.match(
+    workspace,
+    /<caffold-codex-runtime-update-dialog><\/caffold-codex-runtime-update-dialog>/,
+  );
   assert.match(owner, /from "\.\/codex-status\/model\.js"/);
   assert.match(
     owner,
@@ -1022,9 +1037,13 @@ test("Codex status and Task recovery keep explicit lifecycle and UI owners", () 
   assert.match(model, /function codexSetupVisible/);
   assert.match(lifecycle, /class CodexStatusLifecycle/);
   assert.match(lifecycle, /new CodexRuntimeRestartLifecycle/);
+  assert.match(lifecycle, /new CodexRuntimeUpdateLifecycle/);
   assert.match(restartLifecycle, /class CodexRuntimeRestartLifecycle/);
+  assert.match(updateLifecycle, /class CodexRuntimeUpdateLifecycle/);
   assert.match(restartDialog, /<dialog/);
   assert.match(restartDialog, /customElements\.define\(/);
+  assert.match(updateDialog, /<dialog/);
+  assert.match(updateDialog, /customElements\.define\(/);
   assert.match(tasks, /import "\.\/components\/codex-readiness-recovery\.js"/);
   assert.match(tasks, /<caffold-codex-readiness-recovery hidden>/);
   assert.doesNotMatch(tasks, /codex-readiness-card|CODEX_INSTALL_COMMAND/);
@@ -1032,12 +1051,14 @@ test("Codex status and Task recovery keep explicit lifecycle and UI owners", () 
   assert.match(taskRecovery, /codex-readiness-card/);
   assert.match(taskRecovery, /CODEX_STATUS_REFRESH_REQUEST_EVENT/);
   assert.match(taskRecovery, /CODEX_RUNTIME_RESTART_REQUEST_EVENT/);
+  assert.doesNotMatch(taskRecovery, /CODEX_RUNTIME_UPDATE_REQUEST_EVENT/);
 
   for (const consumer of [tasks, settings]) {
     assert.match(consumer, /codex-status\.js"/);
     assert.doesNotMatch(consumer, /codex-status\//);
   }
   assert.doesNotMatch(settings, /restartCodexRuntime|<dialog|runtime-restart-dialog/);
+  assert.doesNotMatch(settings, /updateCodexRuntime|runtime-update-dialog/);
 
   for (const [path, source] of frontendJavascriptFiles()) {
     const insideOwner =

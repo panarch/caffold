@@ -371,10 +371,11 @@ do not enumerate or reach through descendant DOM. A retained pane with no
 layout box is omitted before merge, so its hidden mutation and scroll
 dependencies cannot invalidate the visible pane's session.
 
-The ten registered Task Workspace product dialogs follow the same owner-first
-contract: Codex restart, Claude restart, archived-task deletion, image preview,
-directory picker, Conversation fork, command output, code-block Markdown
-preview, Current Plan document, and GitHub Task Start. Every currently visible
+The eleven registered Task Workspace product dialogs follow the same
+owner-first contract: Codex restart, Codex update, Claude restart,
+archived-task deletion, image preview, directory picker, Conversation fork,
+command output, code-block Markdown preview, Current Plan document, and GitHub
+Task Start. Every currently visible
 and enabled button has an owner declaration, without semantic deduplication,
 and controls owned by a direct child compose through the same public scope
 interface. Fork additionally declares its Thread-ID textbox, while the Task
@@ -592,11 +593,17 @@ Settings remains routable. Retry refreshes the canonical diagnosis; frontend
 code does not compare versions or classify stderr.
 
 One workspace-scoped Codex status lifecycle owns that request, the confirmed
-runtime-restart mutation, its request generations, and the post-restart status
-refresh. Tasks and Settings emit the same restart intent and render its shared
-request snapshot. The workspace mounts one long-lived native confirmation
-dialog. A successful restart response does not release the Codex surfaces it
-holds; only the refreshed backend readiness snapshot can do that.
+runtime-restart and update mutations, their request generations, and the status
+refresh after each. Restarting and updating both replace the shared runtime, so
+the lifecycle admits one at a time through a single runtime-action graph:
+`idle` to `restarting` or `updating`, and back to `idle` when that action
+settles or the lifecycle disconnects. A completion from before a disconnect
+changes nothing. Tasks and Settings emit the same restart intent; only Settings
+emits the update intent, and Task setup keeps Restart Codex unavailable while an
+update runs. The workspace mounts one long-lived native confirmation dialog for
+each action. A successful restart or update response does not release the
+Codex surfaces it holds; only the refreshed backend readiness snapshot can do
+that.
 
 The adjacent workspace-scoped live-update owner keeps one physical EventSource
 while the document is visible and injects logical Task List, Task Detail, and
@@ -1095,11 +1102,13 @@ is read again.
 Settings lives inside Task Workspace. Appearance owns theme and Interface,
 Conversation, and Code scales. Keyboard owns the persisted Keyboard navigation
 On/Off control; Off closes any active keyboard-navigation mode and leaves its
-keys unhandled. Settings Codex renders the shared status and runtime-restart
-request snapshots, repair guidance,
-diagnostics, and intents for Refresh or restart. The workspace Codex status
-lifecycle remains active across Tasks, Notes, and Settings route changes and
-owns the HTTP request generations.
+keys unhandled. Settings Codex renders the shared status, runtime-restart, and
+update request snapshots, repair guidance, diagnostics, and intents for
+Refresh, restart, or update. The workspace Codex status lifecycle remains
+active across Tasks, Notes, and Settings route changes and owns the generations
+of those requests. The Codex page itself reads the update report, only while it
+is shown: when it opens, on Refresh, and after a restart or update finishes. A
+report that arrives after the page is hidden or asked again is discarded.
 
 Each Settings page explicitly provides its current visible native buttons and
 exact page scrollport. The Settings workspace merges responsive Back with only

@@ -1,6 +1,6 @@
 use super::{CodexStatusDiagnostics, CodexStatusPayload};
 use crate::agent::ApprovalDecision;
-use crate::agent::codex::CodexDaemonInfo;
+use crate::agent::codex::{CodexDaemonInfo, CodexUpdateOutcome, CodexUpdateReport};
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
 use crate::task_store::RunBy;
@@ -136,6 +136,27 @@ pub(super) async fn codex_restart(
     state
         .task_runtime
         .restart_daemon()
+        .await
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+/// What Settings shows about keeping Codex current.
+///
+/// Always 200: a source that could not answer is part of the report.
+pub(super) async fn codex_updates(State(state): State<TaskState>) -> Json<CodexUpdateReport> {
+    Json(state.task_runtime.codex_update_report().await)
+}
+
+/// Update Codex, on a person's explicit say-so. Codex restarts the shared
+/// runtime when the installed release changes, the same interruption a
+/// restart makes.
+pub(super) async fn codex_update(
+    State(state): State<TaskState>,
+) -> Result<Json<CodexUpdateOutcome>, ApiError> {
+    state
+        .task_runtime
+        .update_daemon()
         .await
         .map(Json)
         .map_err(ApiError::from)

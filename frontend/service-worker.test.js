@@ -159,6 +159,11 @@ test("installs the complete shell without replacing the current worker", async (
       "/assets/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
     ),
   );
+  assert.ok(
+    installedAssets.includes(
+      "/assets/pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
+    ),
+  );
 });
 for (const [name, url, cachePath] of [
   ["navigation", "https://caffold.test/tasks/83", "/"],

@@ -76,21 +76,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn minimum_and_current_mcp_status_shapes_decode_to_safe_diagnostics() {
-        let minimum: McpServerStatusListResponse = serde_json::from_value(json!({
+    fn mcp_statuses_with_and_without_a_runtime_state_decode_to_safe_diagnostics() {
+        let unavailable: McpServerStatusListResponse = serde_json::from_value(json!({
             "data": [{
                 "name": "caffold",
+                "runtimeStatus": null,
+                "pluginId": null,
                 "serverInfo": null,
                 "tools": {},
+                "toolsError": null,
                 "resources": [],
                 "resourceTemplates": [],
                 "authStatus": "unsupported"
             }],
             "nextCursor": null
         }))
-        .expect("Codex 0.147 MCP status response");
-        assert_eq!(minimum.data[0].runtime_status, None);
-        assert_eq!(minimum.data[0].auth_status, CodexMcpAuthStatus::Unsupported);
+        .expect("MCP status without a runtime state");
+        assert_eq!(unavailable.data[0].runtime_status, None);
+        assert_eq!(
+            unavailable.data[0].auth_status,
+            CodexMcpAuthStatus::Unsupported
+        );
 
         let current: McpServerStatusListResponse = serde_json::from_value(json!({
             "data": [{
@@ -105,7 +111,7 @@ mod tests {
             }],
             "nextCursor": "next"
         }))
-        .expect("Codex 0.150 MCP status response");
+        .expect("MCP status with a runtime state");
         assert_eq!(
             current.data,
             [CodexMcpServerDiagnostic {

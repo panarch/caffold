@@ -28,7 +28,7 @@ pub(crate) use thread_section::{
     ThreadSectionMoveResponse,
 };
 
-pub const MINIMUM_SUPPORTED_CODEX_CLI_VERSION: &str = "0.147.0";
+pub const MINIMUM_SUPPORTED_CODEX_CLI_VERSION: &str = "0.155.1";
 
 pub(crate) const INITIALIZE: &str = "initialize";
 pub(crate) const INITIALIZED: &str = "initialized";

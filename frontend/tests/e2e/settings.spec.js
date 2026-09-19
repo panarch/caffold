@@ -8,6 +8,7 @@ import {
   installBrowserDefaults,
   mockClaudeStatus,
   mockCodexStatus,
+  mockCodexUpdates,
   mockGrokStatus,
 } from "./support/browser-defaults.js";
 import {
@@ -479,6 +480,317 @@ test("keeps Codex Settings actionable when runtime restart fails", { tag: "@all-
 
   await expect(settings).toContainText("Codex runtime could not be restarted.");
   await expect(settings.getByRole("button", { name: "Restart runtime…" })).toBeEnabled();
+});
+
+const CODEX_RESTARTED_BY_UPDATE =
+  "The managed installation is ready and the running daemon was restarted. Active or queued work may have been interrupted.";
+
+function codexStatusOn(version) {
+  return mockCodexStatus({
+    readiness: {
+      ...mockCodexStatus().readiness,
+      minimumSupportedVersion: "0.155.1",
+      detectedExecutable: { path: "/Users/example/.local/bin/codex", version },
+      managedExecutable: {
+        path: "/Users/example/.codex/packages/standalone/current/bin/codex",
+        version,
+      },
+      runningAppServerVersion: version,
+    },
+  });
+}
+
+async function serveCodexStatus(page, status) {
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(status()),
+    }),
+  );
+}
+
+async function serveCodexUpdates(page, report) {
+  await page.route(/\/api\/codex\/updates(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(report()),
+    }),
+  );
+}
+
+test("shows the newest Codex and updates it through its own confirmation", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  let updated = false;
+  let updateRequests = 0;
+  let releaseUpdate;
+  const updateGate = new Promise((resolve) => {
+    releaseUpdate = resolve;
+  });
+  await serveCodexStatus(page, () => codexStatusOn(updated ? "0.156.0" : "0.155.1"));
+  await serveCodexUpdates(page, () => updated
+    ? mockCodexUpdates({
+      installedVersion: "0.156.0",
+      runningVersion: "0.156.0",
+      latestVersion: "0.156.0",
+    })
+    : mockCodexUpdates({
+      installedVersion: "0.155.1",
+      runningVersion: "0.155.1",
+      latestVersion: "0.156.0",
+      update: "available",
+    }));
+  await page.route(/\/api\/codex\/update(?:\?|$)/, async (route) => {
+    updateRequests += 1;
+    expect(route.request().method()).toBe("POST");
+    await updateGate;
+    updated = true;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "updated",
+        installedVersion: "0.156.0",
+        runningVersion: "0.156.0",
+        message: CODEX_RESTARTED_BY_UPDATE,
+      }),
+    });
+  });
+
+  await page.goto("/settings/codex");
+  const settings = page.locator("caffold-settings-codex-page");
+  const updates = settings.locator(".settings-codex-updates");
+  const summary = updates.locator("[data-updates-summary]");
+  const update = updates.getByRole("button", { name: "Update Codex…", exact: true });
+  const restart = settings.locator(".settings-runtime-control")
+    .getByRole("button", { name: "Restart runtime…", exact: true });
+  await expect(summary).toHaveText(
+    "Codex 0.156.0 is available. The runtime is on 0.155.1.",
+  );
+  await expect(updates.locator("[data-updates-latest]")).toHaveText("0.156.0");
+  await expect(updates.locator("[data-updates-automatic]")).toHaveText("Off");
+  await expect(update).toBeEnabled();
+  await updates.scrollIntoViewIfNeeded();
+  await captureReviewScreenshot(page, testInfo, "settings-codex-update-available");
+
+  await update.click();
+  const dialog = page.getByRole("dialog", { name: "Update Codex?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Wait for running Tasks and tests to finish");
+  await expect(dialog).toContainText("other connected Codex clients");
+  await expect(page.locator(
+    "caffold-task-workspace > caffold-codex-runtime-update-dialog",
+  )).toHaveCount(1);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  expect(updateRequests).toBe(0);
+
+  await update.click();
+  await dialog.getByRole("button", { name: "Update Codex" }).click();
+  await expect(updates.getByRole("button", { name: "Updating…" })).toBeDisabled();
+  await expect(restart).toBeDisabled();
+
+  releaseUpdate();
+  await expect(settings.locator("[data-update-message]")).toHaveText(
+    `Codex updated to 0.156.0. ${CODEX_RESTARTED_BY_UPDATE}`,
+  );
+  await expect(summary).toHaveText("Codex is up to date.");
+  await expect(update).toBeDisabled();
+  await expect(restart).toBeEnabled();
+  await expect(settings.locator('[data-key="runtime-version"] dd')).toHaveText("0.156.0");
+  expect(updateRequests).toBe(1);
+});
+
+test("keeps Update off for a current Codex and on when the newest release is unknown", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  let channelAnswers = true;
+  await serveCodexStatus(page, () => codexStatusOn("0.155.1"));
+  await serveCodexUpdates(page, () => channelAnswers
+    ? mockCodexUpdates({
+      installedVersion: "0.155.1",
+      runningVersion: "0.155.1",
+      latestVersion: "0.155.1",
+    })
+    : mockCodexUpdates({
+      installedVersion: "0.155.1",
+      runningVersion: "0.155.1",
+      latestVersion: undefined,
+      update: "unknown",
+      problems: {
+        latestVersion: "The Codex release channel answered HTTP 503 Service Unavailable.",
+      },
+    }));
+
+  await page.goto("/settings/codex");
+  const settings = page.locator("caffold-settings-codex-page");
+  const updates = settings.locator(".settings-codex-updates");
+  const update = updates.getByRole("button", { name: "Update Codex…", exact: true });
+  await expect(updates.locator("[data-updates-summary]")).toHaveText("Codex is up to date.");
+  await expect(updates.locator("[data-updates-latest]")).toHaveText("0.155.1");
+  await expect(update).toBeDisabled();
+
+  channelAnswers = false;
+  await settings.getByRole("button", { name: "Refresh" }).click();
+  await expect(updates.locator("[data-updates-summary]")).toHaveText(
+    "Caffold could not check for a Codex update.\nThe Codex release channel answered HTTP 503 Service Unavailable.",
+  );
+  await expect(updates.locator("[data-updates-latest]")).toHaveText("Unavailable");
+  await expect(update).toBeEnabled();
+});
+
+test("names the installed Codex when the running version is unknown", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await serveCodexStatus(page, () => codexStatusOn("0.155.1"));
+  await serveCodexUpdates(page, () => mockCodexUpdates({
+    installedVersion: "0.155.1",
+    runningVersion: undefined,
+    latestVersion: "0.156.0",
+    update: "available",
+  }));
+
+  await page.goto("/settings/codex");
+
+  await expect(page.locator("caffold-settings-codex-page [data-updates-summary]")).toHaveText(
+    "Codex 0.156.0 is available. Codex 0.155.1 is installed.",
+  );
+});
+
+test("keeps Codex Settings usable when an update fails", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await serveCodexStatus(page, () => codexStatusOn("0.155.1"));
+  await serveCodexUpdates(page, () => mockCodexUpdates({
+    installedVersion: "0.155.1",
+    runningVersion: "0.155.1",
+    latestVersion: "0.156.0",
+    update: "available",
+  }));
+  await page.route(/\/api\/codex\/update(?:\?|$)/, (route) =>
+    route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: {
+          code: "agent_error",
+          message: "Codex update failed: standalone Codex updater exited with status 1",
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/settings/codex");
+  const settings = page.locator("caffold-settings-codex-page");
+  const update = settings.getByRole("button", { name: "Update Codex…", exact: true });
+  await update.click();
+  await page.getByRole("dialog", { name: "Update Codex?" })
+    .getByRole("button", { name: "Update Codex" })
+    .click();
+
+  await expect(settings.locator("[data-update-message]")).toHaveText(
+    "Codex update failed: standalone Codex updater exited with status 1",
+  );
+  await expect(update).toBeEnabled();
+  await expect(settings.getByRole("button", { name: "Restart runtime…" })).toBeEnabled();
+});
+
+test("a Codex restart in flight holds the update back", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  let releaseRestart;
+  const restartGate = new Promise((resolve) => {
+    releaseRestart = resolve;
+  });
+  await serveCodexStatus(page, () => codexStatusOn("0.155.1"));
+  await serveCodexUpdates(page, () => mockCodexUpdates({
+    installedVersion: "0.155.1",
+    runningVersion: "0.155.1",
+    latestVersion: "0.156.0",
+    update: "available",
+  }));
+  await page.route(/\/api\/codex\/restart(?:\?|$)/, async (route) => {
+    await restartGate;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ status: "restarted" }),
+    });
+  });
+
+  await page.goto("/settings/codex");
+  const settings = page.locator("caffold-settings-codex-page");
+  const update = settings.getByRole("button", { name: "Update Codex…", exact: true });
+  await expect(update).toBeEnabled();
+  await settings.getByRole("button", { name: "Restart runtime…" }).click();
+  await page.getByRole("dialog", { name: "Restart Codex runtime?" })
+    .getByRole("button", { name: "Restart Codex" })
+    .click();
+
+  await expect(settings.getByRole("button", { name: "Restarting…" })).toBeDisabled();
+  await expect(update).toBeDisabled();
+
+  releaseRestart();
+  await expect(settings).toContainText("Codex runtime restarted.");
+  await expect(update).toBeEnabled();
+});
+
+test("lays out Codex Updates with the same box and action as Runtime", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await serveCodexStatus(page, () => codexStatusOn("0.155.1"));
+  await serveCodexUpdates(page, () => mockCodexUpdates({
+    installedVersion: "0.155.1",
+    runningVersion: "0.155.1",
+    latestVersion: "0.156.0",
+    update: "available",
+  }));
+
+  await page.goto("/settings/codex");
+  const settings = page.locator("caffold-settings-codex-page");
+  const runtime = settings.locator(".settings-runtime-control");
+  const updates = settings.locator(".settings-codex-updates");
+  const restart = runtime.getByRole("button", { name: "Restart runtime…", exact: true });
+  const update = updates.getByRole("button", { name: "Update Codex…", exact: true });
+  await expect(update).toBeEnabled();
+
+  const [runtimeBox, updatesBox, restartBox, updateBox] = await Promise.all([
+    runtime.boundingBox(),
+    updates.boundingBox(),
+    restart.boundingBox(),
+    update.boundingBox(),
+  ]);
+  expect(updatesBox.x).toBeCloseTo(runtimeBox.x, 0);
+  expect(updatesBox.width).toBeCloseTo(runtimeBox.width, 0);
+  expect(updateBox.height).toBeCloseTo(restartBox.height, 0);
+  // Wide boxes end their action at the right; narrow ones stack it under the text.
+  const stacked = await runtime.evaluate(
+    (element) => getComputedStyle(element).flexDirection === "column",
+  );
+  if (stacked) {
+    expect(updateBox.x - updatesBox.x).toBeCloseTo(restartBox.x - runtimeBox.x, 0);
+  } else {
+    expect(updatesBox.x + updatesBox.width - (updateBox.x + updateBox.width))
+      .toBeCloseTo(runtimeBox.x + runtimeBox.width - (restartBox.x + restartBox.width), 0);
+  }
+
+  const box = (element) => {
+    const style = getComputedStyle(element);
+    return {
+      padding: style.padding,
+      borderRadius: style.borderRadius,
+      borderColor: style.borderTopColor,
+      background: style.backgroundColor,
+      direction: style.flexDirection,
+    };
+  };
+  expect(await updates.evaluate(box)).toEqual(await runtime.evaluate(box));
+  const title = (element) => {
+    const style = getComputedStyle(element.querySelector("h3"));
+    return { size: style.fontSize, lineHeight: style.lineHeight };
+  };
+  expect(await updates.evaluate(title)).toEqual(await runtime.evaluate(title));
+  const overflow = await settings.locator(".settings-content-scroll")
+    .evaluate((element) => element.scrollWidth - element.clientWidth);
+  expect(overflow).toBe(0);
 });
 
 test("shows what the Claude installation is on its Settings page", { tag: "@all-viewports" }, async ({

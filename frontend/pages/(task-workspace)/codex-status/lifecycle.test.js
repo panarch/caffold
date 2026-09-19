@@ -355,3 +355,178 @@ test("disconnect invalidates a pending Codex restart response", async () => {
     ["restarting", "idle"],
   );
 });
+
+test("restart and update each hold the one runtime slot and give it back", async () => {
+  const updateGate = deferred();
+  const actions = [];
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => codexStatus("ready", false),
+    restartRuntime: async () => {},
+    updateRuntime: async () => {
+      await updateGate.promise;
+      return { status: "noUpdate", message: "Codex was already current." };
+    },
+    onRuntimeActionChange: (action) => actions.push(action),
+  });
+
+  lifecycle.connect();
+  await settle();
+  const update = lifecycle.requestRuntimeUpdate();
+  assert.equal(lifecycle.runtimeAction(), "updating");
+  assert.equal(lifecycle.canUpdateRuntime(), false);
+  assert.equal(lifecycle.canRestartRuntime(), false);
+
+  updateGate.resolve();
+  await update;
+  assert.equal(lifecycle.runtimeAction(), "idle");
+  assert.equal(lifecycle.updateSnapshot().state, "succeeded");
+
+  await lifecycle.requestRuntimeRestart();
+  assert.deepEqual(actions, ["updating", "idle", "restarting", "idle"]);
+});
+
+test("a restart is refused while an update runs, and an update while a restart runs", async () => {
+  const updateGate = deferred();
+  const restartGate = deferred();
+  let restartRequests = 0;
+  let updateRequests = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => codexStatus("restartRequired"),
+    restartRuntime: async () => {
+      restartRequests += 1;
+      await restartGate.promise;
+    },
+    updateRuntime: async () => {
+      updateRequests += 1;
+      await updateGate.promise;
+      return { status: "noUpdate", message: "Codex was already current." };
+    },
+  });
+
+  lifecycle.connect();
+  await settle();
+  const update = lifecycle.requestRuntimeUpdate();
+  assert.equal(await lifecycle.requestRuntimeRestart(), null);
+  assert.equal(restartRequests, 0);
+  updateGate.resolve();
+  await update;
+
+  const restart = lifecycle.requestRuntimeRestart();
+  assert.equal(await lifecycle.requestRuntimeUpdate(), null);
+  assert.equal(updateRequests, 1);
+  restartGate.resolve();
+  await restart;
+  assert.equal(lifecycle.runtimeAction(), "idle");
+});
+
+test("a repeated update request shares the update in flight", async () => {
+  const updateGate = deferred();
+  let updateRequests = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => codexStatus("ready", false),
+    restartRuntime: async () => {},
+    updateRuntime: async () => {
+      updateRequests += 1;
+      await updateGate.promise;
+      return { status: "noUpdate", message: "Codex was already current." };
+    },
+  });
+
+  lifecycle.connect();
+  await settle();
+  const first = lifecycle.requestRuntimeUpdate();
+  const second = lifecycle.requestRuntimeUpdate();
+  assert.strictEqual(first, second);
+
+  updateGate.resolve();
+  await first;
+  assert.equal(updateRequests, 1);
+});
+
+test("disconnect frees the runtime slot and a late update cannot take it back", async () => {
+  const lateUpdate = deferred();
+  const restartGate = deferred();
+  let loads = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => {
+      loads += 1;
+      return codexStatus("ready", false);
+    },
+    restartRuntime: async () => restartGate.promise,
+    updateRuntime: async () => {
+      await lateUpdate.promise;
+      return { status: "updated", installedVersion: "0.156.0", message: "Updated." };
+    },
+  });
+
+  lifecycle.connect();
+  await settle();
+  const update = lifecycle.requestRuntimeUpdate();
+  lifecycle.disconnect();
+  assert.equal(lifecycle.runtimeAction(), "idle");
+
+  lifecycle.connect();
+  await settle();
+  const restart = lifecycle.requestRuntimeRestart();
+  assert.equal(lifecycle.runtimeAction(), "restarting");
+
+  lateUpdate.resolve();
+  await update;
+  assert.equal(lifecycle.runtimeAction(), "restarting");
+  assert.equal(lifecycle.updateSnapshot().state, "idle");
+
+  restartGate.resolve();
+  await restart;
+  assert.equal(lifecycle.runtimeAction(), "idle");
+  assert.ok(loads >= 2);
+});
+
+test("Codex status refuses an update without a supported target", async () => {
+  for (const state of [
+    "missing",
+    "unsupportedInstall",
+    "updateRequired",
+    "signInRequired",
+    "incompatible",
+    "error",
+  ]) {
+    let updateRequests = 0;
+    const lifecycle = new CodexStatusLifecycle({
+      loadStatus: async () => codexStatus(state),
+      restartRuntime: async () => {},
+      updateRuntime: async () => {
+        updateRequests += 1;
+      },
+    });
+
+    lifecycle.connect();
+    await settle();
+
+    assert.equal(lifecycle.canUpdateRuntime(), false, state);
+    assert.equal(await lifecycle.requestRuntimeUpdate(), null, state);
+    assert.equal(updateRequests, 0, state);
+    lifecycle.disconnect();
+  }
+});
+
+test("a later readiness change clears a finished update message", async () => {
+  let status = codexStatus("restartRequired");
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => status,
+    restartRuntime: async () => {},
+    updateRuntime: async () => {
+      status = codexStatus("ready", false);
+      return { status: "noUpdate", message: "Codex restarted the runtime." };
+    },
+  });
+
+  lifecycle.connect();
+  await settle();
+  await lifecycle.requestRuntimeUpdate();
+  assert.equal(lifecycle.updateSnapshot().state, "succeeded");
+
+  status = codexStatus("restartRequired");
+  await lifecycle.refresh();
+
+  assert.equal(lifecycle.updateSnapshot().state, "idle");
+});

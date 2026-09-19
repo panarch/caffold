@@ -429,7 +429,7 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
             "turnId: string",
             "itemId: string",
             "startedAtMs: number",
-            "cwd: AbsolutePathBuf",
+            "cwd: LegacyAppPathString",
             "permissions: RequestPermissionProfile",
         ],
     );

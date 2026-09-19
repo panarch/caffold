@@ -1030,6 +1030,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-inline-reset::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/settings/components/refresh-button.css", "& > button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/codex/page.css", ".settings-runtime-control button::before", "--interface-control-hit-outset"],
+    ["pages/(task-workspace)/settings/codex/page.css", ".settings-codex-updates button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/about/page.css", ".settings-about-actions button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css", ".task-detail-task-action .task-secondary-button::before", "--interface-compact-hit-outset"],
   ];
@@ -1116,6 +1117,10 @@ test("contextual and inline actions stay compact while page and primary actions 
     [
       "pages/(task-workspace)/settings/codex/page.css",
       ".settings-runtime-control button",
+    ],
+    [
+      "pages/(task-workspace)/settings/codex/page.css",
+      ".settings-codex-updates button",
     ],
     [
       "pages/(task-workspace)/settings/about/page.css",

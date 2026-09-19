@@ -37,7 +37,7 @@ agent's available models are selectable when a Task is created.
 
 ### Codex
 
-Caffold supports the official standalone Codex CLI `0.147.0` or newer at
+Caffold supports the official standalone Codex CLI `0.155.1` or newer at
 `~/.local/bin/codex`. Install it, run `codex`, and complete sign-in:
 
 ```sh
@@ -48,6 +48,12 @@ codex
 **Settings → Codex** reports installation, authentication, app-server runtime,
 and protocol readiness. A blocking Codex problem disables only Codex creation
 and execution; existing readable Tasks and the other agents remain available.
+
+Codex's own automatic updates restart the shared runtime without waiting for
+running work, so Caffold turns them off unless Codex's settings already set
+them on or off. Update Codex from **Settings → Codex** instead.
+[Codex automatic updates](../architecture/codex-app-server.md#codex-automatic-updates)
+describes the setting Caffold writes.
 
 ### Claude Code
 

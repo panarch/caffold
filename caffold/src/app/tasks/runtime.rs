@@ -360,7 +360,7 @@ mod tests {
     use super::*;
     use crate::agent::codex::{
         CodexDaemonInfo, CodexReadiness, CodexReadinessReason, CodexReadinessState,
-        MockCodexResponse,
+        CodexUpdateOutcome, MockCodexResponse,
     };
     use crate::app::tasks::sessions::SessionLifecycle;
 
@@ -416,10 +416,10 @@ mod tests {
                     backend: Some("pid".to_string()),
                     pid: Some(4271),
                     managed_codex_path: None,
-                    managed_codex_version: Some("0.147.0".to_string()),
+                    managed_codex_version: Some("0.155.1".to_string()),
                     socket_path: None,
-                    cli_version: Some("0.147.0".to_string()),
-                    app_server_version: Some("0.147.0".to_string()),
+                    cli_version: Some("0.155.1".to_string()),
+                    app_server_version: Some("0.155.1".to_string()),
                 })
             })
             .await
@@ -520,5 +520,138 @@ mod tests {
             Ok(TaskRuntimeSignal::SessionUnavailable { thread_id, message })
                 if thread_id == "thread_restart" && message == "Codex runtime is restarting."
         ));
+    }
+
+    #[tokio::test]
+    async fn daemon_update_releases_the_existing_proxy_before_running_command() {
+        let runtime = test_runtime(TaskStore::memory().expect("in-memory task store"));
+        runtime
+            .install_test_client(7, CodexThreadClient::mock(Vec::new()))
+            .await;
+
+        let outcome = runtime
+            .update_daemon_with(|| async { Ok(update_outcome()) })
+            .await
+            .expect("update result");
+
+        assert_eq!(outcome, update_outcome());
+        assert_eq!(runtime.diagnostics().await, (7, false));
+    }
+
+    #[tokio::test]
+    async fn failed_daemon_update_leaves_the_stale_proxy_released_for_recovery() {
+        let runtime = test_runtime(TaskStore::memory().expect("in-memory task store"));
+        runtime
+            .install_test_client(11, CodexThreadClient::mock(Vec::new()))
+            .await;
+
+        let error = runtime
+            .update_daemon_with(|| async {
+                Err(CodexThreadError::UpdateFailed(
+                    "standalone Codex updater exited with status 1".to_string(),
+                ))
+            })
+            .await
+            .expect_err("update failure");
+
+        assert_eq!(
+            error.to_string(),
+            "Codex update failed: standalone Codex updater exited with status 1"
+        );
+        assert_eq!(runtime.diagnostics().await, (11, false));
+    }
+
+    #[tokio::test]
+    async fn daemon_update_marks_subscribed_sessions_unavailable() {
+        let sessions = TaskSessions::default();
+        let (shutdown, _) = broadcast::channel(1);
+        let runtime = TaskRuntime::new(
+            agent::claude::ClaudeClient::mock().0,
+            agent::grok::GrokClient::unreachable(),
+            sessions.clone(),
+            TaskEvents::default(),
+            TaskStore::memory().expect("in-memory task store"),
+            shutdown,
+        );
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "cwd": "Workspace/rust/codger",
+                "thread": {
+                    "id": "thread_update",
+                    "preview": "Update recovery",
+                    "status": { "type": "idle" },
+                    "cwd": "Workspace/rust/codger",
+                    "createdAt": 1.0,
+                    "updatedAt": 1.0,
+                    "turns": []
+                },
+                "initialTurnsPage": {
+                    "data": [],
+                    "nextCursor": null,
+                    "backwardsCursor": null
+                }
+            }),
+        )]);
+        runtime.install_test_client(13, client.clone()).await;
+        sessions
+            .ensure_subscribed(&client.driver(), 13, "thread_update")
+            .await
+            .expect("subscribed session");
+        let mut signals = runtime.subscribe();
+
+        runtime
+            .update_daemon_with(|| async { Ok(update_outcome()) })
+            .await
+            .expect("update result");
+
+        let snapshot = sessions
+            .snapshot("thread_update")
+            .await
+            .expect("session snapshot");
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Error);
+        assert_eq!(
+            snapshot.last_error.as_deref(),
+            Some("Codex runtime is updating.")
+        );
+        assert!(matches!(
+            signals.try_recv(),
+            Ok(TaskRuntimeSignal::SessionUnavailable { thread_id, message })
+                if thread_id == "thread_update" && message == "Codex runtime is updating."
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_update_report_reads_the_running_version_the_last_readiness_saw() {
+        let runtime = test_runtime(TaskStore::memory().expect("in-memory task store"));
+        runtime
+            .set_test_readiness(CodexReadiness {
+                state: CodexReadinessState::RestartRequired,
+                blocks_task_operations: false,
+                reason_code: CodexReadinessReason::RuntimeVersionMismatch,
+                diagnostic_message:
+                    "Codex 0.156.0 is installed while app-server runtime 0.155.1 is running."
+                        .to_string(),
+                minimum_supported_version: "0.155.1".to_string(),
+                detected_executable: None,
+                managed_executable: None,
+                running_app_server_version: Some("0.155.1".to_string()),
+            })
+            .await;
+
+        assert_eq!(
+            runtime.codex_update_running_version().await.as_deref(),
+            Some("0.155.1")
+        );
+    }
+
+    fn update_outcome() -> CodexUpdateOutcome {
+        serde_json::from_value(json!({
+            "status": "updated",
+            "installedVersion": "0.156.0",
+            "runningVersion": "0.156.0",
+            "message": "The managed installation is ready and the running daemon was restarted. Active or queued work may have been interrupted."
+        }))
+        .expect("update outcome")
     }
 }

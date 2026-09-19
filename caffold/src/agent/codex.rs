@@ -2,6 +2,7 @@
 use std::collections::VecDeque;
 use std::{
     collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -12,6 +13,7 @@ use std::{
 use futures_util::{SinkExt, StreamExt, stream::SplitSink, stream::SplitStream};
 mod clarification;
 mod contract;
+mod daemon_settings;
 mod mcp;
 mod protocol;
 mod readiness;
@@ -20,6 +22,7 @@ mod reconnect_spike;
 mod served_tools;
 mod status;
 mod transport;
+mod update;
 
 pub(crate) use contract::{
     ApprovalKind, approval_request, approval_response, codex_mode_id, codex_models,
@@ -96,6 +99,7 @@ use tokio::{
 };
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 use transport::ProxyStream;
+pub(crate) use update::{CodexUpdateOutcome, CodexUpdateReport};
 
 use super::http_mcp::CAFFOLD_MCP_SERVER_NAME;
 
@@ -337,6 +341,8 @@ pub(crate) enum CodexThreadError {
     Readiness(Box<CodexReadiness>),
     #[error("Failed to start Codex app-server: {0}")]
     StartFailed(String),
+    #[error("Codex update failed: {0}")]
+    UpdateFailed(String),
     #[error("Codex app-server {phase} timed out after {timeout_ms}ms.")]
     StartupTimeout {
         phase: &'static str,
@@ -386,6 +392,7 @@ impl From<CodexThreadError> for super::AgentError {
                 AgentError::TimedOut(error.to_string())
             }
             CodexThreadError::StartFailed(_)
+            | CodexThreadError::UpdateFailed(_)
             | CodexThreadError::InitializationFailed { .. }
             | CodexThreadError::InvalidParams(_)
             | CodexThreadError::Protocol(_) => AgentError::Failed(error.to_string()),
@@ -428,7 +435,7 @@ impl CodexThreadClient {
         installation: &CodexInstallation,
         mcp: Option<CodexMcpBindings>,
     ) -> Result<Self, CodexThreadError> {
-        let daemon = transport::ensure_daemon(&installation.path).await?;
+        let daemon = daemon_start(&installation.path, daemon_settings::codex_home()).await?;
         Self::start_with_proxy(&installation.path, None, daemon, mcp).await
     }
 
@@ -537,7 +544,20 @@ impl CodexThreadClient {
         let installation = inspect_codex_installation()
             .await
             .map_err(|readiness| CodexThreadError::Readiness(Box::new(readiness)))?;
-        transport::restart_daemon(&installation.path).await
+        daemon_restart(&installation.path, daemon_settings::codex_home()).await
+    }
+
+    /// Runs Codex's own updater once, on a person's explicit say-so. Codex
+    /// restarts the shared daemon when the installed release changes.
+    pub(crate) async fn update_daemon() -> Result<CodexUpdateOutcome, CodexThreadError> {
+        let installation = inspect_codex_installation()
+            .await
+            .map_err(|readiness| CodexThreadError::Readiness(Box::new(readiness)))?;
+        daemon_update(&installation.path, daemon_settings::codex_home()).await
+    }
+
+    pub(crate) async fn update_report(running_version: Option<String>) -> CodexUpdateReport {
+        update::update_report(running_version).await
     }
 
     fn inner(&self) -> &Arc<CodexThreadClientInner> {
@@ -1677,6 +1697,48 @@ impl CodexThreadClient {
     }
 }
 
+// Codex's own updater restarts the shared daemon whenever a release lands,
+// and Caffold restarts it only when a person confirms. Every daemon command
+// Caffold runs therefore goes after the updater is off, unless Codex's
+// settings already say whether it runs; `daemon start` and `restart` read
+// that setting and stop a running updater.
+
+async fn daemon_start(
+    codex: &Path,
+    codex_home: Result<PathBuf, String>,
+) -> Result<CodexDaemonInfo, CodexThreadError> {
+    turn_off_automatic_updates(codex_home).await;
+    transport::ensure_daemon(codex).await
+}
+
+async fn daemon_restart(
+    codex: &Path,
+    codex_home: Result<PathBuf, String>,
+) -> Result<CodexDaemonInfo, CodexThreadError> {
+    turn_off_automatic_updates(codex_home).await;
+    transport::restart_daemon(codex).await
+}
+
+async fn daemon_update(
+    codex: &Path,
+    codex_home: Result<PathBuf, String>,
+) -> Result<CodexUpdateOutcome, CodexThreadError> {
+    turn_off_automatic_updates(codex_home).await;
+    transport::update_daemon(codex).await
+}
+
+/// A setting that cannot be written leaves Codex's updater as it was; the
+/// daemon command still runs, and Settings shows the updater's state.
+async fn turn_off_automatic_updates(codex_home: Result<PathBuf, String>) {
+    let outcome = match codex_home {
+        Ok(codex_home) => daemon_settings::turn_off_automatic_updates_when_unset(&codex_home).await,
+        Err(problem) => Err(problem),
+    };
+    if let Err(problem) = outcome {
+        eprintln!("Caffold could not turn off Codex automatic updates: {problem}");
+    }
+}
+
 async fn read_thread_server_loop(
     mut reader: SplitStream<WebSocketStream<ProxyStream>>,
     inner: Arc<CodexThreadClientInner>,
@@ -1847,6 +1909,82 @@ mod tests {
         assert!(!is_fast_service_tier(Some("unknown")));
         assert!(is_fast_service_tier(Some("priority")));
         assert!(is_fast_service_tier(Some(" PRIORITY ")));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn every_daemon_command_runs_after_automatic_updates_are_off() {
+        let home = tempfile::TempDir::new().unwrap();
+        daemon_start(
+            &codex_requiring_updates_off(&home),
+            Ok(home.path().to_path_buf()),
+        )
+        .await
+        .expect("daemon start");
+
+        let home = tempfile::TempDir::new().unwrap();
+        daemon_restart(
+            &codex_requiring_updates_off(&home),
+            Ok(home.path().to_path_buf()),
+        )
+        .await
+        .expect("daemon restart");
+
+        let home = tempfile::TempDir::new().unwrap();
+        daemon_update(
+            &codex_requiring_updates_off(&home),
+            Ok(home.path().to_path_buf()),
+        )
+        .await
+        .expect("daemon update");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_setting_that_cannot_be_written_does_not_hold_back_the_daemon_command() {
+        let codex = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/agent/codex/transport/fixtures/fake-codex-daemon");
+        let home = tempfile::TempDir::new().unwrap();
+        let settings = home.path().join("app-server-daemon/settings.json");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(&settings, "{not json").unwrap();
+
+        let daemon = daemon_start(&codex, Ok(home.path().to_path_buf()))
+            .await
+            .expect("daemon start runs anyway");
+        assert_eq!(daemon.status, "started");
+        assert_eq!(std::fs::read_to_string(&settings).unwrap(), "{not json");
+
+        let daemon = daemon_restart(&codex, Err("the Codex home is unknown".to_string()))
+            .await
+            .expect("daemon restart runs anyway");
+        assert_eq!(daemon.status, "restarted");
+    }
+
+    /// A Codex stand-in that answers a daemon command only when Codex's
+    /// settings already turn the updater off.
+    #[cfg(unix)]
+    fn codex_requiring_updates_off(home: &tempfile::TempDir) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let settings = home.path().join("app-server-daemon/settings.json");
+        let script = r#"#!/bin/sh
+grep -q '"autoUpdateEnabled": false' 'SETTINGS' || {
+  echo "automatic updates were still on" >&2
+  exit 3
+}
+case "$3" in
+  start) printf '%s' '{"status":"started"}' ;;
+  restart) printf '%s' '{"status":"restarted"}' ;;
+  update) printf '%s' '{"status":"noUpdate","message":"The managed installation and running daemon are already current; the daemon was left running."}' ;;
+  *) echo "unexpected arguments: $*" >&2; exit 2 ;;
+esac
+"#
+        .replace("SETTINGS", &settings.display().to_string());
+        let codex = home.path().join("codex");
+        std::fs::write(&codex, script).unwrap();
+        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755)).unwrap();
+        codex
     }
 
     #[tokio::test]
