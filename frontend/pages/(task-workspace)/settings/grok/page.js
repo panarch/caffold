@@ -144,6 +144,10 @@ class CaffoldSettingsGrokPage extends HTMLElement {
               <p>The Grok CLI installation this server drives.</p>
               <caffold-settings-refresh-button></caffold-settings-refresh-button>
             </header>
+            <section aria-labelledby="settings-grok-usage-title">
+              <h3 id="settings-grok-usage-title">Usage</h3>
+              <caffold-settings-detail-list data-grok-usage></caffold-settings-detail-list>
+            </section>
             <section aria-labelledby="settings-grok-agent-title">
               <h3 id="settings-grok-agent-title">Agent</h3>
               <caffold-settings-detail-list data-grok-agent></caffold-settings-detail-list>
@@ -151,10 +155,6 @@ class CaffoldSettingsGrokPage extends HTMLElement {
             <section aria-labelledby="settings-grok-account-title">
               <h3 id="settings-grok-account-title">Account</h3>
               <caffold-settings-detail-list data-grok-account></caffold-settings-detail-list>
-            </section>
-            <section aria-labelledby="settings-grok-usage-title">
-              <h3 id="settings-grok-usage-title">Usage</h3>
-              <caffold-settings-detail-list data-grok-usage></caffold-settings-detail-list>
             </section>
             <section aria-labelledby="settings-grok-leader-title">
               <h3 id="settings-grok-leader-title">Leader</h3>

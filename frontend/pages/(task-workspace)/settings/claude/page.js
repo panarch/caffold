@@ -192,13 +192,13 @@ class CaffoldSettingsClaudePage extends HTMLElement {
               <p>The Claude Code installation this server drives.</p>
               <caffold-settings-refresh-button></caffold-settings-refresh-button>
             </header>
-            <section aria-labelledby="settings-claude-agent-title">
-              <h3 id="settings-claude-agent-title">Agent</h3>
-              <caffold-settings-detail-list data-claude-agent></caffold-settings-detail-list>
-            </section>
             <section aria-labelledby="settings-claude-usage-title">
               <h3 id="settings-claude-usage-title">Usage</h3>
               <caffold-settings-detail-list data-claude-usage></caffold-settings-detail-list>
+            </section>
+            <section aria-labelledby="settings-claude-agent-title">
+              <h3 id="settings-claude-agent-title">Agent</h3>
+              <caffold-settings-detail-list data-claude-agent></caffold-settings-detail-list>
             </section>
             <section aria-labelledby="settings-claude-runtime-title">
               <div class="settings-runtime-control">
