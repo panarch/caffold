@@ -47,6 +47,18 @@ impl TaskRuntime {
                             runtime.refresh_claude_transcript(&conversation_id).await;
                         });
                     }
+                    Ok(ClaudeRuntimeEvent::TurnRetold {
+                        conversation_id,
+                        turn_id,
+                    }) => {
+                        runtime
+                            .sessions
+                            .release_live_turn(&conversation_id, &turn_id);
+                        let runtime = runtime.clone();
+                        tokio::spawn(async move {
+                            runtime.refresh_claude_transcript(&conversation_id).await;
+                        });
+                    }
                     Ok(ClaudeRuntimeEvent::Approval {
                         conversation_id,
                         request,

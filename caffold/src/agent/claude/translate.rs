@@ -210,14 +210,20 @@ pub(crate) fn prompt_item(
 }
 
 /// A message steered into a running turn, under the name both readers give
-/// it: the one Caffold sent it under, which Claude keeps as the queued
-/// command's `source_uuid`.
+/// it.
 pub(crate) fn steer_item(
     name: &str,
     said: Vec<CaffoldContent>,
     at_ms: Option<u64>,
 ) -> ConversationItem {
-    user_message_item(&format!("{name}:steer"), said, at_ms)
+    user_message_item(&steer_item_id(name), said, at_ms)
+}
+
+/// The name both readers give a message steered into a running turn: the one
+/// Caffold sent it under, which Claude keeps as the queued command's
+/// `source_uuid`.
+pub(crate) fn steer_item_id(name: &str) -> String {
+    format!("{name}:steer")
 }
 
 /// What a person said, out of what Caffold was given to send.

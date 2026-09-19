@@ -144,16 +144,21 @@ test("work details show only direct item times instead of repeating the turn anc
   ).toHaveCount(0);
 });
 
-test("active task without a canonical turn keeps a disabled composer Stop action", { tag: "@all-viewports" }, async ({
+test("active task without a canonical turn offers the composer Stop action", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
   const detail = taskDetailFixture({ running: true });
   detail.task.latestTurnStatus = null;
   detail.task.activeTurn = null;
+  let interruptRequests = 0;
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({ json: detail }),
   );
+  await page.route("**/api/tasks/thread-1/interrupt", (route) => {
+    interruptRequests += 1;
+    return route.fulfill({ json: detail });
+  });
 
   await page.goto("/tasks/thread-1?cwd=src");
   await emitTaskDetailBootstrap(page, detail);
@@ -165,9 +170,8 @@ test("active task without a canonical turn keeps a disabled composer Stop action
     page.locator(".task-detail-info-button .task-status-spinner"),
   ).toHaveCSS("color", "rgb(74, 74, 74)");
   await expect(page.getByRole("button", { name: "Interrupt" })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Stop current turn", exact: true }),
-  ).toBeDisabled();
+  const stop = page.getByRole("button", { name: "Stop current turn", exact: true });
+  await expect(stop).toBeEnabled();
   const active = page.locator(".task-turn-active");
   await expect(active).toBeVisible();
   await expect(active.locator(".task-active-turn-spinner")).toHaveCSS(
@@ -176,6 +180,9 @@ test("active task without a canonical turn keeps a disabled composer Stop action
   );
   await expect(active).not.toHaveAttribute("data-active-turn-started-ms");
   await expect(active.locator(".task-turn-active-duration")).toHaveText("Working");
+
+  await stop.click();
+  await expect.poll(() => interruptRequests).toBe(1);
 });
 
 test("keeps the composer Stop action stable while an interrupt request is pending", { tag: "@desktop" }, async ({
@@ -222,6 +229,59 @@ test("keeps the composer Stop action stable while an interrupt request is pendin
   await expect(form).toHaveAttribute("aria-busy", "false");
   await expect(primaryAction).toHaveAttribute("data-primary-action", "send");
   await expect(primaryAction).toBeEnabled();
+});
+
+test("returns the messages a stop cancelled to the composer ahead of the draft", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const runningDetail = taskDetailFixture({ running: true });
+  const stoppedDetail = taskDetailFixture();
+  stoppedDetail.revision = 2;
+  stoppedDetail.task.title = runningDetail.task.title;
+  const picture =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  let interruptRequests = 0;
+  let releaseInterrupt;
+  const interruptGate = new Promise((resolve) => {
+    releaseInterrupt = resolve;
+  });
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: runningDetail }),
+  );
+  await page.route("**/api/tasks/thread-1/interrupt", async (route) => {
+    interruptRequests += 1;
+    await interruptGate;
+    return route.fulfill({
+      json: {
+        ...stoppedDetail,
+        cancelledPrompts: [
+          { prompt: "Also say pong.", images: [] },
+          { prompt: "And look at this.", images: [picture] },
+        ],
+      },
+    });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, runningDetail);
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  const prompt = form.getByRole("textbox", { name: "Follow-up prompt" });
+  await form
+    .getByRole("button", { name: "Stop current turn", exact: true })
+    .click();
+  await expect.poll(() => interruptRequests).toBe(1);
+  await prompt.fill("Continue after the stop");
+
+  releaseInterrupt();
+
+  await expect(prompt).toHaveValue(
+    "Also say pong.\n\nAnd look at this.\n\nContinue after the stop",
+  );
+  await expect(form.locator(".task-composer-attachment img")).toHaveAttribute(
+    "src",
+    picture,
+  );
 });
 
 test("updates stable detail regions and preserves an active IME composition", { tag: "@all-viewports" }, async ({

@@ -136,6 +136,13 @@ pub(crate) struct SystemFrame {
     /// fields above.
     #[serde(default)]
     pub(crate) state: Option<String>,
+    /// The background task a `task_started` names or a `task_notification`
+    /// reports on.
+    #[serde(default)]
+    pub(crate) task_id: Option<String>,
+    /// Whether a `task_started` task runs on past the turn that started it.
+    #[serde(default)]
+    pub(crate) is_backgrounded: bool,
 }
 
 /// One API message, as the agent produced it.
@@ -379,6 +386,14 @@ pub(crate) struct ControlAnswer {
     /// The questions as the agent asked them, so they can be asked again
     /// exactly as they were rather than described a second time.
     pub(crate) unanswered: Vec<Value>,
+}
+
+/// What the agent says it cancelled along with a turn it stopped.
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct InterruptReceipt {
+    /// The messages it cancelled, by the uuids they went out under.
+    #[serde(default)]
+    pub(crate) cancelled: Vec<String>,
 }
 
 impl ControlResponseBody {

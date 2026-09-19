@@ -1,6 +1,5 @@
 #[cfg(test)]
 use crate::app::error::ApiError;
-#[cfg(test)]
 use crate::app::tasks::TaskDetailResponse;
 #[cfg(test)]
 use crate::task_store::ManagedThread;
@@ -139,6 +138,22 @@ struct TaskPromptOutcome {
     user_message: ConversationItem,
     steered: bool,
     started_turn: Option<(TurnState, TurnOptions)>,
+}
+
+/// The Task once its agent took the stop, and the messages the stop cancelled
+/// before the agent took them in, for whoever stopped it to send again.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskInterruptResponse {
+    #[serde(flatten)]
+    detail: TaskDetailResponse,
+    cancelled_prompts: Vec<CancelledPromptResponse>,
+}
+
+#[derive(Debug, Serialize)]
+struct CancelledPromptResponse {
+    prompt: String,
+    images: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

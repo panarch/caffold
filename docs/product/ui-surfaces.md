@@ -157,7 +157,10 @@ open and restores its text, attachments, and selected options for retry; an
 outcome-unknown transport failure keeps the unconfirmed entry visible without
 automatic replay.
 
-The Composer owns its draft, attachments, selection, and voice capture. When
+The Composer owns its draft, attachments, selection, and voice capture. A stop
+that cancels messages sent into the turn before the agent took them in returns
+them to the Composer with their attachments, in the order they were sent and
+ahead of the current draft; the conversation no longer shows them. When
 the selected voice provider is not ready, its voice action opens
 **Settings → Voice Input** instead of recording. Task child switching does
 not interrupt the selected Task's stream.

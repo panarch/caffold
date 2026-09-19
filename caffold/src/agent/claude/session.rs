@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 
 use serde_json::Value;
-use tokio::sync::{Mutex as AsyncMutex, RwLock};
+use tokio::sync::{Mutex as AsyncMutex, Notify, RwLock};
 
 use caffold_claude_runner::protocol::SessionState as RunnerSessionState;
 
@@ -115,6 +115,7 @@ impl ClaudeClient {
                 fast_mode_requested: false,
                 ..SessionState::default()
             }),
+            unowned_turn_settled: Notify::new(),
             pending: AsyncMutex::new(HashMap::new()),
             next_control_id: AtomicU64::new(1),
             closing: AtomicBool::new(false),
