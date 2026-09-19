@@ -290,7 +290,9 @@ Settings includes:
 - Codex installation readiness, repair guidance, runtime status, Refresh,
   diagnostics, and an explicit confirmed runtime restart available while the
   canonical runtime is ready or requires restart; the ready-state action is
-  neutral, while a required restart retains attention styling;
+  neutral, while a required restart retains attention styling; and Updates,
+  with the newest Codex release, whether Codex's own automatic updates are on,
+  and an explicit confirmed **Update Codex…** action;
 - Claude installation status, shown and never gated on: the binary's version
   and path, the signed-in account and plan, the plan's usage windows as the
   agent itself reports them, and the runner's process state, with a **Refresh**
@@ -338,6 +340,16 @@ readiness after success. Refreshed readiness releases the Codex surfaces it
 holds. The browser is the complete settings surface, while the macOS menu may
 expose a compact control when both surfaces use the same server state and
 action.
+
+Codex Settings checks for a newer Codex only when the page opens, on Refresh,
+and after a restart or update. **Update Codex…** runs Codex's own updater once.
+It is available under the same readiness as restart unless the check found
+Codex current, asks for its own confirmation, and reports what Codex says it
+did, including whether the runtime restarted. A restart and an update never run
+together: while one runs, the other is unavailable, including **Restart Codex**
+in Task setup.
+[Codex App Server](../architecture/codex-app-server.md#explicit-update) owns
+the update contract.
 
 ## Product boundaries
 

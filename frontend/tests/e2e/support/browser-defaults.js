@@ -90,6 +90,18 @@ export function mockCodexStatus(overrides = {}) {
   };
 }
 
+/** An update report agreeing with `mockCodexStatus`: nothing newer to install. */
+export function mockCodexUpdates(overrides = {}) {
+  return {
+    installedVersion: "0.147.0",
+    runningVersion: "0.147.0",
+    latestVersion: "0.147.0",
+    automaticUpdates: "disabled",
+    update: "upToDate",
+    ...overrides,
+  };
+}
+
 export function mockClaudeStatus(overrides = {}) {
   return {
     executable: {
@@ -182,6 +194,13 @@ export async function installBrowserDefaults(page) {
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(mockCodexStatus()),
+    }),
+  );
+
+  await page.route(/\/api\/codex\/updates(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexUpdates()),
     }),
   );
 

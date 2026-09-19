@@ -12,10 +12,14 @@ case "$3" in
   restart)
     status=restarted
     ;;
+  update)
+    printf '%s' '{"status":"updated","managedCodexPath":"/Users/example/.codex/packages/standalone/current/bin/codex","installedVersion":"0.156.0","runningVersion":"0.156.0","message":"The managed installation is ready and the running daemon was restarted. Active or queued work may have been interrupted."}'
+    exit 0
+    ;;
   *)
     echo "unexpected arguments: $*" >&2
     exit 2
     ;;
 esac
 
-printf '{"status":"%s","backend":"pid","pid":4271,"managedCodexPath":"/Users/example/.codex/packages/standalone/current/codex","managedCodexVersion":"0.147.0","cliVersion":"0.147.0","appServerVersion":"0.147.0"}' "$status"
+printf '{"status":"%s","backend":"pid","pid":4271,"managedCodexPath":"/Users/example/.codex/packages/standalone/current/codex","managedCodexVersion":"0.155.1","cliVersion":"0.155.1","appServerVersion":"0.155.1"}' "$status"

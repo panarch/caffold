@@ -517,7 +517,7 @@ mod tests {
         fn with_version(version: ScriptedVersion) -> Self {
             Self {
                 version,
-                ..Self::supported("0.147.0")
+                ..Self::supported("0.155.1")
             }
         }
 
@@ -672,10 +672,10 @@ mod tests {
 
     #[test]
     fn minimum_policy_accepts_compatible_upgrades() {
-        assert!(!version_meets_minimum("0.146.9"));
-        assert!(!version_meets_minimum("0.147.0-alpha.1"));
-        assert!(version_meets_minimum("0.147.0"));
-        assert!(version_meets_minimum("0.148.0"));
+        assert!(!version_meets_minimum("0.155.0"));
+        assert!(!version_meets_minimum("0.155.1-alpha.1"));
+        assert!(version_meets_minimum("0.155.1"));
+        assert!(version_meets_minimum("0.156.0"));
         assert!(version_meets_minimum("1.0.0"));
     }
 
@@ -689,7 +689,7 @@ mod tests {
         let explicit = temp.path().join("override-codex");
         write_executable_marker(&standalone);
         write_executable_marker(&explicit);
-        let probe = ScriptedCodexProbe::supported("0.147.0");
+        let probe = ScriptedCodexProbe::supported("0.155.1");
 
         let installation = inspect_codex_installation_from_with_probe(
             Some(explicit.as_os_str()),
@@ -702,7 +702,7 @@ mod tests {
         .expect("explicit override is eligible");
 
         assert_eq!(installation.path, explicit);
-        assert_eq!(installation.executable.version.as_deref(), Some("0.147.0"));
+        assert_eq!(installation.executable.version.as_deref(), Some("0.155.1"));
         assert_eq!(
             probe.calls(),
             [
@@ -726,7 +726,7 @@ mod tests {
         write_executable_marker(&standalone);
         write_executable_marker(&path_codex);
         let search_path = env::join_paths([&path_bin]).expect("join PATH");
-        let probe = ScriptedCodexProbe::supported("0.147.0");
+        let probe = ScriptedCodexProbe::supported("0.155.1");
 
         let installation = inspect_codex_installation_from_with_probe(
             None,
@@ -797,7 +797,7 @@ mod tests {
     #[tokio::test]
     async fn reports_missing_when_no_supported_or_diagnostic_candidate_exists() {
         let temp = tempfile::tempdir().expect("temporary Codex fixture");
-        let probe = ScriptedCodexProbe::supported("0.147.0");
+        let probe = ScriptedCodexProbe::supported("0.155.1");
         let readiness =
             inspect_codex_installation_from_with_probe(None, None, Some(temp.path()), &[], &probe)
                 .await
@@ -818,7 +818,7 @@ mod tests {
     async fn invalid_override_is_rejected_without_running_a_probe() {
         let temp = tempfile::tempdir().expect("temporary Codex fixture");
         let missing = temp.path().join("missing-codex");
-        let probe = ScriptedCodexProbe::supported("0.147.0");
+        let probe = ScriptedCodexProbe::supported("0.155.1");
 
         let readiness = inspect_codex_installation_from_with_probe(
             Some(missing.as_os_str()),
@@ -902,7 +902,7 @@ mod tests {
         std::fs::create_dir_all(&home_bin).expect("create standalone bin");
         let codex = home_bin.join("codex");
         write_executable_marker(&codex);
-        let probe = ScriptedCodexProbe::supported("0.146.9");
+        let probe = ScriptedCodexProbe::supported("0.155.0");
 
         let readiness =
             inspect_codex_installation_from_with_probe(None, None, Some(temp.path()), &[], &probe)
@@ -916,7 +916,7 @@ mod tests {
                 CodexReadinessReason::VersionBelowMinimum
             )
         );
-        assert!(readiness.diagnostic_message.contains("0.146.9"));
+        assert!(readiness.diagnostic_message.contains("0.155.0"));
         assert_eq!(probe.calls(), [ProbeCall::Version]);
     }
 
@@ -927,7 +927,7 @@ mod tests {
         let home_bin = temp.path().join(".local/bin");
         std::fs::create_dir_all(&home_bin).expect("create standalone bin");
         write_executable_marker(&home_bin.join("codex"));
-        let probe = ScriptedCodexProbe::supported("0.147.0").with_daemon(
+        let probe = ScriptedCodexProbe::supported("0.155.1").with_daemon(
             ScriptedCapability::Unavailable("scripted app-server daemon unavailable"),
         );
 
@@ -957,7 +957,7 @@ mod tests {
         let home_bin = temp.path().join(".local/bin");
         std::fs::create_dir_all(&home_bin).expect("create standalone bin");
         write_executable_marker(&home_bin.join("codex"));
-        let probe = ScriptedCodexProbe::supported("0.147.0").with_proxy(
+        let probe = ScriptedCodexProbe::supported("0.155.1").with_proxy(
             ScriptedCapability::Unavailable("scripted app-server proxy unavailable"),
         );
 
@@ -992,7 +992,7 @@ mod tests {
         std::fs::create_dir_all(&home_bin).expect("create standalone bin");
         let codex = home_bin.join("codex");
         write_executable_marker(&codex);
-        let probe = ScriptedCodexProbe::supported("0.147.0").with_daemon(
+        let probe = ScriptedCodexProbe::supported("0.155.1").with_daemon(
             ScriptedCapability::CheckFailed("scripted capability execution failure"),
         );
 
@@ -1029,7 +1029,7 @@ mod tests {
                 .expect("checked-in fixture must satisfy every process probe");
 
         assert_eq!(installation.path, codex);
-        assert_eq!(installation.executable.version.as_deref(), Some("0.147.0"));
+        assert_eq!(installation.executable.version.as_deref(), Some("0.155.1"));
     }
 
     #[cfg(unix)]

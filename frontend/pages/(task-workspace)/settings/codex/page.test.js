@@ -47,10 +47,12 @@ test("provides current Codex actions and its exact scrollport", () => {
   const refreshRequests = [];
   const copy = button("Copy command");
   const restart = button("Restart runtime");
+  const update = button("Update Codex…");
   const guide = link("Official Codex CLI guide");
   const controls = new Map([
     ['button[data-action="copy-codex-install"]', copy],
     ['button[data-action="open-codex-restart"]', restart],
+    ['button[data-action="open-codex-update"]', update],
     ['.settings-codex-repair a[href]', guide],
   ]);
   const owner = {
@@ -74,6 +76,7 @@ test("provides current Codex actions and its exact scrollport", () => {
     "settings:codex:refresh",
     "settings:codex:copy-install-command",
     "settings:codex:restart-runtime",
+    "settings:codex:update-runtime",
     "settings:codex:official-guide",
   ]);
   assert.deepEqual(refreshRequests[0].clipRoots, [owner, scrollport]);
@@ -81,6 +84,8 @@ test("provides current Codex actions and its exact scrollport", () => {
   assert.equal(codex.scrollSurfaceScope.call(owner).surfaces[0].scrollport, scrollport);
   copy.disabled = true;
   assert.equal(scope.targets[1].isActionable(), false);
+  update.disabled = true;
+  assert.equal(scope.targets[3].isActionable(), false);
   guide.hidden = true;
   assert.equal(scope.targets.at(-1).isActionable(), false);
   owner.hidden = true;

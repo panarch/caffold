@@ -43,6 +43,7 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
     this.stateReady = true;
     this.snapshotValue = INITIAL_CODEX_STATUS_SNAPSHOT;
     this.restartStateValue = { state: "idle", message: "" };
+    this.runtimeActionValue = "idle";
     this.copyState = "idle";
     this.listenersAttached = false;
     this.boundClick = (event) => this.handleClick(event);
@@ -102,6 +103,13 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
   setRestartState(state) {
     this.ensureState();
     this.restartStateValue = state ?? { state: "idle", message: "" };
+    this.patch();
+  }
+
+  /** A Codex update replaces the runtime too, so it holds Restart back. */
+  setRuntimeAction(action) {
+    this.ensureState();
+    this.runtimeActionValue = action ?? "idle";
     this.patch();
   }
 
@@ -277,6 +285,7 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
         showSettings: false,
         restartState: this.restartStateValue.state,
         restartMessage: this.restartStateValue.message,
+        runtimeAction: this.runtimeActionValue,
         copyLabel: "Copy command",
         versions: {},
       });
@@ -297,6 +306,7 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
           showRestart: false,
           restartState: this.restartStateValue.state,
           restartMessage: this.restartStateValue.message,
+          runtimeAction: this.runtimeActionValue,
           copyLabel: "Copy command",
           versions: {},
         });
@@ -336,6 +346,7 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
       showSettings: true,
       restartState: this.restartStateValue.state,
       restartMessage: this.restartStateValue.message,
+      runtimeAction: this.runtimeActionValue,
       copyLabel,
       commandLabel,
       versions: {
@@ -381,7 +392,7 @@ function patchReadinessCard(root, view) {
   );
   const restarting = ["restarting", "refreshing"].includes(view.restartState);
   restart.toggleAttribute("hidden", !view.showRestart);
-  restart.disabled = restarting;
+  restart.disabled = restarting || view.runtimeAction === "updating";
   restart.textContent = view.restartState === "refreshing"
     ? "Checking…"
     : restarting ? "Restarting…" : "Restart Codex";

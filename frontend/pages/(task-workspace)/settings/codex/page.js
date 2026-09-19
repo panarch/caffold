@@ -1,8 +1,11 @@
+import { getCodexUpdates } from "../../../../api.js";
 import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
+  CODEX_RUNTIME_UPDATE_REQUEST_EVENT,
   CODEX_STATUS_REFRESH_REQUEST_EVENT,
   codexRateWindows,
   codexRuntimeRestartAvailable,
+  codexRuntimeUpdateAvailable,
   formatCodexAccount,
   formatCodexPlan,
   formatCodexReadiness,
@@ -44,12 +47,25 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     this.active = false;
     this.restartState = "idle";
     this.restartMessage = "";
+    this.updateState = "idle";
+    this.updateMessage = "";
+    this.runtimeAction = "idle";
+    this.updates = null;
+    this.updatesState = "idle";
+    this.updatesProblem = "";
+    this.updatesOperation = 0;
     this.copyState = "idle";
     this.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest('[data-action="open-codex-restart"]')) {
         this.dispatchEvent(
           new CustomEvent(CODEX_RUNTIME_RESTART_REQUEST_EVENT, { bubbles: true }),
+        );
+        return;
+      }
+      if (target?.closest('[data-action="open-codex-update"]')) {
+        this.dispatchEvent(
+          new CustomEvent(CODEX_RUNTIME_UPDATE_REQUEST_EVENT, { bubbles: true }),
         );
         return;
       }
@@ -62,6 +78,7 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       this.dispatchEvent(
         new CustomEvent(CODEX_STATUS_REFRESH_REQUEST_EVENT, { bubbles: true }),
       );
+      void this.reconcileUpdates();
     });
     this.render();
   }
@@ -75,10 +92,12 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       return;
     }
     this.active = true;
+    void this.reconcileUpdates();
   }
 
   deactivate() {
     this.active = false;
+    this.updatesOperation += 1;
   }
 
   set snapshot(value) {
@@ -94,11 +113,60 @@ class CaffoldSettingsCodexPage extends HTMLElement {
   }
 
   setRestartState(value) {
+    const before = this.restartState;
     this.restartState = value?.state ?? "idle";
     this.restartMessage = value?.message ?? "";
     if (this.initialized) {
       this.render();
+      if (settled(before, this.restartState)) {
+        // The report still names the runtime that was just replaced.
+        void this.reconcileUpdates();
+      }
     }
+  }
+
+  setUpdateState(value) {
+    const before = this.updateState;
+    this.updateState = value?.state ?? "idle";
+    this.updateMessage = value?.message ?? "";
+    if (this.initialized) {
+      this.render();
+      if (settled(before, this.updateState)) {
+        void this.reconcileUpdates();
+      }
+    }
+  }
+
+  setRuntimeAction(action) {
+    this.runtimeAction = action ?? "idle";
+    if (this.initialized) {
+      this.render();
+    }
+  }
+
+  /**
+   * Reads the update report while the page is shown. The newest release is
+   * checked only here, never in the background.
+   */
+  async reconcileUpdates() {
+    if (!this.active) {
+      return;
+    }
+    const operation = ++this.updatesOperation;
+    this.updatesState = "loading";
+    this.render();
+    try {
+      const updates = await getCodexUpdates();
+      if (operation !== this.updatesOperation) return;
+      this.updates = updates;
+      this.updatesState = "loaded";
+    } catch (error) {
+      if (operation !== this.updatesOperation) return;
+      this.updates = null;
+      this.updatesState = "unavailable";
+      this.updatesProblem = error instanceof Error ? error.message : `${error}`;
+    }
+    this.render();
   }
 
   async copyInstallCommand() {
@@ -128,6 +196,10 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       {
         id: "restart-runtime",
         selector: 'button[data-action="open-codex-restart"]',
+      },
+      {
+        id: "update-runtime",
+        selector: 'button[data-action="open-codex-update"]',
       },
     ];
     const targets = definitions.flatMap(({ id, selector }) => {
@@ -261,7 +333,19 @@ class CaffoldSettingsCodexPage extends HTMLElement {
               </div>
               <button type="button" data-action="open-codex-restart">Restart runtime…</button>
             </section>
-            <p class="settings-runtime-message" role="status" hidden></p>
+            <p class="settings-runtime-message" data-restart-message role="status" hidden></p>
+            <section class="settings-codex-updates" aria-labelledby="settings-codex-updates-title">
+              <div>
+                <h3 id="settings-codex-updates-title">Updates</h3>
+                <p data-updates-summary></p>
+                <dl>
+                  <div><dt>Latest version</dt><dd data-updates-latest></dd></div>
+                  <div><dt>Automatic updates</dt><dd data-updates-automatic></dd></div>
+                </dl>
+              </div>
+              <button type="button" data-action="open-codex-update">Update Codex…</button>
+            </section>
+            <p class="settings-runtime-message" data-update-message role="status" hidden></p>
             <section class="settings-usage" aria-labelledby="settings-codex-usage-title">
               <h3 id="settings-codex-usage-title">Usage</h3>
               <caffold-settings-detail-list data-codex-usage></caffold-settings-detail-list>
@@ -296,6 +380,7 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     const restarting = ["restarting", "refreshing"].includes(
       this.restartState,
     );
+    const runtimeBusy = this.runtimeAction !== "idle";
     const runtimeSummary = restartRequired
       ? `Codex ${readiness.managedExecutable?.version ?? "target"} is installed while runtime ${readiness.runningAppServerVersion ?? "another version"} is still running.`
       : readiness?.state === "ready"
@@ -353,20 +438,30 @@ class CaffoldSettingsCodexPage extends HTMLElement {
 
     this.refreshButton.setState({
       refreshing: snapshot?.phase === "checking",
-      disabled: restarting,
+      disabled: runtimeBusy,
     });
     this.querySelector(".settings-runtime-control").dataset.restartEmphasis =
       restartRequired ? "attention" : "neutral";
     const restart = this.querySelector('[data-action="open-codex-restart"]');
-    restart.disabled = !canRestart || restarting;
+    restart.disabled = !canRestart || runtimeBusy;
     restart.textContent = this.restartState === "refreshing"
       ? "Checking…"
       : restarting ? "Restarting…" : "Restart runtime…";
     this.querySelector("[data-runtime-summary]").textContent = runtimeSummary;
-    const restartMessage = this.querySelector(".settings-runtime-message");
-    restartMessage.hidden = !this.restartMessage;
-    restartMessage.dataset.state = this.restartState;
-    restartMessage.textContent = this.restartMessage;
+    patchMessage(
+      this.querySelector("[data-restart-message]"),
+      this.restartState,
+      this.restartMessage,
+    );
+    patchUpdates(this, {
+      status,
+      runtimeBusy,
+      updateState: this.updateState,
+      updateMessage: this.updateMessage,
+      updates: this.updates,
+      updatesState: this.updatesState,
+      updatesProblem: this.updatesProblem,
+    });
 
     this.usageList.setRows([
       ...usageWindowRows(status),
@@ -390,6 +485,79 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     loadError.hidden = !loadErrorMessage;
     loadError.textContent = loadErrorMessage;
   }
+}
+
+function settled(before, after) {
+  return ["restarting", "updating", "refreshing"].includes(before) &&
+    ["succeeded", "failed"].includes(after);
+}
+
+function patchMessage(message, state, text) {
+  message.hidden = !text;
+  message.dataset.state = state;
+  message.textContent = text;
+}
+
+/**
+ * The Update button follows the backend's `update` answer: on when an update
+ * would change what runs or when that is unknown, off when Codex is current.
+ */
+function patchUpdates(root, view) {
+  const report = view.updates;
+  const availability = view.updatesState === "unavailable"
+    ? "unknown"
+    : report?.update;
+  const updating = ["updating", "refreshing"].includes(view.updateState);
+  const update = root.querySelector('[data-action="open-codex-update"]');
+  update.disabled = view.runtimeBusy ||
+    !codexRuntimeUpdateAvailable(view.status) ||
+    !["available", "unknown"].includes(availability);
+  update.textContent = view.updateState === "refreshing"
+    ? "Checking…"
+    : updating ? "Updating…" : "Update Codex…";
+  root.querySelector("[data-updates-summary]").textContent =
+    updatesSummary(view);
+  root.querySelector("[data-updates-latest]").textContent = report
+    ? report.latestVersion ?? "Unavailable"
+    : view.updatesState === "unavailable" ? "Unavailable" : "Checking…";
+  root.querySelector("[data-updates-automatic]").textContent = report
+    ? AUTOMATIC_UPDATES_LABEL[report.automaticUpdates] ?? "Unknown"
+    : view.updatesState === "unavailable" ? "Unknown" : "Checking…";
+  patchMessage(
+    root.querySelector("[data-update-message]"),
+    view.updateState,
+    view.updateMessage,
+  );
+}
+
+const AUTOMATIC_UPDATES_LABEL = Object.freeze({
+  enabled: "On",
+  disabled: "Off",
+});
+
+function updatesSummary({ updates: report, updatesState, updatesProblem }) {
+  if (updatesState === "unavailable") {
+    return `Caffold could not check for a Codex update.\n${updatesProblem}`;
+  }
+  if (!report) {
+    return "Checking for updates…";
+  }
+  const { installedVersion, runningVersion, latestVersion } = report;
+  if (report.update === "available") {
+    if (installedVersion && runningVersion && installedVersion !== runningVersion) {
+      return `Codex ${installedVersion} is installed while the runtime is on ${runningVersion}.`;
+    }
+    return runningVersion
+      ? `Codex ${latestVersion} is available. The runtime is on ${runningVersion}.`
+      : `Codex ${latestVersion} is available. Codex ${installedVersion} is installed.`;
+  }
+  if (report.update === "upToDate") {
+    return "Codex is up to date.";
+  }
+  const reason = report.problems?.latestVersion ?? report.problems?.installation;
+  return reason
+    ? `Caffold could not check for a Codex update.\n${reason}`
+    : "Caffold could not check for a Codex update.";
 }
 
 function codexConnection(status) {

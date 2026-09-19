@@ -107,7 +107,7 @@ worktree, Git history, and read-only GitHub Issue or Pull Request context.
 Caffold supports Apple silicon Macs running macOS 14 or later. Install and sign
 in to at least one supported agent:
 
-- the official standalone Codex CLI `0.147.0` or newer;
+- the official standalone Codex CLI `0.155.1` or newer;
 - Claude Code `2.1.259` or newer, available as `claude` on the app's `PATH`; or
 - the Grok CLI `1.0.30` or newer, available as `grok` on the app's `PATH` or
   at `~/.grok/bin/grok` or `~/.local/bin/grok`.

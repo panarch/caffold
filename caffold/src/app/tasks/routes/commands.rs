@@ -832,7 +832,7 @@ mod tests {
         let readiness = CodexReadiness::blocking(
             CodexReadinessState::UpdateRequired,
             CodexReadinessReason::VersionBelowMinimum,
-            "Codex CLI 0.146.0 is older than the minimum supported version 0.147.0.",
+            "Codex CLI 0.155.0 is older than the minimum supported version 0.155.1.",
             None,
         );
         state.task_runtime.set_test_readiness(readiness).await;

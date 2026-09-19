@@ -6,6 +6,7 @@ use std::{
     task::{Context, Poll},
 };
 
+use serde::de::DeserializeOwned;
 use serde_json::from_slice;
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
@@ -16,9 +17,12 @@ use tokio_tungstenite::{
     WebSocketStream, client_async_with_config, tungstenite::protocol::WebSocketConfig,
 };
 
-use super::{CodexDaemonInfo, CodexThreadError};
+use super::{CodexDaemonInfo, CodexThreadError, CodexUpdateOutcome};
 
 const DAEMON_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// An update downloads a release, then waits out the daemon's shutdown grace
+/// period, at most five minutes, before the new runtime starts.
+const DAEMON_UPDATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 const PROXY_HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 pub(super) struct ProxyConnection {
@@ -129,27 +133,42 @@ fn proxy_socket_config() -> WebSocketConfig {
 pub(super) async fn ensure_daemon(
     codex_executable: &Path,
 ) -> Result<CodexDaemonInfo, CodexThreadError> {
-    daemon_command(codex_executable, "start").await
+    daemon_command_with_timeout(
+        codex_executable,
+        DaemonCommand::Start,
+        DAEMON_COMMAND_TIMEOUT,
+    )
+    .await
 }
 
 pub(super) async fn restart_daemon(
     codex_executable: &Path,
 ) -> Result<CodexDaemonInfo, CodexThreadError> {
-    daemon_command(codex_executable, "restart").await
+    daemon_command_with_timeout(
+        codex_executable,
+        DaemonCommand::Restart,
+        DAEMON_COMMAND_TIMEOUT,
+    )
+    .await
 }
 
-async fn daemon_command(
+pub(super) async fn update_daemon(
     codex_executable: &Path,
-    action: &'static str,
-) -> Result<CodexDaemonInfo, CodexThreadError> {
-    daemon_command_with_timeout(codex_executable, action, DAEMON_COMMAND_TIMEOUT).await
+) -> Result<CodexUpdateOutcome, CodexThreadError> {
+    daemon_command_with_timeout(
+        codex_executable,
+        DaemonCommand::Update,
+        DAEMON_UPDATE_TIMEOUT,
+    )
+    .await
 }
 
-async fn daemon_command_with_timeout(
+async fn daemon_command_with_timeout<Response: DeserializeOwned>(
     codex_executable: &Path,
-    action: &'static str,
+    daemon_command: DaemonCommand,
     command_timeout: std::time::Duration,
-) -> Result<CodexDaemonInfo, CodexThreadError> {
+) -> Result<Response, CodexThreadError> {
+    let action = daemon_command.argument();
     let mut command = Command::new(codex_executable);
     command
         .arg("app-server")
@@ -160,11 +179,7 @@ async fn daemon_command_with_timeout(
     let output = timeout(command_timeout, command.output())
         .await
         .map_err(|_| CodexThreadError::StartupTimeout {
-            phase: if action == "restart" {
-                "daemon restart"
-            } else {
-                "daemon start"
-            },
+            phase: daemon_command.phase(),
             timeout_ms: command_timeout.as_millis() as u64,
         })?
         .map_err(start_error)?;
@@ -175,13 +190,47 @@ async fn daemon_command_with_timeout(
         } else {
             stderr
         };
-        return Err(CodexThreadError::StartFailed(message));
+        return Err(daemon_command.failure(message));
     }
     from_slice(&output.stdout).map_err(|error| {
         CodexThreadError::Protocol(format!(
             "invalid Codex app-server daemon {action} response: {error}"
         ))
     })
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DaemonCommand {
+    Start,
+    Restart,
+    Update,
+}
+
+impl DaemonCommand {
+    fn argument(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Restart => "restart",
+            Self::Update => "update",
+        }
+    }
+
+    fn phase(self) -> &'static str {
+        match self {
+            Self::Start => "daemon start",
+            Self::Restart => "daemon restart",
+            Self::Update => "daemon update",
+        }
+    }
+
+    /// Starting and restarting fail to bring an app-server up; an update fails
+    /// to install one.
+    fn failure(self, message: String) -> CodexThreadError {
+        match self {
+            Self::Start | Self::Restart => CodexThreadError::StartFailed(message),
+            Self::Update => CodexThreadError::UpdateFailed(message),
+        }
+    }
 }
 
 fn start_error(error: std::io::Error) -> CodexThreadError {
@@ -227,8 +276,8 @@ mod tests {
             .expect("start daemon through eligible Codex executable");
 
         assert_eq!(daemon.status, "started");
-        assert_eq!(daemon.managed_codex_version.as_deref(), Some("0.147.0"));
-        assert_eq!(daemon.app_server_version.as_deref(), Some("0.147.0"));
+        assert_eq!(daemon.managed_codex_version.as_deref(), Some("0.155.1"));
+        assert_eq!(daemon.app_server_version.as_deref(), Some("0.155.1"));
     }
 
     #[cfg(unix)]
@@ -242,8 +291,8 @@ mod tests {
 
         assert_eq!(daemon.status, "restarted");
         assert_eq!(daemon.pid, Some(4271));
-        assert_eq!(daemon.managed_codex_version.as_deref(), Some("0.147.0"));
-        assert_eq!(daemon.app_server_version.as_deref(), Some("0.147.0"));
+        assert_eq!(daemon.managed_codex_version.as_deref(), Some("0.155.1"));
+        assert_eq!(daemon.app_server_version.as_deref(), Some("0.155.1"));
     }
 
     #[cfg(unix)]
@@ -272,13 +321,75 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn update_runs_the_daemon_update_command_and_keeps_its_outcome() {
+        let codex = checked_in_codex_fixture("fake-codex-daemon");
+
+        let outcome = update_daemon(&codex)
+            .await
+            .expect("update through fake Codex executable");
+
+        assert_eq!(
+            serde_json::to_value(outcome).unwrap(),
+            serde_json::json!({
+                "status": "updated",
+                "installedVersion": "0.156.0",
+                "runningVersion": "0.156.0",
+                "message": "The managed installation is ready and the running daemon was restarted. Active or queued work may have been interrupted."
+            })
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_update_reads_as_an_update_failure() {
+        let codex = checked_in_codex_fixture("fake-codex-daemon-failure");
+
+        let error = update_daemon(&codex)
+            .await
+            .expect_err("update command must fail");
+
+        assert_eq!(error.to_string(), "Codex update failed: daemon is busy");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn restart_and_update_are_bounded_when_codex_hangs() {
+        let codex = checked_in_codex_fixture("fake-codex-hang");
+
+        for (command, expected_phase) in [
+            (DaemonCommand::Restart, "daemon restart"),
+            (DaemonCommand::Update, "daemon update"),
+        ] {
+            let error = daemon_command_with_timeout::<serde_json::Value>(
+                &codex,
+                command,
+                std::time::Duration::from_millis(30),
+            )
+            .await
+            .expect_err("a hanging daemon command must time out");
+
+            assert!(
+                matches!(
+                    error,
+                    CodexThreadError::StartupTimeout { phase, .. } if phase == expected_phase
+                ),
+                "{error}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn daemon_start_is_bounded_when_codex_hangs() {
         let codex = checked_in_codex_fixture("fake-codex-hang");
 
-        let error =
-            daemon_command_with_timeout(&codex, "start", std::time::Duration::from_millis(30))
-                .await
-                .expect_err("hanging daemon command must time out");
+        let error = daemon_command_with_timeout::<CodexDaemonInfo>(
+            &codex,
+            DaemonCommand::Start,
+            std::time::Duration::from_millis(30),
+        )
+        .await
+        .expect_err("hanging daemon command must time out");
 
         assert!(matches!(
             error,

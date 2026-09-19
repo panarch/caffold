@@ -378,16 +378,16 @@ mod tests {
 
     #[test]
     fn builds_ready_status_with_canonical_runtime_facts() {
-        let installation = eligible_installation("0.147.0");
+        let installation = eligible_installation("0.155.1");
         let status = status_from_results(
             &installation,
             Some(CodexAppServerInfo {
-                user_agent: Some("Codex Desktop/0.147.0".to_string()),
+                user_agent: Some("Codex Desktop/0.155.1".to_string()),
                 codex_home: Some("/Users/example/.codex".to_string()),
                 platform_family: Some("unix".to_string()),
                 platform_os: Some("macos".to_string()),
             }),
-            Some(daemon_versions("0.147.0", "0.147.0")),
+            Some(daemon_versions("0.155.1", "0.155.1")),
             Ok(account()),
             Some(json!({
                 "rateLimits": { "primary": { "usedPercent": 42 } },
@@ -414,7 +414,7 @@ mod tests {
                 .detected_executable
                 .as_ref()
                 .and_then(|value| value.version.as_deref()),
-            Some("0.147.0")
+            Some("0.155.1")
         );
         assert_eq!(
             status
@@ -422,11 +422,11 @@ mod tests {
                 .managed_executable
                 .as_ref()
                 .and_then(|value| value.version.as_deref()),
-            Some("0.147.0")
+            Some("0.155.1")
         );
         assert_eq!(
             status.readiness.running_app_server_version.as_deref(),
-            Some("0.147.0")
+            Some("0.155.1")
         );
         assert_eq!(status.account, account().account);
         assert_eq!(
@@ -466,11 +466,11 @@ mod tests {
 
     #[test]
     fn maps_missing_account_to_sign_in_required_without_message_heuristics() {
-        let installation = eligible_installation("0.147.0");
+        let installation = eligible_installation("0.155.1");
         let status = status_from_results(
             &installation,
             None,
-            Some(daemon_versions("0.147.0", "0.147.0")),
+            Some(daemon_versions("0.155.1", "0.155.1")),
             Ok(AccountReadResponse {
                 account: None,
                 requires_openai_auth: true,
@@ -490,11 +490,11 @@ mod tests {
 
     #[test]
     fn allows_compatible_running_runtime_while_restart_is_pending() {
-        let installation = eligible_installation("0.148.0");
+        let installation = eligible_installation("0.156.0");
         let status = status_from_results(
             &installation,
             None,
-            Some(daemon_versions("0.148.0", "0.147.0")),
+            Some(daemon_versions("0.156.0", "0.155.1")),
             Ok(account()),
             None,
             None,
@@ -510,11 +510,11 @@ mod tests {
 
     #[test]
     fn blocks_outdated_running_runtime_until_restart() {
-        let installation = eligible_installation("0.147.0");
+        let installation = eligible_installation("0.155.1");
         let status = status_from_results(
             &installation,
             None,
-            Some(daemon_versions("0.147.0", "0.146.1")),
+            Some(daemon_versions("0.155.1", "0.155.0")),
             Ok(account()),
             None,
             None,
@@ -526,11 +526,11 @@ mod tests {
 
     #[test]
     fn blocks_outdated_running_runtime_even_when_managed_version_matches_it() {
-        let installation = eligible_installation("0.147.0");
+        let installation = eligible_installation("0.155.1");
         let status = status_from_results(
             &installation,
             None,
-            Some(daemon_versions("0.146.1", "0.146.1")),
+            Some(daemon_versions("0.155.0", "0.155.0")),
             Ok(account()),
             None,
             None,
@@ -547,16 +547,16 @@ mod tests {
             status
                 .readiness
                 .diagnostic_message
-                .contains("below the minimum supported version 0.147.0")
+                .contains("below the minimum supported version 0.155.1")
         );
     }
 
     #[test]
     fn supported_version_protocol_failure_is_incompatible() {
-        let installation = eligible_installation("0.147.0");
+        let installation = eligible_installation("0.155.1");
         let error = CodexThreadError::InitializationFailed {
             message: "initialize response did not match the maintained schema".to_string(),
-            daemon: Box::new(daemon_versions("0.147.0", "0.147.0")),
+            daemon: Box::new(daemon_versions("0.155.1", "0.155.1")),
         };
         let status = unavailable_status(Some(&installation), &error);
 
@@ -570,10 +570,10 @@ mod tests {
 
     #[test]
     fn initialization_failure_with_stale_runtime_requires_restart() {
-        let installation = eligible_installation("0.147.0");
+        let installation = eligible_installation("0.155.1");
         let error = CodexThreadError::InitializationFailed {
             message: "initialize failed".to_string(),
-            daemon: Box::new(daemon_versions("0.147.0", "0.146.1")),
+            daemon: Box::new(daemon_versions("0.155.1", "0.155.0")),
         };
         let status = unavailable_status(Some(&installation), &error);
 
@@ -583,10 +583,10 @@ mod tests {
 
     #[test]
     fn initialization_failure_with_matching_outdated_runtime_requires_restart() {
-        let installation = eligible_installation("0.147.0");
+        let installation = eligible_installation("0.155.1");
         let error = CodexThreadError::InitializationFailed {
             message: "initialize failed".to_string(),
-            daemon: Box::new(daemon_versions("0.146.1", "0.146.1")),
+            daemon: Box::new(daemon_versions("0.155.0", "0.155.0")),
         };
         let status = unavailable_status(Some(&installation), &error);
 
@@ -600,11 +600,11 @@ mod tests {
 
     #[test]
     fn account_rpc_failure_remains_a_generic_error() {
-        let installation = eligible_installation("0.147.0");
+        let installation = eligible_installation("0.155.1");
         let status = status_from_results(
             &installation,
             None,
-            Some(daemon_versions("0.147.0", "0.147.0")),
+            Some(daemon_versions("0.155.1", "0.155.1")),
             Err(CodexThreadError::Protocol(
                 "account/read failed (code -32000)".to_string(),
             )),
@@ -622,7 +622,7 @@ mod tests {
 
     #[test]
     fn daemon_start_timeout_has_a_stable_readiness_reason() {
-        let installation = eligible_installation("0.147.0");
+        let installation = eligible_installation("0.155.1");
         let error = CodexThreadError::StartupTimeout {
             phase: "daemon start",
             timeout_ms: 10_000,
@@ -640,11 +640,11 @@ mod tests {
 
     #[test]
     fn readiness_serialization_does_not_retain_legacy_boolean_fields() {
-        let installation = eligible_installation("0.147.0");
+        let installation = eligible_installation("0.155.1");
         let status = status_from_results(
             &installation,
             None,
-            Some(daemon_versions("0.147.0", "0.147.0")),
+            Some(daemon_versions("0.155.1", "0.155.1")),
             Ok(account()),
             None,
             None,
@@ -652,7 +652,7 @@ mod tests {
         let value = serde_json::to_value(status).expect("serialize Codex status");
 
         assert_eq!(value["readiness"]["state"], "ready");
-        assert_eq!(value["readiness"]["minimumSupportedVersion"], "0.147.0");
+        assert_eq!(value["readiness"]["minimumSupportedVersion"], "0.155.1");
         for legacy in [
             "available",
             "codexCliAvailable",

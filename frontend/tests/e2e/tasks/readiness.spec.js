@@ -4,6 +4,7 @@ import { installAgentCatalog } from "../support/agent-catalog-fixture.js";
 import {
   installBrowserDefaults,
   mockCodexStatus,
+  mockCodexUpdates,
 } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -605,6 +606,63 @@ test("restarts a stale Codex runtime directly from Task setup", { tag: "@all-vie
   await expect.poll(() => taskRequests).toBeGreaterThan(0);
 });
 
+test("a Codex update in flight holds back Restart Codex in Task setup", { tag: "@desktop" }, async ({ page }) => {
+  let releaseUpdate;
+  const updateGate = new Promise((resolve) => {
+    releaseUpdate = resolve;
+  });
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(statusFor("restartRequired")),
+    }),
+  );
+  await page.route(/\/api\/codex\/updates(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexUpdates({
+        installedVersion: "0.147.0",
+        runningVersion: "0.146.0",
+        latestVersion: "0.147.0",
+        update: "available",
+      })),
+    }),
+  );
+  await page.route(/\/api\/codex\/update(?:\?|$)/, async (route) => {
+    await updateGate;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "noUpdate",
+        installedVersion: "0.147.0",
+        runningVersion: "0.147.0",
+        message: "The managed installation is ready and the running daemon was restarted. Active or queued work may have been interrupted.",
+      }),
+    });
+  });
+
+  await page.goto("/");
+  const setup = page.locator('[data-readiness-state="restartRequired"]');
+  const restart = setup.getByRole("button", { name: "Restart Codex" });
+  await expect(restart).toBeEnabled();
+
+  await setup.getByRole("button", { name: "Open Settings" }).click();
+  const settings = page.locator("caffold-settings-codex-page");
+  await settings.getByRole("button", { name: "Update Codex…", exact: true }).click();
+  await page.getByRole("dialog", { name: "Update Codex?" })
+    .getByRole("button", { name: "Update Codex" })
+    .click();
+  await expect(settings.getByRole("button", { name: "Updating…" })).toBeDisabled();
+
+  await page.locator(
+    'caffold-task-workspace-navigation button[data-workspace-mode="tasks"]',
+  ).click();
+  await expect(restart).toBeDisabled();
+
+  releaseUpdate();
+  await expect(restart).toBeEnabled();
+});
+
 test("a blocking transition releases the Task list and disables existing actions", { tag: "@all-viewports" }, async ({
   page,
 }) => {
@@ -995,7 +1053,7 @@ test("consumes the real backend readiness contract and gates Task creation", { t
     state: "error",
     blocksTaskOperations: true,
     reasonCode: "appServerUnavailable",
-    minimumSupportedVersion: "0.147.0",
+    minimumSupportedVersion: "0.155.1",
   });
 
   const taskResponse = await page.request.post("/api/tasks", {

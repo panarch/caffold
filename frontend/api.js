@@ -28,6 +28,15 @@ export async function restartCodexRuntime() {
   return requestJson("/api/codex/restart", {}, { method: "POST" });
 }
 
+export async function getCodexUpdates() {
+  return requestJson("/api/codex/updates", {}, { timeoutMs: 20_000 });
+}
+
+/** The backend bounds this at ten minutes: download, drain, and restart. */
+export async function updateCodexRuntime() {
+  return requestJson("/api/codex/update", {}, { method: "POST" });
+}
+
 export async function retryTaskStoreMigration() {
   return requestJson("/api/task-store/migration/retry", {}, {
     method: "POST",

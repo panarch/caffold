@@ -438,6 +438,21 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js"
             )))
         }
+        "pages/(task-workspace)/codex-status/runtime-update-lifecycle.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/codex-status/runtime-update-lifecycle.js"
+            )))
+        }
+        "pages/(task-workspace)/codex-status/components/runtime-update-dialog.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/codex-status/components/runtime-update-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/codex-status/components/runtime-update-dialog.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/layout.css"
         ))),
@@ -1465,6 +1480,15 @@ mod tests {
             "text/javascript; charset=utf-8"
         );
         assert!(runtime_restart_dialog.body.starts_with(b"import "));
+
+        let runtime_update_dialog =
+            get("pages/(task-workspace)/codex-status/components/runtime-update-dialog.js")
+                .expect("Codex runtime update dialog asset");
+        assert_eq!(
+            runtime_update_dialog.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(runtime_update_dialog.body.starts_with(b"import "));
 
         let app_shell_layout = get("pages/layout.js").expect("app shell layout js asset");
         assert_eq!(
