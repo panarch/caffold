@@ -545,6 +545,7 @@ class CaffoldFileTree extends HTMLElement {
       row.textContent = node.name ?? "";
       return;
     }
+    row.toggleAttribute("data-file-tree-first-sibling", descriptor.firstSibling);
     row.toggleAttribute("data-file-tree-last-sibling", descriptor.lastSibling);
     if (node.kind === "status") {
       row.className = `file-tree-status${node.tone === "error" ? " is-error" : ""}`;
@@ -821,8 +822,9 @@ function visibleRows(nodes, expandedKeys, fileSortMode) {
         }
         continue;
       }
+      const firstSibling = index === 0;
       const lastSibling = index === siblings.length - 1;
-      rows.push({ key: node.key, node, depth, parentKey, passingGuideDepths, lastSibling });
+      rows.push({ key: node.key, node, depth, parentKey, passingGuideDepths, firstSibling, lastSibling });
       if (node.kind !== "directory" || !expandedKeys.has(node.key)) {
         continue;
       }
@@ -844,6 +846,7 @@ function visibleRows(nodes, expandedKeys, fileSortMode) {
           depth: depth + 1,
           parentKey: node.key,
           passingGuideDepths: childGuideDepths,
+          firstSibling: true,
           lastSibling: true,
         });
       }

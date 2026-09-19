@@ -92,6 +92,10 @@ caffold-file-tree {
     width: 1px;
   }
 
+  & [data-file-tree-first-sibling] .file-tree-guides::before {
+    top: calc(var(--file-tree-icon-size) / 2 - 50%);
+  }
+
   & [data-file-tree-last-sibling] .file-tree-guides::before {
     bottom: calc(50% - 1px);
   }
