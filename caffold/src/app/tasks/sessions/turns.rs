@@ -117,6 +117,16 @@ impl TaskSessions {
         Ok((snapshot(&state), history))
     }
 
+    /// Let the agent-owned history decide what one turn holds, though the live
+    /// stream observed all of it.
+    ///
+    /// Claude can answer a message the stream showed inside a turn in a later
+    /// turn of its own instead, and then only its transcript says what the
+    /// first turn holds. The next read of the latest turns applies it.
+    pub(in crate::app::tasks) fn release_live_turn(&self, thread_id: &str, turn_id: &str) {
+        self.events.release_live_turn(thread_id, turn_id);
+    }
+
     /// Re-read the latest canonical turns for a session already being shown.
     ///
     /// Some agents can add work to their transcript without opening a turn on

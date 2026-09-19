@@ -3399,13 +3399,15 @@ mod grok_tests {
 mod claude_tests {
     //! A Claude Task over the HTTP prompt surface while Claude says it is still
     //! working on something no Caffold turn asked for: a subagent it
-    //! backgrounded, and the turn it starts on its own to answer that
-    //! subagent's report. The frames are the ones Claude Code 2.1.274 wrote in
-    //! both situations.
+    //! backgrounded, the turn it starts on its own to answer that subagent's
+    //! report, and the turn it starts for a message that reached it after the
+    //! turn it was sent into had ended. The frames are the ones Claude Code
+    //! 2.1.274 wrote in each situation.
 
     use std::path::Path;
     use std::time::Duration;
 
+    use axum::Router;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use serde_json::{Value, json};
@@ -3575,6 +3577,147 @@ mod claude_tests {
         );
     }
 
+    #[tokio::test]
+    async fn a_prompt_while_claude_answers_a_message_that_missed_its_turn_joins_that_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (story, late) = steer_too_late(&state, &app, &runner).await;
+        runner.say(SESSION, init_frame()).await;
+        in_a_turn_of_its_own(&state).await;
+        state.task_runtime.claude().write_test_transcript(
+            &cwd,
+            SESSION,
+            &filed_late_message(&story, &late),
+        );
+
+        let (status, prompted) = call(&app, prompt("And list the files.")).await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        assert_eq!(prompted["steered"], true);
+        assert_eq!(prompted["turnId"], late.as_str());
+        assert!(
+            runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["message"]["content"][0]["text"] == "And list the files."),
+            "the message reaches Claude"
+        );
+    }
+
+    #[tokio::test]
+    async fn stopping_while_claude_answers_a_message_that_missed_its_turn_stops_that_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (story, late) = steer_too_late(&state, &app, &runner).await;
+        answer_the_late_message(&state, &runner, &cwd, &story, &late).await;
+        until(
+            &state,
+            "the turn Claude runs for the late message is the running turn",
+            |snapshot| snapshot.active_turn_id.as_deref() == Some(late.as_str()),
+        )
+        .await;
+
+        let stopping = tokio::spawn({
+            let app = app.clone();
+            async move {
+                call(
+                    &app,
+                    post(&format!("/api/tasks/{SESSION}/interrupt"), json!({})),
+                )
+                .await
+            }
+        });
+        let deadline = Instant::now() + WAIT;
+        let asked = loop {
+            if let Some(frame) = runner
+                .heard(SESSION)
+                .await
+                .into_iter()
+                .find(|frame| frame["request"]["subtype"] == "interrupt")
+            {
+                break frame;
+            }
+            if stopping.is_finished() {
+                let answered = stopping.await;
+                panic!("the stop was answered without reaching Claude: {answered:?}");
+            }
+            assert!(Instant::now() < deadline, "the stop reaches Claude");
+            sleep(Duration::from_millis(10)).await;
+        };
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "control_response", "response": { "subtype": "success", "request_id": asked["request_id"], "response": {} } }),
+            )
+            .await;
+        let (status, stopped) = stopping.await.expect("the stop request finishes");
+
+        assert_eq!(status, StatusCode::OK, "{stopped}");
+    }
+
+    #[tokio::test]
+    async fn a_message_that_missed_its_turn_shows_as_the_start_of_the_turn_that_answers_it() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (story, late) = steer_too_late(&state, &app, &runner).await;
+        answer_the_late_message(&state, &runner, &cwd, &story, &late).await;
+
+        let deadline = Instant::now() + WAIT;
+        loop {
+            let (status, detail) = call(
+                &app,
+                Request::get(format!("/api/tasks/{SESSION}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{detail}");
+            let messages = detail["events"]
+                .as_array()
+                .expect("the detail lists its events")
+                .iter()
+                .filter(|event| event["type"] == "user_message")
+                .map(|event| {
+                    (
+                        event["payload"]["turnId"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string(),
+                        event["payload"]["itemId"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let late_messages = messages
+                .iter()
+                .filter(|(_, item)| item.starts_with(late.as_str()))
+                .collect::<Vec<_>>();
+            // A snapshot that claims its extent is one a page already showing
+            // the message inside the earlier turn takes it out of.
+            if late_messages == [&(late.clone(), format!("{late}:prompt"))]
+                && detail["eventsRange"].is_object()
+            {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the late message shows once, opening its own turn, in a snapshot that claims \
+                 its extent: {messages:?} {}",
+                detail["eventsRange"]
+            );
+            sleep(Duration::from_millis(20)).await;
+        }
+    }
+
     /// A watched Claude Task the stand-in runner speaks for.
     async fn claude_task(root: &Path) -> (TaskState, MockRunnerHandle) {
         let (state, runner) = task_state_with_agents(
@@ -3607,7 +3750,7 @@ mod claude_tests {
     /// launches the subagent, answers, and ends the turn without saying idle.
     async fn background_a_subagent(runner: &MockRunnerHandle) {
         for frame in [
-            json!({ "type": "system", "subtype": "session_state_changed", "state": "running", "session_id": SESSION }),
+            running_frame(),
             init_frame(),
             json!({ "type": "assistant", "uuid": "launch-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-1", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_agent", "name": "Agent", "input": { "description": "Sleep", "prompt": "Run `sleep 20`.", "run_in_background": true } }] } }),
             json!({ "type": "system", "subtype": "task_started", "task_id": "agent-task-1", "tool_use_id": "toolu_agent", "description": "Sleep", "task_type": "local_agent", "is_backgrounded": true, "session_id": SESSION }),
@@ -3641,6 +3784,95 @@ mod claude_tests {
                 json!({ "type": "assistant", "uuid": "answer-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-3", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_bash", "name": "Bash", "input": { "command": "sleep 4" } }] } }),
             )
             .await;
+    }
+
+    /// A turn Caffold opens and a message sent into it that Claude takes in
+    /// only once that turn has ended: the turn writes its answer with no tool
+    /// call after the message arrives, so the message has nowhere to join it.
+    /// Answers that turn's id and the uuid the late message went out under.
+    async fn steer_too_late(
+        state: &TaskState,
+        app: &Router,
+        runner: &MockRunnerHandle,
+    ) -> (String, String) {
+        let (status, started) = call(app, prompt("Tell me a story.")).await;
+        assert_eq!(status, StatusCode::OK, "{started}");
+        let story = started["turnId"].as_str().unwrap().to_string();
+        runner.say(SESSION, running_frame()).await;
+        runner.say(SESSION, init_frame()).await;
+        until(state, "the story turn is running", |snapshot| {
+            snapshot.active_turn_id.as_deref() == Some(story.as_str())
+        })
+        .await;
+        let (status, steered) = call(app, prompt("Also say pong.")).await;
+        assert_eq!(status, StatusCode::OK, "{steered}");
+        assert_eq!(
+            steered["turnId"],
+            story.as_str(),
+            "sent into the story turn"
+        );
+        let late = runner
+            .heard(SESSION)
+            .await
+            .into_iter()
+            .find(|frame| frame["message"]["content"][0]["text"] == "Also say pong.")
+            .expect("the message reaches Claude")["uuid"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        for frame in [
+            json!({ "type": "assistant", "uuid": "story-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-1", "role": "assistant", "content": [{ "type": "text", "text": "Once upon a time." }] } }),
+            json!({ "type": "result", "subtype": "success", "is_error": false, "stop_reason": "end_turn", "session_id": SESSION }),
+        ] {
+            runner.say(SESSION, frame).await;
+        }
+        until(state, "the story turn ends", |snapshot| {
+            snapshot.active_turn_id.is_none()
+        })
+        .await;
+        (story, late)
+    }
+
+    /// Claude answering the late message as a turn of its own: it starts the
+    /// turn, files the message as that turn's prompt, and begins answering.
+    async fn answer_the_late_message(
+        state: &TaskState,
+        runner: &MockRunnerHandle,
+        cwd: &str,
+        story: &str,
+        late: &str,
+    ) {
+        runner.say(SESSION, init_frame()).await;
+        state.task_runtime.claude().write_test_transcript(
+            cwd,
+            SESSION,
+            &filed_late_message(story, late),
+        );
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "assistant", "uuid": "pong-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-2", "role": "assistant", "content": [{ "type": "text", "text": "pong" }] } }),
+            )
+            .await;
+    }
+
+    /// What Claude has written down once it took in the late message: the
+    /// story turn, and the message as the prompt of a turn of its own, filed
+    /// under the uuid it was sent with.
+    fn filed_late_message(story: &str, late: &str) -> String {
+        [
+            json!({ "type": "user", "uuid": story, "timestamp": "2026-09-19T12:27:40.000Z", "promptSource": "sdk", "promptId": "prompt-1", "parentUuid": null, "message": { "role": "user", "content": [{ "type": "text", "text": "Tell me a story." }] } }),
+            json!({ "type": "assistant", "uuid": "story-1", "timestamp": "2026-09-19T12:27:58.635Z", "promptId": "prompt-1", "parentUuid": story, "message": { "id": "message-1", "role": "assistant", "content": [{ "type": "text", "text": "Once upon a time." }] } }),
+            json!({ "type": "queue-operation", "operation": "dequeue", "timestamp": "2026-09-19T12:27:58.640Z", "sessionId": SESSION }),
+            json!({ "type": "user", "uuid": late, "timestamp": "2026-09-19T12:27:58.643Z", "promptSource": "sdk", "promptId": "prompt-2", "parentUuid": "story-1", "message": { "role": "user", "content": [{ "type": "text", "text": "Also say pong." }] } }),
+        ]
+        .iter()
+        .map(|row| format!("{row}\n"))
+        .collect()
+    }
+
+    fn running_frame() -> Value {
+        json!({ "type": "system", "subtype": "session_state_changed", "state": "running", "session_id": SESSION })
     }
 
     /// Claude saying the subagent finished.

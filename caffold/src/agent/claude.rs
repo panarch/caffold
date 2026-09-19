@@ -85,9 +85,9 @@ pub(crate) use self::runner::MockRunnerHandle;
 const ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// How often a prompt held behind a turn the agent began on its own looks for
-/// the report that names it. Against CLI 2.1.274 the report was on disk about
-/// a tenth of a second after that turn began.
-const REPORT_FILING_POLL: std::time::Duration = std::time::Duration::from_millis(50);
+/// the prompt that names it. Against CLI 2.1.274 that prompt was on disk about
+/// a tenth of a second after the turn began.
+const FILING_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 
 /// Why an operation on a Claude session did not happen.
 #[derive(Debug, thiserror::Error)]
@@ -150,6 +150,16 @@ pub(crate) enum ClaudeRuntimeEvent {
     /// this asks the application to read that canonical evidence rather than
     /// making a turn up from the frames around it.
     TranscriptChanged { conversation_id: String },
+    /// A turn already reported holds less than the live stream showed in it:
+    /// messages added to it reached the agent only after it ended, and the
+    /// agent answered them in a turn of their own.
+    ///
+    /// The stream cannot take back what it showed, so this asks the
+    /// application to let the transcript decide what that turn holds.
+    TurnRetold {
+        conversation_id: String,
+        turn_id: String,
+    },
     /// The agent is blocked until someone answers.
     Approval {
         conversation_id: String,
@@ -243,6 +253,14 @@ struct SessionState {
     /// A turn the agent begins on its own to answer one files that report as
     /// its prompt, and the task id is what ties the two together.
     reported_tasks: Vec<String>,
+    /// The messages Caffold added to a running turn since the agent was last
+    /// idle.
+    ///
+    /// The agent takes one into that turn at its next tool call. When the turn
+    /// ends first, the agent answers it in a turn of its own, filed under the
+    /// uuid the message went out with, and that uuid is what ties the two
+    /// together.
+    steered: Vec<Steered>,
     /// The turns this session has run while Caffold watched.
     turns: Vec<Turn>,
     /// Tool calls a person refused.
@@ -312,19 +330,31 @@ impl SessionActivity {
     }
 }
 
+/// A message Caffold added to a running turn.
+#[derive(Debug, Clone)]
+struct Steered {
+    /// The uuid it went out under.
+    message: String,
+    /// The turn it was added to.
+    turn: String,
+}
+
 /// How far a turn the agent began on its own can be tied to what Caffold knows.
 ///
-/// Such a turn answers something the stream does not name. A background task's
-/// report is the one thing that names it: the agent files the report as the
-/// turn's prompt, under the id of the task it reports on. It moves only
-/// through [`move_unowned_turn`]; the reported task ids, the activity report,
-/// and the ledger stay beside it.
+/// Such a turn answers something the stream does not name. Two things name
+/// it, each filed as the turn's prompt: a background task's report, under the
+/// id of the task it reports on, and messages Caffold added to a turn that
+/// ended before the agent took them in, under the uuid the last of them went
+/// out with. It moves only through [`move_unowned_turn`]; the reported task
+/// ids, the added messages, the activity report, and the ledger stay beside
+/// it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UnownedTurn {
-    /// A report is pending and the turn may yet be found filed under it.
+    /// A report or an added message is pending, and the turn may yet be found
+    /// filed under it.
     Naming,
-    /// Nothing ties it to anything: no report was pending, or the agent spoke
-    /// in it before a report was found filed.
+    /// Nothing ties it to anything: nothing was pending, or the agent spoke in
+    /// it before its prompt was found filed.
     Unnamed,
 }
 
@@ -335,13 +365,26 @@ enum UnownedTurnEvent {
     /// agent reports working, with no turn on the ledger, no depth change
     /// waiting, and the session not ended.
     Began,
-    /// The report it answers, on `task_id`, was found filed: the turn goes on
-    /// the ledger.
-    Named { turn: Box<Turn>, task_id: String },
-    /// The agent spoke in it before its report was found filed.
+    /// Its prompt was found filed, answering `answers`: the turn goes on the
+    /// ledger.
+    Named { turn: Box<Turn>, answers: Answers },
+    /// The agent spoke in it before its prompt was found filed.
     SpokeUnfiled,
     /// It was answered, or the session ended.
     Ended,
+}
+
+/// What a turn the agent began on its own was found to answer.
+#[derive(Debug)]
+enum Answers {
+    /// The report on this background task.
+    Report { task_id: String },
+    /// These messages, which were added to turn `sent_into` and reached the
+    /// agent only after it ended.
+    LateMessages {
+        sent_into: String,
+        messages: Vec<String>,
+    },
 }
 
 /// One question the agent is blocked on, and what answering it needs.
@@ -665,23 +708,70 @@ impl ClaudeClient {
         reading.page.turns.into_iter().next()
     }
 
-    /// The turn on disk that answers one of the `reported` tasks, once the
-    /// agent has filed it, and the task it answers.
-    async fn filed_report_turn(
+    /// The newest turn on disk, once the agent has filed it as answering
+    /// something pending: a report on one of the `reported` tasks, or messages
+    /// among the `steered` ones that reached the agent after the turn they
+    /// were added to had ended.
+    ///
+    /// Those messages are filed as one prompt under the uuid the last of them
+    /// went out with, right after the turn they were added to, and that turn
+    /// holds the ones it did take in.
+    async fn filed_own_turn(
         &self,
         cwd: &str,
         id: &str,
         reported: &[String],
-    ) -> Option<(Turn, String)> {
-        let newest = self.newest_filed_turn(cwd, id).await?;
-        let TurnOrigin::BackgroundTask(task) = &newest.origin else {
-            return None;
+        steered: &[Steered],
+    ) -> Option<(Turn, Answers)> {
+        let path = self
+            .projects()
+            .and_then(|projects| transcript::locate(projects, cwd, id))?;
+        let reading = tokio::task::spawn_blocking(move || transcript::read(&path, None, 2))
+            .await
+            .ok()?
+            .ok()?;
+        let mut filed = reading.page.turns.into_iter();
+        let newest = filed.next()?;
+        if let TurnOrigin::BackgroundTask(task) = &newest.origin {
+            let task_id = task
+                .task_id
+                .clone()
+                .filter(|task_id| reported.contains(task_id))?;
+            return Some((newest, Answers::Report { task_id }));
+        }
+        let sent_into = steered
+            .iter()
+            .find(|steered| steered.message == newest.id)?
+            .turn
+            .clone();
+        let taken_in = filed
+            .next()
+            .filter(|earlier| earlier.id == sent_into)
+            .map(|earlier| {
+                earlier
+                    .items
+                    .into_iter()
+                    .map(|item| item.id)
+                    .collect::<Vec<_>>()
+            });
+        let messages = match taken_in {
+            Some(taken_in) => steered
+                .iter()
+                .filter(|steered| steered.turn == sent_into)
+                .map(|steered| steered.message.clone())
+                .filter(|message| !taken_in.contains(&translate::steer_item_id(message)))
+                .collect(),
+            // Without that turn to hand, the one message known to have missed
+            // it is the one heading this turn.
+            None => vec![newest.id.clone()],
         };
-        let task_id = task
-            .task_id
-            .clone()
-            .filter(|task_id| reported.contains(task_id))?;
-        Some((newest, task_id))
+        Some((
+            newest,
+            Answers::LateMessages {
+                sent_into,
+                messages,
+            },
+        ))
     }
 
     fn publish(&self, event: ClaudeRuntimeEvent) {
@@ -821,7 +911,7 @@ impl ClaudeClient {
     /// Hold a new turn while the agent is in one it began on its own that is
     /// still being named.
     ///
-    /// The agent files the report such a turn answers a moment after the turn
+    /// The agent files the prompt such a turn answers a moment after the turn
     /// begins and before it says anything, so the turn is soon named, and a
     /// prompt sent meanwhile belongs in it. Once it is named the refusal says
     /// a turn is running, which is what sends the prompt there instead. A turn
@@ -838,13 +928,12 @@ impl ClaudeClient {
             }
             if tokio::time::Instant::now() >= deadline {
                 return Err(ClaudeError::Protocol(format!(
-                    "claude did not file the report it began a turn for within {} seconds",
+                    "claude did not file the prompt of a turn it began within {} seconds",
                     ANSWER_TIMEOUT.as_secs()
                 )));
             }
             let _ =
-                tokio::time::timeout(REPORT_FILING_POLL, session.unowned_turn_settled.notified())
-                    .await;
+                tokio::time::timeout(FILING_POLL, session.unowned_turn_settled.notified()).await;
         }
     }
 
@@ -852,6 +941,8 @@ impl ClaudeClient {
     ///
     /// The agent takes this at its next tool-call boundary rather than at once,
     /// so this reports that the message was accepted, never that it was read.
+    /// A turn that ends first leaves the message to a turn of its own, which
+    /// is named by the message.
     pub(crate) async fn steer_turn(
         &self,
         conversation_id: &str,
@@ -876,6 +967,10 @@ impl ClaudeClient {
                 Some(said_at_ms),
             );
             place_item(&mut state, turn_id, item.clone());
+            state.steered.push(Steered {
+                message: name,
+                turn: turn_id.to_string(),
+            });
             (item, said_at_ms)
         };
 
@@ -1215,17 +1310,37 @@ fn move_unowned_turn(state: &mut SessionState, event: UnownedTurnEvent) -> bool 
         && state.quiet_turn.is_none()
         && !state.ended;
     state.unowned_turn = match (state.unowned_turn, event) {
-        (None, UnownedTurnEvent::Began) if began_its_own => {
-            Some(if state.reported_tasks.is_empty() {
+        (None, UnownedTurnEvent::Began) if began_its_own => Some(
+            if state.reported_tasks.is_empty() && state.steered.is_empty() {
                 UnownedTurn::Unnamed
             } else {
                 UnownedTurn::Naming
-            })
-        }
-        (Some(UnownedTurn::Naming), UnownedTurnEvent::Named { turn, task_id })
+            },
+        ),
+        (Some(UnownedTurn::Naming), UnownedTurnEvent::Named { turn, answers })
             if state.active_turn.is_none() =>
         {
-            state.reported_tasks.retain(|reported| *reported != task_id);
+            match answers {
+                Answers::Report { task_id } => {
+                    state.reported_tasks.retain(|reported| *reported != task_id);
+                }
+                Answers::LateMessages {
+                    sent_into,
+                    messages,
+                } => {
+                    // Shown in the turn they were added to, which never took
+                    // them in.
+                    let shown = messages
+                        .iter()
+                        .map(|message| translate::steer_item_id(message))
+                        .collect::<Vec<_>>();
+                    if let Some(earlier) = state.turns.iter_mut().find(|turn| turn.id == sent_into)
+                    {
+                        earlier.items.retain(|item| !shown.contains(&item.id));
+                    }
+                    state.steered.retain(|steered| steered.turn != sent_into);
+                }
+            }
             take_up_turn(state, *turn);
             None
         }

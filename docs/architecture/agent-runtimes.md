@@ -179,10 +179,10 @@ of its own.
 
 Caffold names each prompt and steering message it sends to Claude; the name
 is the stdin frame's `uuid`. Claude files a prompt under that name as the
-transcript row's `uuid` and a steering message as the queued command's
-`source_uuid`, so the live turn and the transcript turn share one identity. A
-prompt's turn opens, and the prompt request answers with that identity, when
-the runner has accepted the frame. A user-role frame without tool results is
+transcript row's `uuid` and a steering message it takes into the running turn
+as the queued command's `source_uuid`, so the live turn and the transcript turn
+share one identity. A prompt's turn opens, and the prompt request answers with
+that identity, when the runner has accepted the frame. A user-role frame without tool results is
 not drawn; the transcript reader applies the same rule to user rows. Prompt
 echoes from sessions started with `--replay-user-messages` are such frames.
 
@@ -209,11 +209,16 @@ Claude's result frames, the child's exit, and the transcript: when a
 replacement takes up a working session, and when Claude begins a turn on its
 own. Claude says `init` as each turn begins, and a turn that begins while
 Claude reports working, with no Caffold turn or depth change open, is Claude's
-own. To answer a background task's report, Claude files the report as that
-turn's prompt, carrying the id of the task its `task_notification` frame named;
-Caffold takes the turn up under that prompt once the transcript shows it, which
-Claude writes before its first output in the turn. A turn Claude begins that
-cannot be tied to a report this way stays off the ledger.
+own. Claude files what such a turn answers as its prompt before its first
+output in the turn, and Caffold takes the turn up under that prompt once the
+transcript shows it. A background task's report is filed carrying the id of
+the task its `task_notification` frame named. Claude takes a steering message
+into the running turn only at a tool call; when that turn ends first, Claude
+answers every such message in one turn of its own, filed as one prompt under
+the name of the last. The stream showed those messages inside the turn they
+were sent into, so Caffold drops them there and asks for that turn to be read
+again from the transcript. A turn Claude begins that cannot be tied to a report
+or to steering messages this way stays off the ledger.
 
 A prompt sent while Claude works but runs no turn, as when only a subagent it
 backgrounded is working, starts a new turn. A turn requested while Claude is in
@@ -333,9 +338,11 @@ that Caffold watched the turn from its boundary only while that observation
 remains continuous; that one live journal then owns the turn's item set and
 direct observation times. A provider connection loss or dropped-report gap
 withdraws the completeness claim without deleting reports already observed,
-so history becomes the baseline again. Caffold does not mix a second history
-projection into a continuous journal, because some providers expose
-history-local item ids that cannot be equated with their live ids.
+so history becomes the baseline again. A Claude turn whose steering messages
+Claude answered in a later turn of its own loses that claim the same way.
+Caffold does not mix a second history projection into a continuous journal,
+because some providers expose history-local item ids that cannot be equated
+with their live ids.
 
 Within either source, repeated reports under one exact item identity update one
 item. Submission observation and provider identity remain separate: the
