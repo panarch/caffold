@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { VoiceSettingsLifecycle, voiceReadinessKey } from "./lifecycle.js";
 
-function settings({ selected = "whisper", whisper = {}, openai = {}, gemini = {} } = {}) {
+function settings({ selected = "whisper", whisper = {}, openai = {}, gemini = {}, grok = {} } = {}) {
   return {
     selected,
     whisper: {
@@ -18,6 +18,7 @@ function settings({ selected = "whisper", whisper = {}, openai = {}, gemini = {}
     },
     openai: { model: "gpt-transcribe", keyConfigured: false, ...openai },
     gemini: { model: "gemini-3.5-transcribe", keyConfigured: false, ...gemini },
+    grok: { model: "grok-voice-transcribe-2.0", keyConfigured: false, ...grok },
   };
 }
 
@@ -68,6 +69,7 @@ test("accepts only the settings shape the server publishes", async () => {
     { ...settings(), whisper: { ...settings().whisper, revision: undefined } },
     { ...settings(), openai: undefined },
     { ...settings(), gemini: { keyConfigured: false } },
+    { ...settings(), grok: undefined },
   ]) {
     const { lifecycle, snapshots } = lifecycleWith({ load: async () => invalid });
     lifecycle.activate();
@@ -98,6 +100,8 @@ test("changes the readiness key only with what decides Composer readiness", () =
     settings({ whisper: { installed: true } }),
     settings({ openai: { keyConfigured: true } }),
     settings({ gemini: { keyConfigured: true } }),
+    settings({ selected: "grok" }),
+    settings({ grok: { keyConfigured: true } }),
   ]) {
     assert.notEqual(voiceReadinessKey(changed), base);
   }

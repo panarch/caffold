@@ -98,13 +98,13 @@ setup fails.
   `~/Library/Application Support/Caffold/data/models/whisper`. Caffold
   verifies the download checksum before publishing it, loads it on the first
   transcription, and releases it when another provider is chosen or the model
-  is deleted. OpenAI and Gemini API keys are saved under
+  is deleted. OpenAI, Gemini, and Grok API keys are saved under
   `~/Library/Application Support/Caffold/data/voice`.
 - Voice recordings are captured as 16 kHz mono PCM WAV and sent to this Caffold
   host, which processes them in memory and never persists them. With Whisper
-  they stay on the Mac; with OpenAI or Gemini the host forwards them to that
-  provider. Localhost needs no Tailscale; remote mobile access uses the same
-  tailnet-only HTTPS Serve URL as the rest of Caffold.
+  they stay on the Mac; with OpenAI, Gemini, or Grok the host forwards them to
+  that provider. Localhost needs no Tailscale; remote mobile access uses the
+  same tailnet-only HTTPS Serve URL as the rest of Caffold.
 - Logs are stored in `~/Library/Logs/Caffold/caffold.log`.
 - Caffold ensures the persistent Codex app-server daemon is running, then owns
   only a disposable proxy connection. Caffold restarts and app replacements do

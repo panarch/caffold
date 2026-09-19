@@ -37,6 +37,7 @@ use keys::{ApiKeyStore, KeyStoreError};
 use settings::VoiceSettingsStore;
 
 mod gemini;
+mod grok;
 mod keys;
 mod openai;
 mod settings;
@@ -59,6 +60,7 @@ enum VoiceProvider {
     Whisper,
     Openai,
     Gemini,
+    Grok,
 }
 
 /// A provider reached over HTTPS with an API key the user entered.
@@ -67,6 +69,7 @@ enum VoiceProvider {
 enum CloudProvider {
     Openai,
     Gemini,
+    Grok,
 }
 
 impl CloudProvider {
@@ -74,6 +77,7 @@ impl CloudProvider {
         match self {
             Self::Openai => "OpenAI",
             Self::Gemini => "Gemini",
+            Self::Grok => "Grok",
         }
     }
 }
@@ -92,6 +96,7 @@ enum ProviderFailure {
 struct ProviderEndpoints {
     openai: String,
     gemini: String,
+    grok: String,
 }
 
 impl ProviderEndpoints {
@@ -99,6 +104,7 @@ impl ProviderEndpoints {
         Self {
             openai: openai::API_BASE.to_string(),
             gemini: gemini::API_BASE.to_string(),
+            grok: grok::API_BASE.to_string(),
         }
     }
 }
@@ -289,6 +295,7 @@ impl VoiceService {
             VoiceProvider::Whisper => self.is_installed().await,
             VoiceProvider::Openai => self.key_configured(CloudProvider::Openai)?,
             VoiceProvider::Gemini => self.key_configured(CloudProvider::Gemini)?,
+            VoiceProvider::Grok => self.key_configured(CloudProvider::Grok)?,
         };
         Ok(VoiceStatusResponse {
             provider,
@@ -306,6 +313,10 @@ impl VoiceService {
         let gemini = CloudProviderSettings {
             model: gemini::MODEL,
             key_configured: self.key_configured(CloudProvider::Gemini)?,
+        };
+        let grok = CloudProviderSettings {
+            model: grok::MODEL,
+            key_configured: self.key_configured(CloudProvider::Grok)?,
         };
         let snapshot = self
             .inner
@@ -326,6 +337,7 @@ impl VoiceService {
             },
             openai,
             gemini,
+            grok,
         })
     }
 
@@ -373,6 +385,7 @@ impl VoiceService {
             VoiceProvider::Whisper => self.transcribe_locally(audio).await?,
             VoiceProvider::Openai => self.transcribe_remotely(CloudProvider::Openai, wav).await?,
             VoiceProvider::Gemini => self.transcribe_remotely(CloudProvider::Gemini, wav).await?,
+            VoiceProvider::Grok => self.transcribe_remotely(CloudProvider::Grok, wav).await?,
         };
         Ok(VoiceTranscriptResponse { text, provider })
     }
@@ -424,6 +437,9 @@ impl VoiceService {
             CloudProvider::Gemini => {
                 gemini::transcribe(&self.inner.client, &self.inner.endpoints.gemini, &key, wav)
                     .await
+            }
+            CloudProvider::Grok => {
+                grok::transcribe(&self.inner.client, &self.inner.endpoints.grok, &key, wav).await
             }
         };
         transcript.map_err(|failure| VoiceApiError::provider(provider, failure))
@@ -763,6 +779,7 @@ struct VoiceSettingsResponse {
     whisper: WhisperSettings,
     openai: CloudProviderSettings,
     gemini: CloudProviderSettings,
+    grok: CloudProviderSettings,
 }
 
 #[derive(Debug, Serialize)]
@@ -1198,6 +1215,7 @@ mod tests {
         ProviderEndpoints {
             openai: "http://127.0.0.1:9".to_string(),
             gemini: "http://127.0.0.1:9".to_string(),
+            grok: "http://127.0.0.1:9".to_string(),
         }
     }
 
@@ -1572,6 +1590,14 @@ mod tests {
             .await
             .unwrap();
         assert!(service.status().await.unwrap().ready);
+
+        service.select_provider(VoiceProvider::Grok).await.unwrap();
+        assert!(!service.status().await.unwrap().ready);
+        service
+            .store_key(CloudProvider::Grok, "xai-test")
+            .await
+            .unwrap();
+        assert!(service.status().await.unwrap().ready);
     }
 
     #[tokio::test]
@@ -1690,6 +1716,7 @@ mod tests {
             ProviderEndpoints {
                 openai,
                 gemini: "http://127.0.0.1:9".to_string(),
+                grok: "http://127.0.0.1:9".to_string(),
             },
         );
         service
@@ -1787,6 +1814,7 @@ mod tests {
             ProviderEndpoints {
                 openai: "http://127.0.0.1:9".to_string(),
                 gemini,
+                grok: "http://127.0.0.1:9".to_string(),
             },
         );
         service
@@ -1802,6 +1830,83 @@ mod tests {
 
         assert_eq!(transcript.text, "제미나이 transcript");
         assert_eq!(transcript.provider, VoiceProvider::Gemini);
+    }
+
+    async fn grok_service(
+        temp: &TempDir,
+        grok_status: StatusCode,
+        grok_body: &'static str,
+    ) -> VoiceService {
+        let grok = serve(Router::new().route(
+            "/v1/stt",
+            post(move || async move { (grok_status, grok_body) }),
+        ))
+        .await;
+        service_with(
+            temp,
+            spec_for("http://127.0.0.1:9/unused".to_string(), TEST_MODEL),
+            Arc::new(FakeEngine::default()),
+            ProviderEndpoints {
+                grok,
+                ..unreachable_endpoints()
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn transcribes_with_grok_once_it_is_chosen_over_http() {
+        let temp = TempDir::new().unwrap();
+        let app = router_with_service(
+            grok_service(&temp, StatusCode::OK, r#"{"text":"그록 transcript"}"#).await,
+        );
+        for (uri, body) in [
+            ("/api/voice/provider", r#"{"provider":"grok"}"#),
+            ("/api/voice/keys/grok", r#"{"key":"xai-test"}"#),
+        ] {
+            let (status, _) = send(&app, settings_change("PUT", uri, body, true)).await;
+            assert_eq!(status, StatusCode::OK, "{uri}");
+        }
+
+        let (status, transcript) = send(
+            &app,
+            Request::post("/api/voice/transcribe")
+                .header(header::CONTENT_TYPE, "audio/wav")
+                .body(Body::from(wav_bytes(&[0; 1_600], 16_000, 1)))
+                .unwrap(),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            transcript,
+            serde_json::json!({ "text": "그록 transcript", "provider": "grok" })
+        );
+    }
+
+    #[tokio::test]
+    async fn an_incorrect_grok_key_leads_back_to_settings() {
+        let temp = TempDir::new().unwrap();
+        // xAI's answer to a key that does not exist, observed on 2026-09-19.
+        let service = grok_service(
+            &temp,
+            StatusCode::BAD_REQUEST,
+            r#"{"code":"Client specified an invalid argument","error":"Incorrect API key provided. You can obtain an API key from https://console.x.ai."}"#,
+        )
+        .await;
+        service.select_provider(VoiceProvider::Grok).await.unwrap();
+        service
+            .store_key(CloudProvider::Grok, "xai-incorrect")
+            .await
+            .unwrap();
+
+        let error = service.transcribe(short_recording()).await.unwrap_err();
+
+        assert_eq!(error.status, StatusCode::CONFLICT);
+        assert_eq!(error.code, "voice_provider_not_ready");
+        assert_eq!(
+            error.message,
+            "Grok rejected the API key. Update it in Settings → Voice Input."
+        );
     }
 
     async fn send(app: &Router, request: Request<Body>) -> (StatusCode, serde_json::Value) {
@@ -1939,6 +2044,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(stored["openai"]["keyConfigured"], true);
         assert_eq!(stored["gemini"]["keyConfigured"], false);
+        assert_eq!(stored["grok"]["keyConfigured"], false);
         assert_eq!(settings["openai"]["keyConfigured"], true);
         for body in [&stored, &settings] {
             assert!(!body.to_string().contains(secret));
@@ -1971,6 +2077,7 @@ mod tests {
         assert_eq!(settings["whisper"]["revision"], "test-revision");
         assert_eq!(settings["openai"]["model"], "gpt-transcribe");
         assert_eq!(settings["gemini"]["model"], "gemini-3.5-transcribe");
+        assert_eq!(settings["grok"]["model"], "grok-voice-transcribe-2.0");
     }
 
     #[tokio::test]

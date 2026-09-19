@@ -19,7 +19,7 @@ flowchart TD
     ClaudeSession["claude session process"]
     Git["Git checkout / worktree"]
     Whisper["Host-local Whisper model"]
-    SpeechApi["OpenAI or Gemini speech-to-text API"]
+    SpeechApi["OpenAI, Gemini, or Grok speech-to-text API"]
     Tailscale["Tailscale CLI / Serve"]
 
     PWA -->|"HTTP / SSE"| Backend
@@ -144,8 +144,9 @@ recording in memory and transcribes it with the provider selected in
   backend downloads and verifies the model in a background task, loads it on the
   first transcription, serializes inference, and releases it when another
   provider is selected or the model is deleted.
-- OpenAI (`gpt-transcribe`) and Gemini (`gemini-3.5-transcribe`) receive the
-  recording from the backend with the API key saved on the host.
+- OpenAI (`gpt-transcribe`), Gemini (`gemini-3.5-transcribe`), and Grok
+  (`grok-voice-transcribe-2.0`) receive the recording from the backend with the
+  API key saved on the host.
 
 The resulting text is inserted at the saved selection. Caffold never stores
 recordings. [Security and Approvals](security-and-approvals.md#voice-input)

@@ -16,6 +16,7 @@ async function installVoiceSettings(page, overrides = {}) {
     downloadError: null,
     openai: false,
     gemini: false,
+    grok: false,
     ...overrides,
   };
   const requests = [];
@@ -32,6 +33,7 @@ async function installVoiceSettings(page, overrides = {}) {
     },
     openai: { model: "gpt-transcribe", keyConfigured: state.openai },
     gemini: { model: "gemini-3.5-transcribe", keyConfigured: state.gemini },
+    grok: { model: "grok-voice-transcribe-2.0", keyConfigured: state.grok },
   });
   await page.route("**/api/voice/settings", (route) =>
     route.fulfill({ json: settings() }),
@@ -117,6 +119,37 @@ test("chooses a provider and saves, replaces, and removes an API key without sho
     ["PUT", "openai", { key: "sk-e2e-first-secret" }],
     ["PUT", "openai", { key: "sk-e2e-second-secret" }],
     ["DELETE", "openai", null],
+  ]);
+});
+
+test("chooses Grok, shows its model inside the page, and keeps its key write-only", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const { requests } = await installVoiceSettings(page);
+
+  await page.goto("/settings/voice");
+  const voicePage = page.locator("caffold-settings-voice-page");
+  const grokChoice = voicePage.getByRole("radio", { name: /^Grok/ });
+  await grokChoice.click();
+  await expect(grokChoice).toBeChecked();
+
+  const grok = voicePage.locator('[data-provider="grok"]');
+  await expect(detailValue(grok, "model")).toHaveText("grok-voice-transcribe-2.0");
+  const overflow = await voicePage
+    .locator(".settings-content-scroll")
+    .evaluate((scrollport) => scrollport.scrollWidth - scrollport.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+
+  await grok.getByLabel("API key").fill("xai-e2e-secret");
+  await grok.getByRole("button", { name: "Save key" }).click();
+  await expect(detailValue(grok, "api-key")).toHaveText("Saved");
+  await expect(voicePage).not.toContainText("xai-e2e");
+  await grok.getByRole("button", { name: "Remove key" }).click();
+  await expect(detailValue(grok, "api-key")).toHaveText("Not saved");
+  expect(requests).toEqual([
+    ["provider", { provider: "grok" }],
+    ["PUT", "grok", { key: "xai-e2e-secret" }],
+    ["DELETE", "grok", null],
   ]);
 });
 

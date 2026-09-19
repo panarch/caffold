@@ -340,8 +340,8 @@ are not exposed.
 - Whisper transcription is host-local. Its model download starts only from an
   explicit Settings action and uses a pinned URL, byte length, and SHA-256
   checksum.
-- When OpenAI or Gemini is selected, the backend sends each recording to that
-  provider's API with the saved key. Gemini interactions are created with
+- When OpenAI, Gemini, or Grok is selected, the backend sends each recording to
+  that provider's API with the saved key. Gemini interactions are created with
   `store: false`. Tailscale protects remote transport to the host but is not a
   speech service.
 - Saved API keys live in the data directory's `voice/keys.json`, with an

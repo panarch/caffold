@@ -283,8 +283,8 @@ Settings includes:
   plus the active browser-installation count, labels, short IDs, and removal;
 - Remote Access status and constrained Tailscale Serve controls, with the ready
   private Tailnet URL, copy/open actions, QR handoff, and same-tailnet guidance;
-- Voice provider choice among host-local Whisper, OpenAI, and Gemini, with the
-  model each provider uses, Whisper's pinned revision, model download,
+- Voice provider choice among host-local Whisper, OpenAI, Gemini, and Grok, with
+  the model each provider uses, Whisper's pinned revision, model download,
   cancellation, and deletion, and API keys that can be saved, replaced, or
   removed but never shown again;
 - Codex installation readiness, repair guidance, runtime status, Refresh,

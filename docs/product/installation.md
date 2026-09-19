@@ -211,9 +211,9 @@ become text under **Settings → Voice Input**:
   the Mac after the page is closed; Caffold verifies the model before using it.
   **Cancel download** stops a download in progress, and **Delete model**
   removes the downloaded model.
-- **OpenAI** and **Gemini** transcribe with an API key from that provider. Save
-  the key on the page, which afterwards shows only whether a key is saved. Each
-  recording is sent from the Mac to the selected provider.
+- **OpenAI**, **Gemini**, and **Grok** transcribe with an API key from that
+  provider. Save the key on the page, which afterwards shows only whether a key
+  is saved. Each recording is sent from the Mac to the selected provider.
 
 Whisper is selected until another provider is chosen. When the selected
 provider is not ready, the composer's voice button opens
