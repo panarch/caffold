@@ -79,14 +79,19 @@ PWA is backgrounded.
    verify that one automatic recovery reconciles status, list, and detail and
    then removes the notice.
 
-### Notification focus
+### Notification activation
 
 1. Background an existing Task client and complete its active turn from the
    second client.
 2. Tap the system notification for that same Task.
-3. Verify that Android focuses the existing client, keeps or applies the
-   matching Task route, and reconciles status, list, and the final response
-   without another click or duplicate navigation.
+3. Verify that Android focuses the existing client, keeps the matching Task
+   route, and reconciles status, list, and the final response without another
+   click or duplicate navigation.
+4. Leave that client backgrounded on the same Task, complete the active turn of
+   a different managed Task from the second client, and tap its notification.
+5. Verify that the focused client moves to the notified Task without a
+   bootstrap pass, and that the Android Back gesture returns to the Task the
+   client showed before the notification.
 
 ### Fresh document reconstruction
 

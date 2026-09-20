@@ -552,20 +552,17 @@ function safeTaskName(taskName) {
   return [...name].some((character) => isControlCharacter(character)) ? null : name;
 }
 
+// An open window is focused and told which route to apply, because loading the
+// route into that window would discard the workspace state it still holds.
 async function openNotificationRoute(route) {
   const safeRoute = safeNotificationRoute(route);
   if (!safeRoute) {
     return;
   }
-  const windows = await self.clients.matchAll({
-    type: "window",
-    includeUncontrolled: true,
-  });
-  const matching = windows.find((client) => clientShowsTask(client.url, safeRoute));
-  if (matching) {
+  for (const client of await notificationTargets(safeRoute)) {
     try {
-      await matching.focus();
-      matching.postMessage({
+      await client.focus();
+      client.postMessage({
         type: NOTIFICATION_ACTIVATION_MESSAGE,
         route: safeRoute,
       });
@@ -574,20 +571,23 @@ async function openNotificationRoute(route) {
       // The client may have closed between enumeration and focus.
     }
   }
-  for (const caffoldClient of windows.filter((client) => sameOriginClient(client.url))) {
-    try {
-      const navigated = await caffoldClient.navigate(safeRoute);
-      await (navigated ?? caffoldClient).focus();
-      return;
-    } catch {
-      // Try another Caffold client, then fall back to a new window.
-    }
-  }
   try {
     await self.clients.openWindow(safeRoute);
   } catch {
     // Notification navigation is best-effort.
   }
+}
+
+// Caffold windows, the one already showing the Task first.
+async function notificationTargets(route) {
+  const windows = (await self.clients.matchAll({
+    type: "window",
+    includeUncontrolled: true,
+  })).filter((client) => sameOriginClient(client.url));
+  return [
+    ...windows.filter((client) => clientShowsTask(client.url, route)),
+    ...windows.filter((client) => !clientShowsTask(client.url, route)),
+  ];
 }
 
 function safeNotificationRoute(route) {

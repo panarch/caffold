@@ -320,7 +320,7 @@ class CaffoldAppShell extends HTMLElement {
       (!currentRoute?.threadId || currentRoute.threadId !== route.threadId)
     ) {
       progress.activatingRoute();
-      await this.applyRoute(route);
+      await this.applyRoute(route, { pushHistory: true });
     }
     if (!isCurrent()) {
       return { stale: true };
@@ -460,7 +460,7 @@ class CaffoldAppShell extends HTMLElement {
       return false;
     }
     this.keyboardNavigation?.routeWillChange();
-    const applyOptions = { ...options, keyboardPrepared: true };
+    const applyOptions = { keyboardPrepared: true };
     if (this.currentRoute && routeEquals(this.currentRoute, route)) {
       void this.applyRoute(route, applyOptions);
       return true;
@@ -484,14 +484,19 @@ class CaffoldAppShell extends HTMLElement {
     return true;
   }
 
-  async applyRoute(route, { keyboardPrepared = false } = {}) {
+  async applyRoute(route, { keyboardPrepared = false, pushHistory = false } = {}) {
     if (!keyboardPrepared) {
       this.keyboardNavigation?.routeWillChange();
     }
     this.currentRoute = route;
     const canonicalUrl = routeUrl(route);
     if (window.location.pathname + window.location.search !== canonicalUrl) {
-      window.history.replaceState({ caffoldRoute: route }, "", canonicalUrl);
+      const state = { caffoldRoute: route };
+      if (pushHistory) {
+        window.history.pushState(state, "", canonicalUrl);
+      } else {
+        window.history.replaceState(state, "", canonicalUrl);
+      }
     }
     this.setBootstrapError(null);
     await this.taskWorkspace.openRoute(route, {

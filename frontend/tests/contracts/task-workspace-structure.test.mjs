@@ -727,7 +727,7 @@ test("App Shell solely coordinates foreground recovery through public owners", (
   assert.match(navigator, /recoverForeground\(\)/);
   assert.match(detail, /async recoverForeground\(\)/);
   assert.doesNotMatch(stream, /visibilitychange|addEventListener\("focus"/);
-  assert.match(serviceWorker, /matching\.postMessage\(\{/);
+  assert.match(serviceWorker, /client\.postMessage\(\{/);
   assert.match(serviceWorker, /caffold:notification-activation/);
 });
 

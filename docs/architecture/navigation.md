@@ -236,10 +236,10 @@ Tasks home; switching siblings uses the common Detail controls.
 
 Route requests push by default. Opening a Task child, Git/GitHub list or detail,
 Compare or Log file, PR Files, changing Compare refs, and changing Log/GitHub
-pages therefore create replayable history entries. Domain-local visible Back
-and file-close actions also request their semantic parent through the default
-push policy; browser Back remains ordinary traversal of the entries already
-visited.
+pages therefore create replayable history entries. Applying a notification's
+Task route follows the same push policy. Domain-local visible Back and
+file-close actions also request their semantic parent through the default push
+policy; browser Back remains ordinary traversal of the entries already visited.
 
 Replacement is explicit and limited to cases that refine or canonicalize the
 current destination: `/tasks` canonicalization, invalid-route normalization,

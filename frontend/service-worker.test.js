@@ -451,13 +451,19 @@ test("notification click focuses a client already showing the matching task", as
   const focused = [];
   const navigated = [];
   const messages = [];
+  const other = {
+    url: "https://caffold.test/settings",
+    async focus() { focused.push("other"); },
+    async navigate(route) { navigated.push(route); return this; },
+    postMessage(message) { messages.push(["other", message]); },
+  };
   const matching = {
     url: "https://caffold.test/tasks/thread%201/review",
     async focus() { focused.push("matching"); },
     async navigate(route) { navigated.push(route); return this; },
-    postMessage(message) { messages.push(message); },
+    postMessage(message) { messages.push(["matching", message]); },
   };
-  const harness = createHarness({ allClients: [matching] });
+  const harness = createHarness({ allClients: [other, matching] });
   let closed = false;
   await harness.dispatchExtendable("notificationclick", {
     notification: {
@@ -469,47 +475,53 @@ test("notification click focuses a client already showing the matching task", as
   assert.deepEqual(focused, ["matching"]);
   assert.deepEqual(navigated, []);
   assert.equal(messages.length, 1);
-  assert.equal(messages[0].type, "caffold:notification-activation");
-  assert.equal(messages[0].route, "/tasks/thread%201");
+  assert.equal(messages[0][0], "matching");
+  assert.equal(messages[0][1].type, "caffold:notification-activation");
+  assert.equal(messages[0][1].route, "/tasks/thread%201");
   assert.deepEqual(harness.openedWindows, []);
 });
 
-test("notification click navigates a same-origin client or opens a safe task route", async () => {
-  const navigated = [];
+test("notification click hands its Task route to a window showing another surface", async () => {
   const focused = [];
+  const navigated = [];
+  const messages = [];
   const existing = {
     url: "https://caffold.test/settings",
-    async navigate(route) {
-      navigated.push(route);
-      return { async focus() { focused.push("navigated"); } };
-    },
     async focus() { focused.push("existing"); },
+    async navigate(route) { navigated.push(route); return this; },
+    postMessage(message) { messages.push(message); },
   };
   const harness = createHarness({ allClients: [existing] });
   await harness.dispatchExtendable("notificationclick", {
     notification: { data: { route: "/tasks/thread-2" }, close() {} },
   });
-  assert.deepEqual(navigated, ["/tasks/thread-2"]);
-  assert.deepEqual(focused, ["navigated"]);
-
-  const empty = createHarness();
-  await empty.dispatchExtendable("notificationclick", {
-    notification: { data: { route: "/tasks/thread-3" }, close() {} },
-  });
-  assert.deepEqual(empty.openedWindows, ["/tasks/thread-3"]);
+  assert.deepEqual(focused, ["existing"]);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].type, "caffold:notification-activation");
+  assert.equal(messages[0].route, "/tasks/thread-2");
+  assert.deepEqual(navigated, []);
+  assert.deepEqual(harness.openedWindows, []);
 });
 
-test("notification click opens a new window if stale clients cannot be focused or navigated", async () => {
+test("notification click opens a new window when no client can be focused", async () => {
+  const navigated = [];
   const stale = {
     url: "https://caffold.test/tasks/thread-4",
     async focus() { throw new Error("closed"); },
-    async navigate() { throw new Error("closed"); },
+    async navigate(route) { navigated.push(route); return this; },
   };
   const harness = createHarness({ allClients: [stale] });
   await harness.dispatchExtendable("notificationclick", {
     notification: { data: { route: "/tasks/thread-4" }, close() {} },
   });
   assert.deepEqual(harness.openedWindows, ["/tasks/thread-4"]);
+  assert.deepEqual(navigated, []);
+
+  const empty = createHarness();
+  await empty.dispatchExtendable("notificationclick", {
+    notification: { data: { route: "/tasks/thread-3" }, close() {} },
+  });
+  assert.deepEqual(empty.openedWindows, ["/tasks/thread-3"]);
 });
 
 test("notification click ignores cross-origin and non-task routes", async () => {
