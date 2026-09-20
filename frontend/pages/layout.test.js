@@ -203,6 +203,41 @@ test("cleans keyboard state before route state, URL, and workspace mutations", a
   ]);
 });
 
+test("a notification route keeps the screen it replaces in history", async () => {
+  const calls = [];
+  const owner = {
+    applyRoute: appShell.applyRoute,
+    currentRoute: { kind: "tasks" },
+    initialPath: "",
+    keyboardNavigation: { routeWillChange: () => {} },
+    setBootstrapError: () => {},
+    taskWorkspace: {
+      openRoute: async () => calls.push("workspace-open"),
+      recoverForeground: async () => ({ recovered: true }),
+    },
+  };
+  globalThis.window.location = {
+    href: "https://caffold.test/tasks",
+    origin: "https://caffold.test",
+    pathname: "/tasks",
+    search: "",
+  };
+  globalThis.window.history = {
+    pushState: (_entry, _title, url) => calls.push(`history-push:${url}`),
+    replaceState: (_entry, _title, url) => calls.push(`history-replace:${url}`),
+  };
+
+  const recovery = await appShell.recoverForeground.call(owner, {
+    activationRoute: "/tasks/thread-1",
+    initialActivation: false,
+    isCurrent: () => true,
+    progress: { activatingRoute: () => {} },
+  });
+
+  assert.deepEqual(calls, ["history-push:/tasks/thread-1", "workspace-open"]);
+  assert.deepEqual(recovery, { recovered: true });
+});
+
 function button(label, calls) {
   return {
     disabled: false,

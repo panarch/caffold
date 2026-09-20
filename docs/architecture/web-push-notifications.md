@@ -129,11 +129,11 @@ waiting itself. Notifications are shown even when a foreground Caffold client
 is open.
 
 Click handling accepts only a same-origin `/tasks/<conversation-id>` route. It
-first focuses a window already showing that Task, otherwise navigates an
-existing Caffold window, and finally opens a new Task window. Cross-origin,
-malformed, query-bearing, and non-Task routes are ignored. The JSON and route
-field remain named `threadId` for API compatibility; the identifier can belong
-to either supported agent.
+focuses one open Caffold window, preferring a window already showing that Task,
+and posts the route for that window to apply. A new Task window is opened only
+when no open window can be focused. Cross-origin, malformed, query-bearing, and
+non-Task routes are ignored. The JSON and route field remain named `threadId`
+for API compatibility; the identifier can belong to either supported agent.
 
 ## Accepted reliability limits
 

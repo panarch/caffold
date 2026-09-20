@@ -196,10 +196,10 @@ The service worker also validates finished-turn and waiting-Task Web Push
 payloads, presents system notifications in foreground and background states, and
 limits notification click navigation to canonical same-origin Task routes. It
 does not infer Task completion, a pending approval, or subscription state; those
-remain backend and Settings lifecycle responsibilities. When an already displayed matching Task client is focused,
-the worker posts its validated route to that page; the page applies it if needed
-and uses the same foreground recovery entrypoint. Navigated and newly opened
-documents continue through normal bootstrap.
+remain backend and Settings lifecycle responsibilities. The worker posts the
+validated route to the window it focuses, and that page applies it through the
+same foreground recovery entrypoint without reloading its document. A newly
+opened window continues through normal bootstrap.
 
 All known routes are forwarded to `caffold-task-workspace`. Tasks resolves the
 active Task or Section subject; its common Detail owns shared child instances

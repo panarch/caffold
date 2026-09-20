@@ -499,7 +499,7 @@ test("BFCache pageshow and top-level focus use the shared foreground recovery", 
   );
 });
 
-test("notification activation refreshes stale readiness and opens its Task route", { tag: "@desktop" }, async ({
+test("notification activation refreshes stale readiness and opens its Task route in place", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
   const registryKey = "__notificationRecoverySources";
@@ -584,6 +584,9 @@ test("notification activation refreshes stale readiness and opens its Task route
   const readsBeforeActivation = statusReads;
 
   ready = true;
+  await page.evaluate(() => {
+    window.__notificationDocument = "kept";
+  });
   await page.evaluate((route) => {
     navigator.serviceWorker.dispatchEvent(new MessageEvent("message", {
       data: {
@@ -606,6 +609,14 @@ test("notification activation refreshes stale readiness and opens its Task route
   await expect
     .poll(() => activeLiveUpdateChannels(page, { registryKey }))
     .toEqual(["task-detail", "task-list", "watch"]);
+  expect(await page.evaluate(() => window.__notificationDocument)).toBe("kept");
+  await page.goBack();
+  await expect(page).toHaveURL("/");
+  const notifiedRow = page.locator(
+    `caffold-active-task-list .task-row[data-thread-id="${threadId}"]`,
+  );
+  await expect(notifiedRow).toBeVisible();
+  await expect(notifiedRow).not.toHaveAttribute("aria-current", "true");
 });
 
 test("foreground recovery retries a blocking Task-store snapshot with bounded backoff", { tag: "@desktop" }, async ({
