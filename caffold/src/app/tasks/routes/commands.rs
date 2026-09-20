@@ -4,8 +4,8 @@ use super::store::{
     task_store_get, task_store_update_composer_settings, task_store_worktree_for_thread,
 };
 use super::{
-    CreateTaskRequest, MAX_TASK_IMAGES, TaskApprovalRequest, TaskPromptOutcome, TaskPromptRequest,
-    TaskPromptResponse, TasksQuery,
+    CancelledPromptResponse, CreateTaskRequest, MAX_TASK_IMAGES, TaskApprovalRequest,
+    TaskInterruptResponse, TaskPromptOutcome, TaskPromptRequest, TaskPromptResponse, TasksQuery,
 };
 use crate::agent::AgentError;
 use crate::agent::codex::{CodexThreadClient, CodexThreadError};
@@ -175,10 +175,15 @@ async fn task_prompt_owned(
         };
         match result {
             Ok(result) => break result,
+            // The turn the choice was made against ended, or one began, before
+            // the agent took the prompt. Choose again from a fresh read.
             Err(error)
-                if attempted_steer
-                    && !refreshed_stale_turn
-                    && matches!(error, AgentError::TurnGone(_)) =>
+                if !refreshed_stale_turn
+                    && match error {
+                        AgentError::TurnGone(_) => attempted_steer,
+                        AgentError::TurnRunning(_) => !attempted_steer,
+                        _ => false,
+                    } =>
             {
                 refreshed_stale_turn = true;
                 if let Err(refresh_error) = state
@@ -355,7 +360,7 @@ pub(super) async fn task_interrupt(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
-) -> Result<Json<TaskDetailResponse>, ApiError> {
+) -> Result<Json<TaskInterruptResponse>, ApiError> {
     let managed = task_store_get(&state, &thread_id)
         .await?
         .ok_or_else(task_not_managed_error)?;
@@ -364,21 +369,42 @@ pub(super) async fn task_interrupt(
         .restore_managed_fast_mode(&thread_id, managed.fast_mode)
         .await;
     let agent = state.task_runtime.task_agent(&thread_id).await?;
-    let Some(turn_id) = state
+    let turn_id = state
         .task_sessions
         .active_turn_id(&agent.driver(), agent.generation(), &thread_id)
-        .await?
-    else {
-        return Err(ApiError::BadRequest {
-            code: "task_turn_missing",
-            message: "thread does not have an active turn to interrupt".to_string(),
-        });
-    };
-    if let Err(error) = agent.driver().interrupt_turn(&thread_id, &turn_id).await {
-        recover_agent_connection(&state, &agent, &error).await;
-        return Err(error.into());
+        .await?;
+    // Work the agent reports with no turn open, such as a subagent it sent to
+    // the background, is stopped too.
+    if turn_id.is_none() && !state.task_sessions.working(&thread_id).await {
+        return Err(turn_missing(
+            "thread does not have an active turn to interrupt".to_string(),
+        ));
     }
-    Ok(Json(state.detail.read(&agent, &thread_id, None).await?))
+    let cancelled = match agent
+        .driver()
+        .interrupt_turn(&thread_id, turn_id.as_deref())
+        .await
+    {
+        Ok(cancelled) => cancelled,
+        // An agent that stops only a running turn found none to stop.
+        Err(AgentError::TurnGone(message)) if turn_id.is_none() => {
+            return Err(turn_missing(message));
+        }
+        Err(error) => {
+            recover_agent_connection(&state, &agent, &error).await;
+            return Err(error.into());
+        }
+    };
+    Ok(Json(TaskInterruptResponse {
+        detail: state.detail.read(&agent, &thread_id, None).await?,
+        cancelled_prompts: cancelled
+            .into_iter()
+            .map(|sent| CancelledPromptResponse {
+                prompt: sent.prompt,
+                images: sent.images,
+            })
+            .collect(),
+    }))
 }
 
 pub(super) async fn task_approval(
@@ -463,6 +489,14 @@ async fn new_task_agent(
 }
 
 /// Tell the runtime a connection failed, when the agent has one to lose.
+/// A stop with nothing running to stop.
+fn turn_missing(message: String) -> ApiError {
+    ApiError::BadRequest {
+        code: "task_turn_missing",
+        message,
+    }
+}
+
 async fn recover_agent_connection(state: &TaskState, agent: &TaskAgent, error: &AgentError) {
     state
         .task_runtime
@@ -2306,6 +2340,152 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_codex_stop_answers_that_it_cancelled_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-codex-stop";
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                active_thread_with_turn(thread_id, "turn-codex-stop", "inProgress", root.path()),
+            ),
+            MockCodexResponse::ok("turn/interrupt", json!({})),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+
+        let response = task_interrupt(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+        )
+        .await
+        .expect("the stop reaches Codex");
+
+        assert!(response.0.cancelled_prompts.is_empty());
+        assert!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .any(|(method, _)| method == "turn/interrupt")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_codex_stop_with_no_turn_running_is_refused_without_reaching_codex() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-codex-working";
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                active_thread_with_turn(thread_id, "turn-finished", "completed", root.path()),
+            ),
+            MockCodexResponse::ok(
+                "thread/turns/list",
+                json!({
+                    "data": [{ "id": "turn-finished", "items": [], "status": "completed", "startedAt": 3.0 }],
+                    "nextCursor": null,
+                    "backwardsCursor": null
+                }),
+            ),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+
+        let refused = task_interrupt(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+        )
+        .await;
+
+        assert!(
+            matches!(
+                refused,
+                Err(ApiError::BadRequest {
+                    code: "task_turn_missing",
+                    ..
+                })
+            ),
+            "{refused:?}"
+        );
+        assert!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .all(|(method, _)| method != "turn/interrupt")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_codex_stop_that_fails_answers_with_the_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-codex-stop-refused";
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                active_thread_with_turn(
+                    thread_id,
+                    "turn-codex-stop-refused",
+                    "inProgress",
+                    root.path(),
+                ),
+            ),
+            MockCodexResponse::error(
+                "turn/interrupt",
+                CodexThreadError::ThreadUnavailable("the turn is gone".into()),
+            ),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+
+        let refused = task_interrupt(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+        )
+        .await;
+
+        assert!(refused.is_err(), "the failed stop is not answered as done");
+    }
+
+    /// Codex resuming a thread it says is working, whose latest turn is
+    /// `turn_id` in `turn_status`.
+    fn active_thread_with_turn(
+        thread_id: &str,
+        turn_id: &str,
+        turn_status: &str,
+        cwd: &Path,
+    ) -> JsonValue {
+        json!({
+            "thread": {
+                "id": thread_id,
+                "preview": "A Codex turn to stop",
+                "status": { "type": "active", "activeFlags": [] },
+                "cwd": cwd.display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 3.0,
+                "turns": []
+            },
+            "cwd": cwd.display().to_string(),
+            "initialTurnsPage": {
+                "data": [{
+                    "id": turn_id,
+                    "items": [],
+                    "status": turn_status,
+                    "startedAt": 3.0
+                }],
+                "nextCursor": null,
+                "backwardsCursor": null
+            }
+        })
+    }
+
+    #[tokio::test]
     async fn task_prompt_recovers_a_system_error_thread_with_a_new_turn() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-system-error-recovery";
@@ -2877,30 +3057,15 @@ mod state_tests {
 }
 
 #[cfg(test)]
-mod grok_tests {
-    //! A Grok Task over the same HTTP surface every Task uses: the model list
-    //! names the agent, creation chooses it, a prompt reaches the leader under
-    //! the turn Caffold named, and the Task reads back through Detail.
-
-    use std::time::Duration;
+mod http_calls {
+    //! Requests through the Task router, for the agent test modules below.
 
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
-    use serde_json::{Value, json};
-    use tokio::sync::broadcast::error::RecvError;
-    use tokio::time::{Instant, sleep, timeout};
+    use serde_json::Value;
     use tower::ServiceExt;
 
-    use crate::agent::codex::{CodexThreadClient, MockCodexResponse};
-    use crate::agent::grok::test_support::update_frame;
-    use crate::app::tasks::events::TaskEventRecord;
-    use crate::app::tasks::routes::{router, test_support::current_model_list_response};
-    use crate::app::tasks::runtime::{TaskRuntime, TaskRuntimeSignal};
-    use crate::app::tasks::test_support::{task_state_with_agents, task_state_with_grok};
-    use crate::fs::RootedFs;
-    use crate::task_store::RunBy;
-
-    async fn call(app: &axum::Router, request: Request<Body>) -> (StatusCode, Value) {
+    pub(super) async fn call(app: &axum::Router, request: Request<Body>) -> (StatusCode, Value) {
         let response = app.clone().oneshot(request).await.unwrap();
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -2913,12 +3078,40 @@ mod grok_tests {
         (status, json)
     }
 
-    fn post(path: &str, body: Value) -> Request<Body> {
+    pub(super) fn post(path: &str, body: Value) -> Request<Body> {
         Request::post(path)
             .header("content-type", "application/json")
             .body(Body::from(body.to_string()))
             .unwrap()
     }
+}
+
+#[cfg(test)]
+mod grok_tests {
+    //! A Grok Task over the same HTTP surface every Task uses: the model list
+    //! names the agent, creation chooses it, a prompt reaches the leader under
+    //! the turn Caffold named, and the Task reads back through Detail.
+
+    use std::time::Duration;
+
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use serde_json::json;
+    use tokio::sync::broadcast::error::RecvError;
+    use tokio::time::{Instant, sleep, timeout};
+
+    use crate::agent::ThreadStatus;
+    use crate::agent::codex::{CodexThreadClient, MockCodexResponse};
+    use crate::agent::grok::MockLeader;
+    use crate::agent::grok::test_support::update_frame;
+    use crate::app::tasks::events::TaskEventRecord;
+    use crate::app::tasks::routes::{router, test_support::current_model_list_response};
+    use crate::app::tasks::runtime::{TaskRuntime, TaskRuntimeSignal};
+    use crate::app::tasks::test_support::{task_state_with_agents, task_state_with_grok};
+    use crate::fs::RootedFs;
+    use crate::task_store::RunBy;
+
+    use super::http_calls::{call, post};
 
     #[tokio::test]
     async fn the_model_list_names_grok_and_creation_prompting_and_detail_run_through_the_task_surface()
@@ -3076,6 +3269,186 @@ mod grok_tests {
                 .any(|event| event.to_string().contains("a.rs b.rs")),
             "and so is what the agent answered: {detail}"
         );
+    }
+
+    /// A Grok Task created over HTTP, once the leader holds its session.
+    async fn created_grok_task(app: &axum::Router, leader: &MockLeader) -> String {
+        let (status, created) = call(
+            app,
+            post(
+                "/api/tasks",
+                json!({ "titleSource": "Investigate the Grok bridge", "provider": "grok", "model": "grok-4.5", "effort": "low", "permissionMode": "ask" }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{created}");
+        leader.wait_for("session/new").await;
+        created["threadId"].as_str().unwrap().to_string()
+    }
+
+    #[tokio::test]
+    async fn a_prompt_while_a_grok_turn_runs_is_steered_into_that_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, leader, _memory, _host) = task_state_with_grok(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let app = router(state);
+        let thread_id = created_grok_task(&app, &leader).await;
+        let (status, first) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({ "prompt": "List the files here." }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{first}");
+        leader.wait_for("session/prompt").await;
+
+        let (status, second) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({ "prompt": "Only the Rust ones." }),
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{second}");
+        assert_eq!(second["steered"], true);
+        assert_eq!(second["turnId"], first["turnId"]);
+        let interjected = leader.wait_for("_x.ai/interject").await;
+        assert!(
+            interjected.to_string().contains("Only the Rust ones."),
+            "{interjected}"
+        );
+        assert_eq!(leader.requests("session/prompt").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_grok_stop_answers_that_it_cancelled_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, leader, _memory, _host) = task_state_with_grok(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let app = router(state);
+        let thread_id = created_grok_task(&app, &leader).await;
+        let (status, started) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({ "prompt": "List the files here." }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{started}");
+        leader.wait_for("session/prompt").await;
+
+        let (status, stopped) = call(
+            &app,
+            post(&format!("/api/tasks/{thread_id}/interrupt"), json!({})),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{stopped}");
+        assert_eq!(stopped["cancelledPrompts"], json!([]));
+        leader.wait_for_notification("session/cancel").await;
+    }
+
+    #[tokio::test]
+    async fn a_grok_stop_while_it_works_without_a_turn_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, leader, _memory, _host) = task_state_with_grok(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let sessions = state.task_sessions.clone();
+        let app = router(state);
+        let thread_id = created_grok_task(&app, &leader).await;
+        leader
+            .notify(
+                "_x.ai/sessions/changed",
+                json!({ "upserted": [{ "sessionId": thread_id, "activity": "working", "resident": true, "yolo": false }], "removed": [] }),
+            )
+            .await;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !sessions
+            .snapshot(&thread_id)
+            .await
+            .and_then(|snapshot| snapshot.conversation)
+            .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the Task reads as working once the leader says so"
+            );
+            sleep(Duration::from_millis(10)).await;
+        }
+
+        let (status, refused) = call(
+            &app,
+            post(&format!("/api/tasks/{thread_id}/interrupt"), json!({})),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+        assert_eq!(refused["error"]["code"], "task_turn_missing");
+    }
+
+    #[tokio::test]
+    async fn a_prompt_while_grok_says_it_is_working_without_a_turn_starts_one() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, leader, _memory, _host) = task_state_with_grok(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let sessions = state.task_sessions.clone();
+        let app = router(state);
+        let thread_id = created_grok_task(&app, &leader).await;
+        leader
+            .notify(
+                "_x.ai/sessions/changed",
+                json!({ "upserted": [{ "sessionId": thread_id, "activity": "working", "resident": true, "yolo": false }], "removed": [] }),
+            )
+            .await;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let snapshot = sessions
+                .snapshot(&thread_id)
+                .await
+                .expect("a watched session");
+            if snapshot
+                .conversation
+                .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the Task reads as working once the leader says so"
+            );
+            sleep(Duration::from_millis(10)).await;
+        }
+
+        let (status, prompted) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({ "prompt": "List the files here." }),
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        assert_eq!(prompted["steered"], false);
+        let sent = leader.wait_for("session/prompt").await;
+        assert_eq!(sent["_meta"]["promptId"], prompted["turnId"]);
     }
 
     /// The approvals a Task is waiting on, once there are `count` of them.
@@ -3267,5 +3640,889 @@ mod grok_tests {
         // An agent that cannot be reached answers as one, the way a lost
         // Codex connection or Claude runner does.
         assert_eq!(status, StatusCode::BAD_GATEWAY, "{refused}");
+    }
+}
+
+#[cfg(test)]
+mod claude_tests {
+    //! A Claude Task over the HTTP prompt surface while Claude says it is still
+    //! working on something no Caffold turn asked for: a subagent it
+    //! backgrounded, the turn it starts on its own to answer that subagent's
+    //! report, and the turn it starts for a message that reached it after the
+    //! turn it was sent into had ended. The frames are the ones Claude Code
+    //! 2.1.274 wrote in each situation.
+
+    use std::path::Path;
+    use std::time::Duration;
+
+    use axum::Router;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use serde_json::{Value, json};
+    use tokio::time::{Instant, sleep, timeout};
+
+    use crate::agent::ThreadStatus;
+    use crate::agent::claude::{ClaudeTurnOptions, MockRunnerHandle};
+    use crate::agent::codex::CodexThreadClient;
+    use crate::app::tasks::TaskState;
+    use crate::app::tasks::routes::router;
+    use crate::app::tasks::sessions::SessionSnapshot;
+    use crate::app::tasks::test_support::task_state_with_agents;
+    use crate::fs::RootedFs;
+    use crate::task_store::{ManagedThread, RunBy};
+
+    use super::http_calls::{call, post};
+
+    const SESSION: &str = "claude-thread-1";
+    const WAIT: Duration = Duration::from_secs(5);
+
+    #[tokio::test]
+    async fn a_prompt_while_a_backgrounded_subagent_keeps_claude_working_starts_a_new_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, launched) = call(&app, prompt("Start the subagent.")).await;
+        assert_eq!(status, StatusCode::OK, "{launched}");
+        background_a_subagent(&runner).await;
+        until(
+            &state,
+            "the launching turn ends while Claude still says it is working",
+            ended_while_working,
+        )
+        .await;
+
+        let (status, prompted) = call(&app, prompt("Meanwhile, list the files.")).await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        assert_eq!(prompted["steered"], false);
+        assert_ne!(prompted["turnId"], launched["turnId"]);
+        assert!(
+            runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["type"] == "user" && frame["uuid"] == prompted["turnId"]),
+            "the prompt reaches Claude under the turn it opened"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_prompt_during_the_turn_claude_starts_for_a_subagents_report_joins_that_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, launched) = call(&app, prompt("Start the subagent.")).await;
+        assert_eq!(status, StatusCode::OK, "{launched}");
+        background_a_subagent(&runner).await;
+        until(
+            &state,
+            "the launching turn ends while Claude still says it is working",
+            ended_while_working,
+        )
+        .await;
+        answer_the_report_on_its_own(&state, &runner, &cwd, launched["turnId"].as_str().unwrap())
+            .await;
+        until(
+            &state,
+            "the turn Claude started for the report is the running turn",
+            |snapshot| snapshot.active_turn_id.as_deref() == Some("report-1"),
+        )
+        .await;
+
+        let (status, prompted) = call(&app, prompt("Also list the files.")).await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        assert_eq!(prompted["steered"], true);
+        assert_eq!(prompted["turnId"], "report-1");
+        assert!(
+            runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["message"]["content"][0]["text"] == "Also list the files."),
+            "the message reaches Claude"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_prompt_sent_while_claude_files_its_report_waits_and_joins_that_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, launched) = call(&app, prompt("Start the subagent.")).await;
+        assert_eq!(status, StatusCode::OK, "{launched}");
+        background_a_subagent(&runner).await;
+        until(
+            &state,
+            "the launching turn ends while Claude still says it is working",
+            ended_while_working,
+        )
+        .await;
+        runner.say(SESSION, report_frame()).await;
+        runner.say(SESSION, init_frame()).await;
+        in_a_turn_of_its_own(&state).await;
+
+        let mut prompting = tokio::spawn({
+            let app = app.clone();
+            async move { call(&app, prompt("Also list the files.")).await }
+        });
+        timeout(Duration::from_millis(50), &mut prompting)
+            .await
+            .expect_err("held while the report is not on disk");
+        state.task_runtime.claude().write_test_transcript(
+            &cwd,
+            SESSION,
+            &filed_report(launched["turnId"].as_str().unwrap()),
+        );
+        let (status, prompted) = prompting.await.expect("the prompt request finishes");
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        assert_eq!(prompted["steered"], true);
+        assert_eq!(prompted["turnId"], "report-1");
+        assert!(
+            runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["message"]["content"][0]["text"] == "Also list the files."),
+            "the message reaches Claude"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_prompt_during_the_turn_claude_starts_for_a_subagents_hand_back_joins_that_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, launched) = call(&app, prompt("Start the subagent.")).await;
+        assert_eq!(status, StatusCode::OK, "{launched}");
+        background_a_subagent(&runner).await;
+        until(
+            &state,
+            "the launching turn ends while Claude still says it is working",
+            ended_while_working,
+        )
+        .await;
+        runner.say(SESSION, init_frame()).await;
+        state.task_runtime.claude().write_test_transcript(
+            &cwd,
+            SESSION,
+            &filed_hand_back(launched["turnId"].as_str().unwrap()),
+        );
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "assistant", "uuid": "answer-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-3", "role": "assistant", "content": [{ "type": "text", "text": "It slept." }] } }),
+            )
+            .await;
+        until(
+            &state,
+            "the turn Claude started for the hand-back is the running turn",
+            |snapshot| snapshot.active_turn_id.as_deref() == Some("handback-1"),
+        )
+        .await;
+
+        let (status, prompted) = call(&app, prompt("Also list the files.")).await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        assert_eq!(prompted["steered"], true);
+        assert_eq!(prompted["turnId"], "handback-1");
+        assert!(
+            runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["message"]["content"][0]["text"] == "Also list the files."),
+            "the message reaches Claude"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_prompt_during_a_turn_claude_began_with_nothing_to_name_it_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, launched) = call(&app, prompt("Start the subagent.")).await;
+        assert_eq!(status, StatusCode::OK, "{launched}");
+        background_a_subagent(&runner).await;
+        until(
+            &state,
+            "the launching turn ends while Claude still says it is working",
+            ended_while_working,
+        )
+        .await;
+        runner.say(SESSION, init_frame()).await;
+        in_a_turn_of_its_own(&state).await;
+        // Speaking with nothing on disk to name the turn by is what leaves it
+        // unnamed, while the backgrounded subagent could still hand back.
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "assistant", "uuid": "answer-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-3", "role": "assistant", "content": [{ "type": "text", "text": "Checking." }] } }),
+            )
+            .await;
+
+        let (status, refused) = call(&app, prompt("Also list the files.")).await;
+
+        assert_eq!(status, StatusCode::BAD_GATEWAY, "{refused}");
+        assert!(
+            refused.to_string().contains("began on its own"),
+            "{refused}"
+        );
+        assert!(
+            !runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["message"]["content"][0]["text"] == "Also list the files."),
+            "nothing is sent beside Claude's turn"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_prompt_while_claude_answers_a_message_that_missed_its_turn_joins_that_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (story, late) = steer_too_late(&state, &app, &runner).await;
+        runner.say(SESSION, init_frame()).await;
+        in_a_turn_of_its_own(&state).await;
+        state.task_runtime.claude().write_test_transcript(
+            &cwd,
+            SESSION,
+            &filed_late_message(&story, &late),
+        );
+
+        let (status, prompted) = call(&app, prompt("And list the files.")).await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        assert_eq!(prompted["steered"], true);
+        assert_eq!(prompted["turnId"], late.as_str());
+        assert!(
+            runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["message"]["content"][0]["text"] == "And list the files."),
+            "the message reaches Claude"
+        );
+    }
+
+    #[tokio::test]
+    async fn stopping_while_claude_answers_a_message_that_missed_its_turn_stops_that_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (story, late) = steer_too_late(&state, &app, &runner).await;
+        answer_the_late_message(&state, &runner, &cwd, &story, &late).await;
+        until(
+            &state,
+            "the turn Claude runs for the late message is the running turn",
+            |snapshot| snapshot.active_turn_id.as_deref() == Some(late.as_str()),
+        )
+        .await;
+
+        let (status, stopped) = stop_the_task(&app, &runner, &[]).await;
+
+        assert_eq!(status, StatusCode::OK, "{stopped}");
+    }
+
+    #[tokio::test]
+    async fn a_stop_while_only_a_backgrounded_subagent_works_reaches_claude() {
+        // As Claude Code 2.1.274 takes it: with no turn open, a stop ends the
+        // subagent it sent to the background, and Claude goes idle.
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, launched) = call(&app, prompt("Start the subagent.")).await;
+        assert_eq!(status, StatusCode::OK, "{launched}");
+        background_a_subagent(&runner).await;
+        until(
+            &state,
+            "the launching turn ends while Claude still says it is working",
+            ended_while_working,
+        )
+        .await;
+
+        let (status, stopped) = stop_the_task(&app, &runner, &[]).await;
+
+        assert_eq!(status, StatusCode::OK, "{stopped}");
+        assert_eq!(stopped["cancelledPrompts"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn a_stop_while_claude_is_idle_is_refused_without_reaching_it() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, started) = call(&app, prompt("Say hello.")).await;
+        assert_eq!(status, StatusCode::OK, "{started}");
+        for frame in [
+            running_frame(),
+            init_frame(),
+            json!({ "type": "result", "subtype": "success", "is_error": false, "stop_reason": "end_turn", "session_id": SESSION }),
+            json!({ "type": "system", "subtype": "session_state_changed", "state": "idle", "session_id": SESSION }),
+        ] {
+            runner.say(SESSION, frame).await;
+        }
+        until(&state, "the turn ends and Claude is idle", |snapshot| {
+            snapshot.active_turn_id.is_none()
+                && snapshot
+                    .conversation
+                    .as_ref()
+                    .is_some_and(|thread| !matches!(thread.status, ThreadStatus::Active { .. }))
+        })
+        .await;
+
+        let (status, refused) = call(
+            &app,
+            post(&format!("/api/tasks/{SESSION}/interrupt"), json!({})),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+        assert_eq!(refused["error"]["code"], "task_turn_missing");
+        assert!(
+            runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .all(|frame| frame["request"]["subtype"] != "interrupt")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stop_answers_with_the_messages_it_cancelled_and_draws_them_no_more() {
+        // As Claude Code 2.1.274 answers a stop that cancels what waits behind
+        // the turn: by the uuids the cancelled messages went out with. The
+        // turn never takes them in, so its transcript holds nothing of them.
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, started) = call(&app, prompt("Tell me a story.")).await;
+        assert_eq!(status, StatusCode::OK, "{started}");
+        let story = started["turnId"].as_str().unwrap().to_string();
+        runner.say(SESSION, running_frame()).await;
+        runner.say(SESSION, init_frame()).await;
+        until(&state, "the story turn is running", |snapshot| {
+            snapshot.active_turn_id.as_deref() == Some(story.as_str())
+        })
+        .await;
+        let (status, steered) = call(&app, prompt("Also say pong.")).await;
+        assert_eq!(status, StatusCode::OK, "{steered}");
+        let late = runner
+            .heard(SESSION)
+            .await
+            .into_iter()
+            .find(|frame| frame["message"]["content"][0]["text"] == "Also say pong.")
+            .expect("the message reaches Claude")["uuid"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let (status, stopped) = stop_the_task(&app, &runner, &[late.as_str()]).await;
+
+        assert_eq!(status, StatusCode::OK, "{stopped}");
+        let asked = runner
+            .heard(SESSION)
+            .await
+            .into_iter()
+            .find(|frame| frame["request"]["subtype"] == "interrupt")
+            .expect("the stop reaches Claude");
+        assert_eq!(
+            asked["request"]["cancel_queued"], true,
+            "nothing waiting behind the turn runs once it stops"
+        );
+        assert_eq!(
+            stopped["cancelledPrompts"],
+            json!([{ "prompt": "Also say pong.", "images": [] }])
+        );
+        state
+            .task_runtime
+            .claude()
+            .write_test_transcript(&cwd, SESSION, &filed_story(&story));
+        runner.say(SESSION, stopped_result_frame()).await;
+        let deadline = Instant::now() + WAIT;
+        loop {
+            let (status, detail) = call(
+                &app,
+                Request::get(format!("/api/tasks/{SESSION}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{detail}");
+            let messages = detail["events"]
+                .as_array()
+                .expect("the detail lists its events")
+                .iter()
+                .filter(|event| event["type"] == "user_message")
+                .map(|event| {
+                    event["payload"]["itemId"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string()
+                })
+                .collect::<Vec<_>>();
+            if messages == [format!("{story}:prompt")] && detail["eventsRange"].is_object() {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the cancelled message leaves the stopped turn, in a snapshot that claims its \
+                 extent: {messages:?} {}",
+                detail["eventsRange"]
+            );
+            sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn a_prompt_during_the_turn_a_report_opens_after_the_hand_back_turn_joins_it() {
+        // As Claude Code 2.1.274 does it: the report comes while the turn
+        // taking the subagent's hand-back is working and not yet named, and
+        // that turn ends before taking it in, so the report opens a turn of
+        // its own at once.
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (status, launched) = call(&app, prompt("Start the subagent.")).await;
+        assert_eq!(status, StatusCode::OK, "{launched}");
+        let launch = launched["turnId"].as_str().unwrap().to_string();
+        background_a_subagent(&runner).await;
+        until(
+            &state,
+            "the launching turn ends while Claude still says it is working",
+            ended_while_working,
+        )
+        .await;
+        runner.say(SESSION, init_frame()).await;
+        in_a_turn_of_its_own(&state).await;
+        runner.say(SESSION, report_frame()).await;
+        state
+            .task_runtime
+            .claude()
+            .write_test_transcript(&cwd, SESSION, &filed_hand_back(&launch));
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "assistant", "uuid": "answer-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-3", "role": "assistant", "content": [{ "type": "text", "text": "It slept." }] } }),
+            )
+            .await;
+        until(
+            &state,
+            "the turn Claude started for the hand-back is the running turn",
+            |snapshot| snapshot.active_turn_id.as_deref() == Some("handback-1"),
+        )
+        .await;
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "result", "subtype": "success", "is_error": false, "stop_reason": "end_turn", "session_id": SESSION }),
+            )
+            .await;
+        until(&state, "the hand-back turn ends", |snapshot| {
+            snapshot.active_turn_id.is_none()
+        })
+        .await;
+
+        runner.say(SESSION, init_frame()).await;
+        in_a_turn_of_its_own(&state).await;
+        state.task_runtime.claude().write_test_transcript(
+            &cwd,
+            SESSION,
+            &filed_hand_back_and_report(&launch),
+        );
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "assistant", "uuid": "answer-2", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-4", "role": "assistant", "content": [{ "type": "text", "text": "Noted." }] } }),
+            )
+            .await;
+        until(
+            &state,
+            "the turn the report opened is the running turn",
+            |snapshot| snapshot.active_turn_id.as_deref() == Some("report-1"),
+        )
+        .await;
+
+        let (status, prompted) = call(&app, prompt("Also list the files.")).await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        assert_eq!(prompted["steered"], true);
+        assert_eq!(prompted["turnId"], "report-1");
+    }
+
+    #[tokio::test]
+    async fn a_message_that_missed_its_turn_shows_as_the_start_of_the_turn_that_answers_it() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let (story, late) = steer_too_late(&state, &app, &runner).await;
+        answer_the_late_message(&state, &runner, &cwd, &story, &late).await;
+
+        let deadline = Instant::now() + WAIT;
+        loop {
+            let (status, detail) = call(
+                &app,
+                Request::get(format!("/api/tasks/{SESSION}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{detail}");
+            let messages = detail["events"]
+                .as_array()
+                .expect("the detail lists its events")
+                .iter()
+                .filter(|event| event["type"] == "user_message")
+                .map(|event| {
+                    (
+                        event["payload"]["turnId"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string(),
+                        event["payload"]["itemId"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let late_messages = messages
+                .iter()
+                .filter(|(_, item)| item.starts_with(late.as_str()))
+                .collect::<Vec<_>>();
+            // A snapshot that claims its extent is one a page already showing
+            // the message inside the earlier turn takes it out of.
+            if late_messages == [&(late.clone(), format!("{late}:prompt"))]
+                && detail["eventsRange"].is_object()
+            {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the late message shows once, opening its own turn, in a snapshot that claims \
+                 its extent: {messages:?} {}",
+                detail["eventsRange"]
+            );
+            sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    /// A watched Claude Task the stand-in runner speaks for.
+    async fn claude_task(root: &Path) -> (TaskState, MockRunnerHandle) {
+        let (state, runner) = task_state_with_agents(
+            RootedFs::new(root).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        state.task_runtime.watch_claude();
+        let cwd = root.display().to_string();
+        state
+            .task_store
+            .claim(
+                ManagedThread {
+                    run_by: RunBy::Claude { cwd: cwd.clone() },
+                    ..ManagedThread::new(SESSION, RunBy::Codex, Some(1_000), None, None)
+                },
+                1,
+            )
+            .unwrap();
+        state
+            .task_runtime
+            .claude()
+            .open_conversation(SESSION, &cwd, &ClaudeTurnOptions::default())
+            .await
+            .expect("the conversation opens");
+        (state, runner)
+    }
+
+    /// The turn that backgrounds a subagent: Claude says it is running,
+    /// launches the subagent, answers, and ends the turn without saying idle.
+    async fn background_a_subagent(runner: &MockRunnerHandle) {
+        for frame in [
+            running_frame(),
+            init_frame(),
+            json!({ "type": "assistant", "uuid": "launch-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-1", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_agent", "name": "Agent", "input": { "description": "Sleep", "prompt": "Run `sleep 20`.", "run_in_background": true } }] } }),
+            json!({ "type": "system", "subtype": "task_started", "task_id": "agent-task-1", "tool_use_id": "toolu_agent", "description": "Sleep", "task_type": "local_agent", "is_backgrounded": true, "session_id": SESSION }),
+            json!({ "type": "user", "uuid": "launch-2", "session_id": SESSION, "parent_tool_use_id": null, "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "toolu_agent", "content": "Async agent launched successfully." }] } }),
+            json!({ "type": "assistant", "uuid": "launch-3", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-2", "role": "assistant", "content": [{ "type": "text", "text": "started" }] } }),
+            json!({ "type": "result", "subtype": "success", "is_error": false, "stop_reason": "end_turn", "session_id": SESSION }),
+        ] {
+            runner.say(SESSION, frame).await;
+        }
+    }
+
+    /// The subagent's report, answered the way Claude answers it on its own:
+    /// it says the task finished, starts a turn, files the report as that
+    /// turn's prompt, and begins answering. The prompt row lands in the
+    /// transcript after `init`, before the first answer.
+    async fn answer_the_report_on_its_own(
+        state: &TaskState,
+        runner: &MockRunnerHandle,
+        cwd: &str,
+        launch_turn: &str,
+    ) {
+        runner.say(SESSION, report_frame()).await;
+        runner.say(SESSION, init_frame()).await;
+        state
+            .task_runtime
+            .claude()
+            .write_test_transcript(cwd, SESSION, &filed_report(launch_turn));
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "assistant", "uuid": "answer-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-3", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_bash", "name": "Bash", "input": { "command": "sleep 4" } }] } }),
+            )
+            .await;
+    }
+
+    /// A turn Caffold opens and a message sent into it that Claude takes in
+    /// only once that turn has ended: the turn writes its answer with no tool
+    /// call after the message arrives, so the message has nowhere to join it.
+    /// Answers that turn's id and the uuid the late message went out under.
+    async fn steer_too_late(
+        state: &TaskState,
+        app: &Router,
+        runner: &MockRunnerHandle,
+    ) -> (String, String) {
+        let (status, started) = call(app, prompt("Tell me a story.")).await;
+        assert_eq!(status, StatusCode::OK, "{started}");
+        let story = started["turnId"].as_str().unwrap().to_string();
+        runner.say(SESSION, running_frame()).await;
+        runner.say(SESSION, init_frame()).await;
+        until(state, "the story turn is running", |snapshot| {
+            snapshot.active_turn_id.as_deref() == Some(story.as_str())
+        })
+        .await;
+        let (status, steered) = call(app, prompt("Also say pong.")).await;
+        assert_eq!(status, StatusCode::OK, "{steered}");
+        assert_eq!(
+            steered["turnId"],
+            story.as_str(),
+            "sent into the story turn"
+        );
+        let late = runner
+            .heard(SESSION)
+            .await
+            .into_iter()
+            .find(|frame| frame["message"]["content"][0]["text"] == "Also say pong.")
+            .expect("the message reaches Claude")["uuid"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        for frame in [
+            json!({ "type": "assistant", "uuid": "story-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-1", "role": "assistant", "content": [{ "type": "text", "text": "Once upon a time." }] } }),
+            json!({ "type": "result", "subtype": "success", "is_error": false, "stop_reason": "end_turn", "session_id": SESSION }),
+        ] {
+            runner.say(SESSION, frame).await;
+        }
+        until(state, "the story turn ends", |snapshot| {
+            snapshot.active_turn_id.is_none()
+        })
+        .await;
+        (story, late)
+    }
+
+    /// Claude answering the late message as a turn of its own: it starts the
+    /// turn, files the message as that turn's prompt, and begins answering.
+    async fn answer_the_late_message(
+        state: &TaskState,
+        runner: &MockRunnerHandle,
+        cwd: &str,
+        story: &str,
+        late: &str,
+    ) {
+        runner.say(SESSION, init_frame()).await;
+        state.task_runtime.claude().write_test_transcript(
+            cwd,
+            SESSION,
+            &filed_late_message(story, late),
+        );
+        runner
+            .say(
+                SESSION,
+                json!({ "type": "assistant", "uuid": "pong-1", "session_id": SESSION, "parent_tool_use_id": null, "message": { "id": "message-2", "role": "assistant", "content": [{ "type": "text", "text": "pong" }] } }),
+            )
+            .await;
+    }
+
+    /// What Claude has written down once it took in the late message: the
+    /// story turn, and the message as the prompt of a turn of its own, filed
+    /// under the uuid it was sent with.
+    fn filed_late_message(story: &str, late: &str) -> String {
+        [
+            json!({ "type": "user", "uuid": story, "timestamp": "2026-09-19T12:27:40.000Z", "promptSource": "sdk", "promptId": "prompt-1", "parentUuid": null, "message": { "role": "user", "content": [{ "type": "text", "text": "Tell me a story." }] } }),
+            json!({ "type": "assistant", "uuid": "story-1", "timestamp": "2026-09-19T12:27:58.635Z", "promptId": "prompt-1", "parentUuid": story, "message": { "id": "message-1", "role": "assistant", "content": [{ "type": "text", "text": "Once upon a time." }] } }),
+            json!({ "type": "queue-operation", "operation": "dequeue", "timestamp": "2026-09-19T12:27:58.640Z", "sessionId": SESSION }),
+            json!({ "type": "user", "uuid": late, "timestamp": "2026-09-19T12:27:58.643Z", "promptSource": "sdk", "promptId": "prompt-2", "parentUuid": "story-1", "message": { "role": "user", "content": [{ "type": "text", "text": "Also say pong." }] } }),
+        ]
+        .iter()
+        .map(|row| format!("{row}\n"))
+        .collect()
+    }
+
+    /// What Claude has written down of the story turn: its prompt, and
+    /// nothing of a message a stop cancelled before the turn took it in.
+    fn filed_story(story: &str) -> String {
+        format!(
+            "{}\n",
+            json!({ "type": "user", "uuid": story, "timestamp": "2026-09-20T00:43:22.000Z", "promptSource": "sdk", "promptId": "prompt-1", "parentUuid": null, "message": { "role": "user", "content": [{ "type": "text", "text": "Tell me a story." }] } })
+        )
+    }
+
+    fn running_frame() -> Value {
+        json!({ "type": "system", "subtype": "session_state_changed", "state": "running", "session_id": SESSION })
+    }
+
+    /// Claude saying the subagent finished.
+    fn report_frame() -> Value {
+        json!({ "type": "system", "subtype": "task_notification", "task_id": "agent-task-1", "tool_use_id": "toolu_agent", "status": "completed", "output_file": "", "summary": "Sleep", "session_id": SESSION })
+    }
+
+    /// What Claude has written down once it filed the subagent's report: the
+    /// launching prompt, and the report as a prompt of its own.
+    fn filed_report(launch_turn: &str) -> String {
+        [
+            json!({ "type": "user", "uuid": launch_turn, "timestamp": "2026-09-19T02:58:32.562Z", "promptSource": "sdk", "promptId": "prompt-1", "parentUuid": null, "message": { "role": "user", "content": [{ "type": "text", "text": "Start the subagent." }] } }),
+            json!({ "type": "assistant", "uuid": "launch-3", "timestamp": "2026-09-19T02:58:36.100Z", "promptId": "prompt-1", "parentUuid": launch_turn, "message": { "id": "message-2", "role": "assistant", "content": [{ "type": "text", "text": "started" }] } }),
+            json!({ "type": "user", "uuid": "report-1", "timestamp": "2026-09-19T02:58:50.681Z", "promptSource": "sdk", "promptId": "prompt-2", "parentUuid": "launch-3", "origin": { "kind": "task-notification" }, "message": { "role": "user", "content": "<task-notification>\n<task-id>agent-task-1</task-id>\n<tool-use-id>toolu_agent</tool-use-id>\n<status>completed</status>\n<summary>Sleep</summary>\n</task-notification>" } }),
+        ]
+        .iter()
+        .map(|row| format!("{row}\n"))
+        .collect()
+    }
+
+    /// Press stop on the Task, and answer the interrupt the way Claude does,
+    /// naming the `cancelled` messages it took off its queue.
+    async fn stop_the_task(
+        app: &Router,
+        runner: &MockRunnerHandle,
+        cancelled: &[&str],
+    ) -> (StatusCode, Value) {
+        runner.hold_next_stop_answer(SESSION).await;
+        let stopping = tokio::spawn({
+            let app = app.clone();
+            async move {
+                call(
+                    &app,
+                    post(&format!("/api/tasks/{SESSION}/interrupt"), json!({})),
+                )
+                .await
+            }
+        });
+        let deadline = Instant::now() + WAIT;
+        loop {
+            if runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["request"]["subtype"] == "interrupt")
+            {
+                break;
+            }
+            if stopping.is_finished() {
+                let answered = stopping.await;
+                panic!("the stop was answered without reaching Claude: {answered:?}");
+            }
+            assert!(Instant::now() < deadline, "the stop reaches Claude");
+            sleep(Duration::from_millis(10)).await;
+        }
+        runner
+            .answer_held_stop(
+                SESSION,
+                json!({ "still_queued": [], "cancelled": cancelled }),
+            )
+            .await;
+        stopping.await.expect("the stop request finishes")
+    }
+
+    /// Claude's result for a turn stopped by an interrupt, as CLI 2.1.274
+    /// words it.
+    fn stopped_result_frame() -> Value {
+        json!({ "type": "result", "subtype": "error_during_execution", "is_error": true, "stop_reason": "tool_use", "session_id": SESSION })
+    }
+
+    /// The same as [`filed_hand_back`], once the report the subagent also
+    /// sends has opened a turn of its own.
+    fn filed_hand_back_and_report(launch_turn: &str) -> String {
+        let report = json!({ "type": "user", "uuid": "report-1", "timestamp": "2026-09-19T15:07:11.302Z", "promptSource": "sdk", "promptId": "prompt-3", "parentUuid": "handback-1", "origin": { "kind": "task-notification" }, "message": { "role": "user", "content": "<task-notification>\n<task-id>agent-task-1</task-id>\n<tool-use-id>toolu_agent</tool-use-id>\n<status>completed</status>\n<summary>Sleep</summary>\n</task-notification>" } });
+        format!("{}{report}\n", filed_hand_back(launch_turn))
+    }
+
+    /// What Claude has written down once the subagent handed its result back:
+    /// the launching prompt, and the hand-back, filed under the subagent's
+    /// task id, as a prompt of its own.
+    fn filed_hand_back(launch_turn: &str) -> String {
+        [
+            json!({ "type": "user", "uuid": launch_turn, "timestamp": "2026-09-19T14:29:12.000Z", "promptSource": "sdk", "promptId": "prompt-1", "parentUuid": null, "message": { "role": "user", "content": [{ "type": "text", "text": "Start the subagent." }] } }),
+            json!({ "type": "assistant", "uuid": "launch-3", "timestamp": "2026-09-19T14:29:16.000Z", "promptId": "prompt-1", "parentUuid": launch_turn, "message": { "id": "message-2", "role": "assistant", "content": [{ "type": "text", "text": "started" }] } }),
+            json!({ "type": "user", "uuid": "handback-1", "timestamp": "2026-09-19T14:30:47.000Z", "promptSource": "sdk", "promptId": "prompt-2", "parentUuid": "launch-3", "origin": { "kind": "peer", "from": "agent-task-1", "senderTaskId": "agent-task-1", "body": "[Subagent hand-back] It slept.", "handback": true }, "message": { "role": "user", "content": "Another Claude session sent a message:\n<agent-message from=\"agent-task-1\">\n[Subagent hand-back] It slept.\n</agent-message>" } }),
+        ]
+        .iter()
+        .map(|row| format!("{row}\n"))
+        .collect()
+    }
+
+    fn init_frame() -> Value {
+        json!({ "type": "system", "subtype": "init", "session_id": SESSION, "claude_code_version": "2.1.274", "model": "claude-opus-5", "permissionMode": "default" })
+    }
+
+    fn ended_while_working(snapshot: &SessionSnapshot) -> bool {
+        snapshot.active_turn_id.is_none()
+            && snapshot
+                .conversation
+                .as_ref()
+                .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
+    }
+
+    /// Wait until the Task's session reads the way `settled` says.
+    async fn until(state: &TaskState, what: &str, settled: impl Fn(&SessionSnapshot) -> bool) {
+        let deadline = Instant::now() + WAIT;
+        loop {
+            if state
+                .task_sessions
+                .snapshot(SESSION)
+                .await
+                .is_some_and(|snapshot| settled(&snapshot))
+            {
+                return;
+            }
+            assert!(Instant::now() < deadline, "{what}");
+            sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Wait until the Claude client has noticed a turn Claude began on its own.
+    async fn in_a_turn_of_its_own(state: &TaskState) {
+        let deadline = Instant::now() + WAIT;
+        while !state
+            .task_runtime
+            .claude()
+            .is_in_a_turn_of_its_own(SESSION)
+            .await
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the turn Claude began on its own is noticed"
+            );
+            sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    fn prompt(text: &str) -> Request<Body> {
+        post(
+            &format!("/api/tasks/{SESSION}/prompts"),
+            json!({ "prompt": text }),
+        )
     }
 }

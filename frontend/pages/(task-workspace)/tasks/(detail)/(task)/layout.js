@@ -1134,7 +1134,6 @@ class CaffoldTaskDetail extends HTMLElement {
       !this.selectedThreadId ||
       this.interruptStateValue.loading ||
       !isTaskActivelyWorking(task) ||
-      !task?.activeTurn?.id ||
       isTaskTransportStale(this.detailSession.state)
     ) {
       return;
@@ -1145,7 +1144,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.interruptStateValue = { loading: true, error: null };
     this.syncFollowUpComposer();
     try {
-      const detail = await interruptTask(threadId);
+      const { cancelledPrompts, ...detail } = await interruptTask(threadId);
       if (
         actionToken !== this.interruptActionToken ||
         threadId !== this.selectedThreadId
@@ -1153,6 +1152,7 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.interruptStateValue = { loading: false, error: null };
+      this.followUpComposer()?.restoreCancelledPrompts(cancelledPrompts);
       if (
         !this.applyCanonicalTaskDetail(threadId, detail, {
           updateKind: "live",
@@ -1529,7 +1529,6 @@ class CaffoldTaskDetail extends HTMLElement {
       disabled: isTaskTransportStale(this.detailSession.state),
       settingsLocked: isTaskActivelyWorking(task),
       turnActive: isTaskActivelyWorking(task),
-      activeTurnId: `${task?.activeTurn?.id ?? ""}`,
       interrupting: this.interruptStateValue.loading,
       interruptError: `${
         this.interruptStateValue.error?.message ??

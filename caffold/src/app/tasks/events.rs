@@ -354,6 +354,12 @@ impl TaskEvents {
         self.cache.invalidate_continuity(thread_id);
     }
 
+    /// Let the next history read decide what one turn holds, though the live
+    /// stream observed all of it.
+    pub(in crate::app::tasks) fn release_live_turn(&self, thread_id: &str, turn_id: &str) {
+        self.cache.release_live_turn(thread_id, turn_id);
+    }
+
     pub(in crate::app::tasks) fn generated_images(&self) -> &GeneratedImageStore {
         &self.generated_images
     }

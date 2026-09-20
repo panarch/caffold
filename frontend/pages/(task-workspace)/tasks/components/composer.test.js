@@ -243,7 +243,8 @@ test("offers Send once the turn options have settled what the turn runs under", 
   assert.deepEqual(action(), { kind: "send", disabled: true });
   owner.voice.phase = "idle";
   owner.state.prompt = "";
-  Object.assign(owner.context, { turnActive: true, activeTurnId: "turn-1" });
+  // A Task at work can be stopped whether or not its turn is known yet.
+  Object.assign(owner.context, { turnActive: true });
   assert.deepEqual(action(), { kind: "stop", disabled: false });
 });
 

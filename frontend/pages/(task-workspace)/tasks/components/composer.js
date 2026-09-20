@@ -138,7 +138,6 @@ class CaffoldTaskComposer extends HTMLElement {
       settingsLocked: false,
       requestError: "",
       turnActive: false,
-      activeTurnId: "",
       interrupting: false,
       interruptError: "",
       fastMode: false,
@@ -236,7 +235,6 @@ class CaffoldTaskComposer extends HTMLElement {
       disabled: Boolean(context.disabled),
       settingsLocked: Boolean(context.settingsLocked),
       turnActive: Boolean(context.turnActive),
-      activeTurnId: `${context.activeTurnId ?? ""}`.trim(),
       interrupting: Boolean(context.interrupting),
       requestError: Object.hasOwn(context, "requestError")
         ? `${context.requestError ?? ""}`
@@ -286,6 +284,41 @@ class CaffoldTaskComposer extends HTMLElement {
     if (rejected && submission.restorePromptFocusOnRejection) {
       this.focus();
     }
+    return true;
+  }
+
+  // Give back the messages a stop cancelled before the agent took them in,
+  // in the order they were sent and ahead of anything written since, so they
+  // can be sent again.
+  restoreCancelledPrompts(prompts = []) {
+    this.ensureState();
+    const cancelled = Array.isArray(prompts) ? prompts : [];
+    if (!cancelled.length) {
+      return false;
+    }
+    this.captureCurrentState();
+    const state = this.stateFor();
+    state.prompt = [...cancelled.map((sent) => `${sent?.prompt ?? ""}`), state.prompt]
+      .filter((text) => text.trim())
+      .join("\n\n");
+    state.selectionStart = state.prompt.length;
+    state.selectionEnd = state.prompt.length;
+    const images = [
+      ...cancelled
+        .flatMap((sent) => (Array.isArray(sent?.images) ? sent.images : []))
+        .map((dataUrl, index) => ({
+          id: `cancelled:${Date.now()}:${index}:${Math.random().toString(36).slice(2)}`,
+          name: `image-${index + 1}`,
+          type: `${dataUrl}`.match(/^data:([^;,]+)/)?.[1] ?? "image/png",
+          size: 0,
+          dataUrl: `${dataUrl}`,
+        })),
+      ...state.images,
+    ];
+    state.images = images.slice(0, MAX_IMAGES);
+    state.imageError =
+      images.length > MAX_IMAGES ? `Attach up to ${MAX_IMAGES} images.` : "";
+    this.render();
     return true;
   }
 
@@ -613,12 +646,7 @@ class CaffoldTaskComposer extends HTMLElement {
       return send();
     }
     if (this.context.mode === "follow-up" && this.context.turnActive) {
-      return stop({
-        disabled: !this.context.activeTurnId,
-        title: this.context.activeTurnId
-          ? "Stop current turn"
-          : "Stop is unavailable until the active turn is identified.",
-      });
+      return stop();
     }
     return send({ disabled: true });
   }

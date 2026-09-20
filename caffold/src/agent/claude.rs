@@ -52,18 +52,19 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use serde_json::{Value, json};
-use tokio::sync::{Mutex as AsyncMutex, RwLock, broadcast, oneshot};
+use tokio::sync::{Mutex as AsyncMutex, Notify, RwLock, broadcast, oneshot};
 
 use self::protocol::{
-    ControlRequestFrame, MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame, ResultFrame,
-    StreamFrame, SystemFrame,
+    ControlRequestFrame, InterruptReceipt, MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame,
+    ResultFrame, StreamFrame, SystemFrame,
 };
 use self::runner::{RunnerClient, SessionFrames};
 use self::session::SessionStart;
+use self::transcript::BackgroundTaskDelivery;
 use self::translate::ToolCalls;
 use crate::agent::driver::{
-    ClaudeConversation, Driver, ModelOption, PermissionModeOption, PermissionModes, TurnOptions,
-    TurnRejected, bounded,
+    CancelledPrompt, ClaudeConversation, Driver, ModelOption, PermissionModeOption,
+    PermissionModes, TurnOptions, TurnRejected, bounded,
 };
 use crate::agent::{
     ActivityStatus, AgentError, ApprovalDecision, ApprovalDetail, ApprovalRequest, Conversation,
@@ -83,6 +84,11 @@ pub(crate) use self::runner::MockRunnerHandle;
 /// that has stopped answering must surface as a failure rather than as a page
 /// that never finishes loading.
 const ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// How often a prompt held behind a turn the agent began on its own looks for
+/// the prompt that names it. Against CLI 2.1.274 that prompt was on disk about
+/// a tenth of a second after the turn began.
+const FILING_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 
 /// Why an operation on a Claude session did not happen.
 #[derive(Debug, thiserror::Error)]
@@ -106,6 +112,9 @@ pub(crate) enum ClaudeError {
     /// by the turn ending.
     #[error("Nothing is waiting on approval {0}.")]
     NoSuchApproval(String),
+    /// A turn was asked for while the agent is running one.
+    #[error("{0}")]
+    TurnRunning(String),
 }
 
 /// The agent Caffold drives when a Task belongs to Claude.
@@ -142,6 +151,16 @@ pub(crate) enum ClaudeRuntimeEvent {
     /// this asks the application to read that canonical evidence rather than
     /// making a turn up from the frames around it.
     TranscriptChanged { conversation_id: String },
+    /// A turn already reported holds less than the live stream showed in it:
+    /// messages added to it reached the agent only after it ended, and the
+    /// agent answered them in a turn of their own.
+    ///
+    /// The stream cannot take back what it showed, so this asks the
+    /// application to let the transcript decide what that turn holds.
+    TurnRetold {
+        conversation_id: String,
+        turn_id: String,
+    },
     /// The agent is blocked until someone answers.
     Approval {
         conversation_id: String,
@@ -185,6 +204,9 @@ struct Session {
 
     frames: AsyncMutex<SessionFrames>,
     state: AsyncMutex<SessionState>,
+    /// Woken when a turn the agent began on its own is named, can no longer
+    /// be named, or ends, which is what a held-back prompt waits to learn.
+    unowned_turn_settled: Notify,
     /// Control requests Caffold has sent and is waiting on.
     pending: AsyncMutex<HashMap<String, oneshot::Sender<Result<protocol::ControlAnswer, String>>>>,
     next_control_id: AtomicU64,
@@ -224,6 +246,38 @@ struct SessionState {
     /// its first word is when the file is sure to name the turn, and the file
     /// is asked once, then.
     turn_read_at_hello: bool,
+    /// A turn the agent began on its own, which nothing on the ledger opened.
+    unowned_turn: Option<UnownedTurn>,
+    /// The background tasks the agent said finished since it was last idle,
+    /// by task id.
+    ///
+    /// A turn the agent begins on its own to answer one files that report as
+    /// its prompt, and the task id is what ties the two together.
+    reported_tasks: Vec<String>,
+    /// The background tasks the agent said it started since it was last idle,
+    /// by task id.
+    ///
+    /// A subagent can hand its result back before the agent reports it
+    /// finished, and the agent answers that in a turn of its own whose prompt
+    /// is the hand-back, marked with the subagent's task id. The report can
+    /// still open a turn after that one, so a hand-back names a turn by this
+    /// list and a report by `reported_tasks`, and naming a turn uses up the id
+    /// in its own list only.
+    backgrounded_tasks: Vec<String>,
+    /// The messages Caffold added to a running turn since the agent was last
+    /// idle.
+    ///
+    /// The agent takes one into that turn at its next tool call. When the turn
+    /// ends first, the agent answers it in a turn of its own, filed under the
+    /// uuid the message went out with, and that uuid is what ties the two
+    /// together.
+    steered: Vec<Steered>,
+    /// The running turn a stop took messages out of, to be read again once it
+    /// ends.
+    ///
+    /// The stream showed those messages in it, and only a reading that lists
+    /// the turn as ended replaces what the stream showed.
+    retold_once_ended: Option<String>,
     /// The turns this session has run while Caffold watched.
     turns: Vec<Turn>,
     /// Tool calls a person refused.
@@ -291,6 +345,65 @@ impl SessionActivity {
             _ => None,
         }
     }
+}
+
+/// A message Caffold added to a running turn.
+#[derive(Debug, Clone)]
+struct Steered {
+    /// The uuid it went out under.
+    message: String,
+    /// The turn it was added to.
+    turn: String,
+}
+
+/// How far a turn the agent began on its own can be tied to what Caffold knows.
+///
+/// Such a turn answers something the stream does not name. Two things name
+/// it, each filed as the turn's prompt: a background task's result, as its
+/// report or a subagent's hand-back, under the task's id, and messages Caffold
+/// added to a turn that ended before the agent took them in, under the uuid
+/// the last of them went out with. It moves only through
+/// [`move_unowned_turn`]; the background task ids, the added messages, the
+/// activity report, and the ledger stay beside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnownedTurn {
+    /// A background task or an added message is pending, and the turn may yet
+    /// be found filed under it.
+    Naming,
+    /// Nothing ties it to anything: nothing was pending, or the agent spoke in
+    /// it before its prompt was found filed.
+    Unnamed,
+}
+
+/// What happens to a turn the agent began on its own.
+#[derive(Debug)]
+enum UnownedTurnEvent {
+    /// The agent said `init` for a turn. It is the agent's own only while the
+    /// agent reports working, with no turn on the ledger, no depth change
+    /// waiting, and the session not ended.
+    Began,
+    /// Its prompt was found filed, answering `answers`: the turn goes on the
+    /// ledger.
+    Named { turn: Box<Turn>, answers: Answers },
+    /// The agent spoke in it before its prompt was found filed.
+    SpokeUnfiled,
+    /// It was answered, or the session ended.
+    Ended,
+}
+
+/// What a turn the agent began on its own was found to answer.
+#[derive(Debug)]
+enum Answers {
+    /// The report on this background task.
+    Report { task_id: String },
+    /// The result this subagent handed back.
+    HandBack { task_id: String },
+    /// These messages, which were added to turn `sent_into` and reached the
+    /// agent only after it ended.
+    LateMessages {
+        sent_into: String,
+        messages: Vec<String>,
+    },
 }
 
 /// One question the agent is blocked on, and what answering it needs.
@@ -362,6 +475,16 @@ impl ClaudeClient {
             .projects()
             .expect("the test client has a projects directory");
         transcript::plant(projects, cwd, conversation_id, contents);
+    }
+
+    /// Whether the agent is in a turn it began on its own that is not on the
+    /// ledger, so a test can speak after this client has noticed it.
+    #[cfg(test)]
+    pub(crate) async fn is_in_a_turn_of_its_own(&self, conversation_id: &str) -> bool {
+        match self.session(conversation_id).await {
+            Some(session) => session.state.lock().await.unowned_turn.is_some(),
+            None => false,
+        }
     }
 
     /// Hold the start door shut, the way a start mid-passage holds it.
@@ -604,6 +727,88 @@ impl ClaudeClient {
         reading.page.turns.into_iter().next()
     }
 
+    /// The newest turn on disk, once the agent has filed it as answering
+    /// something pending: a report on one of the `reported` tasks, the result
+    /// one of the `backgrounded` subagents handed back, or messages among the
+    /// `steered` ones that reached the agent after the turn they were added to
+    /// had ended.
+    ///
+    /// Those messages are filed as one prompt under the uuid the last of them
+    /// went out with, right after the turn they were added to, and that turn
+    /// holds the ones it did take in.
+    async fn filed_own_turn(
+        &self,
+        cwd: &str,
+        id: &str,
+        reported: &[String],
+        backgrounded: &[String],
+        steered: &[Steered],
+    ) -> Option<(Turn, Answers)> {
+        let path = self
+            .projects()
+            .and_then(|projects| transcript::locate(projects, cwd, id))?;
+        let reading = tokio::task::spawn_blocking(move || transcript::read(&path, None, 2))
+            .await
+            .ok()?
+            .ok()?;
+        let mut filed = reading.page.turns.into_iter();
+        let newest = filed.next()?;
+        if let TurnOrigin::BackgroundTask(task) = &newest.origin {
+            let task_id = task
+                .task_id
+                .clone()
+                .filter(|task_id| reported.contains(task_id))?;
+            return Some((newest, Answers::Report { task_id }));
+        }
+        let hand_back = BackgroundTaskDelivery::HandBack {
+            turn_id: newest.id.clone(),
+        };
+        if let Some(observation) = reading
+            .background_tasks
+            .into_iter()
+            .find(|observation| observation.delivery == hand_back)
+        {
+            let task_id = observation
+                .task
+                .task_id
+                .filter(|task_id| backgrounded.contains(task_id))?;
+            return Some((newest, Answers::HandBack { task_id }));
+        }
+        let sent_into = steered
+            .iter()
+            .find(|steered| steered.message == newest.id)?
+            .turn
+            .clone();
+        let taken_in = filed
+            .next()
+            .filter(|earlier| earlier.id == sent_into)
+            .map(|earlier| {
+                earlier
+                    .items
+                    .into_iter()
+                    .map(|item| item.id)
+                    .collect::<Vec<_>>()
+            });
+        let messages = match taken_in {
+            Some(taken_in) => steered
+                .iter()
+                .filter(|steered| steered.turn == sent_into)
+                .map(|steered| steered.message.clone())
+                .filter(|message| !taken_in.contains(&translate::steer_item_id(message)))
+                .collect(),
+            // Without that turn to hand, the one message known to have missed
+            // it is the one heading this turn.
+            None => vec![newest.id.clone()],
+        };
+        Some((
+            newest,
+            Answers::LateMessages {
+                sent_into,
+                messages,
+            },
+        ))
+    }
+
     fn publish(&self, event: ClaudeRuntimeEvent) {
         let _ = self.inner.events.send(event);
     }
@@ -615,14 +820,14 @@ impl ClaudeClient {
         })));
     }
 
-    /// Say that a turn ended, after whatever it abandoned on the way out.
-    fn report_turn_ended(
-        &self,
-        conversation_id: &str,
-        turn: Turn,
-        abandoned: Vec<ConversationItem>,
-        at_ms: u64,
-    ) {
+    /// Say that a turn ended, after whatever it abandoned on the way out, and
+    /// ask for it to be read again when a stop took messages out of it.
+    fn report_turn_ended(&self, conversation_id: &str, ended: EndedTurn, at_ms: u64) {
+        let EndedTurn {
+            turn,
+            abandoned,
+            retold,
+        } = ended;
         for item in abandoned {
             self.report(
                 conversation_id,
@@ -639,6 +844,12 @@ impl ClaudeClient {
                 turn: TurnState::from(&turn),
             },
         );
+        if retold {
+            self.publish(ClaudeRuntimeEvent::TurnRetold {
+                conversation_id: conversation_id.to_string(),
+                turn_id: turn.id,
+            });
+        }
     }
 
     /// Say that a turn opened, and what it already holds.
@@ -683,6 +894,7 @@ impl ClaudeClient {
         options: &ClaudeTurnOptions,
     ) -> Result<Turn, ClaudeError> {
         let session = self.require_session(conversation_id).await?;
+        self.wait_for_no_running_turn(&session).await?;
         self.apply_settings(&session, options).await?;
 
         let (name, frame) = protocol::user_message(prompt, images);
@@ -698,10 +910,8 @@ impl ClaudeClient {
             // arriving under an identifier nothing reads any more, and it would
             // spin for as long as the conversation is shown. Adding to a
             // running turn is steering, which is a different thing to ask for.
-            if let Some(running) = state.active_turn.as_deref() {
-                return Err(ClaudeError::Protocol(format!(
-                    "turn {running} is still running on conversation {conversation_id}"
-                )));
+            if let Some(running) = turn_in_the_way(&state, conversation_id) {
+                return Err(running);
             }
             if state.ended {
                 return Err(ClaudeError::Agent(format!(
@@ -709,10 +919,14 @@ impl ClaudeClient {
                 )));
             }
             session.send(frame).await?;
-            // What the agent last said about itself was said before this
-            // prompt and says nothing about it. Until the agent speaks of this
-            // turn, the turn being open is what the conversation is doing.
-            state.activity = None;
+            // An idle the agent last reported was said before this prompt and
+            // says nothing about it; until the agent speaks of this turn, the
+            // turn being open is what the conversation is doing. A report of
+            // working stands: the agent does not say it again for a turn that
+            // begins while it is still working.
+            if state.activity == Some(SessionActivity::Idle) {
+                state.activity = None;
+            }
             open_turn(
                 &mut state,
                 &name,
@@ -735,10 +949,41 @@ impl ClaudeClient {
         Ok(turn)
     }
 
+    /// Hold a new turn while the agent is in one it began on its own that is
+    /// still being named.
+    ///
+    /// The agent files the prompt such a turn answers a moment after the turn
+    /// begins and before it says anything, so the turn is soon named, and a
+    /// prompt sent meanwhile belongs in it. Once it is named the refusal says
+    /// a turn is running, which is what sends the prompt there instead. A turn
+    /// that cannot be named refuses a new one for as long as it runs.
+    async fn wait_for_no_running_turn(&self, session: &Arc<Session>) -> Result<(), ClaudeError> {
+        let deadline = tokio::time::Instant::now() + ANSWER_TIMEOUT;
+        loop {
+            self.name_unowned_turn(session, false).await;
+            {
+                let state = session.state.lock().await;
+                if state.active_turn.is_some() || state.unowned_turn != Some(UnownedTurn::Naming) {
+                    return turn_in_the_way(&state, &session.id).map_or(Ok(()), Err);
+                }
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(ClaudeError::Protocol(format!(
+                    "claude did not file the prompt of a turn it began within {} seconds",
+                    ANSWER_TIMEOUT.as_secs()
+                )));
+            }
+            let _ =
+                tokio::time::timeout(FILING_POLL, session.unowned_turn_settled.notified()).await;
+        }
+    }
+
     /// Add to a turn already running.
     ///
     /// The agent takes this at its next tool-call boundary rather than at once,
     /// so this reports that the message was accepted, never that it was read.
+    /// A turn that ends first leaves the message to a turn of its own, which
+    /// is named by the message.
     pub(crate) async fn steer_turn(
         &self,
         conversation_id: &str,
@@ -763,6 +1008,10 @@ impl ClaudeClient {
                 Some(said_at_ms),
             );
             place_item(&mut state, turn_id, item.clone());
+            state.steered.push(Steered {
+                message: name,
+                turn: turn_id.to_string(),
+            });
             (item, said_at_ms)
         };
 
@@ -777,13 +1026,44 @@ impl ClaudeClient {
         Ok(item)
     }
 
-    /// Stop a turn where it stands.
-    pub(crate) async fn interrupt_turn(&self, conversation_id: &str) -> Result<(), ClaudeError> {
+    /// Stop the session's work where it stands, with a turn open or none, and
+    /// everything the agent queued to follow it.
+    ///
+    /// Caffold declares no stop control for single background tasks, so the
+    /// agent's interrupt also ends the subagents it runs in the background.
+    /// The agent runs what it has queued the moment a turn stops — messages
+    /// added to the turn that it had not taken in, and reports of work it sent
+    /// to the background — so they are cancelled with the turn. The agent
+    /// names the messages it cancelled by the uuids they went out under; they
+    /// leave the turn they were drawn in and are answered as they were sent.
+    pub(crate) async fn interrupt_turn(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Vec<CancelledPrompt>, ClaudeError> {
         let session = self.require_session(conversation_id).await?;
-        session
-            .control(json!({ "subtype": "interrupt" }))
-            .await
-            .map(|_| ())
+        let answer = session
+            .control(json!({ "subtype": "interrupt", "cancel_queued": true }))
+            .await?;
+        let cancelled = match serde_json::from_value::<Option<InterruptReceipt>>(answer.payload) {
+            Ok(receipt) => receipt.unwrap_or_default().cancelled,
+            Err(error) => {
+                self.publish(ClaudeRuntimeEvent::Diagnostic {
+                    message: format!(
+                        "claude {conversation_id} stopped a turn without a readable account of \
+                         what it cancelled with it: {error}"
+                    ),
+                });
+                Vec::new()
+            }
+        };
+        let (prompts, retold) = withdraw_cancelled(&mut *session.state.lock().await, &cancelled);
+        for turn_id in retold {
+            self.publish(ClaudeRuntimeEvent::TurnRetold {
+                conversation_id: conversation_id.to_string(),
+                turn_id,
+            });
+        }
+        Ok(prompts)
     }
 
     // -----------------------------------------------------------------------
@@ -927,7 +1207,10 @@ impl ClaudeClient {
             .await?;
         self.report_status(&session).await;
         if matches!(decision, ApprovalDecision::DenyAndStop) {
-            self.interrupt_turn(conversation_id).await?;
+            // A plain stop, which leaves what the agent queued to follow the
+            // turn: nothing here hands a cancelled message back to the person
+            // who sent it.
+            session.control(json!({ "subtype": "interrupt" })).await?;
         }
         Ok(())
     }
@@ -1040,6 +1323,7 @@ impl From<ClaudeError> for AgentError {
             // Not watching is not unreachable: the runner is fine and the
             // conversation is simply not there to be asked about.
             ClaudeError::NotWatching(_) => AgentError::ConversationGone(error.to_string()),
+            ClaudeError::TurnRunning(_) => AgentError::TurnRunning(error.to_string()),
             ClaudeError::Protocol(_)
             | ClaudeError::Agent(_)
             | ClaudeError::History(_)
@@ -1085,9 +1369,148 @@ fn open_turn(state: &mut SessionState, turn_id: &str, said: Vec<MessageContent>)
 /// opened here or read from what the agent wrote.
 fn take_up_turn(state: &mut SessionState, mut turn: Turn) {
     turn.status = TurnStatus::InProgress;
+    turn.completed_at_ms = None;
     state.active_turn = Some(turn.id.clone());
     state.moved_at_ms = now_ms();
     state.turns.push(turn);
+}
+
+/// Move the turn the agent began on its own by `event`, and answer whether the
+/// event was one it accepts. These arms are every move there is.
+fn move_unowned_turn(state: &mut SessionState, event: UnownedTurnEvent) -> bool {
+    let began_its_own = matches!(
+        state.activity,
+        Some(SessionActivity::Running | SessionActivity::RequiresAction)
+    ) && state.active_turn.is_none()
+        && state.quiet_turn.is_none()
+        && !state.ended;
+    state.unowned_turn = match (state.unowned_turn, event) {
+        (None, UnownedTurnEvent::Began) if began_its_own => Some(
+            if state.reported_tasks.is_empty()
+                && state.backgrounded_tasks.is_empty()
+                && state.steered.is_empty()
+            {
+                UnownedTurn::Unnamed
+            } else {
+                UnownedTurn::Naming
+            },
+        ),
+        (Some(UnownedTurn::Naming), UnownedTurnEvent::Named { turn, answers })
+            if state.active_turn.is_none() =>
+        {
+            match answers {
+                Answers::Report { task_id } => {
+                    state.reported_tasks.retain(|reported| *reported != task_id);
+                }
+                Answers::HandBack { task_id } => {
+                    state
+                        .backgrounded_tasks
+                        .retain(|backgrounded| *backgrounded != task_id);
+                }
+                Answers::LateMessages {
+                    sent_into,
+                    messages,
+                } => {
+                    // Shown in the turn they were added to, which never took
+                    // them in.
+                    let shown = messages
+                        .iter()
+                        .map(|message| translate::steer_item_id(message))
+                        .collect::<Vec<_>>();
+                    if let Some(earlier) = state.turns.iter_mut().find(|turn| turn.id == sent_into)
+                    {
+                        earlier.items.retain(|item| !shown.contains(&item.id));
+                    }
+                    state.steered.retain(|steered| steered.turn != sent_into);
+                }
+            }
+            take_up_turn(state, *turn);
+            None
+        }
+        (Some(UnownedTurn::Naming), UnownedTurnEvent::SpokeUnfiled) => Some(UnownedTurn::Unnamed),
+        (_, UnownedTurnEvent::Ended) => None,
+        _ => return false,
+    };
+    true
+}
+
+/// The turn in the way of a new one, as the refusal that says so.
+fn turn_in_the_way(state: &SessionState, conversation_id: &str) -> Option<ClaudeError> {
+    if let Some(running) = state.active_turn.as_deref() {
+        return Some(ClaudeError::TurnRunning(format!(
+            "turn {running} is still running on conversation {conversation_id}"
+        )));
+    }
+    state.unowned_turn.map(|_| {
+        ClaudeError::TurnRunning(format!(
+            "Claude is answering something it began on its own in conversation {conversation_id}"
+        ))
+    })
+}
+
+/// Take the messages a stop cancelled out of the turns they were drawn in, and
+/// answer them as they were sent, in the order they went out, along with the
+/// ended turns that lost any.
+///
+/// The running turn is read again once it ends instead, since a reading that
+/// lists it as running leaves what the stream showed of it in place.
+fn withdraw_cancelled(
+    state: &mut SessionState,
+    cancelled: &[String],
+) -> (Vec<CancelledPrompt>, Vec<String>) {
+    state
+        .steered
+        .retain(|steered| !cancelled.contains(&steered.message));
+    let drawn_as = cancelled
+        .iter()
+        .map(|message| translate::steer_item_id(message))
+        .collect::<Vec<_>>();
+    let mut prompts = Vec::new();
+    let mut retold = Vec::new();
+    for turn in &mut state.turns {
+        let (withdrawn, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut turn.items)
+            .into_iter()
+            .partition(|item| drawn_as.contains(&item.id));
+        turn.items = kept;
+        if withdrawn.is_empty() {
+            continue;
+        }
+        prompts.extend(withdrawn.into_iter().filter_map(as_sent));
+        if state.active_turn.as_deref() == Some(turn.id.as_str()) {
+            state.retold_once_ended = Some(turn.id.clone());
+        } else {
+            retold.push(turn.id.clone());
+        }
+    }
+    (prompts, retold)
+}
+
+/// A message Caffold sent, as it was sent, out of the item that draws it.
+fn as_sent(item: ConversationItem) -> Option<CancelledPrompt> {
+    let ItemKind::UserMessage { text, content } = item.kind else {
+        return None;
+    };
+    let images = content
+        .into_iter()
+        .filter_map(|part| match part {
+            MessageContent::Image { url } => Some(url),
+            MessageContent::Text { .. } | MessageContent::LocalImage { .. } => None,
+        })
+        .collect();
+    Some(CancelledPrompt {
+        prompt: text,
+        images,
+    })
+}
+
+/// A turn this session had open, closed.
+struct EndedTurn {
+    turn: Turn,
+    /// The tool calls it left unanswered, closed with it.
+    abandoned: Vec<ConversationItem>,
+    /// Whether a stop took messages out of it while it ran, so what the stream
+    /// showed of it gives way to a reading of it.
+    retold: bool,
 }
 
 /// Close the turn the agent has open, with whatever it left unanswered.
@@ -1098,8 +1521,12 @@ fn end_active_turn(
     state: &mut SessionState,
     status: TurnStatus,
     completed_at_ms: u64,
-) -> Option<(Turn, Vec<ConversationItem>)> {
+) -> Option<EndedTurn> {
     let turn_id = state.active_turn.take()?;
+    let retold = state
+        .retold_once_ended
+        .take()
+        .is_some_and(|retold| retold == turn_id);
     let abandoned = state.calls.abandon(match status {
         TurnStatus::Completed => ActivityStatus::Completed,
         _ => ActivityStatus::Failed,
@@ -1114,7 +1541,11 @@ fn end_active_turn(
     turn.completed_at_ms = Some(completed_at_ms);
     let turn = turn.clone();
     state.moved_at_ms = completed_at_ms;
-    Some((turn, abandoned))
+    Some(EndedTurn {
+        turn,
+        abandoned,
+        retold,
+    })
 }
 
 /// Put an item into a turn this session holds, and note that the conversation
@@ -1375,6 +1806,24 @@ mod test_support {
         (client, runner, events)
     }
 
+    /// The same, for a client that reads the agent's transcripts from
+    /// `projects`.
+    pub(super) async fn watching_writing_to(
+        projects: std::path::PathBuf,
+    ) -> (ClaudeClient, MockRunnerHandle, Receiver<ClaudeRuntimeEvent>) {
+        let (client, runner) = ClaudeClient::mock_writing_to(projects);
+        let mut events = client.subscribe();
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
+        next_session_event(&mut events, "settings").await;
+        (client, runner, events)
+    }
+
     /// Start a turn and consume the prompt, which is its own first item.
     pub(super) async fn running_turn(
         client: &ClaudeClient,
@@ -1515,6 +1964,7 @@ mod tests {
     use std::time::Duration;
 
     use serde_json::json;
+    use tokio::sync::broadcast::Receiver;
 
     use super::test_support::*;
     use super::*;
@@ -2002,6 +2452,10 @@ mod tests {
         .await
         .expect("the interrupt is written");
         assert_eq!(sent["request"]["subtype"], "interrupt");
+        assert_eq!(
+            sent["request"]["cancel_queued"], true,
+            "what waits behind the turn is cancelled with it, so nothing runs in its place"
+        );
 
         // The agent answers, and the caller stops waiting.
         runner
@@ -2021,6 +2475,176 @@ mod tests {
             .await
             .expect("the interrupt task finishes")
             .expect("the agent accepted it");
+    }
+
+    #[tokio::test]
+    async fn a_stop_takes_the_messages_it_cancelled_out_of_the_turn_they_were_added_to() {
+        // As Claude Code 2.1.274 answers a stop that cancels what waits behind
+        // the turn: by the uuids the cancelled messages went out with. One the
+        // turn already took in is not among them.
+        let (client, runner, mut events) = watching().await;
+        let story = running_turn(&client, &mut events, "tell a story").await;
+        let picture = "data:image/png;base64,iVBORw0KGgo=".to_string();
+        client
+            .steer_turn(SESSION, &story.id, "first", &[])
+            .await
+            .expect("the message is sent");
+        client
+            .steer_turn(SESSION, &story.id, "second", std::slice::from_ref(&picture))
+            .await
+            .expect("the message is sent");
+        let first = sent_under(&runner, "first").await;
+        let second = sent_under(&runner, "second").await;
+
+        runner.hold_next_stop_answer(SESSION).await;
+        let stopping = tokio::spawn({
+            let client = client.clone();
+            async move { client.interrupt_turn(SESSION).await }
+        });
+        wrote(&runner, |frame| frame["request"]["subtype"] == "interrupt").await;
+        runner
+            .answer_held_stop(
+                SESSION,
+                json!({ "still_queued": [], "cancelled": [second] }),
+            )
+            .await;
+        let cancelled = stopping
+            .await
+            .expect("the stop finishes")
+            .expect("the agent accepted it");
+
+        assert_eq!(
+            cancelled,
+            [CancelledPrompt {
+                prompt: "second".to_string(),
+                images: vec![picture],
+            }],
+            "the cancelled message comes back as it was sent"
+        );
+        assert_eq!(
+            steer_items_of(&client, &story.id).await,
+            [translate::steer_item_id(&first)],
+            "the cancelled message is no longer drawn in the turn"
+        );
+        while let Ok(event) = events.try_recv() {
+            assert!(
+                !matches!(event, ClaudeRuntimeEvent::TurnRetold { .. }),
+                "a turn still running is not read again: the reading would still hold the message"
+            );
+        }
+        runner.say(SESSION, stopped_result()).await;
+        assert_eq!(next_retold(&mut events).await, story.id);
+    }
+
+    #[tokio::test]
+    async fn a_message_a_stop_cancelled_after_its_turn_ended_is_read_again_at_once() {
+        // The stop crosses the turn's own end: Claude has queued the message
+        // for a turn of its own when it cancels it.
+        let (client, runner, mut events) = watching().await;
+        let story = running_turn(&client, &mut events, "tell a story").await;
+        client
+            .steer_turn(SESSION, &story.id, "also say pong", &[])
+            .await
+            .expect("the message is sent");
+        let late = sent_under(&runner, "also say pong").await;
+        runner.hold_next_stop_answer(SESSION).await;
+        let stopping = tokio::spawn({
+            let client = client.clone();
+            async move { client.interrupt_turn(SESSION).await }
+        });
+        wrote(&runner, |frame| frame["request"]["subtype"] == "interrupt").await;
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+        next_session_event(&mut events, "turn end").await;
+
+        runner
+            .answer_held_stop(SESSION, json!({ "still_queued": [], "cancelled": [late] }))
+            .await;
+        stopping
+            .await
+            .expect("the stop finishes")
+            .expect("the agent accepted it");
+
+        assert_eq!(next_retold(&mut events).await, story.id);
+        assert!(steer_items_of(&client, &story.id).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_stop_answered_without_a_readable_account_takes_nothing_out_of_the_turn() {
+        // What Claude says it cancelled is the only thing that takes a message
+        // out of the turn; an account this release cannot read takes nothing
+        // out, and says so.
+        let (client, runner, mut events) = watching().await;
+        let story = running_turn(&client, &mut events, "tell a story").await;
+        client
+            .steer_turn(SESSION, &story.id, "also say pong", &[])
+            .await
+            .expect("the message is sent");
+        runner.hold_next_stop_answer(SESSION).await;
+        let stopping = tokio::spawn({
+            let client = client.clone();
+            async move { client.interrupt_turn(SESSION).await }
+        });
+        wrote(&runner, |frame| frame["request"]["subtype"] == "interrupt").await;
+        runner
+            .answer_held_stop(SESSION, json!({ "cancelled": "everything" }))
+            .await;
+
+        let cancelled = stopping
+            .await
+            .expect("the stop finishes")
+            .expect("the agent accepted it");
+        assert!(cancelled.is_empty(), "{cancelled:?}");
+        assert_eq!(steer_items_of(&client, &story.id).await.len(), 1);
+        let complaint = next_diagnostic(&mut events).await;
+        assert!(complaint.contains("cancelled"), "{complaint}");
+    }
+
+    /// The uuid the message saying `message` went out under.
+    async fn sent_under(runner: &MockRunnerHandle, message: &str) -> String {
+        wrote(runner, |frame| {
+            frame["message"]["content"][0]["text"] == message
+        })
+        .await["uuid"]
+            .as_str()
+            .expect("the message goes out under a uuid")
+            .to_string()
+    }
+
+    /// Claude's result for a turn stopped by an interrupt, as CLI 2.1.274
+    /// words it.
+    fn stopped_result() -> Value {
+        json!({ "type": "result", "subtype": "error_during_execution", "is_error": true, "stop_reason": "tool_use", "session_id": SESSION })
+    }
+
+    /// The messages the session draws as added to turn `turn_id`.
+    async fn steer_items_of(client: &ClaudeClient, turn_id: &str) -> Vec<String> {
+        let session = client.session(SESSION).await.expect("the session");
+        let state = session.state.lock().await;
+        state
+            .turns
+            .iter()
+            .find(|turn| turn.id == turn_id)
+            .expect("the session holds the turn")
+            .items
+            .iter()
+            .map(|item| item.id.clone())
+            .filter(|id| id.ends_with(":steer"))
+            .collect()
+    }
+
+    /// The next turn the driver asks to have read again.
+    async fn next_retold(events: &mut Receiver<ClaudeRuntimeEvent>) -> String {
+        tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                if let ClaudeRuntimeEvent::TurnRetold { turn_id, .. } =
+                    events.recv().await.expect("the report channel stays open")
+                {
+                    return turn_id;
+                }
+            }
+        })
+        .await
+        .expect("a turn is handed to the transcript")
     }
 
     #[tokio::test]
@@ -2057,7 +2681,12 @@ mod tests {
 
         let denied = wrote(&runner, |frame| frame["response"]["request_id"] == "req-19").await;
         assert_eq!(denied["response"]["response"]["behavior"], "deny");
-        wrote(&runner, |frame| frame["request"]["subtype"] == "interrupt").await;
+        let stop = wrote(&runner, |frame| frame["request"]["subtype"] == "interrupt").await;
+        assert!(
+            stop["request"].get("cancel_queued").is_none(),
+            "a refusal that stops leaves what waits behind the turn, since nothing here hands a \
+             cancelled message back to the person who sent it"
+        );
     }
 
     #[tokio::test]
@@ -2072,7 +2701,7 @@ mod tests {
             .await;
 
         assert!(
-            matches!(refused, Err(ClaudeError::Protocol(ref message)) if message.contains(&running.id)),
+            matches!(refused, Err(ClaudeError::TurnRunning(ref message)) if message.contains(&running.id)),
             "{refused:?}"
         );
     }

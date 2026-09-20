@@ -337,6 +337,18 @@ impl TurnEventCache {
         }
     }
 
+    /// Stop treating one turn as fully observed live, so the next history read
+    /// decides what it holds.
+    pub(super) fn release_live_turn(&self, thread_id: &str, turn_id: &str) {
+        let mut state = self.state.lock().expect("conversation cache lock");
+        if let Some(turn) = state
+            .get_mut(thread_id)
+            .and_then(|thread| thread.turns.get_mut(turn_id))
+        {
+            turn.complete_live = false;
+        }
+    }
+
     pub(super) fn invalidate_continuity(&self, thread_id: &str) {
         let mut state = self.state.lock().expect("conversation cache lock");
         if let Some(thread) = state.get_mut(thread_id) {
@@ -1136,6 +1148,58 @@ mod tests {
             .collect::<Vec<_>>();
         ids.sort_unstable();
         assert_eq!(ids, ["thread:partial:item-1", "thread:partial:item-2"]);
+    }
+
+    #[test]
+    fn a_turn_released_from_live_observation_is_decided_by_the_next_ended_read() {
+        let cache = TurnEventCache::default();
+        cache.record_observation(
+            start("story", 100),
+            TaskEventObservationSource::ProviderLifecycle,
+            Some(1),
+        );
+        cache.record_observation(
+            item("story", "prompt", 100),
+            TaskEventObservationSource::ProviderLifecycle,
+            Some(2),
+        );
+        cache.record_observation(
+            item("story", "late", 101),
+            TaskEventObservationSource::AcceptedSubmission,
+            Some(3),
+        );
+        let listed = || HashMap::from([("story".to_string(), vec![item("story", "prompt", 100)])]);
+        let items = |read: &TaskHistoryPage| {
+            read.events
+                .iter()
+                .filter(|event| event.event_type == "agent_message")
+                .map(|event| event.id.clone())
+                .collect::<Vec<_>>()
+        };
+
+        let watched = cache.accept_page(
+            "thread",
+            &page_of(vec![history("story", 100)]),
+            listed(),
+            4,
+            None,
+        );
+        assert_eq!(
+            items(&watched),
+            ["thread:story:prompt", "thread:story:late"],
+            "a turn watched live keeps what it showed"
+        );
+
+        cache.release_live_turn("thread", "story");
+        let read = cache.accept_page(
+            "thread",
+            &page_of(vec![history("story", 100)]),
+            listed(),
+            5,
+            None,
+        );
+        assert!(read.owns_extent);
+        assert_eq!(items(&read), ["thread:story:prompt"]);
     }
 
     #[test]
