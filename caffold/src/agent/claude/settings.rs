@@ -17,6 +17,9 @@ use super::{
     PermissionModeOption, PermissionModes, Session, SessionEventKind, SessionState, protocol,
 };
 
+/// The mode that stops for every call the agent is not sure about.
+pub(super) const ASK_EACH_TIME_MODE: &str = "default";
+
 impl ClaudeClient {
     /// Bring the session to the settings a person has chosen.
     ///
@@ -172,7 +175,7 @@ impl ClaudeClient {
     pub(crate) async fn permission_modes(&self, model: Option<&str>) -> PermissionModes {
         let auto = self.model_supports_auto_mode(model).await;
         PermissionModes {
-            default_mode: if auto { "auto" } else { "default" }.to_string(),
+            default_mode: if auto { "auto" } else { ASK_EACH_TIME_MODE }.to_string(),
             options: vec![
                 {
                     let mut mode = option(
@@ -187,7 +190,7 @@ impl ClaudeClient {
                     mode
                 },
                 option(
-                    "default",
+                    ASK_EACH_TIME_MODE,
                     "Ask each time",
                     "Stops for permission before every tool call it is not sure about.",
                     false,

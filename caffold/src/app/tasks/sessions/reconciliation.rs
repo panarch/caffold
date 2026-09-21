@@ -8,6 +8,8 @@ use crate::agent::{
     Conversation, Driver, OpenedConversation, ThreadStatus, TurnPage, TurnState, TurnStatus,
 };
 
+use crate::agent::driver::REVIEWED_PERMISSION_MODE;
+
 use super::turns::{
     active_turn_id, bound_latest_turns_page, merge_latest_turns_page, merge_stale_turns_page,
     replace_active_turn, sort_turns_desc, turn_is_in_progress, update_active_turn,
@@ -76,7 +78,13 @@ pub(super) fn apply_thread_settings(
     settings: &BTreeMap<String, Value>,
 ) {
     let read = driver.read_settings(settings);
-    if read.permission_mode.is_some() {
+    // An agent can only name one of its own modes, so its answer is never the
+    // one Caffold names for itself. Under that mode the agent is running the
+    // posture it was put in, and reporting it is the same state said at a
+    // lower level rather than a change of mind.
+    if read.permission_mode.is_some()
+        && state.permission_mode.as_deref() != Some(REVIEWED_PERMISSION_MODE)
+    {
         state.permission_mode = read.permission_mode;
     }
     if read.model.is_some() {
@@ -392,6 +400,47 @@ fn newer_thread_name(state: &SessionState, base_revision: u64) -> Option<Option<
 mod tests {
     use super::*;
     use crate::app::tasks::sessions::test_support::*;
+
+    /// What a Claude session reports about itself.
+    fn claude_settings(mode: &str) -> BTreeMap<String, Value> {
+        BTreeMap::from([(
+            "permissionMode".to_string(),
+            Value::String(mode.to_string()),
+        )])
+    }
+
+    #[test]
+    fn an_agent_reporting_its_own_posture_does_not_replace_the_reviewed_mode() {
+        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
+        let driver = claude.driver(".");
+        let mut state = SessionState {
+            permission_mode: Some(REVIEWED_PERMISSION_MODE.to_string()),
+            ..SessionState::default()
+        };
+
+        // Claude runs the posture it was put in and says so; that is the same
+        // state at a lower level, not a mode nobody chose.
+        apply_thread_settings(&mut state, &driver, &claude_settings("default"));
+
+        assert_eq!(
+            state.permission_mode.as_deref(),
+            Some(REVIEWED_PERMISSION_MODE)
+        );
+    }
+
+    #[test]
+    fn an_agent_reporting_its_own_posture_replaces_one_of_its_own_modes() {
+        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
+        let driver = claude.driver(".");
+        let mut state = SessionState {
+            permission_mode: Some("acceptEdits".to_string()),
+            ..SessionState::default()
+        };
+
+        apply_thread_settings(&mut state, &driver, &claude_settings("default"));
+
+        assert_eq!(state.permission_mode.as_deref(), Some("default"));
+    }
 
     #[tokio::test]
     async fn subscription_recovers_the_active_turn_runtime_cwd() {
@@ -792,6 +841,7 @@ mod tests {
                 1,
                 "thread-1",
                 Some("/managed/worktree"),
+                "carry on",
                 turn("turn-new", TurnStatus::InProgress),
                 TurnOptions::default(),
             )

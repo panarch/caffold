@@ -78,11 +78,12 @@ test("merges Conversation, follow-up composer, and Current Plan direct-owner sco
   });
 });
 
-test("merges composer popovers, Current Plan, Command, and Markdown preview modals independently", () => {
+test("merges composer popovers, Current Plan, Command, Markdown preview, and permission instruction modals independently", () => {
   const composerContext = { id: "composer-popover" };
   const planContext = { id: "current-plan" };
   const commandContext = { id: "command-output" };
   const markdownPreviewContext = { id: "markdown-preview" };
+  const permissionInstructionsContext = { id: "permission-instructions" };
   const slot = {};
   const composer = {
     parentElement: slot,
@@ -108,18 +109,37 @@ test("merges composer popovers, Current Plan, Command, and Markdown preview moda
     markdownPreviewDialog: () => ({
       keyboardNavigationContexts: () => [markdownPreviewContext],
     }),
+    permissionInstructionsDialog: () => ({
+      keyboardNavigationContexts: () => [permissionInstructionsContext],
+    }),
   };
 
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
-    [composerContext, planContext, commandContext, markdownPreviewContext],
+    [
+      composerContext,
+      planContext,
+      commandContext,
+      markdownPreviewContext,
+      permissionInstructionsContext,
+    ],
   );
   owner.currentPlanComponent = () => null;
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
-    [composerContext, commandContext, markdownPreviewContext],
+    [
+      composerContext,
+      commandContext,
+      markdownPreviewContext,
+      permissionInstructionsContext,
+    ],
   );
   owner.markdownPreviewDialog = () => null;
+  assert.deepEqual(
+    taskDetail.keyboardNavigationContexts.call(owner),
+    [composerContext, commandContext, permissionInstructionsContext],
+  );
+  owner.permissionInstructionsDialog = () => null;
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
     [composerContext, commandContext],

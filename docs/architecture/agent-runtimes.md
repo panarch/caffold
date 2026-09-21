@@ -94,6 +94,13 @@ travels back under the agent's own name, and the driver verifies it before a
 conversation or turn is created. Caffold never invents a common permission
 profile and does not silently substitute one agent's default for another's.
 
+One mode in every list is Caffold's own, **Ask Jev first**, and it is the only
+value the composer sends that a driver reads rather than passes on. Each driver
+maps it to its own most-confirming mode before anything reaches its agent, so
+the agent still only ever sees a mode it named itself. What that mode does above
+the drivers belongs to
+[Security and Approvals](security-and-approvals.md#reviewed-approvals).
+
 ## Archive and permanent deletion
 
 Archive is a Caffold membership operation with a provider-specific side effect.
@@ -317,9 +324,10 @@ the driver names the exclusive `session/new` flags it accepts — neither,
 `autoMode`, or `yoloMode` — and the permission mode is fixed when the session
 is created. The permission catalog carries that fact so the follow-up composer
 can show the current mode as uneditable; a later turn that asks for another
-mode is still refused. The Task's composer settings keep the mode Caffold
-sent at session/new, because the leader does not report autoMode again after
-load. Images are sent as prompt blocks. The
+mode is still refused. Choosing **Ask Jev first** on a session already created
+with neither flag asks Grok for nothing new, because that is the flagless
+session it is already running. The Task's composer settings keep the mode a
+person chose, because the leader does not report autoMode again after load. Images are sent as prompt blocks. The
 Settings report reads the installation without touching any of this: the
 executable by running it, the leader through `grok leader info`, the connection
 as the bridge stands, and the account through a leader that is already

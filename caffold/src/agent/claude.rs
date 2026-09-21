@@ -60,11 +60,12 @@ use self::protocol::{
 };
 use self::runner::{RunnerClient, SessionFrames};
 use self::session::SessionStart;
+use self::settings::ASK_EACH_TIME_MODE;
 use self::transcript::BackgroundTaskDelivery;
 use self::translate::ToolCalls;
 use crate::agent::driver::{
     CancelledPrompt, ClaudeConversation, Driver, ModelOption, PermissionModeOption,
-    PermissionModes, TurnOptions, TurnRejected, bounded,
+    PermissionModes, REVIEWED_PERMISSION_MODE, TurnOptions, TurnRejected, bounded,
 };
 use crate::agent::{
     ActivityStatus, AgentError, ApprovalDecision, ApprovalDetail, ApprovalRequest, Conversation,
@@ -700,6 +701,16 @@ impl ClaudeClient {
             })
     }
 
+    /// Where this conversation works now.
+    ///
+    /// A session that moved into a worktree carries the new directory; the row
+    /// Caffold claimed the Task from still names where it started.
+    pub(crate) async fn working_directory(&self, conversation_id: &str) -> Option<String> {
+        let session = self.session(conversation_id).await?;
+        let cwd = session.cwd.lock().await.clone();
+        (!cwd.trim().is_empty()).then_some(cwd)
+    }
+
     async fn session(&self, conversation_id: &str) -> Option<Arc<Session>> {
         self.inner
             .sessions
@@ -1259,16 +1270,33 @@ impl Session {
 /// all things the agent itself lists, so they are asked rather than assumed —
 /// and asked before anything is created, because a session started under a
 /// model that does not exist is a session left behind.
+/// Claude's own name for the posture a turn runs under.
+///
+/// Caffold's reviewed mode is not one of Claude's. What it needs from Claude is
+/// the posture that asks about the most, because the reviewer can only answer
+/// what the agent actually asks: `default` stops for every call the agent is
+/// not sure about, while `auto` lets the model settle some of them itself.
+fn claude_permission_mode(mode: Option<&str>) -> Option<&str> {
+    match mode {
+        Some(REVIEWED_PERMISSION_MODE) => Some(ASK_EACH_TIME_MODE),
+        mode => mode,
+    }
+}
+
 pub(crate) async fn claude_turn_options(
     client: &ClaudeClient,
     options: &TurnOptions,
 ) -> Result<ClaudeTurnOptions, TurnRejected> {
     let model = bounded(options.model.as_deref(), 128).ok_or(TurnRejected::Model)?;
     let effort = bounded(options.effort.as_deref(), 32).ok_or(TurnRejected::Effort)?;
-    let permission_mode = bounded(options.permission_mode.as_deref(), 64).ok_or(
-        // A mode is offered by the agent and carried back verbatim, so one that
-        // could not have come from that list is a bad choice rather than a
-        // depth the model lacks.
+    let permission_mode = bounded(
+        claude_permission_mode(options.permission_mode.as_deref()),
+        64,
+    )
+    .ok_or(
+        // A mode is offered by the agent and carried back verbatim, so one
+        // that could not have come from that list is a bad choice rather
+        // than a depth the model lacks.
         TurnRejected::Model,
     )?;
     if model.is_none() && effort.is_none() && !options.fast_mode {
@@ -1962,6 +1990,28 @@ mod test_support {
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+
+    #[test]
+    fn the_reviewed_mode_runs_claude_under_the_posture_that_asks_the_most() {
+        assert_eq!(
+            super::claude_permission_mode(Some(super::REVIEWED_PERMISSION_MODE)),
+            Some("default")
+        );
+    }
+
+    #[test]
+    fn claudes_own_modes_are_carried_back_unchanged() {
+        for mode in [
+            "default",
+            "auto",
+            "acceptEdits",
+            "plan",
+            "bypassPermissions",
+        ] {
+            assert_eq!(super::claude_permission_mode(Some(mode)), Some(mode));
+        }
+        assert_eq!(super::claude_permission_mode(None), None);
+    }
 
     use serde_json::json;
     use tokio::sync::broadcast::Receiver;

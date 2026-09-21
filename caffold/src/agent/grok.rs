@@ -60,8 +60,8 @@ use super::{
     ActivityStatus, ApprovalDecision, ApprovalRequest, Conversation, ConversationItem, ItemKind,
     SessionEvent, SessionEventKind, ThreadStatus, Turn, TurnPage, TurnState, TurnStatus,
     driver::{
-        AgentError, Driver, ModelOption, PermissionModeOption, PermissionModes, TurnOptions,
-        TurnRejected, bounded,
+        AgentError, Driver, ModelOption, PermissionModeOption, PermissionModes,
+        REVIEWED_PERMISSION_MODE, TurnOptions, TurnRejected, bounded,
     },
     http_mcp::{CAFFOLD_MCP_BINDING_HEADER, CAFFOLD_MCP_SERVER_NAME},
 };
@@ -1538,6 +1538,19 @@ fn executable_path() -> PathBuf {
     PathBuf::from("grok")
 }
 
+/// Grok's own name for the posture a session runs under.
+///
+/// Caffold's reviewed mode is not one of Grok's. What it needs from Grok is the
+/// posture that asks about the most, because the reviewer can only answer what
+/// the agent actually asks: with neither `_meta` flag Grok asks, while
+/// `autoMode` lets Grok decide for itself and ask nobody.
+fn grok_permission_mode(mode: Option<&str>) -> Option<&str> {
+    match mode {
+        Some(REVIEWED_PERMISSION_MODE) => Some(PermissionMode::ASK),
+        mode => mode,
+    }
+}
+
 /// What Grok will accept for a turn, given what the person asked for.
 pub(crate) async fn grok_turn_options(
     client: &GrokClient,
@@ -1545,8 +1558,8 @@ pub(crate) async fn grok_turn_options(
 ) -> Result<GrokTurnOptions, TurnRejected> {
     let model = bounded(options.model.as_deref(), 128).ok_or(TurnRejected::Model)?;
     let effort = bounded(options.effort.as_deref(), 32).ok_or(TurnRejected::Effort)?;
-    let permission_mode =
-        bounded(options.permission_mode.as_deref(), 64).ok_or(TurnRejected::Model)?;
+    let permission_mode = bounded(grok_permission_mode(options.permission_mode.as_deref()), 64)
+        .ok_or(TurnRejected::Model)?;
     if let Some(mode) = permission_mode.as_deref()
         && PermissionMode::from_name(mode).is_none()
     {
@@ -1775,6 +1788,22 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use std::{fs, path::Path, time::Duration};
+
+    #[test]
+    fn the_reviewed_mode_runs_grok_under_the_posture_that_asks_the_most() {
+        assert_eq!(
+            super::grok_permission_mode(Some(super::REVIEWED_PERMISSION_MODE)),
+            Some("ask")
+        );
+    }
+
+    #[test]
+    fn groks_own_modes_are_carried_back_unchanged() {
+        for mode in ["ask", "autoMode", "yoloMode", "somethingElse"] {
+            assert_eq!(super::grok_permission_mode(Some(mode)), Some(mode));
+        }
+        assert_eq!(super::grok_permission_mode(None), None);
+    }
 
     use serde_json::json;
     use tokio::{sync::broadcast, time::timeout};

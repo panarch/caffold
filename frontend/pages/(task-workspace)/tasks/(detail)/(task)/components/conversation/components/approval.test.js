@@ -31,6 +31,30 @@ test("tool details escape external text and preserve exact JSON argument values"
   assert.doesNotMatch(content.innerHTML, /<script>/);
 });
 
+test("a card names how sure the reviewer was, because only a short answer leaves one", () => {
+  const { owner, content } = presentationOwner();
+
+  owner.setSnapshot({ threadId: "a", request: {
+    approvalId: "reviewed", command: "rm -f ./scratch.txt",
+    reviewed: { model: "jev-1.13.0", concern: 0.62, allows: false },
+  } });
+
+  assert.match(content.innerHTML, /Reviewer answer/);
+  assert.match(content.innerHTML, /62% sure this needs you/);
+  assert.match(content.innerHTML, /jev-1\.13\.0/);
+});
+
+test("a card the reviewer never answered says nothing about a reviewer", () => {
+  const { owner, content } = presentationOwner();
+
+  owner.setSnapshot({ threadId: "a", request: {
+    approvalId: "unreviewed", command: "rm -f ./scratch.txt",
+  } });
+
+  assert.doesNotMatch(content.innerHTML, /Reviewer answer/);
+  assert.doesNotMatch(content.innerHTML, /Jev/);
+});
+
 test("command, network, permissions, and context share the normalized card", () => {
   const { owner, content } = presentationOwner();
   owner.setSnapshot({ threadId: "a", request: {

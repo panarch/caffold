@@ -5,6 +5,7 @@ import {
 import { formatTaskStatus } from "../../../../../runtime-state.js";
 import { shortId } from "../../../../../task-format.js";
 import { taskThreadId } from "../../../../../task-list-model.js";
+import { getTaskPermissionInstructions } from "../../../../../../../../api.js";
 import {
   patchTaskStatusChip,
   renderTaskStatusChip,
@@ -74,6 +75,9 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     this.boundActionIntent = (event) => this.handleActionIntent(event);
     this.boundDismiss = (event) => this.handleDismiss(event);
     this.boundIconsReady = () => this.patchStatus();
+    this.boundPopoverToggle = (event) => this.handlePopoverToggle(event);
+    this.instructionsRequest = 0;
+    this.hasPermissionInstructions = false;
     warmIcons();
   }
 
@@ -100,6 +104,55 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     }
   }
 
+  /**
+   * A Task's kept permission instructions are read when the details are
+   * opened, because whether there are any is the only thing this popover needs
+   * to know and it changes while the Task runs.
+   */
+  handlePopoverToggle(event) {
+    if (event.newState !== "open") {
+      this.instructionsRequest += 1;
+      return;
+    }
+    void this.readPermissionInstructions();
+  }
+
+  async readPermissionInstructions() {
+    const threadId = taskThreadId(this.snapshot.task);
+    if (!threadId) {
+      return;
+    }
+    const request = ++this.instructionsRequest;
+    let kept = false;
+    try {
+      const payload = await getTaskPermissionInstructions(threadId);
+      kept = `${payload?.instructions ?? ""}`.trim().length > 0;
+    } catch {
+      // Nothing to offer when it could not be read; the details still open.
+      kept = false;
+    }
+    if (
+      !this.isConnected ||
+      request !== this.instructionsRequest ||
+      taskThreadId(this.snapshot.task) !== threadId
+    ) {
+      return;
+    }
+    this.hasPermissionInstructions = kept;
+    this.patchPermissionInstructions();
+  }
+
+  patchPermissionInstructions() {
+    this.actions()?.setSnapshot(this.actionsSnapshot());
+  }
+
+  actionsSnapshot() {
+    return {
+      ...this.snapshot,
+      hasPermissionInstructions: this.hasPermissionInstructions,
+    };
+  }
+
   deactivate() {
     const popover = this.infoPopover();
     if (!popover?.matches(":popover-open")) {
@@ -115,7 +168,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
   handleActionIntent(event) {
     if (
       event.target !== this.actions() ||
-      !["archive", "fork"].includes(event.detail?.type)
+      !["archive", "fork", "permission-instructions"].includes(event.detail?.type)
     ) {
       return;
     }
@@ -183,6 +236,11 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     `;
     this.renderedThreadId = taskThreadId(task);
     this.renderedStatusKey = "";
+    // A fresh popover knows nothing yet; the answer for the last one was for
+    // DOM that no longer exists.
+    this.instructionsRequest += 1;
+    this.hasPermissionInstructions = false;
+    this.infoPopover()?.addEventListener("toggle", this.boundPopoverToggle);
     this.patch();
   }
 
@@ -223,7 +281,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       this.querySelector('[data-task-info-field="worktree-ref"]'),
       taskWorktreeRef(task),
     );
-    this.actions()?.setSnapshot(this.snapshot);
+    this.actions()?.setSnapshot(this.actionsSnapshot());
   }
 
   patchStatus() {

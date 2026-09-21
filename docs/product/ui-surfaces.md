@@ -77,7 +77,11 @@ while its migration blocks operations, with its own retry lifecycle.
 Each offered model identifies its agent. Task creation starts a conversation
 with that agent in the selected cwd and binds the Task to it; later turns can
 choose only models from the same agent. Codex and Claude follow-up composers
-can still change permission mode between turns. A Grok Task's follow-up
+can still change permission mode between turns. Every agent's list also offers
+**Ask Jev first**, which runs that agent under whichever of its own modes asks
+about the most and has Jev hold back only what an automatic mode would stop for,
+plus whatever the extra rules in Settings name. A Grok session fixes its mode when the conversation starts, so choosing
+it there changes who answers rather than what Grok asks about. A Grok Task's follow-up
 composer shows the session's approval mode and does not let it change,
 including on an empty Task. New Task reports that the task is starting until
 the empty Task is durably created, and the answer opens the Task without
@@ -120,6 +124,12 @@ repository capability, it returns to New Task.
 Task Detail presents the selected conversation, command requests,
 follow-up Composer, and Task actions. Integrated Review, Git, and GitHub remain
 shared repository surfaces.
+
+Task actions open from the Task details control. A Task that has kept
+permission instructions of its own also offers **What your prompts settled**
+there, which opens a dialog holding those messages oldest first, each under the
+time it was sent in the reader's own time zone, and a **Forget these** action.
+Nothing kept means no such action.
 
 An idle Codex Task exposes **Fork task** in Task actions. It performs the same
 native fork without an ID lookup, places the child at the source Task's Section
@@ -290,6 +300,14 @@ Settings includes:
   the model each provider uses, Whisper's pinned revision, model download,
   cancellation, and deletion, and API keys that can be saved, replaced, or
   removed but never shown again;
+- Jev Permissions, where an API key is saved, replaced, or removed but never
+  shown again, and optional extra rules are written. Jev judges to the standard
+  of a coding agent's automatic permission mode on its own, holding back only
+  what such a mode would stop for; the extra rules only add to that standard or
+  take away from it. The page shows the pinned model
+  version, whether a key is saved, and what checking that key found when it was
+  saved. Without a key, **Ask Jev first** stays in every composer's
+  approval-mode list and says what is missing rather than disappearing;
 - Codex plan usage as Codex reports it, installation readiness and repair
   guidance, runtime status with an explicit confirmed runtime restart
   available while the canonical runtime is ready or requires restart (the

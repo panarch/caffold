@@ -9,12 +9,14 @@ use crate::agent::codex::{
     ApprovalKind, CodexServerRequest, CodexThreadClient, LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
     approval_request, approval_response,
 };
+use crate::agent::driver::REVIEWED_PERMISSION_MODE;
 use crate::agent::http_mcp::{ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME};
 use crate::agent::notes_tools::{NotesToolCall, notes_tool_call};
 use crate::agent::{
     ApprovalDecision, ApprovalOutcome, ApprovalRequest, SessionEvent, SessionEventKind,
     ThreadStatus, TurnStatus,
 };
+use crate::app::jev::{Judgement, RequestedAccess, ReviewedRequest, ReviewedTool};
 use crate::app::notes;
 use crate::app::tasks::{
     events::{
@@ -23,7 +25,7 @@ use crate::app::tasks::{
     },
     worktrees::IsolateOutcome,
 };
-use crate::task_store::{ManagedThread, RunBy};
+use crate::task_store::{ManagedThread, RunBy, TaskStoreError};
 
 /// An approval waiting for an answer.
 ///
@@ -40,18 +42,34 @@ pub(super) struct PendingApproval {
     position: TaskEventPosition,
     instance: Arc<()>,
     phase: ApprovalPhase,
+    /// Whether a person has been shown this request.
+    ///
+    /// A phase does not answer that on its own: a request the reviewer is
+    /// answering is replying without ever having been shown. Nothing about a
+    /// request nobody saw belongs in the conversation.
+    shown: bool,
+    /// What the reviewer answered, when it answered at all.
+    reviewed: Option<Judgement>,
 }
 
-/// This owner coordinates requests, user replies, and provider completion.
-/// Absent -> Pending on a request; Pending -> Replying on one valid reply;
-/// Pending/Replying -> absent on provider withdrawal; Replying -> absent on
-/// send success or failure. A same-generation duplicate is a no-op. A replay
-/// on a new connection creates a new instance, which old completions cannot
-/// retire. Caller cancellation leaves Replying owned by the runtime until
-/// its send completes. None of these transitions writes the provider's
-/// Task/turn status.
+/// This owner coordinates requests, the reviewer, user replies, and provider
+/// completion.
+///
+/// Absent -> Judging on a request. Judging -> Pending when the request is shown
+/// to a person, or -> Replying when the reviewer answered it first; a failed
+/// reviewer send returns Replying -> Judging so it can still be shown.
+/// Pending -> Replying on one valid reply. Judging/Pending/Replying -> absent on
+/// provider withdrawal. Replying -> absent on send success or failure. A
+/// same-generation duplicate is a no-op. A replay on a new connection creates a
+/// new instance, which old completions cannot retire. Caller cancellation
+/// leaves Replying owned by the runtime until its send completes. A Judging
+/// request has never been shown, so retiring one publishes nothing. Whether a
+/// person was shown the request is its own value rather than a node, because
+/// Replying means two different things depending on who is answering. None of
+/// these transitions writes the provider's Task/turn status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApprovalPhase {
+    Judging,
     Pending,
     Replying,
 }
@@ -72,6 +90,67 @@ pub(super) enum AskedBy {
     /// Grok's driver keeps the request it must answer on, so nothing is
     /// needed here either.
     Grok,
+}
+
+impl AskedBy {
+    /// Which agent asked, named for the reviewer that reads the request.
+    fn agent_name(&self) -> &'static str {
+        match self {
+            Self::Codex { .. } => "codex",
+            Self::Claude => "claude",
+            Self::Grok => "grok",
+        }
+    }
+}
+
+/// One request as its driver wrote it, in the shape the reviewer reads.
+///
+/// Nothing is reworded on the way: what reaches the reviewer is what a person
+/// would have been shown. The agent's own title and reason travel under a name
+/// that says the agent wrote them, because the reviewer is told to read them as
+/// a claim rather than as grounds. The working directory is the one thing the
+/// reviewer is told that the request did not carry, and it is Caffold's answer
+/// rather than the agent's: only Caffold knows where it put the Task.
+fn reviewed_request(
+    request: &ApprovalRequest,
+    agent: &'static str,
+    task_instructions: Option<String>,
+    working_directory: Option<String>,
+    turn_prompt: Option<String>,
+) -> ReviewedRequest {
+    let detail = &request.detail;
+    ReviewedRequest {
+        agent: agent.to_string(),
+        title: request.title.clone(),
+        agent_claimed_reason: request.reason.clone(),
+        command: detail.command.clone(),
+        cwd: detail.cwd.clone(),
+        network_endpoint: detail.network_endpoint.clone(),
+        grant_root: detail.grant_root.clone(),
+        environment: detail.environment.clone(),
+        requested_access: detail
+            .permissions
+            .iter()
+            .map(|row| RequestedAccess {
+                label: row.label.clone(),
+                value: row.value.clone(),
+                verbatim: row.verbatim,
+            })
+            .collect(),
+        tool: detail.tool.as_ref().map(|tool| ReviewedTool {
+            server: tool.server_name.clone(),
+            app: tool.app_name.clone(),
+            description: tool.description.clone(),
+            arguments: tool
+                .arguments
+                .iter()
+                .map(|argument| (argument.name.clone(), argument.value.clone()))
+                .collect(),
+        }),
+        task_instructions,
+        working_directory,
+        turn_prompt,
+    }
 }
 
 #[derive(Deserialize)]
@@ -237,12 +316,13 @@ impl TaskRuntime {
             .lock()
             .await
             .iter()
-            .filter(|(_, pending)| pending.thread_id == thread_id)
+            .filter(|(_, pending)| pending.thread_id == thread_id && pending.shown)
             .map(|(_, pending)| {
                 let mut event = approval_requested_event(
                     &pending.thread_id,
                     &pending.request,
                     pending.position.anchor_ms,
+                    pending.reviewed.as_ref(),
                 );
                 event.position = pending.position;
                 event
@@ -303,9 +383,45 @@ impl TaskRuntime {
         pending: PendingApproval,
         decision: ApprovalDecision,
     ) -> Result<(), ApprovalResolveError> {
+        let approval_id = pending.request.id.clone();
+        let result = self.send_decision(&agent, &pending, decision).await;
+        // Publishing while holding the same lock keeps a late result from
+        // overtaking a replay's new requested event.
+        let mut approvals = self.approvals.lock().await;
+        if approvals
+            .get(&approval_id)
+            .is_some_and(|current| Arc::ptr_eq(&current.instance, &pending.instance))
+        {
+            approvals.remove(&approval_id);
+            self.events.publish_local(approval_resolved_event(
+                &pending.thread_id,
+                &pending.request,
+                if result.is_ok() {
+                    ApprovalOutcome::Decided(decision)
+                } else {
+                    ApprovalOutcome::Unavailable
+                },
+                None,
+            ));
+        }
+        result
+    }
+
+    /// Send one answer on the request the agent is blocked on.
+    ///
+    /// Answering is each agent's own: Codex replies on the app-server request
+    /// that asked, and Claude and Grok on the control request their drivers
+    /// hold. What differs is only where the answer goes, so a person's answer
+    /// and the reviewer's take the same road.
+    async fn send_decision(
+        &self,
+        agent: &TaskAgent,
+        pending: &PendingApproval,
+        decision: ApprovalDecision,
+    ) -> Result<(), ApprovalResolveError> {
         let approval_id = pending.request.id.as_str();
         let thread_id = pending.thread_id.as_str();
-        let result = match (&pending.asked_by, &agent) {
+        match (&pending.asked_by, agent) {
             (AskedBy::Codex { kind, params, .. }, TaskAgent::Codex(connection)) => {
                 match approval_response(*kind, params, decision) {
                     Some(response) => {
@@ -338,26 +454,7 @@ impl TaskRuntime {
                     error => ApprovalResolveError::Agent(error.into()),
                 }),
             _ => unreachable!("reply claimed for the matching provider"),
-        };
-        // Publishing while holding the same lock keeps a late result from
-        // overtaking a replay's new requested event.
-        let mut approvals = self.approvals.lock().await;
-        if approvals
-            .get(approval_id)
-            .is_some_and(|current| Arc::ptr_eq(&current.instance, &pending.instance))
-        {
-            approvals.remove(approval_id);
-            self.events.publish_local(approval_resolved_event(
-                &pending.thread_id,
-                &pending.request,
-                if result.is_ok() {
-                    ApprovalOutcome::Decided(decision)
-                } else {
-                    ApprovalOutcome::Unavailable
-                },
-            ));
         }
-        result
     }
 
     pub(super) async fn handle_server_request(
@@ -440,8 +537,8 @@ impl TaskRuntime {
             .and_then(JsonValue::as_u64)
             .filter(|started_at_ms| *started_at_ms > 0)
             .unwrap_or_else(now_ms);
-        let request = approval_request(approval_id, kind, &params);
-        self.insert_pending_approval(
+        let request = approval_request(approval_id.clone(), kind, &params);
+        let staged = self.stage_approval(
             &mut approvals,
             &thread_id,
             request,
@@ -452,15 +549,17 @@ impl TaskRuntime {
                 params,
             },
         );
+        drop(approvals);
+        self.settle_in_background(approval_id, staged);
     }
 
-    /// Put a question on the waiting list, show it, and tell a phone the once.
+    /// Take in a question, answer it, or show it.
     ///
-    /// Both agents' questions arrive here, and the same question can arrive
+    /// Every agent's questions arrive here, and the same question can arrive
     /// more than once: app-server replays what is still pending whenever a
     /// connection is replaced. The waiting list answers to the identity the
     /// question was asked under, so a replay lands on the question it already
-    /// is, and only the arrival that made a Task wait reaches a phone.
+    /// is.
     pub(super) async fn record_pending_approval(
         &self,
         thread_id: &str,
@@ -468,42 +567,252 @@ impl TaskRuntime {
         anchor_ms: u64,
         asked_by: AskedBy,
     ) {
-        let mut approvals = self.approvals.lock().await;
-        if approvals.contains_key(&request.id) {
-            return;
-        }
-        self.insert_pending_approval(&mut approvals, thread_id, request, anchor_ms, asked_by);
+        let approval_id = request.id.clone();
+        let staged = {
+            let mut approvals = self.approvals.lock().await;
+            if approvals.contains_key(&approval_id) {
+                return;
+            }
+            self.stage_approval(&mut approvals, thread_id, request, anchor_ms, asked_by)
+        };
+        self.settle_in_background(approval_id, staged);
     }
 
-    fn insert_pending_approval(
+    /// Judge and publish a staged question without holding up the reports
+    /// still arriving.
+    ///
+    /// Every agent carries its whole installation's reports through one loop.
+    /// Waiting there for a reviewer would hold up every other Task that agent
+    /// runs, so the wait happens beside that loop rather than inside it.
+    fn settle_in_background(&self, approval_id: String, staged: Arc<()>) {
+        let runtime = self.clone();
+        tokio::spawn(async move {
+            runtime.settle_approval(&approval_id, &staged).await;
+        });
+    }
+
+    /// Put a question on the waiting list while it is being judged.
+    ///
+    /// Nothing is shown and no phone is told yet. A question the person's rules
+    /// cover is answered inside the time it would have taken to reach them, so
+    /// showing it first would be showing something that was never theirs to
+    /// answer.
+    fn stage_approval(
         &self,
         approvals: &mut HashMap<String, PendingApproval>,
         thread_id: &str,
         request: ApprovalRequest,
         anchor_ms: u64,
         asked_by: AskedBy,
-    ) {
-        let approval_id = request.id.clone();
-        let event = self
-            .events
-            .record_local(approval_requested_event(thread_id, &request, anchor_ms));
-        let newly_pending = approvals
-            .insert(
-                approval_id.clone(),
-                PendingApproval {
-                    thread_id: thread_id.to_owned(),
-                    request,
-                    asked_by,
-                    position: event.event.position,
-                    instance: Arc::new(()),
-                    phase: ApprovalPhase::Pending,
-                },
-            )
-            .is_none();
-        self.events.broadcast(event);
-        if newly_pending {
-            self.notify_action_required(thread_id, &approval_id);
+    ) -> Arc<()> {
+        let instance = Arc::new(());
+        approvals.insert(
+            request.id.clone(),
+            PendingApproval {
+                thread_id: thread_id.to_owned(),
+                request,
+                asked_by,
+                position: TaskEventPosition::at(anchor_ms),
+                instance: instance.clone(),
+                phase: ApprovalPhase::Judging,
+                shown: false,
+                reviewed: None,
+            },
+        );
+        instance
+    }
+
+    /// Either the reviewer answers the question, or a person is shown it.
+    async fn settle_approval(&self, approval_id: &str, staged: &Arc<()>) {
+        let judgement = self.review_staged_approval(approval_id, staged).await;
+        if let Some(allowance) = judgement.clone().filter(|judgement| judgement.allows)
+            && self
+                .answer_staged_approval(approval_id, staged, allowance)
+                .await
+        {
+            return;
         }
+        // An answer that did not clear the bar is shown with the question, so
+        // a person reading it can tell rules that nearly covered a request
+        // from rules that said nothing about it.
+        self.show_staged_approval(approval_id, staged, judgement)
+            .await;
+    }
+
+    /// What the reviewer says about a staged question, if it is asked at all.
+    ///
+    /// It is asked only for a Task whose composer chose the reviewed mode.
+    /// Under any other mode nothing about the request leaves this host.
+    async fn review_staged_approval(
+        &self,
+        approval_id: &str,
+        staged: &Arc<()>,
+    ) -> Option<Judgement> {
+        let reviewer = self.permission_reviewer.clone()?;
+        let (thread_id, request, asked_by) = {
+            let approvals = self.approvals.lock().await;
+            let pending = approvals.get(approval_id)?;
+            if !Arc::ptr_eq(&pending.instance, staged) || pending.phase != ApprovalPhase::Judging {
+                return None;
+            }
+            (
+                pending.thread_id.clone(),
+                pending.request.clone(),
+                pending.asked_by.clone(),
+            )
+        };
+        let agent = asked_by.agent_name();
+        let store = self.task_store.clone();
+        let wanted = thread_id.clone();
+        let reviewed = tokio::task::spawn_blocking(move || {
+            let managed = store.get(&wanted)?;
+            let instructions = store.permission_instructions(&wanted)?;
+            Ok::<_, TaskStoreError>((managed, instructions))
+        })
+        .await
+        .ok()?
+        .ok()?;
+        let (managed, instructions) = reviewed;
+        let managed = managed?;
+        if managed.permission_mode.as_deref() != Some(REVIEWED_PERMISSION_MODE) {
+            return None;
+        }
+        // Where the agent is working now, asked of the agent that is asking.
+        // A Task that moved into a worktree works there while the row still
+        // names the checkout it was claimed from, and only a live session knows
+        // the difference — which an approval proves there is. Codex names its
+        // directory on the request itself; the row answers for neither and is
+        // the last word only when nothing else has one.
+        let working_directory = match &asked_by {
+            AskedBy::Claude => self.claude.working_directory(&thread_id).await,
+            AskedBy::Grok => self.grok.working_directory(&thread_id).await.ok(),
+            AskedBy::Codex { .. } => request.detail.cwd.clone(),
+        }
+        .or_else(|| managed.run_by.cwd().map(str::to_string));
+        // What the person asked for in the turn that raised this request. The
+        // session holds it beside that turn's directory, and it answers only
+        // for the turn it belongs to: a request from an older turn is not
+        // covered by what was asked for since.
+        let turn_prompt = self
+            .sessions
+            .snapshot(&thread_id)
+            .await
+            .filter(|session| session.active_turn_id == request.turn_id)
+            .and_then(|session| session.active_turn_prompt);
+        reviewer
+            .review(&reviewed_request(
+                &request,
+                agent,
+                instructions,
+                working_directory,
+                turn_prompt,
+            ))
+            .await
+    }
+
+    /// Answer a staged question with the reviewer's allowance.
+    ///
+    /// The conversation gets the question and its answer together, so a reader
+    /// sees what was asked and what became of it without a card appearing and
+    /// vanishing in between. `false` means it is still nobody's answer.
+    async fn answer_staged_approval(
+        &self,
+        approval_id: &str,
+        staged: &Arc<()>,
+        judgement: Judgement,
+    ) -> bool {
+        let pending = {
+            let mut approvals = self.approvals.lock().await;
+            let Some(pending) = approvals.get_mut(approval_id) else {
+                return false;
+            };
+            if !Arc::ptr_eq(&pending.instance, staged) || pending.phase != ApprovalPhase::Judging {
+                return false;
+            }
+            pending.phase = ApprovalPhase::Replying;
+            pending.clone()
+        };
+        let sent = match self.task_agent(&pending.thread_id).await {
+            Ok(agent) => self
+                .send_decision(&agent, &pending, ApprovalDecision::Allow)
+                .await
+                .is_ok(),
+            Err(_) => false,
+        };
+        let mut approvals = self.approvals.lock().await;
+        let Some(current) = approvals.get_mut(approval_id) else {
+            return sent;
+        };
+        if !Arc::ptr_eq(&current.instance, staged) {
+            return sent;
+        }
+        if !sent {
+            // The agent did not take the answer, so the question is a person's
+            // again and has still never been shown.
+            current.phase = ApprovalPhase::Judging;
+            return false;
+        }
+        approvals.remove(approval_id);
+        let requested = self.events.record_local(approval_requested_event(
+            &pending.thread_id,
+            &pending.request,
+            pending.position.anchor_ms,
+            Some(&judgement),
+        ));
+        self.events.broadcast(requested);
+        self.events.publish_local(approval_resolved_event(
+            &pending.thread_id,
+            &pending.request,
+            ApprovalOutcome::Decided(ApprovalDecision::Allow),
+            Some(&judgement),
+        ));
+        true
+    }
+
+    /// Show a staged question and tell a phone the once.
+    async fn show_staged_approval(
+        &self,
+        approval_id: &str,
+        staged: &Arc<()>,
+        reviewed: Option<Judgement>,
+    ) {
+        let mut approvals = self.approvals.lock().await;
+        let Some(pending) = approvals.get_mut(approval_id) else {
+            return;
+        };
+        if !Arc::ptr_eq(&pending.instance, staged) || pending.phase != ApprovalPhase::Judging {
+            return;
+        }
+        pending.phase = ApprovalPhase::Pending;
+        pending.shown = true;
+        pending.reviewed = reviewed;
+        let event = self.events.record_local(approval_requested_event(
+            &pending.thread_id,
+            &pending.request,
+            pending.position.anchor_ms,
+            pending.reviewed.as_ref(),
+        ));
+        pending.position = event.event.position;
+        let thread_id = pending.thread_id.clone();
+        self.events.broadcast(event);
+        self.notify_action_required(&thread_id, approval_id);
+    }
+
+    /// Retire a question nobody answered here.
+    ///
+    /// One a person never saw has nothing in the conversation for its ending
+    /// to resolve — neither a question still being judged nor one the reviewer
+    /// was answering when it went away.
+    fn retire_without_asking(&self, pending: &PendingApproval, outcome: ApprovalOutcome) {
+        if !pending.shown {
+            return;
+        }
+        self.events.publish_local(approval_resolved_event(
+            &pending.thread_id,
+            &pending.request,
+            outcome,
+            None,
+        ));
     }
 
     /// Tell a phone that a Task is waiting on a person.
@@ -827,11 +1136,7 @@ impl TaskRuntime {
             .collect::<Vec<_>>();
         for (id, outcome) in withdrawn {
             if let Some(pending) = approvals.remove(&id) {
-                self.events.publish_local(approval_resolved_event(
-                    &pending.thread_id,
-                    &pending.request,
-                    outcome,
-                ));
+                self.retire_without_asking(&pending, outcome);
             }
         }
     }
@@ -840,11 +1145,7 @@ impl TaskRuntime {
         let mut approvals = self.approvals.lock().await;
         approvals.retain(|_, pending| {
             if pending.thread_id == thread_id && matches!(pending.asked_by, AskedBy::Grok) {
-                self.events.publish_local(approval_resolved_event(
-                    &pending.thread_id,
-                    &pending.request,
-                    ApprovalOutcome::Unavailable,
-                ));
+                self.retire_without_asking(pending, ApprovalOutcome::Unavailable);
                 false
             } else {
                 true
@@ -856,9 +1157,7 @@ impl TaskRuntime {
         let mut approvals = self.approvals.lock().await;
         approvals.retain(|_, pending| {
             if matches!(pending.asked_by, AskedBy::Codex { generation: owner, .. } if owner == generation) {
-                self.events.publish_local(approval_resolved_event(
-                    &pending.thread_id, &pending.request, ApprovalOutcome::Unavailable,
-                ));
+                self.retire_without_asking(pending, ApprovalOutcome::Unavailable);
                 false
             } else { true }
         });
@@ -925,7 +1224,7 @@ fn approval_id_from_request(request_id: &JsonValue, params: &JsonValue) -> Strin
 
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, process::Command, sync::Arc};
+    use std::{path::Path, process::Command, sync::Arc, sync::Mutex as StdMutex};
 
     use tokio::sync::broadcast;
 
@@ -1031,6 +1330,40 @@ mod tests {
         .unwrap()
     }
 
+    /// Hand a server request to the runtime and wait for what it becomes.
+    ///
+    /// A question is staged the moment it arrives and judged beside the
+    /// agent's own event loop, so a test reads what it became rather than
+    /// what it was on the way.
+    async fn deliver(
+        runtime: &TaskRuntime,
+        client: &CodexThreadClient,
+        generation: u64,
+        request: CodexServerRequest,
+    ) {
+        runtime
+            .handle_server_request(client, generation, request)
+            .await;
+        settled(runtime).await;
+    }
+
+    /// Wait until no question is still being judged.
+    async fn settled(runtime: &TaskRuntime) {
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while runtime
+                .approvals
+                .lock()
+                .await
+                .values()
+                .any(|pending| pending.phase == ApprovalPhase::Judging)
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("every staged question settled");
+    }
+
     fn runtime_with_events(events: TaskEvents) -> TaskRuntime {
         test_runtime_with_store(events, TaskStore::memory().unwrap())
     }
@@ -1065,7 +1398,7 @@ mod tests {
             json!({"threadId":"thread_1","turnId":"turn_1","itemId":"call_1","questions":[]}),
         )
         .unwrap();
-        runtime.handle_server_request(&client, 1, request).await;
+        deliver(&runtime, &client, 1, request).await;
         assert_eq!(
             client.mock_server_responses().await,
             vec![(json!(23), json!({"answers":{}}))]
@@ -1073,9 +1406,7 @@ mod tests {
         assert!(runtime.approval_events("thread_1").await.is_empty());
         assert!(events.for_thread("thread_1").is_empty());
 
-        runtime
-            .handle_server_request(&client, 1, command_approval_request(24))
-            .await;
+        deliver(&runtime, &client, 1, command_approval_request(24)).await;
         assert_eq!(runtime.approval_events("thread_1").await.len(), 1);
         assert_eq!(
             events.for_thread("thread_1")[0].event_type,
@@ -1092,25 +1423,25 @@ mod tests {
         let mut receiver = events.subscribe();
         let runtime = runtime_with_events(events.clone());
 
-        runtime
-            .handle_server_request(
-                &CodexThreadClient::mock(Vec::new()),
-                1,
-                codex::decode_server_request(
-                    json!(11),
-                    "item/commandExecution/requestApproval",
-                    json!({
-                        "threadId": "thread_1",
-                        "turnId": "turn_1",
-                        "command": "cargo test",
-                        "cwd": project_root.join("src").display().to_string(),
-                        "reason": "Run tests",
-                        "availableDecisions": ["accept", "decline"]
-                    }),
-                )
-                .unwrap(),
+        deliver(
+            &runtime,
+            &CodexThreadClient::mock(Vec::new()),
+            1,
+            codex::decode_server_request(
+                json!(11),
+                "item/commandExecution/requestApproval",
+                json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "command": "cargo test",
+                    "cwd": project_root.join("src").display().to_string(),
+                    "reason": "Run tests",
+                    "availableDecisions": ["accept", "decline"]
+                }),
             )
-            .await;
+            .unwrap(),
+        )
+        .await;
 
         let event = receiver.recv().await.unwrap().event;
         assert_eq!(event.thread_id, "thread_1");
@@ -1164,9 +1495,7 @@ mod tests {
         let runtime = test_runtime_with_store(TaskEvents::default(), store).with_push_service(push);
         let client = CodexThreadClient::mock(Vec::new());
 
-        runtime
-            .handle_server_request(&client, 1, command_approval_request(11))
-            .await;
+        deliver(&runtime, &client, 1, command_approval_request(11)).await;
 
         let asked = deliveries.try_recv().expect("a waiting Task is announced");
         let payload: JsonValue = serde_json::from_slice(&asked.payload).unwrap();
@@ -1183,9 +1512,7 @@ mod tests {
 
         // A replaced connection replays what is still pending, under the
         // identity it was asked under.
-        runtime
-            .handle_server_request(&client, 1, command_approval_request(11))
-            .await;
+        deliver(&runtime, &client, 1, command_approval_request(11)).await;
         assert!(deliveries.try_recv().is_err());
 
         for (request, kind) in [
@@ -1205,33 +1532,356 @@ mod tests {
             ),
             (permission_approval_request(13), "a permission profile"),
         ] {
-            runtime.handle_server_request(&client, 1, request).await;
+            deliver(&runtime, &client, 1, request).await;
             let next = deliveries
                 .try_recv()
                 .unwrap_or_else(|_| panic!("{kind} is a question like any other"));
             assert_ne!(next.topic, asked.topic);
         }
 
-        runtime
-            .handle_server_request(
-                &client,
-                1,
-                codex::decode_server_request(
-                    json!(13),
-                    "item/commandExecution/requestApproval",
-                    json!({
-                        "threadId": "outside-caffold",
-                        "turnId": "turn_1",
-                        "command": "cargo test",
-                        "availableDecisions": ["accept", "decline"]
-                    }),
-                )
-                .unwrap(),
+        deliver(
+            &runtime,
+            &client,
+            1,
+            codex::decode_server_request(
+                json!(13),
+                "item/commandExecution/requestApproval",
+                json!({
+                    "threadId": "outside-caffold",
+                    "turnId": "turn_1",
+                    "command": "cargo test",
+                    "availableDecisions": ["accept", "decline"]
+                }),
             )
-            .await;
+            .unwrap(),
+        )
+        .await;
         assert!(
             deliveries.try_recv().is_err(),
             "a question asked of a session Caffold does not manage notifies nobody"
+        );
+    }
+
+    /// A stand-in for TypeSafe that answers every question with one value and
+    /// counts what it was asked.
+    async fn jev_answering(noul: f64) -> (String, Arc<StdMutex<Vec<JsonValue>>>) {
+        let asked = Arc::new(StdMutex::new(Vec::new()));
+        let seen = asked.clone();
+        let app = axum::Router::new().fallback(move |body: axum::body::Bytes| {
+            let seen = seen.clone();
+            async move {
+                let request: JsonValue = serde_json::from_slice(&body).unwrap();
+                let answers = request["questions"]
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .map(|name| (name.clone(), json!({ "noul": noul })))
+                    .collect::<serde_json::Map<_, _>>();
+                seen.lock().unwrap().push(request);
+                (
+                    [("content-type", "application/json")],
+                    serde_json::to_string(&json!({
+                        "model": "jev-1.13.0",
+                        "answers": answers,
+                    }))
+                    .unwrap(),
+                )
+            }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (format!("http://{address}"), asked)
+    }
+
+    /// Starts a Claude Task whose composer chose `mode`, waits for the agent to
+    /// ask, and answers with the events the conversation received and the
+    /// directory the Task was given to work in.
+    async fn claude_asking_under(
+        mode: Option<&str>,
+        reviewer: Option<crate::app::jev::PermissionReviewer>,
+    ) -> (Vec<TaskEventRecord>, String) {
+        use crate::agent::claude::ClaudeTurnOptions;
+        use crate::app::tasks::test_support::task_state_with_reviewer;
+
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = task_state_with_reviewer(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+            reviewer,
+        )
+        .await;
+        let runtime = &state.task_runtime;
+        let cwd = root.path().display().to_string();
+        // Claimed from one directory, working in another: a Task that moved
+        // into a worktree leaves the row naming where it started.
+        let mut managed = ManagedThread::new(
+            "claude-reviewed",
+            RunBy::Claude {
+                cwd: format!("{cwd}/claimed-elsewhere"),
+            },
+            None,
+            None,
+            None,
+        );
+        managed.permission_mode = mode.map(str::to_string);
+        runtime.task_store.claim(managed, now_ms()).unwrap();
+        runtime.watch_claude();
+        runtime
+            .claude()
+            .open_conversation("claude-reviewed", &cwd, &ClaudeTurnOptions::default())
+            .await
+            .unwrap();
+        let mut events = state.task_events.subscribe();
+        runner
+            .say(
+                "claude-reviewed",
+                json!({
+                    "type": "control_request",
+                    "request_id": "req-reviewed",
+                    "request": {
+                        "subtype": "can_use_tool",
+                        "tool_name": "Bash",
+                        "input": { "command": "cargo test" },
+                    },
+                }),
+            )
+            .await;
+        let mut received = Vec::new();
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                let publication = events.recv().await.unwrap();
+                let event_type = publication.event.event_type.clone();
+                received.push(publication.event);
+                if event_type == "approval_resolved" {
+                    return;
+                }
+                if event_type == "approval_requested"
+                    && state.task_runtime.approvals.lock().await.len() == 1
+                {
+                    // Shown to a person: nothing further is coming on its own.
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    if state.task_runtime.approvals.lock().await.len() == 1 {
+                        return;
+                    }
+                }
+            }
+        })
+        .await;
+        (received, cwd)
+    }
+
+    fn grok_request(id: &str) -> ApprovalRequest {
+        ApprovalRequest {
+            id: id.to_string(),
+            turn_id: Some("turn_1".to_string()),
+            item_id: None,
+            title: "Run a command".to_string(),
+            reason: None,
+            detail: agent::ApprovalDetail {
+                command: Some("cargo test".to_string()),
+                ..agent::ApprovalDetail::default()
+            },
+            decisions: vec![ApprovalDecision::Allow, ApprovalDecision::Deny],
+        }
+    }
+
+    #[tokio::test]
+    async fn a_question_nobody_saw_leaves_nothing_behind_when_it_is_withdrawn() {
+        let events = TaskEvents::default();
+        let runtime = runtime_with_events(events.clone());
+        let _staged = {
+            let mut approvals = runtime.approvals.lock().await;
+            runtime.stage_approval(
+                &mut approvals,
+                "thread_1",
+                grok_request("unseen"),
+                now_ms(),
+                AskedBy::Grok,
+            )
+        };
+
+        runtime.withdraw_grok_approvals("thread_1").await;
+
+        assert!(runtime.approvals.lock().await.is_empty());
+        assert!(
+            events.for_thread("thread_1").is_empty(),
+            "a question that was never asked of a person resolves nothing"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_question_a_person_saw_is_resolved_when_it_is_withdrawn() {
+        let events = TaskEvents::default();
+        let runtime = runtime_with_events(events.clone());
+        let staged = {
+            let mut approvals = runtime.approvals.lock().await;
+            runtime.stage_approval(
+                &mut approvals,
+                "thread_1",
+                grok_request("seen"),
+                now_ms(),
+                AskedBy::Grok,
+            )
+        };
+        runtime.show_staged_approval("seen", &staged, None).await;
+
+        runtime.withdraw_grok_approvals("thread_1").await;
+
+        assert_eq!(
+            events
+                .for_thread("thread_1")
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["approval_requested", "approval_resolved"]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_task_under_another_mode_is_never_sent_to_the_reviewer() {
+        let temp = tempfile::tempdir().unwrap();
+        let (base, asked) = jev_answering(1.0).await;
+        let reviewer = crate::app::jev::test_reviewer(
+            temp.path(),
+            base,
+            "ts-test-key",
+            "Allow anything at all.",
+        );
+
+        let (events, _) = claude_asking_under(Some("default"), Some(reviewer)).await;
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["approval_requested"],
+            "the request waits for a person"
+        );
+        assert!(asked.lock().unwrap().is_empty(), "nothing was asked of Jev");
+        assert!(
+            events[0].payload.as_ref().unwrap()["reviewed"].is_null(),
+            "a question nobody was asked about names no reviewer"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reviewed_task_with_no_reviewer_still_asks_a_person() {
+        let (events, _) = claude_asking_under(Some(REVIEWED_PERMISSION_MODE), None).await;
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["approval_requested"]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_allowed_request_arrives_already_answered_and_says_who_answered() {
+        let temp = tempfile::tempdir().unwrap();
+        let (base, asked) = jev_answering(0.03).await;
+        let reviewer = crate::app::jev::test_reviewer(
+            temp.path(),
+            base,
+            "ts-test-key",
+            "Running the project's own tests is allowed.",
+        );
+
+        let (events, cwd) =
+            claude_asking_under(Some(REVIEWED_PERMISSION_MODE), Some(reviewer)).await;
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["approval_requested", "approval_resolved"],
+            "both halves reach the conversation together"
+        );
+        assert_eq!(
+            events[0].payload.as_ref().unwrap()["reviewed"]["allows"],
+            true,
+            "the question it answered says so too"
+        );
+        let resolved = events.last().unwrap();
+        // The line carries how little reason there was to ask, because an
+        // answered request leaves no card to read it from.
+        assert_eq!(
+            resolved.summary,
+            "Approval answered by Jev (3% reason to ask)"
+        );
+        let payload = resolved.payload.as_ref().unwrap();
+        assert_eq!(payload["outcome"], "allow");
+        assert_eq!(payload["reviewed"]["model"], "jev-1.13.0");
+        assert_eq!(payload["reviewed"]["concern"], 0.03);
+
+        let request = asked.lock().unwrap().first().cloned().unwrap();
+        assert_eq!(
+            request["state"]["rules"],
+            "Running the project's own tests is allowed."
+        );
+        assert_eq!(request["state"]["request"]["command"], "cargo test");
+        assert_eq!(request["state"]["request"]["agent"], "claude");
+        // Claude names no directory in a request, so the rules would have had
+        // nothing to measure a path against had Caffold not said where the
+        // Task works — and what it says is where the session works now, not
+        // the directory the Task was claimed from.
+        assert!(request["state"]["request"]["cwd"].is_null());
+        assert_eq!(request["state"]["working_directory"], cwd);
+        assert_eq!(request["model"], "jev-1.13.0");
+    }
+
+    #[tokio::test]
+    async fn a_judgement_below_the_threshold_leaves_the_request_to_a_person() {
+        let temp = tempfile::tempdir().unwrap();
+        let (base, asked) = jev_answering(0.9).await;
+        let reviewer = crate::app::jev::test_reviewer(
+            temp.path(),
+            base,
+            "ts-test-key",
+            "Running the project's own tests is allowed.",
+        );
+
+        let (events, _) = claude_asking_under(Some(REVIEWED_PERMISSION_MODE), Some(reviewer)).await;
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["approval_requested"],
+            "a reviewer that wants the person is not an answer"
+        );
+        assert_eq!(asked.lock().unwrap().len(), 1, "it was asked once");
+        // The question carries what the reviewer said, so a person can tell a
+        // request that nearly went through from one nothing spoke for.
+        let payload = events[0].payload.as_ref().unwrap();
+        assert_eq!(payload["reviewed"]["concern"], 0.9);
+        assert_eq!(payload["reviewed"]["allows"], false);
+        assert_eq!(payload["reviewed"]["model"], "jev-1.13.0");
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_reviewer_leaves_the_request_to_a_person() {
+        let temp = tempfile::tempdir().unwrap();
+        let reviewer = crate::app::jev::test_reviewer(
+            temp.path(),
+            "http://127.0.0.1:1".to_string(),
+            "ts-test-key",
+            "Allow anything at all.",
+        );
+
+        let (events, _) = claude_asking_under(Some(REVIEWED_PERMISSION_MODE), Some(reviewer)).await;
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["approval_requested"]
         );
     }
 
@@ -1372,9 +2022,7 @@ mod tests {
                 json!({"action":"cancel","content":null}),
             ),
         ] {
-            runtime
-                .handle_server_request(&client, 1, mcp_approval_request(id.clone()))
-                .await;
+            deliver(&runtime, &client, 1, mcp_approval_request(id.clone())).await;
             let pending = runtime.approval_events("thread_1").await;
             assert_eq!(pending.len(), 1);
             assert_eq!(
@@ -1411,7 +2059,7 @@ mod tests {
             json!({"threadId":"thread_1","serverName":"docs","message":"Sign in","mode":"url"}),
         )
         .unwrap();
-        runtime.handle_server_request(&client, 1, request).await;
+        deliver(&runtime, &client, 1, request).await;
         assert!(runtime.approval_events("thread_1").await.is_empty());
         let errors = client.mock_server_errors().await;
         assert_eq!(errors[0]["id"], "url-1");
@@ -1424,9 +2072,7 @@ mod tests {
         let events = TaskEvents::default();
         let runtime = runtime_with_events(events.clone());
         let client = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&client, 1, mcp_approval_request(json!(42)))
-            .await;
+        deliver(&runtime, &client, 1, mcp_approval_request(json!(42))).await;
         let (started, release) = client.mock_server_reply(Ok(())).await;
         let answering = {
             let runtime = runtime.clone();
@@ -1446,9 +2092,7 @@ mod tests {
             })
         };
         started.await.unwrap();
-        runtime
-            .handle_server_request(&client, 1, mcp_approval_request(json!(42)))
-            .await;
+        deliver(&runtime, &client, 1, mcp_approval_request(json!(42))).await;
         assert_eq!(events.for_thread("thread_1").len(), 1);
         assert!(client.take_approval_request("mcp:42").await.is_none());
         assert!(matches!(
@@ -1466,9 +2110,7 @@ mod tests {
             Err(ApprovalResolveError::NotFound)
         ));
         let replacement = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&replacement, 2, mcp_approval_request(json!(42)))
-            .await;
+        deliver(&runtime, &replacement, 2, mcp_approval_request(json!(42))).await;
         runtime.withdraw_codex_approvals(1).await;
         release.send(()).unwrap();
         answering.await.unwrap().unwrap();
@@ -1500,9 +2142,7 @@ mod tests {
         let mut observed = events.subscribe();
         let runtime = runtime_with_events(events);
         let client = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&client, 1, mcp_approval_request(json!(42)))
-            .await;
+        deliver(&runtime, &client, 1, mcp_approval_request(json!(42))).await;
         observed.recv().await.unwrap();
         let (started, release) = client.mock_server_reply(Ok(())).await;
         let waiter = {
@@ -1541,9 +2181,7 @@ mod tests {
         let events = TaskEvents::default();
         let runtime = runtime_with_events(events.clone());
         let client = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&client, 1, mcp_approval_request(json!(42)))
-            .await;
+        deliver(&runtime, &client, 1, mcp_approval_request(json!(42))).await;
         let (started, release) = client.mock_server_reply(Ok(())).await;
         let waiter = {
             let runtime = runtime.clone();
@@ -1588,12 +2226,8 @@ mod tests {
         let runtime = runtime_with_events(TaskEvents::default());
         let old = CodexThreadClient::mock(Vec::new());
         let current = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&old, 1, mcp_approval_request(json!(41)))
-            .await;
-        runtime
-            .handle_server_request(&current, 2, mcp_approval_request(json!(42)))
-            .await;
+        deliver(&runtime, &old, 1, mcp_approval_request(json!(41))).await;
+        deliver(&runtime, &current, 2, mcp_approval_request(json!(42))).await;
         assert!(matches!(
             runtime
                 .resolve_approval(
@@ -1619,9 +2253,7 @@ mod tests {
         let events = TaskEvents::default();
         let runtime = runtime_with_events(events.clone());
         let client = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&client, 1, mcp_approval_request(json!(42)))
-            .await;
+        deliver(&runtime, &client, 1, mcp_approval_request(json!(42))).await;
         let (started, release) = client
             .mock_server_reply(Err(CodexThreadError::Protocol("socket closed".into())))
             .await;
@@ -1666,9 +2298,7 @@ mod tests {
     async fn standard_approval_resolutions_preserve_the_selected_codex_decision() {
         let runtime = runtime_with_events(TaskEvents::default());
         let client = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&client, 1, command_approval_request(41))
-            .await;
+        deliver(&runtime, &client, 1, command_approval_request(41)).await;
 
         runtime
             .resolve_approval(
@@ -1695,9 +2325,7 @@ mod tests {
         let events = TaskEvents::default();
         let runtime = runtime_with_events(events.clone());
         let client = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&client, 1, permission_approval_request(42))
-            .await;
+        deliver(&runtime, &client, 1, permission_approval_request(42)).await;
 
         let requested = runtime.approval_events("thread_1").await;
         assert_eq!(requested.len(), 1);
@@ -1748,9 +2376,7 @@ mod tests {
     async fn permission_approvals_support_a_turn_limited_grant() {
         let runtime = runtime_with_events(TaskEvents::default());
         let client = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&client, 1, permission_approval_request(46))
-            .await;
+        deliver(&runtime, &client, 1, permission_approval_request(46)).await;
 
         runtime
             .resolve_approval(
@@ -1772,9 +2398,7 @@ mod tests {
     async fn denying_permission_approvals_returns_an_empty_profile() {
         let runtime = runtime_with_events(TaskEvents::default());
         let client = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&client, 1, permission_approval_request(43))
-            .await;
+        deliver(&runtime, &client, 1, permission_approval_request(43)).await;
 
         runtime
             .resolve_approval(
@@ -1799,9 +2423,7 @@ mod tests {
     async fn an_approval_refuses_a_decision_it_did_not_offer() {
         let runtime = runtime_with_events(TaskEvents::default());
         let client = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&client, 1, permission_approval_request(44))
-            .await;
+        deliver(&runtime, &client, 1, permission_approval_request(44)).await;
 
         let result = runtime
             .resolve_approval(
@@ -1832,9 +2454,7 @@ mod tests {
         // nothing to answer rather than replying twice.
         let runtime = runtime_with_events(TaskEvents::default());
         let client = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&client, 1, permission_approval_request(47))
-            .await;
+        deliver(&runtime, &client, 1, permission_approval_request(47)).await;
         client
             .take_approval_request("47")
             .await
@@ -1861,9 +2481,7 @@ mod tests {
         let events = TaskEvents::default();
         let runtime = runtime_with_events(events.clone());
         let client = CodexThreadClient::mock(Vec::new());
-        runtime
-            .handle_server_request(&client, 1, permission_approval_request(45))
-            .await;
+        deliver(&runtime, &client, 1, permission_approval_request(45)).await;
         let resolved = codex::decode_notification(
             "serverRequest/resolved",
             json!({ "threadId": "thread_1", "requestId": 45 }),
@@ -1905,17 +2523,17 @@ mod tests {
         let client =
             CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/name/set", json!({}))]);
 
-        runtime
-            .handle_server_request(
-                &client,
-                1,
-                dynamic_tool_request(
-                    "thread_1",
-                    LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
-                    json!({ "name": "  Whisper voice input  " }),
-                ),
-            )
-            .await;
+        deliver(
+            &runtime,
+            &client,
+            1,
+            dynamic_tool_request(
+                "thread_1",
+                LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
+                json!({ "name": "  Whisper voice input  " }),
+            ),
+        )
+        .await;
 
         assert_eq!(
             client.mock_requests().await,
@@ -1956,17 +2574,17 @@ mod tests {
         let client = CodexThreadClient::mock(Vec::new());
         let runtime = test_runtime(TaskStore::memory().unwrap());
 
-        runtime
-            .handle_server_request(
-                &client,
-                1,
-                dynamic_tool_request(
-                    "external_thread",
-                    LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
-                    json!({ "name": "Must not change" }),
-                ),
-            )
-            .await;
+        deliver(
+            &runtime,
+            &client,
+            1,
+            dynamic_tool_request(
+                "external_thread",
+                LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
+                json!({ "name": "Must not change" }),
+            ),
+        )
+        .await;
 
         assert!(client.mock_requests().await.is_empty());
         assert_eq!(
@@ -2063,35 +2681,35 @@ mod tests {
         let runtime = test_runtime(store);
         let client = CodexThreadClient::mock(Vec::new());
 
-        runtime
-            .handle_server_request(
-                &client,
-                1,
-                dynamic_tool_request(
-                    "thread_1",
-                    LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
-                    json!({ "name": "   " }),
-                ),
-            )
-            .await;
-        runtime
-            .handle_server_request(
-                &client,
-                1,
-                dynamic_tool_request("thread_1", "future_tool", json!({})),
-            )
-            .await;
-        runtime
-            .handle_server_request(
-                &client,
-                1,
-                dynamic_tool_request(
-                    "thread_1",
-                    RENAME_CURRENT_TASK_TOOL_NAME,
-                    json!({ "name": "Wrong ingress" }),
-                ),
-            )
-            .await;
+        deliver(
+            &runtime,
+            &client,
+            1,
+            dynamic_tool_request(
+                "thread_1",
+                LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
+                json!({ "name": "   " }),
+            ),
+        )
+        .await;
+        deliver(
+            &runtime,
+            &client,
+            1,
+            dynamic_tool_request("thread_1", "future_tool", json!({})),
+        )
+        .await;
+        deliver(
+            &runtime,
+            &client,
+            1,
+            dynamic_tool_request(
+                "thread_1",
+                RENAME_CURRENT_TASK_TOOL_NAME,
+                json!({ "name": "Wrong ingress" }),
+            ),
+        )
+        .await;
 
         assert!(client.mock_requests().await.is_empty());
         let responses = client.mock_server_responses().await;
@@ -2128,17 +2746,17 @@ mod tests {
             CodexThreadError::InvalidParams("name rejected".to_string()),
         )]);
 
-        runtime
-            .handle_server_request(
-                &client,
-                1,
-                dynamic_tool_request(
-                    "thread_1",
-                    LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
-                    json!({ "name": "Rejected name" }),
-                ),
-            )
-            .await;
+        deliver(
+            &runtime,
+            &client,
+            1,
+            dynamic_tool_request(
+                "thread_1",
+                LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
+                json!({ "name": "Rejected name" }),
+            ),
+        )
+        .await;
 
         assert_eq!(client.mock_requests().await.len(), 1);
         let response = &client.mock_server_responses().await[0].1;
@@ -2155,23 +2773,23 @@ mod tests {
         let mut receiver = events.subscribe();
         let runtime = runtime_with_events(events.clone());
 
-        runtime
-            .handle_server_request(
-                &CodexThreadClient::mock(Vec::new()),
-                1,
-                codex::decode_server_request(
-                    json!(11),
-                    "item/commandExecution/requestApproval",
-                    json!({
-                        "threadId": "thread_1",
-                        "turnId": "turn_1",
-                        "command": "cargo test",
-                        "availableDecisions": ["accept", "decline"]
-                    }),
-                )
-                .unwrap(),
+        deliver(
+            &runtime,
+            &CodexThreadClient::mock(Vec::new()),
+            1,
+            codex::decode_server_request(
+                json!(11),
+                "item/commandExecution/requestApproval",
+                json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "command": "cargo test",
+                    "availableDecisions": ["accept", "decline"]
+                }),
             )
-            .await;
+            .unwrap(),
+        )
+        .await;
         let requested = receiver.recv().await.unwrap().event;
         assert_eq!(requested.event_type, "approval_requested");
 
@@ -2276,13 +2894,13 @@ mod tests {
             MockCodexResponse::ok("thread/read", thread_read),
         ]);
 
-        runtime
-            .handle_server_request(
-                &client,
-                1,
-                dynamic_tool_request("thread_source", ISOLATE_CURRENT_TASK_TOOL_NAME, json!({})),
-            )
-            .await;
+        deliver(
+            &runtime,
+            &client,
+            1,
+            dynamic_tool_request("thread_source", ISOLATE_CURRENT_TASK_TOOL_NAME, json!({})),
+        )
+        .await;
 
         let records = store.managed_worktrees().unwrap();
         assert_eq!(records.len(), 1);
@@ -2320,13 +2938,13 @@ mod tests {
             "{}",
             String::from_utf8_lossy(&switched.stderr)
         );
-        runtime
-            .handle_server_request(
-                &client,
-                2,
-                dynamic_tool_request("thread_source", ISOLATE_CURRENT_TASK_TOOL_NAME, json!({})),
-            )
-            .await;
+        deliver(
+            &runtime,
+            &client,
+            2,
+            dynamic_tool_request("thread_source", ISOLATE_CURRENT_TASK_TOOL_NAME, json!({})),
+        )
+        .await;
 
         let responses = client.mock_server_responses().await;
         assert_eq!(responses[1].1["success"], true);
@@ -2361,13 +2979,13 @@ mod tests {
         let runtime = test_runtime(TaskStore::memory().unwrap());
         let client = CodexThreadClient::mock(Vec::new());
 
-        runtime
-            .handle_server_request(
-                &client,
-                1,
-                dynamic_tool_request("external_thread", ISOLATE_CURRENT_TASK_TOOL_NAME, json!({})),
-            )
-            .await;
+        deliver(
+            &runtime,
+            &client,
+            1,
+            dynamic_tool_request("external_thread", ISOLATE_CURRENT_TASK_TOOL_NAME, json!({})),
+        )
+        .await;
 
         assert!(client.mock_requests().await.is_empty());
         assert_eq!(

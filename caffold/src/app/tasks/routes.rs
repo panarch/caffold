@@ -29,7 +29,10 @@ use claude::{claude_restart, claude_status};
 use codex::{codex_mcp_diagnostics, codex_restart, codex_status, codex_update, codex_updates};
 #[cfg(test)]
 use commands::managed_thread_from_task_record;
-use commands::{create_task, task_approval, task_interrupt, task_prompt};
+use commands::{
+    create_task, task_approval, task_forget_permission_instructions, task_interrupt,
+    task_permission_instructions, task_prompt,
+};
 use conversation::{mark_task_seen, task_detail, task_generated_image};
 use grok::grok_status;
 use list::{list_archived_tasks, list_managed_tasks};
@@ -290,6 +293,10 @@ pub(super) fn router(state: TaskState) -> Router {
             post(task_prompt).layer(DefaultBodyLimit::max(MAX_TASK_REQUEST_BYTES)),
         )
         .route("/api/tasks/{thread_id}/interrupt", post(task_interrupt))
+        .route(
+            "/api/tasks/{thread_id}/permission-instructions",
+            get(task_permission_instructions).delete(task_forget_permission_instructions),
+        )
         .route(
             "/api/tasks/{thread_id}/approvals/{approval_id}",
             post(task_approval),

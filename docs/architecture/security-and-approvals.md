@@ -60,8 +60,10 @@ it, or its turn ends. Missing pairing or a failed send retires the card as
 unavailable. Codex connection loss also retires that connection's cards, and a
 lost Grok bridge retires that session's; a provider replay on the replacement
 connection creates a new request instance, which an older completion cannot
-retire. Pending and replying
-are ephemeral UI request phases, separate from the provider's thread status.
+retire. Judging, pending, and replying
+are ephemeral UI request phases, separate from the provider's thread status. A
+request being judged has not been shown to anyone, so a request that ends there
+resolves nothing in the conversation.
 
 ## General Clarification Questions
 
@@ -167,14 +169,140 @@ and the mode on display travels back with the prompt whether or not a person
 touched the control, so a Task never starts under something the composer did
 not say.
 
-Caffold names no mode of its own. The composer takes a mode only from the list
-answered for the current choice: the mode a person picked, then the one the
-Task or Section last ran under, then the list's default, passing over any mode
-that list withholds, such as one the chosen model cannot work under. The prompt
-waits while that list is on its way. A list that cannot be read, or that allows
-no mode, is shown as unavailable with its reason and holds the prompt until
-another model is chosen or the page is reloaded, so a prompt never leaves
-without a mode.
+Caffold names exactly one mode of its own, **Ask Jev first**, and hands every
+other mode back to its agent unread. That one is Caffold's because it says what
+Caffold does rather than what an agent does; it is added to each list with the
+same wording, since it means the same thing in all three. Choosing it runs the
+agent under whichever of its own modes asks about the most — Claude's `default`,
+Codex's `AskForApproval` profile, Grok's neither-flag session — and Caffold
+answers what [Reviewed Approvals](#reviewed-approvals) settles. Each driver owns
+that mapping, because which of its modes asks the most is the agent's knowledge.
+It is offered with nothing configured and withheld with its reason, so a mode
+nobody can use is never a feature nobody can find.
+
+The composer takes a mode only from the list answered for the current choice:
+the mode a person picked, then the one the Task or Section last ran under, then
+the list's default, passing over any mode that list withholds, such as one the
+chosen model cannot work under. What a Task records is the mode that was chosen,
+not the agent's name for what it was run under: an agent reporting the posture
+it is in describes the same state at a lower level, and never replaces the mode
+a person picked. The composer asks for the list again when Jev's settings
+change, because a mode can stop being withheld without the choice changing. The prompt waits while that list
+is on its way. A list that cannot be read, or that allows no mode, is shown as
+unavailable with its reason and holds the prompt until another model is chosen
+or the page is reloaded, so a prompt never leaves without a mode.
+
+## Reviewed Approvals
+
+Under **Ask Jev first**, Caffold asks Jev before a person is asked. Jev is
+TypeSafe's decision model: it answers typed questions rather than writing text,
+so it can settle a request but cannot write a rule, a grant, or an explanation.
+
+Jev either finds no reason to ask the person, in which case Caffold allows the
+request once, or it does not, in which case the request is the person's. It is
+never asked to refuse, to allow for a session, or to allow always. A persistent
+grant would be the agent's own, and the next request of that shape would never
+be asked about at all, which is the opposite of what choosing this mode says.
+A timeout, a rate limit, a rejected key, unreadable settings, an answer outside
+0 to 1 — all of it ends the same way: the request is the person's, exactly as it
+is without Jev.
+
+The question is one gate, and it asks only whether the person should be asked
+before the request runs. It does not ask whether the request is permitted:
+finding positive authorisation for ordinary work is the thing the model is least
+sure of, while recognising what warrants a person is the thing it is surest of.
+Asking the question it answers well is what keeps ordinary work out of a
+person's way.
+
+Its baseline is the standard of a coding agent's automatic permission mode. What
+the person has said comes before that baseline, in the order the person said it:
+this turn's prompt, then this Task's record, then the rules from Settings. A
+person who wrote no rules still gets judgements, so the key is the whole
+requirement.
+
+The threshold is not a setting. Each question is written so that being sure is
+the answer that stops the agent, and one number says where sure begins.
+
+Caffold asks before the request is shown. An allowed request records its arrival
+and its answer together, so the conversation holds both and no card appears and
+disappears; the phone is told only about a request that is actually waiting.
+The resolved line says when Jev answered it, and carries the model version and
+how much reason it found to ask.
+
+A request Jev wanted a person for reaches the person with that answer on its
+card. Only a request it found no reason to ask about leaves no card at all, so
+every card naming a reviewer names how much reason it found. A card names no
+reviewer when none answered: another mode, nothing configured, or a call that
+failed, which the host's log records.
+
+What reaches TypeSafe is one request as the agent's driver already wrote it for
+a person to read — the command, the directory the driver named, the network
+destination, the requested access, the grant root, and the tool with its
+arguments — together with the rules from Settings, what this Task's own prompts
+permitted, and the prompt that began the turn the request came out of. The
+agent's own title and reason travel under a name that says the agent wrote them,
+and Jev is told to read them as a claim about what is being asked rather than as
+a reason not to ask. The model version is named
+on every request, because a later version would quietly move where the threshold
+sits.
+
+Where the Task works is sent beside the rules instead, because it is Caffold's
+own answer rather than anything the agent asked for. Rules are written about the
+working directory, and most drivers name no directory when they ask: without it
+a request under the Task's own checkout reads exactly like a path anywhere else
+on the Mac, and rules about the working directory have nothing to measure
+against.
+
+The answer comes from the agent that is asking, because only a live session
+knows where it is working now — and a request to approve proves there is one. A
+Task that moved into a worktree works there while the row Caffold claimed it
+from still names the checkout it started in, and sending that row instead puts
+every file in the worktree outside the working directory, where rules that
+refuse anything outside it refuse everything.
+
+### What a Task's Prompts Permitted
+
+Rules written once cannot say "in this Task, this far". A Task keeps that
+separately, and only while its turns run under this mode.
+
+A prompt sent under it is asked about twice in one call: whether it states what
+the agent may or may not do, and whether it names the actions it allows or
+forbids. Each question asks one thing: a question that also said what a prompt
+must not be would be half true of a prompt that layers a new rule on an existing
+one, and half true is what a probability reports. A prompt that is both is kept whole, exactly as
+it was typed, at the end of that Task's record. The record is read oldest first
+and a later statement overrides an earlier one it contradicts; that order is the
+order of the entries, never a comparison of the times beside them.
+
+A statement in that record settles what the standing rules would have settled
+otherwise, however firmly those rules are written, and the prompt that began the
+turn settles it over both. Rules are what the person set once for everything;
+the record is the same person speaking about this Task, and the turn's prompt is
+the same person speaking now. Each only overrules an earlier one where the two
+speak to the same request. The record is bounded,
+and past the bound the oldest entries go. This runs beside the turn rather than
+in front of it, so a request that arrives before it finishes is simply one the
+person answers.
+
+The record is the person's own sentences and nothing else. It is read and
+forgotten from the Task's details, which is the only place it is presented,
+and forgetting it cannot be undone: it is rebuilt only from what a person says
+next. A prompt sent under any other mode is never sent anywhere.
+
+### Jev Settings
+
+- The rules and the API key live in the data directory's `jev/`, with an
+  owner-only directory (`0700`) and file (`0600`); a symbolic link at either
+  path is refused. API responses report only whether a key is configured.
+- The key is not written to logs or error messages, and TypeSafe's error bodies
+  are never read, because the one for a rejected key can repeat part of it.
+- Saving a key asks Jev one trivial question so the page can say whether it
+  works. That answer is not persisted: a check from a previous run says nothing
+  about whether TypeSafe is reachable now.
+- Saving or removing the key and writing the rules require a same-origin
+  request.
+- With no key the mode is withheld, so nothing is sent and every
+  request stays the person's.
 
 ## Codex Execution Approvals
 

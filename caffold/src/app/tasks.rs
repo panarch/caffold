@@ -27,6 +27,7 @@ use tokio::sync::broadcast;
 
 use crate::{
     agent::{claude::ClaudeClient, codex::CodexMcpBindings, grok::GrokClient},
+    app::jev::PermissionReviewer,
     fs::RootedFs,
     task_store::TaskStore,
     watch::WatchHub,
@@ -91,9 +92,11 @@ impl TaskState {
                 grok,
                 codex_mcp: None,
             },
+            None,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn new_with_push(
         fs: Arc<RootedFs>,
         default_cwd_path: String,
@@ -102,6 +105,7 @@ impl TaskState {
         worktree_root: PathBuf,
         push: PushService,
         agents: AgentRuntimeDependencies,
+        permission_reviewer: Option<PermissionReviewer>,
     ) -> anyhow::Result<Self> {
         let AgentRuntimeDependencies {
             claude,
@@ -136,6 +140,10 @@ impl TaskState {
         }
         .with_push_service(push.clone())
         .with_lifecycle(lifecycle.clone());
+        let task_runtime = match permission_reviewer {
+            Some(reviewer) => task_runtime.with_permission_reviewer(reviewer),
+            None => task_runtime,
+        };
         let task_runtime_signals = task_runtime.subscribe();
         let task_sync = TaskSync::new();
         let refresh_events = task_list_events.clone();
@@ -186,6 +194,7 @@ impl TasksApp {
         codex_mcp: CodexMcpHost,
         grok_mcp: GrokMcpHost,
         watch_hub: WatchHub,
+        permission_reviewer: PermissionReviewer,
     ) -> anyhow::Result<Self> {
         let push = PushRuntime::new(task_store.clone())?;
         let notes_router = super::notes::router(task_store.clone());
@@ -202,6 +211,7 @@ impl TasksApp {
                 grok,
                 codex_mcp: Some(codex_mcp.bindings()),
             },
+            Some(permission_reviewer),
         )?;
         let runtime = state.task_runtime.clone();
         let live_source = TaskLiveSource::new(&state);
@@ -230,6 +240,7 @@ impl TasksApp {
         codex_mcp: CodexMcpHost,
         grok_mcp: GrokMcpHost,
         watch_hub: WatchHub,
+        permission_reviewer: PermissionReviewer,
     ) -> anyhow::Result<Self> {
         // The runner's socket lives beside the database, so an installed
         // application and a development server each drive their own.
@@ -248,11 +259,13 @@ impl TasksApp {
             codex_mcp,
             grok_mcp,
             watch_hub,
+            permission_reviewer,
         )?;
         app.runtime.startup();
         Ok(app)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::app) fn memory(
         fs: Arc<RootedFs>,
         default_cwd_path: String,
@@ -261,6 +274,7 @@ impl TasksApp {
         codex_mcp: CodexMcpHost,
         grok_mcp: GrokMcpHost,
         watch_hub: WatchHub,
+        permission_reviewer: PermissionReviewer,
     ) -> anyhow::Result<Self> {
         let data_dir = worktree_root.clone();
         Self::new(
@@ -274,6 +288,7 @@ impl TasksApp {
             codex_mcp,
             grok_mcp,
             watch_hub,
+            permission_reviewer,
         )
     }
 
@@ -306,8 +321,8 @@ pub(in crate::app::tasks) mod test_support {
     use tokio::sync::broadcast;
 
     use super::{
-        AgentRuntimeDependencies, GrokMcpHost, PushService, TaskState, projection::*,
-        routes::test_claim_task,
+        AgentRuntimeDependencies, GrokMcpHost, PermissionReviewer, PushService, TaskState,
+        projection::*, routes::test_claim_task,
     };
     use crate::{
         agent::{
@@ -341,20 +356,36 @@ pub(in crate::app::tasks) mod test_support {
         fs: RootedFs,
         client: CodexThreadClient,
     ) -> (TaskState, agent::claude::MockRunnerHandle) {
+        task_state_with_reviewer(fs, client, None).await
+    }
+
+    /// The same state with a permission reviewer attached, for the paths where
+    /// something answers before a person is asked.
+    pub(in crate::app::tasks) async fn task_state_with_reviewer(
+        fs: RootedFs,
+        client: CodexThreadClient,
+        permission_reviewer: Option<PermissionReviewer>,
+    ) -> (TaskState, agent::claude::MockRunnerHandle) {
         let (shutdown, _) = broadcast::channel(16);
         let worktree_root = fs.root().join(".caffold-test/worktrees");
         // Conversations are kept under the test's own root rather than the
         // developer's home, so a test can write one down and see it removed.
         let (claude, runner) =
             ClaudeClient::mock_writing_to(fs.root().join(".caffold-test/projects"));
-        let state = TaskState::new(
+        let (push, _receiver) = PushService::test_channel(TaskStore::memory().unwrap());
+        let state = TaskState::new_with_push(
             Arc::new(fs),
             String::new(),
             shutdown,
             TaskStore::memory().expect("in-memory task store"),
             worktree_root,
-            claude,
-            GrokClient::unreachable(),
+            push,
+            AgentRuntimeDependencies {
+                claude,
+                grok: GrokClient::unreachable(),
+                codex_mcp: None,
+            },
+            permission_reviewer,
         )
         .expect("task state");
         state.task_runtime.install_test_client(1, client).await;
@@ -394,6 +425,7 @@ pub(in crate::app::tasks) mod test_support {
                 grok,
                 codex_mcp: None,
             },
+            None,
         )
         .expect("task state");
         state.task_runtime.install_test_client(1, client).await;

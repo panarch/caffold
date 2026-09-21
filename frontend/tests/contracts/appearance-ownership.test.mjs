@@ -15,6 +15,7 @@ const conversationOwners = new Set([
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js",

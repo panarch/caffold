@@ -28,7 +28,9 @@ use super::protocol::{
     seconds_to_ms_value,
 };
 use super::{CodexThreadClient, CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID};
-use crate::agent::driver::{ModelOption, PermissionModeOption, TurnOptions, TurnRejected, bounded};
+use crate::agent::driver::{
+    ModelOption, PermissionModeOption, REVIEWED_PERMISSION_MODE, TurnOptions, TurnRejected, bounded,
+};
 use crate::agent::{
     self, ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
     Conversation, ConversationItem, GeneratedImage, ItemKind, MessageContent, MessagePhase,
@@ -1063,6 +1065,13 @@ pub(crate) async fn codex_turn_options(
 /// a person from working.
 fn codex_permission_mode(mode: Option<&str>) -> Option<CodexPermissionMode> {
     let mode = mode?;
+    if mode == REVIEWED_PERMISSION_MODE {
+        // Caffold's reviewed mode is not one of Codex's. What it needs from
+        // Codex is the profile that asks about the most, because the reviewer
+        // can only answer what the agent actually asks: `ApproveForMe` keeps
+        // the same workspace boundary but reviews eligible requests itself.
+        return Some(CodexPermissionMode::AskForApproval);
+    }
     serde_json::from_value(Value::String(mode.to_string())).ok()
 }
 
@@ -1103,6 +1112,24 @@ pub(crate) fn codex_mode_id(mode: CodexPermissionMode) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_reviewed_mode_runs_codex_under_the_profile_that_asks_the_most() {
+        assert_eq!(
+            codex_permission_mode(Some(REVIEWED_PERMISSION_MODE)),
+            Some(CodexPermissionMode::AskForApproval)
+        );
+    }
+
+    #[test]
+    fn codexs_own_modes_are_carried_back_unchanged() {
+        assert_eq!(
+            codex_permission_mode(Some("approveForMe")),
+            Some(CodexPermissionMode::ApproveForMe)
+        );
+        assert_eq!(codex_permission_mode(Some("nonsense")), None);
+        assert_eq!(codex_permission_mode(None), None);
+    }
     use crate::agent::codex::protocol;
     use crate::agent::codex::{CodexThreadClient, MockCodexResponse};
 

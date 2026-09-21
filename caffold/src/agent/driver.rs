@@ -171,7 +171,9 @@ pub(crate) struct PermissionModes {
 pub(crate) struct PermissionModeOption {
     /// The agent's own name for it. Caffold carries this back verbatim when a
     /// turn starts rather than translating it, so a mode an agent adds needs
-    /// nothing from Caffold to become choosable.
+    /// nothing from Caffold to become choosable. The one exception is
+    /// [`REVIEWED_PERMISSION_MODE`], which is Caffold's own name for a mode no
+    /// agent offers.
     pub(crate) mode: String,
     pub(crate) label: String,
     pub(crate) description: String,
@@ -188,6 +190,42 @@ pub(crate) struct PermissionModeOption {
     pub(crate) dangerous: bool,
 }
 
+/// The one permission mode Caffold names itself.
+///
+/// Every other mode in a list is an agent's own, and Caffold hands it back
+/// unread. This one says something Caffold does rather than something an agent
+/// does: the agent runs under whichever of its modes asks the most, and Caffold
+/// answers the requests nothing warrants asking about before they are shown.
+/// Each driver maps it to its own most-confirming mode, because which mode that
+/// is remains the agent's knowledge.
+pub(crate) const REVIEWED_PERMISSION_MODE: &str = "caffold:ask-jev-first";
+
+const REVIEWED_PERMISSION_LABEL: &str = "Ask Jev first";
+
+const REVIEWED_PERMISSION_DESCRIPTION: &str = "Asks about everything. Jev holds back only what \
+     an automatic mode would stop for, plus whatever your extra rules name.";
+
+const REVIEWED_PERMISSION_UNAVAILABLE: &str =
+    "Add a Jev API key in Settings \u{2192} Jev Permissions.";
+
+/// The reviewed mode, offered the same way in every agent's list.
+///
+/// Its wording is written once because it means the same thing everywhere,
+/// unlike the modes beside it: what "Automatic" gives up is Claude's to say and
+/// what "Approve for me" reviews is Codex's, while this one is Caffold's in all
+/// three lists. It is offered even with nothing configured, because a mode that
+/// disappeared would be a feature nobody could find.
+pub(crate) fn reviewed_permission_option(available: bool) -> PermissionModeOption {
+    PermissionModeOption {
+        mode: REVIEWED_PERMISSION_MODE.to_string(),
+        label: REVIEWED_PERMISSION_LABEL.to_string(),
+        description: REVIEWED_PERMISSION_DESCRIPTION.to_string(),
+        allowed: available,
+        unavailable_reason: (!available).then(|| REVIEWED_PERMISSION_UNAVAILABLE.to_string()),
+        dangerous: false,
+    }
+}
+
 /// What a person chose for a turn.
 ///
 /// Every field is Caffold's word for something, and what each one means to an
@@ -199,7 +237,8 @@ pub(crate) struct TurnOptions {
     pub(crate) effort: Option<String>,
     pub(crate) fast_mode: bool,
     /// A mode the agent itself offered, carried back under the agent's own name
-    /// for it. Caffold does not read this.
+    /// for it. Caffold reads only one value here, its own
+    /// [`REVIEWED_PERMISSION_MODE`]; every other name means nothing to it.
     pub(crate) permission_mode: Option<String>,
 }
 
@@ -372,7 +411,12 @@ impl Driver {
                         model: accepted.model.clone(),
                         effort: accepted.effort.clone(),
                         fast_mode: accepted.fast_mode,
-                        permission_mode: accepted.permission_mode.clone(),
+                        // What was applied is the mode that was chosen. A
+                        // driver running [`REVIEWED_PERMISSION_MODE`] under one
+                        // of its own is doing that privately, and a composer
+                        // told the agent's name for it would show a mode nobody
+                        // picked.
+                        permission_mode: options.permission_mode.clone(),
                     },
                     agreed: AgreedTurnOptions::Claude(accepted),
                 })
@@ -387,7 +431,7 @@ impl Driver {
                         // answered with the ordinary one, and the person is
                         // told what they got.
                         fast_mode: false,
-                        permission_mode: accepted.permission_mode.clone(),
+                        permission_mode: options.permission_mode.clone(),
                     },
                     agreed: AgreedTurnOptions::Grok(accepted),
                 })

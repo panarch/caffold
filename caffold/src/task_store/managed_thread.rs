@@ -77,7 +77,7 @@ impl RunBy {
     }
 
     /// Where Caffold runs the agent, when the agent needs telling.
-    fn cwd(&self) -> Option<&str> {
+    pub(crate) fn cwd(&self) -> Option<&str> {
         match self {
             Self::Codex => None,
             Self::Claude { cwd } | Self::Grok { cwd } => Some(cwd),
@@ -125,6 +125,7 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "provider TEXT NOT NULL DEFAULT 'codex'",
     "cwd TEXT NULL",
     "permission_mode TEXT NULL",
+    "permission_instructions TEXT NULL",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -209,6 +210,11 @@ pub(super) struct ManagedThreadRow {
     pub reasoning_effort: Option<String>,
     pub fast_mode: bool,
     pub permission_mode: Option<String>,
+    /// What this Task's own prompts have settled, oldest first.
+    ///
+    /// It stays off [`ManagedThread`] because it is read only when a
+    /// permission request is being judged, and a Task list has no use for it.
+    pub permission_instructions: Option<String>,
     pub display_name: String,
     pub section_id: Option<String>,
     pub position_in_section: Option<i64>,
@@ -253,6 +259,9 @@ impl TryFrom<&ManagedThread> for ManagedThreadRow {
             reasoning_effort: thread.reasoning_effort.clone(),
             fast_mode: thread.fast_mode,
             permission_mode: thread.permission_mode.clone(),
+            // A Task permits nothing of its own when it is first written,
+            // and every later whole-thread write names the fields it changes.
+            permission_instructions: None,
         })
     }
 }
@@ -669,6 +678,137 @@ where
     }
     query.execute(glue)?;
     get(glue, thread_id)
+}
+
+/// How much of what a Task's own prompts settled is kept.
+///
+/// The whole block is read whenever a permission request is judged, and both
+/// TypeSafe's guidance and the size of that block argue against letting it
+/// grow without end. Past the bound the oldest entries go, which is the same
+/// direction as the rule that a later statement overrides an earlier one.
+pub(super) const MAX_PERMISSION_INSTRUCTIONS_BYTES: usize = 8 * 1024;
+
+const PERMISSION_INSTRUCTION_SEPARATOR: &str = "\n\n";
+
+pub(super) fn permission_instructions<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+) -> Result<Option<String>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    Ok(read_permission_instructions(glue, thread_id)?.flatten())
+}
+
+/// Adds one entry to the end, dropping the oldest entries while the whole
+/// block is over its bound. Returns what the Task now carries, or `None` when
+/// there is no such active Task.
+pub(super) fn append_permission_instructions<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+    entry: &str,
+) -> Result<Option<String>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let Some(existing) = read_permission_instructions(glue, thread_id)? else {
+        return Ok(None);
+    };
+    let appended = match existing {
+        Some(existing) if !existing.is_empty() => {
+            format!("{existing}{PERMISSION_INSTRUCTION_SEPARATOR}{entry}")
+        }
+        _ => entry.to_string(),
+    };
+    let bounded = bound_permission_instructions(appended);
+    write_permission_instructions(glue, thread_id, Some(&bounded))?;
+    Ok(Some(bounded))
+}
+
+/// Forgets what a Task's prompts granted. `false` when there is no such active
+/// Task.
+pub(super) fn clear_permission_instructions<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    if read_permission_instructions(glue, thread_id)?.is_none() {
+        return Ok(false);
+    }
+    write_permission_instructions(glue, thread_id, None)?;
+    Ok(true)
+}
+
+/// `None` when no active Task has this identifier; the inner `None` when it
+/// has one and no prompt of its own has permitted anything.
+fn read_permission_instructions<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+) -> Result<Option<Option<String>>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let rows = table(TABLE_NAME)
+        .select()
+        .filter(
+            col("thread_id")
+                .eq(text(thread_id.to_owned()))
+                .and(Membership::Active.filter()),
+        )
+        .project(vec![col("permission_instructions")])
+        .limit(1)
+        .execute(glue)
+        .rows_as::<PermissionInstructionsRow>()?;
+    Ok(rows.into_iter().next().map(|row| {
+        row.permission_instructions
+            .filter(|instructions| !instructions.is_empty())
+    }))
+}
+
+fn write_permission_instructions<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+    instructions: Option<&str>,
+) -> Result<()>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    table(TABLE_NAME)
+        .update()
+        .filter(col("thread_id").eq(text(thread_id.to_owned())))
+        .filter(Membership::Active.filter())
+        .set("permission_instructions", optional_text(instructions))
+        .execute(glue)?;
+    Ok(())
+}
+
+fn bound_permission_instructions(instructions: String) -> String {
+    if instructions.len() <= MAX_PERMISSION_INSTRUCTIONS_BYTES {
+        return instructions;
+    }
+    let mut entries: Vec<&str> = instructions
+        .split(PERMISSION_INSTRUCTION_SEPARATOR)
+        .collect();
+    while entries.len() > 1
+        && entries.join(PERMISSION_INSTRUCTION_SEPARATOR).len() > MAX_PERMISSION_INSTRUCTIONS_BYTES
+    {
+        entries.remove(0);
+    }
+    let bounded = entries.join(PERMISSION_INSTRUCTION_SEPARATOR);
+    if bounded.len() <= MAX_PERMISSION_INSTRUCTIONS_BYTES {
+        return bounded;
+    }
+    // One entry can be over the bound on its own. Its end is kept, because
+    // that is the side a later statement was added to.
+    let start = bounded.len() - MAX_PERMISSION_INSTRUCTIONS_BYTES;
+    let start = (start..=bounded.len())
+        .find(|index| bounded.is_char_boundary(*index))
+        .unwrap_or(bounded.len());
+    bounded[start..].to_string()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, FromGlueRow, ToGlueRow)]
+struct PermissionInstructionsRow {
+    permission_instructions: Option<String>,
 }
 
 pub(super) fn delete<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
@@ -1242,6 +1382,97 @@ mod tests {
             .into_iter()
             .map(|thread| (thread.thread_id, thread.position_in_section.unwrap()))
             .collect()
+    }
+
+    #[test]
+    fn permission_instructions_accumulate_oldest_first_and_can_be_cleared() {
+        let mut glue = memory();
+        claim(&mut glue, thread("task-1", Some(1)), 1).unwrap();
+
+        assert_eq!(permission_instructions(&mut glue, "task-1").unwrap(), None);
+
+        append_permission_instructions(&mut glue, "task-1", "target 디렉터리는 지워도 돼").unwrap();
+        let stored = append_permission_instructions(&mut glue, "task-1", "이제 아무것도 지우지 마")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            stored,
+            "target 디렉터리는 지워도 돼\n\n이제 아무것도 지우지 마"
+        );
+        assert_eq!(
+            permission_instructions(&mut glue, "task-1").unwrap(),
+            Some(stored)
+        );
+
+        assert!(clear_permission_instructions(&mut glue, "task-1").unwrap());
+        assert_eq!(permission_instructions(&mut glue, "task-1").unwrap(), None);
+    }
+
+    #[test]
+    fn a_task_that_is_not_active_has_nothing_to_read_append_or_clear() {
+        let mut glue = memory();
+
+        assert_eq!(permission_instructions(&mut glue, "missing").unwrap(), None);
+        assert_eq!(
+            append_permission_instructions(&mut glue, "missing", "anything").unwrap(),
+            None
+        );
+        assert!(!clear_permission_instructions(&mut glue, "missing").unwrap());
+    }
+
+    #[test]
+    fn instructions_past_the_bound_lose_their_oldest_entries_first() {
+        let mut glue = memory();
+        claim(&mut glue, thread("task-1", Some(1)), 1).unwrap();
+        let entry = |index: usize| format!("entry-{index:02} {}", "x".repeat(1000));
+
+        for index in 0..12 {
+            append_permission_instructions(&mut glue, "task-1", &entry(index)).unwrap();
+        }
+
+        let stored = permission_instructions(&mut glue, "task-1")
+            .unwrap()
+            .unwrap();
+        assert!(
+            stored.len() <= MAX_PERMISSION_INSTRUCTIONS_BYTES,
+            "{}",
+            stored.len()
+        );
+        assert!(stored.ends_with(&entry(11)), "the newest entry is kept");
+        assert!(!stored.contains(&entry(0)), "the oldest entry is dropped");
+    }
+
+    #[test]
+    fn one_entry_larger_than_the_bound_keeps_its_end_on_a_character_boundary() {
+        let mut glue = memory();
+        claim(&mut glue, thread("task-1", Some(1)), 1).unwrap();
+        let huge = format!("{}끝", "가".repeat(MAX_PERMISSION_INSTRUCTIONS_BYTES));
+
+        let stored = append_permission_instructions(&mut glue, "task-1", &huge)
+            .unwrap()
+            .unwrap();
+
+        assert!(
+            stored.len() <= MAX_PERMISSION_INSTRUCTIONS_BYTES,
+            "{}",
+            stored.len()
+        );
+        assert!(stored.ends_with("끝"));
+    }
+
+    #[test]
+    fn instructions_survive_a_whole_thread_update_that_does_not_name_them() {
+        let mut glue = memory();
+        let managed = claim(&mut glue, thread("task-1", Some(1)), 1).unwrap();
+        append_permission_instructions(&mut glue, "task-1", "테스트 돌려도 돼").unwrap();
+
+        update_all(&mut glue, &managed).unwrap();
+
+        assert_eq!(
+            permission_instructions(&mut glue, "task-1").unwrap(),
+            Some("테스트 돌려도 돼".to_string())
+        );
     }
 
     #[test]

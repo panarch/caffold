@@ -74,6 +74,7 @@ pub(in crate::app::tasks) struct SessionSnapshot {
     pub(in crate::app::tasks) turns_page: Option<SessionTurnPage>,
     pub(in crate::app::tasks) active_turn_id: Option<String>,
     pub(in crate::app::tasks) active_turn_cwd: Option<String>,
+    pub(in crate::app::tasks) active_turn_prompt: Option<String>,
     #[allow(dead_code)]
     pub(in crate::app::tasks) viewer_leases: usize,
     #[allow(dead_code)]
@@ -251,6 +252,9 @@ struct SessionState {
     events: TaskEvents,
     active_turn_id: Option<String>,
     active_turn_cwd: Option<String>,
+    /// What the person asked for in the active turn, so a permission request
+    /// that turn raises can be judged knowing what was asked for.
+    active_turn_prompt: Option<String>,
     terminal_candidate_turn_id: Option<String>,
     viewer_leases: usize,
     request_leases: usize,
@@ -295,6 +299,7 @@ impl Default for SessionState {
             events: TaskEvents::default(),
             active_turn_id: None,
             active_turn_cwd: None,
+            active_turn_prompt: None,
             terminal_candidate_turn_id: None,
             viewer_leases: 0,
             request_leases: 0,
@@ -462,6 +467,7 @@ fn snapshot(state: &SessionState) -> SessionSnapshot {
         turns_page: state.turns_page.clone(),
         active_turn_id: state.active_turn_id.clone(),
         active_turn_cwd: state.active_turn_cwd.clone(),
+        active_turn_prompt: state.active_turn_prompt.clone(),
         viewer_leases: state.viewer_leases,
         runtime_lease: state.runtime_lease,
         generation: state.generation,
