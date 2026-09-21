@@ -265,11 +265,12 @@ refuse anything outside it refuse everything.
 Rules written once cannot say "in this Task, this far". A Task keeps that
 separately, and only while its turns run under this mode.
 
-A prompt sent under it is asked about twice in one call: whether it states what
-the agent may or may not do, and whether it names the actions it allows or
-forbids. Each question asks one thing: a question that also said what a prompt
-must not be would be half true of a prompt that layers a new rule on an existing
-one, and half true is what a probability reports. A prompt that is both is kept whole, exactly as
+A prompt sent under it is asked about once, with what the Task already keeps
+beside it. One question decides whether it belongs in the record: it does when
+it says what the agent may or may not do, and it does not when it only gives
+work to carry out or only points at something said earlier. A prompt that
+cancels an entry is read against the entry it cancels, which is why the record
+travels with the question. A prompt that is both is kept whole, exactly as
 it was typed, at the end of that Task's record. The record is read oldest first
 and a later statement overrides an earlier one it contradicts; that order is the
 order of the entries, never a comparison of the times beside them.
