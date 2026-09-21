@@ -307,7 +307,19 @@ impl TaskRuntime {
         let prompt = prompt.to_string();
         let task_store = self.task_store.clone();
         tokio::spawn(async move {
-            if !reviewer.is_permission_instruction(&prompt).await {
+            // What the Task already keeps goes with the message: a prompt that
+            // cancels an entry cannot be read without the entry it cancels.
+            let reading = task_store.clone();
+            let read = thread_id.clone();
+            let kept_already =
+                tokio::task::spawn_blocking(move || reading.permission_instructions(&read)).await;
+            let Ok(Ok(kept_already)) = kept_already else {
+                return;
+            };
+            if !reviewer
+                .is_permission_instruction(&prompt, kept_already.as_deref())
+                .await
+            {
                 return;
             }
             let entry = permission_instruction_entry(recorded_ms, &prompt);

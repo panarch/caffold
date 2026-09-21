@@ -95,23 +95,30 @@ impl PermissionReviewer {
         })
     }
 
-    /// Whether a person's message states what this Task allows, in a way that
-    /// still says what it allows when read on its own later.
-    pub(super) async fn is_permission_instruction(&self, message: &str) -> bool {
+    /// Whether a person's message belongs in this Task's permission record.
+    ///
+    /// What the Task already keeps travels with it, because a message that
+    /// cancels an entry cannot be read without the entry it cancels.
+    pub(super) async fn is_permission_instruction(
+        &self,
+        message: &str,
+        kept: Option<&str>,
+    ) -> bool {
         let Ok(Some(key)) = self.inner.keys.key() else {
             return false;
         };
-        let query = Query::new(json!({ "message": message }))
-            .asking("permission_instruction", PERMISSION_INSTRUCTION_QUESTION)
-            .asking("self_contained", SELF_CONTAINED_QUESTION);
+        let query = Query::new(json!({
+            "message": message,
+            "task_permission_instructions": kept,
+        }))
+        .asking("keep", KEEP_QUESTION);
         let Ok(answers) = client::ask(&self.inner.http, &self.inner.api_base, &key, &query)
             .await
             .inspect_err(|failure| error!(?failure, "Jev could not classify a prompt"))
         else {
             return false;
         };
-        let confident = |name| answers.noul(name).is_ok_and(|noul| noul >= CONFIDENT);
-        confident("permission_instruction") && confident("self_contained")
+        answers.noul("keep").is_ok_and(|noul| noul >= CONFIDENT)
     }
 }
 
@@ -177,15 +184,20 @@ Judge these values as written, not by what they suggest.\n\
 - Where that directory sits changes nothing, including under a home directory or inside an \
 application's data.";
 
-const PERMISSION_INSTRUCTION_QUESTION: &str = "\
-The message in `state.message` states what the agent working on this task is allowed to do, or \
-must not do. A person saying that they allow something, or that they will allow it from now on, \
-is stating that it is allowed. A message that only describes work to carry out is not such a \
-statement, even when carrying it out would need permission; a message that both gives work to do \
-and states what is allowed is still stating it.";
-
-const SELF_CONTAINED_QUESTION: &str = "\
-`state.message` itself names the actions it allows or forbids.";
+const KEEP_QUESTION: &str = "\
+`state.message` belongs in this task's permission record.\n\
+\n\
+It belongs there when it says what the agent working on this task may or may not do. A person \
+saying that they allow something, that they will allow it from now on, that they refuse \
+something, or that they will refuse it, is saying what the agent may or may not do.\n\
+\n\
+It does not belong there when it only gives work to carry out, even work that would need \
+permission. It does not belong there when it only agrees with something said earlier, or points \
+at it without naming what it covers.\n\
+\n\
+`state.task_permission_instructions` is what this task already keeps, oldest first, or empty \
+when it keeps nothing. A message that cancels or replaces an entry there belongs in the record, \
+so long as the entry it means is clear from what it says.";
 
 /// One permission request as the agent's driver wrote it for a person to read.
 ///
@@ -845,48 +857,60 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_prompt_is_kept_only_when_it_permits_something_and_says_so_alone() {
-        let cases = [
-            (0.97, 0.96, true),
-            (0.97, 0.4, false),
-            (0.4, 0.97, false),
-            (0.4, 0.4, false),
-        ];
-
-        for (instruction, self_contained, kept) in cases {
+    async fn a_prompt_is_kept_only_when_it_belongs_in_the_record() {
+        for (answer, kept) in [(0.97, true), (0.4, false)] {
             let temp = TempDir::new().unwrap();
-            let (base, asked) = typesafe_answering(vec![
-                ("permission_instruction", instruction),
-                ("self_contained", self_contained),
-            ])
-            .await;
+            let (base, asked) = typesafe_answering(vec![("keep", answer)]).await;
             let reviewer = reviewer(&temp, base, "Allow reads.");
 
             assert_eq!(
                 reviewer
-                    .is_permission_instruction("target 밑은 지워도 돼")
+                    .is_permission_instruction("target 밑은 지워도 돼", None)
                     .await,
                 kept,
-                "{instruction} / {self_contained}"
+                "{answer}"
             );
             let request = asked.lock().unwrap().first().cloned().unwrap();
             assert_eq!(request["state"]["message"], "target 밑은 지워도 돼");
-            assert!(request["questions"]["permission_instruction"]["instructions"].is_string());
-            assert!(request["questions"]["self_contained"]["instructions"].is_string());
+            assert!(request["questions"]["keep"]["instructions"].is_string());
         }
+    }
+
+    /// A prompt that cancels an entry cannot be read without the entry, so what
+    /// the Task already keeps is asked about with it.
+    #[tokio::test]
+    async fn what_the_task_already_keeps_is_asked_about_with_the_prompt() {
+        let temp = TempDir::new().unwrap();
+        let (base, asked) = typesafe_answering(vec![("keep", 0.91)]).await;
+        let reviewer = reviewer(&temp, base, "Allow reads.");
+
+        assert!(
+            reviewer
+                .is_permission_instruction(
+                    "네트워크 요청 거절했던 규칙은 이제 없어",
+                    Some("[time]\n네트워크 요청은 모두 거절해"),
+                )
+                .await
+        );
+
+        let request = asked.lock().unwrap().first().cloned().unwrap();
+        assert_eq!(
+            request["state"]["task_permission_instructions"],
+            "[time]\n네트워크 요청은 모두 거절해"
+        );
     }
 
     #[tokio::test]
     async fn a_prompt_is_never_sent_without_a_key() {
         let temp = TempDir::new().unwrap();
-        let (base, asked) = typesafe_answering(vec![
-            ("permission_instruction", 1.0),
-            ("self_contained", 1.0),
-        ])
-        .await;
+        let (base, asked) = typesafe_answering(vec![("keep", 1.0)]).await;
         let (_router, reviewer) = with_api_base(temp.path(), base);
 
-        assert!(!reviewer.is_permission_instruction("anything at all").await);
+        assert!(
+            !reviewer
+                .is_permission_instruction("anything at all", None)
+                .await
+        );
         assert!(asked.lock().unwrap().is_empty());
     }
 
