@@ -17,7 +17,7 @@ import {
 // Each brand mark is published in a single color so it can be tinted, and the
 // theme tints it through --brand-monochrome-filter.
 const ITEMS = [
-  { section: "appearance", label: "Appearance", icon: "Settings" },
+  { section: "appearance", label: "Appearance", icon: "Palette" },
   { section: "keyboard", label: "Keyboard", icon: "Keyboard" },
   { section: "files", label: "Files", icon: "File" },
   { section: "notifications", label: "Notifications", icon: "Bell" },
