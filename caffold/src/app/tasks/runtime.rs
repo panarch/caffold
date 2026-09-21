@@ -265,7 +265,7 @@ impl TaskRuntime {
         self
     }
 
-    /// Begin answering permission requests the person's rules clearly cover.
+    /// Begin answering the permission requests nothing warrants asking about.
     ///
     /// A runtime without this reviewer asks a person about everything its
     /// agents ask about, which is what every Task does unless its composer

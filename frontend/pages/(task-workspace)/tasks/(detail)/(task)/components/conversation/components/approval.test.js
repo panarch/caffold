@@ -36,11 +36,11 @@ test("a card names how sure the reviewer was, because only a short answer leaves
 
   owner.setSnapshot({ threadId: "a", request: {
     approvalId: "reviewed", command: "rm -f ./scratch.txt",
-    reviewed: { model: "jev-1.13.0", confidence: 0.62, allows: false },
+    reviewed: { model: "jev-1.13.0", concern: 0.62, allows: false },
   } });
 
   assert.match(content.innerHTML, /Reviewer answer/);
-  assert.match(content.innerHTML, /62% sure this was allowed/);
+  assert.match(content.innerHTML, /62% sure this needs you/);
   assert.match(content.innerHTML, /jev-1\.13\.0/);
 });
 

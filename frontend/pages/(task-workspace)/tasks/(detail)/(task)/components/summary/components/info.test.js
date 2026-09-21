@@ -85,7 +85,7 @@ test("offers reading a Task's kept permission instructions only when it kept som
     fork: button("Fork task", "fork"),
     archive: button("Archive task", "archive"),
     "permission-instructions": button(
-      "What your prompts permitted",
+      "What your prompts settled",
       "permission-instructions",
     ),
   };

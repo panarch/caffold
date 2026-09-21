@@ -194,9 +194,9 @@ class CaffoldSettingsJevPage extends HTMLElement {
           <header>
             <div>
               <p id="settings-jev-description">
-                Jev answers the permission requests an automatic mode would run on its own,
-                so only the rest reaches you. A Task uses it when its composer chooses Ask
-                Jev first.
+                Jev holds back only the permission requests an automatic mode would stop
+                for, so the rest never reaches you. A Task uses it when its composer
+                chooses Ask Jev first.
               </p>
               <p id="settings-jev-note">
                 Under that mode each request is sent to TypeSafe with these rules. Under

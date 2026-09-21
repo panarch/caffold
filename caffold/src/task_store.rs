@@ -725,7 +725,7 @@ impl TaskStore {
         }
     }
 
-    /// What this Task's own prompts have granted, oldest first.
+    /// What this Task's own prompts have settled, oldest first.
     pub(crate) fn permission_instructions(&self, thread_id: &str) -> Result<Option<String>> {
         match self {
             Self::Memory(glue) => {

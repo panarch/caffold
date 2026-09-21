@@ -6,6 +6,7 @@ import {
   forgetTaskPermissionInstructions,
   getTaskPermissionInstructions,
 } from "../../../../../../api.js";
+import { formatDate } from "../../../task-format.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -16,10 +17,10 @@ import { keyboardNavigationContext } from "../../../../../../keyboard-navigation
 import "../../../../../../keyboard-navigation/components/presentation.js";
 
 const EMPTY_MESSAGE =
-  "Nothing yet. A prompt that says what this Task may do is kept here while it runs under Ask Jev first.";
+  "Nothing yet. A prompt that says what this Task may or may not do is kept here while it runs under Ask Jev first.";
 
 /**
- * What this Task's own prompts permitted, for a person to read and to forget.
+ * What this Task's own prompts settled, for a person to read and to forget.
  *
  * The record grows with the conversation, so it is read here rather than in the
  * Task details popover it opens from: a popover is for the facts that fit
@@ -137,7 +138,7 @@ class CaffoldTaskPermissionInstructionsDialog extends HTMLElement {
       this.state = {
         loading: false,
         instructions: null,
-        error: error?.message ?? "Caffold could not read what this Task permitted.",
+        error: error?.message ?? "Caffold could not read what this Task settled.",
       };
     }
     this.patch();
@@ -168,7 +169,7 @@ class CaffoldTaskPermissionInstructionsDialog extends HTMLElement {
       this.state = {
         ...this.state,
         loading: false,
-        error: error?.message ?? "Caffold could not forget what this Task permitted.",
+        error: error?.message ?? "Caffold could not forget what this Task settled.",
       };
     }
     this.patch();
@@ -210,10 +211,10 @@ class CaffoldTaskPermissionInstructionsDialog extends HTMLElement {
     }
     const threadId = `${this.threadId ?? ""}`;
     const targets = [
-      [".task-permission-instructions-close", "Close what this Task permitted"],
+      [".task-permission-instructions-close", "Close what this Task settled"],
       [
         'button[data-permission-instructions-action="forget"]',
-        "Forget what this Task permitted",
+        "Forget what this Task settled",
       ],
     ].flatMap(([selector, label]) => {
       const control = dialog.querySelector(selector);
@@ -254,16 +255,16 @@ class CaffoldTaskPermissionInstructionsDialog extends HTMLElement {
       <dialog closedby="any" aria-labelledby="task-permission-instructions-title">
         <article class="task-permission-instructions-card">
           <header class="task-permission-instructions-header">
-            <h2 id="task-permission-instructions-title" class="task-permission-instructions-title">What this Task's prompts permitted</h2>
+            <h2 id="task-permission-instructions-title" class="task-permission-instructions-title">What this Task's prompts settled</h2>
             <form method="dialog" class="task-permission-instructions-close-form">
               <button
                 type="submit"
                 class="task-permission-instructions-close"
-                aria-label="Close what this Task permitted"
-                title="Close what this Task permitted"
+                aria-label="Close what this Task settled"
+                title="Close what this Task settled"
               >${renderInlineIcon(
                 "X",
-                "Close what this Task permitted",
+                "Close what this Task settled",
                 "task-permission-instructions-close-icon",
               )}</button>
             </form>
@@ -271,7 +272,8 @@ class CaffoldTaskPermissionInstructionsDialog extends HTMLElement {
           <p class="task-permission-instructions-note">
             Your own messages, oldest first. A later one overrides an earlier one it
             contradicts. Jev reads these before your extra rules when it answers a
-            permission request for this Task.
+            permission request for this Task, whether they allow something or refuse
+            it.
           </p>
           <div class="task-permission-instructions-body">
             <pre class="task-permission-instructions-text"></pre>
@@ -312,7 +314,7 @@ class CaffoldTaskPermissionInstructionsDialog extends HTMLElement {
     if (close) {
       close.innerHTML = renderInlineIcon(
         "X",
-        "Close what this Task permitted",
+        "Close what this Task settled",
         "task-permission-instructions-close-icon",
       );
     }
@@ -327,8 +329,30 @@ function presentation(state) {
   return {
     loading: false,
     instructions: instructions || null,
-    message: instructions || EMPTY_MESSAGE,
+    message: instructions ? inReadersTime(instructions) : EMPTY_MESSAGE,
   };
+}
+
+/**
+ * The record stamps each entry in UTC, which is what Jev reads and what the
+ * store keeps. A person reads it where they are, so the stamp is rewritten for
+ * the browser and nothing else about the entry is touched.
+ */
+function inReadersTime(instructions) {
+  return instructions.replace(
+    /^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}) UTC\]$/gm,
+    (stamp, year, month, day, hour, minute) => {
+      const when = Date.UTC(
+        Number(year),
+        Number(month) - 1,
+        Number(day),
+        Number(hour),
+        Number(minute),
+      );
+      const local = formatDate(when);
+      return local ? `[${local}]` : stamp;
+    },
+  );
 }
 
 function instructionsOf(payload) {

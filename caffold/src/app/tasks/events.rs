@@ -901,7 +901,7 @@ pub(in crate::app::tasks) fn approval_requested_event(
             "decisions": request.decisions,
             "reviewed": reviewed.map(|judgement| json!({
                 "model": judgement.model,
-                "confidence": judgement.confidence,
+                "concern": judgement.concern,
                 "allows": judgement.allows,
             })),
         })),
@@ -922,11 +922,11 @@ pub(in crate::app::tasks) fn approval_resolved_event(
     let summary = match (outcome, reviewed) {
         // The conversation shows this one line for how a request ended, so it
         // is where a request Caffold answered has to say so. It carries how
-        // sure Jev was, because a request that leaves no card leaves no other
-        // way to see whether the rules covered it barely or comfortably.
+        // much reason Jev found to ask, because a request that leaves no card
+        // leaves no other way to see how close it came to being one.
         (ApprovalOutcome::Decided(_), Some(judgement)) => format!(
-            "Approval answered by Jev ({:.0}%)",
-            judgement.confidence * 100.0
+            "Approval answered by Jev ({:.0}% reason to ask)",
+            judgement.concern * 100.0
         ),
         (ApprovalOutcome::Decided(_), None) => "Approval answered".to_string(),
         (ApprovalOutcome::AnsweredElsewhere, _) => "Approval answered elsewhere".to_string(),
@@ -945,7 +945,7 @@ pub(in crate::app::tasks) fn approval_resolved_event(
             "outcome": outcome.as_str(),
             "reviewed": reviewed.map(|judgement| json!({
                 "model": judgement.model,
-                "confidence": judgement.confidence,
+                "concern": judgement.concern,
                 "allows": judgement.allows,
             })),
         })),

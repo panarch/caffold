@@ -4,7 +4,8 @@ caffold-task-permission-instructions-dialog {
   & > dialog {
     width: min(44rem, calc(100vw - 2rem));
     max-width: none;
-    max-height: calc(100dvh - 2rem);
+    height: min(48rem, calc(100dvh - 2rem));
+    max-height: none;
     margin: auto;
     padding: 0;
     overflow: hidden;
@@ -24,7 +25,8 @@ caffold-task-permission-instructions-dialog {
   & .task-permission-instructions-card {
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr) auto auto;
-    max-height: calc(100dvh - 2rem);
+    width: 100%;
+    height: 100%;
     font-size: var(--interface-font-size);
     line-height: var(--interface-line-height);
   }
@@ -136,5 +138,18 @@ caffold-task-permission-instructions-dialog {
     justify-content: flex-end;
     padding: var(--interface-space-8) var(--interface-space-10);
     border-top: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 620px) {
+  caffold-task-permission-instructions-dialog {
+    & > dialog {
+      width: calc(100vw - 0.5rem);
+      height: calc(100dvh - 0.5rem);
+    }
+
+    & .task-permission-instructions-header {
+      padding: var(--interface-space-6);
+    }
   }
 }

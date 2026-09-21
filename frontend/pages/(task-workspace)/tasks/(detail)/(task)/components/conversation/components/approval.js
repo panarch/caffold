@@ -304,20 +304,20 @@ function renderApprovalContext(payload) {
 /**
  * What Caffold's reviewer said about a request it did not answer.
  *
- * Only an answer that stood in for a person leaves the conversation without a
- * card, so every card that names one names an answer that fell short. Seeing
- * how far short is the only way to tell rules that nearly covered a request
- * from rules that said nothing about it.
+ * Only a request Jev found no reason to ask about leaves the conversation
+ * without a card, so every card that names a reviewer names how much reason it
+ * found. Seeing that is the only way to tell a request that nearly went through
+ * from one nothing spoke for.
  */
 function renderReviewerAnswer(reviewed) {
-  if (!reviewed || typeof reviewed.confidence !== "number") {
+  if (!reviewed || typeof reviewed.concern !== "number") {
     return "";
   }
   return renderApprovalDefinitionList(
     [
       {
         label: "Jev",
-        value: `${Math.round(reviewed.confidence * 100)}% sure this was allowed`,
+        value: `${Math.round(reviewed.concern * 100)}% sure this needs you`,
       },
       { label: "Model", value: `${reviewed.model ?? ""}`, code: true },
     ].filter((row) => row.value),

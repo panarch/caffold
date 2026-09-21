@@ -235,19 +235,19 @@ mod tests {
         let captured = Arc::new(Mutex::new(CapturedRequest::default()));
         let base = jev_server(
             StatusCode::OK,
-            r#"{"model":"jev-1.13.0","answers":{"covered":{"noul":0.91}}}"#,
+            r#"{"model":"jev-1.13.0","answers":{"ask":{"noul":0.91}}}"#,
             captured.clone(),
         )
         .await;
-        let query = Query::new(json!({ "command": "ls" }))
-            .asking("covered", "the request is clearly covered");
+        let query =
+            Query::new(json!({ "command": "ls" })).asking("ask", "the request is clearly ask");
 
         let answers = ask(&Client::new(), &base, &api_key(&temp), &query)
             .await
             .unwrap();
 
         assert_eq!(answers.model(), "jev-1.13.0");
-        assert_eq!(answers.noul("covered").unwrap(), 0.91);
+        assert_eq!(answers.noul("ask").unwrap(), 0.91);
         let request = captured.lock().unwrap();
         assert_eq!(request.path, "/v1/systemone");
         assert_eq!(
@@ -257,10 +257,10 @@ mod tests {
         let body: Value = serde_json::from_slice(&request.body).unwrap();
         assert_eq!(body["model"], MODEL);
         assert_eq!(body["state"]["command"], "ls");
-        assert_eq!(body["questions"]["covered"]["type"], "noul");
+        assert_eq!(body["questions"]["ask"]["type"], "noul");
         assert_eq!(
-            body["questions"]["covered"]["instructions"],
-            "the request is clearly covered"
+            body["questions"]["ask"]["instructions"],
+            "the request is clearly ask"
         );
     }
 
@@ -269,17 +269,17 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let base = jev_server(
             StatusCode::OK,
-            r#"{"model":"jev-1.13.0","answers":{"covered":{"noul":1.5}}}"#,
+            r#"{"model":"jev-1.13.0","answers":{"ask":{"noul":1.5}}}"#,
             Arc::new(Mutex::new(CapturedRequest::default())),
         )
         .await;
-        let query = Query::new(json!({})).asking("covered", "covered");
+        let query = Query::new(json!({})).asking("ask", "ask");
 
         let answers = ask(&Client::new(), &base, &api_key(&temp), &query)
             .await
             .unwrap();
 
-        assert_eq!(answers.noul("covered"), Err(JevFailure::UnexpectedResponse));
+        assert_eq!(answers.noul("ask"), Err(JevFailure::UnexpectedResponse));
     }
 
     #[tokio::test]
@@ -291,13 +291,13 @@ mod tests {
             Arc::new(Mutex::new(CapturedRequest::default())),
         )
         .await;
-        let query = Query::new(json!({})).asking("covered", "covered");
+        let query = Query::new(json!({})).asking("ask", "ask");
 
         let answers = ask(&Client::new(), &base, &api_key(&temp), &query)
             .await
             .unwrap();
 
-        assert_eq!(answers.noul("covered"), Err(JevFailure::UnexpectedResponse));
+        assert_eq!(answers.noul("ask"), Err(JevFailure::UnexpectedResponse));
     }
 
     #[tokio::test]
@@ -320,7 +320,7 @@ mod tests {
                 Arc::new(Mutex::new(CapturedRequest::default())),
             )
             .await;
-            let query = Query::new(json!({})).asking("covered", "covered");
+            let query = Query::new(json!({})).asking("ask", "ask");
 
             let failure = ask(&Client::new(), &base, &key, &query).await.unwrap_err();
 
@@ -338,7 +338,7 @@ mod tests {
             Arc::new(Mutex::new(CapturedRequest::default())),
         )
         .await;
-        let query = Query::new(json!({})).asking("covered", "covered");
+        let query = Query::new(json!({})).asking("ask", "ask");
 
         let failure = ask(&Client::new(), &base, &api_key(&temp), &query)
             .await
@@ -350,7 +350,7 @@ mod tests {
     #[tokio::test]
     async fn an_unreachable_host_is_unavailable() {
         let temp = TempDir::new().unwrap();
-        let query = Query::new(json!({})).asking("covered", "covered");
+        let query = Query::new(json!({})).asking("ask", "ask");
 
         let failure = ask(
             &Client::new(),

@@ -15,7 +15,7 @@ function reviewedOption(allowed) {
     mode: REVIEWED_MODE,
     label: "Ask Jev first",
     description:
-      "Asks about everything. Jev answers what an automatic mode would run on its own, plus whatever your extra rules cover.",
+      "Asks about everything. Jev holds back only what an automatic mode would stop for, plus whatever your extra rules name.",
     allowed,
     ...(allowed ? {} : { unavailableReason: WITHHELD_REASON }),
     dangerous: false,
@@ -161,7 +161,7 @@ test("a Task's kept permission instructions are read and forgotten from its deta
   const action = summary.locator("[data-task-info-permission-instructions]");
   await expect(action).toBeVisible();
 
-  await action.getByRole("button", { name: "What your prompts permitted" }).click();
+  await action.getByRole("button", { name: "What your prompts settled" }).click();
   const dialog = page.locator("caffold-task-permission-instructions-dialog > dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.locator(".task-permission-instructions-text")).toContainText(

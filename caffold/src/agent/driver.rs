@@ -195,15 +195,15 @@ pub(crate) struct PermissionModeOption {
 /// Every other mode in a list is an agent's own, and Caffold hands it back
 /// unread. This one says something Caffold does rather than something an agent
 /// does: the agent runs under whichever of its modes asks the most, and Caffold
-/// answers the requests a person's rules clearly cover before they are shown.
+/// answers the requests nothing warrants asking about before they are shown.
 /// Each driver maps it to its own most-confirming mode, because which mode that
 /// is remains the agent's knowledge.
 pub(crate) const REVIEWED_PERMISSION_MODE: &str = "caffold:ask-jev-first";
 
 const REVIEWED_PERMISSION_LABEL: &str = "Ask Jev first";
 
-const REVIEWED_PERMISSION_DESCRIPTION: &str = "Asks about everything. Jev answers what an \
-     automatic mode would run on its own, plus whatever your extra rules cover.";
+const REVIEWED_PERMISSION_DESCRIPTION: &str = "Asks about everything. Jev holds back only what \
+     an automatic mode would stop for, plus whatever your extra rules name.";
 
 const REVIEWED_PERMISSION_UNAVAILABLE: &str =
     "Add a Jev API key in Settings \u{2192} Jev Permissions.";

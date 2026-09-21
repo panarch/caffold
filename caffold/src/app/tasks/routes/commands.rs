@@ -423,7 +423,7 @@ pub(super) async fn task_interrupt(
     }))
 }
 
-/// What this Task's own prompts have permitted, for a person to read.
+/// What this Task's own prompts have settled, for a person to read.
 pub(super) async fn task_permission_instructions(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
@@ -440,7 +440,7 @@ pub(super) async fn task_permission_instructions(
     Ok(Json(TaskPermissionInstructionsResponse { instructions }))
 }
 
-/// Forget what this Task's prompts permitted.
+/// Forget what this Task's prompts settled.
 ///
 /// There is nothing to undo afterwards: the record is only ever rebuilt from
 /// what a person says next.

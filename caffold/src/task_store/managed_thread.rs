@@ -210,7 +210,7 @@ pub(super) struct ManagedThreadRow {
     pub reasoning_effort: Option<String>,
     pub fast_mode: bool,
     pub permission_mode: Option<String>,
-    /// What this Task's own prompts have granted, oldest first.
+    /// What this Task's own prompts have settled, oldest first.
     ///
     /// It stays off [`ManagedThread`] because it is read only when a
     /// permission request is being judged, and a Task list has no use for it.
@@ -680,7 +680,7 @@ where
     get(glue, thread_id)
 }
 
-/// How much of what a Task's own prompts permitted is kept.
+/// How much of what a Task's own prompts settled is kept.
 ///
 /// The whole block is read whenever a permission request is judged, and both
 /// TypeSafe's guidance and the size of that block argue against letting it

@@ -198,45 +198,51 @@ Under **Ask Jev first**, Caffold asks Jev before a person is asked. Jev is
 TypeSafe's decision model: it answers typed questions rather than writing text,
 so it can settle a request but cannot write a rule, a grant, or an explanation.
 
-Jev answers with an allowance or with nothing. It is never asked to refuse, to
-allow for a session, or to allow always. A persistent grant would be the agent's
-own, and the next request of that shape would never be asked about at all, which
-is the opposite of what choosing this mode says. Everything else — a judgement
-below the threshold Caffold holds, a timeout, a rate limit, a rejected key,
-unreadable settings, an answer outside 0 to 1 — ends the same way: the request
-is the person's, exactly as it is without Jev.
+Jev either finds no reason to ask the person, in which case Caffold allows the
+request once, or it does not, in which case the request is the person's. It is
+never asked to refuse, to allow for a session, or to allow always. A persistent
+grant would be the agent's own, and the next request of that shape would never
+be asked about at all, which is the opposite of what choosing this mode says.
+A timeout, a rate limit, a rejected key, unreadable settings, an answer outside
+0 to 1 — all of it ends the same way: the request is the person's, exactly as it
+is without Jev.
 
-Jev is asked to judge to the standard of a coding agent's automatic permission
-mode, and the rules from Settings are extra rules added on top of that. A person
-who wrote none still gets judgements, so the key is the whole requirement. The
-question names the sources in the order they win: what this Task's own prompts
-said, then the Settings rules, then that standard where both are silent.
+The question is one gate, and it asks only whether the person should be asked
+before the request runs. It does not ask whether the request is permitted:
+finding positive authorisation for ordinary work is the thing the model is least
+sure of, while recognising what warrants a person is the thing it is surest of.
+Asking the question it answers well is what keeps ordinary work out of a
+person's way.
 
-The threshold is not a setting. Every question Caffold asks already asks for
-certainty in words, so the number says how sure Jev is of an answer that is
-itself cautious and does not repeat that caution. Against rules that name an
-action outright a request lands near 0.86 and one those rules forbid lands near
-0.04, so the bar sits between them rather than above the first.
+Its baseline is the standard of a coding agent's automatic permission mode. What
+the person has said comes before that baseline, in the order the person said it:
+this turn's prompt, then this Task's record, then the rules from Settings. A
+person who wrote no rules still gets judgements, so the key is the whole
+requirement.
+
+The threshold is not a setting. Each question is written so that being sure is
+the answer that stops the agent, and one number says where sure begins.
 
 Caffold asks before the request is shown. An allowed request records its arrival
 and its answer together, so the conversation holds both and no card appears and
 disappears; the phone is told only about a request that is actually waiting.
 The resolved line says when Jev answered it, and carries the model version and
-the probability it gave.
+how much reason it found to ask.
 
-A request Jev answered without enough certainty reaches the person with that
-answer on its card. Only an answer that stood in for a person leaves no card at
-all, so every card naming one names an answer that fell short, and how far short
-is the difference between a request nearly settled and one nothing spoke to. A card names no reviewer when none answered: another
-mode, nothing configured, or a call that failed, which the host's log records.
+A request Jev wanted a person for reaches the person with that answer on its
+card. Only a request it found no reason to ask about leaves no card at all, so
+every card naming a reviewer names how much reason it found. A card names no
+reviewer when none answered: another mode, nothing configured, or a call that
+failed, which the host's log records.
 
 What reaches TypeSafe is one request as the agent's driver already wrote it for
 a person to read — the command, the directory the driver named, the network
 destination, the requested access, the grant root, and the tool with its
-arguments — together with the rules from Settings and what this Task's own
-prompts permitted. The agent's own title and reason travel under a name that
-says the agent wrote them, and Jev is told to read them as a claim about what is
-being asked rather than as grounds for allowing it. The model version is named
+arguments — together with the rules from Settings, what this Task's own prompts
+permitted, and the prompt that began the turn the request came out of. The
+agent's own title and reason travel under a name that says the agent wrote them,
+and Jev is told to read them as a claim about what is being asked rather than as
+a reason not to ask. The model version is named
 on every request, because a later version would quietly move where the threshold
 sits.
 
@@ -268,12 +274,12 @@ it was typed, at the end of that Task's record. The record is read oldest first
 and a later statement overrides an earlier one it contradicts; that order is the
 order of the entries, never a comparison of the times beside them.
 
-A statement in that record allows what the standing rules refuse, however firmly
-those rules are written. Rules are what the person settled once for everything;
-the record is the same person speaking about this Task now, and a Task-sized
-allowance that any standing "never" could overrule would never be worth writing.
-It only ever widens what this Task may do, and only for as long as the record
-stands. It is bounded,
+A statement in that record settles what the standing rules would have settled
+otherwise, however firmly those rules are written, and the prompt that began the
+turn settles it over both. Rules are what the person set once for everything;
+the record is the same person speaking about this Task, and the turn's prompt is
+the same person speaking now. Each only overrules an earlier one where the two
+speak to the same request. The record is bounded,
 and past the bound the oldest entries go. This runs beside the turn rather than
 in front of it, so a request that arrives before it finishes is simply one the
 person answers.

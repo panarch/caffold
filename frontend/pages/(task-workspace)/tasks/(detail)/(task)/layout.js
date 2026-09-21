@@ -1386,7 +1386,7 @@ class CaffoldTaskDetail extends HTMLElement {
     );
   }
 
-  /** Show what this Task's own prompts permitted. */
+  /** Show what this Task's own prompts settled. */
   openPermissionInstructions(opener) {
     this.permissionInstructionsDialog()?.open({
       threadId: this.selectedThreadId,

@@ -20,8 +20,8 @@ pub(super) const MAX_CRITERIA_BYTES: usize = 16 * 1024;
 
 /// The rules a person wrote for deciding permission requests on this host.
 ///
-/// Empty is a meaningful value and the one a fresh installation has: with no
-/// rules nothing is clearly covered, so every request stays the person's.
+/// Empty is a meaningful value and the one a fresh installation has: these are
+/// extra rules, and with none written Jev judges by the standard alone.
 pub(super) struct CriteriaStore {
     directory: PathBuf,
     criteria: RwLock<Result<String, String>>,

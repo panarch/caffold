@@ -76,12 +76,12 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
         data-task-info-permission-instructions
         hidden
       >
-        <p>This Task has kept what your own prompts permitted, for Jev to read when it answers a permission request here.</p>
+        <p>This Task has kept what your own prompts said it may and may not do, for Jev to read when it answers a permission request here.</p>
         <button
           type="button"
           class="task-secondary-button"
           data-task-info-action="permission-instructions"
-        >What your prompts permitted</button>
+        >What your prompts settled</button>
       </div>
       <div class="task-detail-task-action task-detail-fork-action">
         <p>Create a new Task at the project root with this conversation's history. Files and worktrees are not copied.</p>

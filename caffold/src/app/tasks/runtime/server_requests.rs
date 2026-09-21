@@ -1782,7 +1782,7 @@ mod tests {
     #[tokio::test]
     async fn an_allowed_request_arrives_already_answered_and_says_who_answered() {
         let temp = tempfile::tempdir().unwrap();
-        let (base, asked) = jev_answering(0.97).await;
+        let (base, asked) = jev_answering(0.03).await;
         let reviewer = crate::app::jev::test_reviewer(
             temp.path(),
             base,
@@ -1807,13 +1807,16 @@ mod tests {
             "the question it answered says so too"
         );
         let resolved = events.last().unwrap();
-        // The line carries how sure it was, because an answered request
-        // leaves no card to read it from.
-        assert_eq!(resolved.summary, "Approval answered by Jev (97%)");
+        // The line carries how little reason there was to ask, because an
+        // answered request leaves no card to read it from.
+        assert_eq!(
+            resolved.summary,
+            "Approval answered by Jev (3% reason to ask)"
+        );
         let payload = resolved.payload.as_ref().unwrap();
         assert_eq!(payload["outcome"], "allow");
         assert_eq!(payload["reviewed"]["model"], "jev-1.13.0");
-        assert_eq!(payload["reviewed"]["confidence"], 0.97);
+        assert_eq!(payload["reviewed"]["concern"], 0.03);
 
         let request = asked.lock().unwrap().first().cloned().unwrap();
         assert_eq!(
@@ -1834,7 +1837,7 @@ mod tests {
     #[tokio::test]
     async fn a_judgement_below_the_threshold_leaves_the_request_to_a_person() {
         let temp = tempfile::tempdir().unwrap();
-        let (base, asked) = jev_answering(0.6).await;
+        let (base, asked) = jev_answering(0.9).await;
         let reviewer = crate::app::jev::test_reviewer(
             temp.path(),
             base,
@@ -1850,13 +1853,13 @@ mod tests {
                 .map(|event| event.event_type.as_str())
                 .collect::<Vec<_>>(),
             vec!["approval_requested"],
-            "an unsure answer is not an answer"
+            "a reviewer that wants the person is not an answer"
         );
         assert_eq!(asked.lock().unwrap().len(), 1, "it was asked once");
-        // The question carries what the reviewer said, so a person can tell
-        // rules that nearly covered it from rules that said nothing.
+        // The question carries what the reviewer said, so a person can tell a
+        // request that nearly went through from one nothing spoke for.
         let payload = events[0].payload.as_ref().unwrap();
-        assert_eq!(payload["reviewed"]["confidence"], 0.6);
+        assert_eq!(payload["reviewed"]["concern"], 0.9);
         assert_eq!(payload["reviewed"]["allows"], false);
         assert_eq!(payload["reviewed"]["model"], "jev-1.13.0");
     }
