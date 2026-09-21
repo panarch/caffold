@@ -132,6 +132,10 @@ const ownership = new Map([
     ["caffold-task-markdown-preview-dialog"],
   ],
   [
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css",
+    ["caffold-task-permission-instructions-dialog"],
+  ],
+  [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css",
     ["caffold-task-current-plan"],
   ],
@@ -382,6 +386,10 @@ const ownership = new Map([
   [
     "pages/(task-workspace)/settings/grok/page.css",
     ["caffold-settings-grok-page"],
+  ],
+  [
+    "pages/(task-workspace)/settings/jev/page.css",
+    ["caffold-settings-jev-page"],
   ],
   [
     "pages/(task-workspace)/settings/components/detail-list.css",
