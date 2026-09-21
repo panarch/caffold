@@ -253,6 +253,7 @@ async fn task_prompt_owned(
                 agent.generation(),
                 &thread_id,
                 managed_cwd.as_deref(),
+                &prompt,
                 turn.clone(),
                 applied_options.clone(),
             )

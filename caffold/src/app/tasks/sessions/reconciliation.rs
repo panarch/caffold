@@ -841,6 +841,7 @@ mod tests {
                 1,
                 "thread-1",
                 Some("/managed/worktree"),
+                "carry on",
                 turn("turn-new", TurnStatus::InProgress),
                 TurnOptions::default(),
             )

@@ -116,6 +116,7 @@ fn reviewed_request(
     agent: &'static str,
     task_instructions: Option<String>,
     working_directory: Option<String>,
+    turn_prompt: Option<String>,
 ) -> ReviewedRequest {
     let detail = &request.detail;
     ReviewedRequest {
@@ -148,6 +149,7 @@ fn reviewed_request(
         }),
         task_instructions,
         working_directory,
+        turn_prompt,
     }
 }
 
@@ -687,12 +689,23 @@ impl TaskRuntime {
             AskedBy::Codex { .. } => request.detail.cwd.clone(),
         }
         .or_else(|| managed.run_by.cwd().map(str::to_string));
+        // What the person asked for in the turn that raised this request. The
+        // session holds it beside that turn's directory, and it answers only
+        // for the turn it belongs to: a request from an older turn is not
+        // covered by what was asked for since.
+        let turn_prompt = self
+            .sessions
+            .snapshot(&thread_id)
+            .await
+            .filter(|session| session.active_turn_id == request.turn_id)
+            .and_then(|session| session.active_turn_prompt);
         reviewer
             .review(&reviewed_request(
                 &request,
                 agent,
                 instructions,
                 working_directory,
+                turn_prompt,
             ))
             .await
     }
