@@ -416,9 +416,15 @@ fn usage_of(answer: &Value) -> Result<Usage, String> {
         return Err(text.to_string());
     }
     let config = answer.get("config").unwrap_or(&Value::Null);
+    let period = config.get("currentPeriod").and_then(period_of);
     let usage = Usage {
-        percent: config.get("creditUsagePercent").and_then(json_number),
-        period: config.get("currentPeriod").and_then(period_of),
+        // A present period with no percent is 0% used: proto3 JSON omits the
+        // default, so the field's absence is the zero reading, not silence.
+        percent: config
+            .get("creditUsagePercent")
+            .and_then(json_number)
+            .or_else(|| period.is_some().then_some(0.0)),
+        period,
         on_demand: on_demand_of(config),
         prepaid: prepaid_of(config),
     };
@@ -608,6 +614,30 @@ mod tests {
         answer["extra"] = json!({ "unexpected": true });
         let usage = usage_of(&answer).unwrap();
         assert_eq!(usage.percent, Some(8.0));
+    }
+
+    #[test]
+    fn an_omitted_credit_usage_percent_on_a_period_is_zero_used() {
+        let usage = usage_of(&json!({
+            "config": {
+                "currentPeriod": {
+                    "type": "USAGE_PERIOD_TYPE_WEEKLY",
+                    "start": "2026-09-21T06:12:36.569711+00:00",
+                    "end": "2026-09-28T06:12:36.569711+00:00"
+                }
+            }
+        }))
+        .unwrap();
+        assert_eq!(usage.percent, Some(0.0));
+        assert_eq!(
+            usage
+                .period
+                .as_ref()
+                .and_then(|period| period.period_type.as_deref()),
+            Some("USAGE_PERIOD_TYPE_WEEKLY")
+        );
+        let value = serde_json::to_value(&usage).unwrap();
+        assert_eq!(value["percent"], 0.0);
     }
 
     #[test]

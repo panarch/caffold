@@ -114,6 +114,23 @@ test("a filled usage block shows used percent and the period the leader returned
   assert.equal(value(rows, "prepaid").value, "12");
 });
 
+test("a period at zero used still says 0% used", () => {
+  const owner = {
+    status: {
+      usage: {
+        percent: 0,
+        period: {
+          type: "USAGE_PERIOD_TYPE_WEEKLY",
+          end: "2026-09-14T06:12:36.569711+00:00",
+        },
+      },
+    },
+    statusState: "loaded",
+  };
+  const row = grok.usageRows.call(owner).find((row) => row.key === "usage");
+  assert.match(row.value, /^0% used · resets /);
+});
+
 test("a silent billing source costs the usage block and no more", () => {
   const owner = {
     status: {
