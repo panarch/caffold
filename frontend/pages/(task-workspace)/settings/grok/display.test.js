@@ -35,6 +35,16 @@ test("the plan row is used percent and the period's end, never a remaining figur
     usagePeriodValue({ period: { end: "2026-09-14T06:12:36.569711+00:00" } }, () => "Sep 14"),
     "resets Sep 14",
   );
+  assert.equal(
+    usagePeriodValue(
+      {
+        percent: 0,
+        period: { type: "USAGE_PERIOD_TYPE_WEEKLY", end: "2026-09-14T06:12:36.569711+00:00" },
+      },
+      () => "Sep 14, 3:12 AM",
+    ),
+    "0% used · resets Sep 14, 3:12 AM",
+  );
 });
 
 test("on-demand and prepaid rows only format the meters they were given", () => {
