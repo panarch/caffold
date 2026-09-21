@@ -209,6 +209,15 @@ class CaffoldTaskDetail extends HTMLElement {
       event.stopPropagation();
       this.conversationComponent()?.reconcileViewportResize();
     });
+    // Task actions show what the next turn's approval mode settles, so the
+    // subject snapshot is published again when that mode changes.
+    this.addEventListener("caffold:task-turn-options-change", (event) => {
+      const composer = closestElement(event.target, "caffold-task-composer");
+      if (!composer || composer !== this.followUpComposer()) {
+        return;
+      }
+      this.emitSubjectSnapshot();
+    });
     this.render();
   }
 
@@ -387,6 +396,7 @@ class CaffoldTaskDetail extends HTMLElement {
       transportState: this.detailSession.state,
       contextPath: this.activeCwdPath(),
       provider: `${this.taskDetail?.provider ?? ""}`.trim(),
+      permissionMode: this.followUpComposer()?.selectedPermissionMode() ?? "",
       archiveState: this.archiveStateValue,
       forkState: this.forkStateValue,
     };

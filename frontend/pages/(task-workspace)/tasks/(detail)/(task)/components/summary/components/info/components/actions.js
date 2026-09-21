@@ -9,6 +9,9 @@ import {
 } from "../../../../../../../../../../action-hints.js";
 import { taskThreadId } from "../../../../../../../task-list-model.js";
 
+/** The approval mode Caffold answers under, which is the one Jev judges for. */
+const REVIEWED_PERMISSION_MODE = "caffold:ask-jev-first";
+
 class CaffoldTaskDetailInfoActions extends HTMLElement {
   connectedCallback() {
     this.ensureState();
@@ -76,7 +79,7 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
         data-task-info-permission-instructions
         hidden
       >
-        <p>This Task has kept what your own prompts said it may and may not do, for Jev to read when it answers a permission request here.</p>
+        <p>This Task keeps what your own prompts say it may and may not do, for Jev to read when it answers a permission request here.</p>
         <button
           type="button"
           class="task-secondary-button"
@@ -120,8 +123,14 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
   patchPermissionInstructions() {
     const action = this.querySelector("[data-task-info-permission-instructions]");
     if (action) {
-      action.hidden = !this.snapshot.hasPermissionInstructions;
+      action.hidden = !this.keepsPermissionInstructions();
     }
+  }
+
+  // The record is kept and read only under the reviewed mode, so the action
+  // that opens it is offered under that mode and no other.
+  keepsPermissionInstructions() {
+    return this.snapshot.permissionMode === REVIEWED_PERMISSION_MODE;
   }
 
   actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
@@ -135,8 +144,7 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
       "permission-instructions": ACTION_HINT_ACTION.BUTTON_ACTIVATE,
     };
     const offered = (type) =>
-      type !== "permission-instructions" ||
-      Boolean(this.snapshot.hasPermissionInstructions);
+      type !== "permission-instructions" || this.keepsPermissionInstructions();
     const targets = Object.keys(actionIds).flatMap((type) => {
       const control = this.actionButton(type);
       if (!control || control.disabled || !offered(type)) {
@@ -235,6 +243,7 @@ function normalizedSnapshot(snapshot = {}) {
     archiveBlockedByActive: Boolean(snapshot.archiveBlockedByActive),
     transportState: snapshot.transportState ?? "idle",
     provider: `${snapshot.provider ?? ""}`,
+    permissionMode: `${snapshot.permissionMode ?? ""}`,
     archiveState: {
       loading: Boolean(snapshot.archiveState?.loading),
       error: snapshot.archiveState?.error ?? null,
@@ -243,7 +252,6 @@ function normalizedSnapshot(snapshot = {}) {
       loading: Boolean(snapshot.forkState?.loading),
       error: snapshot.forkState?.error ?? null,
     },
-    hasPermissionInstructions: Boolean(snapshot.hasPermissionInstructions),
   };
 }
 
