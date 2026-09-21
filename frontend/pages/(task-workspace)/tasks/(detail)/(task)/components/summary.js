@@ -86,7 +86,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
   handleInfoIntent(event) {
     if (
       event.target !== this.taskInfo() ||
-      !["archive", "fork"].includes(event.detail?.type)
+      !["archive", "fork", "permission-instructions"].includes(event.detail?.type)
     ) {
       return;
     }

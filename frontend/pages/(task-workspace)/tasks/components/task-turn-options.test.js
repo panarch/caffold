@@ -418,6 +418,67 @@ test("does not change approval mode after the catalog has fixed it", async (t) =
   assert.equal(element.snapshot().permissionExplicit, false);
 });
 
+test("asks for the approval list again when Caffold's own reviewer becomes available", async (t) => {
+  const { element, server } = mount();
+  t.after(() => server.restore());
+  await answerModels(server);
+  await answerModes(server);
+  const askedOnce = server.permissions().length;
+
+  // Nothing about the chosen model changed, so only forgetting the answered
+  // list can ask again — the mode is withheld on what is held.
+  element.forgetPermissionList();
+  await drain();
+
+  assert.equal(server.permissions().length, askedOnce + 1);
+});
+
+test("holds one answered approval list while nothing has changed", async (t) => {
+  const { element, server } = mount();
+  t.after(() => server.restore());
+  await answerModels(server);
+  await answerModes(server);
+  const askedOnce = server.permissions().length;
+
+  element.requestPermissionList();
+  await drain();
+
+  assert.equal(server.permissions().length, askedOnce);
+});
+
+test("a pick for Caffold's own mode survives the list being asked again", async (t) => {
+  const { element, server } = mount();
+  t.after(() => server.restore());
+  await answerModels(server);
+  const offering = {
+    ...CODEX_MODES,
+    options: [
+      ...CODEX_MODES.options,
+      {
+        mode: "caffold:ask-jev-first",
+        label: "Ask Jev first",
+        description: "Asks about everything.",
+        allowed: true,
+        dangerous: false,
+      },
+    ],
+  };
+  answer(server.permissions().at(-1), offering);
+  await drain();
+  element.selectPermission("caffold:ask-jev-first");
+  assert.equal(element.snapshot().permissionMode, "caffold:ask-jev-first");
+
+  // Saving Jev settings asks for the list again; a person's pick is theirs
+  // across that, not something the new answer replaces.
+  element.forgetPermissionList();
+  await drain();
+  answer(server.permissions().at(-1), offering);
+  await drain();
+
+  assert.equal(element.snapshot().permissionMode, "caffold:ask-jev-first");
+  assert.equal(element.snapshot().permissionExplicit, true);
+});
+
 test("keeps the popover shell while replacing only its option body", () => {
   const content = control();
   content.contains = () => false;

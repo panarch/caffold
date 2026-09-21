@@ -15,6 +15,7 @@ use crate::agent::{
 };
 
 use super::generated_images::{GeneratedImageObservation, GeneratedImageStore};
+use crate::app::jev::Judgement;
 
 /// Where one event sits in the backend-owned conversation projection.
 ///
@@ -866,10 +867,16 @@ fn background_task_payload(task: &BackgroundTask) -> JsonValue {
 /// The driver has already written this for a person to read, so the payload is
 /// the request itself: what is being asked, the specifics worth checking, and
 /// the answers this request accepts.
+/// A question an agent is blocked on, and what the reviewer said about it.
+///
+/// `reviewed` is present whenever Caffold's reviewer answered, including when
+/// its answer was not sure enough to stand in for a person's. A person cannot
+/// improve rules they cannot see the effect of.
 pub(in crate::app::tasks) fn approval_requested_event(
     thread_id: &str,
     request: &ApprovalRequest,
     anchor_ms: u64,
+    reviewed: Option<&Judgement>,
 ) -> TaskEventRecord {
     let detail = &request.detail;
     task_event_record(
@@ -892,33 +899,55 @@ pub(in crate::app::tasks) fn approval_requested_event(
             "environment": detail.environment,
             "tool": detail.tool,
             "decisions": request.decisions,
+            "reviewed": reviewed.map(|judgement| json!({
+                "model": judgement.model,
+                "confidence": judgement.confidence,
+                "allows": judgement.allows,
+            })),
         })),
         anchor_ms,
     )
 }
 
-/// An approval that is no longer pending, however it ended.
+/// An approval that is no longer pending, and who ended it.
+///
+/// `reviewed` is present only when Caffold's reviewer answered instead of a
+/// person, which is the one thing a reader cannot tell from the outcome alone.
 pub(in crate::app::tasks) fn approval_resolved_event(
     thread_id: &str,
     request: &ApprovalRequest,
     outcome: ApprovalOutcome,
+    reviewed: Option<&Judgement>,
 ) -> TaskEventRecord {
-    let summary = match outcome {
-        ApprovalOutcome::Decided(_) => "Approval answered",
-        ApprovalOutcome::AnsweredElsewhere => "Approval answered elsewhere",
-        ApprovalOutcome::Expired => "Approval expired",
-        ApprovalOutcome::Unavailable => "Approval unavailable",
+    let summary = match (outcome, reviewed) {
+        // The conversation shows this one line for how a request ended, so it
+        // is where a request Caffold answered has to say so. It carries how
+        // sure Jev was, because a request that leaves no card leaves no other
+        // way to see whether the rules covered it barely or comfortably.
+        (ApprovalOutcome::Decided(_), Some(judgement)) => format!(
+            "Approval answered by Jev ({:.0}%)",
+            judgement.confidence * 100.0
+        ),
+        (ApprovalOutcome::Decided(_), None) => "Approval answered".to_string(),
+        (ApprovalOutcome::AnsweredElsewhere, _) => "Approval answered elsewhere".to_string(),
+        (ApprovalOutcome::Expired, _) => "Approval expired".to_string(),
+        (ApprovalOutcome::Unavailable, _) => "Approval unavailable".to_string(),
     };
     task_event_record(
         thread_id,
         &format!("approval_resolved:{}", request.id),
         "approval_resolved",
-        summary,
+        &summary,
         Some(json!({
             "threadId": thread_id,
             "turnId": request.turn_id,
             "approvalId": request.id,
             "outcome": outcome.as_str(),
+            "reviewed": reviewed.map(|judgement| json!({
+                "model": judgement.model,
+                "confidence": judgement.confidence,
+                "allows": judgement.allows,
+            })),
         })),
         now_ms(),
     )

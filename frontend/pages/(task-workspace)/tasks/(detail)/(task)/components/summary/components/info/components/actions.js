@@ -57,7 +57,7 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
       return;
     }
     const type = `${action.dataset.taskInfoAction ?? ""}`;
-    if (!["archive", "fork"].includes(type)) {
+    if (!["archive", "fork", "permission-instructions"].includes(type)) {
       return;
     }
     this.dispatchEvent(
@@ -71,6 +71,18 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
 
   render() {
     this.innerHTML = `
+      <div
+        class="task-detail-task-action task-detail-permission-instructions-action"
+        data-task-info-permission-instructions
+        hidden
+      >
+        <p>This Task has kept what your own prompts permitted, for Jev to read when it answers a permission request here.</p>
+        <button
+          type="button"
+          class="task-secondary-button"
+          data-task-info-action="permission-instructions"
+        >What your prompts permitted</button>
+      </div>
       <div class="task-detail-task-action task-detail-fork-action">
         <p>Create a new Task at the project root with this conversation's history. Files and worktrees are not copied.</p>
         <p class="task-detail-fork-availability" hidden></p>
@@ -102,6 +114,14 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
     }
     this.patchFork();
     this.patchArchive();
+    this.patchPermissionInstructions();
+  }
+
+  patchPermissionInstructions() {
+    const action = this.querySelector("[data-task-info-permission-instructions]");
+    if (action) {
+      action.hidden = !this.snapshot.hasPermissionInstructions;
+    }
   }
 
   actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
@@ -109,14 +129,20 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
     if (!scopeId || !threadId) {
       return emptyActionHintScope();
     }
-    const targets = ["fork", "archive"].flatMap((type) => {
+    const actionIds = {
+      fork: ACTION_HINT_ACTION.TASK_FORK,
+      archive: ACTION_HINT_ACTION.TASK_ARCHIVE,
+      "permission-instructions": ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+    };
+    const offered = (type) =>
+      type !== "permission-instructions" ||
+      Boolean(this.snapshot.hasPermissionInstructions);
+    const targets = Object.keys(actionIds).flatMap((type) => {
       const control = this.actionButton(type);
-      if (!control || control.disabled) {
+      if (!control || control.disabled || !offered(type)) {
         return [];
       }
-      const actionId = type === "fork"
-        ? ACTION_HINT_ACTION.TASK_FORK
-        : ACTION_HINT_ACTION.TASK_ARCHIVE;
+      const actionId = actionIds[type];
       return [buttonActionHintTarget({
         invalidationOwner: this,
         id: `${scopeId}:${threadId}:${type}`,
@@ -130,7 +156,8 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
           taskThreadId(this.snapshot.task) === threadId &&
           this.actionButton(type) === control &&
           control.dataset.taskInfoAction === type &&
-          !control.disabled,
+          !control.disabled &&
+          offered(type),
       })];
     });
     return {
@@ -216,6 +243,7 @@ function normalizedSnapshot(snapshot = {}) {
       loading: Boolean(snapshot.forkState?.loading),
       error: snapshot.forkState?.error ?? null,
     },
+    hasPermissionInstructions: Boolean(snapshot.hasPermissionInstructions),
   };
 }
 

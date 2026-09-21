@@ -80,6 +80,50 @@ test("keeps enabled Fork and Archive actions at their direct owner", () => {
   );
 });
 
+test("offers reading a Task's kept permission instructions only when it kept some", () => {
+  const controls = {
+    fork: button("Fork task", "fork"),
+    archive: button("Archive task", "archive"),
+    "permission-instructions": button(
+      "What your prompts permitted",
+      "permission-instructions",
+    ),
+  };
+  const owner = {
+    isConnected: true,
+    snapshot: { task: { threadId: "thread-a" }, hasPermissionInstructions: false },
+    actionButton: (type) => controls[type],
+  };
+
+  assert.deepEqual(
+    actions.actionHintScope
+      .call(owner, { scopeId: "details" })
+      .targets.map(({ actionId }) => actionId),
+    ["task.fork", "task.archive"],
+  );
+
+  owner.snapshot = {
+    ...owner.snapshot,
+    hasPermissionInstructions: true,
+  };
+  const offered = actions.actionHintScope.call(owner, { scopeId: "details" });
+
+  assert.deepEqual(
+    offered.targets.map(({ id, actionId }) => ({ id, actionId })),
+    [
+      { id: "details:thread-a:fork", actionId: "task.fork" },
+      { id: "details:thread-a:archive", actionId: "task.archive" },
+      {
+        id: "details:thread-a:permission-instructions",
+        actionId: "button.activate",
+      },
+    ],
+  );
+  assert.equal(offered.targets[2].isActionable(), true);
+  owner.snapshot = { ...owner.snapshot, hasPermissionInstructions: false };
+  assert.equal(offered.targets[2].isActionable(), false);
+});
+
 test("keeps Archive available through stale transport unless canonical status is active", () => {
   const archive = button("Archive task", "archive");
   const error = { textContent: "", hidden: true };

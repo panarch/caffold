@@ -310,6 +310,15 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/voice/lifecycle.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/voice/lifecycle.js"
         ))),
+        "pages/(task-workspace)/settings/jev/page.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/jev/page.css"
+        ))),
+        "pages/(task-workspace)/settings/jev/page.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/jev/page.js"
+        ))),
+        "pages/(task-workspace)/settings/jev/lifecycle.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/jev/lifecycle.js"
+        ))),
         "pages/(task-workspace)/settings/grok/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/grok/page.css"
         ))),
@@ -784,6 +793,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js" => {
             Some(js(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js" => {
@@ -1422,6 +1441,8 @@ mod tests {
             "pages/(task-workspace)/settings/remote-access/tailscale.js",
             "pages/(task-workspace)/settings/voice/page.js",
             "pages/(task-workspace)/settings/voice/lifecycle.js",
+            "pages/(task-workspace)/settings/jev/page.js",
+            "pages/(task-workspace)/settings/jev/lifecycle.js",
             "pages/(task-workspace)/settings/codex/page.js",
             "pages/(task-workspace)/settings/claude/page.js",
             "pages/(task-workspace)/settings/claude/display.js",
@@ -1903,6 +1924,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js",
                 b"caffold-task-markdown-preview-dialog".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.js",
+                b"caffold-task-permission-instructions-dialog".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.js",

@@ -1,5 +1,6 @@
 use super::commands::{require_codex_thread_client, task_cwd};
 use crate::agent::PermissionModes;
+use crate::agent::driver::reviewed_permission_option;
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
 use axum::Json;
@@ -126,11 +127,29 @@ pub(super) async fn agent_permissions(
         .as_deref()
         .map(str::trim)
         .filter(|model| !model.is_empty());
-    driver
+    let mut modes = driver
         .permission_modes(&cwd, model)
         .await
-        .map(Json)
-        .map_err(ApiError::from)
+        .map_err(ApiError::from)?;
+    offer_reviewed_mode(&mut modes, state.task_runtime.reviewer_available());
+    Ok(Json(modes))
+}
+
+/// Add the one mode Caffold answers under to the list the agent answered.
+///
+/// It goes before the first mode that gives up a protection, because the modes
+/// that keep one read together and the dangerous ones belong at the end of any
+/// list. Where exactly it sits among the safe ones is not something the agent
+/// can be asked, since it is not the agent's mode.
+fn offer_reviewed_mode(modes: &mut PermissionModes, available: bool) {
+    let at = modes
+        .options
+        .iter()
+        .position(|option| option.dangerous)
+        .unwrap_or(modes.options.len());
+    modes
+        .options
+        .insert(at, reviewed_permission_option(available));
 }
 
 fn extend(models: &mut Vec<AgentModel>, provider: TaskProvider, offered: Vec<ModelOption>) {
@@ -142,6 +161,91 @@ fn extend(models: &mut Vec<AgentModel>, provider: TaskProvider, offered: Vec<Mod
 
 #[cfg(test)]
 mod tests {
+    use crate::agent::driver::{PermissionModeOption, REVIEWED_PERMISSION_MODE};
+
+    fn mode(name: &str, dangerous: bool) -> PermissionModeOption {
+        PermissionModeOption {
+            mode: name.to_string(),
+            label: name.to_string(),
+            description: String::new(),
+            allowed: true,
+            unavailable_reason: None,
+            dangerous,
+        }
+    }
+
+    fn offered(options: Vec<PermissionModeOption>, available: bool) -> Vec<(String, bool)> {
+        let mut modes = PermissionModes {
+            default_mode: "default".to_string(),
+            options,
+            fixed_when_conversation_starts: false,
+        };
+        offer_reviewed_mode(&mut modes, available);
+        modes
+            .options
+            .into_iter()
+            .map(|option| (option.mode, option.allowed))
+            .collect()
+    }
+
+    #[test]
+    fn the_reviewed_mode_sits_with_the_modes_that_keep_a_protection() {
+        assert_eq!(
+            offered(
+                vec![
+                    mode("default", false),
+                    mode("acceptEdits", false),
+                    mode("bypassPermissions", true)
+                ],
+                true,
+            ),
+            vec![
+                ("default".to_string(), true),
+                ("acceptEdits".to_string(), true),
+                (REVIEWED_PERMISSION_MODE.to_string(), true),
+                ("bypassPermissions".to_string(), true),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_list_without_a_dangerous_mode_still_offers_it() {
+        assert_eq!(
+            offered(vec![mode("ask", false)], true),
+            vec![
+                ("ask".to_string(), true),
+                (REVIEWED_PERMISSION_MODE.to_string(), true),
+            ]
+        );
+    }
+
+    #[test]
+    fn nothing_configured_leaves_it_visible_but_withheld_with_a_reason() {
+        let mut modes = PermissionModes {
+            default_mode: "ask".to_string(),
+            options: vec![mode("ask", false)],
+            fixed_when_conversation_starts: false,
+        };
+
+        offer_reviewed_mode(&mut modes, false);
+
+        let reviewed = modes
+            .options
+            .iter()
+            .find(|option| option.mode == REVIEWED_PERMISSION_MODE)
+            .expect("the mode is offered even with nothing configured");
+        assert!(!reviewed.allowed);
+        assert!(
+            reviewed
+                .unavailable_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("Jev Permissions")),
+            "{:?}",
+            reviewed.unavailable_reason
+        );
+        assert!(!reviewed.dangerous);
+    }
+
     use crate::agent::codex::CodexThreadClient;
     use crate::agent::codex::CodexThreadError;
     use crate::agent::codex::MockCodexResponse;
@@ -235,8 +339,10 @@ mod tests {
             !response.fixed_when_conversation_starts,
             "this agent can still change the mode between turns"
         );
-        // Two choices share the workspace profile and differ by who reviews, so
-        // the third is the only one a forbidden profile can withhold.
+        // Three choices share the workspace profile and differ by who reviews —
+        // a person, Codex, then Caffold — so full access is the only one a
+        // forbidden profile can withhold. Nothing is configured for Caffold's
+        // reviewer in this test, so its mode is offered and withheld.
         assert_eq!(
             response
                 .options
@@ -246,6 +352,7 @@ mod tests {
             vec![
                 ("askForApproval", true, false),
                 ("approveForMe", true, false),
+                (REVIEWED_PERMISSION_MODE, false, false),
                 ("fullAccess", false, true),
             ]
         );

@@ -9,6 +9,7 @@ use super::{
 };
 use crate::agent::AgentError;
 use crate::agent::codex::{CodexThreadClient, CodexThreadError};
+use crate::agent::driver::REVIEWED_PERMISSION_MODE;
 use crate::agent::{TurnOptions, TurnRejected};
 use crate::app::error::ApiError;
 use crate::app::tasks::lifecycle::CreateTask;
@@ -27,6 +28,7 @@ use crate::task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState};
 use axum::Json;
 use axum::extract::Path as AxumPath;
 use axum::extract::{Query, State};
+use serde::Serialize;
 use std::path::Path;
 
 pub(super) async fn create_task(
@@ -231,6 +233,19 @@ async fn task_prompt_owned(
         steered,
         started_turn,
     } = outcome;
+    // A turn under the reviewed mode keeps what the person's own words
+    // permitted, so a request judged later reads the same latitude they gave
+    // here. The composer says which mode this turn runs under; the Task's last
+    // one answers for a prompt that named none.
+    if requested_permission_mode
+        .as_deref()
+        .or(managed.permission_mode.as_deref())
+        == Some(REVIEWED_PERMISSION_MODE)
+    {
+        state
+            .task_runtime
+            .remember_permission_instruction(&thread_id, &prompt, prompt_observed_ms);
+    }
     let session_revision = if let Some((turn, applied_options)) = started_turn {
         let revision = state
             .task_sessions
@@ -405,6 +420,52 @@ pub(super) async fn task_interrupt(
             })
             .collect(),
     }))
+}
+
+/// What this Task's own prompts have permitted, for a person to read.
+pub(super) async fn task_permission_instructions(
+    State(state): State<TaskState>,
+    AxumPath(thread_id): AxumPath<String>,
+) -> Result<Json<TaskPermissionInstructionsResponse>, ApiError> {
+    if task_store_get(&state, &thread_id).await?.is_none() {
+        return Err(task_not_managed_error());
+    }
+    let store = state.task_store.clone();
+    let wanted = thread_id.clone();
+    let instructions = tokio::task::spawn_blocking(move || store.permission_instructions(&wanted))
+        .await
+        .map_err(|error| ApiError::Internal(format!("task store worker failed: {error}")))?
+        .map_err(|error| ApiError::Internal(error.to_string()))?;
+    Ok(Json(TaskPermissionInstructionsResponse { instructions }))
+}
+
+/// Forget what this Task's prompts permitted.
+///
+/// There is nothing to undo afterwards: the record is only ever rebuilt from
+/// what a person says next.
+pub(super) async fn task_forget_permission_instructions(
+    State(state): State<TaskState>,
+    AxumPath(thread_id): AxumPath<String>,
+) -> Result<Json<TaskPermissionInstructionsResponse>, ApiError> {
+    if task_store_get(&state, &thread_id).await?.is_none() {
+        return Err(task_not_managed_error());
+    }
+    let store = state.task_store.clone();
+    let wanted = thread_id.clone();
+    tokio::task::spawn_blocking(move || store.clear_permission_instructions(&wanted))
+        .await
+        .map_err(|error| ApiError::Internal(format!("task store worker failed: {error}")))?
+        .map_err(|error| ApiError::Internal(error.to_string()))?;
+    Ok(Json(TaskPermissionInstructionsResponse {
+        instructions: None,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct TaskPermissionInstructionsResponse {
+    /// Every entry in one block, oldest first, or nothing kept yet.
+    instructions: Option<String>,
 }
 
 pub(super) async fn task_approval(
@@ -3163,7 +3224,9 @@ mod grok_tests {
                 .iter()
                 .map(|option| option["mode"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            ["ask", "autoMode", "yoloMode"]
+            // Grok's own three, with Caffold's reviewed mode among the ones
+            // that keep a protection.
+            ["ask", "autoMode", "caffold:ask-jev-first", "yoloMode"]
         );
         assert_eq!(modes["fixedWhenConversationStarts"], true);
 

@@ -1266,6 +1266,7 @@ mod tests {
                 grok: agent::grok::GrokClient::unreachable(),
                 codex_mcp: None,
             },
+            None,
         )
         .unwrap();
         let app = router().with_state(state);

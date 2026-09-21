@@ -13,6 +13,7 @@ use crate::{
     agent::codex::{CodexMcpBindings, CodexThreadClient, CodexThreadError},
     agent::grok::GrokClient,
     agent::{Driver, TokenUsage},
+    app::jev::PermissionReviewer,
     app::tasks::sessions::{SessionSnapshot, TaskSessions},
     task_store::{ManagedThread, RunBy, TaskStore},
 };
@@ -25,6 +26,20 @@ mod server_requests;
 
 use process::CodexProcess;
 use server_requests::PendingApproval;
+
+/// One kept instruction, as it is stored and read.
+///
+/// The time is for the person who opens the record; the order is the order of
+/// the lines, because reading two dates and deciding which came later is the
+/// one thing the reviewer is documented to be bad at.
+fn permission_instruction_entry(recorded_ms: u64, prompt: &str) -> String {
+    let when = i64::try_from(recorded_ms)
+        .ok()
+        .and_then(chrono::DateTime::from_timestamp_millis)
+        .map(|when| when.format("%Y-%m-%d %H:%M UTC").to_string())
+        .unwrap_or_else(|| "unknown time".to_string());
+    format!("[{when}]\n{prompt}")
+}
 
 /// Everything a Task is run through, whichever agent runs it.
 ///
@@ -44,6 +59,8 @@ pub(in crate::app::tasks) struct TaskRuntime {
     task_store: TaskStore,
     lifecycle: Option<TaskLifecycle>,
     push: Option<PushService>,
+    /// Who answers a permission request before a person is asked to.
+    permission_reviewer: Option<PermissionReviewer>,
     approvals: Arc<Mutex<HashMap<String, PendingApproval>>>,
     /// Claude sessions waiting to move into their worktree the moment the
     /// turn that asked for the isolation ends: thread id to worktree path.
@@ -196,6 +213,7 @@ impl TaskRuntime {
         Self {
             process: Arc::new(CodexProcess::default()),
             codex_mcp: None,
+            permission_reviewer: None,
             claude,
             grok,
             sessions,
@@ -245,6 +263,62 @@ impl TaskRuntime {
     pub(in crate::app::tasks) fn with_push_service(mut self, push: PushService) -> Self {
         self.push = Some(push);
         self
+    }
+
+    /// Begin answering permission requests the person's rules clearly cover.
+    ///
+    /// A runtime without this reviewer asks a person about everything its
+    /// agents ask about, which is what every Task does unless its composer
+    /// says otherwise.
+    pub(in crate::app::tasks) fn with_permission_reviewer(
+        mut self,
+        reviewer: PermissionReviewer,
+    ) -> Self {
+        self.permission_reviewer = Some(reviewer);
+        self
+    }
+
+    /// Whether choosing the reviewed mode would do anything here.
+    ///
+    /// A key is the whole requirement, so without one the mode is offered but
+    /// withheld. Rules are added on top of a judgement that stands without them.
+    pub(in crate::app::tasks) fn reviewer_available(&self) -> bool {
+        self.permission_reviewer
+            .as_ref()
+            .is_some_and(PermissionReviewer::available)
+    }
+
+    /// Keep what a person's own prompt permitted for this Task.
+    ///
+    /// It runs beside the turn rather than in front of it. The reviewer answers
+    /// in far less time than an agent takes to reach its first permission
+    /// request, and a request that does get ahead of it is simply one the
+    /// person answers. Under any other mode the prompt is never sent anywhere.
+    pub(in crate::app::tasks) fn remember_permission_instruction(
+        &self,
+        thread_id: &str,
+        prompt: &str,
+        recorded_ms: u64,
+    ) {
+        let Some(reviewer) = self.permission_reviewer.clone() else {
+            return;
+        };
+        let thread_id = thread_id.to_string();
+        let prompt = prompt.to_string();
+        let task_store = self.task_store.clone();
+        tokio::spawn(async move {
+            if !reviewer.is_permission_instruction(&prompt).await {
+                return;
+            }
+            let entry = permission_instruction_entry(recorded_ms, &prompt);
+            let kept = tokio::task::spawn_blocking(move || {
+                task_store.append_permission_instructions(&thread_id, &entry)
+            })
+            .await;
+            if let Ok(Err(error)) = kept {
+                eprintln!("A Task's permission instructions could not be kept: {error}");
+            }
+        });
     }
 
     pub(in crate::app::tasks) fn subscribe(&self) -> broadcast::Receiver<TaskRuntimeSignal> {
@@ -354,6 +428,24 @@ impl TaskRuntime {
 
 #[cfg(test)]
 mod tests {
+    use super::permission_instruction_entry;
+
+    #[test]
+    fn a_kept_instruction_reads_as_a_time_and_then_the_person_s_own_words() {
+        let entry = permission_instruction_entry(1_750_000_000_000, "target 밑은 지워도 돼");
+
+        let (when, said) = entry.split_once('\n').expect("a time line and the message");
+        assert!(when.starts_with('[') && when.ends_with("UTC]"), "{when}");
+        assert_eq!(said, "target 밑은 지워도 돼");
+    }
+
+    #[test]
+    fn an_unreadable_time_still_keeps_what_was_said() {
+        let entry = permission_instruction_entry(u64::MAX, "커밋해도 돼");
+
+        assert_eq!(entry, "[unknown time]\n커밋해도 돼");
+    }
+
     use crate::agent;
     use serde_json::json;
 

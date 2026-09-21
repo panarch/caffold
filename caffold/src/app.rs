@@ -9,6 +9,7 @@ use tokio::{net::TcpListener, sync::broadcast};
 use tracing::info;
 
 mod error;
+mod jev;
 mod live_updates;
 mod notes;
 mod shell;
@@ -56,6 +57,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let workspace_router = workspace::router(fs.clone());
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
     let voice_router = voice::router(&data_dir);
+    let (jev_router, permission_reviewer) = jev::open(&data_dir);
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
     let origin = mcp_origin(addr);
@@ -74,12 +76,14 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         codex_mcp.clone(),
         grok_mcp.clone(),
         watch_hub,
+        permission_reviewer,
     );
     let app = router_with_states(
         shell_router,
         workspace_router,
         tasks.router(),
         voice_router,
+        jev_router,
         tailscale_router,
         codex_mcp.router(),
         grok_mcp.router(),
@@ -133,6 +137,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let workspace_router = workspace::router(fs.clone());
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
     let voice_router = voice::router(&fs.root().join(".caffold-test"));
+    let (jev_router, permission_reviewer) = jev::open(&fs.root().join(".caffold-test"));
     let tailscale_router = tailscale::router(5_178);
     let origin = mcp_origin(SocketAddr::from((Ipv4Addr::LOCALHOST, 5_178)));
     let mcp_signer = McpSessionSigner::memory();
@@ -147,23 +152,27 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         codex_mcp.clone(),
         grok_mcp.clone(),
         watch_hub,
+        permission_reviewer,
     )?;
     Ok(router_with_states(
         shell_router,
         workspace_router,
         tasks.router(),
         voice_router,
+        jev_router,
         tailscale_router,
         codex_mcp.router(),
         grok_mcp.router(),
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn router_with_states(
     shell_router: Router,
     workspace_router: Router,
     tasks_router: Router,
     voice_router: Router,
+    jev_router: Router,
     tailscale_router: Router,
     codex_mcp_router: Router,
     grok_mcp_router: Router,
@@ -172,6 +181,7 @@ fn router_with_states(
         .merge(workspace_router)
         .merge(tasks_router)
         .merge(voice_router)
+        .merge(jev_router)
         .merge(tailscale_router)
         .merge(codex_mcp_router)
         .merge(grok_mcp_router)

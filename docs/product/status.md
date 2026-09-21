@@ -12,6 +12,10 @@ boundaries.
 - **Settings → Voice Input** choice of host-local Whisper, OpenAI, Gemini, or
   Grok for voice transcription, with Whisper model download and deletion and
   write-only API keys;
+- **Settings → Jev Permissions** rules and a write-only API key, and an
+  **Ask Jev first** approval mode in every agent's composer that has Jev answer
+  the permission requests those rules clearly cover and leaves the rest to a
+  person;
 - Tasks backed by Codex, Claude Code, or Grok, with the agent selected by model
   when the Task is created and fixed for the Task's lifetime;
 - native Codex app-server integration, including its persistent daemon and

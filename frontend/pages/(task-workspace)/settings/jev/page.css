@@ -1,0 +1,175 @@
+caffold-settings-jev-page {
+  container: settings-jev / inline-size;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  font-size: var(--interface-font-size);
+  line-height: var(--interface-line-height);
+
+  & .settings-content-scroll {
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    padding-block: var(--settings-content-padding-block);
+    padding-inline: var(--settings-content-padding-inline);
+  }
+
+  & .settings-content-section {
+    display: grid;
+    width: min(100%, var(--settings-content-max-width));
+    min-width: 0;
+    margin: 0 auto;
+  }
+
+  & .settings-content-section > header {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: var(--interface-space-7);
+    padding-bottom: var(--interface-space-6);
+    border-bottom: 1px solid var(--border);
+  }
+
+  & .settings-content-section > header > div {
+    display: grid;
+    gap: var(--interface-space-2);
+    min-width: 0;
+  }
+
+  & p {
+    margin: 0;
+  }
+
+  & .settings-content-section > header p {
+    color: var(--muted);
+    font-size: var(--settings-page-description-size);
+  }
+
+  & button {
+    display: inline-flex;
+    min-height: var(--settings-page-action-size);
+    align-items: center;
+    justify-content: center;
+    padding: 0 var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--settings-small-text-size);
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  & button:hover:not(:disabled),
+  & button:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+    background: var(--control-hover-bg);
+  }
+
+  & button:disabled {
+    color: var(--disabled-text);
+    cursor: default;
+  }
+
+  & .settings-jev-message {
+    margin-top: var(--interface-space-5);
+    padding: var(--interface-space-5) var(--interface-space-6);
+    border-left: 3px solid var(--danger);
+    background: var(--surface-subtle);
+    color: var(--muted);
+    font-size: var(--settings-small-text-size);
+  }
+
+  & caffold-settings-detail-list {
+    margin-top: var(--interface-space-10);
+  }
+
+  & .settings-jev-criteria,
+  & .settings-jev-key {
+    display: grid;
+    gap: var(--interface-space-3);
+    margin-top: var(--interface-space-10);
+    padding-top: var(--interface-space-7);
+    border-top: 1px solid var(--border);
+  }
+
+  & .settings-jev-criteria label,
+  & .settings-jev-key label {
+    font-size: var(--settings-field-label-size);
+    font-weight: 600;
+  }
+
+  & #settings-jev-criteria-note {
+    color: var(--muted);
+    font-size: var(--settings-field-description-size);
+  }
+
+  /* The rules are a page of judgement, so the box holds several lines and
+     grows with what is typed rather than scrolling inside a fixed height. */
+  & .settings-jev-criteria textarea {
+    width: 100%;
+    min-width: 0;
+    field-sizing: content;
+    min-height: calc(var(--interface-line-height) * 8em);
+    max-height: 60vh;
+    padding: var(--interface-space-5) var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: var(--settings-small-text-size);
+    resize: vertical;
+  }
+
+  & .settings-jev-criteria textarea:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+  }
+
+  & .settings-jev-criteria textarea:disabled {
+    color: var(--disabled-text);
+  }
+
+  & .settings-jev-actions,
+  & .settings-jev-key-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--interface-space-4);
+  }
+
+  & .settings-jev-key input {
+    flex: 1 1 16rem;
+    min-width: 0;
+    min-height: var(--settings-page-action-size);
+    padding: 0 var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: var(--settings-small-text-size);
+  }
+
+  & .settings-jev-key input:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+  }
+
+  @container settings-jev (max-width: 520px) {
+    & .settings-content-section > header {
+      align-items: start;
+      flex-direction: column;
+    }
+
+    & .settings-jev-key input {
+      flex-basis: 100%;
+    }
+  }
+}

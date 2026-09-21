@@ -132,6 +132,42 @@ export async function removeVoiceKey(provider) {
   });
 }
 
+export async function getJevSettings() {
+  return requestJson("/api/jev/settings");
+}
+
+export async function saveJevCriteria(criteria) {
+  return requestJson("/api/jev/criteria", {}, {
+    method: "PUT",
+    body: { criteria },
+  });
+}
+
+export async function storeJevKey(key) {
+  return requestJson("/api/jev/key", {}, {
+    method: "PUT",
+    body: { key },
+  });
+}
+
+export async function removeJevKey() {
+  return requestJson("/api/jev/key", {}, { method: "DELETE" });
+}
+
+export async function getTaskPermissionInstructions(threadId) {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(threadId)}/permission-instructions`,
+  );
+}
+
+export async function forgetTaskPermissionInstructions(threadId) {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(threadId)}/permission-instructions`,
+    {},
+    { method: "DELETE" },
+  );
+}
+
 export async function transcribeVoice(recording, signal) {
   return requestJson("/api/voice/transcribe", {}, {
     method: "POST",

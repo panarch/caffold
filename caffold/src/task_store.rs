@@ -725,6 +725,49 @@ impl TaskStore {
         }
     }
 
+    /// What this Task's own prompts have granted, oldest first.
+    pub(crate) fn permission_instructions(&self, thread_id: &str) -> Result<Option<String>> {
+        match self {
+            Self::Memory(glue) => {
+                managed_thread::permission_instructions(&mut *lock_glue(glue)?, thread_id)
+            }
+            Self::Redb(glue) => {
+                managed_thread::permission_instructions(&mut *lock_glue(glue)?, thread_id)
+            }
+        }
+    }
+
+    /// Adds one entry to the end, returning what the Task now carries.
+    pub(crate) fn append_permission_instructions(
+        &self,
+        thread_id: &str,
+        entry: &str,
+    ) -> Result<Option<String>> {
+        match self {
+            Self::Memory(glue) => managed_thread::append_permission_instructions(
+                &mut *lock_glue(glue)?,
+                thread_id,
+                entry,
+            ),
+            Self::Redb(glue) => managed_thread::append_permission_instructions(
+                &mut *lock_glue(glue)?,
+                thread_id,
+                entry,
+            ),
+        }
+    }
+
+    pub(crate) fn clear_permission_instructions(&self, thread_id: &str) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => {
+                managed_thread::clear_permission_instructions(&mut *lock_glue(glue)?, thread_id)
+            }
+            Self::Redb(glue) => {
+                managed_thread::clear_permission_instructions(&mut *lock_glue(glue)?, thread_id)
+            }
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn update_composer_settings(
         &self,

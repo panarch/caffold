@@ -252,6 +252,7 @@ function renderApprovalDetails(payload) {
       : "",
     renderPermissionRows(payload.permissions),
     renderApprovalContext(payload),
+    renderReviewerAnswer(payload.reviewed),
   ];
   return sections.filter(Boolean).join("");
 }
@@ -298,6 +299,30 @@ function renderApprovalContext(payload) {
     .filter(([, value]) => `${value ?? ""}`.trim())
     .map(([label, value]) => ({ label, value: `${value}`, code: true }));
   return rows.length ? renderApprovalDefinitionList(rows, "Request context") : "";
+}
+
+/**
+ * What Caffold's reviewer said about a request it did not answer.
+ *
+ * Only an answer that stood in for a person leaves the conversation without a
+ * card, so every card that names one names an answer that fell short. Seeing
+ * how far short is the only way to tell rules that nearly covered a request
+ * from rules that said nothing about it.
+ */
+function renderReviewerAnswer(reviewed) {
+  if (!reviewed || typeof reviewed.confidence !== "number") {
+    return "";
+  }
+  return renderApprovalDefinitionList(
+    [
+      {
+        label: "Jev",
+        value: `${Math.round(reviewed.confidence * 100)}% sure this was allowed`,
+      },
+      { label: "Model", value: `${reviewed.model ?? ""}`, code: true },
+    ].filter((row) => row.value),
+    "Reviewer answer",
+  );
 }
 
 function renderApprovalDefinitionList(rows, label) {

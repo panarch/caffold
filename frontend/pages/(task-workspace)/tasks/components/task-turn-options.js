@@ -47,6 +47,10 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       this.addEventListener("beforetoggle", this.boundBeforeToggle, true);
       this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
       window.addEventListener("caffold:icons-ready", this.boundIconsReady);
+      window.addEventListener(
+        "caffold:jev-settings-changed",
+        this.boundReviewerChanged,
+      );
     }
     this.ensureRendered();
     void this.loadModels();
@@ -64,6 +68,10 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.removeEventListener("beforetoggle", this.boundBeforeToggle, true);
     this.removeEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    window.removeEventListener(
+      "caffold:jev-settings-changed",
+      this.boundReviewerChanged,
+    );
     // A list still on its way is asked for again when the control returns.
     this.modelRequestId += 1;
     this.permissionRequestId += 1;
@@ -114,6 +122,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.boundBeforeToggle = (event) => this.handleBeforeToggle(event);
     this.boundDismiss = (event) => this.handleDismiss(event);
     this.boundIconsReady = () => this.render();
+    this.boundReviewerChanged = () => this.forgetPermissionList();
     warmIcons();
   }
 
@@ -336,9 +345,22 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     }
   }
 
+  // A mode can stop being withheld without the choice changing, because what
+  // Caffold's own reviewer needs is configured elsewhere. Forgetting the
+  // answered list is what asks again; keeping it would go on passing over a
+  // mode that is now offered, and drop a person's pick for it.
+  forgetPermissionList() {
+    if (!this.stateReady || !this.permissionList) {
+      return;
+    }
+    this.permissionList = null;
+    this.requestPermissionList();
+  }
+
   // At most one permission list is on its way, and it is the one the current
   // choice needs. A list already answered or refused for that choice is not
-  // asked for again; another model, or a reload, asks again.
+  // asked for again; another model, a reload, or a reviewer that became
+  // available asks again.
   requestPermissionList() {
     const target = this.isConnected ? this.permissionTarget() : null;
     const needed =

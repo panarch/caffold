@@ -23,6 +23,7 @@ const ITEMS = [
   { section: "notifications", label: "Notifications", icon: "Bell" },
   { section: "remote-access", label: "Remote Access", icon: "Link" },
   { section: "voice", label: "Voice Input", icon: "Mic" },
+  { section: "jev", label: "Jev Permissions", icon: "ShieldCheck" },
   { section: "codex", label: "Codex", brand: "codex-template@2x.png" },
   { section: "claude", label: "Claude", brand: "claude-template.png" },
   { section: "grok", label: "Grok", brand: "grok-template.png" },

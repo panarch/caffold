@@ -92,6 +92,12 @@ class CaffoldDetailLayout extends HTMLElement {
         void this.taskDetail()?.archiveSelectedTask();
       } else if (event.detail?.type === "fork") {
         void this.taskDetail()?.forkSelectedTask();
+      } else if (event.detail?.type === "permission-instructions") {
+        // Focus returns to the details button, because the popover the action
+        // came from closes as the dialog takes over.
+        this.taskDetail()?.openPermissionInstructions(
+          this.taskSummary()?.querySelector(".task-detail-info-button"),
+        );
       }
     });
     this.addEventListener(

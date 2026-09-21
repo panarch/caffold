@@ -5,6 +5,7 @@ import "./files/page.js";
 import "./notifications/page.js";
 import "./remote-access/page.js";
 import "./voice/page.js";
+import "./jev/page.js";
 import "./codex/page.js";
 import "./claude/page.js";
 import "./grok/page.js";
@@ -28,6 +29,7 @@ const TITLES = {
   notifications: "Notifications",
   "remote-access": "Remote Access",
   voice: "Voice Input",
+  jev: "Jev Permissions",
   codex: "Codex",
   claude: "Claude",
   grok: "Grok",
@@ -52,6 +54,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     this.querySelector("caffold-settings-notifications-page")?.deactivate();
     this.querySelector("caffold-settings-remote-access-page")?.deactivate();
     this.querySelector("caffold-settings-voice-page")?.deactivate();
+    this.querySelector("caffold-settings-jev-page")?.deactivate();
   }
 
   ensureRendered() {
@@ -97,6 +100,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
           <caffold-settings-notifications-page hidden></caffold-settings-notifications-page>
           <caffold-settings-remote-access-page hidden></caffold-settings-remote-access-page>
           <caffold-settings-voice-page hidden></caffold-settings-voice-page>
+          <caffold-settings-jev-page hidden></caffold-settings-jev-page>
           <caffold-settings-codex-page hidden></caffold-settings-codex-page>
           <caffold-settings-claude-page hidden></caffold-settings-claude-page>
           <caffold-settings-grok-page hidden></caffold-settings-grok-page>
@@ -184,6 +188,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       notifications: this.querySelector("caffold-settings-notifications-page"),
       "remote-access": this.querySelector("caffold-settings-remote-access-page"),
       voice: this.querySelector("caffold-settings-voice-page"),
+      jev: this.querySelector("caffold-settings-jev-page"),
       codex: this.querySelector("caffold-settings-codex-page"),
       claude: this.querySelector("caffold-settings-claude-page"),
       grok: this.querySelector("caffold-settings-grok-page"),
@@ -236,6 +241,11 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       pages.voice?.activate();
     } else {
       pages.voice?.deactivate();
+    }
+    if (presentedSection === "jev") {
+      pages.jev?.activate();
+    } else {
+      pages.jev?.deactivate();
     }
     pages.appearance?.prepareRoute?.();
     pages.keyboard?.prepareRoute?.();

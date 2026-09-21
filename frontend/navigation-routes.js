@@ -139,6 +139,17 @@ const ROUTE_DEFINITIONS = [
     parent: () => settingsRoute(),
   }),
   routeDefinition({
+    id: "settings-jev",
+    kind: "settings",
+    pattern: "/settings/jev",
+    surface: "task-workspace",
+    target: "jev",
+    toRoute: () => settingsRoute("jev"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "jev",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
     id: "settings-codex",
     kind: "settings",
     pattern: "/settings/codex",
@@ -805,6 +816,7 @@ function settingsRoute(section = "") {
       "notifications",
       "remote-access",
       "voice",
+      "jev",
       "codex",
       "claude",
       "grok",
