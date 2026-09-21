@@ -80,7 +80,7 @@ test("keeps enabled Fork and Archive actions at their direct owner", () => {
   );
 });
 
-test("offers reading a Task's kept permission instructions only when it kept some", () => {
+test("offers reading what a Task's prompts settled only under the reviewed mode", () => {
   const controls = {
     fork: button("Fork task", "fork"),
     archive: button("Archive task", "archive"),
@@ -91,8 +91,9 @@ test("offers reading a Task's kept permission instructions only when it kept som
   };
   const owner = {
     isConnected: true,
-    snapshot: { task: { threadId: "thread-a" }, hasPermissionInstructions: false },
+    snapshot: { task: { threadId: "thread-a" }, permissionMode: "approveForMe" },
     actionButton: (type) => controls[type],
+    keepsPermissionInstructions: actions.keepsPermissionInstructions,
   };
 
   assert.deepEqual(
@@ -104,7 +105,7 @@ test("offers reading a Task's kept permission instructions only when it kept som
 
   owner.snapshot = {
     ...owner.snapshot,
-    hasPermissionInstructions: true,
+    permissionMode: "caffold:ask-jev-first",
   };
   const offered = actions.actionHintScope.call(owner, { scopeId: "details" });
 
@@ -120,8 +121,24 @@ test("offers reading a Task's kept permission instructions only when it kept som
     ],
   );
   assert.equal(offered.targets[2].isActionable(), true);
-  owner.snapshot = { ...owner.snapshot, hasPermissionInstructions: false };
+  owner.snapshot = { ...owner.snapshot, permissionMode: "approveForMe" };
   assert.equal(offered.targets[2].isActionable(), false);
+});
+
+test("hides what a Task's prompts settled outside the reviewed mode", () => {
+  const action = { hidden: false };
+  const owner = {
+    snapshot: { permissionMode: "approveForMe" },
+    querySelector: () => action,
+    keepsPermissionInstructions: actions.keepsPermissionInstructions,
+  };
+
+  actions.patchPermissionInstructions.call(owner);
+  assert.equal(action.hidden, true);
+
+  owner.snapshot = { permissionMode: "caffold:ask-jev-first" };
+  actions.patchPermissionInstructions.call(owner);
+  assert.equal(action.hidden, false);
 });
 
 test("keeps Archive available through stale transport unless canonical status is active", () => {

@@ -388,6 +388,13 @@ class CaffoldTaskComposer extends HTMLElement {
     this.turnOptions()?.resetOverrides();
   }
 
+  // The approval mode a turn sent from here would run under, for an owner that
+  // presents that posture outside the Composer. Nothing until the agent's own
+  // list of modes has answered.
+  selectedPermissionMode() {
+    return `${this.turnOptions()?.snapshot().permissionMode ?? ""}`;
+  }
+
   hasMeaningfulDraft() {
     this.captureCurrentState();
     const state = this.stateFor();

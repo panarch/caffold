@@ -445,6 +445,7 @@ class CaffoldDetailLayout extends HTMLElement {
       transportState: snapshot.transportState ?? this.streamState ?? "idle",
       contextPath: snapshot.contextPath ?? this.selectedTaskContextPath(),
       provider: snapshot.provider,
+      permissionMode: snapshot.permissionMode,
       archiveState: snapshot.archiveState,
       forkState: snapshot.forkState,
     });

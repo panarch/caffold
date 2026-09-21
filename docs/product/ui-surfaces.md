@@ -125,11 +125,12 @@ Task Detail presents the selected conversation, command requests,
 follow-up Composer, and Task actions. Integrated Review, Git, and GitHub remain
 shared repository surfaces.
 
-Task actions open from the Task details control. A Task that has kept
-permission instructions of its own also offers **What your prompts settled**
-there, which opens a dialog holding those messages oldest first, each under the
-time it was sent in the reader's own time zone, and a **Forget these** action.
-Nothing kept means no such action.
+Task actions open from the Task details control. A Task whose next turn runs
+under Ask Jev first also offers **What your prompts settled** there, which
+opens a dialog holding those messages oldest first, each under the time it was
+sent in the reader's own time zone, and a **Forget these** action. The record
+is read when that dialog opens, and the dialog says so while the Task has kept
+nothing yet.
 
 An idle Codex Task exposes **Fork task** in Task actions. It performs the same
 native fork without an ID lookup, places the child at the source Task's Section

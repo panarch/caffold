@@ -32,6 +32,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       transportState: "idle",
       contextPath: ".",
       provider: "",
+      permissionMode: "",
       archiveState: { loading: false, error: null },
       forkState: { loading: false, error: null },
     };
@@ -51,6 +52,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       transportState: snapshot.transportState ?? "idle",
       contextPath: `${snapshot.contextPath ?? "."}`,
       provider: `${snapshot.provider ?? ""}`,
+      permissionMode: `${snapshot.permissionMode ?? ""}`,
       archiveState: {
         loading: Boolean(snapshot.archiveState?.loading),
         error: snapshot.archiveState?.error ?? null,
@@ -142,6 +144,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       transportState: this.snapshot.transportState,
       contextPath: this.snapshot.contextPath,
       provider: this.snapshot.provider,
+      permissionMode: this.snapshot.permissionMode,
       archiveState: this.snapshot.archiveState,
       forkState: this.snapshot.forkState,
     });

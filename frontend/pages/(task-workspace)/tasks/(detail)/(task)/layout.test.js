@@ -145,3 +145,25 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
     [composerContext, commandContext],
   );
 });
+
+test("publishes the approval mode the follow-up Composer would send", () => {
+  const owner = {
+    selectedThreadId: "thread-a",
+    taskDetail: { provider: "codex", task: { threadId: "thread-a" } },
+    detailSession: { state: "ready" },
+    activeCwdPath: () => "src",
+    archiveStateValue: { loading: false, error: null },
+    forkStateValue: { loading: false, error: null },
+    followUpComposer: () => ({
+      selectedPermissionMode: () => "caffold:ask-jev-first",
+    }),
+  };
+
+  assert.equal(
+    taskDetail.detailSnapshot.call(owner).permissionMode,
+    "caffold:ask-jev-first",
+  );
+
+  owner.followUpComposer = () => null;
+  assert.equal(taskDetail.detailSnapshot.call(owner).permissionMode, "");
+});
