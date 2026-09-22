@@ -2369,7 +2369,8 @@ mod tests {
         let request = next_approval(&mut events).await;
         assert_eq!(request.id, "req-9");
         assert_eq!(request.item_id.as_deref(), Some("toolu_7"));
-        assert_eq!(request.title, "Run rm -rf build");
+        assert_eq!(request.title, "Command approval requested");
+        assert_eq!(request.detail.command.as_deref(), Some("rm -rf build"));
         assert_eq!(request.reason.as_deref(), Some("destructive command"));
         assert!(request.decisions.contains(&ApprovalDecision::AllowAlways));
 

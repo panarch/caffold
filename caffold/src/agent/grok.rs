@@ -2166,6 +2166,8 @@ mod tests {
         assert_eq!(conversation_id, id);
         assert_eq!(request.id, "call-9");
         assert_eq!(request.turn_id.as_deref(), Some(turn.id.as_str()));
+        assert_eq!(request.title, "Command approval requested");
+        assert_eq!(request.reason, None);
         assert_eq!(request.detail.command.as_deref(), Some("rm -rf x"));
         assert_eq!(request.detail.cwd.as_deref(), Some(CWD));
         assert_eq!(

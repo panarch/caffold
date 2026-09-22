@@ -405,14 +405,16 @@ pub(super) fn approval_request(
         decisions.push(ApprovalDecision::Deny);
     }
     let mut detail = ApprovalDetail::default();
+    let mut reason = identity.label.clone();
     let title;
     if identity.name == RUN_TERMINAL_COMMAND
         || call.raw_input.get("variant").and_then(Value::as_str) == Some("Bash")
     {
         let command = string_field(&call.raw_input, "command").unwrap_or_default();
-        title = format!("Run `{command}`");
+        title = "Command approval requested".to_string();
         detail.command = Some(command);
         detail.cwd = cwd.map(str::to_string);
+        reason = None;
     } else if identity.name == USE_TOOL {
         let tool_name =
             string_field(&call.raw_input, "tool_name").unwrap_or_else(|| USE_TOOL.to_string());
@@ -475,7 +477,7 @@ pub(super) fn approval_request(
         turn_id: turn_id.map(str::to_string),
         item_id: Some(call.tool_call_id.clone()),
         title,
-        reason: identity.label.clone(),
+        reason,
         detail,
         decisions,
     }
@@ -644,10 +646,8 @@ mod tests {
             Some(request.tool_call.tool_call_id.as_str())
         );
         assert_eq!(approval.turn_id.as_deref(), Some("prompt-1"));
-        assert_eq!(
-            approval.title,
-            "Run `for i in 1 2 3; do echo tick $i; sleep 1; done`"
-        );
+        assert_eq!(approval.title, "Command approval requested");
+        assert_eq!(approval.reason, None);
         assert_eq!(
             approval.detail.command.as_deref(),
             Some("for i in 1 2 3; do echo tick $i; sleep 1; done")
@@ -678,6 +678,7 @@ mod tests {
         .unwrap();
         let approval = approval_request(&mcp, None, None);
         assert_eq!(approval.title, "Use tool `probe_echo`");
+        assert_eq!(approval.reason.as_deref(), Some("Use Tool"));
         let tool = approval.detail.tool.unwrap();
         assert_eq!(tool.server_name, "caffold-probe");
         assert_eq!(tool.arguments[0].name, "text");
