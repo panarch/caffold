@@ -96,14 +96,11 @@ class CaffoldTaskCreate extends HTMLElement {
     return changed;
   }
 
-  activate({ autofocus = false } = {}) {
+  activate() {
     this.ensureRendered();
     this.hidden = false;
     this.renderStatus();
     this.syncComposer();
-    if (autofocus) {
-      this.composer()?.focus();
-    }
   }
 
   deactivate() {

@@ -18,9 +18,9 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("focuses a new task prompt automatically only on desktop", { tag: "@all-viewports" }, async ({
+test("opens home and New Task without focusing the prompt", { tag: "@all-viewports" }, async ({
   page,
-}, testInfo) => {
+}) => {
   const scenario = await installTaskLoopFixture(page);
   await page.goto("/");
 
@@ -105,11 +105,7 @@ test("focuses a new task prompt automatically only on desktop", { tag: "@all-vie
         guideAlignment.composerBorderRight,
     ),
   ).toBeLessThanOrEqual(0.25);
-  if (testInfo.project.name === "desktop") {
-    await expect(homePrompt).toBeFocused();
-  } else {
-    await expect(homePrompt).not.toBeFocused();
-  }
+  await expect(homePrompt).not.toBeFocused();
 
   await expect(tasksPage.locator(".tasks-header")).toHaveCount(0);
   await expect(tasksPage.locator(".tasks-empty")).toHaveCount(0);
@@ -127,7 +123,6 @@ test("focuses a new task prompt automatically only on desktop", { tag: "@all-vie
   await expect.poll(() => newTaskScroll.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
-  await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("s");
   const scrollHud = page.locator(
     "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
@@ -150,11 +145,6 @@ test("focuses a new task prompt automatically only on desktop", { tag: "@all-vie
     'caffold-tasks-page .task-new-form textarea[name="prompt"]',
   );
   await expect(prompt).toBeVisible();
-  if (testInfo.project.name === "desktop") {
-    await expect(prompt).toBeFocused();
-    return;
-  }
-
   await expect(prompt).not.toBeFocused();
   await prompt.click();
   await expect(prompt).toBeFocused();

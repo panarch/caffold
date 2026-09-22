@@ -7,9 +7,6 @@ import {
 import "./components/directory-picker.js";
 import "../components/task-create.js";
 
-const AUTO_FOCUS_PROMPT_MEDIA =
-  "(hover: hover) and (pointer: fine) and (min-width: 521px)";
-
 class CaffoldTaskNew extends HTMLElement {
   connectedCallback() {
     this.ensureState();
@@ -83,9 +80,7 @@ class CaffoldTaskNew extends HTMLElement {
     this.ensureState();
     this.hidden = false;
     this.syncTaskCreate();
-    this.taskCreate()?.activate({
-      autofocus: window.matchMedia(AUTO_FOCUS_PROMPT_MEDIA).matches,
-    });
+    this.taskCreate()?.activate();
   }
 
   deactivate() {

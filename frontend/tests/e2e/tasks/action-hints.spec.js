@@ -399,9 +399,9 @@ test("keeps badge Tab order and native click, Enter, and Space activation", { ta
   await expect(page).toHaveURL(`/tasks/${tasks[0].threadId}`);
 });
 
-test("activates New Task through its existing route and autofocus policy", { tag: "@all-viewports" }, async ({
+test("keeps keyboard navigation available after opening New Task", { tag: "@all-viewports" }, async ({
   page,
-}, testInfo) => {
+}) => {
   await installActionHintFixture(page, actionHintTasks(2));
   await page.goto("/tasks");
 
@@ -413,11 +413,14 @@ test("activates New Task through its existing route and autofocus policy", { tag
     'caffold-task-new textarea[name="prompt"]',
   );
   await expect(prompt).toBeVisible();
-  if (testInfo.project.name === "desktop") {
-    await expect(prompt).toBeFocused();
-  } else {
-    await expect(prompt).not.toBeFocused();
-  }
+  await expect(prompt).not.toBeFocused();
+
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeVisible();
+  await page.keyboard.press("p");
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(prompt).toBeFocused();
+  await expect(prompt).toHaveValue("");
 });
 
 test("does not enter while a Task route is still loading", { tag: "@desktop" }, async ({
