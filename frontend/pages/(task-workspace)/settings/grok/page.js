@@ -11,10 +11,13 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../../../action-hints.js";
+import { serviceStatusTargets } from "../service-status.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../../../../scroll-scope.js";
+
+const GROK_SERVICE_STATUS_URL = "https://status.x.ai";
 
 // Every block asks the same questions of every installation, so its rows
 // stand from the first paint and only their values arrive later.
@@ -92,13 +95,22 @@ class CaffoldSettingsGrokPage extends HTMLElement {
     if (this.hidden || !scrollport) {
       return emptyActionHintScope();
     }
+    const targetClipRoots = [this, scrollport, ...clipRoots].filter(Boolean);
     return mergeActionHintScopes(
       this.refreshButton.actionHintScope({
         scopeId,
-        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        clipRoots: targetClipRoots,
         isCurrent: () => this.isConnected && !this.hidden && isCurrent(),
       }),
-      { mutationRoots: [this], scrollRoots: [scrollport] },
+      {
+        targets: serviceStatusTargets(this, {
+          scopeId,
+          clipRoots: targetClipRoots,
+          isCurrent,
+        }),
+        mutationRoots: [this],
+        scrollRoots: [scrollport],
+      },
     );
   }
 
@@ -141,7 +153,10 @@ class CaffoldSettingsGrokPage extends HTMLElement {
         <div class="settings-content-scroll">
           <div class="settings-content-section">
             <header>
-              <p>The Grok CLI installation this server drives.</p>
+              <div>
+                <p>The Grok CLI installation this server drives.</p>
+                <a class="settings-service-status" href="${GROK_SERVICE_STATUS_URL}" target="_blank" rel="noreferrer">Service status</a>
+              </div>
               <caffold-settings-refresh-button></caffold-settings-refresh-button>
             </header>
             <section aria-labelledby="settings-grok-usage-title">

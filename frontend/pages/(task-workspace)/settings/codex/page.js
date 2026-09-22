@@ -28,8 +28,10 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../../../../scroll-scope.js";
+import { serviceStatusTargets } from "../service-status.js";
 
 const CODEX_INSTALL_COMMAND = "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
+const CODEX_SERVICE_STATUS_URL = "https://status.openai.com";
 const CODEX_SETUP_GUIDE = "https://learn.chatgpt.com/docs/codex/cli";
 const CONNECTION_PRESENTATION = Object.freeze({
   pending: Object.freeze({ label: "Checking", state: "" }),
@@ -202,35 +204,43 @@ class CaffoldSettingsCodexPage extends HTMLElement {
         selector: 'button[data-action="open-codex-update"]',
       },
     ];
-    const targets = definitions.flatMap(({ id, selector }) => {
-      const control = this.querySelector(selector);
-      if (
-        !control ||
-        control.disabled ||
-        control.hidden ||
-        !hasActionHintLayoutBox(control)
-      ) {
-        return [];
-      }
-      return [buttonActionHintTarget({
-        invalidationOwner: this,
-        id: `${scopeId}:${id}`,
-        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-        label: control.getAttribute("aria-label") ||
-          control.textContent?.trim() ||
-          id,
-        control,
-        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-        isActionable: () =>
-          this.isConnected &&
-          !this.hidden &&
-          isCurrent() &&
-          this.querySelector(selector) === control &&
-          !control.disabled &&
-          !control.hidden &&
-          hasActionHintLayoutBox(control),
-      })];
-    });
+    const targetClipRoots = [this, scrollport, ...clipRoots].filter(Boolean);
+    const targets = [
+      ...serviceStatusTargets(this, {
+        scopeId,
+        clipRoots: targetClipRoots,
+        isCurrent,
+      }),
+      ...definitions.flatMap(({ id, selector }) => {
+        const control = this.querySelector(selector);
+        if (
+          !control ||
+          control.disabled ||
+          control.hidden ||
+          !hasActionHintLayoutBox(control)
+        ) {
+          return [];
+        }
+        return [buttonActionHintTarget({
+          invalidationOwner: this,
+          id: `${scopeId}:${id}`,
+          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          label: control.getAttribute("aria-label") ||
+            control.textContent?.trim() ||
+            id,
+          control,
+          clipRoots: targetClipRoots,
+          isActionable: () =>
+            this.isConnected &&
+            !this.hidden &&
+            isCurrent() &&
+            this.querySelector(selector) === control &&
+            !control.disabled &&
+            !control.hidden &&
+            hasActionHintLayoutBox(control),
+        })];
+      }),
+    ];
     const guide = this.querySelector(
       '.settings-codex-repair a[href]',
     );
@@ -245,7 +255,7 @@ class CaffoldSettingsCodexPage extends HTMLElement {
         actionId: ACTION_HINT_ACTION.LINK_OPEN,
         label: "Open Official Codex CLI guide in a new tab",
         control: guide,
-        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        clipRoots: targetClipRoots,
         isActionable: () =>
           this.isConnected &&
           !this.hidden &&
@@ -258,7 +268,7 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     return mergeActionHintScopes(
       this.refreshButton.actionHintScope({
         scopeId,
-        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        clipRoots: targetClipRoots,
         isCurrent: () => this.isConnected && !this.hidden && isCurrent(),
       }),
       {
@@ -309,7 +319,10 @@ class CaffoldSettingsCodexPage extends HTMLElement {
         <div class="settings-content-scroll">
           <div class="settings-content-section">
             <header>
-              <p>Connection, account, plan, and local app-server usage.</p>
+              <div>
+                <p>Connection, account, plan, and local app-server usage.</p>
+                <a class="settings-service-status" href="${CODEX_SERVICE_STATUS_URL}" target="_blank" rel="noreferrer">Service status</a>
+              </div>
               <caffold-settings-refresh-button></caffold-settings-refresh-button>
             </header>
             <section class="settings-codex-repair" aria-labelledby="settings-codex-repair-title" hidden>

@@ -32,11 +32,27 @@ caffold-settings-grok-page {
     padding-bottom: var(--interface-space-6);
   }
 
+  & .settings-content-section > header > div {
+    display: grid;
+    gap: var(--interface-space-2);
+    min-width: 0;
+  }
+
   & .settings-content-section > header p {
     margin: 0;
     color: var(--muted);
     font-size: var(--settings-page-description-size);
     line-height: var(--interface-line-height);
+  }
+
+  & .settings-service-status {
+    width: fit-content;
+    max-width: 100%;
+    color: var(--muted);
+    font-size: var(--settings-page-description-size);
+    line-height: var(--interface-line-height);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
   }
 
   & .settings-content-section > section {

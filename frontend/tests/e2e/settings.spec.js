@@ -1734,6 +1734,69 @@ test("puts Usage first on the Codex, Claude, and Grok Settings pages", { tag: "@
   }
 });
 
+test("keeps Service status with the page description", { tag: "@all-viewports" }, async ({
+  context,
+  page,
+}) => {
+  const pages = [
+    ["claude", "https://status.claude.com"],
+    ["codex", "https://status.openai.com"],
+    ["grok", "https://status.x.ai"],
+  ];
+  for (const [, url] of pages) {
+    await context.route(url, (route) => route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>Service status</title>",
+    }));
+  }
+
+  for (const [name, url] of pages) {
+    await page.goto(`/settings/${name}`);
+    const settings = page.locator(`caffold-settings-${name}-page`);
+    const link = settings.getByRole("link", { name: "Service status", exact: true });
+    await expect(link).toHaveAttribute("href", url);
+    await expect(link).toHaveAttribute("target", "_blank");
+    await expect(link).toHaveAttribute("rel", "noreferrer");
+    const layout = await settings.locator(".settings-content-section > header").evaluate((header) => {
+      const box = (element) => {
+        const rect = element.getBoundingClientRect();
+        return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
+      };
+      const description = header.querySelector("p");
+      const link = header.querySelector("a.settings-service-status");
+      const descriptionStyle = getComputedStyle(description);
+      const linkStyle = getComputedStyle(link);
+      return {
+        description: box(description),
+        link: box(link),
+        text: box(header.querySelector(":scope > div")),
+        refresh: box(header.querySelector("caffold-settings-refresh-button")),
+        descriptionColor: descriptionStyle.color,
+        linkColor: linkStyle.color,
+        linkDecoration: linkStyle.textDecorationLine,
+      };
+    });
+    expect(layout.link.top).toBeGreaterThanOrEqual(layout.description.bottom - 1);
+    expect(Math.abs(layout.link.left - layout.description.left)).toBeLessThanOrEqual(1);
+    expect(layout.linkColor).toBe(layout.descriptionColor);
+    expect(layout.linkDecoration).toBe("underline");
+    const stacked = layout.refresh.top >= layout.link.bottom - 1;
+    if (stacked) {
+      expect(Math.abs(layout.refresh.left - layout.description.left)).toBeLessThanOrEqual(1);
+    } else {
+      expect(layout.refresh.left).toBeGreaterThan(layout.text.right - 1);
+      expect(Math.abs(layout.refresh.bottom - layout.text.bottom)).toBeLessThanOrEqual(1);
+    }
+
+    await revealActionTarget(page, link);
+    const popupPromise = page.waitForEvent("popup");
+    await activateActionHint(page, /Open Service status in a new tab$/);
+    const popup = await popupPromise;
+    await expect(popup).toHaveURL(url);
+    await popup.close();
+  }
+});
+
 test("puts the Codex repair section above Usage while Codex needs action", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
