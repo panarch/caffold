@@ -659,7 +659,7 @@ fn approval_request(frame: &ControlRequestFrame, turn_id: Option<String>) -> App
         .and_then(Value::as_str)
         .map(str::to_string);
     let title = match (&command, &path) {
-        (Some(command), _) => format!("Run {command}"),
+        (Some(_), _) => "Command approval requested".to_string(),
         (None, Some(path)) => format!("Edit {path}"),
         (None, None) if tool.is_empty() => "Run a tool".to_string(),
         (None, None) => format!("Use {tool}"),
