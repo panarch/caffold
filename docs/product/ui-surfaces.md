@@ -358,8 +358,12 @@ revalidates them. The surface does not administer accounts, tailnet membership,
 ACLs, arbitrary targets, or Funnel.
 
 Codex, Claude, and Grok Settings each open with plan usage, directly below the
-page description and **Refresh**. While Codex readiness reports a state other
-than `ready`, its repair guidance sits above usage.
+page header. The header holds the page description, a **Service status** link,
+and **Refresh**. **Service status** opens that provider's status page in a new
+tab: Claude at <https://status.claude.com>, Codex at <https://status.openai.com>,
+and Grok at <https://status.x.ai>. On a narrow settings pane the description and
+link stay together and **Refresh** moves below them. While Codex readiness
+reports a state other than `ready`, its repair guidance sits above usage.
 
 Tasks and Codex Settings present the same backend readiness and restart
 outcome. Codex Settings keeps manual restart available for `ready` and

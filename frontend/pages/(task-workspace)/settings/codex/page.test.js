@@ -22,9 +22,9 @@ function button(label) {
   };
 }
 
-function link(label) {
+function link(label, href) {
   const attributes = new Map([
-    ["href", "https://learn.chatgpt.com/docs/codex/cli"],
+    ["href", href],
     ["target", "_blank"],
     ["rel", "noreferrer"],
   ]);
@@ -48,12 +48,14 @@ test("provides current Codex actions and its exact scrollport", () => {
   const copy = button("Copy command");
   const restart = button("Restart runtime");
   const update = button("Update Codex…");
-  const guide = link("Official Codex CLI guide");
+  const guide = link("Official Codex CLI guide", "https://learn.chatgpt.com/docs/codex/cli");
+  const status = link("Service status", "https://status.openai.com");
   const controls = new Map([
     ['button[data-action="copy-codex-install"]', copy],
     ['button[data-action="open-codex-restart"]', restart],
     ['button[data-action="open-codex-update"]', update],
     ['.settings-codex-repair a[href]', guide],
+    ["a.settings-service-status", status],
   ]);
   const owner = {
     hidden: false,
@@ -74,18 +76,22 @@ test("provides current Codex actions and its exact scrollport", () => {
   const scope = codex.actionHintScope.call(owner);
   assert.deepEqual(scope.targets.map(({ id }) => id), [
     "settings:codex:refresh",
+    "settings:codex:service-status",
     "settings:codex:copy-install-command",
     "settings:codex:restart-runtime",
     "settings:codex:update-runtime",
     "settings:codex:official-guide",
   ]);
+  assert.equal(scope.targets[1].label, "Open Service status in a new tab");
   assert.deepEqual(refreshRequests[0].clipRoots, [owner, scrollport]);
   assert.equal(refreshRequests[0].isCurrent(), true);
   assert.equal(codex.scrollSurfaceScope.call(owner).surfaces[0].scrollport, scrollport);
   copy.disabled = true;
-  assert.equal(scope.targets[1].isActionable(), false);
+  assert.equal(scope.targets[2].isActionable(), false);
   update.disabled = true;
-  assert.equal(scope.targets[3].isActionable(), false);
+  assert.equal(scope.targets[4].isActionable(), false);
+  status.hidden = true;
+  assert.equal(scope.targets[1].isActionable(), false);
   guide.hidden = true;
   assert.equal(scope.targets.at(-1).isActionable(), false);
   owner.hidden = true;

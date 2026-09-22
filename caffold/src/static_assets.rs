@@ -277,6 +277,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/navigator.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/navigator.js"
         ))),
+        "pages/(task-workspace)/settings/service-status.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/service-status.js"
+        ))),
         "pages/(task-workspace)/settings/components/detail-list.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/components/detail-list.css"
         ))),
@@ -1437,6 +1440,7 @@ mod tests {
             "pages/(task-workspace)/notes/tree.js",
             "pages/(task-workspace)/settings/layout.js",
             "pages/(task-workspace)/settings/navigator.js",
+            "pages/(task-workspace)/settings/service-status.js",
             "pages/(task-workspace)/settings/keyboard/page.js",
             "pages/(task-workspace)/settings/files/page.js",
             "pages/(task-workspace)/settings/notifications/page.js",

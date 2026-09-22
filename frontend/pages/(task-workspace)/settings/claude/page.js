@@ -17,9 +17,12 @@ import {
   usageWindowLabel,
   usageWindowValue,
 } from "./display.js";
+import { serviceStatusTargets } from "../service-status.js";
 
 export const CLAUDE_RUNTIME_RESTART_REQUEST_EVENT =
   "caffold:request-claude-runtime-restart";
+
+const CLAUDE_SERVICE_STATUS_URL = "https://status.claude.com";
 
 // The agent block asks the same four questions of every installation, so its
 // rows stand from the first paint and only their values arrive later.
@@ -116,6 +119,31 @@ class CaffoldSettingsClaudePage extends HTMLElement {
       !control.disabled &&
       !control.hidden &&
       hasActionHintLayoutBox(control);
+    const targets = serviceStatusTargets(this, {
+      scopeId,
+      clipRoots: targetClipRoots,
+      isCurrent,
+    });
+    if (restartActionable) {
+      targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:restart-runtime`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.textContent?.trim() ||
+          "Restart runtime",
+        control,
+        clipRoots: targetClipRoots,
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(selector) === control &&
+          !control.disabled &&
+          !control.hidden &&
+          hasActionHintLayoutBox(control),
+      }));
+    }
     return mergeActionHintScopes(
       this.refreshButton.actionHintScope({
         scopeId,
@@ -124,26 +152,7 @@ class CaffoldSettingsClaudePage extends HTMLElement {
       }),
       {
         blocked: false,
-        targets: restartActionable
-          ? [buttonActionHintTarget({
-            invalidationOwner: this,
-            id: `${scopeId}:restart-runtime`,
-            actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-            label: control.getAttribute("aria-label") ||
-              control.textContent?.trim() ||
-              "Restart runtime",
-            control,
-            clipRoots: targetClipRoots,
-            isActionable: () =>
-              this.isConnected &&
-              !this.hidden &&
-              isCurrent() &&
-              this.querySelector(selector) === control &&
-              !control.disabled &&
-              !control.hidden &&
-              hasActionHintLayoutBox(control),
-          })]
-          : [],
+        targets,
         mutationRoots: [this],
         scrollRoots: [scrollport],
       },
@@ -189,7 +198,10 @@ class CaffoldSettingsClaudePage extends HTMLElement {
         <div class="settings-content-scroll">
           <div class="settings-content-section">
             <header>
-              <p>The Claude Code installation this server drives.</p>
+              <div>
+                <p>The Claude Code installation this server drives.</p>
+                <a class="settings-service-status" href="${CLAUDE_SERVICE_STATUS_URL}" target="_blank" rel="noreferrer">Service status</a>
+              </div>
               <caffold-settings-refresh-button></caffold-settings-refresh-button>
             </header>
             <section aria-labelledby="settings-claude-usage-title">

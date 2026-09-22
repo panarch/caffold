@@ -10,6 +10,22 @@ await import("./page.js");
 const grok = registry.element("caffold-settings-grok-page").prototype;
 after(() => registry.restore());
 
+function statusLink() {
+  const attributes = new Map([
+    ["href", "https://status.x.ai"],
+    ["target", "_blank"],
+    ["rel", "noreferrer"],
+  ]);
+  return {
+    hidden: false,
+    textContent: "Service status",
+    getAttribute: (name) => attributes.get(name) ?? null,
+    getClientRects: () => [{}],
+    focus() {},
+    click() {},
+  };
+}
+
 test("provides the refresh action and its exact scrollport", () => {
   const scrollport = {
     clientHeight: 100,
@@ -17,6 +33,7 @@ test("provides the refresh action and its exact scrollport", () => {
     getClientRects: () => [{}],
   };
   const refreshRequests = [];
+  const status = statusLink();
   const owner = {
     hidden: false,
     isConnected: true,
@@ -29,16 +46,23 @@ test("provides the refresh action and its exact scrollport", () => {
     },
     querySelector(selector) {
       if (selector === ":scope > .settings-content-scroll") return scrollport;
+      if (selector === "a.settings-service-status") return status;
       return null;
     },
   };
 
   const scope = grok.actionHintScope.call(owner);
-  assert.deepEqual(scope.targets.map(({ id }) => id), ["settings:grok:refresh"]);
+  assert.deepEqual(scope.targets.map(({ id }) => id), [
+    "settings:grok:refresh",
+    "settings:grok:service-status",
+  ]);
+  assert.equal(scope.targets[1].label, "Open Service status in a new tab");
   assert.deepEqual(scope.scrollRoots, [scrollport]);
   assert.deepEqual(refreshRequests[0].clipRoots, [owner, scrollport]);
   assert.equal(refreshRequests[0].isCurrent(), true);
   assert.equal(grok.scrollSurfaceScope.call(owner).surfaces[0].scrollport, scrollport);
+  status.hidden = true;
+  assert.equal(scope.targets[1].isActionable(), false);
   owner.hidden = true;
   assert.equal(refreshRequests[0].isCurrent(), false);
   assert.deepEqual(grok.actionHintScope.call(owner).targets, []);
