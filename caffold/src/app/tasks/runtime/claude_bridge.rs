@@ -194,6 +194,14 @@ impl TaskRuntime {
                                 return;
                             }
                         };
+                        runtime
+                            .sessions
+                            .restore_managed_composer_settings(
+                                &managed.thread_id,
+                                managed.fast_mode,
+                                managed.permission_mode.as_deref(),
+                            )
+                            .await;
                         let thread_id = managed.thread_id;
                         match runtime
                             .sessions

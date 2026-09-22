@@ -351,9 +351,17 @@ pub(super) async fn test_store_update_composer_settings(
     model: Option<&str>,
     reasoning_effort: Option<&str>,
     fast_mode: bool,
+    permission_mode: Option<&str>,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    task_store_update_composer_settings(state, thread_id, model, reasoning_effort, fast_mode, None)
-        .await
+    task_store_update_composer_settings(
+        state,
+        thread_id,
+        model,
+        reasoning_effort,
+        fast_mode,
+        permission_mode,
+    )
+    .await
 }
 
 #[cfg(test)]

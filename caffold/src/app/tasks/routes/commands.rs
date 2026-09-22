@@ -112,7 +112,11 @@ async fn task_prompt_owned(
     let requested_permission_mode = request.permission_mode;
     state
         .task_sessions
-        .restore_managed_fast_mode(&thread_id, managed.fast_mode)
+        .restore_managed_composer_settings(
+            &thread_id,
+            managed.fast_mode,
+            managed.permission_mode.as_deref(),
+        )
         .await;
     let mut target = match state
         .task_sessions
@@ -382,7 +386,11 @@ pub(super) async fn task_interrupt(
         .ok_or_else(task_not_managed_error)?;
     state
         .task_sessions
-        .restore_managed_fast_mode(&thread_id, managed.fast_mode)
+        .restore_managed_composer_settings(
+            &thread_id,
+            managed.fast_mode,
+            managed.permission_mode.as_deref(),
+        )
         .await;
     let agent = state.task_runtime.task_agent(&thread_id).await?;
     let turn_id = state
