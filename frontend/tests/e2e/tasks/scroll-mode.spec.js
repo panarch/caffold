@@ -342,6 +342,103 @@ test("cancels the frozen selector when Task list topology loses eligibility", { 
   await expect(scrollHud(page)).toBeHidden();
 });
 
+test("reselects active Scroll with S using newly visible surfaces and keeps selection codes", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const { detail } = await installScrollFixture(page);
+  detail.events.at(-1).payload.text = nestedConversationMarkdown();
+  detail.events.at(-1).payload.phase = "final";
+  await openScrollTask(page, detail);
+
+  const owner = page.locator(".task-workspace-surface");
+  const conversation = page.locator(".task-conversation-scroll");
+  const code = page.locator(
+    "caffold-task-assistant-message caffold-task-markdown-code-block pre",
+  ).last();
+  const selector = scrollSelector(page);
+  const hud = scrollHud(page);
+  await expect.poll(() => code.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  await conversation.evaluate((element) => element.scrollTop = 0);
+  await owner.focus();
+  await page.keyboard.press("s");
+  if (testInfo.project.name !== "phone") {
+    await expect(selector.getByLabel(/ — text code block 1$/i)).toHaveCount(0);
+    await selector.getByLabel(/ — Conversation$/).click();
+  }
+  await expect(hud).toContainText("Scroll: Conversation");
+
+  // Native movement keeps this session active and reveals nested scrollports.
+  await conversation.evaluate((element) => element.scrollTop = element.scrollHeight);
+  await expect(hud).toContainText("Scroll: Conversation");
+  const before = await scrollPositions(page);
+  await page.keyboard.press("s");
+  await expect(hud).toBeHidden();
+  await expect(selector).toBeVisible();
+  await expect(selector.getByLabel(/ — Conversation$/)).toBeVisible();
+  await expect(selector.getByLabel(/ — text code block 1$/i)).toBeVisible();
+  await expect(selector.getByLabel(/ — Markdown table 1$/)).toBeVisible();
+  expect(await scrollPositions(page)).toEqual(before);
+  const geometry = await scrollSelectorBadgeGeometry(selector);
+  expect(geometry.viewportEscapes).toEqual([]);
+  expect(geometry.fullOverlaps).toEqual([]);
+  await captureReviewScreenshot(page, testInfo, "scroll-mode-reselect");
+
+  const sLabel = await selector.locator('[data-scroll-surface-code="S"]')
+    .getAttribute("aria-label");
+  await page.keyboard.press("s");
+  await expect(selector).toBeHidden();
+  await expect(hud).toContainText(`Scroll: ${sLabel.replace(/^S — /, "")}`);
+
+  await page.keyboard.press("s");
+  await expect(selector).toBeVisible();
+  const codeBadge = selector.getByLabel(/ — text code block 1$/i);
+  await page.keyboard.type(
+    (await codeBadge.getAttribute("data-scroll-surface-code")).toLowerCase(),
+  );
+  await expect(hud).toContainText(/Scroll: text code block 1/i);
+  await page.keyboard.press("l");
+  await expect.poll(() => code.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  expect(await scrollPositions(page)).toEqual(before);
+
+  await page.keyboard.press("s");
+  await expect(selector).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(selector).toBeHidden();
+  await expect(hud).toBeHidden();
+  await expect(owner).toBeFocused();
+  await page.keyboard.press("j");
+  expect(await scrollPositions(page)).toEqual(before);
+});
+
+test("keeps active Scroll on S when only the current surface remains", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const { detail, tasks } = await installScrollFixture(page);
+  await openScrollTask(page, detail);
+  const owner = page.locator(".task-workspace-surface");
+  const selector = scrollSelector(page);
+  const hud = scrollHud(page);
+  await owner.focus();
+  await page.keyboard.press("s");
+  if (testInfo.project.name !== "phone") {
+    await selector.getByLabel(/ — Conversation$/).click();
+    await removeTaskListOverflow(page, tasks);
+  }
+  await expect(hud).toContainText("Scroll: Conversation");
+  const before = await scrollPositions(page);
+  await page.keyboard.press("s");
+  await expect(selector).toBeHidden();
+  await expect(hud).toContainText("Scroll: Conversation");
+  await expect(owner).toBeFocused();
+  expect(await scrollPositions(page)).toEqual(before);
+  await page.keyboard.press("k");
+  await expect.poll(async () => (await scrollPositions(page)).conversation)
+    .toBeLessThan(before.conversation);
+});
+
 test("switches active Scroll to fresh Action Hints with F", { tag: "@desktop" }, async ({
   page,
 }) => {
@@ -598,6 +695,10 @@ test("scrolls a mouse-open retained Model popover and closes it with Escape", { 
   await expect(scrollSelector(page)).toBeHidden();
   await expect(popoverHud).toContainText("Scroll: Model options");
   await expect(scrollHud(page)).toBeHidden();
+  await page.keyboard.press("s");
+  await expect(modelPopover).toBeVisible();
+  await expect(popoverHud).toContainText("Scroll: Model options");
+  await expect(scrollSelector(page)).toBeHidden();
   await captureReviewScreenshot(
     page,
     testInfo,
@@ -761,6 +862,15 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   );
   const backgroundBeforeNested = await scrollPositions(page);
   const previewLeftBefore = await preview.evaluate((element) => element.scrollLeft);
+  await modalSelector.getByLabel(/^[A-Z]+ — Plan document$/).click();
+  await expect(modalHud).toContainText("Scroll: Plan document");
+  await page.keyboard.press("s");
+  await expect(modalHud).toBeHidden();
+  await expect(modalSelector).toBeVisible();
+  await expect(planBadges).toHaveCount(3);
+  await expect(modalSelector.getByLabel(/ — Task list$/)).toHaveCount(0);
+  await expect(modalSelector.getByLabel(/ — Conversation$/)).toHaveCount(0);
+  expect(await scrollPositions(page)).toEqual(backgroundBeforeNested);
   await modalSelector.getByLabel(
     /^[A-Z]+ — Plan document code block 1$/,
   ).click();

@@ -393,6 +393,12 @@ export class KeyboardNavigationController {
       this.startActionHints();
       return;
     }
+    if (key === KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT && !event.repeat) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.reselectScroll();
+      return;
+    }
     if (!Object.hasOwn(SCROLL_COMMAND, key)) {
       return;
     }
@@ -621,6 +627,27 @@ export class KeyboardNavigationController {
       return false;
     }
     return this.beginSelection(snapshot);
+  }
+
+  reselectScroll() {
+    const session = this.activeSession;
+    if (!session || !this.activeBindingIsCurrent(session, {
+      refreshPresentation: true,
+    })) {
+      this.cancelActive("binding-invalidated");
+      return false;
+    }
+    const context = this.resolveInteractionContext();
+    const snapshot = context && this.captureScrollSnapshot(context);
+    if (
+      !snapshot ||
+      snapshot.context.blocked ||
+      snapshot.surfaces.length < 2 ||
+      snapshot.context.kind === "popover"
+    ) {
+      return false;
+    }
+    return this.cancelActive("scroll-reselect") && this.startScroll();
   }
 
   beginSelection(snapshot) {

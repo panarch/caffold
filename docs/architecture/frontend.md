@@ -561,8 +561,14 @@ selected surface's top-right corner; the selected surface keeps its outline.
 non-composing `F` without Ctrl, Alt, or Meta first closes active Scroll mode
 and releases its scoped observers, then captures a fresh Action Hint snapshot
 in the current context. A context with no eligible action leaves no stored
-keyboard mode. Scroll selection continues to treat `F` as a possible surface
-code rather than switching modes.
+keyboard mode. Under the same key guards, `S` revalidates the active binding
+and gathers the currently eligible surfaces in that context. If another
+surface is available, it closes the active session and starts a fresh Scroll
+selection, including the current surface and any newly visible nested
+surfaces. A context with only the current surface retains its active session.
+Canceling reselection returns to Normal without restoring the previous Scroll
+session. Scroll selection continues to treat `F` and `S` as possible surface
+codes rather than switching modes.
 
 Action Hint and multi-surface Scroll selection show only their target badges
 and outlines. Their title, instructions, and typed-code status remain available

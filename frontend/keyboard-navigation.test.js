@@ -395,6 +395,134 @@ test("capture intersects declared axes with exact current overflow", () => {
   }
 });
 
+test("active S releases Scroll and selects from fresh surfaces including the current one", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    const order = [];
+    const context = { kind: "workspace", blocked: false };
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
+    controller.activeSession = {
+      id: "conversation",
+      context: { hud: { close: () => order.push("hud-close") } },
+    };
+    controller.activeBindingIsCurrent = () => true;
+    controller.resolveInteractionContext = () => context;
+    controller.captureScrollSnapshot = () => ({
+      context,
+      surfaces: [{ id: "conversation" }, { id: "newly-visible-code" }],
+    });
+    controller.detachActiveSignals = () => order.push("detach-scroll");
+    controller.beginSelection = (snapshot) => {
+      assert.equal(controller.activeSession, null);
+      assert.equal(controller.storedNode, KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING);
+      assert.deepEqual(snapshot.surfaces.map(({ id }) => id), [
+        "conversation", "newly-visible-code",
+      ]);
+      order.push("select");
+      return true;
+    };
+
+    const event = keyEvent("s", { code: "KeyS" });
+    controller.handleKeydown(event);
+
+    assert.deepEqual(order, ["detach-scroll", "hud-close", "select"]);
+    assert.equal(controller.workspace.dataset.scrollModeLastExit, "scroll-reselect");
+    assert.equal(event.prevented, true);
+    assert.equal(event.stopped, true);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("active S retains a sole surface and does not escape a popover or blocked context", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    for (const context of [
+      { kind: "workspace", blocked: false },
+      { kind: "modal", blocked: false },
+      { kind: "popover", blocked: false },
+      { kind: "workspace", blocked: true },
+    ]) {
+      const controller = createController();
+      const session = { id: "current", context };
+      controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
+      controller.activeSession = session;
+      controller.activeBindingIsCurrent = () => true;
+      controller.resolveInteractionContext = () => context;
+      controller.captureScrollSnapshot = () => ({
+        context,
+        surfaces: [{ id: "current" }],
+      });
+      const event = keyEvent("s", { code: "KeyS" });
+      controller.handleKeydown(event);
+      assert.equal(controller.activeSession, session);
+      assert.equal(controller.storedNode, KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE);
+      assert.equal(event.prevented, true);
+
+      if (context.kind === "popover" || context.blocked) {
+        controller.captureScrollSnapshot = () => ({
+          context,
+          surfaces: [{ id: "current" }, { id: "other" }],
+        });
+        controller.handleKeydown(keyEvent("s", { code: "KeyS" }));
+        assert.equal(controller.activeSession, session);
+      }
+    }
+  } finally {
+    restoreDom();
+  }
+});
+
+test("active S normalizes letter and physical keys while rejecting repeats, modifiers, and composition", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
+    let reselected = 0;
+    controller.reselectScroll = () => reselected += 1;
+    for (const options of [
+      { repeat: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true },
+      { isComposing: true },
+    ]) {
+      const event = Object.assign(keyEvent("s", { code: "KeyS" }), options);
+      controller.handleKeydown(event);
+      assert.equal(event.prevented, false);
+    }
+    controller.compositionActive = true;
+    controller.handleKeydown(keyEvent("s", { code: "KeyS" }));
+    assert.equal(reselected, 0);
+    controller.compositionActive = false;
+    for (const key of ["s", "S", "ㄴ"]) {
+      const event = keyEvent(key, { code: "KeyS" });
+      controller.handleKeydown(event);
+      assert.equal(event.prevented, true);
+    }
+    assert.equal(reselected, 3);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("active S cancels a stale binding instead of selecting in a different context", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
+    controller.activeSession = {
+      cleanup: [],
+      context: { hud: { close() {} } },
+    };
+    controller.activeBindingIsCurrent = () => false;
+    controller.handleKeydown(keyEvent("s", { code: "KeyS" }));
+    assert.equal(controller.activeSession, null);
+    assert.equal(controller.storedNode, null);
+    assert.equal(controller.workspace.dataset.scrollModeLastExit, "binding-invalidated");
+  } finally {
+    restoreDom();
+  }
+});
+
 test("active F closes Scroll before collecting a fresh Action Hint session", () => {
   const restoreDom = installEventGlobals();
   try {
