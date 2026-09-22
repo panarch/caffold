@@ -77,6 +77,10 @@ export const KEYBOARD_SHORTCUT_HELP_SECTIONS = Object.freeze([
         [KEYBOARD_NAVIGATION_KEY.ACTION_HINTS],
         "Switch to available actions",
       ),
+      shortcut(
+        [KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT],
+        "Select another scroll area",
+      ),
       shortcut([KEYBOARD_NAVIGATION_KEY.ESCAPE], "Exit Scroll mode"),
     ]),
   }),
