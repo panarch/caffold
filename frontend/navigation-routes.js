@@ -442,12 +442,68 @@ export function parentRoute(route) {
   return routeDefinitionFor(route)?.parent?.(route) ?? null;
 }
 
+export const ROUTE_RELATION = {
+  DESCEND: "descend",
+  ASCEND: "ascend",
+  SWAP: "swap",
+  TAB: "tab",
+};
+
+// How one route stands to another, read from the declared parents above. A
+// descent reaches a screen below the current one, an ascent leaves for one it
+// sits under, and a swap moves between screens at the same place. Callers use
+// this instead of each screen declaring whether it is worth a history entry.
+export function routeRelation(from, to) {
+  if (!from || !to) {
+    return null;
+  }
+
+  if (routeTab(from) !== routeTab(to)) {
+    return ROUTE_RELATION.TAB;
+  }
+
+  if (routeAscentSteps(to, from) !== null) {
+    return ROUTE_RELATION.DESCEND;
+  }
+
+  if (routeAscentSteps(from, to) !== null) {
+    return ROUTE_RELATION.ASCEND;
+  }
+
+  return ROUTE_RELATION.SWAP;
+}
+
+// How many parents separate a route from one it sits under, or null when the
+// second route is not above the first.
+export function routeAscentSteps(from, to) {
+  if (!from || !to) {
+    return null;
+  }
+
+  let steps = 0;
+  for (let above = parentRoute(from); above; above = parentRoute(above)) {
+    steps += 1;
+    if (routeEquals(above, to)) {
+      return steps;
+    }
+  }
+
+  return null;
+}
+
 export function routeEquals(left, right) {
   return routeUrl(left) === routeUrl(right);
 }
 
 export function routeSurface(route) {
   return routeDefinitionFor(route)?.surface ?? "task-workspace";
+}
+
+// Which bottom-tab surface a route belongs to. Notes and Settings own their
+// own tabs; every Task, Section, Git, and GitHub route belongs to Tasks.
+export function routeTab(route) {
+  const kind = routeDefinitionFor(route)?.kind;
+  return kind === "notes" || kind === "settings" ? kind : "tasks";
 }
 
 export function routeDomain(route) {

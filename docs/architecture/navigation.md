@@ -7,9 +7,10 @@ Back/forward. They do not encode desktop, foldable, or phone presentation.
 ## Application route boundary
 
 `caffold-task-workspace` is the only routed workspace below
-`caffold-app-shell`. The App Shell parses and forwards routes, applies
-application bootstrap data, and presents build updates. It does not select a
-Task child, derive repository context for Git or GitHub, or implement
+`caffold-app-shell`. The App Shell parses and forwards routes, owns the browser
+history and each tab's last route behind `frontend/pages/navigation-history.js`,
+applies application bootstrap data, and presents build updates. It does not
+select a Task child, derive repository context for Git or GitHub, or implement
 domain-local Back behavior.
 
 Readiness does not change the top-level route, and no readiness state causes
@@ -170,11 +171,20 @@ The public helpers are:
 - `parseRoute(url)`
 - `routeUrl(route)`
 - `parentRoute(route)`
+- `routeRelation(from, to)`
+- `routeAscentSteps(from, to)`
 - `routeEquals(left, right)`
 - `routeSurface(route)`
+- `routeTab(route)`
 - `routeDomain(route)`
 - `routeMode(route)`
 - `routeTarget(route)`
+
+`routeRelation` reports whether the second route descends below the first,
+ascends above it, swaps with it at the same place, or belongs to another tab.
+`routeAscentSteps` counts the parents between a route and one it sits under.
+Both read only the declared parents and tabs, so they stay independent of
+browser history and component state.
 
 Git and GitHub route objects preserve their domain-local `kind` (`compare`,
 `log`, `issues`, or `pulls`) and add the mandatory `threadId`; they are not
@@ -222,38 +232,109 @@ not patch or reactivate a stale destination.
 - Note -> Notes list;
 - Settings section -> Settings list.
 
-Browser Back remains ordinary history traversal. Visible Back is a semantic
-parent action and follows the explicit history policy below. On compact layouts
-exactly one contextual Back is shown, with deepest-visible priority: file,
-domain detail, then the active Task, Section, or New Task. Desktop does not add
-a file Back when the corresponding navigator is simultaneously visible.
+Visible Back requests the parent route. Browser Back traverses the entries the
+history policy below left behind, which reach the same parents. On compact
+layouts exactly one contextual Back is shown, with deepest-visible priority:
+file, domain detail, then the active Task, Section, or New Task. Desktop does
+not add a file Back when the corresponding navigator is simultaneously visible.
 
 Conversation, fixed-context New Task, Integrated Review, Git, and GitHub share
 the same parent for their active subject. A root child Back therefore targets
 Tasks home; switching siblings uses the common Detail controls.
 
+## Workspace tabs
+
+`routeTab(route)` assigns every route to the bottom-tab surface that presents
+it. `/notes*` belongs to Notes and `/settings*` to Settings; every Task,
+Section, Git, and GitHub route belongs to Tasks. The Task Workspace reads its
+current mode from that assignment rather than deriving one from route shape.
+
+Each tab keeps the last route it showed. Selecting a tab reopens that route, so
+a tab returns to the depth it was left at. A tab that has not been visited
+opens the route its owner supplies: Tasks and Notes open their own home, and
+Settings opens its Codex page while blocked Codex operations need repair.
+
 ## History policy
 
-Route requests push by default. Opening a Task child, Git/GitHub list or detail,
-Compare or Log file, PR Files, changing Compare refs, and changing Log/GitHub
-pages therefore create replayable history entries. Applying a notification's
-Task route follows the same push policy. Domain-local visible Back and
-file-close actions also request their semantic parent through the default push
-policy; browser Back remains ordinary traversal of the entries already visited.
+A route request decides its own history treatment from `routeRelation(from,
+to)`, which reads the declared parents above. Individual screens request a
+route and do not choose whether it is worth a history entry.
 
-Replacement is explicit and limited to cases that refine or canonicalize the
-current destination: `/tasks` canonicalization, invalid-route normalization,
-the compact Back to Tasks home from a Task, Section, or New Task, and Integrated
-Review axis/base changes. Integrated Review's first file selection pushes its
-file boundary; later file selections replace that file entry, and clearing the
-selected file replaces it with the same Review route without `file`.
+- A route under the current one pushes an entry. Opening a Task child from
+  Tasks home, an Issue from its list, a commit from Log, PR Files from a PR,
+  and a file from Review, Compare, Log, or PR Files all descend.
+- A route at the same place replaces the current entry. Selecting another
+  Task, Note, Settings section, Issue, or file, changing Log and GitHub pages,
+  changing Compare or Review refs, changing Review axes, and switching between
+  Conversation, Integrated Review, Git, and GitHub all stay at one entry.
+- A route the current one sits under rewinds. Visible Back and file-close
+  actions therefore consume the entry they leave instead of adding another.
+- A route in another tab is an arrival there: that tab's own screens go in
+  beneath it, so Back walks up the tab it landed in before leaving it. This
+  covers both choosing a tab, which reopens the screen it last showed, and
+  naming one of its pages directly, such as opening Voice Input setup from a
+  Task.
+
+Two kinds of request are exempt because their relation does not describe them.
+Arrivals from outside are covered below. A correction always replaces: the
+subject the route named is gone, so the route leaves for Tasks home without
+consuming entries the person built. A Task that resolves to archived or
+removed, and a Managed Section ID that is absent, are the only corrections.
+
+Every other normalization follows the ordinary relation, because it lands where
+the person already is: canonicalizing `/tasks`, sending a Task that needs
+recovery to its recovery route, opening a restored Task, returning a Section
+without repository capability to its fixed-context New Task, and normalizing
+Review fields for the bound Task all resolve to the same replacement the
+relation gives.
+
+An arrival is a route that lands somewhere the person was not: an address the
+browser loaded, a notification opening its Task, or any route in another tab,
+reached by request or by native link. The screens it sits under are written
+into the history beneath it, so Back walks up them instead of leaving the
+application, returning to whatever the arrival interrupted, or standing on a
+tab page with nothing of that tab below it.
+
+Screens already under the route are not written again. An address the browser
+loaded, and a link whose entry the browser already created, take that entry as
+the chain grows from it; an arrival over a screen the route already sits under
+adds only what is missing above it. A route with no parent, such as Tasks home
+or either tab root, stays one entry.
+
+Moves inside one tab keep their order. A native link followed there is a step
+in that tab's flow, so the screen it was followed from stays under it: opening
+a Review file from a Task's conversation returns to that conversation rather
+than walking the file's parents.
+
+Rewinding uses browser traversal only across entries the current route
+descended through, including the ones written in beneath an arrival. A route
+whose entry nothing descended onto replaces itself instead, so leaving it does
+not traverse past what the person was doing.
 
 Every route writer preserves all fields owned by the active domain when
 changing one field.
 
-Navigation entry state is reserved for ephemeral browser state such as scroll
-restoration. Durable semantic state must be recoverable from the URL and
+Navigation entry state carries each tab's last route and how many preceding
+entries the current route descended through, and every entry written beneath an
+arrival carries its own record. Arriving at an entry restores that record; it
+decides where a tab reopens and whether Back may traverse, not what a route
+presents. Everything a route presents stays recoverable from the URL and
 canonical Task/domain APIs.
+
+An entry the browser created itself, following a native link, arrives without a
+record and is given one once it is committed, which it is not yet while the
+navigation is being intercepted. Inside one tab that record leaves the screen
+the link was followed from under it, rewindable only when the route descended
+onto it; across tabs the entry becomes the top of an arrival chain.
+
+Writing an entry reports an arrival at it, so while a chain is being written
+those reports are held off rather than read back as a person navigating.
+
+Entries are written through the History API on both paths. A chain of entries
+has to be written synchronously and repeatedly, and state written that way is
+not readable through `navigation.currentEntry`, so one writer keeps the record
+in one place. The Navigation API decides only which events report that the
+browser reached an entry.
 
 ## Server fallback and tests
 
@@ -265,3 +346,8 @@ Route changes require pure route-helper coverage plus browser coverage for
 direct entry, reload, internal navigation, deterministic Back, browser
 Back/forward, stale-response rejection, and desktop/foldable/phone presentation
 where layout changes the visible controls.
+
+History changes additionally require pure coverage of the relation each request
+resolves to, and browser coverage that counts entries: a descent adds one, a
+same-place move adds none, visible Back leaves none behind, and returning to a
+tab restores the depth it was left at.

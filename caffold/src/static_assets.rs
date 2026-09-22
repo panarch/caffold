@@ -144,6 +144,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "pages/layout.css" => Some(css(include_str!("../../frontend/pages/layout.css"))),
         "pages/layout.js" => Some(js(include_str!("../../frontend/pages/layout.js"))),
+        "pages/navigation-history.js" => Some(js(include_str!(
+            "../../frontend/pages/navigation-history.js"
+        ))),
         "pages/foreground-recovery.js" => Some(js(include_str!(
             "../../frontend/pages/foreground-recovery.js"
         ))),

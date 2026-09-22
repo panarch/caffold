@@ -431,6 +431,26 @@ test("a phone shows the tree, then one Note, and Back returns to the tree", { ta
   await expect(page).toHaveURL(/\/notes$/);
   await expect(masterPane).toBeVisible();
   await expect(detailPane).toBeHidden();
+
+  // Rewound rather than stacked: the Note it left is ahead of here, not behind.
+  await page.goForward();
+  await expect(page).toHaveURL(/\/notes\/inbox$/);
+});
+
+test("opens a Note by address with the tree it sits under beneath it", { tag: "@phone" }, async ({
+  page,
+}) => {
+  await stubNotes(page);
+  await page.goto("/notes/inbox");
+  await expect(notesTitle(page)).toHaveText("Inbox");
+
+  // The tree goes into history under the Note, so leaving the Note rewinds
+  // into that entry instead of taking the Note's own.
+  await notesWorkspace(page).getByRole("button", { name: "Back to notes" }).click();
+  await expect(page).toHaveURL(/\/notes$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/notes\/inbox$/);
+  await expect(notesTitle(page)).toHaveText("Inbox");
 });
 
 test("a phone places Note details where it places Task details", { tag: "@phone" }, async ({
@@ -476,23 +496,29 @@ test("a Note URL survives reload and browser history", { tag: "@desktop" }, asyn
   page,
 }) => {
   await stubNotes(page);
-  await page.goto("/notes/storage");
+  await page.goto("/notes");
   const title = notesTitle(page);
-  await expect(title).toHaveText("Storage decision");
 
   await treeEntry(page, "Inbox").click();
   await expect(page).toHaveURL(/\/notes\/inbox$/);
   await expect(title).toHaveText("Inbox");
 
-  await page.goBack();
+  // Another Note sits where this one does, so it takes the same entry.
+  await treeEntry(page, "Projects").click();
+  await treeEntry(page, "Decisions").click();
+  await treeEntry(page, "Storage decision").click();
   await expect(page).toHaveURL(/\/notes\/storage$/);
   await expect(title).toHaveText("Storage decision");
-  await page.goForward();
-  await expect(title).toHaveText("Inbox");
 
   await page.reload();
-  await expect(page).toHaveURL(/\/notes\/inbox$/);
-  await expect(title).toHaveText("Inbox");
+  await expect(page).toHaveURL(/\/notes\/storage$/);
+  await expect(title).toHaveText("Storage decision");
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/notes$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/notes\/storage$/);
+  await expect(title).toHaveText("Storage decision");
 });
 
 test("a missing Note and an empty Note each say what they are", { tag: "@desktop" }, async ({

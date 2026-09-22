@@ -143,14 +143,12 @@ class CaffoldTasksPage extends HTMLElement {
       if (event.detail?.type === "task-archived" && event.detail.task) {
         this.taskNavigator()?.acceptArchivedTask(event.detail.task);
         this.syncSelectedManagedTask();
-        this.requestRoute({ kind: "tasks" }, { replace: true });
+        this.requestRoute({ kind: "tasks" }, { correction: true });
       } else if (
         ["review-route", "domain-route"].includes(event.detail?.type) &&
         event.detail.route
       ) {
-        this.requestRoute(event.detail.route, {
-          replace: event.detail.replace,
-        });
+        this.requestRoute(event.detail.route);
       }
     });
     this.addEventListener("caffold:task-recovery-intent", (event) => {
@@ -369,7 +367,7 @@ class CaffoldTasksPage extends HTMLElement {
           task
             ? { kind: "tasks", threadId: route.threadId }
             : { kind: "tasks" },
-          { replace: true },
+          { correction: true },
         );
         return null;
       }
@@ -382,7 +380,7 @@ class CaffoldTasksPage extends HTMLElement {
       await navigatorRequest;
       const section = this.taskNavigator()?.sectionFor(route.sectionId);
       if (!section) {
-        this.requestRoute({ kind: "tasks" }, { replace: true });
+        this.requestRoute({ kind: "tasks" }, { correction: true });
         return null;
       }
       return await this.taskDetail()?.openSection(section, route);
@@ -391,10 +389,11 @@ class CaffoldTasksPage extends HTMLElement {
       this.taskNew()?.deactivate();
       const recovery = this.taskNavigator()?.recoveryFor(route.threadId);
       if (recovery) {
-        this.requestRoute(
-          { kind: "tasks", threadId: route.threadId, recovery: true },
-          { replace: true },
-        );
+        this.requestRoute({
+          kind: "tasks",
+          threadId: route.threadId,
+          recovery: true,
+        });
         return null;
       }
       const result = await this.taskDetail()?.open(route.threadId, {
@@ -487,16 +486,13 @@ class CaffoldTasksPage extends HTMLElement {
         detail.task,
         detail.activeTopPlacement,
       );
-      this.requestRoute(
-        { kind: "tasks", threadId: detail.task.threadId },
-        { replace: true },
-      );
+      this.requestRoute({ kind: "tasks", threadId: detail.task.threadId });
     } else if (detail?.resolution === "archived" && detail.task) {
       this.taskNavigator()?.acceptArchivedTask(detail.task);
-      this.requestRoute({ kind: "tasks" }, { replace: true });
+      this.requestRoute({ kind: "tasks" }, { correction: true });
     } else if (detail?.resolution === "removed") {
       this.taskNavigator()?.removeTask(threadId);
-      this.requestRoute({ kind: "tasks" }, { replace: true });
+      this.requestRoute({ kind: "tasks" }, { correction: true });
     }
   }
 
@@ -713,10 +709,11 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
     if (this.view === "detail") {
-      this.requestRoute(
-        { kind: "tasks", threadId: this.selectedThreadId, recovery: true },
-        { replace: true },
-      );
+      this.requestRoute({
+        kind: "tasks",
+        threadId: this.selectedThreadId,
+        recovery: true,
+      });
     }
   }
 
@@ -731,7 +728,7 @@ class CaffoldTasksPage extends HTMLElement {
     const section = state.selectedSection ?? null;
     if (!section) {
       if (state.loaded) {
-        this.requestRoute({ kind: "tasks" }, { replace: true });
+        this.requestRoute({ kind: "tasks" }, { correction: true });
       }
       return;
     }
@@ -758,7 +755,7 @@ class CaffoldTasksPage extends HTMLElement {
         bubbles: true,
         detail: {
           route: { ...route },
-          replace: Boolean(options.replace),
+          correction: Boolean(options.correction),
         },
       }),
     );

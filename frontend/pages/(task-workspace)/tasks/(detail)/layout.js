@@ -261,10 +261,7 @@ class CaffoldDetailLayout extends HTMLElement {
       !this.section.repository &&
       this.sectionRoute?.sectionSurface !== "new"
     ) {
-      this.requestSectionRoute(
-        { sectionId: this.section.id },
-        { replace: true },
-      );
+      this.requestSectionRoute({ sectionId: this.section.id });
       return this.section;
     }
     await this.activateSectionSurface();
@@ -950,11 +947,9 @@ class CaffoldDetailLayout extends HTMLElement {
         sectionId: this.section.id,
         sectionSurface: "review",
         ...reviewFields(event.detail?.route),
-      }, { replace: event.detail?.replace });
-    } else {
-      this.requestTaskRoute(event.detail?.route, {
-        replace: event.detail?.replace,
       });
+    } else {
+      this.requestTaskRoute(event.detail?.route);
     }
   }
 
@@ -969,9 +964,9 @@ class CaffoldDetailLayout extends HTMLElement {
         sectionSurface: "git",
         sectionTool: event.detail?.route?.kind,
         ...domainFields(event.detail?.route),
-      }, event.detail?.options);
+      });
     } else {
-      this.requestTaskDomainRoute(event.detail?.route, event.detail?.options);
+      this.requestTaskDomainRoute(event.detail?.route);
     }
   }
 
@@ -986,9 +981,9 @@ class CaffoldDetailLayout extends HTMLElement {
         sectionSurface: "github",
         sectionTool: event.detail?.route?.kind,
         ...domainFields(event.detail?.route),
-      }, event.detail?.options);
+      });
     } else {
-      this.requestTaskDomainRoute(event.detail?.route, event.detail?.options);
+      this.requestTaskDomainRoute(event.detail?.route);
     }
   }
 
@@ -1008,7 +1003,7 @@ class CaffoldDetailLayout extends HTMLElement {
     });
   }
 
-  requestTaskDomainRoute(route, options = {}) {
+  requestTaskDomainRoute(route) {
     if (!route) {
       return;
     }
@@ -1019,10 +1014,10 @@ class CaffoldDetailLayout extends HTMLElement {
       ...(route.path
         ? { path: taskRelativePath(rootPath, route.path) }
         : {}),
-    }, options);
+    });
   }
 
-  requestTaskRoute(route, options = {}) {
+  requestTaskRoute(route) {
     if (!route || !this.subjectIdentity().id) {
       return;
     }
@@ -1033,13 +1028,12 @@ class CaffoldDetailLayout extends HTMLElement {
         detail: {
           type: routeDomain(route) ? "domain-route" : "review-route",
           route,
-          replace: Boolean(options?.replace),
         },
       }),
     );
   }
 
-  requestSectionRoute(route, options = {}) {
+  requestSectionRoute(route) {
     const normalized = sectionDetailRoute(route);
     if (!normalized) {
       return;
@@ -1051,7 +1045,6 @@ class CaffoldDetailLayout extends HTMLElement {
         detail: {
           type: routeDomain(normalized) ? "domain-route" : "review-route",
           route: normalized,
-          replace: Boolean(options?.replace),
         },
       }),
     );

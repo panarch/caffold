@@ -21,6 +21,10 @@ import {
   routeUrl,
 } from "../navigation-routes.js";
 import {
+  NAVIGATION_HISTORY_ACTION,
+  NavigationHistory,
+} from "./navigation-history.js";
+import {
   ForegroundRecoveryLifecycle,
   FOREGROUND_RECOVERY_PRESENTATION,
 } from "./foreground-recovery.js";
@@ -59,6 +63,9 @@ class CaffoldAppShell extends HTMLElement {
     };
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.currentRoute = null;
+    this.navigationHistory = new NavigationHistory();
+    this.rewindingHistory = false;
+    this.writingEntryChain = false;
     this.initialPath = "";
     this.aboutHealthRequest = null;
     this.buildHealth = null;
@@ -109,9 +116,12 @@ class CaffoldAppShell extends HTMLElement {
     );
     this.foregroundRecoverySnapshot =
       this.foregroundRecoveryLifecycle.snapshot();
+    const initialRoute = parseRoute(window.location.href);
+    // The entries this writes are the shell's own scaffolding, so they go in
+    // while nothing is listening for navigation.
+    this.adoptInitialEntry(initialRoute);
     this.installNavigationHandlers();
 
-    const initialRoute = parseRoute(window.location.href);
     if (initialRoute) {
       this.keyboardNavigation.routeWillChange();
       this.currentRoute = initialRoute;
@@ -134,7 +144,7 @@ class CaffoldAppShell extends HTMLElement {
     });
     this.addEventListener("caffold:request-tasks-route", (event) => {
       this.navigateToRoute(event.detail?.route, {
-        replace: Boolean(event.detail?.replace),
+        correction: Boolean(event.detail?.correction),
       });
     });
     this.addEventListener("caffold:request-settings-route", (event) => {
@@ -142,6 +152,14 @@ class CaffoldAppShell extends HTMLElement {
     });
     this.addEventListener("caffold:request-workspace-route", (event) => {
       this.navigateToRoute(event.detail?.route);
+    });
+    this.addEventListener("caffold:request-workspace-tab", (event) => {
+      this.navigateToRoute(
+        this.navigationHistory.routeForTab(
+          event.detail?.tab,
+          event.detail?.fallbackRoute,
+        ),
+      );
     });
     this.addEventListener(CAFFOLD_UPDATE_RELOAD_EVENT, (event) => {
       event.stopPropagation();
@@ -239,11 +257,13 @@ class CaffoldAppShell extends HTMLElement {
   installNavigationHandlers() {
     this.usesNavigationApi =
       "navigation" in window &&
-      typeof window.navigation?.addEventListener === "function" &&
-      typeof window.navigation?.navigate === "function";
+      typeof window.navigation?.addEventListener === "function";
 
     if (this.usesNavigationApi) {
       window.navigation.addEventListener("navigate", (event) => {
+        if (this.writingEntryChain) {
+          return;
+        }
         if (
           !event.canIntercept ||
           event.navigationType === "reload" ||
@@ -269,8 +289,15 @@ class CaffoldAppShell extends HTMLElement {
         });
       });
       window.navigation.addEventListener("currententrychange", () => {
+        if (this.writingEntryChain) {
+          return;
+        }
         const route = parseRoute(window.location.href);
-        if (route && (!this.currentRoute || !routeEquals(this.currentRoute, route))) {
+        if (!route) {
+          return;
+        }
+        this.adoptReachedEntry(route);
+        if (!this.currentRoute || !routeEquals(this.currentRoute, route)) {
           void this.applyRoute(route);
         }
       });
@@ -278,11 +305,90 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     window.addEventListener("popstate", () => {
+      if (this.writingEntryChain) {
+        return;
+      }
       const route = parseRoute(window.location.href);
       if (route) {
+        this.adoptReachedEntry(route);
         void this.applyRoute(route);
       }
     });
+  }
+
+  // The entry the browser reaches carries where every tab stood when it was
+  // written, so arriving through Back, Forward, or a reload restores that
+  // instead of the shell deciding what the entry should have meant. An entry
+  // the browser created itself, following a native link, arrives without that
+  // record and is given one here: the entry is committed by now, which it is
+  // not yet while the navigation is being intercepted.
+  adoptReachedEntry(route) {
+    const snapshot = this.readEntryNavigation();
+    if (snapshot) {
+      this.navigationHistory.restore(snapshot);
+      return;
+    }
+
+    if (!route) {
+      return;
+    }
+
+    this.writeEntryChain(
+      this.navigationHistory.resolveFollowedLink(this.currentRoute, route),
+    );
+  }
+
+  // A reload or a Back lands on an entry this shell wrote, so its record is
+  // restored. A route the browser reached from outside has no record and no
+  // entries under it, so the screens it sits under are written in beneath it;
+  // otherwise the system Back leaves the application from a screen that
+  // plainly has a parent.
+  adoptInitialEntry(route) {
+    const snapshot = this.readEntryNavigation();
+    if (snapshot) {
+      this.navigationHistory.restore(snapshot);
+      return;
+    }
+
+    if (!route) {
+      return;
+    }
+
+    this.writeEntryChain(this.navigationHistory.resolveEntry(null, route, true));
+  }
+
+  // Writing one entry reports an arrival at it, and a chain is written in one
+  // synchronous run, so the listeners are held off until it is complete rather
+  // than reading the shell's own scaffolding as a person navigating.
+  writeEntryChain(entries) {
+    this.writingEntryChain = true;
+    try {
+      for (const entry of entries) {
+        this.navigationHistory.commit(entry);
+        this.writeHistoryEntry(entry.route, entry.action);
+      }
+    } finally {
+      this.writingEntryChain = false;
+    }
+  }
+
+  readEntryNavigation() {
+    return window.history.state?.caffoldNavigation ?? null;
+  }
+
+  // Both paths write through the History API. A chain of entries has to be
+  // written synchronously and repeatedly, and state written this way is not
+  // readable through `navigation.currentEntry`, so one writer keeps the record
+  // in one place. The Navigation API decides only which events are listened
+  // for, in `installNavigationHandlers`.
+  writeHistoryEntry(route, action) {
+    const url = routeUrl(route);
+    const state = { caffoldNavigation: this.navigationHistory.snapshot() };
+    if (action === NAVIGATION_HISTORY_ACTION.PUSH) {
+      window.history.pushState(state, "", url);
+    } else {
+      window.history.replaceState(state, "", url);
+    }
   }
 
   async bootstrap() {
@@ -295,7 +401,7 @@ class CaffoldAppShell extends HTMLElement {
       if (route) {
         await this.applyRoute(route);
       } else {
-        this.navigateToRoute({ kind: "tasks" }, { replace: true });
+        this.navigateToRoute({ kind: "tasks" });
       }
       this.foregroundRecoveryLifecycle.connect();
       return await this.foregroundRecoveryLifecycle.requestInitialActivation({
@@ -320,7 +426,7 @@ class CaffoldAppShell extends HTMLElement {
       (!currentRoute?.threadId || currentRoute.threadId !== route.threadId)
     ) {
       progress.activatingRoute();
-      await this.applyRoute(route, { pushHistory: true });
+      await this.applyRoute(route, { activation: true });
     }
     if (!isCurrent()) {
       return { stale: true };
@@ -455,48 +561,52 @@ class CaffoldAppShell extends HTMLElement {
     alert.setStatus(mismatch ? { serverLabel } : null);
   }
 
+  // A requested route decides its own history treatment from where it stands
+  // relative to the current one. `correction` marks the requests that only
+  // refine the current destination, such as canonicalizing a URL or leaving a
+  // subject that turned out to be unreachable.
   navigateToRoute(route, options = {}) {
-    if (!route) {
+    if (!route || this.rewindingHistory) {
       return false;
     }
+
+    const entries = options.correction
+      ? this.navigationHistory.resolveCorrection(this.currentRoute, route)
+      : this.navigationHistory.resolve(this.currentRoute, route);
     this.keyboardNavigation?.routeWillChange();
+
+    const [first] = entries;
+    if (first.action === NAVIGATION_HISTORY_ACTION.TRAVERSE) {
+      this.rewindingHistory = true;
+      this.navigationHistory.commit(first);
+      window.history.go(-first.steps);
+      return true;
+    }
+
     const applyOptions = { keyboardPrepared: true };
-    if (this.currentRoute && routeEquals(this.currentRoute, route)) {
-      void this.applyRoute(route, applyOptions);
-      return true;
+    if (first.action !== NAVIGATION_HISTORY_ACTION.NONE) {
+      this.writeEntryChain(entries);
     }
-    const url = routeUrl(route);
-    if (this.usesNavigationApi) {
-      this.currentRoute = route;
-      window.navigation.navigate(url, {
-        history: options.replace ? "replace" : "push",
-      });
-      void this.applyRoute(route, applyOptions);
-      return true;
-    }
-    const state = { caffoldRoute: route };
-    if (options.replace) {
-      window.history.replaceState(state, "", url);
-    } else {
-      window.history.pushState(state, "", url);
-    }
+    this.currentRoute = route;
     void this.applyRoute(route, applyOptions);
     return true;
   }
 
-  async applyRoute(route, { keyboardPrepared = false, pushHistory = false } = {}) {
+  async applyRoute(route, { keyboardPrepared = false, activation = false } = {}) {
     if (!keyboardPrepared) {
       this.keyboardNavigation?.routeWillChange();
     }
+    // A rewind this shell asked for has arrived, and a destination may still
+    // correct itself while it opens.
+    this.rewindingHistory = false;
+    const previousRoute = this.currentRoute;
     this.currentRoute = route;
-    const canonicalUrl = routeUrl(route);
-    if (window.location.pathname + window.location.search !== canonicalUrl) {
-      const state = { caffoldRoute: route };
-      if (pushHistory) {
-        window.history.pushState(state, "", canonicalUrl);
-      } else {
-        window.history.replaceState(state, "", canonicalUrl);
-      }
+    if (window.location.pathname + window.location.search !== routeUrl(route)) {
+      this.writeEntryChain(
+        activation
+          ? this.navigationHistory.resolveEntry(previousRoute, route, false)
+          : this.navigationHistory.resolveCorrection(previousRoute, route),
+      );
     }
     this.setBootstrapError(null);
     await this.taskWorkspace.openRoute(route, {

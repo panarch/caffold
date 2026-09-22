@@ -209,7 +209,9 @@ test("navigates Settings as responsive master-detail pages with browser history"
   if (testInfo.project.name === "phone") {
     await workspace.getByRole("button", { name: "Back to settings" }).click();
   } else {
-    await navigation.locator('[data-workspace-mode="settings"]').click();
+    // Desktop keeps the Settings list beside the page, so the Settings root is
+    // only a destination on its own when it is entered directly.
+    await page.goto("/settings");
   }
   await expect(page).toHaveURL("/settings");
   if (testInfo.project.name === "phone") {
@@ -681,12 +683,17 @@ test("preserves Tasks and Settings DOM while hidden task updates arrive", { tag:
     "Updated while Settings is visible",
   );
 
+  // The Tasks tab reopened deep, so the Task list went in under it: Back walks
+  // up Tasks before it leaves for the Settings page.
+  await page.goBack();
+  await expect(page).toHaveURL("/");
   await page.goBack();
   await expect(page).toHaveURL("/settings/appearance");
   await expect(appearancePage).toHaveAttribute(
     "data-identity-marker",
     "settings-stable",
   );
+  await page.goForward();
   await page.goForward();
   await expect(page).toHaveURL("/tasks/new?cwd=src");
   await expect(prompt).toHaveValue("조합 중인 입력과 화면 상태를 그대로 유지한다");

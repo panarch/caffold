@@ -9,7 +9,8 @@ the stable context for local work.
 The Task workspace is the only routed application workspace. It contains the
 Task navigator, Global New, Task/Section Detail, Notes, and Settings. The
 workspace navigation at the bottom of the navigation pane switches among Tasks,
-Notes, and Settings.
+Notes, and Settings. Each returns to the screen it last showed, and browser Back
+leaves the current one for the previous one at its own depth.
 
 Desktop reading surfaces may keep the Task navigator visible. Code surfaces
 use the available detail width. Foldable and phone layouts use the same

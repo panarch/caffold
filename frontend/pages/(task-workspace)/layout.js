@@ -1,6 +1,6 @@
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 import "../../components/pane-resizer.js";
-import { routeDomain, routeTarget } from "../../navigation-routes.js";
+import { routeDomain, routeTab, routeTarget } from "../../navigation-routes.js";
 import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
   CODEX_RUNTIME_UPDATE_REQUEST_EVENT,
@@ -78,8 +78,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.rendered = true;
     this.mode = "tasks";
     this.route = { kind: "tasks" };
-    this.lastTaskRoute = { kind: "tasks" };
-    this.lastNotesRoute = { kind: "notes", noteId: "" };
     this.currentOpenOptions = {};
     this.codexRestartStateValue = { state: "idle", message: "" };
     this.codexUpdateStateValue = { state: "idle", message: "" };
@@ -178,10 +176,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.dispatchEvent(
         new CustomEvent("caffold:request-tasks-route", {
           bubbles: true,
-          detail: {
-            route: { kind: "tasks" },
-            replace: true,
-          },
+          detail: { route: { kind: "tasks" } },
         }),
       );
     });
@@ -205,19 +200,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
       "caffold:workspace-navigation-intent",
       (event) => {
         event.stopPropagation();
-        const mode = event.detail?.mode;
-        const route = mode === "tasks"
-          ? this.lastTaskRoute
-          : mode === "notes"
-            ? this.lastNotesRoute
-            : {
-                kind: "settings",
-                section: this.tasksPage.codexOperationsBlocked() ? "codex" : "",
-              };
+        const tab = event.detail?.mode;
         this.dispatchEvent(
-          new CustomEvent("caffold:request-workspace-route", {
+          new CustomEvent("caffold:request-workspace-tab", {
             bubbles: true,
-            detail: { route: { ...route } },
+            detail: { tab, fallbackRoute: this.firstRouteForTab(tab) },
           }),
         );
       },
@@ -305,11 +292,27 @@ class CaffoldTaskWorkspace extends HTMLElement {
     }
   }
 
+  // Where a tab opens the first time it is used, before it has a route to
+  // return to. Blocked Codex operations send Settings to their repair page.
+  firstRouteForTab(tab) {
+    if (tab === "notes") {
+      return { kind: "notes", noteId: "" };
+    }
+    if (tab === "settings") {
+      return {
+        kind: "settings",
+        section: this.tasksPage.codexOperationsBlocked() ? "codex" : "",
+      };
+    }
+
+    return { kind: "tasks" };
+  }
+
   prepareRoute(route, options = {}) {
     this.ensureRendered();
     const previousMode = this.mode;
     this.route = route;
-    this.mode = ["settings", "notes"].includes(route?.kind) ? route.kind : "tasks";
+    this.mode = routeTab(route);
     if (previousMode === "tasks" && this.mode !== "tasks") {
       this.tasksPage.deactivate();
     }
@@ -317,10 +320,8 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.notesWorkspace.deactivate();
     }
     if (this.mode === "tasks") {
-      this.lastTaskRoute = { ...route };
       this.tasksPage.prepareRoute(route, options);
     } else if (this.mode === "notes") {
-      this.lastNotesRoute = { ...route };
       this.notesWorkspace.prepareRoute(route);
     } else {
       this.settingsWorkspace.prepareRoute(route);

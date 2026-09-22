@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ROUTE_RELATION,
   parentRoute,
   parseRoute,
+  routeAscentSteps,
   routeDomain,
   routeEquals,
   routeMode,
+  routeRelation,
   routeSurface,
+  routeTab,
   routeTarget,
   routeUrl,
 } from "./navigation-routes.js";
@@ -372,4 +376,85 @@ test("compares Task-scoped routes by canonical URL", () => {
     ),
     false,
   );
+});
+
+test("assigns every route to the bottom tab that presents it", () => {
+  const cases = [
+    ["/", "tasks"],
+    ["/tasks/new", "tasks"],
+    ["/tasks/thread", "tasks"],
+    ["/tasks/thread/review?file=src%2Flib.rs", "tasks"],
+    ["/tasks/thread/git/log?page=2", "tasks"],
+    ["/tasks/thread/github/pulls/12/files", "tasks"],
+    ["/?section=repo-1&surface=github&tool=issues", "tasks"],
+    ["/notes", "notes"],
+    ["/notes/note-1", "notes"],
+    ["/settings", "settings"],
+    ["/settings/appearance", "settings"],
+  ];
+
+  for (const [url, expected] of cases) {
+    assert.equal(routeTab(parseRoute(url)), expected, url);
+  }
+});
+
+test("counts the parents between a route and one it sits under", () => {
+  const cases = [
+    ["/tasks/thread/github/pulls/12/files?file=src%2Flib.rs", "/tasks/thread/github/pulls/12/files", 1],
+    ["/tasks/thread/github/pulls/12/files?file=src%2Flib.rs", "/tasks/thread/github/pulls", 3],
+    ["/tasks/thread/github/pulls/12/files?file=src%2Flib.rs", "/", 4],
+    ["/tasks/thread/review?file=src%2Flib.rs", "/", 2],
+    ["/notes/note-1", "/notes", 1],
+    ["/settings/appearance", "/settings", 1],
+    ["/", "/notes", null],
+    ["/tasks/thread", "/tasks/other", null],
+    ["/tasks/thread/github/pulls", "/tasks/thread/github/pulls/12", null],
+  ];
+
+  for (const [from, to, expected] of cases) {
+    assert.equal(
+      routeAscentSteps(parseRoute(from), parseRoute(to)),
+      expected,
+      `${from} -> ${to}`,
+    );
+  }
+});
+
+test("reads how one route stands to another from their declared parents", () => {
+  const cases = [
+    // 들어간다
+    ["/", "/tasks/thread", ROUTE_RELATION.DESCEND],
+    ["/tasks/thread/github/issues", "/tasks/thread/github/issues/42", ROUTE_RELATION.DESCEND],
+    ["/tasks/thread/review", "/tasks/thread/review?file=src%2Flib.rs", ROUTE_RELATION.DESCEND],
+    ["/notes", "/notes/note-1", ROUTE_RELATION.DESCEND],
+    ["/settings", "/settings/appearance", ROUTE_RELATION.DESCEND],
+    // 나온다
+    ["/tasks/thread", "/", ROUTE_RELATION.ASCEND],
+    ["/tasks/thread/review?file=src%2Flib.rs", "/tasks/thread/review", ROUTE_RELATION.ASCEND],
+    ["/notes/note-1", "/notes", ROUTE_RELATION.ASCEND],
+    ["/settings/appearance", "/settings", ROUTE_RELATION.ASCEND],
+    // 바꾼다
+    ["/tasks/thread", "/tasks/other", ROUTE_RELATION.SWAP],
+    ["/tasks/thread", "/tasks/thread/review", ROUTE_RELATION.SWAP],
+    ["/tasks/thread/review", "/tasks/thread/git/log", ROUTE_RELATION.SWAP],
+    ["/tasks/thread/github/issues/42", "/tasks/thread/github/issues/43", ROUTE_RELATION.SWAP],
+    ["/tasks/thread/git/log?page=1", "/tasks/thread/git/log?page=2", ROUTE_RELATION.SWAP],
+    ["/notes/note-1", "/notes/note-2", ROUTE_RELATION.SWAP],
+    ["/settings/appearance", "/settings/keyboard", ROUTE_RELATION.SWAP],
+    // 탭을 옮긴다
+    ["/", "/notes", ROUTE_RELATION.TAB],
+    ["/tasks/thread/review", "/settings/appearance", ROUTE_RELATION.TAB],
+    ["/notes/note-1", "/", ROUTE_RELATION.TAB],
+  ];
+
+  for (const [from, to, expected] of cases) {
+    assert.equal(
+      routeRelation(parseRoute(from), parseRoute(to)),
+      expected,
+      `${from} -> ${to}`,
+    );
+  }
+
+  assert.equal(routeRelation(null, parseRoute("/")), null);
+  assert.equal(routeRelation(parseRoute("/"), null), null);
 });

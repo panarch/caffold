@@ -1219,7 +1219,11 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}`);
   await expect(detailsPopover).toBeHidden();
+  // Conversation sits beside Git, so it takes the file's entry rather than
+  // stacking on it: Back reaches the commit the file was opened from.
   await page.goBack();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}`);
+  await activateActionHint(page, /Show commit diff for example\.rs$/);
   await expect(page).toHaveURL(
     `/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}&file=example.rs`,
   );

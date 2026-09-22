@@ -637,5 +637,5 @@ test("keeps browser Back aligned with the semantic Review parent", { tag: ["@des
     `/tasks/${taskScenario.threadId}/review?nav=files&view=source`,
   );
   await page.goBack();
-  await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
+  await expect(page).toHaveURL("/");
 });

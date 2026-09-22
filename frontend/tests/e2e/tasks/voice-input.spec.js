@@ -552,6 +552,10 @@ test("offers voice input again once Voice Input settings finish its setup", { ta
     openai.locator('caffold-settings-detail-list [data-key="api-key"] dd'),
   ).toHaveText("Saved");
 
+  // Voice Input setup is a Settings page, so the Settings list sits under it
+  // and Back leaves Settings before returning to the composer.
+  await page.goBack();
+  await expect(page).toHaveURL("/settings");
   await page.goBack();
   await expect(page).toHaveURL(/\/tasks\/new/);
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
