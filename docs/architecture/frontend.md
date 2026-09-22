@@ -250,7 +250,7 @@ The App Shell keyboard-navigation coordinator is the only document-level key
 owner. It derives normal versus editing state from focus and composition, and
 stores at most one mutually exclusive Action Hint, Scroll selection, active
 Scroll, or shortcut-help mode. Keyboard navigation being disabled closes the
-stored mode and leaves `F`, `S`, and `?` unhandled. App Shell route changes,
+stored mode and leaves `F`, `S`, `T`, and `?` unhandled. App Shell route changes,
 disconnect, competing native overlay ownership, and composition changes run
 through the same cleanup authority. Task Workspace does not install a second
 document listener or global presentation.
@@ -268,7 +268,12 @@ coordinator reads native
 infer actions or scrollports from overlay descendants.
 
 The coordinator enters Action Hint mode from a non-editing `F` key and
-pulls one-shot semantic descriptors from explicitly participating owners.
+pulls one-shot semantic descriptors from explicitly participating owners. A
+non-editing `T` key first asks Task Workspace to open the Task switcher and
+then enters the same mode, so the session it collects is scoped to that modal.
+Task Workspace opens it only on its Tasks surface, because the Notes and
+Settings surfaces do not load the Task list the switcher shows; a refusal
+leaves the key unhandled.
 Each participating component provides its retained native control, stable
 semantic identity, action meaning, accessible name, anchor, and clip
 dependencies. This includes Workspace and Settings navigation and page
@@ -373,10 +378,11 @@ dialog openers are ordinary workspace actions. A context that declares itself
 session-bound continues Action Hints when a Hint activation makes it the
 interaction owner and closes itself when the user dismisses that session; the
 coordinator reports the dismissal on the context root, and the owner hides its
-own popover. Every registered popover with actions declares it and dialogs do
-not, so the user presses `F` again inside a dialog or a popover opened by
-pointer, and such a session leaves the popover open. File details deliberately
-declares no internal Action Hint target.
+own surface. Every registered popover with actions declares it, and so does the
+Task switcher, whose key opens the dialog and hands it the same session. Every
+other dialog does not, so the user presses `F` again inside one or inside a
+popover opened by pointer, and such a session leaves that surface open. File
+details deliberately declares no internal Action Hint target.
 
 Provider collection is hierarchical: each layout merges its own actions with
 only its active direct child scopes through `action-hint-scope.js`. Ancestors
@@ -384,16 +390,15 @@ do not enumerate or reach through descendant DOM. A retained pane with no
 layout box is omitted before merge, so its hidden mutation and scroll
 dependencies cannot invalidate the visible pane's session.
 
-The eleven registered Task Workspace product dialogs follow the same
+The twelve registered Task Workspace product dialogs follow the same
 owner-first contract: Codex restart, Codex update, Claude restart,
-archived-task deletion, image preview, directory picker, Conversation fork,
-command output, code-block Markdown preview, Current Plan document, and GitHub
-Task Start. Every currently visible
-and enabled button has an owner declaration, without semantic deduplication,
-and controls owned by a direct child compose through the same public scope
-interface. Fork additionally declares its Thread-ID textbox, while the Task
-Start issue child declares its native Base branch select. Textbox activation
-only focuses the retained input.
+archived-task deletion, Task switcher, image preview, directory picker,
+Conversation fork, command output, code-block Markdown preview, Current Plan
+document, and GitHub Task Start. Every currently visible and enabled button has
+an owner declaration, without semantic deduplication, and controls owned by a
+direct child compose through the same public scope interface. Fork additionally
+declares its Thread-ID textbox, while the Task Start issue child declares its
+native Base branch select. Textbox activation only focuses the retained input.
 The general select activation contract applies to that Base branch control;
 native options and change handling remain with the browser and product state
 owners. These registrations do not create a generic dialog registry or DOM
@@ -403,8 +408,10 @@ declared by the dialog owner, while native form return values and PWA intent
 handling remain unchanged.
 
 The controller validates every action and control kind against a closed central
-policy. Task selection retains generated `T*` codes and New Task, Model, and
-Prompt retain `N`, `M`, and `P`. Task suffixes and actions in the automatic
+policy. Task selection in the navigator retains generated `T*` codes and New
+Task, Model, and Prompt retain `N`, `M`, and `P`. A Task switcher row is its
+own action in the automatic pool, because every target that surface offers is
+that one action and a prefix would separate nothing. Task suffixes and actions in the automatic
 pool receive compact, balanced prefix-free codes in
 `ASDFGHJKLQWERTYUIOPZXCVBNM` order after visual sorting. The allocator
 minimizes the longest code first and total code length second, assigns shorter

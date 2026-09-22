@@ -196,6 +196,127 @@ test("route, setting, and disconnect cleanup close shortcut help", () => {
   }
 });
 
+test("the Task switcher key opens its surface and then enters Hint", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const order = [];
+    const controller = createController({
+      openTaskSwitcher: () => {
+        order.push("open-switcher");
+        return true;
+      },
+    });
+    controller.actionHints.prepareSnapshot = () => ({
+      targets: [{ id: "task-switcher:one" }],
+    });
+    controller.actionHints.startSession = () => {
+      order.push("start-hints");
+      return true;
+    };
+
+    const event = keyEvent("T");
+    controller.handleKeydown(event);
+
+    assert.deepEqual(order, ["open-switcher", "start-hints"]);
+    assert.equal(event.prevented, true);
+    assert.equal(event.stopped, true);
+    assert.equal(controller.controlNode(), KEYBOARD_NAVIGATION_NODE.HINT);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("a refused Task switcher leaves the key to the page", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController({ openTaskSwitcher: () => false });
+    controller.actionHints.prepareSnapshot = () => {
+      throw new Error("A refused switcher must not collect a Hint session.");
+    };
+
+    const event = keyEvent("T");
+    controller.handleKeydown(event);
+
+    assert.equal(event.prevented, false);
+    assert.equal(controller.controlNode(), KEYBOARD_NAVIGATION_NODE.NORMAL);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("the Task switcher key stays native in editing and ignores unsafe variants", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    let opened = 0;
+    const controller = createController({
+      openTaskSwitcher: () => {
+        opened += 1;
+        return true;
+      },
+    });
+    const input = element({
+      isConnected: true,
+      matches: (selector) => selector.includes("input:not"),
+    });
+    document.activeElement = input;
+    for (const event of [
+      keyEvent("T"),
+      keyEvent("T", { repeat: true }),
+      keyEvent("T", { metaKey: true }),
+      { ...keyEvent("T"), isComposing: true },
+    ]) {
+      event.target = input;
+      controller.handleKeydown(event);
+      assert.equal(event.prevented, false);
+    }
+
+    document.activeElement = null;
+    for (const event of [
+      keyEvent("T", { repeat: true }),
+      keyEvent("T", { ctrlKey: true }),
+      keyEvent("T", { altKey: true }),
+      { ...keyEvent("T"), isComposing: true },
+    ]) {
+      controller.handleKeydown(event);
+      assert.equal(event.prevented, false);
+    }
+    assert.equal(opened, 0);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("the Task switcher key belongs to whichever keyboard mode already owns input", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    for (const node of [
+      KEYBOARD_NAVIGATION_NODE.HINT,
+      KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING,
+      KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE,
+      KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP,
+    ]) {
+      let opened = 0;
+      const controller = createController({
+        openTaskSwitcher: () => {
+          opened += 1;
+          return true;
+        },
+      });
+      controller.handleSelectionKeydown = () => {};
+      controller.handleActiveKeydown = () => {};
+      controller.actionHints.handleHintKeydown = () => {};
+      controller.storedNode = node;
+
+      controller.handleKeydown(keyEvent("T"));
+
+      assert.equal(opened, 0, node);
+      assert.equal(controller.storedNode, node);
+    }
+  } finally {
+    restoreDom();
+  }
+});
+
 test("coordinator alone owns the document key listener and releases all inputs", () => {
   const restoreDom = installEventGlobals();
   try {
@@ -1454,6 +1575,7 @@ test("active revalidation keeps one binding and refreshes its retained presentat
 function createController({
   shortcutDialog = null,
   afterActionHintActivation = () => {},
+  openTaskSwitcher = () => false,
 } = {}) {
   const workspace = Object.assign(new FakeEventTarget(), { dataset: {} });
   return new KeyboardNavigationController({
@@ -1461,6 +1583,7 @@ function createController({
     collectKeyboardNavigationContexts: () => [],
     shortcutDialog,
     afterActionHintActivation,
+    openTaskSwitcher,
   });
 }
 

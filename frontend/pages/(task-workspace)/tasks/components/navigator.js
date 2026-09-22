@@ -473,6 +473,14 @@ class CaffoldTaskNavigator extends HTMLElement {
     return this.activeTaskList.taskFor(threadId);
   }
 
+  activeTaskSnapshot() {
+    this.ensureChildren();
+    return {
+      rows: this.activeTaskList.tasksWithSections(),
+      loaded: this.activeTaskList.listState().loaded,
+    };
+  }
+
   sectionFor(sectionId) {
     this.ensureChildren();
     return this.activeTaskList.sectionFor(sectionId);

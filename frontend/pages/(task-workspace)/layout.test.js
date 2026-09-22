@@ -207,3 +207,95 @@ test("composes the keyboard contexts of the shown workspace mode", () => {
   owner.hidden = true;
   assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), []);
 });
+
+test("hands the Task switcher the navigator's own active Task snapshot", () => {
+  const snapshot = {
+    rows: [{ task: { threadId: "one" }, sectionName: "caffold" }],
+    loaded: true,
+  };
+  let opened = null;
+  const owner = {
+    hidden: false,
+    mode: "tasks",
+    ensureRendered() {},
+    taskNavigator: { activeTaskSnapshot: () => snapshot },
+    taskSwitcherDialog: {
+      open(given) {
+        opened = given;
+        return true;
+      },
+    },
+  };
+
+  assert.equal(workspace.openTaskSwitcher.call(owner), true);
+  assert.equal(opened, snapshot);
+
+  for (const refusal of [
+    { hidden: true },
+    { mode: "notes" },
+    { mode: "settings" },
+  ]) {
+    Object.assign(owner, { hidden: false, mode: "tasks" }, refusal);
+    opened = null;
+    assert.equal(workspace.openTaskSwitcher.call(owner), false);
+    assert.equal(opened, null);
+  }
+});
+
+test("turns a switched Task into one route request and one focus handoff", () => {
+  const requested = [];
+  const focused = [];
+  const owner = {
+    dispatchEvent: (event) => requested.push(event),
+    focusOpenedTask: (threadId, control) => focused.push([threadId, control]),
+  };
+
+  workspace.openSwitchedTask.call(owner, { threadId: "one" });
+  workspace.openSwitchedTask.call(owner, {
+    threadId: "two",
+    recovery: true,
+  });
+  workspace.openSwitchedTask.call(owner, { threadId: "" });
+  workspace.openSwitchedTask.call(owner);
+
+  assert.deepEqual(requested.map(({ detail }) => detail.route), [
+    { kind: "tasks", threadId: "one" },
+    { kind: "tasks", threadId: "two", recovery: true },
+  ]);
+  assert.deepEqual(focused, [["one", undefined], ["two", undefined]]);
+});
+
+test("sends focus to the Task itself when no visible control opened it", () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { matchMedia: () => ({ matches: true }) };
+  try {
+    let destinations = 0;
+    const owner = {
+      isConnected: true,
+      mode: "tasks",
+      route: { kind: "tasks", threadId: "one" },
+      tasksPage: {
+        focusActionHintDestination() {
+          destinations += 1;
+        },
+      },
+    };
+    const queued = [];
+    const previousQueue = globalThis.queueMicrotask;
+    globalThis.queueMicrotask = (callback) => queued.push(callback);
+    try {
+      workspace.focusOpenedTask.call(owner, "one");
+      workspace.focusOpenedTask.call(owner, "other");
+      for (const callback of queued) {
+        callback();
+      }
+    } finally {
+      globalThis.queueMicrotask = previousQueue;
+    }
+
+    assert.equal(destinations, 1);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});

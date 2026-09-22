@@ -253,6 +253,7 @@ test("registered dialog contexts stay owned and compose through public providers
   assert.match(workspace, /this\.codexRuntimeRestartDialog\?\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.claudeRuntimeRestartDialog\?\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.archivedDeleteDialog\?\.keyboardNavigationContexts/);
+  assert.match(workspace, /this\.taskSwitcherDialog\?\.keyboardNavigationContexts/);
   assert.match(tasks, /this\.imagePreviewDialog\?\.\(\)\?\.keyboardNavigationContexts/);
   assert.match(taskNew, /this\.directoryPicker\(\)\?\.keyboardNavigationContexts/);
   assert.match(section, /this\.conversationShortcuts\(\)\?\.keyboardNavigationContexts/);
@@ -273,6 +274,7 @@ test("registered product dialogs retain one context-local keyboard presentation"
     "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
     "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
     "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
+    "pages/(task-workspace)/tasks/components/task-switcher-dialog.js",
     "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
     "pages/(task-workspace)/tasks/new/components/directory-picker.js",
     "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
@@ -302,6 +304,7 @@ test("product dialog CSS does not style nested keyboard presentation dialogs", (
   const styles = [
     "pages/components/update-dialog.css",
     "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
+    "pages/(task-workspace)/tasks/components/task-switcher-dialog.css",
     "pages/(task-workspace)/tasks/new/components/directory-picker.css",
     "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",

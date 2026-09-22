@@ -56,11 +56,13 @@ export class KeyboardNavigationController {
     collectKeyboardNavigationContexts,
     shortcutDialog = null,
     afterActionHintActivation = () => {},
+    openTaskSwitcher = () => false,
     readSettings = () => ({ actionHintsEnabled: true }),
   }) {
     this.workspace = workspace;
     this.collectKeyboardNavigationContexts = collectKeyboardNavigationContexts;
     this.shortcutDialog = shortcutDialog;
+    this.openTaskSwitcher = openTaskSwitcher;
     this.readSettings = readSettings;
     this.connected = false;
     this.compositionActive = false;
@@ -285,6 +287,14 @@ export class KeyboardNavigationController {
       return;
     }
     if (key === KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT && this.startScroll()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (
+      key === KEYBOARD_NAVIGATION_KEY.TASK_SWITCHER &&
+      this.startTaskSwitcher()
+    ) {
       event.preventDefault();
       event.stopPropagation();
     }
@@ -545,6 +555,24 @@ export class KeyboardNavigationController {
       this.storedNode === KEYBOARD_NAVIGATION_NODE.HINT) {
       this.applyTransition(KEYBOARD_NAVIGATION_EVENT.HINT_CANCELLED);
     }
+    return true;
+  }
+
+  /**
+   * Open the Task switcher and hand the Action Hint session to it.
+   *
+   * The switcher is an ordinary modal context rather than a mode of its own,
+   * so this adds no control node: it opens the surface and then enters Hint
+   * the same way the Action Hints key does.
+   */
+  startTaskSwitcher() {
+    if (this.controlNode() !== KEYBOARD_NAVIGATION_NODE.NORMAL) {
+      return false;
+    }
+    if (!this.openTaskSwitcher()) {
+      return false;
+    }
+    this.startActionHints();
     return true;
   }
 

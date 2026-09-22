@@ -39,8 +39,14 @@ import {
 } from "../../keyboard-navigation.js";
 import "./components/navigation.js";
 import {
+  ACTIVE_TASK_LIST_STATE_EVENT,
+} from "./tasks/components/active-task-list.js";
+import {
   TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
 } from "./tasks/components/archived-delete-dialog.js";
+import {
+  TASK_SWITCHER_SELECT_EVENT,
+} from "./tasks/components/task-switcher-dialog.js";
 import "./tasks/components/navigator.js";
 import "./tasks/layout.js";
 import "./notes/components/navigator.js";
@@ -124,6 +130,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
         </div>
       </section>
       <caffold-task-archived-delete-dialog></caffold-task-archived-delete-dialog>
+      <caffold-task-switcher-dialog></caffold-task-switcher-dialog>
       <caffold-codex-runtime-restart-dialog></caffold-codex-runtime-restart-dialog>
       <caffold-codex-runtime-update-dialog></caffold-codex-runtime-update-dialog>
       <caffold-claude-runtime-restart-dialog></caffold-claude-runtime-restart-dialog>
@@ -145,6 +152,9 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.navigation = this.querySelector("caffold-task-workspace-navigation");
     this.archivedDeleteDialog = this.querySelector(
       ":scope > caffold-task-archived-delete-dialog",
+    );
+    this.taskSwitcherDialog = this.querySelector(
+      ":scope > caffold-task-switcher-dialog",
     );
     this.codexRuntimeRestartDialog = this.querySelector(
       ":scope > caffold-codex-runtime-restart-dialog",
@@ -193,6 +203,18 @@ class CaffoldTaskWorkspace extends HTMLElement {
       (event) => {
         event.stopPropagation();
         void this.taskNavigator?.deleteThread(event.detail?.threadId);
+      },
+    );
+    this.taskNavigator.addEventListener(ACTIVE_TASK_LIST_STATE_EVENT, () => {
+      this.taskSwitcherDialog.updateTasks(
+        this.taskNavigator.activeTaskSnapshot(),
+      );
+    });
+    this.taskSwitcherDialog.addEventListener(
+      TASK_SWITCHER_SELECT_EVENT,
+      (event) => {
+        event.stopPropagation();
+        this.openSwitchedTask(event.detail);
       },
     );
 
@@ -596,6 +618,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.codexRuntimeUpdateDialog?.keyboardNavigationContexts?.() ?? [],
       this.claudeRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
       this.archivedDeleteDialog?.keyboardNavigationContexts?.() ?? [],
+      this.taskSwitcherDialog?.keyboardNavigationContexts?.() ?? [],
       childContexts,
     );
   }
@@ -655,6 +678,41 @@ class CaffoldTaskWorkspace extends HTMLElement {
     return this.querySelector(":scope > .task-workspace-surface");
   }
 
+  /**
+   * Offer the Task switcher where the Task list it shows is actually held.
+   *
+   * Notes and Settings never load that list, so a switcher opened there could
+   * only report an emptiness it has not checked.
+   */
+  openTaskSwitcher() {
+    this.ensureRendered();
+    if (this.hidden || this.mode !== "tasks") {
+      return false;
+    }
+    return this.taskSwitcherDialog.open(
+      this.taskNavigator.activeTaskSnapshot(),
+    );
+  }
+
+  openSwitchedTask({ threadId = "", recovery = false } = {}) {
+    if (!threadId) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent("caffold:request-tasks-route", {
+        bubbles: true,
+        detail: {
+          route: {
+            kind: "tasks",
+            threadId,
+            ...(recovery ? { recovery: true } : {}),
+          },
+        },
+      }),
+    );
+    this.focusOpenedTask(threadId);
+  }
+
   afterActionHintActivation(target) {
     if (![ACTION_HINT_ACTION.TASK_OPEN, ACTION_HINT_ACTION.TASK_OPEN_RECOVERY]
       .includes(target.actionId)) {
@@ -663,6 +721,17 @@ class CaffoldTaskWorkspace extends HTMLElement {
     const threadId = target.id.startsWith("task:")
       ? target.id.slice("task:".length)
       : "";
+    this.focusOpenedTask(threadId, target.control);
+  }
+
+  /**
+   * Put focus where the newly opened Task is once navigation settles.
+   *
+   * A control the person can still see keeps the focus it just had. Anything
+   * else — a compact layout that replaced the list, or a row in a dialog that
+   * has since closed — hands focus to the Task itself.
+   */
+  focusOpenedTask(threadId, control = null) {
     const focusDestination = () => {
       if (
         !this.isConnected ||
@@ -672,9 +741,12 @@ class CaffoldTaskWorkspace extends HTMLElement {
       ) {
         return;
       }
-      if (window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches) {
-        if (target.control?.isConnected && !target.control.disabled) {
-          target.control.focus({ preventScroll: true });
+      if (
+        control &&
+        window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches
+      ) {
+        if (control.isConnected && !control.disabled) {
+          control.focus({ preventScroll: true });
         }
         return;
       }
