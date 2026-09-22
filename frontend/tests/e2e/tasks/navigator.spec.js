@@ -1612,6 +1612,18 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   await page.getByRole("button", { name: "Archive task" }).click();
 
   await expect(page).toHaveURL("/");
+  const prompt = page.locator('caffold-task-new textarea[name="prompt"]');
+  if (testInfo.project.name === "phone") {
+    await expect(prompt).toBeHidden();
+  } else {
+    await expect(prompt).toBeVisible();
+  }
+  await expect(prompt).not.toBeFocused();
+  await page.keyboard.press("f");
+  const actionHints = page.locator("caffold-action-hint-dialog > dialog:modal");
+  await expect(actionHints).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(actionHints).toBeHidden();
   await expect(
     navigator.locator('.task-list-section[data-task-section="managed"]'),
   ).not.toContainText("Archive round trip");
