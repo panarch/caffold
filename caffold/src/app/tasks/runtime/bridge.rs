@@ -115,7 +115,11 @@ impl TaskRuntime {
                     let thread_id = managed.thread_id;
                     runtime
                         .sessions
-                        .restore_managed_fast_mode(&thread_id, managed.fast_mode)
+                        .restore_managed_composer_settings(
+                            &thread_id,
+                            managed.fast_mode,
+                            managed.permission_mode.as_deref(),
+                        )
                         .await;
                     match runtime
                         .sessions
@@ -271,6 +275,8 @@ impl TaskRuntime {
 mod tests {
     use crate::agent;
     use crate::agent::ThreadStatus;
+    use crate::agent::driver::REVIEWED_PERMISSION_MODE;
+    use crate::task_store::ComposerSettings;
     use std::time::Duration;
 
     use serde_json::{Value as JsonValue, json};
@@ -823,6 +829,53 @@ mod tests {
                     })
                 )
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_recovery_takes_a_task_back_to_the_reviewed_mode_it_ran_under() {
+        let store = TaskStore::memory().unwrap();
+        store
+            .claim(
+                ManagedThread::new("managed", RunBy::Codex, None, None, None),
+                10,
+            )
+            .unwrap();
+        store
+            .update_composer_settings(
+                "managed",
+                &ComposerSettings {
+                    model: None,
+                    reasoning_effort: None,
+                    fast_mode: false,
+                    permission_mode: Some(REVIEWED_PERMISSION_MODE.to_string()),
+                },
+            )
+            .unwrap();
+        let runtime = runtime_with_events_and_store(TaskEvents::default(), store);
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/loaded/list",
+                json!({ "data": ["managed"], "nextCursor": null }),
+            ),
+            MockCodexResponse::ok("thread/resume", active_resume("managed")),
+        ]);
+
+        runtime
+            .recover_loaded_sessions(CodexConnection {
+                client: client.clone(),
+                generation: 4,
+            })
+            .await;
+
+        let snapshot = runtime
+            .sessions
+            .snapshot("managed")
+            .await
+            .expect("a recovered session");
+        assert_eq!(
+            snapshot.permission_mode.as_deref(),
+            Some(REVIEWED_PERMISSION_MODE)
         );
     }
 

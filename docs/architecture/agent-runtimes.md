@@ -97,8 +97,11 @@ profile and does not silently substitute one agent's default for another's.
 One mode in every list is Caffold's own, **Ask Jev first**, and it is the only
 value the composer sends that a driver reads rather than passes on. Each driver
 maps it to its own most-confirming mode before anything reaches its agent, so
-the agent still only ever sees a mode it named itself. What that mode does above
-the drivers belongs to
+the agent still only ever sees a mode it named itself. No agent can answer for
+that mode, so a conversation that opens again is taken back to the mode its Task
+last ran under; opening it answers only for the posture the agent is in. The
+modes an agent named are that agent's to report, and its answer is taken as it
+arrives. What that mode does above the drivers belongs to
 [Security and Approvals](security-and-approvals.md#reviewed-approvals).
 
 ## Archive and permanent deletion

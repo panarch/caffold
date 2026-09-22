@@ -2,6 +2,7 @@ use super::SubscriptionTransition;
 
 use crate::agent::AgentError;
 use crate::agent::Conversation;
+use crate::agent::driver::REVIEWED_PERMISSION_MODE;
 
 use super::turns::{active_turn_id, update_active_turn};
 use super::{SessionLifecycle, TaskSessions};
@@ -44,15 +45,27 @@ impl TaskSessions {
         state.last_error = None;
     }
 
-    pub(in crate::app::tasks) async fn restore_managed_fast_mode(
+    /// Put back the two choices a session has to carry before its conversation
+    /// opens: the speed, which travels into the open, and the Caffold-owned
+    /// approval mode, which the open's answer would otherwise replace.
+    ///
+    /// No agent can name that mode — asked what it is running under, it answers
+    /// with the mode it was mapped to — so the Task's own record is what it is
+    /// taken back to. The model, the effort, and every other approval mode are
+    /// the agent's to report.
+    pub(in crate::app::tasks) async fn restore_managed_composer_settings(
         &self,
         thread_id: &str,
         fast_mode: bool,
+        permission_mode: Option<&str>,
     ) {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
         if state.lifecycle != SessionLifecycle::Subscribed {
             state.fast_mode = fast_mode;
+            if permission_mode == Some(REVIEWED_PERMISSION_MODE) {
+                state.permission_mode = Some(REVIEWED_PERMISSION_MODE.to_string());
+            }
         }
     }
 
@@ -126,6 +139,16 @@ mod tests {
     use super::*;
     use crate::app::tasks::sessions::test_support::*;
 
+    /// A resume whose reviewer setting names one of Codex's own modes, so the
+    /// reported mode is what Codex says rather than the derivation's default.
+    fn reviewing_resume_response() -> ThreadResumeResponse {
+        let mut response = resume_response(ThreadStatus::Idle, Vec::new(), Vec::new());
+        response
+            .extra
+            .insert("approvalsReviewer".to_string(), json!("auto_review"));
+        response
+    }
+
     #[tokio::test]
     async fn restored_fast_task_resumes_with_an_explicit_priority_tier() {
         let mut response = resume_response(ThreadStatus::Idle, Vec::new(), Vec::new());
@@ -135,7 +158,9 @@ mod tests {
         let client =
             CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", response)]);
         let sessions = TaskSessions::default();
-        sessions.restore_managed_fast_mode("thread-1", true).await;
+        sessions
+            .restore_managed_composer_settings("thread-1", true, None)
+            .await;
 
         let snapshot = sessions
             .ensure_subscribed(&client.driver(), 1, "thread-1")
@@ -145,6 +170,68 @@ mod tests {
 
         assert_eq!(requests[0].1["serviceTier"], "priority");
         assert!(snapshot.fast_mode);
+    }
+
+    #[tokio::test]
+    async fn a_restored_reviewed_task_keeps_that_mode_when_the_agent_names_its_own() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            reviewing_resume_response(),
+        )]);
+        let sessions = TaskSessions::default();
+        sessions
+            .restore_managed_composer_settings("thread-1", false, Some(REVIEWED_PERMISSION_MODE))
+            .await;
+
+        let snapshot = sessions
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
+            .await
+            .expect("subscribe");
+
+        assert_eq!(
+            snapshot.permission_mode.as_deref(),
+            Some(REVIEWED_PERMISSION_MODE)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_task_under_an_agent_mode_takes_the_mode_that_agent_reports() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            reviewing_resume_response(),
+        )]);
+        let sessions = TaskSessions::default();
+        sessions
+            .restore_managed_composer_settings("thread-1", false, Some("askForApproval"))
+            .await;
+
+        let snapshot = sessions
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
+            .await
+            .expect("subscribe");
+
+        assert_eq!(snapshot.permission_mode.as_deref(), Some("approveForMe"));
+    }
+
+    #[tokio::test]
+    async fn a_subscribed_session_is_not_taken_back_to_what_the_store_remembers() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            reviewing_resume_response(),
+        )]);
+        let sessions = TaskSessions::default();
+        sessions
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
+            .await
+            .expect("subscribe");
+
+        sessions
+            .restore_managed_composer_settings("thread-1", true, Some(REVIEWED_PERMISSION_MODE))
+            .await;
+
+        let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+        assert_eq!(snapshot.permission_mode.as_deref(), Some("approveForMe"));
+        assert!(!snapshot.fast_mode);
     }
 
     #[tokio::test]

@@ -222,7 +222,7 @@ impl DetailContext {
         cursor: Option<&str>,
     ) -> Result<TaskDetailResponse, ApiError> {
         let cursor = cursor.map(str::trim).filter(|cursor| !cursor.is_empty());
-        self.restore_managed_fast_mode(thread_id).await?;
+        self.restore_managed_composer_settings(thread_id).await?;
         if let Some(cursor) = cursor {
             let agent = self.agent(thread_id).await?;
             let _viewer = self
@@ -247,7 +247,7 @@ impl DetailContext {
         &self,
         thread_id: &str,
     ) -> Result<DetailLiveStream, ApiError> {
-        self.restore_managed_fast_mode(thread_id).await?;
+        self.restore_managed_composer_settings(thread_id).await?;
         let receiver = self.events.subscribe();
         let sync_receiver = self.sync.subscribe_updates();
         let viewer = self.sessions.reserve_viewer(thread_id).await;
@@ -288,7 +288,7 @@ impl DetailContext {
         thread_id: &str,
         cursor: Option<&str>,
     ) -> Result<TaskDetailResponse, ApiError> {
-        self.restore_managed_fast_mode(thread_id).await?;
+        self.restore_managed_composer_settings(thread_id).await?;
         let cursor = cursor.map(TaskDetailCursor::decode).unwrap_or_default();
         let mut snapshot = self
             .sessions
@@ -382,7 +382,7 @@ impl DetailContext {
     }
 
     pub(in crate::app::tasks) async fn bootstrap(&self, thread_id: &str, baseline_revision: u64) {
-        if let Err(error) = self.restore_managed_fast_mode(thread_id).await {
+        if let Err(error) = self.restore_managed_composer_settings(thread_id).await {
             self.broadcast_error(thread_id, error.to_string()).await;
             return;
         }
@@ -598,13 +598,17 @@ impl DetailContext {
             .map_err(store_error)
     }
 
-    async fn restore_managed_fast_mode(&self, thread_id: &str) -> Result<(), ApiError> {
+    async fn restore_managed_composer_settings(&self, thread_id: &str) -> Result<(), ApiError> {
         let managed = self
             .store_get(thread_id)
             .await?
             .ok_or_else(not_managed_error)?;
         self.sessions
-            .restore_managed_fast_mode(thread_id, managed.fast_mode)
+            .restore_managed_composer_settings(
+                thread_id,
+                managed.fast_mode,
+                managed.permission_mode.as_deref(),
+            )
             .await;
         Ok(())
     }
@@ -1280,6 +1284,7 @@ mod inline_tests {
 mod request_tests {
     use crate::agent::TurnPage;
     use crate::agent::codex::{CodexThread, MockCodexResponse, TurnsPage};
+    use crate::agent::driver::REVIEWED_PERMISSION_MODE;
     use std::time::Duration;
 
     use futures_util::StreamExt;
@@ -1397,6 +1402,7 @@ mod request_tests {
             Some("gpt-5.6-sol"),
             Some("xhigh"),
             true,
+            None,
         )
         .await
         .unwrap();
@@ -1452,6 +1458,7 @@ mod request_tests {
             Some("gpt-5.6-sol"),
             Some("xhigh"),
             true,
+            None,
         )
         .await
         .unwrap();
@@ -1510,6 +1517,7 @@ mod request_tests {
             Some("gpt-5.6-sol"),
             Some("xhigh"),
             true,
+            None,
         )
         .await
         .unwrap();
@@ -1536,6 +1544,67 @@ mod request_tests {
         assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(stored.fast_mode);
+    }
+
+    /// The agent answers with a mode of its own whether or not anyone chose it,
+    /// so a Task that last ran under Caffold's reviewed mode has to be taken
+    /// back to it before the conversation opens.
+    #[tokio::test]
+    async fn canonical_resume_keeps_the_reviewed_mode_the_task_last_ran_under() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-canonical-reviewed-mode";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "cwd": root.path().display().to_string(),
+                "thread": {
+                    "id": thread_id,
+                    "preview": "Canonical reviewed mode",
+                    "status": { "type": "idle" },
+                    "cwd": root.path().display().to_string(),
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "turns": []
+                },
+                "approvalsReviewer": "auto_review",
+                "initialTurnsPage": {
+                    "data": [],
+                    "nextCursor": null,
+                    "backwardsCursor": null
+                }
+            }),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        test_store_update_composer_settings(
+            &state,
+            thread_id,
+            None,
+            None,
+            false,
+            Some(REVIEWED_PERMISSION_MODE),
+        )
+        .await
+        .unwrap();
+
+        let detail = state
+            .detail
+            .read(
+                &TaskAgent::Codex(CodexConnection {
+                    client: client.clone(),
+                    generation: 1,
+                }),
+                thread_id,
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            detail.permission_mode.as_deref(),
+            Some(REVIEWED_PERMISSION_MODE)
+        );
     }
 
     #[tokio::test]
