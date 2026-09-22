@@ -46,6 +46,28 @@ content are not reorderable.
 Selecting a Task opens its Conversation. Direct Task URLs load by `threadId`
 without requiring the Task to appear in the currently loaded navigator page.
 
+## Task Switcher
+
+The Task Switcher is a modal list of the active Tasks ordered by when each one
+last finished a turn, newest first. That is also the time a row shows when it
+has nothing else to report, so the column reads in order. Merely opening a Task
+does not carry it up the list. Keyboard navigation is its only entry point, and
+it is offered on the Tasks surface, which is where the active Task list is
+held.
+
+It takes that order from the first loaded Task list and keeps it until it
+closes, so a Task that finishes while the list is open does not move the row
+being aimed at. Rows keep showing current title, the Section the Task sits in,
+availability, and unseen-completion state, and a Task that leaves the active
+list leaves the list. The navigator shows that Section as a heading its rows
+sit under; a flat list has to say it per row. Choosing a row opens that Task's
+Conversation.
+
+Its order is independent of the Task navigator's persistent Active order and
+does not change it. Archived Tasks are not listed. An empty active list is
+stated rather than left blank, and a list that has not loaded is reported as
+unloaded rather than as empty.
+
 ## New Task
 
 Global New owns:

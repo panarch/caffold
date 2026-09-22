@@ -95,6 +95,7 @@ class CaffoldAppShell extends HTMLElement {
       shortcutDialog: this.keyboardShortcutDialog,
       afterActionHintActivation: (target) =>
         this.taskWorkspace.afterActionHintActivation(target),
+      openTaskSwitcher: () => this.taskWorkspace.openTaskSwitcher(),
       readSettings: () => getSettings(),
     });
     this.actionHints = this.keyboardNavigation.actionHints;

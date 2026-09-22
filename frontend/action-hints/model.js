@@ -3,6 +3,7 @@ export const TASK_HINT_ALPHABET = "ASDFGHJKLQWERTYUIOPZXCVBNM";
 export const ACTION_HINT_ACTION = Object.freeze({
   TASK_OPEN: "task.open",
   TASK_OPEN_RECOVERY: "task.open-recovery",
+  TASK_SWITCH: "task.switch",
   TASK_CREATE: "task.create",
   MODEL_CHOOSE: "task.model.choose",
   MODEL_PROVIDER_BROWSE: "task.model.provider.browse",
@@ -70,6 +71,12 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
     controlKind: "button",
     allocation: ACTION_HINT_ALLOCATION.PREFIXED,
     prefix: "T",
+  }),
+  // Every target in the Task switcher is this one action, so a prefix would
+  // separate nothing and cost a keystroke on every jump.
+  [ACTION_HINT_ACTION.TASK_SWITCH]: Object.freeze({
+    controlKind: "button",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
   }),
   [ACTION_HINT_ACTION.TASK_CREATE]: Object.freeze({
     controlKind: "button",

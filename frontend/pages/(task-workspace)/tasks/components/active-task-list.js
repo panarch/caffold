@@ -145,6 +145,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.selectedThreadId = nextThreadId;
     this.selectedSectionId = nextSectionId;
     this.syncSections();
+    this.revealSelectedTask(nextThreadId);
     if (nextThreadId) {
       const task = this.allTasks().find(
         (candidate) => taskThreadId(candidate) === nextThreadId,
@@ -153,6 +154,39 @@ class CaffoldActiveTaskList extends HTMLElement {
         this.upsertCanonicalTask({ ...task, unseen: false });
       }
     }
+  }
+
+  /**
+   * Bring a Task chosen from somewhere off this list into view.
+   *
+   * A Task can be selected from a surface that does not follow this list's
+   * order, which leaves the row marked but nowhere on screen. Only that case
+   * moves the list: a row with any part of it showing stays exactly where the
+   * reader left it.
+   */
+  revealSelectedTask(threadId) {
+    if (!threadId) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      if (!this.isConnected || this.selectedThreadId !== threadId) {
+        return;
+      }
+      const context = this.sectionContext(threadId);
+      const row = context
+        ? this.sectionComponentFor(context.section.id)?.rowFor(threadId)
+        : null;
+      const scroller = this.closest(".task-list-scroll");
+      if (!row || !scroller) {
+        return;
+      }
+      const view = scroller.getBoundingClientRect();
+      const box = row.getBoundingClientRect();
+      if (box.bottom > view.top && box.top < view.bottom) {
+        return;
+      }
+      row.scrollIntoView({ block: "nearest" });
+    });
   }
 
   upsertCanonicalTask(task) {
@@ -1194,6 +1228,24 @@ class CaffoldActiveTaskList extends HTMLElement {
     return [
       ...this.sections.flatMap((section) => section.tasks),
       ...this.unsectioned,
+    ];
+  }
+
+  /**
+   * Every listed Task beside the Section it sits in.
+   *
+   * A flat list loses the grouping the navigator shows structurally, so the
+   * Section travels with its Task for surfaces that cannot show headers.
+   */
+  tasksWithSections() {
+    this.ensureState();
+    return [
+      ...this.sections.flatMap((section) =>
+        section.tasks.map((task) => ({
+          task,
+          sectionName: activeTaskSectionLabel(section.name),
+        }))),
+      ...this.unsectioned.map((task) => ({ task, sectionName: "" })),
     ];
   }
 

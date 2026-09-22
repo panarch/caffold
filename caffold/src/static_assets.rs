@@ -581,6 +581,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.js"
             )))
         }
+        "pages/(task-workspace)/tasks/components/task-switcher-dialog.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/components/task-switcher-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/task-switcher-dialog.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/components/task-switcher-dialog.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/image-preview-dialog.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.css"
@@ -1893,6 +1903,10 @@ mod tests {
                 b"caffold-task-archived-delete-dialog".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/task-switcher-dialog.js",
+                b"caffold-task-switcher-dialog".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
                 b"caffold-task-image-preview-dialog".as_slice(),
             ),
@@ -2070,6 +2084,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/archived-delete-dialog.css",
                 b"caffold-task-archived-delete-dialog".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/task-switcher-dialog.css",
+                b"caffold-task-switcher-dialog".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/image-preview-dialog.css",

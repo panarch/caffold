@@ -1,0 +1,176 @@
+caffold-task-switcher-dialog {
+  /* One cell, the width the Task list gives its own: wide enough for an icon
+     or for a short relative time. It is fixed so the Section labels beside it
+     stay in line whatever each row has to say. */
+  --task-switcher-meta-size: max(var(--interface-icon-slot-size), 3ch);
+
+  position: absolute;
+
+  & > dialog {
+    width: min(34rem, calc(100vw - 2rem));
+    max-width: none;
+    max-height: min(32rem, calc(100vh - 4rem));
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 24%);
+  }
+
+  & > dialog::backdrop {
+    background: rgb(var(--scrim-rgb) / 32%);
+  }
+
+  & .task-switcher-card {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    max-height: inherit;
+  }
+
+  & .task-switcher-card > h2 {
+    margin: 0;
+    padding: var(--interface-space-6) var(--interface-space-8)
+      var(--interface-space-4);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: var(--interface-heading-font-size);
+    line-height: 1.25;
+  }
+
+  & .task-switcher-scroll {
+    min-height: 0;
+    padding: var(--interface-space-3) 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    font-size: var(--task-list-font-size);
+  }
+
+  & .task-switcher-list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  & .task-switcher-empty {
+    margin: 0;
+    padding: var(--interface-space-5) var(--interface-space-8);
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-switcher-row {
+    display: grid;
+    /* `fit-content` gives the Section label its own width and stops at 40%, so
+       a short name hands the rest back to the title instead of holding it. */
+    grid-template-columns:
+      minmax(0, 1fr)
+      fit-content(40%)
+      var(--task-switcher-meta-size);
+    align-items: center;
+    gap: var(--interface-space-4);
+    width: 100%;
+    min-height: var(--task-list-row-height);
+    /* The leading gutter is the Action Hint badge's seat, beside the title it
+       names. It is always there because this surface always opens with hints
+       up, and a gutter that appeared with them would shove the list sideways
+       as it was read. The badge is laid out from this row's own leading edge,
+       so the gutter is the badge's width and nothing more. */
+    padding-block: var(--interface-space-2);
+    padding-inline:
+      var(--keyboard-choice-slot-size)
+      var(--interface-space-8);
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  & .task-switcher-row:hover,
+  & .task-switcher-row:focus-visible {
+    background: var(--row-hover-bg);
+    outline: none;
+  }
+
+  & .task-switcher-row-title {
+    overflow: hidden;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-switcher-row-context {
+    overflow: hidden;
+    color: var(--muted);
+    line-height: var(--interface-line-height);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-switcher-row-indicators {
+    display: grid;
+    width: var(--task-switcher-meta-size);
+    place-items: center;
+  }
+
+  & .task-switcher-row-time {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  & .task-switcher-row-status {
+    width: var(--interface-icon-slot-size);
+    height: var(--interface-icon-slot-size);
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    background: var(--surface-muted);
+  }
+
+  & .task-switcher-row[data-task-status="running"] .task-switcher-row-status {
+    background: transparent;
+  }
+
+  & .task-switcher-row-unseen {
+    display: inline-grid;
+    width: var(--interface-icon-slot-size);
+    height: var(--interface-icon-slot-size);
+    place-items: center;
+  }
+
+  & .task-switcher-row-unseen::before {
+    width: var(--interface-space-5);
+    height: var(--interface-space-5);
+    border-radius: 50%;
+    background: var(--success);
+    content: "";
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-task-switcher-dialog {
+    & > dialog {
+      width: calc(100vw - 1rem);
+      max-height: calc(100vh - 2rem);
+    }
+
+    & .task-switcher-card > h2 {
+      padding-inline: var(--interface-space-6);
+    }
+
+    & .task-switcher-empty {
+      padding-inline: var(--interface-space-6);
+    }
+
+    & .task-switcher-row {
+      padding-inline:
+        var(--keyboard-choice-slot-size)
+        var(--interface-space-6);
+    }
+  }
+}

@@ -53,6 +53,7 @@
 @import "./pages/(task-workspace)/tasks/components/voice-level-meter.css";
 @import "./pages/(task-workspace)/tasks/new/components/directory-picker.css";
 @import "./pages/(task-workspace)/tasks/components/archived-delete-dialog.css";
+@import "./pages/(task-workspace)/tasks/components/task-switcher-dialog.css";
 @import "./pages/(task-workspace)/tasks/components/image-preview-dialog.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/layout.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css";

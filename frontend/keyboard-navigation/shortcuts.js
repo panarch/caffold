@@ -1,6 +1,7 @@
 export const KEYBOARD_NAVIGATION_KEY = Object.freeze({
   ACTION_HINTS: "F",
   SCROLL_SELECT: "S",
+  TASK_SWITCHER: "T",
   SHORTCUT_HELP: "?",
   SCROLL_DOWN: "J",
   SCROLL_UP: "K",
@@ -25,6 +26,10 @@ export const KEYBOARD_SHORTCUT_HELP_SECTIONS = Object.freeze([
         "Select a scroll area",
       ),
       shortcut(
+        [KEYBOARD_NAVIGATION_KEY.TASK_SWITCHER],
+        "Switch to a recently active task",
+      ),
+      shortcut(
         [KEYBOARD_NAVIGATION_KEY.SHORTCUT_HELP],
         "Open or close keyboard shortcut help",
       ),
@@ -40,7 +45,7 @@ export const KEYBOARD_SHORTCUT_HELP_SECTIONS = Object.freeze([
       shortcut(["shown code"], "Choose the matching action or scroll area"),
       shortcut(
         [KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT],
-        "Switch to scrolling in a popover",
+        "Switch to scrolling the surface you are in",
       ),
       shortcut(
         [KEYBOARD_NAVIGATION_KEY.BACKSPACE],

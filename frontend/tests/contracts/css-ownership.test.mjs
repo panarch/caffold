@@ -156,6 +156,10 @@ const ownership = new Map([
     ["caffold-task-archived-delete-dialog"],
   ],
   [
+    "pages/(task-workspace)/tasks/components/task-switcher-dialog.css",
+    ["caffold-task-switcher-dialog"],
+  ],
+  [
     "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
     ["caffold-task-image-preview-dialog"],
   ],
@@ -247,6 +251,7 @@ const ownership = new Map([
       "caffold-tasks-page",
       "caffold-active-task-row",
       "caffold-archived-task-list",
+      "caffold-task-switcher-dialog",
     ],
   ],
   ["pages/(task-workspace)/tasks/controls.css", ["caffold-tasks-page"]],
