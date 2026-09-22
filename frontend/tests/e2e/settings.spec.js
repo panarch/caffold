@@ -110,6 +110,22 @@ test("uses active Settings page actions and only visible overflowing panes", { t
   await expect(hud).toBeHidden();
 });
 
+test("leaving a Settings page rewinds its entry instead of stacking one", { tag: "@phone" }, async ({
+  page,
+}) => {
+  await page.goto("/settings");
+  const workspace = page.locator("caffold-settings-workspace");
+  await page.locator('button[data-settings-section="appearance"]').click();
+  await expect(page).toHaveURL("/settings/appearance");
+
+  await workspace.getByRole("button", { name: "Back to settings" }).click();
+  await expect(page).toHaveURL("/settings");
+
+  // Rewound rather than stacked: the page it left is ahead of here, not behind.
+  await page.goForward();
+  await expect(page).toHaveURL("/settings/appearance");
+});
+
 test("collects MCP status only when About diagnostics are copied", { tag: "@desktop" }, async ({
   context,
   page,

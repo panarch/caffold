@@ -60,6 +60,7 @@ const APP_SHELL_ASSETS = [
   "/assets/brand/grok-template.png",
   "/assets/pages/layout.css",
   "/assets/pages/layout.js",
+  "/assets/pages/navigation-history.js",
   "/assets/pages/foreground-recovery.js",
   "/assets/pages/foreground-recovery/browser-signals.js",
   "/assets/pages/foreground-recovery/lifecycle.js",

@@ -238,7 +238,7 @@ class CaffoldTaskReview extends HTMLElement {
 
     const normalizedForTask = normalizeForTask(nextRoute, task);
     if (reviewRouteKey(normalizedForTask) !== nextRouteKey) {
-      this.requestRoute(normalizedForTask, { replace: true });
+      this.requestRoute(normalizedForTask);
       return true;
     }
     this.syncReview({ contextChanged, routeChanged, revealFileSelection });
@@ -625,7 +625,7 @@ class CaffoldTaskReview extends HTMLElement {
       const baseRef = selectedCompareBaseRef(this.route.baseRef, refs);
       this.branchTree()?.setBaseSelection({ refs: refs.refs, value: baseRef });
       if (this.route.baseRef !== baseRef) {
-        this.requestRoute({ ...this.route, baseRef }, { replace: true });
+        this.requestRoute({ ...this.route, baseRef });
         return null;
       }
       this.patchControls();
@@ -1016,7 +1016,7 @@ class CaffoldTaskReview extends HTMLElement {
         this.pendingRepresentationLine.set(nextKey, line);
       }
     }
-    this.requestRoute({ ...this.route, [field]: value }, { replace: true });
+    this.requestRoute({ ...this.route, [field]: value });
   }
 
   selectLogicalPath(path) {
@@ -1024,8 +1024,7 @@ class CaffoldTaskReview extends HTMLElement {
     if (!relative) {
       return;
     }
-    const replace = Boolean(this.route.path);
-    this.requestRoute(routeForSelectedFile(this.route, relative), { replace });
+    this.requestRoute(routeForSelectedFile(this.route, relative));
   }
 
   selectCompareBase(baseRef) {
@@ -1038,7 +1037,7 @@ class CaffoldTaskReview extends HTMLElement {
       return;
     }
     this.captureLocalState();
-    this.requestRoute({ ...this.route, baseRef: next }, { replace: true });
+    this.requestRoute({ ...this.route, baseRef: next });
   }
 
   clearSelectedPath() {
@@ -1046,16 +1045,16 @@ class CaffoldTaskReview extends HTMLElement {
       return;
     }
     this.captureLocalState();
-    this.requestRoute({ ...this.route, path: "", line: null }, { replace: true });
+    this.requestRoute({ ...this.route, path: "", line: null });
   }
 
-  requestRoute(state, options = {}) {
+  requestRoute(state) {
     const route = taskRouteForReview(taskThreadId(this.task), state);
     this.dispatchEvent(
       new CustomEvent("caffold:task-review-route-intent", {
         bubbles: true,
         composed: true,
-        detail: { route, replace: Boolean(options.replace) },
+        detail: { route },
       }),
     );
   }

@@ -156,6 +156,154 @@ test("merges foreground Retry with normal workspace targets", { tag: "@all-viewp
   )).toBe(1);
 });
 
+test("returns a workspace tab to the screen it last showed", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.goto("/");
+  const workspace = page.locator("caffold-task-workspace");
+  const tab = (mode) =>
+    workspace.locator(`.task-workspace-navigation button[data-workspace-mode="${mode}"]`);
+
+  await tab("settings").click();
+  await expect(page).toHaveURL("/settings");
+  await workspace.locator('button[data-settings-section="appearance"]').click();
+  await expect(page).toHaveURL("/settings/appearance");
+
+  await tab("tasks").click();
+  await expect(page).toHaveURL("/");
+
+  await tab("settings").click();
+  await expect(page).toHaveURL("/settings/appearance");
+
+  // Reopening a tab deep is an arrival there, so the Settings list is written
+  // back under the page and Back walks up Settings before leaving the tab.
+  await page.goBack();
+  await expect(page).toHaveURL("/settings");
+  await page.goBack();
+  await expect(page).toHaveURL("/");
+});
+
+test("puts the screens under a request into another tab's page", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  // Opening Voice Input setup from a Task names a Settings page directly, and
+  // the Settings list belongs under it just as it would after a tab change.
+  await page.goto("/");
+  await page.evaluate(() => {
+    document.querySelector("caffold-app-shell").dispatchEvent(
+      new CustomEvent("caffold:open-settings", {
+        bubbles: true,
+        detail: { section: "voice" },
+      }),
+    );
+  });
+  await expect(page).toHaveURL("/settings/voice");
+
+  await page.goBack();
+  await expect(page).toHaveURL("/settings");
+  await page.goBack();
+  await expect(page).toHaveURL("/");
+});
+
+// iOS Safari and the home-screen application have no Navigation API, so the
+// shell keeps a History fallback that the default browser never exercises.
+test("keeps tab depth and Back on the History fallback path", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "navigation", {
+      configurable: true,
+      value: undefined,
+    });
+  });
+  await page.goto("/");
+  const workspace = page.locator("caffold-task-workspace");
+  expect(await page.evaluate(() => Boolean(window.navigation))).toBe(false);
+
+  const tab = (mode) =>
+    workspace.locator(`.task-workspace-navigation button[data-workspace-mode="${mode}"]`);
+  await tab("settings").click();
+  await expect(page).toHaveURL("/settings");
+  await workspace.locator('button[data-settings-section="appearance"]').click();
+  await expect(page).toHaveURL("/settings/appearance");
+
+  await tab("tasks").click();
+  await expect(page).toHaveURL("/");
+  await tab("settings").click();
+  await expect(page).toHaveURL("/settings/appearance");
+
+  await page.goBack();
+  await expect(page).toHaveURL("/settings");
+  await page.goBack();
+  await expect(page).toHaveURL("/");
+});
+
+// A link, a notification, or a typed address opens its screen with nothing
+// under it, and the system Back would leave the application from a screen that
+// plainly has a parent.
+for (const [label, prepare] of [
+  ["", async () => {}],
+  [" on the History fallback path", async (page) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "navigation", {
+        configurable: true,
+        value: undefined,
+      });
+    });
+  }],
+]) {
+  test(`puts the screens under an address-entered route into history${label}`, { tag: "@desktop" }, async ({
+    page,
+  }) => {
+    await prepare(page);
+    await page.goto("/settings/appearance");
+    const workspace = page.locator("caffold-task-workspace");
+    await expect(
+      workspace.locator("caffold-settings-appearance-page"),
+    ).toBeVisible();
+
+    await page.goBack();
+    await expect(page).toHaveURL("/settings");
+    await page.goForward();
+    await expect(page).toHaveURL("/settings/appearance");
+  });
+}
+
+// A native link inside a tab is a step in that tab's flow, so Back returns to
+// the screen it was followed from. A link into another tab is an arrival, and
+// that tab's own screens go in beneath it.
+test("puts the screens under a link that crosses into another tab", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/keyboard");
+  const workspace = page.locator("caffold-task-workspace");
+  await expect(workspace.locator("caffold-settings-keyboard-page")).toBeVisible();
+
+  await followLink(page, "/settings/appearance");
+  await expect(page).toHaveURL("/settings/appearance");
+  await page.goBack();
+  await expect(page).toHaveURL("/settings/keyboard");
+  await page.goForward();
+
+  await followLink(page, "/notes/link-target");
+  await expect(page).toHaveURL("/notes/link-target");
+  await page.goBack();
+  await expect(page).toHaveURL("/notes");
+  await page.goBack();
+  await expect(page).toHaveURL("/settings/appearance");
+});
+
+function followLink(page, href) {
+  return page.evaluate((target) => {
+    const anchor = document.createElement("a");
+    anchor.href = target;
+    anchor.textContent = target;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+  }, href);
+}
+
 test("does not serve obsolete standalone application routes", { tag: "@all-viewports" }, async ({ request }) => {
   for (const route of [
     "/files",

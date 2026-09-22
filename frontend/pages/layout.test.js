@@ -5,6 +5,7 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../tests/support/custom-element-unit.js";
+import { NavigationHistory } from "./navigation-history.js";
 
 const previousDocument = globalThis.document;
 const previousWindow = globalThis.window;
@@ -176,8 +177,15 @@ test("cleans keyboard state before route state, URL, and workspace mutations", a
     keyboardNavigation: {
       routeWillChange: () => calls.push("keyboard-cleanup"),
     },
+    navigationHistory: new NavigationHistory(),
+    usesNavigationApi: false,
+    writeEntryChain: appShell.writeEntryChain,
+    writeHistoryEntry: appShell.writeHistoryEntry,
     set currentRoute(value) {
       calls.push(`route:${value.kind}`);
+    },
+    get currentRoute() {
+      return null;
     },
     setBootstrapError: () => calls.push("bootstrap-clear"),
     taskWorkspace: {
@@ -203,40 +211,59 @@ test("cleans keyboard state before route state, URL, and workspace mutations", a
   ]);
 });
 
-test("a notification route keeps the screen it replaces in history", async () => {
-  const calls = [];
-  const owner = {
-    applyRoute: appShell.applyRoute,
-    currentRoute: { kind: "tasks" },
-    initialPath: "",
-    keyboardNavigation: { routeWillChange: () => {} },
-    setBootstrapError: () => {},
-    taskWorkspace: {
-      openRoute: async () => calls.push("workspace-open"),
-      recoverForeground: async () => ({ recovered: true }),
-    },
-  };
-  globalThis.window.location = {
-    href: "https://caffold.test/tasks",
-    origin: "https://caffold.test",
-    pathname: "/tasks",
-    search: "",
-  };
-  globalThis.window.history = {
-    pushState: (_entry, _title, url) => calls.push(`history-push:${url}`),
-    replaceState: (_entry, _title, url) => calls.push(`history-replace:${url}`),
-  };
+// A notification arrives from outside, so its Task opens over the screens it
+// sits under and Back reaches the Task list rather than what was interrupted.
+for (const [label, currentRoute, expected] of [
+  [
+    "keeps the Task list it opens over",
+    { kind: "tasks" },
+    ["history-push:/tasks/thread-1", "workspace-open"],
+  ],
+  [
+    "puts the Task list under the screen it interrupts",
+    { kind: "settings", section: "appearance" },
+    ["history-push:/", "history-push:/tasks/thread-1", "workspace-open"],
+  ],
+]) {
+  test(`a notification route ${label}`, async () => {
+    const calls = [];
+    const owner = {
+      applyRoute: appShell.applyRoute,
+      currentRoute,
+      initialPath: "",
+      navigationHistory: new NavigationHistory(),
+      usesNavigationApi: false,
+      writeEntryChain: appShell.writeEntryChain,
+      writeHistoryEntry: appShell.writeHistoryEntry,
+      keyboardNavigation: { routeWillChange: () => {} },
+      setBootstrapError: () => {},
+      taskWorkspace: {
+        openRoute: async () => calls.push("workspace-open"),
+        recoverForeground: async () => ({ recovered: true }),
+      },
+    };
+    globalThis.window.location = {
+      href: "https://caffold.test/tasks",
+      origin: "https://caffold.test",
+      pathname: "/tasks",
+      search: "",
+    };
+    globalThis.window.history = {
+      pushState: (_entry, _title, url) => calls.push(`history-push:${url}`),
+      replaceState: (_entry, _title, url) => calls.push(`history-replace:${url}`),
+    };
 
-  const recovery = await appShell.recoverForeground.call(owner, {
-    activationRoute: "/tasks/thread-1",
-    initialActivation: false,
-    isCurrent: () => true,
-    progress: { activatingRoute: () => {} },
+    const recovery = await appShell.recoverForeground.call(owner, {
+      activationRoute: "/tasks/thread-1",
+      initialActivation: false,
+      isCurrent: () => true,
+      progress: { activatingRoute: () => {} },
+    });
+
+    assert.deepEqual(calls, expected);
+    assert.deepEqual(recovery, { recovered: true });
   });
-
-  assert.deepEqual(calls, ["history-push:/tasks/thread-1", "workspace-open"]);
-  assert.deepEqual(recovery, { recovered: true });
-});
+}
 
 function button(label, calls) {
   return {

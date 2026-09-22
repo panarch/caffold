@@ -2402,6 +2402,11 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls?page=2`);
   await activateActionHint(page, /Newest pull request page$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
+  // A page sits where its list does, so neither page added an entry.
+  await page.goBack();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues`);
+  await page.goForward();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
   await activateActionHint(
     page,
     /Open pull request #1983: Reject unsupported table function arguments$/,
@@ -2450,7 +2455,11 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}`);
   await expect(detailsPopover).toBeHidden();
+  // Conversation sits beside GitHub, so it takes the file's entry rather than
+  // stacking on it: Back reaches the PR files the file was opened from.
   await page.goBack();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983/files`);
+  await activateActionHint(page, /Show pull request diff for src\/review\.rs$/);
   await expect(page).toHaveURL(
     `/tasks/${THREAD_ID}/github/pulls/1983/files?file=src%2Freview.rs`,
   );

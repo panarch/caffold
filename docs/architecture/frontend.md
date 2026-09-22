@@ -81,7 +81,9 @@ application-lifetime coordination:
 
 - bootstrap health and initial-path loading;
 - parsing and forwarding top-level routes;
-- Navigation API and History fallback integration;
+- browser history ownership: what each route request does to it, the screens
+  written in beneath a route entered from outside, and where each bottom tab
+  reopens, with the Navigation API or `popstate` reporting arrivals;
 - foreground/resume recovery coordination;
 - settings application;
 - build-update presentation;
@@ -105,6 +107,16 @@ and its Later and Reload buttons use their existing native form paths. Opening
 the dialog first closes a background Hint or Scroll session; the user presses
 `F` again inside the dialog, and the coordinator never predicts an automatic
 handoff.
+
+The app shell owns one `NavigationHistory` behind the public
+`navigation-history.js` entry point. It answers what a requested route does to
+the browser history, which entries a route arriving from outside needs beneath
+it, and where each bottom tab reopens, reading only the route schema's declared
+parents and tabs. The shell keeps the browser calls, the entry record it writes
+and reads, and the guard that ignores a request while a rewind it asked for is
+still arriving. It names the route it is writing before each entry, so its
+own scaffolding is never read back as a person navigating, and it writes an
+address the browser loaded before installing its navigation listeners.
 
 The app shell owns one `ForegroundRecoveryLifecycle` behind the public
 `foreground-recovery.js` entry point. It normalizes browser activation and
@@ -216,7 +228,8 @@ response.
 owns:
 
 - the shared master/detail presentation;
-- Tasks, Notes, and Settings modes;
+- Tasks, Notes, and Settings modes, read from the route schema's tab
+  assignment;
 - Task, Notes, and Settings navigators;
 - the user-resizable desktop navigation pane;
 - the compact top-level Back for a Task, Section, or New Task;
@@ -1015,10 +1028,13 @@ revision lifetimes are independent.
 
 ## Route ownership
 
-`frontend/navigation-routes.js` owns the pure schema and metadata. App Shell
-forwards; Task Workspace selects Tasks/Notes/Settings; Tasks selects its
-subject; the common Detail layout selects the subject or shared child; Git and
-GitHub select their domain-local modes and leaves.
+`frontend/navigation-routes.js` owns the pure schema and metadata, including
+each route's tab and how any two routes stand to each other. App Shell forwards
+and owns the browser history behind `frontend/pages/navigation-history.js`;
+Task Workspace selects Tasks/Notes/Settings; Tasks selects its subject; the
+common Detail layout selects the subject or shared child; Git and GitHub select
+their domain-local modes and leaves. A screen requests a route and never
+decides whether that route is worth a history entry.
 
 Task-scoped Git/GitHub routes always carry `threadId` and never route `cwd`.
 Section routes carry a Managed Section ID in the root query and resolve
