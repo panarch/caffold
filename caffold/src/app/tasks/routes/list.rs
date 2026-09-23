@@ -334,7 +334,7 @@ mod tests {
             projection
                 .unsectioned
                 .iter()
-                .all(|task| !task.conversation_available)
+                .all(|task| task.thread_status == agent::ThreadStatus::NotLoaded)
         );
         assert!(
             projection

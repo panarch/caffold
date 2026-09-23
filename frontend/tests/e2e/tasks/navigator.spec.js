@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
+  activeListTask,
   activeLiveUpdateChannels,
   activeTaskProjection,
   canonicalTaskState,
@@ -647,10 +648,10 @@ test("hydrates a cached Task with the task-list stream bootstrap snapshot", { ta
       tasks: [
         task,
         idleSecond,
-        { ...task, threadId: "unmanaged-thread", id: "unmanaged-thread" },
+        { ...task, threadId: "unmanaged-thread" },
       ],
     });
-  }, { task: running, idleSecond });
+  }, { task: activeListTask(running), idleSecond: activeListTask(idleSecond) });
 
   await expect(row).toHaveAttribute("data-task-status", "running");
   await expect(row.locator(".task-status-spinner")).toBeVisible();
@@ -685,7 +686,7 @@ test("hydrates a cached Task with the task-list stream bootstrap snapshot", { ta
     window.__taskListBootstrapSource.emit("task-list-snapshot", {
       tasks: [task],
     });
-  }, idleSecond);
+  }, activeListTask(idleSecond));
 
   await expect(secondRow).toHaveAttribute("data-task-status", "idle");
   expect(reads).toBe(1);
@@ -755,7 +756,7 @@ test("applies canonical top placements without list refetches or duplicate reord
       revision: 1,
       task: unknown,
     });
-  }, initialNavigatorTask("thread_unknown_sync", "Unknown sync Task"));
+  }, activeListTask(initialNavigatorTask("thread_unknown_sync", "Unknown sync Task")));
   await page.waitForTimeout(100);
   expect(reads).toBe(1);
 
@@ -773,7 +774,7 @@ test("applies canonical top placements without list refetches or duplicate reord
       task: first,
       placement: firstPlacement,
     });
-  }, { first, firstPlacement });
+  }, { first: activeListTask(first), firstPlacement });
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toHaveAttribute("data-thread-id", first.threadId);
 
@@ -794,7 +795,11 @@ test("applies canonical top placements without list refetches or duplicate reord
       task: first,
       placement: firstPlacement,
     });
-  }, { first, second, firstPlacement });
+  }, {
+    first: activeListTask(first),
+    second: activeListTask(second),
+    firstPlacement,
+  });
 
   await expect(rows).toHaveCount(4);
   await expect(rows.nth(0)).toHaveAttribute("data-thread-id", second.threadId);
@@ -813,7 +818,7 @@ test("applies canonical top placements without list refetches or duplicate reord
         beforeSectionId: "fixture-section-2",
       },
     });
-  }, newSectionTask);
+  }, activeListTask(newSectionTask));
   await expect(rows).toHaveCount(5);
   await expect.poll(() =>
     page.locator(
@@ -843,7 +848,7 @@ test("applies canonical top placements without list refetches or duplicate reord
         beforeSectionId: "fixture-section-new",
       },
     });
-  }, existingOther);
+  }, activeListTask(existingOther));
   await expect(rows).toHaveCount(5);
   await expect.poll(() => page.evaluate((threadId) => {
     const item = document.querySelector(
@@ -900,6 +905,42 @@ test("shows relative age from the latest completion instead of thread recency", 
   );
   await expect(time).toHaveText("5m");
   await expect(time).toHaveAttribute("datetime", new Date(lastCompletedMs).toISOString());
+});
+
+test("shows the worktree mark from the first Task list response", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const tasks = [
+    {
+      ...initialNavigatorTask("thread_worktree_mark", "Runs in its worktree"),
+      worktree: true,
+    },
+    initialNavigatorTask("thread_checkout_mark", "Runs in the checkout"),
+  ];
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection(tasks) }),
+  );
+  const detailReads = [];
+  page.on("request", (request) => {
+    if (/\/api\/tasks\/thread_/.test(new URL(request.url()).pathname)) {
+      detailReads.push(request.url());
+    }
+  });
+
+  await page.goto("/tasks");
+  await expect(page.locator("caffold-active-task-list .task-row")).toHaveCount(2);
+  await expect(
+    page.locator('[data-thread-id="thread_worktree_mark"] .task-row-worktree'),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-thread-id="thread_checkout_mark"] .task-row-worktree'),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() => window.__taskListSource?.readyState ?? 0),
+  ).not.toBe(1);
+  expect(detailReads).toEqual([]);
 });
 
 test("keeps Task row indicator columns aligned across worktree and meta states", { tag: "@all-viewports" }, async ({
@@ -1108,7 +1149,7 @@ test("keeps Task row indicator columns aligned across worktree and meta states",
       url.includes("/api/tasks/stream"),
     );
     source.emit("task-updated", updatedTask);
-  }, updatedAgeTask);
+  }, activeListTask(updatedAgeTask));
   const updatedTime = page.locator(
     '[data-thread-id="thread_indicator_11_months"] .task-row-time',
   );
@@ -1537,7 +1578,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        task: activeTask,
+        task: activeListTask(activeTask),
         activeTopPlacement: {
           section: {
             id: "fixture-section-1",
@@ -2177,7 +2218,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
   await expect(tasksPage.locator(".task-row-summary")).toHaveCount(0);
   await expect(
     tasksPage.locator('.task-row[data-thread-id="thread_feature"] .task-row-worktree'),
-  ).toHaveAttribute("title", /feature\/long-worktree-branch-name/);
+  ).toHaveCount(1);
   await expect(
     tasksPage.locator('.task-row[data-thread-id="thread_main_root"] .task-row-worktree'),
   ).toHaveCount(0);
@@ -2751,7 +2792,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
   await page.route(/\/api\/tasks\/thread_dom_stability(?:\?|$)/, async (route) => {
     await page.evaluate((updatedTask) => {
       window.__taskListEventSource.emit("task-updated", updatedTask);
-    }, selectedTask);
+    }, activeListTask(selectedTask));
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(selectedDetail),
@@ -2781,7 +2822,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
   await target.click();
   await page.evaluate((updatedTask) => {
     window.__taskListEventSource.emit("task-updated", updatedTask);
-  }, selectedTask);
+  }, activeListTask(selectedTask));
   await emitTaskDetailBootstrap(page, selectedDetail);
   await expect(page).toHaveURL("/tasks/thread_dom_stability");
   await expect(tasksPage.locator(".tasks-detail-pane")).toContainText(
@@ -2935,7 +2976,7 @@ test("patches Task rows in place without reordering and preserves a running spin
     };
   });
 
-  await page.evaluate((task) => {
+  await page.evaluate(({ task, row }) => {
     const detailSource = window.__taskDomEventSources.find(
       ({ url }) =>
         url.includes("/api/tasks/thread_spinner_stability/stream"),
@@ -2959,8 +3000,8 @@ test("patches Task rows in place without reordering and preserves a running spin
       },
       reason: "canonical-repeat",
     });
-    listSource.emit("task-updated", task);
-  }, runningTask);
+    listSource.emit("task-updated", row);
+  }, { task: runningTask, row: activeListTask(runningTask) });
   await tasksPage.evaluate((element) => {
     const navigator = element.querySelector("caffold-task-navigator");
     navigator.setStreamState("connecting");
@@ -2996,7 +3037,7 @@ test("patches Task rows in place without reordering and preserves a running spin
       ...task,
       title: "Updated sibling",
     });
-  }, siblingTask);
+  }, activeListTask(siblingTask));
   await expect(
     tasksPage.locator(
       '.task-row[data-thread-id="thread_spinner_sibling"] .task-row-title',
@@ -3027,7 +3068,7 @@ test("patches Task rows in place without reordering and preserves a running spin
       url.includes("/api/tasks/stream"),
     );
     listSource.emit("task-updated", task);
-  }, updatedRunningTask);
+  }, activeListTask(updatedRunningTask));
   await expect(target).toHaveAttribute("title", "Updated spinner stability");
   await expect(target.locator(".task-row-worktree")).toHaveCount(1);
   await expect(
@@ -3057,7 +3098,7 @@ test("patches Task rows in place without reordering and preserves a running spin
       url.includes("/api/tasks/stream"),
     );
     listSource.emit("task-updated", task);
-  }, idleTask);
+  }, activeListTask(idleTask));
   await expect(target).toHaveAttribute("data-task-status", "idle");
   await expect(target).not.toHaveAttribute("aria-busy", "true");
   await expect(target.locator(".task-status-spinner")).toHaveCount(0);
@@ -3178,7 +3219,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
   await expect(tasksPage.locator('[data-task-action="toggle-task-group"]')).toHaveCount(0);
   await expect(
     groups.nth(0).locator('.task-row[data-thread-id="thread_gluesql_feature"] .task-row-worktree'),
-  ).toHaveAttribute("title", /feature\/review/);
+  ).toHaveCount(1);
   const featureTask = groups.nth(0).locator(
     '.task-row[data-thread-id="thread_gluesql_feature"]',
   );
@@ -3213,7 +3254,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
       revision: 3,
       task,
     });
-  }, tasks[0]);
+  }, activeListTask(tasks[0]));
   await expect(featureTask).toHaveAttribute("data-task-status", "running");
   await expect(featureTask.locator(".task-status-spinner")).toBeVisible();
   detailEvents.push(
@@ -3259,7 +3300,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
       revision: 5,
       task,
     });
-  }, idleTask);
+  }, activeListTask(idleTask));
   await expect(featureTask).toHaveAttribute("data-task-status", "idle");
   await expect(featureTask.locator(".task-status-spinner")).toHaveCount(0);
   await expect(featureTask.locator(".task-unseen-complete")).toBeVisible();

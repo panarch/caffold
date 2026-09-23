@@ -8,11 +8,16 @@ import {
   actionHintDialog,
   activateActionHint,
 } from "../support/action-hints.js";
-import { taskDetailFixture } from "../support/task-api-fixture.js";
 import {
+  createdTaskFixture,
+  taskDetailFixture,
+} from "../support/task-api-fixture.js";
+import {
+  activeListTask,
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  createdTaskResponse,
   installEventSourceMock,
   mockAgentModels,
 } from "../support/task-fixtures.js";
@@ -309,21 +314,20 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
     updatedMs: 30,
     lastEventSummary: "Inherited answer",
   };
-  const childDetail = {
+  const childFork = createdTaskResponse({
     ...taskDetailFixture(),
     threadId: childThreadId,
     task: childTask,
     events: [],
-    activeTopPlacement: {
-      section: {
-        id: "fixture-section-1",
-        name: rootPath,
-        repository: false,
-      },
-      beforeSectionId: null,
-      beforeThreadId: sourceTask.threadId,
+  }, {
+    section: {
+      id: "fixture-section-1",
+      name: rootPath,
+      repository: false,
     },
-  };
+    beforeSectionId: null,
+    beforeThreadId: sourceTask.threadId,
+  });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: activeTaskProjection([sourceTask]) })
   );
@@ -373,7 +377,7 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
     });
     observeFork();
     await forkGate;
-    await route.fulfill({ json: childDetail });
+    await route.fulfill({ json: childFork });
   });
 
   await page.goto("/?section=fixture-section-1");
@@ -1156,7 +1160,7 @@ test("replaces the New Task context when a selected Section path changes", { tag
       id: sectionId,
       name: "frontend/tests/e2e/fixtures/home",
       repository: true,
-      tasks: [task],
+      tasks: [activeListTask(task)],
     }],
     unsectioned: [],
   };
@@ -1208,7 +1212,7 @@ test("replaces the New Task context when a selected Section path changes", { tag
       id: sectionId,
       name: "frontend/tests/e2e/fixtures/other",
       repository: true,
-      tasks: [task],
+      tasks: [activeListTask(task)],
     }],
     unsectioned: [],
   };
@@ -1279,7 +1283,7 @@ test("uses the Section's last composer settings for its next Task request", { ta
         effort: "xhigh",
         fastMode: true,
       },
-      tasks: [task],
+      tasks: [activeListTask(task)],
     }],
     unsectioned: [],
   };
@@ -1289,7 +1293,7 @@ test("uses the Section's last composer settings for its next Task request", { ta
     if (route.request().method() === "POST") {
       createdBody = route.request().postDataJSON();
       return route.fulfill({
-        json: taskDetailFixture({
+        json: createdTaskFixture({
           model: "gpt-5.6-sol",
           reasoningEffort: "xhigh",
           fastMode: true,
@@ -1395,14 +1399,13 @@ test("keeps the first prompt when the created Task opens before creation answers
     }),
     threadId: createdThreadId,
     task: createdTask,
-    activeTopPlacement: placement,
   };
   const projection = {
     sections: [{
       id: sectionId,
       name: rootPath,
       repository: false,
-      tasks: [seedTask],
+      tasks: [activeListTask(seedTask)],
     }],
     unsectioned: [],
   };
@@ -1427,7 +1430,9 @@ test("keeps the first prompt when the created Task opens before creation answers
     });
     resolveCreateRequested();
     await createResponseReleased;
-    return route.fulfill({ json: createdDetail });
+    return route.fulfill({
+      json: createdTaskResponse(createdDetail, placement),
+    });
   });
   await page.route(
     new RegExp(`/api/tasks/${createdThreadId}(?:\\?|$)`),
@@ -1470,7 +1475,7 @@ test("keeps the first prompt when the created Task opens before creation answers
       candidate.url.startsWith("/api/tasks/stream")
     );
     source.emit("task-placed-at-top", { task, placement });
-  }, { task: createdTask, placement });
+  }, { task: activeListTask(createdTask), placement });
   const createdTaskRow = page.locator(
     `caffold-active-task-row .task-row[data-thread-id="${createdThreadId}"]`,
   );
@@ -1522,7 +1527,7 @@ test("falls back stale Section settings and applies targeted updates without rel
             effort: "retired-effort",
             fastMode: false,
           },
-          tasks: [task],
+          tasks: [activeListTask(task)],
         }],
         unsectioned: [],
       },
@@ -1587,7 +1592,7 @@ test("moves Section New to the agent whose model a Section update names", { tag:
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     if (route.request().method() === "POST") {
       createdBody = route.request().postDataJSON();
-      return route.fulfill({ json: taskDetailFixture() });
+      return route.fulfill({ json: createdTaskFixture() });
     }
     return route.fulfill({
       json: {
@@ -1601,7 +1606,7 @@ test("moves Section New to the agent whose model a Section update names", { tag:
             fastMode: false,
             permissionMode: "askForApproval",
           },
-          tasks: [task],
+          tasks: [activeListTask(task)],
         }],
         unsectioned: [],
       },
@@ -1693,7 +1698,12 @@ test("clears shared repository context when the selected Section loses capabilit
     lastEventSummary: "Section context rebind",
   };
   let projection = {
-    sections: [{ id: sectionId, name: rootPath, repository: true, tasks: [task] }],
+    sections: [{
+      id: sectionId,
+      name: rootPath,
+      repository: true,
+      tasks: [activeListTask(task)],
+    }],
     unsectioned: [],
   };
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
@@ -1746,7 +1756,7 @@ test("clears shared repository context when the selected Section loses capabilit
       id: sectionId,
       name: rootPath,
       repository: false,
-      tasks: [{ ...task, worktree: null }],
+      tasks: [activeListTask({ ...task, worktree: null })],
     }],
     unsectioned: [],
   };

@@ -5,6 +5,7 @@ import {
   mockCodexStatus,
 } from "../support/browser-defaults.js";
 import {
+  activeListTask,
   activeLiveUpdateChannels,
   activeTaskProjection,
   canonicalTaskState,
@@ -330,15 +331,13 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
   });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     listReads += 1;
-    const ledgerTask = foregroundState
+    const ledgerTask = activeListTask(foregroundState
       ? {
         ...runtimeTask,
         ...canonicalTaskState("notLoaded"),
         title: "Foreground recovery renamed in Caffold",
-        preview: "",
-        conversationAvailable: false,
       }
-      : runtimeTask;
+      : runtimeTask);
     return route.fulfill({
       json: {
         sections: [{
@@ -410,22 +409,16 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
     .poll(() => activeLiveUpdateChannels(page, { registryKey }))
     .toEqual(["task-detail", "task-list", "watch"]);
 
-  await page.evaluate(({ threadId, runtimeTask }) => {
+  await page.evaluate((row) => {
     const listSource = [...window.__foregroundRecoverySources]
       .reverse()
       .find((source) => source.url.startsWith("/api/tasks/stream"));
-    listSource.emit("task-list-snapshot", {
-      tasks: [{
-        ...runtimeTask,
-        ...{
-          threadStatus: { type: "idle" },
-          latestTurnStatus: "completed",
-          activeTurn: null,
-        },
-        title: "Foreground recovery renamed in Caffold",
-      }],
-    });
-  }, { threadId, runtimeTask });
+    listSource.emit("task-list-snapshot", { tasks: [row] });
+  }, activeListTask({
+    ...runtimeTask,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Foreground recovery renamed in Caffold",
+  }));
   await expect(row).toHaveAttribute("data-task-status", "idle");
   await expect(row.locator(".task-row-title")).toHaveText(
     "Foreground recovery renamed in Caffold",
@@ -1510,14 +1503,14 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
     .toEqual(["task-detail", "task-list", "watch"]);
 
   await page.evaluate(
-    ({ threadId, staleTask }) => {
+    ({ threadId, staleTask, staleRow }) => {
       const oldListSource = window.__taskRecoveryEventSources.find((source) =>
         source.url.startsWith("/api/tasks/stream"),
       );
       const oldDetailSource = window.__taskRecoveryEventSources.find((source) =>
         source.url.includes(`/api/tasks/${threadId}/stream`),
       );
-      oldListSource.emit("task-updated", staleTask);
+      oldListSource.emit("task-updated", staleRow);
       oldDetailSource.emit("task-sync", {
         threadId,
         revision: 999,
@@ -1547,7 +1540,7 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
         },
       });
     },
-    { threadId, staleTask: initialTask },
+    { threadId, staleTask: initialTask, staleRow: activeListTask(initialTask) },
   );
   await expect(taskRow).toHaveAttribute("data-task-status", "idle");
   await expect(tasksPage).not.toContainText("Stale generation must stay hidden.");
@@ -1898,19 +1891,11 @@ test("keeps task list and detail revisions independent", { tag: "@desktop" }, as
     const listSource = window.__taskEventSources.find(
       (source) => source.url.startsWith("/api/tasks/stream"),
     );
-    listSource.emit("task-sync", {
-      threadId,
-      revision: 100,
-      detail: {
-        revision: 100,
-        task: { ...task, updatedMs: task.updatedMs + 100 },
-        events: [],
-        eventsPage: { nextCursor: null },
-        eventsRange: { from: null, to: null },
-        pendingApprovals: [],
-      },
-    });
-  }, { threadId, task });
+    listSource.emit("task-sync", { threadId, revision: 100, task });
+  }, {
+    threadId,
+    task: activeListTask({ ...task, updatedMs: task.updatedMs + 100 }),
+  });
 
   const externalEvent = {
     id: "event_external_detail_update",

@@ -37,9 +37,42 @@ export function activeTaskProjection(tasks = [], recovery = []) {
       sectionsByName.set(name, section);
     }
     section.repository ||= repository;
-    section.tasks.push(task);
+    section.tasks.push(activeListTask(task));
   }
-  return { sections: [...sectionsByName.values()], unsectioned: recovery };
+  return {
+    sections: [...sectionsByName.values()],
+    unsectioned: recovery.map((task) => ({
+      ...activeListTask(task),
+      recovery: task.recovery,
+    })),
+  };
+}
+
+/**
+ * The Active list row a Task fixture stands for.
+ *
+ * The list is sent these values and nothing else. A fixture in a linked
+ * worktree stands for a Task running in a worktree Caffold made.
+ */
+export function activeListTask(task) {
+  return {
+    threadId: task.threadId ?? task.id,
+    title: task.title,
+    threadStatus: task.threadStatus,
+    unseen: Boolean(task.unseen),
+    lastCompletedMs: task.lastCompletedMs ?? null,
+    recencyMs: task.recencyMs ?? null,
+    updatedMs: task.updatedMs,
+    worktree: task.worktree === true || task.worktree?.linked === true,
+  };
+}
+
+export function createdTaskResponse(detail, activeTopPlacement) {
+  return {
+    detail,
+    activeTask: activeListTask(detail.task),
+    activeTopPlacement,
+  };
 }
 
 export function canonicalTaskState(

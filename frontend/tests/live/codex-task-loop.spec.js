@@ -401,14 +401,16 @@ test("hydrates, orders, and restores Tasks through the local navigator ledger", 
     });
     const body = await response.text();
     expect(response.status(), `create ${label} response: ${body}`).toBe(200);
-    const detail = JSON.parse(body);
-    expect(detail.threadId).toBeTruthy();
-    expect(detail.task?.worktree?.repositoryRootPath).toBe(fixture.cwd);
-    expect(detail.activeTopPlacement?.section?.id).toBeTruthy();
-    expect(detail.activeTopPlacement?.section?.name).toBe(fixture.cwd);
-    expect(detail.activeTopPlacement?.section?.repository).toBe(true);
-    trackLiveThread(detail.threadId, "spark", SPARK_MODEL);
-    const prompted = await request.post(`/api/tasks/${detail.threadId}/prompts`, {
+    const created = JSON.parse(body);
+    const threadId = created.detail?.threadId;
+    expect(threadId).toBeTruthy();
+    expect(created.detail.task?.worktree?.repositoryRootPath).toBe(fixture.cwd);
+    expect(created.activeTask?.threadId).toBe(threadId);
+    expect(created.activeTopPlacement?.section?.id).toBeTruthy();
+    expect(created.activeTopPlacement?.section?.name).toBe(fixture.cwd);
+    expect(created.activeTopPlacement?.section?.repository).toBe(true);
+    trackLiveThread(threadId, "spark", SPARK_MODEL);
+    const prompted = await request.post(`/api/tasks/${threadId}/prompts`, {
       data: {
         prompt,
         images: [],
@@ -420,7 +422,7 @@ test("hydrates, orders, and restores Tasks through the local navigator ledger", 
     });
     const promptedBody = await prompted.text();
     expect(prompted.status(), `prompt ${label} response: ${promptedBody}`).toBe(200);
-    return detail.threadId;
+    return threadId;
   };
 
   const sectionTaskIds = async (threadIds) => {
@@ -526,7 +528,7 @@ test("rechecks externally archived and deleted Codex Threads through explicit Re
   const createdBody = await createdResponse.text();
   expect(createdResponse.status(), `create recovery Task response: ${createdBody}`).toBe(200);
   const created = JSON.parse(createdBody);
-  const threadId = created.threadId;
+  const threadId = created.detail?.threadId;
   expect(threadId).toBeTruthy();
   trackLiveThread(threadId, "spark", SPARK_MODEL);
   const promptedResponse = await request.post(`/api/tasks/${threadId}/prompts`, {
@@ -1031,7 +1033,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
     const response = await route.fetch();
     expect(response.ok()).toBeTruthy();
     const created = await response.json();
-    trackLiveThread(created.threadId, "spark", SPARK_MODEL);
+    trackLiveThread(created.detail.threadId, "spark", SPARK_MODEL);
     await expect.poll(async () => {
       const status = await readCodexStatus(page.request);
       return status.diagnostics?.threadSessions?.subscribedSessions;
@@ -1264,9 +1266,13 @@ test("moves one dirty Spark task into a worktree and resumes the same thread", a
 
     const restored = await restoreLiveThread(page.request, threadId);
     expect(restored.task?.threadId).toBe(threadId);
-    expect(restored.task?.worktree?.linked).toBe(true);
-    expect(restored.task?.worktree?.branch).toBe(branchName);
-    expect(restored.task?.cwd).toBe(worktreePath);
+    expect(restored.task?.worktree).toBe(true);
+    const restoredDetailResponse = await page.request.get(`/api/tasks/${threadId}`);
+    expect(restoredDetailResponse.ok()).toBeTruthy();
+    const restoredDetail = await restoredDetailResponse.json();
+    expect(restoredDetail.task?.worktree?.linked).toBe(true);
+    expect(restoredDetail.task?.worktree?.branch).toBe(branchName);
+    expect(restoredDetail.task?.cwd).toBe(worktreePath);
     expect(existsSync(worktreePath)).toBe(true);
 
     await page.goto(`/tasks/${threadId}`);

@@ -46,6 +46,7 @@ use membership::{
 #[cfg(test)]
 use store::{task_store_claim, task_store_get, task_store_update_composer_settings};
 
+use super::active_list::ActiveTask;
 use super::lifecycle::ActiveTaskTopPlacement;
 pub(super) use super::live::TaskListEvents;
 #[cfg(test)]
@@ -217,7 +218,19 @@ struct SectionReorderResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskRestoreResponse {
-    task: TaskRecord,
+    task: ActiveTask,
+    active_top_placement: ActiveTaskTopPlacement,
+}
+
+/// A new Task, answered once for each surface that takes it in.
+///
+/// Task Detail opens `detail`; the Active list places `active_task` where
+/// `active_top_placement` says.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CreatedTaskResponse {
+    detail: TaskDetailResponse,
+    active_task: ActiveTask,
     active_top_placement: ActiveTaskTopPlacement,
 }
 
@@ -439,7 +452,7 @@ pub(super) mod test_support {
 
     pub(super) fn projected_active_tasks(
         projection: &active_list::ActiveTaskProjection,
-    ) -> Vec<&TaskRecord> {
+    ) -> Vec<&active_list::ActiveTask> {
         projection
             .sections
             .iter()

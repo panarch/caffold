@@ -1,11 +1,12 @@
 use super::TaskDetailQuery;
 use super::commands::apply_managed_thread_metadata;
 use super::store::{task_store_get, task_store_mark_seen};
-use crate::agent::Conversation;
+use crate::agent::{Conversation, ThreadStatus};
 use crate::app::error::ApiError;
-use crate::app::tasks::active_list::unavailable_active_task;
+use crate::app::tasks::active_list::{ActiveTask, runs_in_managed_worktree};
 use crate::app::tasks::generated_images::GeneratedImageError;
 use crate::app::tasks::{TaskDetailResponse, TaskRecord, TaskState, task_activity_ms};
+use crate::task_store::ManagedThread;
 use axum::Json;
 use axum::body::Body;
 use axum::extract::Path as AxumPath;
@@ -83,6 +84,7 @@ pub(super) async fn mark_task_seen(
     let Some(managed) = task_store_get(&state, &thread_id).await? else {
         return Err(task_not_managed_error());
     };
+    let worktree = runs_in_managed_worktree(&state.task_store, &thread_id).await?;
     let agent = state.task_runtime.task_agent(&thread_id).await?;
     let mut task = match agent.codex() {
         Some(connection) => {
@@ -101,7 +103,7 @@ pub(super) async fn mark_task_seen(
             .and_then(|snapshot| snapshot.conversation)
         {
             Some(conversation) => state.detail.record_from_conversation(&conversation)?,
-            None => unavailable_active_task(&managed),
+            None => unavailable_task_record(&managed),
         },
     };
     let activity_ms = task_activity_ms(&task);
@@ -109,8 +111,34 @@ pub(super) async fn mark_task_seen(
         return Err(task_not_managed_error());
     };
     apply_managed_thread_metadata(&mut task, &managed);
-    notify_task_updated(&state, task.clone());
+    notify_task_updated(&state, ActiveTask::of(&task, worktree));
     Ok(Json(task))
+}
+
+fn unavailable_task_record(managed: &ManagedThread) -> TaskRecord {
+    let activity_ms = managed
+        .last_observed_recency_ms
+        .unwrap_or(managed.claimed_at_ms);
+    TaskRecord {
+        id: managed.thread_id.clone(),
+        thread_id: managed.thread_id.clone(),
+        conversation_available: false,
+        title: managed.display_name.clone(),
+        preview: "Conversation unavailable".to_string(),
+        thread_status: ThreadStatus::NotLoaded,
+        latest_turn_status: None,
+        active_turn: None,
+        cwd: String::new(),
+        cwd_path: None,
+        relative_cwd: String::new(),
+        worktree: None,
+        created_ms: activity_ms,
+        updated_ms: activity_ms,
+        recency_ms: Some(activity_ms),
+        last_completed_ms: managed.last_completed_at_ms,
+        last_event_summary: None,
+        unseen: managed.unseen(),
+    }
 }
 
 pub(super) fn task_not_managed_error() -> ApiError {
@@ -120,7 +148,7 @@ pub(super) fn task_not_managed_error() -> ApiError {
     }
 }
 
-pub(super) fn notify_task_updated(state: &TaskState, task: TaskRecord) {
+pub(super) fn notify_task_updated(state: &TaskState, task: ActiveTask) {
     state.task_list_events.update(task);
 }
 
@@ -137,6 +165,7 @@ mod tests {
     use serde_json::{Value as JsonValue, json};
     use tower::ServiceExt;
 
+    use super::super::TaskListUpdate;
     use super::*;
     use crate::{
         app::tasks::{
@@ -144,7 +173,7 @@ mod tests {
             test_support::*,
         },
         fs::RootedFs,
-        task_store::{ManagedThread, RunBy},
+        task_store::{ManagedThread, ManagedWorktreeState, RunBy},
     };
 
     #[tokio::test]
@@ -357,6 +386,46 @@ mod tests {
             state.task_runtime.usage_diagnostics().threads.is_empty(),
             "nothing woke an agent to answer a click"
         );
+    }
+
+    #[tokio::test]
+    async fn marking_a_task_seen_tells_the_list_whether_it_runs_in_a_managed_worktree() {
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        let thread_id = "claude-isolated-thread";
+        state
+            .task_store
+            .claim(
+                ManagedThread::new(
+                    thread_id,
+                    RunBy::Claude {
+                        cwd: root.path().display().to_string(),
+                    },
+                    Some(1_000),
+                    None,
+                    None,
+                ),
+                1,
+            )
+            .unwrap();
+        record_managed_worktree(&state.task_store, thread_id, ManagedWorktreeState::Ready);
+        let (_, mut updates) = state.task_list_events.subscribe();
+
+        let _ = mark_task_seen(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("the Task is marked seen");
+
+        let update = tokio::time::timeout(std::time::Duration::from_secs(1), updates.recv())
+            .await
+            .expect("the list update is sent before the answer")
+            .unwrap();
+        let TaskListUpdate::Task(task) = update else {
+            panic!("marking a Task seen updates its Active list row");
+        };
+        assert_eq!(task.thread_id, thread_id);
+        assert!(!task.unseen);
+        assert!(task.worktree);
     }
 
     #[tokio::test]

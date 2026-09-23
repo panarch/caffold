@@ -336,7 +336,7 @@ pub(in crate::app::tasks) mod test_support {
             http_mcp::McpSessionSigner,
         },
         fs::RootedFs,
-        task_store::TaskStore,
+        task_store::{CheckoutAnchor, ManagedWorktree, ManagedWorktreeState, TaskStore},
     };
 
     const MOCK_METHOD_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
@@ -512,6 +512,31 @@ pub(in crate::app::tasks) mod test_support {
             .observe_thread_metadata(Conversation::from(&thread))
             .await;
         manage_test_thread(state, thread_id, cwd).await;
+    }
+
+    /// A managed worktree record for a Task, at a path nothing was made at.
+    pub(in crate::app::tasks) fn record_managed_worktree(
+        store: &TaskStore,
+        thread_id: &str,
+        state: ManagedWorktreeState,
+    ) {
+        // Every state but ready keeps the checkout the worktree came from.
+        let checkout_anchor = (state != ManagedWorktreeState::Ready).then(|| CheckoutAnchor {
+            branch_name: format!("caffold/{thread_id}"),
+            head_sha: "0123456789abcdef".to_string(),
+        });
+        store
+            .create_worktree(ManagedWorktree {
+                worktree_id: format!("worktree-{thread_id}"),
+                thread_id: Some(thread_id.to_string()),
+                repository_git_dir: "/nowhere/repository/.git".to_string(),
+                worktree_path: format!("/nowhere/worktrees/{thread_id}"),
+                state,
+                checkout_anchor,
+                created_at_ms: 1,
+                updated_at_ms: 1,
+            })
+            .unwrap();
     }
 
     pub(in crate::app::tasks) fn resumed_task(thread_id: &str, cwd: &Path) -> JsonValue {

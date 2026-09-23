@@ -133,6 +133,13 @@ impl TaskStoreTables<'_> {
         }
     }
 
+    pub(crate) fn managed_worktrees(&mut self) -> Result<Vec<ManagedWorktree>> {
+        match self {
+            Self::Memory(glue) => managed_worktree::list(glue),
+            Self::Redb(glue) => managed_worktree::list(glue),
+        }
+    }
+
     pub(crate) fn managed_thread(&mut self, thread_id: &str) -> Result<Option<ManagedThread>> {
         match self {
             Self::Memory(glue) => managed_thread::get(glue, thread_id),
@@ -1284,5 +1291,33 @@ mod tests {
                 .unwrap(),
             (Vec::new(), Vec::new())
         );
+    }
+
+    #[test]
+    fn scoped_redb_read_lists_managed_worktrees_with_the_threads_they_hold() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = TaskStore::redb(temp.path().join("caffold.redb")).unwrap();
+        store.claim(thread("thread-isolated"), 100).unwrap();
+        let recorded = store
+            .create_worktree(worktree("worktree-isolated", "thread-isolated"))
+            .unwrap();
+
+        let (threads, worktrees) = store
+            .read(|tables| {
+                Ok((
+                    tables.active_managed_threads()?,
+                    tables.managed_worktrees()?,
+                ))
+            })
+            .unwrap();
+
+        assert_eq!(
+            threads
+                .iter()
+                .map(|thread| thread.thread_id.as_str())
+                .collect::<Vec<_>>(),
+            ["thread-isolated"]
+        );
+        assert_eq!(worktrees, [recorded]);
     }
 }

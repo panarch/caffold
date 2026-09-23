@@ -8,6 +8,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  createdTaskResponse,
   emitTaskDetailBootstrap,
   installEventSourceMock,
   mockAgentModels,
@@ -345,18 +346,16 @@ test("forks an idle Codex Task and opens the distinct child", { tag: "@all-viewp
     ...summaryTask(childThreadId, "Fork of Source task", rootPath, 101),
     worktree: null,
   };
-  const childDetail = {
-    ...summaryDetail(child),
-    activeTopPlacement: {
-      section: {
-        id: "fixture-section-1",
-        name: rootPath,
-        repository: false,
-      },
-      beforeSectionId: null,
-      beforeThreadId: sourceThreadId,
+  const childDetail = summaryDetail(child);
+  const childFork = createdTaskResponse(childDetail, {
+    section: {
+      id: "fixture-section-1",
+      name: rootPath,
+      repository: false,
     },
-  };
+    beforeSectionId: null,
+    beforeThreadId: sourceThreadId,
+  });
   let releaseFork;
   const forkGate = new Promise((resolve) => {
     releaseFork = resolve;
@@ -372,7 +371,7 @@ test("forks an idle Codex Task and opens the distinct child", { tag: "@all-viewp
     expect(route.request().method()).toBe("POST");
     observeFork();
     await forkGate;
-    await route.fulfill({ json: childDetail });
+    await route.fulfill({ json: childFork });
   });
   await page.route(
     new RegExp(`/api/tasks/${childThreadId}(?:\\?|$)`),

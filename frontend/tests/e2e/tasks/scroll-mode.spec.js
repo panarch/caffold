@@ -8,6 +8,7 @@ import {
   taskDetailFixture,
 } from "../support/task-api-fixture.js";
 import {
+  activeListTask,
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
@@ -494,7 +495,7 @@ test("keeps the exact active Task list through content patches and exits when it
   };
   await page.evaluate((task) => {
     window.__taskListSource.emit("task-updated", task);
-  }, updatedTask);
+  }, activeListTask(updatedTask));
   await expect(page.locator(
     `.task-row[data-thread-id="${updatedTask.threadId}"] .task-row-title`,
   )).toHaveText(updatedTask.title);

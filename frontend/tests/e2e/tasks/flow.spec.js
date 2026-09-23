@@ -9,6 +9,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  createdTaskResponse,
   emitTaskDetailBootstrap,
   installEventSourceMock,
   mockAgentModels,
@@ -45,13 +46,6 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
     revision: 1,
     eventRevision: 1,
     task,
-    activeTopPlacement: {
-      section: {
-        id: "section-src",
-        name: "src",
-        repository: false,
-      },
-    },
     events: [
       {
         id: "event_prompt",
@@ -95,7 +89,13 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
       expect(createdTaskRequest.cwd).toBe("src");
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify(detail),
+        body: JSON.stringify(createdTaskResponse(detail, {
+          section: {
+            id: "section-src",
+            name: "src",
+            repository: false,
+          },
+        })),
       });
     }
 

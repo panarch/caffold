@@ -127,18 +127,9 @@ test("uses one SSE snapshot for initial detail, reconnect, and cursor history", 
   await activeDetailSource(page, threadId);
   await expect.poll(() => initialDetailReads).toBe(0);
 
-  await page.evaluate((id) => {
-    window.__detailBootstrapSnapshotCount = 0;
-    document
-      .querySelector("caffold-tasks-page")
-      .addEventListener("caffold:task-snapshot", (event) => {
-        if (event.detail?.threadId === id) {
-          window.__detailBootstrapSnapshotCount += 1;
-        }
-      });
-  }, threadId);
-  await page.evaluate(({ threadId: id, detail }) => {
+  const bootstrapAppliedOnce = await page.evaluate(({ threadId: id, detail }) => {
     const source = window.__caffoldTaskSse.source(id);
+    const taskDetail = document.querySelector("caffold-tasks-page caffold-task-detail");
     const message = {
       threadId: id,
       revision: detail.revision,
@@ -146,14 +137,14 @@ test("uses one SSE snapshot for initial detail, reconnect, and cursor history", 
       detail,
     };
     source.emit("task-sync", message);
+    const applied = taskDetail.currentDetail();
     source.emit("task-sync", message);
+    return Boolean(applied?.task) && taskDetail.currentDetail() === applied;
   }, { threadId, detail: initialDetail });
 
+  expect(bootstrapAppliedOnce).toBe(true);
   await expect(tasksPage).toContainText("Initial detail arrived through SSE.");
   await expect.poll(() => initialDetailReads).toBe(0);
-  await expect
-    .poll(() => page.evaluate(() => window.__detailBootstrapSnapshotCount))
-    .toBe(1);
   await expect
     .poll(() =>
       tasksPage.locator("caffold-task-detail").evaluate((detail) => ({

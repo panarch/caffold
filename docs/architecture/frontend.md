@@ -695,12 +695,14 @@ For Global and Section New, Task Create gives the persistent Tasks page an
 exact submission snapshot before that page starts creation. The page owns the
 creation request and snapshot across Task and Section route changes. The source
 Composer retains only its local in-flight state for pending presentation and
-definitive-rejection rollback; it cannot issue a second request. When the empty
-Task answer arrives, the page hands its snapshot to Detail. Detail then owns
-the text, attachments, options, optimistic entry, and retry state. Creation and
-prompt submission are separate HTTP requests, while this in-page handoff
-preserves the one-action experience and prevents a duplicate request between
-them.
+definitive-rejection rollback; it cannot issue a second request. The empty Task
+answer carries the Task's Detail response, its Active list row, and that row's
+placement. When it arrives, the page hands the Detail response and the
+submission snapshot to Detail, and the row and placement to the navigator.
+Detail then owns the text, attachments, options, optimistic entry, and retry
+state. Creation and prompt submission are separate HTTP requests, while this
+in-page handoff preserves the one-action experience and prevents a duplicate
+request between them.
 
 Detail shows every prompt optimistically. The prompt response returns the
 user-item identity established by the agent adapter; only a backend Detail or
@@ -806,8 +808,8 @@ system-error, and unrecognized statuses keep the action disabled.
 The dialog sends the selected Managed Section ID rather than a cwd. The backend
 resolves the current Section project root and returns the child placement. The
 browser accepts only a distinct child ID placed in that Section, then hands the
-Detail response to the existing `caffold:task-created` owner. It does not infer
-source ownership, status, cwd, or conversation lineage.
+created-Task answer to the existing `caffold:task-created` owner. It does not
+infer source ownership, status, cwd, or conversation lineage.
 
 A Task deep route is prepared before canonical Task loading. Shared repository
 surfaces activate only after the Task snapshot is available. Section repository

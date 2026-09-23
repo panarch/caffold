@@ -2,7 +2,10 @@ import {
   installExternalModuleDefaults,
   mockCodexStatus,
 } from "./browser-defaults.js";
-import { activeTaskProjection } from "./task-fixtures.js";
+import {
+  activeTaskProjection,
+  createdTaskResponse,
+} from "./task-fixtures.js";
 import { installTaskSseControllerInBrowser } from "./task-sse-fixture.js";
 
 export const TASK_PERMISSION_FIXTURE = {
@@ -163,4 +166,10 @@ export function taskDetailFixture({
     reasoningEffort,
     fastMode,
   };
+}
+
+export function createdTaskFixture(options) {
+  return createdTaskResponse(taskDetailFixture(options), {
+    section: { id: "fixture-section-src", name: "src", repository: false },
+  });
 }

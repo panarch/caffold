@@ -8,6 +8,7 @@ import {
 } from "../support/action-hints.js";
 import { installBrowserDefaults, mockCodexStatus } from "../support/browser-defaults.js";
 import {
+  activeListTask,
   captureReviewScreenshot,
   canonicalTaskState,
   installEventSourceMock,
@@ -19,23 +20,15 @@ test.beforeEach(async ({ page }) => {
   await installEventSourceMock(page);
 });
 
-function task(threadId, title, cwdPath = "/workspace/one") {
+function task(threadId, title) {
   const now = Date.now();
-  return {
-    id: threadId,
+  return activeListTask({
     threadId,
     ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title,
-    preview: `${title} preview`,
-    cwd: cwdPath,
-    cwdPath,
-    relativeCwd: "",
-    worktree: null,
-    createdMs: now,
     updatedMs: now,
     recencyMs: now,
-    lastEventSummary: `${title} summary`,
-  };
+  });
 }
 
 function projection(order, { recovery = [], secondSection = [] } = {}) {
@@ -127,18 +120,17 @@ async function installSectionReorderFixture(page) {
         id: "section-two",
         name: "/workspace/two",
         repository: false,
-        tasks: [task("thread-two", "Two", "/workspace/two")],
+        tasks: [task("thread-two", "Two")],
       },
       {
         id: "section-three",
         name: "/workspace/three",
         repository: false,
-        tasks: [task("thread-three", "Three", "/workspace/three")],
+        tasks: [task("thread-three", "Three")],
       },
     ],
     recovery: [{
       ...task("thread-recovery", "Recovery"),
-      conversationAvailable: false,
       recovery: { reason: "threadMissing" },
     }],
     moves: [],
@@ -180,7 +172,6 @@ test("moves a Task and finishes reorder through Action Hints", { tag: "@all-view
   ];
   const recovery = [{
     ...task("thread-recovery", "Recovery"),
-    conversationAvailable: false,
     recovery: { reason: "threadMissing" },
   }];
   const moves = [];
@@ -361,10 +352,9 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
     task("thread-b", "Bravo"),
     task("thread-c", "Charlie"),
   ];
-  const secondSection = [task("thread-d", "Delta", "/workspace/two")];
+  const secondSection = [task("thread-d", "Delta")];
   const recovery = [{
     ...task("thread-recovery", "Recovery"),
-    conversationAvailable: false,
     recovery: { reason: "threadMissing" },
   }];
   const moves = [];
@@ -597,14 +587,14 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
     list.handleStreamEvent("task-updated", {
       data: JSON.stringify(update),
     });
-  }, {
+  }, activeListTask({
     ...order[0],
     ...canonicalTaskState("active", {
       turnId: "turn-alpha",
       startedAtMs: Date.now(),
       latestTurnStatus: "inProgress",
     }),
-  });
+  }));
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await expect(
     navigator.locator('.task-row[data-thread-id="thread-a"] .task-reorder-handle'),
@@ -1100,7 +1090,7 @@ test("preserves the visible Section scroll anchor across compact mode", { tag: "
     id: `section-${index}`,
     name: `/workspace/section-${index}`,
     repository: false,
-    tasks: [task(`thread-${index}`, `Task ${index}`, `/workspace/section-${index}`)],
+    tasks: [task(`thread-${index}`, `Task ${index}`)],
   }));
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({

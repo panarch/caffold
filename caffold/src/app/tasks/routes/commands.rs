@@ -4,8 +4,9 @@ use super::store::{
     task_store_get, task_store_update_composer_settings, task_store_worktree_for_thread,
 };
 use super::{
-    CancelledPromptResponse, CreateTaskRequest, MAX_TASK_IMAGES, TaskApprovalRequest,
-    TaskInterruptResponse, TaskPromptOutcome, TaskPromptRequest, TaskPromptResponse, TasksQuery,
+    CancelledPromptResponse, CreateTaskRequest, CreatedTaskResponse, MAX_TASK_IMAGES,
+    TaskApprovalRequest, TaskInterruptResponse, TaskPromptOutcome, TaskPromptRequest,
+    TaskPromptResponse, TasksQuery,
 };
 use crate::agent::AgentError;
 use crate::agent::codex::{CodexThreadClient, CodexThreadError};
@@ -34,7 +35,7 @@ use std::path::Path;
 pub(super) async fn create_task(
     State(state): State<TaskState>,
     Json(request): Json<CreateTaskRequest>,
-) -> Result<Json<TaskDetailResponse>, ApiError> {
+) -> Result<Json<CreatedTaskResponse>, ApiError> {
     // Once creation starts, finish initialization and claim (or rollback)
     // even if the browser disconnects while the provider is answering.
     tokio::spawn(create_task_owned(state, request))
@@ -45,7 +46,7 @@ pub(super) async fn create_task(
 async fn create_task_owned(
     state: TaskState,
     request: CreateTaskRequest,
-) -> Result<Json<TaskDetailResponse>, ApiError> {
+) -> Result<Json<CreatedTaskResponse>, ApiError> {
     let cwd = task_cwd(&state, request.cwd.as_deref())?;
     let agent = new_task_agent(&state, request.provider.as_deref(), &cwd).await?;
     let turn_options = TurnOptions {
@@ -66,12 +67,15 @@ async fn create_task_owned(
             },
         )
         .await?;
-    let mut detail = state
+    let detail = state
         .detail
         .read(&agent, &created.task.thread_id, None)
         .await?;
-    detail.active_top_placement = Some(created.placement);
-    Ok(Json(detail))
+    Ok(Json(CreatedTaskResponse {
+        detail,
+        active_task: created.active_task,
+        active_top_placement: created.placement,
+    }))
 }
 
 pub(super) async fn task_prompt(
@@ -1248,11 +1252,12 @@ mod tests {
         .expect("create-only request succeeds");
 
         wait_for_mock_method(&client, "thread/unsubscribe").await;
-        let task = response.0.task.expect("created Task");
+        let created = response.0;
+        let task = created.detail.task.expect("created Task");
         assert_eq!(task.thread_id, thread_id);
         assert_eq!(task.title, "Thread thread-e");
         assert!(task.active_turn.is_none());
-        assert!(response.0.events.is_empty());
+        assert!(created.detail.events.is_empty());
         assert!(state.task_events.for_thread(thread_id).is_empty());
         assert_eq!(
             client
@@ -1337,13 +1342,14 @@ mod tests {
         .expect("task creation succeeds");
 
         wait_for_mock_method(&client, "thread/unsubscribe").await;
-        assert_eq!(creation.0.permission_mode, Some("approveForMe".to_string()));
+        let detail = &creation.0.detail;
+        assert_eq!(detail.permission_mode, Some("approveForMe".to_string()));
         assert_eq!(
-            creation.0.task.as_ref().map(|task| task.title.as_str()),
+            detail.task.as_ref().map(|task| task.title.as_str()),
             Some("[REQ] Use the selected approval mode")
         );
-        assert!(creation.0.task.as_ref().unwrap().active_turn.is_none());
-        assert!(creation.0.events.is_empty());
+        assert!(detail.task.as_ref().unwrap().active_turn.is_none());
+        assert!(detail.events.is_empty());
         assert_eq!(
             client
                 .mock_requests()
@@ -1502,14 +1508,10 @@ mod tests {
         .await
         .expect("task creation succeeds");
 
-        assert_eq!(response.0.model.as_deref(), Some("gpt-5.6-sol"));
-        assert_eq!(response.0.reasoning_effort.as_deref(), Some("xhigh"));
-        assert!(response.0.fast_mode);
-        let placement = response
-            .0
-            .active_top_placement
-            .as_ref()
-            .expect("create response carries canonical top placement");
+        assert_eq!(response.0.detail.model.as_deref(), Some("gpt-5.6-sol"));
+        assert_eq!(response.0.detail.reasoning_effort.as_deref(), Some("xhigh"));
+        assert!(response.0.detail.fast_mode);
+        let placement = &response.0.active_top_placement;
         assert_eq!(placement.section.id, "section-root");
         assert!(placement.before_thread_id.is_none());
         match tokio::time::timeout(std::time::Duration::from_secs(1), list_updates.recv())
@@ -1518,7 +1520,7 @@ mod tests {
             .expect("placement list update channel remains open")
         {
             TaskListUpdate::Placement(update) => {
-                assert_eq!(update.task.thread_id, thread_id);
+                assert_eq!(update.task, response.0.active_task);
                 assert_eq!(update.placement, *placement);
             }
             update => panic!("expected placement list update, got {update:?}"),
@@ -1673,14 +1675,24 @@ mod tests {
 
         // The Task is already the durable unit: named, claimed at the top of
         // its Section, and carrying no submitted message or turn.
-        assert_eq!(response.0.thread_id, thread_id);
-        let task = response.0.task.as_ref().expect("created Task record");
+        assert_eq!(response.0.detail.thread_id, thread_id);
+        let task = response
+            .0
+            .detail
+            .task
+            .as_ref()
+            .expect("created Task record");
         assert_eq!(task.title, "[REQ] Read the planner");
         assert!(task.active_turn.is_none());
-        assert!(response.0.active_top_placement.is_some());
+        // The Active list takes its own row, which a Task this new cannot mark
+        // as running in a worktree Caffold made.
+        assert_eq!(response.0.active_task.thread_id, thread_id);
+        assert_eq!(response.0.active_task.title, "[REQ] Read the planner");
+        assert!(!response.0.active_task.worktree);
         assert!(
             response
                 .0
+                .detail
                 .events
                 .iter()
                 .all(|event| event.event_type != "user_message")
@@ -1782,7 +1794,7 @@ mod tests {
         )
         .await
         .expect("empty Task creation succeeds");
-        assert_eq!(detail.0.thread_id, thread_id);
+        assert_eq!(detail.0.detail.thread_id, thread_id);
 
         wait_for_mock_method(&client, "thread/unsubscribe").await;
         let error = task_prompt(
@@ -3248,10 +3260,10 @@ mod grok_tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "{created}");
-        let thread_id = created["threadId"].as_str().unwrap().to_string();
-        assert_eq!(created["provider"], "grok");
-        assert_eq!(created["model"], "grok-4.5");
-        assert_eq!(created["reasoningEffort"], "low");
+        let thread_id = created["detail"]["threadId"].as_str().unwrap().to_string();
+        assert_eq!(created["detail"]["provider"], "grok");
+        assert_eq!(created["detail"]["model"], "grok-4.5");
+        assert_eq!(created["detail"]["reasoningEffort"], "low");
         let asked = leader.wait_for("session/new").await;
         assert_eq!(
             asked["_meta"]["sessionId"], thread_id,
@@ -3355,7 +3367,7 @@ mod grok_tests {
         .await;
         assert_eq!(status, StatusCode::OK, "{created}");
         leader.wait_for("session/new").await;
-        created["threadId"].as_str().unwrap().to_string()
+        created["detail"]["threadId"].as_str().unwrap().to_string()
     }
 
     #[tokio::test]
@@ -3568,7 +3580,7 @@ mod grok_tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "{created}");
-        let thread_id = created["threadId"].as_str().unwrap().to_string();
+        let thread_id = created["detail"]["threadId"].as_str().unwrap().to_string();
         leader.wait_for("session/new").await;
         let (status, prompted) = call(
             &app,

@@ -1673,18 +1673,9 @@ function parseJson(value) {
 }
 
 const TASK_RUNTIME_FIELDS = Object.freeze([
-  "conversationAvailable",
-  "preview",
   "threadStatus",
-  "latestTurnStatus",
-  "activeTurn",
-  "cwd",
-  "cwdPath",
-  "relativeCwd",
-  "worktree",
-  "createdMs",
+  "recencyMs",
   "updatedMs",
-  "lastEventSummary",
 ]);
 
 function normalizeActiveSections(sections, runtimeByThread = new Map()) {

@@ -297,7 +297,7 @@ class CaffoldConversationForkDialog extends HTMLElement {
     this.error = null;
     this.patch();
     try {
-      const detail = await createTaskFork({
+      const created = await createTaskFork({
         provider: "codex",
         sourceId,
         sectionId,
@@ -305,14 +305,15 @@ class CaffoldConversationForkDialog extends HTMLElement {
       if (requestId !== this.forkRequestId) {
         return;
       }
+      const childThreadId = created?.detail?.threadId;
       if (
-        !detail?.threadId ||
-        detail.threadId === sourceId ||
-        detail.activeTopPlacement?.section?.id !== sectionId
+        !childThreadId ||
+        childThreadId === sourceId ||
+        created.activeTopPlacement?.section?.id !== sectionId
       ) {
         throw new Error("The forked Task did not match the requested conversation and Section.");
       }
-      const handoff = { detail, submission: null, adopted: false };
+      const handoff = { created, submission: null, adopted: false };
       this.dispatchEvent(
         new CustomEvent("caffold:task-created", {
           bubbles: true,
