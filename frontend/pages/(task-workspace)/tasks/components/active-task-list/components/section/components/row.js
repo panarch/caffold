@@ -10,7 +10,7 @@ import {
   taskStatusView,
   taskThreadStatusType,
 } from "../../../../../runtime-state.js";
-import { taskThreadId, taskWorktreeLabel } from "../../../../../task-list-model.js";
+import { taskThreadId } from "../../../../../task-list-model.js";
 import { formatRelativeAgePresentation } from "../../../../../task-format.js";
 import {
   patchTaskStatusChip,
@@ -420,8 +420,8 @@ function renderRow(snapshot, mode) {
     : unseen
       ? renderUnseenTaskRowMeta(task)
       : renderTaskRowMeta(task, snapshot.transportState);
-  const worktree = task?.worktree?.linked
-    ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
+  const worktree = task?.worktree === true
+    ? `<span class="task-row-worktree">
         ${renderInlineIcon("GitBranch", "Linked worktree", "task-row-worktree-icon")}
       </span>`
     : "";
@@ -566,7 +566,7 @@ function patchMatchingTaskRowIndicator(current, next) {
     return true;
   }
   if (current.matches(".task-row-worktree") && next.matches(".task-row-worktree")) {
-    syncElementAttributes(current, next, ["class", "title"]);
+    syncElementAttributes(current, next, ["class"]);
     return true;
   }
   if (

@@ -6,6 +6,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  createdTaskResponse,
   emitTaskDetailBootstrap,
   installEventSourceMock,
   mockAgentModels,
@@ -734,9 +735,6 @@ test("does not carry an older-history cursor into a newly created task", { tag: 
     pendingApprovals: [],
     eventsRange: null,
     historyLoading: true,
-    activeTopPlacement: {
-      section: { id: "fixture-section-src", name: "src", repository: false },
-    },
   };
   let taskCreated = false;
   let resolvePromptRequest;
@@ -768,7 +766,9 @@ test("does not carry an older-history cursor into a newly created task", { tag: 
       taskCreated = true;
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify(createdDetail),
+        body: JSON.stringify(createdTaskResponse(createdDetail, {
+          section: { id: "fixture-section-src", name: "src", repository: false },
+        })),
       });
     }
 

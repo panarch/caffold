@@ -5,6 +5,7 @@ import {
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
+  activeListTask,
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
@@ -182,7 +183,7 @@ test("activates Archived retry, paging, restore, and Task-list scrolling through
       restoreRequests += 1;
       return route.fulfill({
         json: {
-          task: firstPage[0],
+          task: activeListTask(firstPage[0]),
           activeTopPlacement: {
             section: {
               id: "fixture-restored-section",

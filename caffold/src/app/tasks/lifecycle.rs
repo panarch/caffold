@@ -15,6 +15,7 @@ use crate::{
 
 use super::{
     TaskAgent, TaskRecord,
+    active_list::ActiveTask,
     events::now_ms,
     projection::{resolve_conversation_cwd, task_activity_ms, task_record_from_conversation},
     routes::TaskListEvents,
@@ -37,6 +38,7 @@ pub(in crate::app::tasks) struct CreateTask {
 
 pub(in crate::app::tasks) struct CreatedTask {
     pub(in crate::app::tasks) task: TaskRecord,
+    pub(in crate::app::tasks) active_task: ActiveTask,
     pub(in crate::app::tasks) placement: ActiveTaskTopPlacement,
     _request: RequestLease,
 }
@@ -204,9 +206,13 @@ impl TaskLifecycle {
                 },
             )
             .await;
-        self.list_events.place(task.clone(), placement.clone());
+        // A conversation started a moment ago has no managed worktree record.
+        let active_task = ActiveTask::of(&task, false);
+        self.list_events
+            .place(active_task.clone(), placement.clone());
         Ok(CreatedTask {
             task,
+            active_task,
             placement,
             _request: request,
         })

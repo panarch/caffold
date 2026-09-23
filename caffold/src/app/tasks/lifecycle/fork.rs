@@ -15,6 +15,7 @@ use crate::{
 
 use super::super::{
     CodexConnection, TaskRecord,
+    active_list::ActiveTask,
     projection::conversation_display_name,
     sessions::{ConversationSettings, INITIAL_TURNS_PAGE_SIZE},
 };
@@ -193,9 +194,13 @@ impl TaskLifecycle {
                 },
             )
             .await;
-        self.list_events.place(task.clone(), placement.clone());
+        // A child forked a moment ago has no managed worktree record of its own.
+        let active_task = ActiveTask::of(&task, false);
+        self.list_events
+            .place(active_task.clone(), placement.clone());
         Ok(CreatedTask {
             task,
+            active_task,
             placement,
             _request: request,
         })

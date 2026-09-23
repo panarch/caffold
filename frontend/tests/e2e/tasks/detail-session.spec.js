@@ -7,6 +7,7 @@ import {
   taskDetailFixture,
 } from "../support/task-api-fixture.js";
 import {
+  activeListTask,
   activeTaskProjection,
   canonicalTaskState,
   emitTaskDetailBootstrap,
@@ -849,7 +850,11 @@ test("keeps the managed header and Archive escape hatch when canonical Detail di
       error: "Codex app-server is unavailable",
     };
     window.__taskDetailSource.emit("task-sync", message);
-    window.__taskListSource.emit("task-sync", message);
+    window.__taskListSource.emit("task-sync", {
+      threadId: message.threadId,
+      revision: message.revision,
+      task: null,
+    });
   });
 
   await expect(
@@ -2428,10 +2433,10 @@ test("accepts canonical task sync after stream revisions restart", { tag: "@all-
     });
   }, {
     threadId,
-    task: {
+    task: activeListTask({
       ...task,
       ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
-    },
+    }),
   });
   await expect(row).toHaveAttribute("data-task-status", "idle");
 });

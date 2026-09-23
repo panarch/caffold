@@ -13,7 +13,6 @@ use super::{
         TaskEventPosition, TaskEventPublication, TaskEventRecord, TaskEvents, TaskHistoryCursor,
         TaskHistoryPage, compose_pending_approval_events, sort_task_events, task_event_turn_id,
     },
-    lifecycle::ActiveTaskTopPlacement,
     projection::{
         ResolvedTaskCwd, TaskRecord, apply_turn_states_projection, resolve_checkout_cwd,
         resolve_conversation_cwd, task_record_from_conversation,
@@ -84,8 +83,6 @@ pub(in crate::app::tasks) struct TaskDetailResponse {
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) reasoning_effort: Option<String>,
     pub(in crate::app::tasks) fast_mode: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::app::tasks) active_top_placement: Option<ActiveTaskTopPlacement>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -493,7 +490,6 @@ impl DetailContext {
                 model,
                 reasoning_effort,
                 fast_mode: session_fast_mode,
-                active_top_placement: None,
             });
         }
         Err(not_managed_error())
@@ -619,7 +615,7 @@ impl DetailContext {
 /// An agent reports the directory it was started in, which is no longer where
 /// the work happens once a Task has been isolated. Everything downstream — Git,
 /// review, file links — resolves from this one field.
-pub(in crate::app::tasks) fn project_managed_worktree_cwd(
+fn project_managed_worktree_cwd(
     fs: &RootedFs,
     store: &TaskStore,
     mut conversation: Conversation,
@@ -670,7 +666,6 @@ pub(in crate::app::tasks) fn loading_detail(
         model: managed.and_then(|thread| thread.model.clone()),
         reasoning_effort: managed.and_then(|thread| thread.reasoning_effort.clone()),
         fast_mode: managed.is_some_and(|thread| thread.fast_mode),
-        active_top_placement: None,
     }
 }
 
@@ -3225,7 +3220,6 @@ mod request_tests {
                 model: Some("gpt-test".to_string()),
                 reasoning_effort: Some("xhigh".to_string()),
                 fast_mode: true,
-                active_top_placement: None,
             },
             reason: "stream-bootstrap",
             error: None,

@@ -16,6 +16,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  createdTaskResponse,
   installEventSourceMock,
   mockAgentModels,
 } from "../support/task-fixtures.js";
@@ -323,7 +324,15 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     if (route.request().method() === "POST") {
       counts.taskCreates += 1;
       requests.taskCreates.push(route.request().postDataJSON());
-      return route.fulfill({ json: createdDetail });
+      return route.fulfill({
+        json: createdTaskResponse(createdDetail, {
+          section: {
+            id: "fixture-section-1",
+            name: WORKTREE_ROOT,
+            repository: true,
+          },
+        }),
+      });
     }
     const projection = activeTaskProjection([task]);
     if (options.sectionComposerSettings) {

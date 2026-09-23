@@ -343,7 +343,7 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
         return;
       }
 
-      const detail = await createTask({
+      const created = await createTask({
         cwd: this.repository.rootPath,
         titleSource: prompt,
         ...options,
@@ -352,7 +352,7 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
         return;
       }
       const handoff = {
-        detail,
+        created,
         submission: {
           submissionId: `github:${Date.now()}:${requestId}`,
           prompt,

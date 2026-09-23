@@ -7,7 +7,7 @@ use crate::{
     task_store::ManagedThread,
 };
 
-use super::{TaskRecord, active_list::unavailable_active_task};
+use super::active_list::ActiveTask;
 
 const CODEX_THREAD_PAGE_SIZE: usize = 100;
 
@@ -40,12 +40,12 @@ pub(in crate::app::tasks) struct ActiveTaskRecoveryContext {
 #[serde(rename_all = "camelCase")]
 pub(in crate::app::tasks) struct ActiveTaskRecovery {
     #[serde(flatten)]
-    pub(in crate::app::tasks) task: TaskRecord,
+    pub(in crate::app::tasks) task: ActiveTask,
     pub(in crate::app::tasks) recovery: ActiveTaskRecoveryContext,
 }
 
 impl ActiveTaskRecovery {
-    pub(in crate::app::tasks) fn new(task: TaskRecord, reason: ActiveTaskRecoveryReason) -> Self {
+    pub(in crate::app::tasks) fn new(task: ActiveTask, reason: ActiveTaskRecoveryReason) -> Self {
         let actions = match reason {
             ActiveTaskRecoveryReason::SectionPlacementPending => vec![
                 ActiveTaskRecoveryAction::RestoreToActive,
@@ -72,7 +72,7 @@ impl ActiveTaskRecovery {
 }
 
 impl Deref for ActiveTaskRecovery {
-    type Target = TaskRecord;
+    type Target = ActiveTask;
 
     fn deref(&self) -> &Self::Target {
         &self.task
@@ -88,8 +88,9 @@ pub(in crate::app::tasks) enum ManagedCodexThreadLocation {
 pub(in crate::app::tasks) fn cached_recovery(
     managed: &ManagedThread,
     reason: ActiveTaskRecoveryReason,
+    worktree: bool,
 ) -> ActiveTaskRecovery {
-    ActiveTaskRecovery::new(unavailable_active_task(managed), reason)
+    ActiveTaskRecovery::new(ActiveTask::stored(managed, worktree), reason)
 }
 
 pub(in crate::app::tasks) async fn locate_thread(

@@ -30,6 +30,8 @@ The Task navigator provides:
 - active and Archived sections;
 - repository grouping derived from canonical Task cwd/worktree state;
 - task title, recency, availability, and unseen-completion state;
+- a worktree mark on each active Task that runs in a worktree Caffold prepared
+  for it;
 - exclusive Task and Section reorder modes for the persistent Active order;
 - Task Switcher, New Task, Archive, Restore, and eligible delete actions.
 

@@ -63,7 +63,11 @@ makes later control requests for that ID fail.
 Task List subscribes to its event receivers before loading the canonical
 runtime snapshot. Its first domain event is `task-list-snapshot`, followed by
 Task update, removal, placement, Section composer-setting, refresh, and sync
-events observed after that boundary.
+events observed after that boundary. If a Task List receiver lags, or a
+published Task cannot be turned into a list row, the producer ends instead of
+skipping it, and its generation receives `channel-error`. The browser then
+reopens the channel and reloads the list, so the new snapshot and list
+response cover what was missed.
 
 Task Detail retains the existing viewer lease, agent subscription, bootstrap,
 sync, and event projection owners. Its first readable sequence starts with the

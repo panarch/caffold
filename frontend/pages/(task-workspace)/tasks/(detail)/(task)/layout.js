@@ -518,20 +518,6 @@ class CaffoldTaskDetail extends HTMLElement {
     );
   }
 
-  emitTaskSnapshot() {
-    this.dispatchEvent(
-      new CustomEvent("caffold:task-snapshot", {
-        bubbles: true,
-        composed: true,
-        detail: {
-          threadId: this.selectedThreadId,
-          detail: this.taskDetail,
-          task: this.taskDetail?.task ?? null,
-        },
-      }),
-    );
-  }
-
   async openTask(threadId) {
     if (!threadId) {
       return null;
@@ -733,9 +719,6 @@ class CaffoldTaskDetail extends HTMLElement {
       this.loading = detail?.syncState === "loading" && !canonicalError;
       this.detailLoadError = canonicalError;
     }
-    if (!preserveCurrentTask && this.taskDetail?.task) {
-      this.emitTaskSnapshot();
-    }
     this.conversationUpdateKind = updateKind;
     this.render();
     this.markDisplayedTaskSeen(threadId, this.taskDetail?.task);
@@ -766,7 +749,6 @@ class CaffoldTaskDetail extends HTMLElement {
           ...this.taskDetail,
           task: canonicalTask,
         };
-        this.emitTaskSnapshot();
         this.render();
       })
       .catch(() => {
@@ -1243,19 +1225,19 @@ class CaffoldTaskDetail extends HTMLElement {
     this.forkStateValue = { loading: true, error: null };
     this.emitSubjectSnapshot();
     try {
-      const detail = await forkTask(threadId);
+      const created = await forkTask(threadId);
       if (
         actionToken !== this.forkActionToken ||
         threadId !== this.selectedThreadId
       ) {
         return;
       }
-      const childThreadId = taskDetailThreadId(detail);
-      if (!childThreadId || childThreadId === threadId || !detail?.task) {
+      const childThreadId = taskDetailThreadId(created?.detail);
+      if (!childThreadId || childThreadId === threadId || !created.detail.task) {
         throw new Error("Codex did not return a distinct forked Task.");
       }
       this.forkStateValue = { loading: false, error: null };
-      const handoff = { detail, submission: null, adopted: false };
+      const handoff = { created, submission: null, adopted: false };
       this.dispatchEvent(
         new CustomEvent("caffold:task-created", {
           bubbles: true,

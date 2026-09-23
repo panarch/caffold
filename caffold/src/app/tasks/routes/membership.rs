@@ -11,6 +11,7 @@ use super::{
 use crate::agent;
 use crate::agent::{Conversation, Driver};
 use crate::app::error::ApiError;
+use crate::app::tasks::active_list::{ActiveTask, isolates_task, runs_in_managed_worktree};
 use crate::app::tasks::recovery::{
     ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation,
 };
@@ -328,6 +329,7 @@ pub(super) async fn task_recovery_restore(
     let Some(managed) = task_store_get(&state, &thread_id).await? else {
         return Err(task_not_managed_error());
     };
+    let worktree = runs_in_managed_worktree(&state.task_store, &thread_id).await?;
     let connection = require_codex_thread_connection(&state).await?;
     let (thread, unarchived) = match recovery::locate_thread(&connection.client, &thread_id).await?
     {
@@ -369,6 +371,7 @@ pub(super) async fn task_recovery_restore(
             return Err(error);
         }
     };
+    let task = ActiveTask::of(&task, worktree);
     state
         .task_list_events
         .place(task.clone(), placement.clone());
@@ -385,6 +388,7 @@ pub(super) async fn task_recovery_recheck(
     let Some(managed) = task_store_get(&state, &thread_id).await? else {
         return Err(task_not_managed_error());
     };
+    let worktree = runs_in_managed_worktree(&state.task_store, &thread_id).await?;
     let connection = require_codex_thread_connection(&state).await?;
     let recovery = match recovery::locate_thread(&connection.client, &thread_id).await? {
         ManagedCodexThreadLocation::Active(thread) => {
@@ -394,12 +398,15 @@ pub(super) async fn task_recovery_recheck(
             {
                 Ok(mut task) => {
                     apply_managed_thread_metadata(&mut task, &managed);
-                    task.conversation_available = false;
-                    ActiveTaskRecovery::new(task, ActiveTaskRecoveryReason::SectionPlacementPending)
+                    ActiveTaskRecovery::new(
+                        ActiveTask::of(&task, worktree),
+                        ActiveTaskRecoveryReason::SectionPlacementPending,
+                    )
                 }
                 Err(_) => recovery::cached_recovery(
                     &managed,
                     ActiveTaskRecoveryReason::TemporarilyUnavailable,
+                    worktree,
                 ),
             }
         }
@@ -410,17 +417,20 @@ pub(super) async fn task_recovery_recheck(
             {
                 Ok(mut task) => {
                     apply_managed_thread_metadata(&mut task, &managed);
-                    task.conversation_available = false;
-                    ActiveTaskRecovery::new(task, ActiveTaskRecoveryReason::CodexArchived)
+                    ActiveTaskRecovery::new(
+                        ActiveTask::of(&task, worktree),
+                        ActiveTaskRecoveryReason::CodexArchived,
+                    )
                 }
                 Err(_) => recovery::cached_recovery(
                     &managed,
                     ActiveTaskRecoveryReason::TemporarilyUnavailable,
+                    worktree,
                 ),
             }
         }
         ManagedCodexThreadLocation::Missing => {
-            recovery::cached_recovery(&managed, ActiveTaskRecoveryReason::ThreadMissing)
+            recovery::cached_recovery(&managed, ActiveTaskRecoveryReason::ThreadMissing, worktree)
         }
     };
     Ok(Json(recovery))
@@ -560,6 +570,9 @@ pub(super) async fn task_restore(
             return Err(error);
         }
     };
+    let isolated =
+        matches!(&worktree, worktrees::RestoreOutcome::Restored(record) if isolates_task(record));
+    let task = ActiveTask::of(&task, isolated);
     state
         .task_list_events
         .place(task.clone(), placement.clone());
@@ -706,13 +719,19 @@ mod tests {
     use crate::agent::codex::CodexThreadClient;
     use crate::agent::codex::CodexThreadError;
     use crate::agent::codex::{
-        CodexReadiness, CodexReadinessReason, CodexReadinessState, MockCodexResponse,
+        CodexReadiness, CodexReadinessReason, CodexReadinessState, CodexThread, MockCodexResponse,
     };
+    use crate::app::tasks::TaskDetailSync;
+    use crate::app::tasks::detail::loading_detail;
+    use crate::app::tasks::live::TaskLiveSource;
+    use crate::app::tasks::projection::task_record_from_conversation;
     use crate::app::tasks::worktrees::inspect_ready_worktree;
     use crate::task_store;
     use axum::body::Body;
     use axum::extract::Query;
+    use futures_util::StreamExt;
     use serde_json::{Value as JsonValue, json};
+    use std::time::Duration;
     use tower::ServiceExt;
 
     use super::super::test_support::*;
@@ -1071,9 +1090,14 @@ mod tests {
             task_store::ManagedWorktreeState::Archived
         );
 
-        let _ = task_restore(State(state.clone()), AxumPath(thread_id.to_string()))
+        let restored = task_restore(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
-            .unwrap();
+            .unwrap()
+            .0;
+        assert!(
+            restored.task.worktree,
+            "the Active list shows the restored Task back in its managed worktree"
+        );
         assert!(std::path::Path::new(&worktree.worktree_path).is_dir());
         assert_eq!(
             state
@@ -1086,6 +1110,69 @@ mod tests {
         );
         assert!(state.task_store.get(thread_id).unwrap().is_some());
         assert!(state.task_store.get_archived(thread_id).unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn isolating_a_task_marks_its_list_row_at_the_next_publication() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let thread_id = "thread-isolated-list-row";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/list",
+            task_thread_list(thread_id, &source),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, &source).await;
+        state.task_runtime.spawn_test_bridge(client.clone(), 1);
+        let mut list = TaskLiveSource::new(&state).task_list().await.unwrap();
+        let snapshot = tokio::time::timeout(Duration::from_secs(1), list.next())
+            .await
+            .expect("the Task list sends its snapshot")
+            .expect("the Task list remains open");
+        let snapshot = serde_json::to_value(snapshot).unwrap();
+        assert_eq!(snapshot["payload"]["tasks"][0]["threadId"], thread_id);
+        assert_eq!(snapshot["payload"]["tasks"][0]["worktree"], false);
+
+        state
+            .lifecycle
+            .isolate_current_task(
+                source.clone(),
+                thread_id.to_string(),
+                "Isolated list row".to_string(),
+                None,
+                None,
+                false,
+            )
+            .await
+            .unwrap();
+        // Isolation publishes nothing itself. The turn that asked for it goes
+        // on, and its next event publishes the Task again.
+        let thread: CodexThread =
+            serde_json::from_value(task_thread_list(thread_id, &source)["data"][0].clone())
+                .unwrap();
+        let mut detail = loading_detail(thread_id, 2, None);
+        detail.task = Some(task_record_from_conversation(
+            &Conversation::from(&thread),
+            &[],
+            None,
+        ));
+        state.task_sync.publish(TaskDetailSync {
+            thread_id: thread_id.to_string(),
+            revision: 2,
+            detail,
+            reason: "app-server-notification",
+            error: None,
+        });
+
+        let sync = tokio::time::timeout(Duration::from_secs(1), list.next())
+            .await
+            .expect("the Task list carries the publication")
+            .expect("the Task list remains open");
+        let sync = serde_json::to_value(sync).unwrap();
+        assert_eq!(sync["type"], "task-sync");
+        assert_eq!(sync["payload"]["task"]["worktree"], true);
     }
 
     #[tokio::test]
@@ -1793,7 +1880,96 @@ mod tests {
                 ActiveTaskRecoveryAction::RemoveFromCaffold,
             ]
         );
+        assert!(!recovery.worktree);
         assert_eq!(cached_projection_rows(&state), before);
+    }
+
+    #[tokio::test]
+    async fn explicit_recovery_recheck_keeps_the_managed_worktree_mark() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-recheck-isolated";
+        let client = CodexThreadClient::mock(recovery_location_responses(Vec::new()));
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        record_managed_worktree(&state.task_store, thread_id, ManagedWorktreeState::Ready);
+
+        let recovery = task_recovery_recheck(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .unwrap()
+            .0;
+
+        assert_eq!(
+            recovery.recovery.reason,
+            ActiveTaskRecoveryReason::ThreadMissing
+        );
+        assert!(recovery.worktree);
+    }
+
+    #[tokio::test]
+    async fn explicit_recovery_recheck_classifies_an_active_thread_as_awaiting_placement() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-recheck-active";
+        let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+        let client = CodexThreadClient::mock(active_recovery_location_responses(vec![thread]));
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+
+        let recovery = task_recovery_recheck(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .unwrap()
+            .0;
+
+        assert_eq!(
+            recovery.recovery.reason,
+            ActiveTaskRecoveryReason::SectionPlacementPending
+        );
+        assert!(!recovery.worktree);
+    }
+
+    #[tokio::test]
+    async fn explicit_recovery_recheck_keeps_the_mark_of_an_active_task_whose_worktree_is_gone() {
+        // The record still holds the Task, but nothing is on disk to describe
+        // it from. The Task is reported unavailable and keeps its mark.
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-recheck-active-gone";
+        let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+        let client = CodexThreadClient::mock(active_recovery_location_responses(vec![thread]));
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        record_managed_worktree(&state.task_store, thread_id, ManagedWorktreeState::Ready);
+
+        let recovery = task_recovery_recheck(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .unwrap()
+            .0;
+
+        assert_eq!(
+            recovery.recovery.reason,
+            ActiveTaskRecoveryReason::TemporarilyUnavailable
+        );
+        assert!(recovery.worktree);
+    }
+
+    #[tokio::test]
+    async fn explicit_recovery_recheck_keeps_the_mark_of_an_archived_task_whose_worktree_is_gone() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-recheck-archived-gone";
+        let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+        let client = CodexThreadClient::mock(recovery_location_responses(vec![thread]));
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        record_managed_worktree(&state.task_store, thread_id, ManagedWorktreeState::Ready);
+
+        let recovery = task_recovery_recheck(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .unwrap()
+            .0;
+
+        assert_eq!(
+            recovery.recovery.reason,
+            ActiveTaskRecoveryReason::TemporarilyUnavailable
+        );
+        assert!(recovery.worktree);
     }
 
     #[tokio::test]

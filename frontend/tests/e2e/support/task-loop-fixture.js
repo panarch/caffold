@@ -2,6 +2,7 @@ import { expect } from "@playwright/test";
 import {
   activeTaskProjection,
   canonicalTaskState,
+  createdTaskResponse,
   installEventSourceMock,
   mockAgentModels,
 } from "./task-fixtures.js";
@@ -137,9 +138,6 @@ export async function installTaskLoopFixture(
           ? { from: null, to: null }
           : overrides.eventsRange,
       pendingApprovals: [],
-      ...(overrides.activeTopPlacement
-        ? { activeTopPlacement: overrides.activeTopPlacement }
-        : {}),
     };
   };
   await page.exposeFunction("__caffoldTaskDetailBootstrap", (requestedThreadId) => {
@@ -235,14 +233,11 @@ export async function installTaskLoopFixture(
         ...canonicalTaskState("idle"),
         lastEventSummary: null,
       };
-      const created = detailResponse({
-        events: [],
-        activeTopPlacement: {
-          section: {
-            id: "fixture-section-created-task",
-            name: contextPath,
-            repository: true,
-          },
+      const created = createdTaskResponse(detailResponse({ events: [] }), {
+        section: {
+          id: "fixture-section-created-task",
+          name: contextPath,
+          repository: true,
         },
       });
       resolveCreateRequest();

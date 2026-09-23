@@ -3,7 +3,6 @@ use std::{
     sync::Arc,
 };
 
-use futures_util::{StreamExt, stream};
 use serde::Serialize;
 
 use crate::{
@@ -16,15 +15,14 @@ use crate::{
     app::error::ApiError,
     app::tasks::sessions::TaskSessions,
     fs::RootedFs,
-    task_store::{ComposerSettings, ManagedSection, ManagedThread, RunBy, TaskStore},
+    task_store::{
+        ComposerSettings, ManagedSection, ManagedThread, ManagedWorktree, ManagedWorktreeState,
+        RunBy, TaskStore,
+    },
 };
 
 use super::{
     TaskRecord,
-    detail::project_managed_worktree_cwd,
-    projection::{
-        apply_canonical_turn_projection, task_activity_ms, task_record_from_conversation,
-    },
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason},
 };
 use crate::agent::Conversation;
@@ -37,7 +35,25 @@ pub(in crate::app::tasks) struct ActiveTaskSection {
     pub(in crate::app::tasks) name: String,
     pub(in crate::app::tasks) repository: bool,
     pub(in crate::app::tasks) composer_settings: Option<ActiveTaskComposerSettings>,
-    pub(in crate::app::tasks) tasks: Vec<TaskRecord>,
+    pub(in crate::app::tasks) tasks: Vec<ActiveTask>,
+}
+
+/// A Task as the Active list shows it.
+///
+/// The list reads nothing else from a Task, so nothing else is sent to it.
+/// Task Detail reads its own [`TaskRecord`] when a Task opens.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app) struct ActiveTask {
+    pub(in crate::app::tasks) thread_id: String,
+    pub(in crate::app::tasks) title: String,
+    pub(in crate::app::tasks) thread_status: ThreadStatus,
+    pub(in crate::app::tasks) unseen: bool,
+    pub(in crate::app::tasks) last_completed_ms: Option<u64>,
+    pub(in crate::app::tasks) recency_ms: Option<u64>,
+    pub(in crate::app::tasks) updated_ms: u64,
+    /// Whether the Task runs in a worktree Caffold made for it.
+    pub(in crate::app::tasks) worktree: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -71,7 +87,7 @@ pub(in crate::app::tasks) struct ActiveTaskProjection {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::app) struct ActiveTaskRuntimeSnapshot {
-    pub(in crate::app::tasks) tasks: Vec<TaskRecord>,
+    pub(in crate::app::tasks) tasks: Vec<ActiveTask>,
 }
 
 pub(in crate::app::tasks) struct ActiveTaskRuntimeProjection {
@@ -92,8 +108,14 @@ pub(in crate::app::tasks) async fn load_cached(
     fs: Arc<RootedFs>,
     store: TaskStore,
 ) -> Result<ActiveTaskProjection, ApiError> {
-    let (stored_sections, active_threads) = tokio::task::spawn_blocking(move || {
-        store.read(|tables| Ok((tables.managed_sections()?, tables.active_managed_threads()?)))
+    let (stored_sections, active_threads, worktrees) = tokio::task::spawn_blocking(move || {
+        store.read(|tables| {
+            Ok((
+                tables.managed_sections()?,
+                tables.active_managed_threads()?,
+                tables.managed_worktrees()?,
+            ))
+        })
     })
     .await
     .map_err(|error| ApiError::Internal(format!("task store worker failed: {error}")))?
@@ -108,6 +130,10 @@ pub(in crate::app::tasks) async fn load_cached(
         .map(|section| (section.section_id.clone(), section))
         .collect::<BTreeMap<_, _>>();
     let repository_sections = repository_sections(fs, &sections).await;
+    let isolated = tasks_in_managed_worktrees(&worktrees);
+    let stored_task = |managed: &ManagedThread| {
+        ActiveTask::stored(managed, isolated.contains(managed.thread_id.as_str()))
+    };
     let mut grouped = BTreeMap::<String, Vec<ManagedThread>>::new();
     let mut recovery = Vec::new();
     for managed in active_threads {
@@ -119,7 +145,7 @@ pub(in crate::app::tasks) async fn load_cached(
                     .push(managed);
             }
             _ => recovery.push(ActiveTaskRecovery::new(
-                unavailable_active_task(&managed),
+                stored_task(&managed),
                 ActiveTaskRecoveryReason::SectionPlacementPending,
             )),
         }
@@ -142,13 +168,14 @@ pub(in crate::app::tasks) async fn load_cached(
                     .last_composer_settings
                     .as_ref()
                     .map(ActiveTaskComposerSettings::from),
-                tasks: threads.iter().map(unavailable_active_task).collect(),
+                tasks: threads.iter().map(&stored_task).collect(),
             })
         })
         .collect::<Vec<_>>();
     recovery.sort_by(|left, right| {
-        task_activity_ms(&right.task)
-            .cmp(&task_activity_ms(&left.task))
+        right
+            .activity_ms()
+            .cmp(&left.activity_ms())
             .then_with(|| left.thread_id.cmp(&right.thread_id))
     });
     Ok(ActiveTaskProjection {
@@ -158,7 +185,6 @@ pub(in crate::app::tasks) async fn load_cached(
 }
 
 pub(in crate::app::tasks) async fn load_runtime_snapshot(
-    fs: Arc<RootedFs>,
     store: TaskStore,
     sessions: &TaskSessions,
     generation: u64,
@@ -166,16 +192,21 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
     claude: &ClaudeClient,
     grok: &GrokClient,
 ) -> Result<ActiveTaskRuntimeProjection, ApiError> {
-    let managed = {
-        let store = store.clone();
-        tokio::task::spawn_blocking(move || store.read(|tables| tables.active_managed_threads()))
-            .await
-            .map_err(|error| ApiError::Internal(format!("task store worker failed: {error}")))?
-            .map_err(|error| ApiError::Internal(error.to_string()))?
-            .into_iter()
-            .map(|thread| (thread.thread_id.clone(), thread))
-            .collect::<BTreeMap<_, _>>()
-    };
+    let (managed, worktrees) = tokio::task::spawn_blocking(move || {
+        store.read(|tables| {
+            Ok((
+                tables.active_managed_threads()?,
+                tables.managed_worktrees()?,
+            ))
+        })
+    })
+    .await
+    .map_err(|error| ApiError::Internal(format!("task store worker failed: {error}")))?
+    .map_err(|error| ApiError::Internal(error.to_string()))?;
+    let managed = managed
+        .into_iter()
+        .map(|thread| (thread.thread_id.clone(), thread))
+        .collect::<BTreeMap<_, _>>();
     if managed.is_empty() {
         return Ok(ActiveTaskRuntimeProjection {
             snapshot: ActiveTaskRuntimeSnapshot { tasks: Vec::new() },
@@ -193,13 +224,21 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
         }
     }
 
-    let mut rows = Vec::new();
+    let isolated = tasks_in_managed_worktrees(&worktrees);
+    let observed_task = |managed: &ManagedThread, conversation: &Conversation| {
+        ActiveTask::observed(
+            managed,
+            conversation,
+            isolated.contains(managed.thread_id.as_str()),
+        )
+    };
+    let mut tasks = Vec::new();
     let mut observed_threads = Vec::new();
     for thread in super::recovery::list_all_global_threads(client).await? {
         let Some(managed) = managed.get(&thread.id) else {
             continue;
         };
-        rows.push((managed.clone(), Conversation::from(&thread)));
+        tasks.push(observed_task(managed, &Conversation::from(&thread)));
         observed_threads.push(thread);
     }
     // Codex answers for every thread it has in one list. Claude has no list to
@@ -220,9 +259,8 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
         let Some(conversation) = conversation else {
             continue;
         };
-        rows.push((managed.clone(), conversation));
+        tasks.push(observed_task(managed, &conversation));
     }
-    let mut tasks = live_task_rows(fs, store, rows).await?;
     tasks.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
     observed_threads.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(ActiveTaskRuntimeProjection {
@@ -231,50 +269,86 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
     })
 }
 
-/// Building a row waits on the task store and on Git, so the rows are built on
-/// blocking threads, several at a time.
-async fn live_task_rows(
-    fs: Arc<RootedFs>,
-    store: TaskStore,
-    rows: Vec<(ManagedThread, Conversation)>,
-) -> Result<Vec<TaskRecord>, ApiError> {
-    stream::iter(rows)
-        .map(|(managed, conversation)| {
-            let fs = fs.clone();
-            let store = store.clone();
-            async move {
-                tokio::task::spawn_blocking(move || {
-                    live_task_row(&fs, &store, &managed, conversation)
-                })
-                .await
-                .map_err(|error| ApiError::Internal(format!("task row worker failed: {error}")))?
-            }
-        })
-        .buffer_unordered(8)
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect()
+impl ActiveTask {
+    /// A Task as its row describes it, before any agent has answered for it.
+    pub(in crate::app::tasks) fn stored(managed: &ManagedThread, worktree: bool) -> Self {
+        let activity_ms = managed
+            .last_observed_recency_ms
+            .unwrap_or(managed.claimed_at_ms);
+        Self {
+            thread_id: managed.thread_id.clone(),
+            title: managed.display_name.clone(),
+            thread_status: ThreadStatus::NotLoaded,
+            unseen: managed.unseen(),
+            last_completed_ms: managed.last_completed_at_ms,
+            recency_ms: Some(activity_ms),
+            updated_ms: activity_ms,
+            worktree,
+        }
+    }
+
+    /// A Task as its agent reports it now, named and marked by its row.
+    fn observed(managed: &ManagedThread, conversation: &Conversation, worktree: bool) -> Self {
+        Self {
+            thread_id: managed.thread_id.clone(),
+            title: managed.display_name.clone(),
+            thread_status: conversation.status.clone(),
+            unseen: managed.unseen(),
+            last_completed_ms: managed.last_completed_at_ms,
+            recency_ms: conversation.recency_at_ms,
+            updated_ms: conversation.updated_at_ms,
+            worktree,
+        }
+    }
+
+    /// The Active-list view of a Task record built for Task Detail or for a
+    /// Task mutation.
+    pub(in crate::app::tasks) fn of(task: &TaskRecord, worktree: bool) -> Self {
+        Self {
+            thread_id: task.thread_id.clone(),
+            title: task.title.clone(),
+            thread_status: task.thread_status.clone(),
+            unseen: task.unseen,
+            last_completed_ms: task.last_completed_ms,
+            recency_ms: task.recency_ms,
+            updated_ms: task.updated_ms,
+            worktree,
+        }
+    }
+
+    fn activity_ms(&self) -> u64 {
+        self.recency_ms.unwrap_or(self.updated_ms)
+    }
 }
 
-/// One list row for a conversation as its agent reports it now.
-fn live_task_row(
-    fs: &RootedFs,
+/// Whether a managed worktree record puts its Task in a worktree Caffold made.
+///
+/// Only a ready record does. A worktree made outside Caffold has no record, so
+/// it never counts.
+pub(in crate::app::tasks) fn isolates_task(worktree: &ManagedWorktree) -> bool {
+    worktree.state == ManagedWorktreeState::Ready
+}
+
+/// Whether one Task runs in a worktree Caffold made, read from its record.
+pub(in crate::app::tasks) async fn runs_in_managed_worktree(
     store: &TaskStore,
-    managed: &ManagedThread,
-    conversation: Conversation,
-) -> Result<TaskRecord, ApiError> {
-    let (projected, resolved) = project_managed_worktree_cwd(fs, store, conversation)?;
-    let mut task = task_record_from_conversation(&projected, &[], resolved.as_ref());
-    apply_canonical_turn_projection(&mut task, &projected);
-    apply_managed_runtime_metadata(&mut task, managed);
-    Ok(task)
+    thread_id: &str,
+) -> Result<bool, ApiError> {
+    let store = store.clone();
+    let thread_id = thread_id.to_string();
+    let worktree = tokio::task::spawn_blocking(move || store.worktree_for_thread(&thread_id))
+        .await
+        .map_err(|error| ApiError::Internal(format!("task store worker failed: {error}")))?
+        .map_err(|error| ApiError::Internal(error.to_string()))?;
+    Ok(worktree.as_ref().is_some_and(isolates_task))
 }
 
-fn apply_managed_runtime_metadata(task: &mut TaskRecord, managed: &ManagedThread) {
-    task.title = managed.display_name.clone();
-    task.last_completed_ms = managed.last_completed_at_ms;
-    task.unseen = managed.unseen();
+fn tasks_in_managed_worktrees(worktrees: &[ManagedWorktree]) -> HashSet<&str> {
+    worktrees
+        .iter()
+        .filter(|worktree| isolates_task(worktree))
+        .filter_map(|worktree| worktree.thread_id.as_deref())
+        .collect()
 }
 
 async fn repository_sections(
@@ -300,38 +374,12 @@ async fn repository_sections(
     .unwrap_or_default()
 }
 
-pub(super) fn unavailable_active_task(managed: &ManagedThread) -> TaskRecord {
-    let activity_ms = managed
-        .last_observed_recency_ms
-        .unwrap_or(managed.claimed_at_ms);
-    TaskRecord {
-        id: managed.thread_id.clone(),
-        thread_id: managed.thread_id.clone(),
-        conversation_available: false,
-        title: managed.display_name.clone(),
-        preview: "Conversation unavailable".to_string(),
-        thread_status: ThreadStatus::NotLoaded,
-        latest_turn_status: None,
-        active_turn: None,
-        cwd: String::new(),
-        cwd_path: None,
-        relative_cwd: String::new(),
-        worktree: None,
-        created_ms: activity_ms,
-        updated_ms: activity_ms,
-        recency_ms: Some(activity_ms),
-        last_completed_ms: managed.last_completed_at_ms,
-        last_event_summary: None,
-        unseen: managed.unseen(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::agent;
     use crate::agent::codex::MockCodexResponse;
-    use crate::app::tasks::{recovery, sessions};
+    use crate::app::tasks::{recovery, sessions, test_support::record_managed_worktree};
     use crate::task_store::RunBy;
 
     fn fixture() -> (tempfile::TempDir, Arc<RootedFs>, TaskStore) {
@@ -409,7 +457,7 @@ mod tests {
         // Codex's answer. A working Claude Task left out of it reads as nothing
         // for exactly as long as it is working — the one stretch a person is
         // deciding whether it needs them.
-        let (_root, fs, store) = fixture();
+        let store = TaskStore::memory().unwrap();
         let cwd = "/Users/example/project";
         store
             .claim(
@@ -432,7 +480,6 @@ mod tests {
             .expect("the turn starts");
 
         let projection = load_runtime_snapshot(
-            fs,
             store,
             &sessions::TaskSessions::default(),
             1,
@@ -455,8 +502,6 @@ mod tests {
                 active_flags: Vec::new(),
             }
         );
-        assert_eq!(row.latest_turn_status, Some(agent::TurnStatus::InProgress));
-        assert!(row.conversation_available);
     }
 
     #[tokio::test]
@@ -467,7 +512,7 @@ mod tests {
         // take-up holds no lease — so stamping it with Codex's count would wipe
         // it on the first list load after a Codex restart, and every report it
         // makes afterwards would be dropped as belonging to an old connection.
-        let (_root, fs, store) = fixture();
+        let store = TaskStore::memory().unwrap();
         let cwd = "/Users/example/project";
         store
             .claim(
@@ -493,7 +538,6 @@ mod tests {
         // Codex has restarted: its connection count moved past Claude's fixed
         // generation, and the list is loaded again.
         let projection = load_runtime_snapshot(
-            fs,
             store,
             &sessions,
             2,
@@ -529,7 +573,7 @@ mod tests {
         // A conversation nobody is watching is not doing anything — the agent
         // only works while a turn runs, and a turn only runs on a session — so
         // the stored row stands, and nothing is started to improve on it.
-        let (_root, fs, store) = fixture();
+        let store = TaskStore::memory().unwrap();
         store
             .claim(
                 ManagedThread::new(
@@ -547,7 +591,6 @@ mod tests {
         let (claude, _runner) = agent::claude::ClaudeClient::mock();
 
         let projection = load_runtime_snapshot(
-            fs,
             store,
             &sessions::TaskSessions::default(),
             1,
@@ -563,6 +606,49 @@ mod tests {
             "nothing live to say: {:?}",
             projection.snapshot.tasks
         );
+    }
+
+    #[tokio::test]
+    async fn runtime_snapshot_marks_a_task_from_its_managed_worktree_record_alone() {
+        // The record is Caffold's own account of the worktree it made, so the
+        // mark needs no look at the directory, which here does not exist.
+        let store = TaskStore::memory().unwrap();
+        let cwd = "/Users/example/project";
+        store
+            .claim(
+                ManagedThread::new(
+                    "claude-isolated",
+                    RunBy::Claude {
+                        cwd: cwd.to_string(),
+                    },
+                    Some(500),
+                    None,
+                    None,
+                ),
+                500,
+            )
+            .unwrap();
+        record_managed_worktree(&store, "claude-isolated", ManagedWorktreeState::Ready);
+        let claude = watching_a_claude_conversation("claude-isolated", cwd).await;
+
+        let projection = load_runtime_snapshot(
+            store,
+            &sessions::TaskSessions::default(),
+            1,
+            &an_empty_codex(),
+            &claude,
+            &agent::grok::GrokClient::unreachable(),
+        )
+        .await
+        .unwrap();
+
+        let row = projection
+            .snapshot
+            .tasks
+            .iter()
+            .find(|task| task.thread_id == "claude-isolated")
+            .expect("the watched conversation is a row");
+        assert!(row.worktree);
     }
 
     #[tokio::test]
@@ -646,7 +732,7 @@ mod tests {
                 .sections
                 .iter()
                 .flat_map(|section| &section.tasks)
-                .all(|task| !task.conversation_available)
+                .all(|task| task.thread_status == ThreadStatus::NotLoaded)
         );
     }
 
@@ -671,6 +757,46 @@ mod tests {
                 recovery::ActiveTaskRecoveryAction::RestoreToActive,
                 recovery::ActiveTaskRecoveryAction::Recheck,
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn cached_projection_marks_only_tasks_whose_managed_worktree_is_ready() {
+        let (_root, fs, store) = fixture();
+        claim_at_top(&store, "isolated", "Isolated", 300, "section-a", "a", 0);
+        claim_at_top(&store, "isolating", "Isolating", 200, "section-a", "a", 0);
+        claim_at_top(&store, "plain", "Plain", 100, "section-a", "a", 0);
+        store
+            .claim(
+                ManagedThread::new("unplaced", RunBy::Codex, Some(50), None, None),
+                50,
+            )
+            .unwrap();
+        record_managed_worktree(&store, "isolated", ManagedWorktreeState::Ready);
+        record_managed_worktree(&store, "isolating", ManagedWorktreeState::Creating);
+        record_managed_worktree(&store, "unplaced", ManagedWorktreeState::Ready);
+
+        let projection = load_cached(fs, store).await.unwrap();
+
+        let marked = |thread_id: &str| {
+            projection
+                .sections
+                .iter()
+                .flat_map(|section| &section.tasks)
+                .chain(projection.unsectioned.iter().map(|recovery| &recovery.task))
+                .find(|task| task.thread_id == thread_id)
+                .unwrap_or_else(|| panic!("{thread_id} is listed"))
+                .worktree
+        };
+        assert!(marked("isolated"));
+        assert!(
+            !marked("isolating"),
+            "a worktree still being made does not hold the Task yet"
+        );
+        assert!(!marked("plain"));
+        assert!(
+            marked("unplaced"),
+            "a row waiting for recovery carries the same mark"
         );
     }
 

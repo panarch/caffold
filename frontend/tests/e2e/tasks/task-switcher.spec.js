@@ -6,6 +6,7 @@ import {
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import {
+  activeListTask,
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
@@ -74,13 +75,13 @@ test("keeps the order it opened with while Tasks keep moving", { tag: "@desktop"
 
   await page.evaluate((updated) => {
     window.__taskListEventSource.emit("task-updated", updated);
-  }, {
+  }, activeListTask({
     ...tasks[1],
     ...canonicalTaskState("active"),
     recencyMs: NOW + 10_000,
     updatedMs: NOW + 10_000,
     lastCompletedMs: NOW + 10_000,
-  });
+  }));
 
   await expect(middle.locator(".task-switcher-row-status")).toHaveCount(1);
   await expect(dialog.locator(".task-switcher-row-title")).toHaveText([

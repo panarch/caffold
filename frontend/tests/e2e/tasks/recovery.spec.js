@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { activateActionHint } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
+  activeListTask,
   activeTaskProjection,
   canonicalTaskState,
   emitTaskDetailBootstrap,
@@ -155,7 +156,7 @@ test("opens archived-in-Codex recovery without opening ordinary Task detail and 
     restoreCalls += 1;
     return route.fulfill({
       json: {
-        task: restored,
+        task: activeListTask(restored),
         activeTopPlacement: {
           section: {
             id: "fixture-restored-section",
@@ -300,7 +301,9 @@ test("recheck uses the explicit recovery endpoint without rewriting the cached l
   await page.route(`/api/tasks/${threadId}/recovery/recheck`, (route) => {
     recheckCalls += 1;
     expect(route.request().method()).toBe("POST");
-    return route.fulfill({ json: rechecked });
+    return route.fulfill({
+      json: { ...activeListTask(rechecked), recovery: rechecked.recovery },
+    });
   });
 
   await openRecovery(page, recovery);
@@ -415,7 +418,7 @@ test("keeps the DB Recovery projection authoritative over a runtime snapshot", {
 
   await page.goto("/tasks");
   await emitTaskListEvent(page, "task-list-snapshot", {
-    tasks: [task(threadId, recovery.title)],
+    tasks: [activeListTask(task(threadId, recovery.title))],
   });
 
   const row = page.locator(`.task-row[data-thread-id="${threadId}"]`);

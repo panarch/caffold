@@ -10,13 +10,14 @@ use crate::agent::codex::CodexThreadError;
 use crate::agent::{Conversation, ItemKind, ThreadStatus, TurnPage};
 use crate::app::error::ApiError;
 use crate::app::tasks::lifecycle::{ForkCodexSource, ForkCodexTask};
-use crate::app::tasks::{TaskAgent, TaskDetailResponse, TaskState};
+use crate::app::tasks::{TaskAgent, TaskState};
 use crate::task_store::{ManagedSection, ManagedThread, RunBy, TaskProvider};
 use axum::extract::State;
 use axum::routing::post;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
+use super::CreatedTaskResponse;
 use super::commands::{require_codex_thread_client, require_codex_thread_connection};
 use super::conversation::task_not_managed_error;
 use super::membership::task_store_join_error;
@@ -72,7 +73,7 @@ pub(super) fn routes() -> Router<TaskState> {
 async fn fork_task(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<TaskDetailResponse>, ApiError> {
+) -> Result<Json<CreatedTaskResponse>, ApiError> {
     let (source, section) = fork_source_context(&state, &thread_id).await?;
     if !matches!(source.run_by, RunBy::Codex) {
         return Err(ApiError::BadRequest {
@@ -102,12 +103,15 @@ async fn fork_task(
         )
         .await?;
     let agent = TaskAgent::Codex(connection);
-    let mut detail = state
+    let detail = state
         .detail
         .read(&agent, &created.task.thread_id, None)
         .await?;
-    detail.active_top_placement = Some(created.placement);
-    Ok(Json(detail))
+    Ok(Json(CreatedTaskResponse {
+        detail,
+        active_task: created.active_task,
+        active_top_placement: created.placement,
+    }))
 }
 
 async fn preview_task_fork_source(
@@ -149,7 +153,7 @@ async fn preview_task_fork_source(
 async fn create_task_fork(
     State(state): State<TaskState>,
     Json(request): Json<CreateTaskForkRequest>,
-) -> Result<Json<TaskDetailResponse>, ApiError> {
+) -> Result<Json<CreatedTaskResponse>, ApiError> {
     let source_id = task_fork_source_id(&request.provider, &request.source_id)?;
     let (section, cwd) = task_fork_target_context(&state, &request.section_id).await?;
     let source = match task_store_get(&state, &source_id).await? {
@@ -176,12 +180,15 @@ async fn create_task_fork(
         )
         .await?;
     let agent = TaskAgent::Codex(connection);
-    let mut detail = state
+    let detail = state
         .detail
         .read(&agent, &created.task.thread_id, None)
         .await?;
-    detail.active_top_placement = Some(created.placement);
-    Ok(Json(detail))
+    Ok(Json(CreatedTaskResponse {
+        detail,
+        active_task: created.active_task,
+        active_top_placement: created.placement,
+    }))
 }
 
 fn task_fork_source_id(provider: &str, source_id: &str) -> Result<String, ApiError> {
@@ -572,8 +579,9 @@ mod tests {
         let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
             .await
             .expect("fork response body");
-        let detail: JsonValue = serde_json::from_slice(&body).expect("fork detail JSON");
-        assert_eq!(status, axum::http::StatusCode::OK, "{detail}");
+        let created: JsonValue = serde_json::from_slice(&body).expect("fork response JSON");
+        assert_eq!(status, axum::http::StatusCode::OK, "{created}");
+        let detail = &created["detail"];
         assert_eq!(detail["threadId"], child_thread_id);
         assert_eq!(detail["provider"], "codex");
         assert_eq!(detail["task"]["title"], "Fork of Source task");
@@ -587,12 +595,15 @@ mod tests {
         assert!(detail["events"].as_array().unwrap().iter().any(|event| {
             event["summary"] == "Inherited prompt" || event["payload"]["text"] == "Inherited prompt"
         }));
+        assert_eq!(created["activeTask"]["threadId"], child_thread_id);
+        assert_eq!(created["activeTask"]["title"], "Fork of Source task");
+        assert_eq!(created["activeTask"]["worktree"], false);
         assert_eq!(
-            detail["activeTopPlacement"]["section"]["id"],
+            created["activeTopPlacement"]["section"]["id"],
             "section-root"
         );
         assert_eq!(
-            detail["activeTopPlacement"]["beforeThreadId"],
+            created["activeTopPlacement"]["beforeThreadId"],
             source_thread_id
         );
 
@@ -866,18 +877,21 @@ mod tests {
         let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
             .await
             .expect("fork from ID body");
-        let detail: JsonValue = serde_json::from_slice(&body).expect("fork from ID JSON");
-        assert_eq!(status, axum::http::StatusCode::OK, "{detail}");
+        let created: JsonValue = serde_json::from_slice(&body).expect("fork from ID JSON");
+        assert_eq!(status, axum::http::StatusCode::OK, "{created}");
+        let detail = &created["detail"];
         assert_eq!(detail["threadId"], child_thread_id);
         assert_eq!(detail["task"]["title"], "Fork of Provider source name");
         assert_eq!(detail["task"]["cwdPath"], "");
         assert_eq!(detail["task"]["worktree"], JsonValue::Null);
+        assert_eq!(created["activeTask"]["threadId"], child_thread_id);
+        assert_eq!(created["activeTask"]["worktree"], false);
         assert_eq!(
-            detail["activeTopPlacement"]["section"]["id"],
+            created["activeTopPlacement"]["section"]["id"],
             "section-target"
         );
         assert_eq!(
-            detail["activeTopPlacement"]["beforeThreadId"],
+            created["activeTopPlacement"]["beforeThreadId"],
             JsonValue::Null
         );
         assert!(state.task_store.get(source_thread_id).unwrap().is_none());

@@ -243,7 +243,10 @@ directory the same way, and its driver-private binding file records which
 native session runs there. For a managed worktree, the ownership record
 supplies the active Task root for every driver.
 
-Repository and worktree presentation is derived live from that Task context.
+Task Detail derives repository and worktree presentation live from that Task
+context. The Active list marks a Task in a Caffold-managed worktree from its
+ownership record alone; see
+[Codex App Server](codex-app-server.md#active-navigator-projection-and-archived-pagination).
 The navigator groups a main checkout and linked worktrees by their common Git
 repository while each Task retains its actual worktree root for Integrated
 Review, Git, and GitHub.

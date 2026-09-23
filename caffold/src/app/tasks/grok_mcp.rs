@@ -587,7 +587,7 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "{created}");
-        let thread_id = created["threadId"].as_str().unwrap().to_string();
+        let thread_id = created["detail"]["threadId"].as_str().unwrap().to_string();
         let asked = leader.wait_for("session/new").await;
         let token = asked["mcpServers"][0]["headers"][0]["value"]
             .as_str()
@@ -702,7 +702,7 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "{created}");
-        let thread_id = created["threadId"].as_str().unwrap().to_string();
+        let thread_id = created["detail"]["threadId"].as_str().unwrap().to_string();
         let asked = leader.wait_for("session/new").await;
         let server = &asked["mcpServers"][0];
         assert_eq!(server["url"], host.endpoint());

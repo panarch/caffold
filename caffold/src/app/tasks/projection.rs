@@ -102,20 +102,6 @@ pub(in crate::app::tasks) fn conversation_display_name(conversation: &Conversati
         .unwrap_or_else(|| format!("Thread {}", short_thread_id(&conversation.id)))
 }
 
-pub(in crate::app::tasks) fn apply_canonical_turn_projection(
-    task: &mut TaskRecord,
-    conversation: &Conversation,
-) {
-    apply_turn_states_projection(
-        task,
-        &conversation
-            .turns
-            .iter()
-            .map(crate::agent::TurnState::from)
-            .collect::<Vec<_>>(),
-    );
-}
-
 pub(in crate::app::tasks) fn apply_turn_states_projection(
     task: &mut TaskRecord,
     turns: &[crate::agent::TurnState],
@@ -281,6 +267,19 @@ mod tests {
         let thread: CodexThread =
             serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
         Conversation::from(&thread)
+    }
+
+    /// Project the turns a conversation carries the way Task Detail projects a
+    /// turns page.
+    fn apply_canonical_turn_projection(task: &mut TaskRecord, conversation: &Conversation) {
+        apply_turn_states_projection(
+            task,
+            &conversation
+                .turns
+                .iter()
+                .map(crate::agent::TurnState::from)
+                .collect::<Vec<_>>(),
+        );
     }
 
     fn git_is_available() -> bool {

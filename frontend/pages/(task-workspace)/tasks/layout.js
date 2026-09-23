@@ -126,17 +126,10 @@ class CaffoldTasksPage extends HTMLElement {
     });
     this.addEventListener("caffold:task-created", (event) => {
       event.stopPropagation();
-      event.detail.adopted = this.adoptCreatedDetail(
-        event.detail?.detail,
+      event.detail.adopted = this.adoptCreatedTask(
+        event.detail?.created,
         event.detail?.submission,
       );
-    });
-    this.addEventListener("caffold:task-snapshot", (event) => {
-      event.stopPropagation();
-      if (event.detail?.task) {
-        this.taskNavigator()?.upsertCanonicalTask(event.detail.task);
-        this.syncSelectedManagedTask();
-      }
     });
     this.addEventListener("caffold:task-detail-intent", (event) => {
       event.stopPropagation();
@@ -413,7 +406,8 @@ class CaffoldTasksPage extends HTMLElement {
     return await this.taskNavigator()?.activate({ force: true });
   }
 
-  adoptCreatedDetail(detail, submission) {
+  adoptCreatedTask(created, submission) {
+    const detail = created?.detail;
     const threadId = taskDetailThreadId(detail);
     if (!threadId || !detail?.task) {
       return false;
@@ -425,8 +419,8 @@ class CaffoldTasksPage extends HTMLElement {
       return false;
     }
     this.taskNavigator()?.placeCanonicalTaskAtTop(
-      detail.task,
-      detail.activeTopPlacement,
+      created.activeTask,
+      created.activeTopPlacement,
     );
     this.syncSelectedManagedTask();
     this.requestRoute({ kind: "tasks", threadId });
@@ -458,11 +452,11 @@ class CaffoldTasksPage extends HTMLElement {
 
   async createAndAdoptTask(pending, request, submission) {
     try {
-      const detail = await createTask(request);
-      if (!this.adoptCreatedDetail(detail, submission)) {
+      const created = await createTask(request);
+      if (!this.adoptCreatedTask(created, submission)) {
         throw new Error("The created Task could not take ownership of its prompt.");
       }
-      return detail;
+      return created;
     } finally {
       if (this.pendingTaskCreation === pending) {
         this.pendingTaskCreation = null;

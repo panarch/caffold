@@ -433,13 +433,16 @@ A Codex Task is thread-backed. Codex app-server is the source of truth for:
 - turn status and history
 
 Caffold derives repository and Git worktree context from `thread.cwd` on every
-live response. For Active Tasks, Caffold owns local group identity, durable
-Section order, Thread-to-Section membership, and dense within-Section order. A
-Section stores its Managed Section ID, RootedFs-logical repository/cwd path,
-and local order position. Each Task has its own canonical worktree root for
-shared Integrated Review, Git, and GitHub when that Task is the active Detail
-subject. Outside Git, cwd remains useful as the thread's creation and
-file-review context, but it does not filter Tasks.
+live response except Active list rows, which carry only the worktree mark
+described in
+[Active Navigator Projection](#active-navigator-projection-and-archived-pagination).
+For Active Tasks, Caffold owns local group identity, durable Section order,
+Thread-to-Section membership, and dense within-Section order. A Section stores
+its Managed Section ID, RootedFs-logical repository/cwd path, and local order
+position. Each Task has its own canonical worktree root for shared Integrated
+Review, Git, and GitHub when that Task is the active Detail subject. Outside
+Git, cwd remains useful as the thread's creation and file-review context, but
+it does not filter Tasks.
 
 The derived worktree context contains only RootedFs-relative paths plus live
 branch, HEAD, linked-worktree, and relative-cwd information. Caffold does not
@@ -500,8 +503,8 @@ closed status vocabulary without weakening it. The browser JSON retains the
 same structured shape:
 
 - `TaskRecord.threadStatus` uses the serialized `{ type, activeFlags }` shape.
-- `latestTurnStatus` and `activeTurn` are null on list responses, which do not
-  resolve a turn page.
+- Active list rows carry no `latestTurnStatus` or `activeTurn`. Archived list
+  responses carry both as null because they do not resolve a turn page.
 - Detail responses populate them only from the current canonical turn page.
 - `activeTurn` is present only when `threadStatus.type` is `active` and the
   latest canonical turn is `inProgress`. Its ID is a control pointer, not a
@@ -531,14 +534,15 @@ instead publish a `task-sync` snapshot. Their ordering and membership semantics
 belong to the
 [common conversation projection](agent-runtimes.md#conversation-and-event-ownership).
 Task lifecycle changes also arrive through canonical REST responses and the
-Task List channel's revisioned Task-record syncs.
+Task List channel's revisioned row syncs.
 
 ## Browser boundary
 
 For a Codex Task, app-server remains the canonical input for conversation and
 lifecycle state. The browser keeps Task-list and Task-detail projections and
-their revisions independent; forwarding a canonical Task from Detail to the
-navigator does not let either revision advance or reject the other. The
+their revisions independent. Detail does not write its Task into the navigator;
+the navigator takes its rows only from Active list responses and the Task List
+channel. The
 [Frontend Architecture](frontend.md#tasks-layout-and-detail-layout) owns
 snapshot acquisition, projection application, rendering caches, component
 boundaries, and fallback behavior.
@@ -582,23 +586,32 @@ lifecycle.
 
 ## Active Navigator Projection and Archived Pagination
 
-The Active Tasks API is local-first. `GET /api/tasks` joins Caffold's
-`managed_threads` and `managed_sections` tables and returns the last committed
-Section order, Section membership, dense within-Section order, stable display
-name, and Task provider without an agent RPC or persistent write. A Section
-with a recorded composer selection also includes that model, reasoning effort,
-Fast-mode value, and permission mode. Section Task Create and Section-owned
-GitHub Task Start apply that selection, including one recorded while they are
-open, to the model until a person picks the model or one of its settings, and
-to the permission mode until a person picks a mode; Global New and Task-owned
-actions keep their existing defaults. The selection does not name the agent,
-so its model applies only when exactly one offered model has that name, and its
-reasoning effort and Fast-mode value apply only with that model; otherwise the
-model picker applies its normal defaults. Its permission mode follows
+The Active Tasks API is local-first. `GET /api/tasks` reads Caffold's
+`managed_sections`, `managed_threads`, and `managed_worktrees` tables in one
+store read and returns the last committed Section order, Section membership,
+dense within-Section order, and each Task's list row without an agent RPC or
+persistent write. A Section with a recorded composer selection also includes
+that model, reasoning effort, Fast-mode value, and permission mode. Section
+Task Create and Section-owned GitHub Task Start apply that selection, including
+one recorded while they are open, to the model until a person picks the model
+or one of its settings, and to the permission mode until a person picks a mode;
+Global New and Task-owned actions keep their existing defaults. The selection
+does not name the agent, so its model applies only when exactly one offered
+model has that name, and its reasoning effort and Fast-mode value apply only
+with that model; otherwise the model picker applies its normal defaults. Its
+permission mode follows
 [The Mode a Turn Runs Under](security-and-approvals.md#the-mode-a-turn-runs-under).
-Repository/worktree presentation remains an asynchronous Git-derived projection
-and is not stored with the Section. Rows without a complete placement are
-returned in an explicit recovery group instead of being silently dropped.
+A Section's repository capability is a Git check of its logical path and is
+not stored with the Section. Rows without a complete placement are returned in
+an explicit recovery group instead of being silently dropped.
+
+Every Active list row, whether in this response or on the Task List channel,
+carries only the Task's ID, display name, `threadStatus`, unseen state, last
+completion time, recency, update time, and worktree mark; a recovery-group row
+adds its recovery reason and actions. The mark is true when the Task's
+`managed_worktrees` record is Ready, so it names only worktrees Caffold made;
+the list asks neither Git nor the agent for it. Branch, HEAD, and cwd belong to
+Task Detail.
 
 The Task List live channel complements that persisted identity with process-local
 runtime state. A new connection registers cached managed Codex threads before
@@ -609,14 +622,14 @@ steady-state events. Agent-owned names never replace Redb display names, and
 managed IDs missing from the live snapshot keep their cached not-loaded rows.
 The browser therefore renders the cached list immediately and upgrades the
 available status chips without opening Tasks one at a time. Steady-state
-`task-sync` frames contain only the conversation ID, revision, and nullable
-canonical Task record. Transcript, history, approval, file-link, and Task-detail
-settings remain on the logical Task Detail channel. A successfully started
-non-steering turn commits its applied composer settings to the Task and its
-parent Section in one local transaction, then publishes a targeted
-`section-composer-settings` frame. The browser patches that Section in its
-existing Active projection without a full list reload. Steering an active turn
-does not replace either record.
+`task-sync` frames contain only the conversation ID, revision, and the nullable
+list row of the Task that Task Detail published. Transcript, history, approval,
+file-link, and Task-detail settings remain on the logical Task Detail channel.
+A successfully started non-steering turn commits its applied composer settings
+to the Task and its parent Section in one local transaction, then publishes a
+targeted `section-composer-settings` frame. The browser patches that Section in
+its existing Active projection without a full list reload. Steering an active
+turn does not replace either record.
 
 Create, fork, rename, restore, and permanent-delete commands update the Task's
 agent first, then commit their corresponding local projection change, and only

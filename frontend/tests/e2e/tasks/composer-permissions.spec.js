@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { actionHintDialog } from "../support/action-hints.js";
 import { installAgentCatalog } from "../support/agent-catalog-fixture.js";
 import {
+  createdTaskFixture,
   installTaskApiFixture,
   TASK_PERMISSION_FIXTURE,
   taskDetailFixture,
@@ -157,7 +158,7 @@ async function captureTaskCreation(page) {
   await page.route("**/api/tasks", (route) => {
     if (route.request().method() === "POST") {
       captured.body = route.request().postDataJSON();
-      return route.fulfill({ json: taskDetailFixture() });
+      return route.fulfill({ json: createdTaskFixture() });
     }
     return route.fulfill({ json: activeTaskProjection() });
   });
@@ -371,7 +372,7 @@ test("explicit approval mode is sent with a new task prompt", { tag: "@all-viewp
   await page.route("**/api/tasks", (route) => {
     if (route.request().method() === "POST") {
       submittedBody = route.request().postDataJSON();
-      return route.fulfill({ json: taskDetailFixture() });
+      return route.fulfill({ json: createdTaskFixture() });
     }
     return route.fulfill({ json: activeTaskProjection() });
   });
@@ -419,7 +420,7 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", { tag:
   await page.route("**/api/tasks", (route) => {
     if (route.request().method() === "POST") {
       submittedBody = route.request().postDataJSON();
-      return route.fulfill({ json: taskDetailFixture({ fastMode: true }) });
+      return route.fulfill({ json: createdTaskFixture({ fastMode: true }) });
     }
     return route.fulfill({ json: activeTaskProjection() });
   });
@@ -520,7 +521,7 @@ test("resets option-only New Task selections after Settings navigation", { tag: 
   await page.route("**/api/tasks", (route) => {
     if (route.request().method() === "POST") {
       submittedBody = route.request().postDataJSON();
-      return route.fulfill({ json: taskDetailFixture() });
+      return route.fulfill({ json: createdTaskFixture() });
     }
     return route.fulfill({ json: activeTaskProjection() });
   });
@@ -1083,7 +1084,7 @@ test("new task submission stays single-flight and restores local input after rej
         json: { error: "Create request rejected" },
       });
     }
-    return route.fulfill({ json: taskDetailFixture() });
+    return route.fulfill({ json: createdTaskFixture() });
   });
   await page.route("**/api/tasks/thread-1/prompts", (route) => {
     initialPromptBody = route.request().postDataJSON();

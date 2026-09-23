@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { activateActionHint } from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import {
+  activeListTask,
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
@@ -643,13 +644,12 @@ test("preserves Tasks and Settings DOM while hidden task updates arrive", { tag:
 
   await page.evaluate((updatedTask) => {
     window.__taskWorkspaceEventSource.emit("task-updated", updatedTask);
-  }, {
+  }, activeListTask({
     ...task,
     title: "Updated while Settings is visible",
-    preview: "Live task update",
     updatedMs: task.updatedMs + 1_000,
     recencyMs: task.recencyMs + 1_000,
-  });
+  }));
 
   await expect(appearancePage).toHaveAttribute(
     "data-identity-marker",

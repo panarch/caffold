@@ -344,7 +344,7 @@ struct SpawnedChannel {
 fn spawn_task_list(source: TaskLiveSource, generation: u64) -> SpawnedChannel {
     spawn_channel(move |messages| async move {
         send_frame(&messages, channel_open_frame("task-list", None, generation)).await?;
-        let mut events = match source.task_list().await {
+        let events = match source.task_list().await {
             Ok(events) => events,
             Err(error) => {
                 send_frame(
@@ -355,15 +355,31 @@ fn spawn_task_list(source: TaskLiveSource, generation: u64) -> SpawnedChannel {
                 return Some(());
             }
         };
-        while let Some(event) = events.next().await {
-            send_frame(
-                &messages,
-                channel_event_frame("task-list", None, generation, &event),
-            )
-            .await?;
-        }
-        None
+        forward_task_list(&messages, generation, events).await
     })
+}
+
+/// Carry the Task list until it ends, then report the end as an error.
+///
+/// Apart from shutdown, the list ends only when it can no longer be kept
+/// whole, and the browser answers the error by loading the whole list again.
+async fn forward_task_list<E: Serialize>(
+    messages: &mpsc::Sender<Bytes>,
+    generation: u64,
+    mut events: impl Stream<Item = E> + Unpin,
+) -> Option<()> {
+    while let Some(event) = events.next().await {
+        send_frame(
+            messages,
+            channel_event_frame("task-list", None, generation, &event),
+        )
+        .await?;
+    }
+    send_frame(
+        messages,
+        channel_error_frame("task-list", None, generation, "Task list updates stopped."),
+    )
+    .await
 }
 
 fn spawn_task_detail(source: TaskLiveSource, generation: u64, thread_id: String) -> SpawnedChannel {
@@ -988,6 +1004,31 @@ mod tests {
             Some(&HeaderValue::from_static(
                 "text/event-stream; charset=utf-8"
             ))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_task_list_that_ends_is_reported_to_the_browser_as_a_channel_error() {
+        let (messages, mut frames) = mpsc::channel(4);
+
+        forward_task_list(
+            &messages,
+            4,
+            stream::iter([json!({ "type": "task-list-refresh" })]),
+        )
+        .await;
+
+        let mut next = || {
+            let frame = frames.try_recv().expect("a forwarded frame");
+            String::from_utf8(frame.to_vec()).unwrap()
+        };
+        assert_eq!(
+            next(),
+            "event: live-update\ndata: {\"channel\":\"task-list\",\"generation\":4,\"type\":\"task-list-refresh\"}\n\n"
+        );
+        assert_eq!(
+            next(),
+            "event: live-update\ndata: {\"channel\":\"task-list\",\"generation\":4,\"type\":\"channel-error\",\"payload\":{\"message\":\"Task list updates stopped.\"}}\n\n"
         );
     }
 
