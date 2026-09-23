@@ -9,6 +9,14 @@ caffold-task-workspace {
         1px
     )
   );
+  --task-workspace-route-control-gap: max(
+    0rem,
+    calc(
+      var(--interface-toolbar-gap) -
+        var(--interface-compact-hit-outset) -
+        var(--interface-compact-hit-outset)
+    )
+  );
   --task-header-leading-space: 0rem;
   --task-header-block-space: 0rem;
   position: relative;
@@ -96,15 +104,26 @@ caffold-task-workspace {
   }
 
   &[data-workspace-route-control-visible] {
-    --task-header-leading-space: calc(var(--interface-compact-hit-size) + 0.625rem);
+    --task-header-leading-space: calc(
+      var(--interface-compact-hit-size) +
+        var(--task-workspace-route-control-gap) +
+        var(--interface-compact-hit-size) +
+        0.625rem
+    );
     --task-header-block-space: var(--task-workspace-header-size);
   }
 
-  & .task-workspace-route-control {
+  & .task-workspace-route-controls {
     position: absolute;
     top: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
     left: calc(var(--interface-space-6) - var(--interface-compact-hit-outset));
     z-index: 6;
+    display: flex;
+    gap: var(--task-workspace-route-control-gap);
+  }
+
+  & .task-workspace-route-control {
+    position: relative;
     display: grid;
     place-items: center;
     width: var(--interface-compact-hit-size);
@@ -215,10 +234,15 @@ caffold-task-workspace {
 @media (max-width: 520px) {
   caffold-task-workspace {
     &[data-workspace-route-control-visible] {
-      --task-header-leading-space: calc(var(--interface-compact-hit-size) + 0.5rem);
+      --task-header-leading-space: calc(
+        var(--interface-compact-hit-size) +
+          var(--task-workspace-route-control-gap) +
+          var(--interface-compact-hit-size) +
+          0.5rem
+      );
     }
 
-    & .task-workspace-route-control {
+    & .task-workspace-route-controls {
       top: calc(0.4375rem - var(--interface-compact-hit-outset));
       left: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
     }

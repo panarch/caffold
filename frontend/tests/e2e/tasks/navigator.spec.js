@@ -2538,6 +2538,58 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
   }
 });
 
+test("keeps the whole brand beside its header actions in the narrowest navigation pane", { tag: "@foldable" }, async ({
+  page,
+}, testInfo) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("caffold:pane-width:task-workspace", "280");
+  });
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(activeTaskProjection([
+        initialNavigatorTask("thread-narrow-pane", "Narrow pane"),
+      ])),
+    }),
+  );
+
+  await page.goto("/tasks");
+  const header = page.locator(
+    "caffold-task-navigator .task-list-primary-header",
+  );
+  await expect(header.getByRole("button", { name: "Switch task" }))
+    .toBeVisible();
+
+  const layout = await header.evaluate((element) => {
+    const title = element.querySelector(".workspace-brand-title");
+    const actions = [
+      ...element.querySelectorAll(".task-list-header-action"),
+    ].map((action) => action.getBoundingClientRect());
+    return {
+      paneWidth: element
+        .closest(".task-workspace-master-pane")
+        .getBoundingClientRect().width,
+      actionCount: actions.length,
+      titleClipped: title.scrollWidth > title.clientWidth,
+      brandRight: element
+        .querySelector("caffold-workspace-brand")
+        .getBoundingClientRect().right,
+      firstActionLeft: actions[0].left,
+      lastActionRight: actions.at(-1).right,
+      headerRight: element.getBoundingClientRect().right,
+    };
+  });
+
+  expect(layout.paneWidth).toBeLessThanOrEqual(281);
+  expect(layout.actionCount).toBe(3);
+  expect(layout.titleClipped).toBe(false);
+  expect(layout.brandRight).toBeLessThanOrEqual(layout.firstActionLeft);
+  expect(layout.lastActionRight).toBeLessThanOrEqual(layout.headerRight);
+  await captureReviewScreenshot(page, testInfo, "task-navigator-narrowest-header");
+});
+
 test("switches Tasks to master-detail at the Fold8 landscape boundary", { tag: "@all-viewports" }, async ({
   page,
 }) => {

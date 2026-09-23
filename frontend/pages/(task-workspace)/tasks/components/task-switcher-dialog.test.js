@@ -20,29 +20,48 @@ after(() => {
   }
 });
 
-test("offers one Action Hint target per listed Task", () => {
+test("offers Close and one Action Hint target per listed Task", () => {
   const rows = [row("thread/1"), row("thread-2", { recovery: true })];
   const owner = openedSwitcher(rows);
 
   const scope = switcher.actionHintScope.call(owner);
 
   assert.deepEqual(scope.targets.map(({ id }) => id), [
+    "task-switcher-dialog:close",
     "task-switcher:thread%2F1",
     "task-switcher:thread-2",
   ]);
   assert.deepEqual(scope.targets.map(({ actionId }) => actionId), [
+    "dialog.button",
     "task.switch",
     "task.switch",
   ]);
+  const [close, ...rowTargets] = scope.targets;
+  assert.equal(close.control, owner.closeButton);
+  assert.equal(close.label, "Close task switcher");
+  assert.equal(close.invalidationOwner, owner);
   // The badge sits beside the title it names, not across the row from it.
-  assert.ok(scope.targets.every(({ badgeAtEnd }) => !badgeAtEnd));
-  assert.deepEqual(scope.targets.map(({ invalidationOwner }) => invalidationOwner), rows);
+  assert.ok(rowTargets.every(({ badgeAtEnd }) => !badgeAtEnd));
+  assert.deepEqual(rowTargets.map(({ invalidationOwner }) => invalidationOwner), rows);
   assert.ok(scope.targets.every((target) => target.isActionable()));
+});
+
+test("retires Close once the dialog closes or its control is replaced", () => {
+  const owner = openedSwitcher([row("thread-1")]);
+  const [close] = switcher.actionHintScope.call(owner).targets;
+  const closeButton = owner.closeButton;
+
+  assert.ok(close.isActionable());
+  owner.closeButton = withAttributes(new TestElement(), {});
+  assert.ok(!close.isActionable());
+  owner.closeButton = closeButton;
+  owner.dialogElement().open = false;
+  assert.ok(!close.isActionable());
 });
 
 test("retires a row target once the dialog closes", () => {
   const owner = openedSwitcher([row("thread-1")]);
-  const [target] = switcher.actionHintScope.call(owner).targets;
+  const [target] = rowTargets(owner);
 
   assert.ok(target.isActionable());
   owner.dialogElement().open = false;
@@ -52,7 +71,7 @@ test("retires a row target once the dialog closes", () => {
 test("retires a row target whose control was replaced", () => {
   const listed = row("thread-1");
   const owner = openedSwitcher([listed]);
-  const [target] = switcher.actionHintScope.call(owner).targets;
+  const [target] = rowTargets(owner);
 
   assert.ok(target.isActionable());
   listed.control = control(listed);
@@ -62,7 +81,7 @@ test("retires a row target whose control was replaced", () => {
 test("retires a row target that left the list", () => {
   const listed = row("thread-1");
   const owner = openedSwitcher([listed]);
-  const [target] = switcher.actionHintScope.call(owner).targets;
+  const [target] = rowTargets(owner);
 
   assert.ok(target.isActionable());
   listed.isConnected = false;
@@ -78,7 +97,7 @@ test("publishes one session-bound modal context for the open dialog", () => {
   assert.equal(context.kind, "modal");
   assert.equal(context.root, owner.dialogElement());
   assert.equal(context.actionHints.sessionBound, true);
-  assert.equal(context.actionHints.scope.targets.length, 1);
+  assert.equal(context.actionHints.scope.targets.length, 2);
   assert.equal(context.scroll.scope.surfaces.length, 1);
 });
 
@@ -239,14 +258,20 @@ function openedSwitcher(rows) {
   };
   const dialog = { open: true, close() { this.open = false; } };
   const scrollport = { getClientRects: () => [{}] };
+  const closeButton = withAttributes(new TestElement(), {
+    "aria-label": "Close task switcher",
+  });
+  closeButton.disabled = false;
   const owner = {
     isConnected: true,
     rows: [...rows],
     presentation,
+    closeButton,
     emptyState: { hidden: true, textContent: "" },
     tasksLoaded: true,
     ensureRendered() {},
     dialogElement: () => dialog,
+    closeControl: () => owner.closeButton,
     list: () => ({
       get children() {
         return [...owner.rows];
@@ -273,6 +298,12 @@ function openedSwitcher(rows) {
     };
   }
   return owner;
+}
+
+function rowTargets(owner) {
+  return switcher.actionHintScope.call(owner).targets.filter(
+    ({ actionId }) => actionId === "task.switch",
+  );
 }
 
 function row(threadId, { recovery = false } = {}) {

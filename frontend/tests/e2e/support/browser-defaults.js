@@ -450,7 +450,7 @@ export async function installExternalModuleDefaults(page) {
           ["path", { d: "m12 19-7-7 7-7" }],
           ["path", { d: "M19 12H5" }],
         ];
-        export const History = [["path", { d: "M3 12a9 9 0 1 0 3-6.7" }], ["path", { d: "M3 3v6h6" }], ["path", { d: "M12 7v5l3 2" }]];
+        export const History = [["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" }], ["path", { d: "M3 3v5h5" }], ["path", { d: "M12 7v5l4 2" }]];
         export const Info = [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "M12 16v-4" }], ["path", { d: "M12 8h.01" }]];
         export const ImageOff = [["line", { x1: "2", x2: "22", y1: "2", y2: "22" }], ["path", { d: "M10.4 10.4 3 17.8V5a2 2 0 0 1 2-2h12.8" }], ["path", { d: "m14 14 1-1 6 6" }], ["path", { d: "M21 15V5a2 2 0 0 0-2-2h-1" }]];
         export const LoaderCircle = [["path", { d: "M21 12a9 9 0 1 1-6.2-8.6" }]];

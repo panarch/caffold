@@ -3,6 +3,7 @@ import {
   buttonActionHintTarget,
 } from "../../../../action-hints.js";
 import { escapeHtml } from "../../../../components/dom.js";
+import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
@@ -33,11 +34,15 @@ export const TASK_SWITCHER_SELECT_EVENT = "caffold:task-switcher-select";
 class CaffoldTaskSwitcherDialog extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
+    this.refreshCloseIcon();
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
+    void warmIcons();
   }
 
   disconnectedCallback() {
     this.removeEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   /** Show the given Tasks, most recently finished first. */
@@ -134,29 +139,48 @@ class CaffoldTaskSwitcherDialog extends HTMLElement {
     this.ensureRendered();
     const dialog = this.dialogElement();
     const scrollport = this.scrollport();
-    return {
-      blocked: false,
-      targets: [...this.list().children].flatMap((row) => {
-        const threadId = `${row.dataset.threadId ?? ""}`;
-        const control = rowControl(row);
-        if (!threadId || !control) {
-          return [];
-        }
-        return [buttonActionHintTarget({
-          invalidationOwner: row,
-          id: `task-switcher:${encodeURIComponent(threadId)}`,
-          actionId: ACTION_HINT_ACTION.TASK_SWITCH,
-          label: control.getAttribute("aria-label") || `Open task: ${threadId}`,
-          control,
-          clipRoots: [dialog, scrollport].filter(Boolean),
+    const close = this.closeControl();
+    const closeTargets = close
+      ? [buttonActionHintTarget({
+          invalidationOwner: this,
+          id: "task-switcher-dialog:close",
+          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+          label: close.getAttribute("aria-label") || "Close task switcher",
+          control: close,
+          clipRoots: [dialog],
           isActionable: () =>
             this.isConnected &&
             dialog.open &&
-            row.isConnected &&
-            rowControl(row) === control &&
-            !control.disabled,
-        })];
-      }),
+            this.closeControl() === close &&
+            !close.disabled,
+        })]
+      : [];
+    return {
+      blocked: false,
+      targets: [
+        ...closeTargets,
+        ...[...this.list().children].flatMap((row) => {
+          const threadId = `${row.dataset.threadId ?? ""}`;
+          const control = rowControl(row);
+          if (!threadId || !control) {
+            return [];
+          }
+          return [buttonActionHintTarget({
+            invalidationOwner: row,
+            id: `task-switcher:${encodeURIComponent(threadId)}`,
+            actionId: ACTION_HINT_ACTION.TASK_SWITCH,
+            label: control.getAttribute("aria-label") || `Open task: ${threadId}`,
+            control,
+            clipRoots: [dialog, scrollport].filter(Boolean),
+            isActionable: () =>
+              this.isConnected &&
+              dialog.open &&
+              row.isConnected &&
+              rowControl(row) === control &&
+              !control.disabled,
+          })];
+        }),
+      ],
       mutationRoots: [this],
       scrollRoots: [scrollport].filter(Boolean),
     };
@@ -195,20 +219,46 @@ class CaffoldTaskSwitcherDialog extends HTMLElement {
     }
     this.rendered = true;
     this.boundDismiss = (event) => this.handleDismiss(event);
+    this.boundIconsReady = () => this.refreshCloseIcon();
     this.innerHTML = `
       <dialog closedby="any" aria-labelledby="task-switcher-dialog-title">
-        <div class="task-switcher-card">
-          <h2 id="task-switcher-dialog-title">Switch task</h2>
+        <article class="task-switcher-card">
+          <header class="task-switcher-header">
+            <h2 id="task-switcher-dialog-title" class="task-switcher-title">Switch task</h2>
+            <form method="dialog" class="task-switcher-close-form">
+              <button
+                type="submit"
+                class="task-switcher-close"
+                aria-label="Close task switcher"
+                title="Close task switcher"
+              >${renderInlineIcon(
+                "X",
+                "Close task switcher",
+                "task-switcher-close-icon",
+              )}</button>
+            </form>
+          </header>
           <div class="task-switcher-scroll">
             <ul class="task-switcher-list"></ul>
             <p class="task-switcher-empty" hidden></p>
           </div>
-        </div>
+        </article>
         <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
     this.dialogElement().addEventListener("click", (event) =>
       this.handleClick(event));
+  }
+
+  refreshCloseIcon() {
+    const close = this.closeControl();
+    if (close) {
+      close.innerHTML = renderInlineIcon(
+        "X",
+        "Close task switcher",
+        "task-switcher-close-icon",
+      );
+    }
   }
 
   handleClick(event) {
@@ -240,7 +290,11 @@ class CaffoldTaskSwitcherDialog extends HTMLElement {
   }
 
   renderRows(tasks) {
-    this.list().innerHTML = tasks.map(renderRow).join("");
+    // Close comes first in the dialog, so the newest Task has to claim the
+    // focus the dialog hands out when it opens.
+    this.list().innerHTML = tasks
+      .map((entry, index) => renderRow(entry, { autofocus: index === 0 }))
+      .join("");
     this.syncEmptyState();
   }
 
@@ -306,9 +360,13 @@ class CaffoldTaskSwitcherDialog extends HTMLElement {
   scrollport() {
     return this.querySelector(":scope .task-switcher-scroll");
   }
+
+  closeControl() {
+    return this.querySelector(":scope .task-switcher-close");
+  }
 }
 
-function renderRow({ task, sectionName = "" }) {
+function renderRow({ task, sectionName = "" }, { autofocus = false } = {}) {
   const threadId = taskThreadId(task);
   const title = `${task?.title ?? ""}`;
   const context = `${sectionName}`;
@@ -321,6 +379,7 @@ function renderRow({ task, sectionName = "" }) {
         data-task-status="${escapeHtml(taskStatusKey(task))}"
         title="${escapeHtml(title)}"
         aria-label="${escapeHtml(rowLabel(title, context))}"
+        ${autofocus ? "autofocus" : ""}
       >
         <span class="task-switcher-row-title">${escapeHtml(title)}</span>
         <span class="task-switcher-row-context" title="${escapeHtml(context)}">${escapeHtml(context)}</span>

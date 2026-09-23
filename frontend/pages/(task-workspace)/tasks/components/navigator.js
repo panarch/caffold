@@ -165,6 +165,12 @@ class CaffoldTaskNavigator extends HTMLElement {
     );
   }
 
+  get switcherButton() {
+    return this.querySelector(
+      ":scope > .task-list-primary-header .task-list-switcher",
+    );
+  }
+
   get reorderButton() {
     return this.querySelector(
       ":scope > .task-list-primary-header .task-list-reorder",
@@ -185,6 +191,12 @@ class CaffoldTaskNavigator extends HTMLElement {
       ":scope .task-list-new-task[data-task-action='open-new']",
     );
     const targets = [];
+    const switcherTarget = this.reorderMode === "none"
+      ? this.actionHintSwitcherTarget()
+      : null;
+    if (switcherTarget) {
+      targets.push(switcherTarget);
+    }
     const reorderTarget = this.actionHintReorderTarget();
     if (reorderTarget) {
       targets.push(reorderTarget);
@@ -232,6 +244,28 @@ class CaffoldTaskNavigator extends HTMLElement {
           })
         : null,
     );
+  }
+
+  actionHintSwitcherTarget() {
+    const control = this.switcherButton;
+    if (!control) {
+      return null;
+    }
+    return buttonActionHintTarget({
+      invalidationOwner: this,
+      id: "task-list:switcher:open",
+      actionId: ACTION_HINT_ACTION.TASK_SWITCHER_OPEN,
+      label: control.getAttribute("aria-label") || "Switch task",
+      control,
+      clipRoots: [this],
+      isActionable: () =>
+        this.isConnected &&
+        this.active &&
+        !this.hidden &&
+        this.reorderMode === "none" &&
+        this.switcherButton === control &&
+        !control.disabled,
+    });
   }
 
   actionHintReorderTarget() {
@@ -602,6 +636,10 @@ class CaffoldTaskNavigator extends HTMLElement {
       this.setReorderMode(action.dataset.reorderMode);
       return;
     }
+    if (action.dataset.taskAction === "open-task-switcher") {
+      this.dispatchIntent("open-task-switcher");
+      return;
+    }
     if (this.taskOperations.blocked) {
       return;
     }
@@ -758,6 +796,10 @@ class CaffoldTaskNavigator extends HTMLElement {
   }
 
   syncPrimaryHeader() {
+    const switcherButton = this.switcherButton;
+    if (switcherButton) {
+      syncHeaderActionIcon(switcherButton, "History", "Switch task");
+    }
     const newTaskButton = this.querySelector(
       ":scope > .task-list-primary-header .task-list-new-task",
     );
@@ -799,6 +841,13 @@ class CaffoldTaskNavigator extends HTMLElement {
       <header class="task-list-section-header task-list-primary-header">
         <caffold-workspace-brand></caffold-workspace-brand>
         <span class="task-list-primary-actions">
+          <button
+            type="button"
+            class="task-list-header-action task-list-switcher"
+            data-task-action="open-task-switcher"
+            aria-label="Switch task"
+            title="Switch task"
+          >${renderInlineIcon("History", "Switch task", "task-action-icon")}</button>
           <button
             type="button"
             class="task-list-header-action task-list-reorder"

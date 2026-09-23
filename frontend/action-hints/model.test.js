@@ -229,6 +229,27 @@ test("allocates Current Plan document and status openers through the automatic p
   );
 });
 
+test("allocates the Task switcher, its rows, and its Close through the automatic pool", () => {
+  const workspace = allocateActionHintCodes([
+    target("opener", ACTION_HINT_ACTION.TASK_SWITCHER_OPEN),
+    target("task", ACTION_HINT_ACTION.TASK_OPEN),
+  ]);
+  const switcher = allocateActionHintCodes([
+    target("close", ACTION_HINT_ACTION.DIALOG_BUTTON),
+    target("newest", ACTION_HINT_ACTION.TASK_SWITCH),
+    target("older", ACTION_HINT_ACTION.TASK_SWITCH),
+  ]);
+
+  assert.deepEqual(
+    workspace.map(({ id, code }) => [id, code]),
+    [["opener", "A"], ["task", "TA"]],
+  );
+  assert.deepEqual(
+    switcher.map(({ id, code }) => [id, code]),
+    [["close", "A"], ["newest", "S"], ["older", "D"]],
+  );
+});
+
 test("allocates explicitly owned ordinary buttons through the automatic pool", () => {
   const allocated = allocateActionHintCodes([
     target("refresh", ACTION_HINT_ACTION.BUTTON_ACTIVATE),

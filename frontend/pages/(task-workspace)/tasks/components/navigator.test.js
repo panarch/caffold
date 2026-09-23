@@ -26,6 +26,7 @@ test("provides owned New Task and delegated row actions with navigator geometry"
     },
   };
   const taskTarget = { id: "task:thread-a" };
+  const switcherTarget = { id: "task-list:switcher:open" };
   let delegatedOptions = null;
   const activeTaskList = {
     actionHintTargets(options) {
@@ -38,6 +39,9 @@ test("provides owned New Task and delegated row actions with navigator geometry"
     reorderMode: "none",
     taskOperations: { blocked: false },
     ensureChildren() {},
+    actionHintSwitcherTarget() {
+      return switcherTarget;
+    },
     actionHintReorderTarget() {
       return null;
     },
@@ -58,12 +62,13 @@ test("provides owned New Task and delegated row actions with navigator geometry"
   const scope = navigator.actionHintScope.call(owner);
 
   assert.equal(scope.blocked, false);
-  assert.deepEqual(scope.targets.slice(1), [taskTarget]);
+  assert.equal(scope.targets[0], switcherTarget);
+  assert.deepEqual(scope.targets.slice(2), [taskTarget]);
   assert.deepEqual(scope.mutationRoots, [primaryHeader, activeTaskList]);
   assert.deepEqual(scope.scrollRoots, [scrollRoot]);
   assert.deepEqual(delegatedOptions, { clipRoots: [owner, scrollRoot] });
 
-  const target = scope.targets[0];
+  const target = scope.targets[1];
   assert.deepEqual(
     {
       id: target.id,
@@ -95,6 +100,85 @@ test("provides owned New Task and delegated row actions with navigator geometry"
   const reorderScope = navigator.actionHintScope.call(owner);
   assert.equal(reorderScope.blocked, false);
   assert.deepEqual(reorderScope.targets, [taskTarget]);
+});
+
+test("offers the Task switcher opener only outside reorder modes", () => {
+  const control = {
+    disabled: false,
+    clicks: 0,
+    focus() {},
+    click() {
+      this.clicks += 1;
+    },
+    getAttribute: (name) => (name === "aria-label" ? "Switch task" : null),
+  };
+  let currentControl = control;
+  const owner = {
+    active: true,
+    hidden: false,
+    isConnected: true,
+    reorderMode: "none",
+    get switcherButton() {
+      return currentControl;
+    },
+  };
+
+  const target = navigator.actionHintSwitcherTarget.call(owner);
+
+  assert.equal(target.id, "task-list:switcher:open");
+  assert.equal(target.actionId, "task.switcher.open");
+  assert.equal(target.label, "Switch task");
+  assert.deepEqual(target.clipRoots, [owner]);
+  assert.equal(target.isActionable(), true);
+  target.activate();
+  assert.equal(control.clicks, 1);
+
+  owner.reorderMode = "sections";
+  assert.equal(target.isActionable(), false);
+  owner.reorderMode = "none";
+  currentControl = { ...control };
+  assert.equal(target.isActionable(), false);
+});
+
+test("asks for the Task switcher without touching reorder mode or blocked Task operations", (t) => {
+  const previousElement = globalThis.Element;
+  class TestElement {}
+  globalThis.Element = TestElement;
+  t.after(() => {
+    if (previousElement === undefined) {
+      delete globalThis.Element;
+    } else {
+      globalThis.Element = previousElement;
+    }
+  });
+  const action = Object.assign(new TestElement(), {
+    dataset: { taskAction: "open-task-switcher" },
+  });
+  const target = Object.assign(new TestElement(), { closest: () => action });
+  const intents = [];
+  const owner = {
+    reorderMode: "tasks",
+    taskOperations: { blocked: true },
+    contains: (candidate) => candidate === action,
+    dispatchIntent: (type) => intents.push(type),
+    setReorderMode() {
+      throw new Error("Opening the switcher must not change reorder mode.");
+    },
+    exitReorderMode() {
+      throw new Error("Opening the switcher must not end reorder mode.");
+    },
+  };
+  let stopped = false;
+
+  navigator.handleClick.call(owner, {
+    target,
+    stopPropagation() {
+      stopped = true;
+    },
+  });
+
+  assert.deepEqual(intents, ["open-task-switcher"]);
+  assert.equal(stopped, true);
 });
 
 test("provides only its exact active Task list scrollport", () => {
@@ -168,6 +252,7 @@ test("merges Archived actions only while that direct list has a layout box", () 
     },
     archivedTaskList,
     ensureChildren() {},
+    actionHintSwitcherTarget: () => null,
     actionHintReorderTarget: () => null,
     querySelector(selector) {
       if (selector === ":scope > .task-list-scroll") return {};

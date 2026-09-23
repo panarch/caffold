@@ -4,6 +4,7 @@ export const ACTION_HINT_ACTION = Object.freeze({
   TASK_OPEN: "task.open",
   TASK_OPEN_RECOVERY: "task.open-recovery",
   TASK_SWITCH: "task.switch",
+  TASK_SWITCHER_OPEN: "task.switcher.open",
   TASK_CREATE: "task.create",
   MODEL_CHOOSE: "task.model.choose",
   MODEL_PROVIDER_BROWSE: "task.model.provider.browse",
@@ -72,8 +73,9 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
     allocation: ACTION_HINT_ALLOCATION.PREFIXED,
     prefix: "T",
   }),
-  // Every target in the Task switcher is this one action, so a prefix would
-  // separate nothing and cost a keystroke on every jump.
+  // Every target in the Task switcher is this one action except its Close
+  // button, so a prefix would cost a keystroke on every jump only to set the
+  // rows apart from that one button.
   [ACTION_HINT_ACTION.TASK_SWITCH]: Object.freeze({
     controlKind: "button",
     allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
@@ -158,6 +160,7 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
     ACTION_HINT_ACTION.REORDER_OPEN,
     ACTION_HINT_ACTION.REORDER_SELECT,
     ACTION_HINT_ACTION.REORDER_FINISH,
+    ACTION_HINT_ACTION.TASK_SWITCHER_OPEN,
     ACTION_HINT_ACTION.GIT_OPEN,
     ACTION_HINT_ACTION.GIT_DESTINATION,
     ACTION_HINT_ACTION.GITHUB_OPEN,
