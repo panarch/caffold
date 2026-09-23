@@ -1847,11 +1847,13 @@ async function captureActionHintVisualState(page) {
       ["P", target(taskNew?.querySelector("textarea[name='prompt']"), [taskNew, createScroll])],
     ]);
     const automaticTargets = new Map();
-    const reorder = navigator.querySelector(":scope .task-list-reorder");
-    automaticTargets.set(
-      reorder.getAttribute("aria-label"),
-      target(reorder, [navigator]),
-    );
+    for (const selector of [".task-list-switcher", ".task-list-reorder"]) {
+      const control = navigator.querySelector(`:scope ${selector}`);
+      automaticTargets.set(
+        control.getAttribute("aria-label"),
+        target(control, [navigator]),
+      );
+    }
     const permission = taskNew?.querySelector(".task-permission-button");
     if (permission) {
       automaticTargets.set(

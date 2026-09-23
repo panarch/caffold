@@ -1,10 +1,15 @@
 import { expect, test } from "@playwright/test";
+import {
+  enterActionHints,
+  waitForActionHintTarget,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
   mockAgentModels,
 } from "../support/task-fixtures.js";
@@ -330,6 +335,231 @@ test("shows each row the time the list is ordered by", { tag: "@desktop" }, asyn
     .toBeGreaterThan(new Date(times[1]).getTime());
 });
 
+test("opens from the Task list header by pointer and closes with its X", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installSwitcherFixture(page, switcherTasks());
+  await page.goto("/tasks/switcher_oldest");
+  await expect(page.locator("caffold-task-detail")).toBeVisible();
+  const opener = listSwitcherOpener(page);
+  await expect(switcherOpeners(page)).toHaveCount(1);
+  await expect(opener).toBeVisible();
+
+  await opener.click();
+
+  const dialog = page.locator("caffold-task-switcher-dialog > dialog");
+  await expect(dialog).toBeVisible();
+  await expect(hintDialog(page)).toBeHidden();
+  const rows = dialog.locator(".task-switcher-row");
+  await expect(rows.first()).toHaveAccessibleName(
+    "Open task: Middle task in a-deliberately-long-section-name-for-clipping",
+  );
+  await expect(rows.first()).toBeFocused();
+
+  await dialog.getByRole("button", { name: "Close task switcher" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
+test("hands the Hint session to the switcher when its opener is chosen by Hint", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const tasks = switcherTasks();
+  await installSwitcherFixture(page, tasks);
+  await page.goto("/tasks/switcher_oldest");
+  // Hints wait for a loading Task, so this one has to finish loading.
+  await emitTaskDetailBootstrap(page, switcherTaskDetail(tasks[2]));
+  await expect(page.locator(".task-conversation-pane")).toBeVisible();
+  await waitForActionHintTarget(page, "Switch task");
+
+  const workspaceHints = await enterActionHints(page);
+  const badge = workspaceHints.getByLabel(/ — Switch task$/);
+  await expect(badge).toBeVisible();
+  const code = await badge.getAttribute("data-action-hint-code");
+  await page.keyboard.type(code.toLowerCase());
+
+  await expect(page.locator("caffold-task-switcher-dialog > dialog"))
+    .toBeVisible();
+  await expect(hintDialog(page)).toBeVisible();
+  await hintCode(page, "Close task switcher");
+  await hintCode(
+    page,
+    "Open task: Middle task in a-deliberately-long-section-name-for-clipping",
+  );
+});
+
+test("keeps the only opener in the Task list header beside a Task on a wide touch screen", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  await installSwitcherFixture(page, switcherTasks());
+  await page.goto("/tasks/switcher_oldest");
+  await expect(page.locator("caffold-task-detail")).toBeVisible();
+  await expect(switcherOpeners(page)).toHaveCount(1);
+  await expect(listSwitcherOpener(page)).toBeVisible();
+  await expect(routeSwitcherOpener(page)).toBeHidden();
+
+  await listSwitcherOpener(page).tap();
+  const dialog = page.locator("caffold-task-switcher-dialog > dialog");
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByRole("button", { name: /^Open task: Middle task/ })
+    .tap();
+
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/tasks\/switcher_middle$/);
+  await expect(page.locator("caffold-task-detail")).toBeVisible();
+});
+
+test("offers no opener on a code surface, where the Task list is not shown", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  await installSwitcherFixture(page, switcherTasks());
+  await page.goto("/tasks/switcher_oldest/review");
+  const workspace = page.locator("caffold-task-workspace");
+  await expect(workspace).toHaveAttribute("data-tasks-view", "detail");
+  await expect(workspace).toHaveAttribute(
+    "data-task-detail-presentation",
+    "code",
+  );
+  await expect(page.locator("caffold-task-navigator")).toBeHidden();
+
+  await expect(switcherOpeners(page)).toHaveCount(0);
+});
+
+test("keeps one opener, in the Task list header or beside Back", { tag: "@phone" }, async ({
+  page,
+}) => {
+  await installSwitcherFixture(page, switcherTasks());
+  await page.goto("/tasks");
+  await expect(page.locator("caffold-task-navigator")).toBeVisible();
+  await expect(switcherOpeners(page)).toHaveCount(1);
+  await expect(listSwitcherOpener(page)).toBeVisible();
+
+  for (const url of ["/tasks/switcher_oldest", "/tasks/new"]) {
+    await page.goto(url);
+    await expect(page.locator("caffold-task-navigator"), url).toBeHidden();
+    await expect(page.locator(".task-workspace-back"), url).toBeVisible();
+    await expect(switcherOpeners(page), url).toHaveCount(1);
+    await expect(routeSwitcherOpener(page), url).toBeVisible();
+  }
+});
+
+test("opens beside Back by tap, closes with its X, and jumps to the chosen Task", { tag: "@phone" }, async ({
+  page,
+}) => {
+  await installSwitcherFixture(page, switcherTasks());
+  await page.goto("/tasks/switcher_oldest");
+  await expect(page.locator("caffold-task-detail")).toBeVisible();
+  const opener = routeSwitcherOpener(page);
+  const dialog = page.locator("caffold-task-switcher-dialog > dialog");
+
+  await opener.tap();
+  await expect(dialog).toBeVisible();
+  await expect(hintDialog(page)).toBeHidden();
+  await dialog.getByRole("button", { name: "Close task switcher" }).tap();
+  await expect(dialog).toBeHidden();
+
+  await opener.tap();
+  await dialog
+    .getByRole("button", { name: /^Open task: Working task, finished long ago/ })
+    .tap();
+
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/tasks\/switcher_newest$/);
+  await expect(page.locator("caffold-task-detail")).toBeVisible();
+});
+
+test("stands beside Back the way the Task list header spaces its own buttons", { tag: "@phone" }, async ({
+  page,
+}, testInfo) => {
+  await installSwitcherFixture(page, switcherTasks());
+  await page.goto("/tasks");
+  await expect(listSwitcherOpener(page)).toBeVisible();
+  const headerGap = await page
+    .locator("caffold-task-navigator .task-list-primary-actions")
+    .evaluate((actions) => {
+      const switcher = actions
+        .querySelector(":scope > .task-list-switcher")
+        .getBoundingClientRect();
+      const reorder = actions
+        .querySelector(":scope > .task-list-reorder")
+        .getBoundingClientRect();
+      return reorder.left - switcher.right;
+    });
+
+  await page.goto("/tasks/switcher_oldest");
+  await expect(page.locator("caffold-task-detail")).toBeVisible();
+  await expect(routeSwitcherOpener(page)).toBeVisible();
+  const layout = await page.locator("caffold-task-workspace").evaluate(
+    (workspace) => {
+      const back = workspace
+        .querySelector(".task-workspace-back")
+        .getBoundingClientRect();
+      const switcher = workspace
+        .querySelector(".task-workspace-switcher")
+        .getBoundingClientRect();
+      const title = workspace
+        .querySelector("caffold-task-detail-summary h2")
+        .getBoundingClientRect();
+      const center = (box) => box.top + box.height / 2;
+      return {
+        gap: switcher.left - back.right,
+        sizes: [back.width, back.height, switcher.width, switcher.height],
+        controlCenterDelta: Math.abs(center(back) - center(switcher)),
+        titleCenterDelta: Math.abs(center(switcher) - center(title)),
+        titleClearance: title.left - switcher.right,
+      };
+    },
+  );
+
+  expect(layout.gap).toBeCloseTo(headerGap, 1);
+  expect(new Set(layout.sizes).size).toBe(1);
+  expect(layout.controlCenterDelta).toBeLessThanOrEqual(0.5);
+  expect(layout.titleCenterDelta).toBeLessThanOrEqual(2);
+  expect(layout.titleClearance).toBeGreaterThan(0);
+  await captureReviewScreenshot(page, testInfo, "task-switcher-route-control");
+});
+
+test("draws its header the way the Markdown preview draws its header", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const tasks = switcherTasks();
+  await installSwitcherFixture(page, tasks);
+  await page.goto("/tasks/switcher_oldest");
+  // The Markdown preview lives in a loaded Task's conversation.
+  await emitTaskDetailBootstrap(page, switcherTaskDetail(tasks[2]));
+  await expect(page.locator(".task-conversation-pane")).toBeVisible();
+
+  const preview = page.locator("caffold-task-markdown-preview-dialog");
+  await preview.evaluate((element) =>
+    element.openMarkdown({ markdown: "# Reference" }));
+  const previewDialog = page.locator(
+    "caffold-task-markdown-preview-dialog > dialog",
+  );
+  await expect(previewDialog).toBeVisible();
+  const reference = await dialogHeaderGeometry(previewDialog, {
+    header: ".task-markdown-preview-header",
+    title: ".task-markdown-preview-title",
+    close: ".task-markdown-preview-close",
+  });
+  await previewDialog
+    .getByRole("button", { name: "Close Markdown preview" })
+    .click();
+  await expect(previewDialog).toBeHidden();
+
+  await switcherOpeners(page).click();
+  const dialog = page.locator("caffold-task-switcher-dialog > dialog");
+  await expect(dialog).toBeVisible();
+  const header = await dialogHeaderGeometry(dialog, {
+    header: ".task-switcher-header",
+    title: ".task-switcher-title",
+    close: ".task-switcher-close",
+  });
+
+  expect(header).toEqual(reference);
+  await captureReviewScreenshot(page, testInfo, "task-switcher-header");
+});
+
 async function openSwitcher(page, { hints = true } = {}) {
   const surface = page.locator(".task-workspace-surface");
   await surface.evaluate((element) => element.focus({ preventScroll: true }));
@@ -359,18 +589,31 @@ async function visibleHintLabels(page) {
 }
 
 /**
- * Every badge sits in the leading gutter, clear of the title it names.
+ * Every row's badge sits in the leading gutter, clear of the title it names.
  *
  * The gutter is what keeps the two apart, so this checks the gap rather than
- * which side the badge chose.
+ * which side the badge chose. Close has a badge too, so each row finds its
+ * own by name.
  */
 async function badgesClearTitles(dialog, page) {
-  const titleStarts = await dialog.locator(".task-switcher-row-title")
-    .evaluateAll((elements) =>
-      elements.map((element) => element.getBoundingClientRect().left));
+  const rows = await dialog.locator(".task-switcher-row").evaluateAll(
+    (elements) => elements.map((element) => ({
+      label: element.getAttribute("aria-label"),
+      titleStart: element
+        .querySelector(".task-switcher-row-title")
+        .getBoundingClientRect().left,
+    })),
+  );
   const badges = await hintBadges(page).evaluateAll((elements) =>
-    elements.map((element) => element.getBoundingClientRect().right));
-  return badges.every((right, index) => right <= titleStarts[index]);
+    elements.map((element) => ({
+      label: element.getAttribute("aria-label"),
+      right: element.getBoundingClientRect().right,
+    })));
+  return rows.every(({ label, titleStart }) => {
+    const badge = badges.find((candidate) =>
+      candidate.label.endsWith(` — ${label}`));
+    return Boolean(badge) && badge.right <= titleStart;
+  });
 }
 
 async function hintCode(page, accessibleName) {
@@ -379,6 +622,52 @@ async function hintCode(page, accessibleName) {
   const code = await badge.getAttribute("data-action-hint-code");
   expect(code).toMatch(/^[A-Z]+$/);
   return code;
+}
+
+/** Every opener a person can see right now; hidden ones are not buttons to them. */
+function switcherOpeners(page) {
+  return page
+    .locator("caffold-task-workspace")
+    .getByRole("button", { name: "Switch task", exact: true });
+}
+
+function listSwitcherOpener(page) {
+  return page.locator(
+    "caffold-task-navigator .task-list-primary-header .task-list-switcher",
+  );
+}
+
+function routeSwitcherOpener(page) {
+  return page.locator(
+    "caffold-task-workspace > .task-workspace-route-controls > .task-workspace-switcher",
+  );
+}
+
+/** Header boxes measured from the dialog's own edges, so widths can differ. */
+async function dialogHeaderGeometry(dialog, selectors) {
+  return dialog.evaluate((element, { header, title, close }) => {
+    const round = (value) => Math.round(value * 100) / 100;
+    const box = element.getBoundingClientRect();
+    const headerBox = element.querySelector(header).getBoundingClientRect();
+    const titleElement = element.querySelector(title);
+    const titleBox = titleElement.getBoundingClientRect();
+    const titleStyle = getComputedStyle(titleElement);
+    const closeBox = element.querySelector(close).getBoundingClientRect();
+    return {
+      headerTop: round(headerBox.top - box.top),
+      headerHeight: round(headerBox.height),
+      titleStart: round(titleBox.left - box.left),
+      titleCenter: round(titleBox.top + titleBox.height / 2 - headerBox.top),
+      titleType: [
+        titleStyle.fontSize,
+        titleStyle.fontWeight,
+        titleStyle.lineHeight,
+      ],
+      closeSize: [round(closeBox.width), round(closeBox.height)],
+      closeEnd: round(box.right - closeBox.right),
+      closeCenter: round(closeBox.top + closeBox.height / 2 - headerBox.top),
+    };
+  }, selectors);
 }
 
 const LONG_SECTION =

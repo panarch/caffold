@@ -232,7 +232,8 @@ owns:
   assignment;
 - Task, Notes, and Settings navigators;
 - the user-resizable desktop navigation pane;
-- the compact top-level Back for a Task, Section, or New Task;
+- the compact top-level Back for a Task, Section, or New Task, and the Task
+  switcher opener beside it;
 - the one physical live-update connection for this browser tab;
 - public Action Hint, Scroll, editing-Escape, post-activation, and registered
   product-overlay context providers for the App Shell coordinator;
@@ -273,13 +274,17 @@ non-editing `T` key first asks Task Workspace to open the Task switcher and
 then enters the same mode, so the session it collects is scoped to that modal.
 Task Workspace opens it only on its Tasks surface, because the Notes and
 Settings surfaces do not load the Task list the switcher shows; a refusal
-leaves the key unhandled.
+leaves the key unhandled. Its two pointer openers reach the same Task
+Workspace method without entering the mode. The Task navigator's header opener
+emits a navigator intent that Task Workspace answers, and the opener beside the
+compact Back belongs to Task Workspace, which shows it exactly when it shows
+that Back.
 Each participating component provides its retained native control, stable
 semantic identity, action meaning, accessible name, anchor, and clip
 dependencies. This includes Workspace and Settings navigation and page
 buttons; Notes tree entries, Back, Retry, the Note Info button, and the Task
-links in its popover; Task and Section selection; archived-list, recovery, and
-Codex
+links in its popover; Task and Section selection; the Task switcher openers;
+archived-list, recovery, and Codex
 readiness buttons; Composer Model, Permission, Prompt, attachment, voice,
 cancel, submit, and interrupt actions; Conversation retry, image-preview, and
 approval actions; Section Fork; Current Plan document openers, status opener,
@@ -379,10 +384,11 @@ session-bound continues Action Hints when a Hint activation makes it the
 interaction owner and closes itself when the user dismisses that session; the
 coordinator reports the dismissal on the context root, and the owner hides its
 own surface. Every registered popover with actions declares it, and so does the
-Task switcher, whose key opens the dialog and hands it the same session. Every
-other dialog does not, so the user presses `F` again inside one or inside a
-popover opened by pointer, and such a session leaves that surface open. File
-details deliberately declares no internal Action Hint target.
+Task switcher, which receives the session its key starts and the session in
+which a Hint chooses one of its openers. Every other dialog does not, so the
+user presses `F` again inside one or inside a popover opened by pointer, and
+such a session leaves that surface open. File details deliberately declares no
+internal Action Hint target.
 
 Provider collection is hierarchical: each layout merges its own actions with
 only its active direct child scopes through `action-hint-scope.js`. Ancestors
@@ -410,9 +416,10 @@ handling remain unchanged.
 The controller validates every action and control kind against a closed central
 policy. Task selection in the navigator retains generated `T*` codes and New
 Task, Model, and Prompt retain `N`, `M`, and `P`. A Task switcher row is its
-own action in the automatic pool, because every target that surface offers is
-that one action and a prefix would separate nothing. Task suffixes and actions in the automatic
-pool receive compact, balanced prefix-free codes in
+own action in the automatic pool: apart from its Close button, every target
+that surface offers is that one action, so a prefix would cost a keystroke on
+every jump only to set the rows apart from one button. Task suffixes and
+actions in the automatic pool receive compact, balanced prefix-free codes in
 `ASDFGHJKLQWERTYUIOPZXCVBNM` order after visual sorting. The allocator
 minimizes the longest code first and total code length second, assigns shorter
 codes to earlier targets, and expands the lowest-priority tail branches first,

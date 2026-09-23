@@ -89,18 +89,21 @@ test("composes the navigation pane resizer through its public scope", () => {
   assert.equal(options.isCurrent(), false);
 });
 
-test("offers the visible compact Back as the workspace parent action", () => {
-  const backButton = {
+test("offers the visible compact Back and the Task switcher beside it", () => {
+  const routeControl = (label) => ({
     hidden: false,
     disabled: false,
     getClientRects: () => [{}],
-    getAttribute: (name) => (name === "aria-label" ? "Back to tasks" : null),
-  };
+    getAttribute: (name) => (name === "aria-label" ? label : null),
+  });
+  const backButton = routeControl("Back to tasks");
+  const taskSwitcherButton = routeControl("Switch task");
   const owner = {
     hidden: false,
     isConnected: true,
     mode: "tasks",
     backButton,
+    taskSwitcherButton,
     masterResizer: null,
     masterDetail: {},
     masterPane: null,
@@ -109,20 +112,31 @@ test("offers the visible compact Back as the workspace parent action", () => {
     querySelector: () => null,
   };
 
-  const [target, ...others] = workspace.actionHintScope.call(owner).targets;
+  const [back, switcher, ...others] =
+    workspace.actionHintScope.call(owner).targets;
   assert.deepEqual(others, []);
-  assert.equal(target.id, "workspace:parent:tasks");
-  assert.equal(target.actionId, "navigation.parent");
-  assert.equal(target.label, "Back to tasks");
-  assert.equal(target.control, backButton);
-  assert.equal(target.isActionable(), true);
+  assert.equal(back.id, "workspace:parent:tasks");
+  assert.equal(back.actionId, "navigation.parent");
+  assert.equal(back.label, "Back to tasks");
+  assert.equal(back.control, backButton);
+  assert.equal(back.isActionable(), true);
+  assert.equal(switcher.id, "workspace:task-switcher:open");
+  assert.equal(switcher.actionId, "task.switcher.open");
+  assert.equal(switcher.label, "Switch task");
+  assert.equal(switcher.control, taskSwitcherButton);
+  assert.equal(switcher.isActionable(), true);
 
+  owner.taskSwitcherButton = routeControl("Switch task");
+  assert.equal(switcher.isActionable(), false);
+  owner.taskSwitcherButton = taskSwitcherButton;
   backButton.hidden = true;
-  assert.equal(target.isActionable(), false);
+  taskSwitcherButton.hidden = true;
+  assert.equal(back.isActionable(), false);
+  assert.equal(switcher.isActionable(), false);
   assert.deepEqual(workspace.actionHintScope.call(owner).targets, []);
 });
 
-test("shows the compact Back on Task, Section, and New Task roots only", (t) => {
+test("shows the compact Back and the Task switcher on Task, Section, and New Task roots only", (t) => {
   globalThis.window = { location: { origin: "http://caffold.test" } };
   t.after(() => {
     delete globalThis.window;
@@ -132,6 +146,7 @@ test("shows the compact Back on Task, Section, and New Task roots only", (t) => 
     const attributes = new Map();
     const owner = {
       backButton: { hidden: true },
+      taskSwitcherButton: { hidden: true },
       route,
       mode: route.kind === "settings" ? "settings" : "tasks",
       dataset: {},
@@ -146,6 +161,11 @@ test("shows the compact Back on Task, Section, and New Task roots only", (t) => 
     assert.equal(
       attributes.get("data-workspace-route-control-visible"),
       !owner.backButton.hidden,
+      url,
+    );
+    assert.equal(
+      owner.taskSwitcherButton.hidden,
+      owner.backButton.hidden,
       url,
     );
     return !owner.backButton.hidden;

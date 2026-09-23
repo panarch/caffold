@@ -97,15 +97,26 @@ class CaffoldTaskWorkspace extends HTMLElement {
     });
     this.codexStatusSnapshotValue = this.codexStatusLifecycle.snapshot();
     this.innerHTML = `
-      <button
-        type="button"
-        class="task-workspace-route-control task-workspace-back"
-        aria-label="Back to tasks"
-        title="Back to tasks"
-        hidden
-      >
-        ${renderInlineIcon("ArrowLeft", "Back to tasks", "task-workspace-route-control-icon")}
-      </button>
+      <div class="task-workspace-route-controls">
+        <button
+          type="button"
+          class="task-workspace-route-control task-workspace-back"
+          aria-label="Back to tasks"
+          title="Back to tasks"
+          hidden
+        >
+          ${renderInlineIcon("ArrowLeft", "Back to tasks", "task-workspace-route-control-icon")}
+        </button>
+        <button
+          type="button"
+          class="task-workspace-route-control task-workspace-switcher"
+          aria-label="Switch task"
+          title="Switch task"
+          hidden
+        >
+          ${renderInlineIcon("History", "Switch task", "task-workspace-route-control-icon")}
+        </button>
+      </div>
       <section class="task-workspace-surface" aria-label="Task workspace" tabindex="-1">
         <div class="task-workspace-master-detail">
           <aside class="task-workspace-master-pane" aria-label="Workspace navigation">
@@ -136,6 +147,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       <caffold-claude-runtime-restart-dialog></caffold-claude-runtime-restart-dialog>
     `;
     this.backButton = this.querySelector(".task-workspace-back");
+    this.taskSwitcherButton = this.querySelector(".task-workspace-switcher");
     this.workspaceSurface = this.querySelector(":scope > .task-workspace-surface");
     this.masterDetail = this.querySelector(".task-workspace-master-detail");
     this.masterPane = this.querySelector(".task-workspace-master-pane");
@@ -190,11 +202,16 @@ class CaffoldTaskWorkspace extends HTMLElement {
         }),
       );
     });
+    this.taskSwitcherButton.addEventListener("click", () => {
+      this.openTaskSwitcher();
+    });
     this.taskNavigator.addEventListener(
       "caffold:task-navigator-intent",
       (event) => {
         if (event.detail?.type === "delete-archived-task") {
           this.archivedDeleteDialog.openTask(event.detail.task);
+        } else if (event.detail?.type === "open-task-switcher") {
+          this.openTaskSwitcher();
         }
       },
     );
@@ -309,6 +326,13 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.backButton.innerHTML = renderInlineIcon(
         "ArrowLeft",
         "Back to tasks",
+        "task-workspace-route-control-icon",
+      );
+    }
+    if (this.taskSwitcherButton) {
+      this.taskSwitcherButton.innerHTML = renderInlineIcon(
+        "History",
+        "Switch task",
         "task-workspace-route-control-icon",
       );
     }
@@ -521,31 +545,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     const detailClipRoots = [this, this.querySelector(
       ":scope > .task-workspace-surface > .task-workspace-master-detail > .task-workspace-detail-pane",
     )].filter(Boolean);
-    const backButton = this.backButton;
-    const backVisible = Boolean(
-      backButton && !backButton.hidden && hasActionHintLayoutBox(backButton),
-    );
-    const ownScope = backVisible
-      ? {
-          blocked: false,
-          targets: [buttonActionHintTarget({
-            invalidationOwner: this,
-            id: "workspace:parent:tasks",
-            actionId: ACTION_HINT_ACTION.PARENT,
-            label: backButton.getAttribute("aria-label") || "Back",
-            control: backButton,
-            clipRoots: [this],
-            isActionable: () =>
-              this.isConnected &&
-              !this.hidden &&
-              !backButton.hidden &&
-              this.backButton === backButton &&
-              !backButton.disabled,
-          })],
-          mutationRoots: [backButton],
-          scrollRoots: [],
-        }
-      : emptyActionHintScope();
     const modeScope = this.mode === "tasks"
       ? this.tasksPage?.actionHintScope()
       : this.mode === "notes"
@@ -592,7 +591,18 @@ class CaffoldTaskWorkspace extends HTMLElement {
         })
       : null;
     return mergeActionHintScopes(
-      ownScope,
+      routeControlActionHintScope(this, this.backButton, {
+        id: "workspace:parent:tasks",
+        actionId: ACTION_HINT_ACTION.PARENT,
+        fallbackLabel: "Back",
+        retained: () => this.backButton,
+      }),
+      routeControlActionHintScope(this, this.taskSwitcherButton, {
+        id: "workspace:task-switcher:open",
+        actionId: ACTION_HINT_ACTION.TASK_SWITCHER_OPEN,
+        fallbackLabel: "Switch task",
+        retained: () => this.taskSwitcherButton,
+      }),
       hasActionHintLayoutBox(this.navigation)
         ? this.navigation.actionHintScope({
             scopeId: "workspace",
@@ -773,6 +783,9 @@ class CaffoldTaskWorkspace extends HTMLElement {
     );
 
     this.backButton.hidden = !showBack;
+    // Back is what stands in for the Task list, whose own header carries the
+    // switcher whenever the list is on screen.
+    this.taskSwitcherButton.hidden = !showBack;
     this.toggleAttribute("data-workspace-route-control-visible", showBack);
     this.dataset.workspaceMode = this.mode ?? "tasks";
     this.syncPresentationState();
@@ -819,6 +832,35 @@ class CaffoldTaskWorkspace extends HTMLElement {
       `${this.masterResizer.value}px`,
     );
   }
+}
+
+function routeControlActionHintScope(
+  workspace,
+  control,
+  { id, actionId, fallbackLabel, retained },
+) {
+  if (!control || control.hidden || !hasActionHintLayoutBox(control)) {
+    return null;
+  }
+  return {
+    blocked: false,
+    targets: [buttonActionHintTarget({
+      invalidationOwner: workspace,
+      id,
+      actionId,
+      label: control.getAttribute("aria-label") || fallbackLabel,
+      control,
+      clipRoots: [workspace],
+      isActionable: () =>
+        workspace.isConnected &&
+        !workspace.hidden &&
+        !control.hidden &&
+        retained() === control &&
+        !control.disabled,
+    })],
+    mutationRoots: [control],
+    scrollRoots: [],
+  };
 }
 
 customElements.define("caffold-task-workspace", CaffoldTaskWorkspace);

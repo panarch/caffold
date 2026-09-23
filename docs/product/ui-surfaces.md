@@ -31,7 +31,7 @@ The Task navigator provides:
 - repository grouping derived from canonical Task cwd/worktree state;
 - task title, recency, availability, and unseen-completion state;
 - exclusive Task and Section reorder modes for the persistent Active order;
-- New Task, Archive, Restore, and eligible delete actions.
+- Task Switcher, New Task, Archive, Restore, and eligible delete actions.
 
 Managed Section headers are selectable and open Section Detail. Recovery group
 headings remain labels only. The selected Section is represented by local id;
@@ -51,9 +51,17 @@ without requiring the Task to appear in the currently loaded navigator page.
 The Task Switcher is a modal list of the active Tasks ordered by when each one
 last finished a turn, newest first. That is also the time a row shows when it
 has nothing else to report, so the column reads in order. Merely opening a Task
-does not carry it up the list. Keyboard navigation is its only entry point, and
-it is offered on the Tasks surface, which is where the active Task list is
-held.
+does not carry it up the list. It is offered on the Tasks surface, which is
+where the active Task list is held.
+
+`T` opens it from the keyboard, and a Switch task button opens it by pointer.
+That button stands with whatever holds the Task list's place: the Task
+navigator header while the list is on screen, and the compact Back when a
+Task, Section, or New Task has replaced the list, so no screen shows two. Wide
+code surfaces show neither the navigator nor that Back, and compact file and
+domain screens show a deeper Back instead, so there the Task Switcher opens
+with `T` or from the Conversation. The X in its header closes it, as do Escape
+and a click or tap outside it.
 
 It takes that order from the first loaded Task list and keeps it until it
 closes, so a Task that finishes while the list is open does not move the row

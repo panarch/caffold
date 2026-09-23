@@ -811,6 +811,11 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-control-hit-size",
     ],
     [
+      "pages/(task-workspace)/tasks/components/task-switcher-dialog.css",
+      ".task-switcher-close",
+      "--interface-control-hit-size",
+    ],
+    [
       "pages/(task-workspace)/tasks/components/composer.css",
       ".task-primary-action-button",
       "--interface-control-hit-size",
@@ -1018,6 +1023,11 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     [
       "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
       ".task-image-preview-close::before",
+      "--interface-control-hit-outset",
+    ],
+    [
+      "pages/(task-workspace)/tasks/components/task-switcher-dialog.css",
+      ".task-switcher-close::before",
       "--interface-control-hit-outset",
     ],
     ["pages/(task-workspace)/layout.css", ".task-workspace-route-control::before", "--interface-compact-hit-outset"],

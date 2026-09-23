@@ -89,7 +89,18 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     workspace,
     /closeActiveSubview|tasksPage\.taskDetailView|tasksPage\?\.taskDetailView/,
   );
-  assert.match(workspace, /class="task-workspace-route-control task-workspace-back"/);
+  const routeControls = workspace.match(
+    /<div class="task-workspace-route-controls">[\s\S]*?<\/div>/,
+  )?.[0];
+  assert.ok(routeControls, "workspace must group its compact route controls");
+  assert.match(
+    routeControls,
+    /class="task-workspace-route-control task-workspace-back"/,
+  );
+  assert.match(
+    routeControls,
+    /class="task-workspace-route-control task-workspace-switcher"/,
+  );
   assert.doesNotMatch(tasksPage, /<caffold-task-navigator|workspaceNavigationHost/);
   assert.doesNotMatch(tasksPage, /closeActiveSubview/);
   assert.doesNotMatch(taskSummary, /getGitRefs|\/api\/git\/refs/);
@@ -877,9 +888,16 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
   assert.match(api, /body: \{ beforeThreadId: beforeThreadId \?\? null \}/);
   assert.match(api, /export async function reorderSection\(sectionId, beforeSectionId\)/);
   assert.match(api, /body: \{ beforeSectionId: beforeSectionId \?\? null \}/);
+  const switcherControl = navigator.indexOf(
+    'data-task-action="open-task-switcher"',
+  );
   const reorderControl = navigator.indexOf('data-task-action="toggle-reorder"');
   const newControl = navigator.indexOf('data-task-action="open-new"');
-  assert.ok(reorderControl >= 0 && reorderControl < newControl);
+  assert.ok(
+    switcherControl >= 0 &&
+      switcherControl < reorderControl &&
+      reorderControl < newControl,
+  );
   assert.match(navigator, /aria-pressed="\$\{this\.reorderMode !== "none"\}"/);
   assert.match(navigator, /popover="auto"/);
   assert.match(navigator, />Reorder Tasks<\/button>/);
