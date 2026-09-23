@@ -203,11 +203,22 @@ request once, or it does not, in which case the request is the person's. It is
 never asked to refuse, to allow for a session, or to allow always. A persistent
 grant would be the agent's own, and the next request of that shape would never
 be asked about at all, which is the opposite of what choosing this mode says.
-TypeSafe sometimes refuses a key it accepts moments before and after, so a call
-refused for its key is made once more, and both calls share one timeout. A
-timeout, a rate limit, a key refused twice, unreadable settings, an answer
-outside 0 to 1 — all of it ends the same way: the request is the person's,
-exactly as it is without Jev.
+TypeSafe is asked once, with five seconds to answer. Its API sits behind
+Cloudflare, whose firewall reads each request and refuses some that carry shell
+commands before TypeSafe sees them. It refuses the same request every time, so
+asking again cannot help, and the request is never reworded to get past it,
+because Jev would then judge something other than what the agent will run. Such
+a refusal lacks the request id TypeSafe's own refusals carry, which is how
+Caffold records it as blocked rather than as a rejected key. A block, a
+timeout, a rate limit, a rejected key, unreadable settings, an answer outside 0
+to 1 — all of it ends the same way: the request is the person's, exactly as it
+is without Jev.
+
+Every question asked about a permission request or a prompt leaves one line in
+the host's log, naming the Task and, for a permission request, the approval.
+The line holds the answer and how long it took, or why there was none: the HTTP
+status with the identifiers TypeSafe and Cloudflare gave the response, or the
+connection error. The request itself is never written there.
 
 The question is one gate, and it asks only whether the person should be asked
 before the request runs. It does not ask whether the request is permitted:

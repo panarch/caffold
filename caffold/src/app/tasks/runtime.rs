@@ -317,7 +317,7 @@ impl TaskRuntime {
                 return;
             };
             if !reviewer
-                .is_permission_instruction(&prompt, kept_already.as_deref())
+                .is_permission_instruction(&thread_id, &prompt, kept_already.as_deref())
                 .await
             {
                 return;

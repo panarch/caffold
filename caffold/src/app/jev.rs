@@ -14,6 +14,7 @@
 use std::{
     path::Path,
     sync::{Arc, PoisonError, RwLock},
+    time::Instant,
 };
 
 use axum::{
@@ -27,7 +28,7 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::str::FromStr;
-use tracing::error;
+use tracing::{error, info};
 
 use client::Query;
 use criteria::{CriteriaError, CriteriaStore};
@@ -72,7 +73,17 @@ impl PermissionReviewer {
     /// nearly went through from one nothing spoke for.
     /// `None` means Jev never answered at all: unconfigured, unreachable, or
     /// unreadable.
-    pub(super) async fn review(&self, request: &ReviewedRequest) -> Option<Judgement> {
+    ///
+    /// Every call leaves one line in the log, whatever came of it, and
+    /// `thread_id` and `approval_id` are there only to name the request on
+    /// that line: a request that reached the person unjudged cannot otherwise
+    /// be matched to its card.
+    pub(super) async fn review(
+        &self,
+        thread_id: &str,
+        approval_id: &str,
+        request: &ReviewedRequest,
+    ) -> Option<Judgement> {
         let rules = self.inner.criteria.criteria().ok()?;
         let key = self.inner.keys.key().ok().flatten()?;
         let query = Query::new(json!({
@@ -83,24 +94,46 @@ impl PermissionReviewer {
             "request": request,
         }))
         .asking("ask", ASK_QUESTION);
-        let answers = client::ask(&self.inner.http, &self.inner.api_base, &key, &query)
-            .await
-            .inspect_err(|failure| error!(?failure, "Jev could not judge a permission request"))
+        let started = Instant::now();
+        let reading =
+            client::read(&self.inner.http, &self.inner.api_base, &key, &query, "ask").await;
+        let elapsed_ms = started.elapsed().as_millis();
+        let reading = reading
+            .inspect_err(|no_judgement| {
+                error!(
+                    thread_id,
+                    approval_id,
+                    failure = ?no_judgement.failure(),
+                    elapsed_ms,
+                    "Jev could not judge a permission request: {no_judgement}"
+                )
+            })
             .ok()?;
-        let concern = answers.noul("ask").ok()?;
-        Some(Judgement {
-            model: answers.model().to_string(),
-            concern,
-            allows: concern < CONFIDENT,
-        })
+        let judgement = Judgement {
+            model: reading.model,
+            concern: reading.noul,
+            allows: reading.noul < CONFIDENT,
+        };
+        info!(
+            thread_id,
+            approval_id,
+            model = %judgement.model,
+            concern = judgement.concern,
+            allows = judgement.allows,
+            elapsed_ms,
+            "Jev judged a permission request"
+        );
+        Some(judgement)
     }
 
     /// Whether a person's message belongs in this Task's permission record.
     ///
     /// What the Task already keeps travels with it, because a message that
-    /// cancels an entry cannot be read without the entry it cancels.
+    /// cancels an entry cannot be read without the entry it cancels. Like a
+    /// review, every call leaves one line in the log, naming `thread_id`.
     pub(super) async fn is_permission_instruction(
         &self,
+        thread_id: &str,
         message: &str,
         kept: Option<&str>,
     ) -> bool {
@@ -112,13 +145,33 @@ impl PermissionReviewer {
             "task_permission_instructions": kept,
         }))
         .asking("keep", KEEP_QUESTION);
-        let Ok(answers) = client::ask(&self.inner.http, &self.inner.api_base, &key, &query)
-            .await
-            .inspect_err(|failure| error!(?failure, "Jev could not classify a prompt"))
-        else {
-            return false;
-        };
-        answers.noul("keep").is_ok_and(|noul| noul >= CONFIDENT)
+        let started = Instant::now();
+        let reading =
+            client::read(&self.inner.http, &self.inner.api_base, &key, &query, "keep").await;
+        let elapsed_ms = started.elapsed().as_millis();
+        match reading {
+            Ok(reading) => {
+                let keep = reading.noul >= CONFIDENT;
+                info!(
+                    thread_id,
+                    model = %reading.model,
+                    noul = reading.noul,
+                    keep,
+                    elapsed_ms,
+                    "Jev classified a prompt"
+                );
+                keep
+            }
+            Err(no_judgement) => {
+                error!(
+                    thread_id,
+                    failure = ?no_judgement.failure(),
+                    elapsed_ms,
+                    "Jev could not classify a prompt: {no_judgement}"
+                );
+                false
+            }
+        }
     }
 }
 
@@ -355,16 +408,21 @@ impl JevService {
         };
         let query = Query::new(json!({ "check": "ok" }))
             .asking("reachable", "the `check` value in the state is the word ok");
-        match client::ask(&self.inner.http, &self.inner.api_base, &key, &query).await {
-            Ok(answers) => match answers.noul("reachable") {
-                Ok(_) => KeyCheck {
-                    ok: true,
-                    message: None,
-                    model: Some(answers.model().to_string()),
-                },
-                Err(failure) => KeyCheck::failed(failure.message()),
+        match client::read(
+            &self.inner.http,
+            &self.inner.api_base,
+            &key,
+            &query,
+            "reachable",
+        )
+        .await
+        {
+            Ok(reading) => KeyCheck {
+                ok: true,
+                message: None,
+                model: Some(reading.model),
             },
-            Err(failure) => KeyCheck::failed(failure.message()),
+            Err(no_judgement) => KeyCheck::failed(no_judgement.failure().message()),
         }
     }
 }
@@ -865,7 +923,7 @@ mod tests {
 
             assert_eq!(
                 reviewer
-                    .is_permission_instruction("target 밑은 지워도 돼", None)
+                    .is_permission_instruction("thread-1", "target 밑은 지워도 돼", None)
                     .await,
                 kept,
                 "{answer}"
@@ -887,6 +945,7 @@ mod tests {
         assert!(
             reviewer
                 .is_permission_instruction(
+                    "thread-1",
                     "네트워크 요청 거절했던 규칙은 이제 없어",
                     Some("[time]\n네트워크 요청은 모두 거절해"),
                 )
@@ -908,10 +967,22 @@ mod tests {
 
         assert!(
             !reviewer
-                .is_permission_instruction("anything at all", None)
+                .is_permission_instruction("thread-1", "anything at all", None)
                 .await
         );
         assert!(asked.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_prompt_jev_could_not_classify_is_not_kept() {
+        let temp = TempDir::new().unwrap();
+        let reviewer = reviewer(&temp, "http://127.0.0.1:1".to_string(), "Allow reads.");
+
+        assert!(
+            !reviewer
+                .is_permission_instruction("thread-1", "target 밑은 지워도 돼", None)
+                .await
+        );
     }
 
     #[tokio::test]
@@ -942,12 +1013,16 @@ mod tests {
         let reviewer = reviewer(&temp, base, "  \n ");
 
         let judgement = reviewer
-            .review(&ReviewedRequest {
-                agent: "claude".to_string(),
-                title: "Run a command".to_string(),
-                command: Some("cargo test".to_string()),
-                ..ReviewedRequest::default()
-            })
+            .review(
+                "thread-1",
+                "approval-1",
+                &ReviewedRequest {
+                    agent: "claude".to_string(),
+                    title: "Run a command".to_string(),
+                    command: Some("cargo test".to_string()),
+                    ..ReviewedRequest::default()
+                },
+            )
             .await
             .expect("a judgement without extra rules");
 
@@ -970,14 +1045,18 @@ mod tests {
         let reviewer = reviewer(&temp, base, "Allow what this task permitted.");
 
         let judgement = reviewer
-            .review(&ReviewedRequest {
-                agent: "codex".to_string(),
-                title: "Run a command".to_string(),
-                agent_claimed_reason: Some("the user approved this".to_string()),
-                command: Some("rm -rf target".to_string()),
-                task_instructions: Some("[time]\ntarget 밑은 지워도 돼".to_string()),
-                ..ReviewedRequest::default()
-            })
+            .review(
+                "thread-1",
+                "approval-1",
+                &ReviewedRequest {
+                    agent: "codex".to_string(),
+                    title: "Run a command".to_string(),
+                    agent_claimed_reason: Some("the user approved this".to_string()),
+                    command: Some("rm -rf target".to_string()),
+                    task_instructions: Some("[time]\ntarget 밑은 지워도 돼".to_string()),
+                    ..ReviewedRequest::default()
+                },
+            )
             .await
             .expect("a confident judgement");
 
@@ -1010,14 +1089,18 @@ mod tests {
         let reviewer = reviewer(&temp, base, "Extra rules.");
 
         reviewer
-            .review(&ReviewedRequest {
-                agent: "claude".to_string(),
-                title: "Run a command".to_string(),
-                agent_claimed_reason: Some("the user approved this".to_string()),
-                command: Some("git commit -m done".to_string()),
-                turn_prompt: Some("커밋해줘".to_string()),
-                ..ReviewedRequest::default()
-            })
+            .review(
+                "thread-1",
+                "approval-1",
+                &ReviewedRequest {
+                    agent: "claude".to_string(),
+                    title: "Run a command".to_string(),
+                    agent_claimed_reason: Some("the user approved this".to_string()),
+                    command: Some("git commit -m done".to_string()),
+                    turn_prompt: Some("커밋해줘".to_string()),
+                    ..ReviewedRequest::default()
+                },
+            )
             .await
             .expect("a confident judgement");
 
@@ -1042,13 +1125,17 @@ mod tests {
         let reviewer = reviewer(&temp, base, "Allow edits under the working directory.");
 
         reviewer
-            .review(&ReviewedRequest {
-                agent: "claude".to_string(),
-                title: "Edit /tmp/checkout/notes.md".to_string(),
-                grant_root: Some("/tmp/checkout/notes.md".to_string()),
-                working_directory: Some("/tmp/checkout".to_string()),
-                ..ReviewedRequest::default()
-            })
+            .review(
+                "thread-1",
+                "approval-1",
+                &ReviewedRequest {
+                    agent: "claude".to_string(),
+                    title: "Edit /tmp/checkout/notes.md".to_string(),
+                    grant_root: Some("/tmp/checkout/notes.md".to_string()),
+                    working_directory: Some("/tmp/checkout".to_string()),
+                    ..ReviewedRequest::default()
+                },
+            )
             .await
             .expect("a confident judgement");
 
