@@ -999,8 +999,8 @@ test("holds the Codex rows while its first readiness check is still running", { 
   await expect(list.locator("[data-key='connection'] dd")).toHaveText("Checking");
   await expect(list.locator("dd[data-unknown]")).toHaveCount(8);
   await expect(list.locator("dl")).toHaveAttribute("aria-busy", "true");
-  await expect(usage.locator("dt")).toHaveText(["Reset credits"]);
-  await expect(usage.locator("dd[data-unknown]")).toHaveCount(1);
+  await expect(usage.locator("dt")).toHaveCount(0);
+  await expect(codex.locator("[data-reset-credit-count]")).toHaveText("—");
   await captureReviewScreenshot(page, testInfo, "settings-codex-first-paint");
 
   releaseStatus();
@@ -1011,7 +1011,6 @@ test("holds the Codex rows while its first readiness check is still running", { 
   await expect(usage.locator("dt")).toHaveText([
     "5 hours",
     "1 week",
-    "Reset credits",
   ]);
   await expect(usage.locator("[data-key='primary'] dd")).toHaveText(
     /83% used · resets .+\d:\d{2}/,
@@ -1095,7 +1094,6 @@ test("shows every usage limit Codex reports, its single-bucket limit first", { t
     "1 week",
     "5 hours · GPT-5.3-Codex-Spark",
     "1 week · GPT-5.3-Codex-Spark",
-    "Reset credits",
   ]);
   await expect(usage.locator("[data-key='codex:primary'] dd")).toHaveText(
     /86% used · resets .+\d:\d{2}/,
@@ -1114,6 +1112,259 @@ test("shows every usage limit Codex reports, its single-bucket limit first", { t
     .toEqual([]);
   await usage.scrollIntoViewIfNeeded();
   await captureReviewScreenshot(page, testInfo, "settings-codex-usage-limits");
+});
+
+test("shows reset expiration and requires confirmation before consuming a credit", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  let availableCount = 1;
+  let statusReads = 0;
+  const consumeRequests = [];
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    statusReads += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus({
+        rateLimits: {
+          rateLimitResetCredits: {
+            availableCount,
+            credits: availableCount ? [{
+              id: "RateLimitResetCredit_1",
+              resetType: "codexRateLimits",
+              status: "available",
+              title: "Full reset for Codex primary and weekly rate-limit windows",
+              description: "Reset an eligible Codex rate-limit window. This provider description can be long enough to wrap on a narrow screen.",
+              grantedAt: 1790108687,
+              expiresAt: 1792700687,
+            }] : [],
+          },
+        },
+      })),
+    });
+  });
+  await page.route(/\/api\/codex\/reset-credits\/consume(?:\?|$)/, async (route) => {
+    consumeRequests.push(route.request().postDataJSON());
+    availableCount = 0;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ outcome: "reset" }),
+    });
+  });
+
+  await page.goto("/settings/codex");
+  const credits = page.locator("caffold-settings-codex-page .settings-codex-reset-credits");
+  await expect(credits.locator("[data-reset-credit-count]")).toHaveText("1 available");
+  await expect(credits.locator("time")).toHaveAttribute(
+    "datetime", "2026-10-22T20:24:47.000Z",
+  );
+  const expiryLabel = await credits.locator("time").textContent();
+  expect(expiryLabel).not.toContain("2026");
+  expect(expiryLabel).not.toContain("GMT");
+  await expect(credits.getByText(/^Full reset for Codex/)).toBeVisible();
+  await expect(credits.getByText(/^Reset an eligible Codex rate-limit window/))
+    .toHaveCount(0);
+  expect(await credits.evaluate((element) => element.scrollWidth > element.clientWidth))
+    .toBe(false);
+  await credits.scrollIntoViewIfNeeded();
+  await captureReviewScreenshot(page, testInfo, "settings-codex-reset-credits");
+
+  const use = credits.getByRole("button", { name: "Use this reset" });
+  await use.evaluate((element) => { window.__resetCreditButton = element; });
+  const previousReads = statusReads;
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect.poll(() => statusReads).toBeGreaterThan(previousReads);
+  await expect(use).toBeEnabled();
+  expect(await use.evaluate((element) => element === window.__resetCreditButton)).toBe(true);
+  const dialog = page.locator("caffold-codex-reset-credit-dialog > dialog");
+  await use.click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator("[data-reset-selection]")).toContainText(`expires ${expiryLabel}`);
+  expect(await dialog.evaluate((element) => element.scrollWidth > element.clientWidth))
+    .toBe(false);
+  await captureReviewScreenshot(page, testInfo, "settings-codex-reset-confirmation");
+  expect(consumeRequests).toHaveLength(0);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(use).toBeFocused();
+  expect(consumeRequests).toHaveLength(0);
+
+  await use.click();
+  await dialog.getByRole("button", { name: "Use reset credit" }).click();
+  await expect.poll(() => consumeRequests.length).toBe(1);
+  expect(consumeRequests[0].creditId).toBe("RateLimitResetCredit_1");
+  expect(consumeRequests[0].idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+  await expect(credits.locator("[data-reset-credit-count]")).toHaveText("0 available");
+  await expect(credits.getByText("No reset credits available.")).toBeVisible();
+});
+
+test("lists every reported available reset without provider descriptions", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  let consumeRequests = 0;
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus({
+        rateLimits: { rateLimitResetCredits: {
+          availableCount: 2,
+          credits: [
+            {
+              id: "later",
+              status: "available",
+              title: "Later reset",
+              description: "A provider announcement for the later reset.",
+              expiresAt: 1795382687,
+            },
+            {
+              id: "earlier",
+              status: "available",
+              title: "Earlier reset",
+              description: "A provider announcement for the earlier reset.",
+              expiresAt: 1792700687,
+            },
+          ],
+        } },
+      })),
+    }),
+  );
+  await page.route(/\/api\/codex\/reset-credits\/consume(?:\?|$)/, (route) => {
+    consumeRequests += 1;
+    return route.abort();
+  });
+
+  await page.goto("/settings/codex");
+  const credits = page.locator("caffold-settings-codex-page .settings-codex-reset-credits");
+  await expect(credits.locator("[data-reset-credit-count]")).toHaveText("2 available");
+  await expect(credits.locator(".settings-codex-reset-credit h5"))
+    .toHaveText(["Earlier reset", "Later reset"]);
+  await expect(credits.getByRole("button", { name: "Use this reset" })).toHaveCount(2);
+  await expect(credits.getByText(/A provider announcement/)).toHaveCount(0);
+  await credits.scrollIntoViewIfNeeded();
+  await captureReviewScreenshot(page, testInfo, "settings-codex-multiple-reset-credits");
+
+  await credits.getByRole("button", { name: "Use this reset" }).last().click();
+  const dialog = page.locator("caffold-codex-reset-credit-dialog > dialog");
+  await expect(dialog.locator("[data-reset-selection]")).toContainText("Later reset");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  expect(consumeRequests).toBe(0);
+});
+
+test("offers a generic reset when Codex omits individual credit details", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  let consumeRequests = 0;
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus({
+        rateLimits: {
+          rateLimitResetCredits: { availableCount: 2, credits: null },
+        },
+      })),
+    }),
+  );
+  await page.route(/\/api\/codex\/reset-credits\/consume(?:\?|$)/, (route) => {
+    consumeRequests += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ outcome: "noCredit" }),
+    });
+  });
+
+  await page.goto("/settings/codex");
+  const credits = page.locator("caffold-settings-codex-page .settings-codex-reset-credits");
+  await expect(credits.locator("[data-reset-credit-count]")).toHaveText("2 available");
+  await expect(credits.getByText("2 credits cannot be selected individually from Codex's details."))
+    .toBeVisible();
+  await credits.getByRole("button", { name: "Let Codex choose a reset" }).click();
+  const dialog = page.locator("caffold-codex-reset-credit-dialog > dialog");
+  await expect(dialog.getByText("Codex will choose an available credit.", { exact: false }))
+    .toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  expect(consumeRequests).toBe(0);
+});
+
+test("retries an uncertain reset only after confirming the same request", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  let availableCount = 1;
+  const requests = [];
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus({
+        rateLimits: { rateLimitResetCredits: {
+          availableCount,
+          credits: availableCount
+            ? [{ id: "credit-1", status: "available", expiresAt: 1792700687 }]
+            : [],
+        } },
+      })),
+    }),
+  );
+  await page.route(/\/api\/codex\/reset-credits\/consume(?:\?|$)/, (route) => {
+    requests.push(route.request().postDataJSON());
+    if (requests.length === 1) return route.abort("failed");
+    availableCount = 0;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ outcome: "alreadyRedeemed" }),
+    });
+  });
+
+  await page.goto("/settings/codex");
+  const credits = page.locator("caffold-settings-codex-page .settings-codex-reset-credits");
+  const dialog = page.locator("caffold-codex-reset-credit-dialog > dialog");
+  await credits.getByRole("button", { name: "Use this reset" }).click();
+  await dialog.getByRole("button", { name: "Use reset credit" }).click();
+  await expect.poll(() => requests.length).toBe(1);
+  await expect(credits.getByRole("button", { name: "Retry previous reset request" }))
+    .toBeVisible();
+
+  await credits.getByRole("button", { name: "Retry previous reset request" }).click();
+  await expect(dialog.getByRole("heading", { name: "Retry this reset request?" }))
+    .toBeVisible();
+  expect(requests).toHaveLength(1);
+  await dialog.getByRole("button", { name: "Retry request" }).click();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests[1]).toEqual(requests[0]);
+  await expect(credits.locator("[data-reset-credit-count]")).toHaveText("0 available");
+  await expect(credits.getByText("This reset request was already completed.")).toBeVisible();
+});
+
+test("does not present a stale reset credit as available after a failed refresh", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  let failStatus = false;
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill(failStatus
+      ? { status: 503, contentType: "application/json", body: '{}' }
+      : {
+        contentType: "application/json",
+        body: JSON.stringify(mockCodexStatus({
+          rateLimits: { rateLimitResetCredits: {
+            availableCount: 1,
+            credits: [{ id: "credit-1", status: "available", expiresAt: 1792700687 }],
+          } },
+        })),
+      }),
+  );
+  await page.route(/\/api\/codex\/reset-credits\/consume(?:\?|$)/, (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: '{}',
+    }),
+  );
+
+  await page.goto("/settings/codex");
+  const credits = page.locator("caffold-settings-codex-page .settings-codex-reset-credits");
+  await expect(credits.locator("[data-reset-credit-count]")).toHaveText("1 available");
+  failStatus = true;
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(credits.locator("[data-reset-credit-count]")).toHaveText("Unavailable");
+  await expect(credits.getByText("Could not refresh reset credits. Try Refresh.")).toBeVisible();
+  await expect(credits.getByRole("button", { name: "Use this reset" })).toHaveCount(0);
 });
 
 test("holds the Claude agent rows while its first report is still loading", { tag: "@desktop" }, async ({

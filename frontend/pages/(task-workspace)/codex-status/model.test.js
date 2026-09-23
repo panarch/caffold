@@ -3,10 +3,14 @@ import test from "node:test";
 import {
   codexBlocksTaskOperations,
   codexRateWindows,
+  codexResetCredits,
   codexRuntimeRestartAvailable,
   codexSetupVisible,
   createCodexStatusSnapshot,
+  formatRateReset,
   formatRateWindowLabel,
+  formatResetCredits,
+  resetCreditExpiry,
   sameCodexStatus,
   taskStoreOperationsPresentation,
   taskStoreRecoveryVisible,
@@ -212,4 +216,45 @@ test("a usage change in any reported limit is a different status", () => {
 
   assert.equal(sameCodexStatus(status(), status()), true);
   assert.equal(sameCodexStatus(status(), changed), false);
+});
+
+test("reset credit details are sorted by expiration while the count stays authoritative", () => {
+  const status = {
+    rateLimits: {
+      rateLimitResetCredits: {
+        availableCount: 3,
+        credits: [
+          { id: "later", status: "available", expiresAt: 1792700687 },
+          { id: "earlier", status: "available", expiresAt: 1790108687 },
+        ],
+      },
+    },
+  };
+  assert.equal(formatResetCredits(status), "3 available");
+  assert.deepEqual(codexResetCredits(status).credits.map(({ id }) => id), [
+    "earlier", "later",
+  ]);
+  assert.equal(resetCreditExpiry(1792700687).datetime, "2026-10-22T20:24:47.000Z");
+  assert.equal(
+    resetCreditExpiry(1792700687).label,
+    formatRateReset({ resetsAt: 1792700687 }),
+  );
+  assert.equal(resetCreditExpiry(null), null);
+  assert.equal(resetCreditExpiry(true), null);
+  assert.equal(resetCreditExpiry(1e20), null);
+  assert.equal(codexResetCredits({ rateLimits: {
+    rateLimitResetCredits: { availableCount: 2, credits: null },
+  } }).credits, null);
+  assert.equal(formatResetCredits({}), "-");
+});
+
+test("a changed credit expiry updates the Codex status even when the count stays the same", () => {
+  const status = (expiresAt) => ({
+    rateLimits: { rateLimitResetCredits: {
+      availableCount: 1,
+      credits: [{ id: "credit-1", status: "available", expiresAt }],
+    } },
+  });
+  assert.equal(sameCodexStatus(status(1792700687), status(1792700687)), true);
+  assert.equal(sameCodexStatus(status(1792700687), status(1792700688)), false);
 });

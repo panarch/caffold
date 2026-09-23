@@ -453,6 +453,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js"
             )))
         }
+        "pages/(task-workspace)/codex-status/components/reset-credit-dialog.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/codex-status/components/reset-credit-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/codex-status/components/reset-credit-dialog.js"
+            )))
+        }
         "pages/(task-workspace)/codex-status/runtime-update-lifecycle.js" => {
             Some(js(include_str!(
                 "../../frontend/pages/(task-workspace)/codex-status/runtime-update-lifecycle.js"
@@ -1461,6 +1471,7 @@ mod tests {
             "pages/(task-workspace)/settings/jev/page.js",
             "pages/(task-workspace)/settings/jev/lifecycle.js",
             "pages/(task-workspace)/settings/codex/page.js",
+            "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
             "pages/(task-workspace)/settings/claude/page.js",
             "pages/(task-workspace)/settings/claude/display.js",
             "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
@@ -1495,6 +1506,7 @@ mod tests {
             "pages/(task-workspace)/notes/components/info.css",
             "pages/(task-workspace)/notes/components/navigator.css",
             "pages/(task-workspace)/settings/keyboard/page.css",
+            "pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
         ] {
             let asset = get(path).unwrap_or_else(|| panic!("missing frontend CSS asset {path}"));
             assert_eq!(asset.content_type, "text/css; charset=utf-8");
@@ -2063,6 +2075,8 @@ mod tests {
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.css",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.js",
             "/assets/pages/(task-workspace)/codex-status/lifecycle.js",
+            "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
+            "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
         ] {
             assert!(
                 service_worker

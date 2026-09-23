@@ -11,7 +11,7 @@ export function sameCodexStatus(left, right) {
     left.account?.planType === right.account?.planType &&
     daemonSignature(left) === daemonSignature(right) &&
     usageSignature(left) === usageSignature(right) &&
-    formatResetCredits(left) === formatResetCredits(right)
+    resetCreditSignature(left) === resetCreditSignature(right)
   );
 }
 
@@ -296,8 +296,68 @@ export function formatRateReset(window) {
 }
 
 export function formatResetCredits(status) {
-  const count = Number(status?.rateLimits?.rateLimitResetCredits?.availableCount);
-  return Number.isFinite(count) ? `${count} available` : "-";
+  const credits = codexResetCredits(status);
+  return credits ? `${credits.availableCount} available` : "-";
+}
+
+export function codexResetCredits(status) {
+  const reported = status?.rateLimits?.rateLimitResetCredits;
+  const availableCount = reported?.availableCount;
+  if (!Number.isSafeInteger(availableCount) || availableCount < 0) {
+    return null;
+  }
+
+  const credits = Array.isArray(reported.credits)
+    ? reported.credits
+      .filter((credit) => credit && credit.status === "available")
+      .sort((left, right) => {
+        const leftExpiry = validEpochSeconds(left.expiresAt) ?? Infinity;
+        const rightExpiry = validEpochSeconds(right.expiresAt) ?? Infinity;
+        return leftExpiry - rightExpiry;
+      })
+      .slice(0, availableCount)
+    : null;
+  return { availableCount, credits };
+}
+
+export function resetCreditExpiry(expiresAt) {
+  const seconds = validEpochSeconds(expiresAt);
+  if (seconds === null) {
+    return null;
+  }
+  const date = new Date(seconds * 1000);
+  return {
+    datetime: date.toISOString(),
+    label: formatRateReset({ resetsAt: seconds }),
+  };
+}
+
+function validEpochSeconds(value) {
+  if (typeof value !== "number") {
+    return null;
+  }
+  return Number.isFinite(value) && value > 0 &&
+    Number.isFinite(new Date(value * 1000).getTime())
+    ? value
+    : null;
+}
+
+function resetCreditSignature(status) {
+  const credits = codexResetCredits(status);
+  if (!credits) {
+    return "unknown";
+  }
+  return JSON.stringify([
+    credits.availableCount,
+    credits.credits?.map((credit) => [
+      credit.id,
+      credit.resetType,
+      credit.status,
+      credit.grantedAt,
+      credit.expiresAt,
+      credit.title,
+    ]) ?? null,
+  ]);
 }
 
 function usageSignature(status) {

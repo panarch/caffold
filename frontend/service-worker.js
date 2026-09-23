@@ -138,6 +138,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
   "/assets/pages/(task-workspace)/codex-status/components/runtime-update-dialog.css",
   "/assets/pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
+  "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
+  "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
   "/assets/pages/(task-workspace)/notes/components/info.css",
   "/assets/pages/(task-workspace)/notes/components/info.js",
   "/assets/pages/(task-workspace)/notes/components/navigator.css",

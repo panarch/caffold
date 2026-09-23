@@ -8,6 +8,13 @@ export async function getCodexStatus() {
   return requestJson("/api/codex/status");
 }
 
+export async function consumeCodexResetCredit({ creditId = null, idempotencyKey }) {
+  return requestJson("/api/codex/reset-credits/consume", {}, {
+    method: "POST",
+    body: { creditId, idempotencyKey },
+  });
+}
+
 export async function getCodexMcpDiagnostics() {
   return requestJson("/api/codex/mcp-diagnostics", {}, { timeoutMs: 10_000 });
 }

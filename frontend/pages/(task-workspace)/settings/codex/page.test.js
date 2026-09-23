@@ -48,6 +48,9 @@ test("provides current Codex actions and its exact scrollport", () => {
   const copy = button("Copy command");
   const restart = button("Restart runtime");
   const update = button("Update Codex…");
+  const reset = button("Use this reset");
+  reset.dataset = { creditId: "credit-1" };
+  reset.isConnected = true;
   const guide = link("Official Codex CLI guide", "https://learn.chatgpt.com/docs/codex/cli");
   const status = link("Service status", "https://status.openai.com");
   const controls = new Map([
@@ -71,6 +74,9 @@ test("provides current Codex actions and its exact scrollport", () => {
       if (selector === ":scope > .settings-content-scroll") return scrollport;
       return controls.get(selector) ?? null;
     },
+    querySelectorAll(selector) {
+      return selector === 'button[data-action="use-reset-credit"]' ? [reset] : [];
+    },
   };
 
   const scope = codex.actionHintScope.call(owner);
@@ -80,6 +86,7 @@ test("provides current Codex actions and its exact scrollport", () => {
     "settings:codex:copy-install-command",
     "settings:codex:restart-runtime",
     "settings:codex:update-runtime",
+    "settings:codex:reset-credit:credit:credit-1",
     "settings:codex:official-guide",
   ]);
   assert.equal(scope.targets[1].label, "Open Service status in a new tab");
@@ -90,6 +97,8 @@ test("provides current Codex actions and its exact scrollport", () => {
   assert.equal(scope.targets[2].isActionable(), false);
   update.disabled = true;
   assert.equal(scope.targets[4].isActionable(), false);
+  reset.disabled = true;
+  assert.equal(scope.targets[5].isActionable(), false);
   status.hidden = true;
   assert.equal(scope.targets[1].isActionable(), false);
   guide.hidden = true;

@@ -373,6 +373,11 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     this.querySelector("caffold-settings-codex-page").setUpdateState(state);
   }
 
+  setCodexResetCreditState(state) {
+    this.ensureRendered();
+    this.querySelector("caffold-settings-codex-page").setResetCreditState(state);
+  }
+
   setCodexRuntimeAction(action) {
     this.ensureRendered();
     this.querySelector("caffold-settings-codex-page").setRuntimeAction(action);

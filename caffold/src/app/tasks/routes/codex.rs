@@ -1,6 +1,8 @@
 use super::{CodexStatusDiagnostics, CodexStatusPayload};
 use crate::agent::ApprovalDecision;
-use crate::agent::codex::{CodexDaemonInfo, CodexUpdateOutcome, CodexUpdateReport};
+use crate::agent::codex::{
+    CodexDaemonInfo, CodexUpdateOutcome, CodexUpdateReport, RateLimitResetCreditConsumeResponse,
+};
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
 use crate::task_store::RunBy;
@@ -12,7 +14,15 @@ use axum::Json;
 use axum::extract::State;
 use futures_util::StreamExt;
 use futures_util::stream;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ConsumeResetCreditRequest {
+    idempotency_key: String,
+    credit_id: Option<String>,
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,6 +56,34 @@ pub(super) async fn codex_status(State(state): State<TaskState>) -> Json<CodexSt
         status,
         diagnostics,
     })
+}
+
+pub(super) async fn codex_reset_credit_consume(
+    State(state): State<TaskState>,
+    Json(request): Json<ConsumeResetCreditRequest>,
+) -> Result<Json<RateLimitResetCreditConsumeResponse>, ApiError> {
+    if Uuid::parse_str(&request.idempotency_key).is_err() {
+        return Err(ApiError::BadRequest {
+            code: "invalid_idempotency_key",
+            message: "idempotencyKey must be a UUID".to_string(),
+        });
+    }
+    if request
+        .credit_id
+        .as_ref()
+        .is_some_and(|credit_id| credit_id.trim().is_empty())
+    {
+        return Err(ApiError::BadRequest {
+            code: "invalid_credit_id",
+            message: "creditId must not be empty".to_string(),
+        });
+    }
+
+    let client = state.task_runtime.client().await?;
+    let response = client
+        .consume_rate_limit_reset_credit(&request.idempotency_key, request.credit_id.as_deref())
+        .await?;
+    Ok(Json(response))
 }
 
 pub(super) async fn codex_mcp_diagnostics(
@@ -212,8 +250,11 @@ pub(super) fn normalize_approval_decision(decision: &str) -> Result<ApprovalDeci
 mod tests {
     use std::sync::Arc;
 
+    use axum::body::{Body, to_bytes};
+    use axum::http::{Request, StatusCode, header};
     use serde_json::json;
     use tokio::sync::broadcast;
+    use tower::ServiceExt;
 
     use super::*;
     use crate::{
@@ -224,6 +265,115 @@ mod tests {
         app::tasks::test_support::{manage_test_thread, task_state_with_codex_client},
         fs::RootedFs,
     };
+
+    #[tokio::test]
+    async fn reset_credit_consume_uses_the_selected_credit_and_idempotency_key() {
+        let root = tempfile::tempdir().unwrap();
+        let key = "8ae96ff3-3425-4f4c-8772-b6fd61502868";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok_for(
+            "account/rateLimitResetCredit/consume",
+            json!({ "idempotencyKey": key, "creditId": "RateLimitResetCredit_1" }),
+            json!({ "outcome": "reset" }),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let response = super::super::router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/codex/reset-credits/consume")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({
+                            "idempotencyKey": key,
+                            "creditId": "RateLimitResetCredit_1",
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+            json!({ "outcome": "reset" })
+        );
+        assert_eq!(client.mock_requests().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn reset_credit_consume_rejects_bad_input_before_any_codex_request() {
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(vec![]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let invalid_key = codex_reset_credit_consume(
+            State(state.clone()),
+            Json(ConsumeResetCreditRequest {
+                idempotency_key: "".to_string(),
+                credit_id: None,
+            }),
+        )
+        .await;
+        assert!(matches!(
+            invalid_key,
+            Err(ApiError::BadRequest {
+                code: "invalid_idempotency_key",
+                ..
+            })
+        ));
+
+        let invalid_id = codex_reset_credit_consume(
+            State(state),
+            Json(ConsumeResetCreditRequest {
+                idempotency_key: Uuid::new_v4().to_string(),
+                credit_id: Some(" ".to_string()),
+            }),
+        )
+        .await;
+        assert!(matches!(
+            invalid_id,
+            Err(ApiError::BadRequest {
+                code: "invalid_credit_id",
+                ..
+            })
+        ));
+        assert!(client.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reset_credit_consume_rejects_an_unknown_codex_outcome() {
+        let root = tempfile::tempdir().unwrap();
+        let key = "156275c7-cc8b-4668-819d-f37fdd583bab";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok_for(
+            "account/rateLimitResetCredit/consume",
+            json!({ "idempotencyKey": key }),
+            json!({ "outcome": "futureOutcome" }),
+        )]);
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+
+        let response = super::super::router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/codex/reset-credits/consume")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "idempotencyKey": key }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["error"]["code"], "agent_error");
+    }
 
     #[tokio::test]
     async fn mcp_diagnostics_report_unavailable_without_starting_a_codex_proxy() {

@@ -2,8 +2,10 @@ import { getCodexUpdates } from "../../../../api.js";
 import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
   CODEX_RUNTIME_UPDATE_REQUEST_EVENT,
+  CODEX_RESET_CREDIT_REQUEST_EVENT,
   CODEX_STATUS_REFRESH_REQUEST_EVENT,
   codexRateWindows,
+  codexResetCredits,
   codexRuntimeRestartAvailable,
   codexRuntimeUpdateAvailable,
   formatCodexAccount,
@@ -13,6 +15,7 @@ import {
   formatRateWindowLabel,
   formatResetCredits,
   formatUsedPercent,
+  resetCreditExpiry,
 } from "../../codex-status.js";
 import "../components/detail-list.js";
 import { SETTINGS_REFRESH_INTENT_EVENT } from "../components/refresh-button.js";
@@ -57,8 +60,20 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     this.updatesProblem = "";
     this.updatesOperation = 0;
     this.copyState = "idle";
+    this.resetCreditState = { state: "idle", message: "", retryPending: false };
     this.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
+      const resetCredit = target?.closest('[data-action="use-reset-credit"]');
+      if (resetCredit && !resetCredit.disabled) {
+        this.dispatchEvent(new CustomEvent(CODEX_RESET_CREDIT_REQUEST_EVENT, {
+          bubbles: true,
+          detail: {
+            creditId: resetCredit.dataset.creditId || null,
+            retry: resetCredit.dataset.retry === "true",
+          },
+        }));
+        return;
+      }
       if (target?.closest('[data-action="open-codex-restart"]')) {
         this.dispatchEvent(
           new CustomEvent(CODEX_RUNTIME_RESTART_REQUEST_EVENT, { bubbles: true }),
@@ -94,6 +109,9 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       return;
     }
     this.active = true;
+    this.dispatchEvent(
+      new CustomEvent(CODEX_STATUS_REFRESH_REQUEST_EVENT, { bubbles: true }),
+    );
     void this.reconcileUpdates();
   }
 
@@ -141,6 +159,13 @@ class CaffoldSettingsCodexPage extends HTMLElement {
 
   setRuntimeAction(action) {
     this.runtimeAction = action ?? "idle";
+    if (this.initialized) {
+      this.render();
+    }
+  }
+
+  setResetCreditState(value) {
+    this.resetCreditState = value ?? { state: "idle", message: "", retryPending: false };
     if (this.initialized) {
       this.render();
     }
@@ -240,6 +265,29 @@ class CaffoldSettingsCodexPage extends HTMLElement {
             hasActionHintLayoutBox(control),
         })];
       }),
+      ...[...(this.querySelectorAll?.('button[data-action="use-reset-credit"]') ?? [])]
+        .flatMap((control) => {
+          if (control.disabled || control.hidden || !hasActionHintLayoutBox(control)) {
+            return [];
+          }
+          const targetKey = control.dataset.retry === "true"
+            ? "retry"
+            : control.dataset.creditId
+              ? `credit:${control.dataset.creditId}`
+              : "auto";
+          return [buttonActionHintTarget({
+            invalidationOwner: this,
+            id: `${scopeId}:reset-credit:${targetKey}`,
+            actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            label: control.textContent?.trim() || "Use reset",
+            control,
+            clipRoots: targetClipRoots,
+            isActionable: () =>
+              this.isConnected && !this.hidden && isCurrent() &&
+              control.isConnected && !control.disabled && !control.hidden &&
+              hasActionHintLayoutBox(control),
+          })];
+        }),
     ];
     const guide = this.querySelector(
       '.settings-codex-repair a[href]',
@@ -341,6 +389,17 @@ class CaffoldSettingsCodexPage extends HTMLElement {
             <section aria-labelledby="settings-codex-usage-title">
               <h3 id="settings-codex-usage-title">Usage</h3>
               <caffold-settings-detail-list data-codex-usage></caffold-settings-detail-list>
+              <section class="settings-codex-reset-credits" aria-labelledby="settings-codex-reset-title">
+                <div class="settings-codex-reset-heading">
+                  <h4 id="settings-codex-reset-title">Reset credits</h4>
+                  <span data-reset-credit-count>—</span>
+                </div>
+                <div data-reset-credit-list></div>
+                <p data-reset-credit-note hidden></p>
+                <button type="button" data-action="use-reset-credit" data-reset-credit-generic hidden>Let Codex choose a reset</button>
+                <button type="button" data-action="use-reset-credit" data-reset-credit-retry data-retry="true" hidden>Retry previous reset request</button>
+                <p class="settings-runtime-message" data-reset-credit-message role="status" hidden></p>
+              </section>
             </section>
             <section aria-labelledby="settings-codex-agent-title">
               <h3 id="settings-codex-agent-title">Agent</h3>
@@ -479,14 +538,8 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       updatesProblem: this.updatesProblem,
     });
 
-    this.usageList.setRows([
-      ...usageWindowRows(status),
-      {
-        key: "reset-credits",
-        label: "Reset credits",
-        value: answered(formatResetCredits(status)),
-      },
-    ]);
+    this.usageList.setRows(usageWindowRows(status));
+    patchResetCredits(this, snapshot, this.resetCreditState, runtimeBusy);
 
     const diagnostic = this.querySelector(".settings-codex-diagnostic");
     diagnostic.hidden = !readiness?.diagnosticMessage;
@@ -501,6 +554,98 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     loadError.hidden = !loadErrorMessage;
     loadError.textContent = loadErrorMessage;
   }
+}
+
+function patchResetCredits(root, snapshot, action, runtimeBusy) {
+  const status = snapshot?.status;
+  const failed = snapshot?.phase === "failed";
+  const checking = snapshot?.phase === "checking" && !status;
+  const credits = failed ? null : codexResetCredits(status);
+  const count = root.querySelector("[data-reset-credit-count]");
+  count.textContent = checking ? "—" : failed ? "Unavailable" : formatResetCredits(status);
+  const list = root.querySelector("[data-reset-credit-list]");
+  const busy = ["submitting", "refreshing"].includes(action.state);
+  const enabled = snapshot?.phase === "loaded" &&
+    status?.readiness?.state === "ready" &&
+    status?.account?.accountType === "chatgpt" &&
+    !runtimeBusy && !busy && !action.retryPending;
+  const rows = credits?.credits ?? [];
+  const rowsKey = JSON.stringify(rows.map((credit) => [
+    credit.id, credit.title, credit.expiresAt,
+  ]));
+  if (list.resetCreditRowsKey !== rowsKey) {
+    list.replaceChildren(...rows.map(createResetCreditCard));
+    list.resetCreditRowsKey = rowsKey;
+  }
+  for (const use of list.querySelectorAll('button[data-action="use-reset-credit"]')) {
+    use.disabled = !enabled || !use.dataset.creditId;
+  }
+
+  const note = root.querySelector("[data-reset-credit-note]");
+  const unlisted = Math.max(0, (credits?.availableCount ?? 0) -
+    rows.filter((credit) => typeof credit.id === "string" && credit.id.trim()).length);
+  if (failed) {
+    note.textContent = "Could not refresh reset credits. Try Refresh.";
+  } else if (checking) {
+    note.textContent = "";
+  } else if (!credits) {
+    note.textContent = "Codex did not report reset credit availability.";
+  } else if (credits.availableCount === 0) {
+    note.textContent = "No reset credits available.";
+  } else {
+    note.textContent = unlisted > 0
+      ? `${unlisted} ${unlisted === 1 ? "credit cannot" : "credits cannot"} be selected individually from Codex's details.`
+      : "";
+  }
+  note.hidden = !note.textContent;
+  const generic = root.querySelector("[data-reset-credit-generic]");
+  generic.hidden = !credits || unlisted === 0 || action.retryPending;
+  generic.disabled = !enabled;
+  const retry = root.querySelector("[data-reset-credit-retry]");
+  retry.hidden = !action.retryPending;
+  retry.disabled = busy || runtimeBusy ||
+    status?.readiness?.state !== "ready" ||
+    status?.account?.accountType !== "chatgpt";
+  if (action.creditId) {
+    retry.dataset.creditId = action.creditId;
+  } else {
+    delete retry.dataset.creditId;
+  }
+  const message = root.querySelector("[data-reset-credit-message]");
+  message.textContent = action.message || "";
+  message.dataset.state = action.state;
+  message.hidden = !action.message;
+}
+
+function createResetCreditCard(credit) {
+  const card = document.createElement("article");
+  card.className = "settings-codex-reset-credit";
+  const details = document.createElement("div");
+  const title = document.createElement("h5");
+  title.textContent = credit.title || "Rate-limit reset";
+  details.append(title);
+  const expiry = document.createElement("p");
+  const when = resetCreditExpiry(credit.expiresAt);
+  expiry.append("Expires ");
+  if (when) {
+    const time = document.createElement("time");
+    time.dateTime = when.datetime;
+    time.textContent = when.label;
+    expiry.append(time);
+  } else {
+    expiry.append("not provided by Codex");
+  }
+  details.append(expiry);
+  card.append(details);
+  const use = document.createElement("button");
+  use.type = "button";
+  use.dataset.action = "use-reset-credit";
+  if (typeof credit.id === "string" && credit.id.trim()) {
+    use.dataset.creditId = credit.id;
+  }
+  use.textContent = "Use this reset";
+  card.append(use);
+  return card;
 }
 
 function settled(before, after) {

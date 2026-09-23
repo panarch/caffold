@@ -306,6 +306,88 @@ caffold-settings-codex-page {
     color: var(--danger);
   }
 
+  & .settings-codex-reset-credits {
+    display: grid;
+    gap: var(--interface-space-5);
+    margin-top: var(--interface-space-8);
+  }
+
+  & .settings-codex-reset-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--interface-space-5);
+  }
+
+  & .settings-codex-reset-heading h4,
+  & .settings-codex-reset-credit h5,
+  & .settings-codex-reset-credit p,
+  & .settings-codex-reset-credits > p:not(.settings-runtime-message) {
+    margin: 0;
+  }
+
+  & .settings-codex-reset-heading h4 {
+    font-size: var(--settings-field-label-size);
+  }
+
+  & .settings-codex-reset-heading span,
+  & .settings-codex-reset-credit h5 {
+    font-size: var(--settings-small-text-size);
+  }
+
+  & .settings-codex-reset-credits > p:not(.settings-runtime-message),
+  & .settings-codex-reset-credit p {
+    color: var(--muted);
+    font-size: var(--settings-small-text-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-codex-reset-credit {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--interface-space-7);
+    min-width: 0;
+    padding: var(--interface-space-6) 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  & .settings-codex-reset-credit > div {
+    display: grid;
+    gap: var(--interface-space-2);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  & .settings-codex-reset-credit time {
+    color: var(--text);
+  }
+
+  & .settings-codex-reset-credits button {
+    width: fit-content;
+    min-height: var(--settings-page-action-size);
+    flex: none;
+    padding: 0 var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--settings-small-text-size);
+    cursor: pointer;
+  }
+
+  & .settings-codex-reset-credits button:hover:not(:disabled),
+  & .settings-codex-reset-credits button:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+  }
+
+  & .settings-codex-reset-credits button:disabled {
+    color: var(--disabled-text);
+    cursor: default;
+  }
+
   & .settings-status-message {
     margin: var(--interface-space-8) 0 0;
     color: var(--muted);
@@ -345,6 +427,11 @@ caffold-settings-codex-page {
 
     & .settings-codex-command button {
       justify-self: start;
+    }
+
+    & .settings-codex-reset-credit {
+      align-items: start;
+      flex-direction: column;
     }
   }
 }

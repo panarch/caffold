@@ -26,7 +26,10 @@ mod store;
 
 use agent::{agent_models, agent_permissions};
 use claude::{claude_restart, claude_status};
-use codex::{codex_mcp_diagnostics, codex_restart, codex_status, codex_update, codex_updates};
+use codex::{
+    codex_mcp_diagnostics, codex_reset_credit_consume, codex_restart, codex_status, codex_update,
+    codex_updates,
+};
 #[cfg(test)]
 use commands::managed_thread_from_task_record;
 use commands::{
@@ -237,6 +240,10 @@ pub(super) fn router(state: TaskState) -> Router {
         .merge(super::push::router())
         .merge(fork::routes())
         .route("/api/codex/status", get(codex_status))
+        .route(
+            "/api/codex/reset-credits/consume",
+            post(codex_reset_credit_consume),
+        )
         .route("/api/codex/mcp-diagnostics", get(codex_mcp_diagnostics))
         .route("/api/codex/restart", post(codex_restart))
         .route("/api/codex/updates", get(codex_updates))

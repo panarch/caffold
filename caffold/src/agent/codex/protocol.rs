@@ -34,6 +34,8 @@ pub(crate) const INITIALIZE: &str = "initialize";
 pub(crate) const INITIALIZED: &str = "initialized";
 pub(crate) const ACCOUNT_READ: &str = "account/read";
 pub(crate) const ACCOUNT_RATE_LIMITS_READ: &str = "account/rateLimits/read";
+pub(crate) const ACCOUNT_RATE_LIMIT_RESET_CREDIT_CONSUME: &str =
+    "account/rateLimitResetCredit/consume";
 pub(crate) const ACCOUNT_USAGE_READ: &str = "account/usage/read";
 pub(crate) const THREAD_LIST: &str = "thread/list";
 pub(crate) const THREAD_READ: &str = "thread/read";
@@ -101,6 +103,28 @@ pub(crate) struct CodexAccount {
 pub(crate) struct AccountReadResponse {
     pub account: Option<CodexAccount>,
     pub requires_openai_auth: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RateLimitResetCreditConsumeParams<'a> {
+    pub idempotency_key: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credit_id: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct RateLimitResetCreditConsumeResponse {
+    pub outcome: RateLimitResetCreditOutcome,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum RateLimitResetCreditOutcome {
+    Reset,
+    AlreadyRedeemed,
+    NothingToReset,
+    NoCredit,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

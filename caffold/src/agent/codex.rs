@@ -48,29 +48,30 @@ pub(crate) use protocol::ThreadStatus;
 #[cfg(test)]
 pub(crate) use protocol::TurnStatus;
 use protocol::{
-    ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse,
-    CAFFOLD_CLIENT_NAME, CAFFOLD_CLIENT_TITLE, CONFIG_READ, ConfigReadResponse, EmptyResponse,
-    INITIALIZE, INITIALIZED, JsonRpcError, MCP_SERVER_RESOURCE_READ, MCP_SERVER_STATUS_LIST,
-    MODEL_LIST, McpServerStatusListResponse, PERMISSION_PROFILE_LIST,
-    PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_DELETE, THREAD_FORK, THREAD_LIST,
-    THREAD_NAME_SET, THREAD_READ, THREAD_RESUME, THREAD_SECTION_CREATE, THREAD_SECTION_LIST,
-    THREAD_SECTION_MOVE, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE, THREAD_UNSUBSCRIBE,
-    TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadForkResponse, ThreadReadResponse,
-    ThreadSectionCreateResponse, ThreadSectionMoveResponse, ThreadStartResponse, TurnStartResponse,
-    TurnSteerResponse, account_read_params, config_read_params, decode_response,
-    mcp_server_status_list_params, model_list_params, permission_profile_list_params,
-    section_thread_list_params, thread_archive_params, thread_delete_params,
-    thread_fork_params_with_config, thread_list_params, thread_read_params,
-    thread_resume_params_with_config, thread_section_create_params, thread_section_list_params,
-    thread_section_move_params, thread_set_name_params, thread_start_params_with_config,
-    thread_turns_list_params, thread_unarchive_params, thread_unsubscribe_params,
-    turn_interrupt_params, turn_start_params, turn_steer_params,
+    ACCOUNT_RATE_LIMIT_RESET_CREDIT_CONSUME, ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ,
+    ACCOUNT_USAGE_READ, AccountReadResponse, CAFFOLD_CLIENT_NAME, CAFFOLD_CLIENT_TITLE,
+    CONFIG_READ, ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError,
+    MCP_SERVER_RESOURCE_READ, MCP_SERVER_STATUS_LIST, MODEL_LIST, McpServerStatusListResponse,
+    PERMISSION_PROFILE_LIST, PermissionProfileListResponse, RateLimitResetCreditConsumeParams,
+    THREAD_ARCHIVE, THREAD_DELETE, THREAD_FORK, THREAD_LIST, THREAD_NAME_SET, THREAD_READ,
+    THREAD_RESUME, THREAD_SECTION_CREATE, THREAD_SECTION_LIST, THREAD_SECTION_MOVE, THREAD_START,
+    THREAD_TURNS_LIST, THREAD_UNARCHIVE, THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START,
+    TURN_STEER, ThreadForkResponse, ThreadReadResponse, ThreadSectionCreateResponse,
+    ThreadSectionMoveResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse,
+    account_read_params, config_read_params, decode_response, mcp_server_status_list_params,
+    model_list_params, permission_profile_list_params, section_thread_list_params,
+    thread_archive_params, thread_delete_params, thread_fork_params_with_config,
+    thread_list_params, thread_read_params, thread_resume_params_with_config,
+    thread_section_create_params, thread_section_list_params, thread_section_move_params,
+    thread_set_name_params, thread_start_params_with_config, thread_turns_list_params,
+    thread_unarchive_params, thread_unsubscribe_params, turn_interrupt_params, turn_start_params,
+    turn_steer_params,
 };
 pub(crate) use protocol::{
     CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest, CodexThread,
-    CodexTurn, ModelListResponse, PermissionProfileSummary, SortDirection, ThreadResumeResponse,
-    ThreadSection, ThreadSectionFilter, ThreadSectionListResponse, ThreadUnsubscribeResponse,
-    TurnsPage,
+    CodexTurn, ModelListResponse, PermissionProfileSummary, RateLimitResetCreditConsumeResponse,
+    SortDirection, ThreadResumeResponse, ThreadSection, ThreadSectionFilter,
+    ThreadSectionListResponse, ThreadUnsubscribeResponse, TurnsPage,
 };
 #[cfg(test)]
 pub(crate) use protocol::{MCP_SERVER_TOOL_CALL, decode_notification, decode_server_request};
@@ -1546,6 +1547,21 @@ impl CodexThreadClient {
             rate_limits.ok(),
             usage.ok(),
         )
+    }
+
+    pub(crate) async fn consume_rate_limit_reset_credit(
+        &self,
+        idempotency_key: &str,
+        credit_id: Option<&str>,
+    ) -> Result<RateLimitResetCreditConsumeResponse, CodexThreadError> {
+        self.request_typed(
+            ACCOUNT_RATE_LIMIT_RESET_CREDIT_CONSUME,
+            RateLimitResetCreditConsumeParams {
+                idempotency_key,
+                credit_id,
+            },
+        )
+        .await
     }
 
     pub(crate) fn unavailable_status(error: &CodexThreadError) -> CodexStatusResponse {
