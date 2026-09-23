@@ -283,6 +283,7 @@ test("registered product dialogs retain one context-local keyboard presentation"
     "pages/components/update-dialog.js",
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
     "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
+    "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
     "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
     "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
     "pages/(task-workspace)/tasks/components/task-switcher-dialog.js",

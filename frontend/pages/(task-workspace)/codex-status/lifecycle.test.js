@@ -41,6 +41,130 @@ function loadedSnapshot(status) {
   return createCodexStatusSnapshot({ phase: "loaded", status });
 }
 
+function resetCreditStatus(count = 1) {
+  return {
+    ...codexStatus("ready", false),
+    account: { accountType: "chatgpt" },
+    rateLimits: { rateLimitResetCredits: {
+      availableCount: count,
+      credits: count ? [{ id: "credit-1", status: "available", expiresAt: 1792700687 }] : [],
+    } },
+  };
+}
+
+test("reset credits are consumed only on request and ambiguous retries reuse the same key", async () => {
+  const attempts = [];
+  let count = 1;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => resetCreditStatus(count),
+    consumeResetCredit: async (attempt) => {
+      attempts.push(attempt);
+      if (attempts.length === 1) throw new Error("connection lost");
+      count = 0;
+      return { outcome: "alreadyRedeemed" };
+    },
+  });
+  lifecycle.connect();
+  await settle();
+  assert.equal(attempts.length, 0);
+  assert.equal(lifecycle.canConsumeResetCredit("credit-1"), true);
+
+  assert.equal(await lifecycle.requestResetCredit("credit-1"), null);
+  assert.equal(lifecycle.resetCreditState().retryPending, true);
+  assert.equal(lifecycle.canConsumeResetCredit("another-credit"), false);
+  assert.deepEqual(await lifecycle.requestResetCredit("credit-1"), {
+    outcome: "alreadyRedeemed",
+  });
+  assert.equal(attempts.length, 2);
+  assert.equal(attempts[0].idempotencyKey, attempts[1].idempotencyKey);
+  assert.match(attempts[0].idempotencyKey, /^[0-9a-f-]{36}$/);
+  assert.equal(lifecycle.snapshot().status.rateLimits.rateLimitResetCredits.availableCount, 0);
+  assert.equal(lifecycle.resetCreditState().state, "succeeded");
+  lifecycle.disconnect();
+});
+
+test("a reset with no eligible window refreshes credits without reporting success", async () => {
+  let reads = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => {
+      reads += 1;
+      return resetCreditStatus();
+    },
+    consumeResetCredit: async () => ({ outcome: "nothingToReset" }),
+  });
+  lifecycle.connect();
+  await settle();
+
+  assert.deepEqual(await lifecycle.requestResetCredit("credit-1"), {
+    outcome: "nothingToReset",
+  });
+  assert.equal(reads, 2);
+  assert.equal(lifecycle.resetCreditState().state, "failed");
+  assert.equal(lifecycle.resetCreditState().retryPending, false);
+  lifecycle.disconnect();
+});
+
+test("a completed reset reads status after an earlier in-flight status request", async () => {
+  const consume = deferred();
+  const staleStatus = deferred();
+  let reads = 0;
+  let count = 1;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => {
+      reads += 1;
+      if (reads === 2) return staleStatus.promise;
+      return resetCreditStatus(count);
+    },
+    consumeResetCredit: () => consume.promise,
+  });
+  lifecycle.connect();
+  await settle();
+
+  const reset = lifecycle.requestResetCredit("credit-1");
+  const earlierRefresh = lifecycle.refresh();
+  await settle();
+  assert.equal(reads, 2);
+
+  count = 0;
+  consume.resolve({ outcome: "reset" });
+  await settle();
+  staleStatus.resolve(resetCreditStatus(1));
+  await earlierRefresh;
+  assert.deepEqual(await reset, { outcome: "reset" });
+  assert.equal(reads, 3);
+  assert.equal(lifecycle.snapshot().status.rateLimits.rateLimitResetCredits.availableCount, 0);
+  lifecycle.disconnect();
+});
+
+test("a successful reset with a failed status refresh retries the same redemption", async () => {
+  const attempts = [];
+  let reads = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => {
+      reads += 1;
+      if (reads === 2) throw new Error("status unavailable");
+      return resetCreditStatus(reads === 1 ? 1 : 0);
+    },
+    consumeResetCredit: async (attempt) => {
+      attempts.push(attempt);
+      return { outcome: attempts.length === 1 ? "reset" : "alreadyRedeemed" };
+    },
+  });
+  lifecycle.connect();
+  await settle();
+
+  assert.equal(await lifecycle.requestResetCredit("credit-1"), null);
+  assert.equal(lifecycle.resetCreditState().retryPending, true);
+  assert.match(lifecycle.resetCreditState().message, /accepted the reset/);
+  assert.equal(lifecycle.snapshot().phase, "failed");
+  assert.deepEqual(await lifecycle.requestResetCredit("credit-1"), {
+    outcome: "alreadyRedeemed",
+  });
+  assert.equal(attempts[0].idempotencyKey, attempts[1].idempotencyKey);
+  assert.equal(lifecycle.snapshot().status.rateLimits.rateLimitResetCredits.availableCount, 0);
+  lifecycle.disconnect();
+});
+
 test("Task-store migration retry is an explicit mutation followed by status refresh", async () => {
   let status = codexStatus("ready", false);
   status.taskStoreReadiness = {

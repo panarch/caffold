@@ -1,5 +1,6 @@
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
+  codexResetCredits,
   codexRuntimeRestartAvailable,
   codexRuntimeUpdateAvailable,
   createCodexStatusSnapshot,
@@ -34,7 +35,9 @@ const RUNTIME_ACTION_EDGES = Object.freeze({
 
 export class CodexStatusLifecycle {
   constructor({
+    consumeResetCredit,
     loadStatus,
+    onResetCreditStateChange,
     onRestartStateChange,
     onRuntimeActionChange,
     onSnapshotChange,
@@ -44,7 +47,9 @@ export class CodexStatusLifecycle {
     updateRuntime,
   }) {
     this.loadStatus = loadStatus;
+    this.consumeResetCredit = consumeResetCredit;
     this.onSnapshotChange = onSnapshotChange;
+    this.onResetCreditStateChange = onResetCreditStateChange;
     this.onRuntimeActionChange = onRuntimeActionChange;
     this.active = false;
     this.suspended = false;
@@ -56,6 +61,11 @@ export class CodexStatusLifecycle {
     this.runtimeActionValue = "idle";
     this.runtimeActionId = 0;
     this.runtimeActionRequest = null;
+    this.resetCreditRequest = null;
+    this.resetCreditAttempt = null;
+    this.resetCreditStateValue = Object.freeze({
+      state: "idle", message: "", creditId: null, retryPending: false,
+    });
     this.runtimeRestart = new CodexRuntimeRestartLifecycle({
       restartRuntime,
       refreshStatus: () => this.refresh(),
@@ -132,6 +142,111 @@ export class CodexStatusLifecycle {
 
   runtimeAction() {
     return this.runtimeActionValue;
+  }
+
+  resetCreditState() {
+    return this.resetCreditStateValue;
+  }
+
+  canConsumeResetCredit(creditId = null) {
+    if (!this.active || this.suspended || this.resetCreditRequest ||
+      this.runtimeActionValue !== "idle") {
+      return false;
+    }
+    const status = this.statusSnapshot();
+    if (status?.account?.accountType !== "chatgpt" ||
+      status?.readiness?.state !== "ready") {
+      return false;
+    }
+    if (this.resetCreditAttempt) {
+      return this.resetCreditAttempt.creditId === creditId;
+    }
+    const credits = codexResetCredits(status);
+    return this.snapshotValue.phase === "loaded" &&
+      credits?.availableCount > 0 &&
+      (creditId === null || credits.credits?.some((credit) => credit.id === creditId));
+  }
+
+  requestResetCredit(creditId = null) {
+    if (this.resetCreditRequest) {
+      return this.resetCreditRequest;
+    }
+    if (!this.canConsumeResetCredit(creditId)) {
+      return Promise.resolve(null);
+    }
+    const attempt = this.resetCreditAttempt ?? {
+      creditId,
+      idempotencyKey: globalThis.crypto.randomUUID(),
+    };
+    this.resetCreditAttempt = attempt;
+    this.setResetCreditState({
+      state: "submitting", message: "", creditId, retryPending: false,
+    });
+    const request = this.runResetCredit(attempt).finally(() => {
+      if (this.resetCreditRequest === request) {
+        this.resetCreditRequest = null;
+      }
+    });
+    this.resetCreditRequest = request;
+    return request;
+  }
+
+  async runResetCredit(attempt) {
+    let outcome;
+    try {
+      const result = await this.consumeResetCredit(attempt);
+      outcome = result?.outcome;
+      if (!["reset", "alreadyRedeemed", "nothingToReset", "noCredit"].includes(outcome)) {
+        throw new Error("Codex returned an unknown reset outcome.");
+      }
+      this.setResetCreditState({
+        state: "refreshing", message: "", creditId: attempt.creditId, retryPending: false,
+      });
+      if (["nothingToReset", "noCredit"].includes(outcome)) {
+        this.resetCreditAttempt = null;
+      }
+      // An earlier status read may have started before Codex accepted the
+      // reset. Let it finish, then request a new report of the credit count.
+      if (this.statusRequest) {
+        await this.statusRequest.catch(() => {});
+      }
+      const status = await this.refresh();
+      if (!status) {
+        throw new Error("Codex status is unavailable.");
+      }
+      this.resetCreditAttempt = null;
+      const message = {
+        reset: "Rate limits reset with one credit.",
+        alreadyRedeemed: "This reset request was already completed.",
+        nothingToReset: "Codex reports no eligible rate-limit window to reset.",
+        noCredit: "Codex reports no reset credit available.",
+      }[outcome];
+      this.setResetCreditState({
+        state: ["reset", "alreadyRedeemed"].includes(outcome) ? "succeeded" : "failed",
+        message,
+        creditId: null,
+        retryPending: false,
+      });
+      return result;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : `${error}`;
+      this.setResetCreditState({
+        state: "failed",
+        message: ["reset", "alreadyRedeemed"].includes(outcome)
+          ? `Codex accepted the reset, but status could not be refreshed: ${detail}. Retry uses the same request.`
+          : outcome
+            ? detail
+            : `Could not confirm whether Codex used the reset: ${detail}. Retry uses the same request.`,
+        creditId: this.resetCreditAttempt?.creditId ?? null,
+        retryPending: Boolean(this.resetCreditAttempt),
+      });
+      return null;
+    }
+  }
+
+  setResetCreditState(value) {
+    this.resetCreditStateValue = Object.freeze({ ...value });
+    this.onResetCreditStateChange?.(this.resetCreditStateValue);
   }
 
   canRestartRuntime() {

@@ -4,10 +4,16 @@ import { routeDomain, routeTab, routeTarget } from "../../navigation-routes.js";
 import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
   CODEX_RUNTIME_UPDATE_REQUEST_EVENT,
+  CODEX_RESET_CREDIT_REQUEST_EVENT,
   CODEX_STATUS_REFRESH_REQUEST_EVENT,
+  codexResetCredits,
   codexRuntimeUpdateAvailable,
   createCodexStatusLifecycle,
+  resetCreditExpiry,
 } from "./codex-status.js";
+import {
+  CODEX_RESET_CREDIT_CONFIRMED_EVENT,
+} from "./codex-status/components/reset-credit-dialog.js";
 import {
   CODEX_RUNTIME_RESTART_CONFIRMED_EVENT,
 } from "./codex-status/components/runtime-restart-dialog.js";
@@ -87,12 +93,14 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.currentOpenOptions = {};
     this.codexRestartStateValue = { state: "idle", message: "" };
     this.codexUpdateStateValue = { state: "idle", message: "" };
+    this.codexResetCreditStateValue = { state: "idle", message: "", retryPending: false };
     this.codexRuntimeActionValue = "idle";
     this.liveUpdates = new WorkspaceLiveUpdates();
     this.codexStatusLifecycle = createCodexStatusLifecycle({
       onSnapshotChange: (snapshot) => this.setCodexStatusSnapshot(snapshot),
       onRestartStateChange: (state) => this.setCodexRestartState(state),
       onUpdateStateChange: (state) => this.setCodexUpdateState(state),
+      onResetCreditStateChange: (state) => this.setCodexResetCreditState(state),
       onRuntimeActionChange: (action) => this.setCodexRuntimeAction(action),
     });
     this.codexStatusSnapshotValue = this.codexStatusLifecycle.snapshot();
@@ -144,6 +152,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       <caffold-task-switcher-dialog></caffold-task-switcher-dialog>
       <caffold-codex-runtime-restart-dialog></caffold-codex-runtime-restart-dialog>
       <caffold-codex-runtime-update-dialog></caffold-codex-runtime-update-dialog>
+      <caffold-codex-reset-credit-dialog></caffold-codex-reset-credit-dialog>
       <caffold-claude-runtime-restart-dialog></caffold-claude-runtime-restart-dialog>
     `;
     this.backButton = this.querySelector(".task-workspace-back");
@@ -174,6 +183,9 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.codexRuntimeUpdateDialog = this.querySelector(
       ":scope > caffold-codex-runtime-update-dialog",
     );
+    this.codexResetCreditDialog = this.querySelector(
+      ":scope > caffold-codex-reset-credit-dialog",
+    );
     this.claudeRuntimeRestartDialog = this.querySelector(
       ":scope > caffold-claude-runtime-restart-dialog",
     );
@@ -190,6 +202,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.tasksPage.setCodexRuntimeAction(this.codexRuntimeActionValue);
     this.settingsWorkspace.setCodexRestartState(this.codexRestartStateValue);
     this.settingsWorkspace.setCodexUpdateState(this.codexUpdateStateValue);
+    this.settingsWorkspace.setCodexResetCreditState(this.codexResetCreditStateValue);
     this.settingsWorkspace.setCodexRuntimeAction(this.codexRuntimeActionValue);
     this.settingsWorkspace.setClaudeRestartState(this.claudeRestartStateValue);
     this.renderIcons();
@@ -280,6 +293,26 @@ class CaffoldTaskWorkspace extends HTMLElement {
       (event) => {
         event.stopPropagation();
         void this.codexStatusLifecycle.requestRuntimeUpdate();
+      },
+    );
+    this.addEventListener(CODEX_RESET_CREDIT_REQUEST_EVENT, (event) => {
+      event.stopPropagation();
+      const creditId = event.detail?.creditId ?? null;
+      if (!this.codexStatusLifecycle.canConsumeResetCredit(creditId)) return;
+      const credit = codexResetCredits(this.codexStatusLifecycle.statusSnapshot())
+        ?.credits?.find((row) => row.id === creditId);
+      this.codexResetCreditDialog.open({
+        creditId,
+        title: credit?.title,
+        expiry: resetCreditExpiry(credit?.expiresAt)?.label,
+        retry: event.detail?.retry === true,
+      });
+    });
+    this.codexResetCreditDialog.addEventListener(
+      CODEX_RESET_CREDIT_CONFIRMED_EVENT,
+      (event) => {
+        event.stopPropagation();
+        void this.codexStatusLifecycle.requestResetCredit(event.detail?.creditId ?? null);
       },
     );
     this.addEventListener(CLAUDE_RUNTIME_RESTART_REQUEST_EVENT, (event) => {
@@ -520,6 +553,12 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.settingsWorkspace.setCodexUpdateState(this.codexUpdateStateValue);
   }
 
+  setCodexResetCreditState(state) {
+    this.ensureRendered();
+    this.codexResetCreditStateValue = state;
+    this.settingsWorkspace.setCodexResetCreditState(state);
+  }
+
   setCodexRuntimeAction(action) {
     this.ensureRendered();
     this.codexRuntimeActionValue = action ?? "idle";
@@ -626,6 +665,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     return mergeKeyboardNavigationContexts(
       this.codexRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
       this.codexRuntimeUpdateDialog?.keyboardNavigationContexts?.() ?? [],
+      this.codexResetCreditDialog?.keyboardNavigationContexts?.() ?? [],
       this.claudeRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
       this.archivedDeleteDialog?.keyboardNavigationContexts?.() ?? [],
       this.taskSwitcherDialog?.keyboardNavigationContexts?.() ?? [],

@@ -413,6 +413,10 @@ const ownership = new Map([
     ["caffold-codex-runtime-update-dialog"],
   ],
   [
+    "pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
+    ["caffold-codex-reset-credit-dialog"],
+  ],
+  [
     "pages/(task-workspace)/settings/about/page.css",
     ["caffold-settings-about-page"],
   ],
@@ -449,6 +453,7 @@ const componentChildren = new Map([
       "caffold-settings-workspace",
       "caffold-task-archived-delete-dialog",
       "caffold-codex-runtime-restart-dialog",
+      "caffold-codex-reset-credit-dialog",
       "caffold-action-hint-dialog",
     ],
   ],
