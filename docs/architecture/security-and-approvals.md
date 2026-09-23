@@ -203,9 +203,11 @@ request once, or it does not, in which case the request is the person's. It is
 never asked to refuse, to allow for a session, or to allow always. A persistent
 grant would be the agent's own, and the next request of that shape would never
 be asked about at all, which is the opposite of what choosing this mode says.
-A timeout, a rate limit, a rejected key, unreadable settings, an answer outside
-0 to 1 — all of it ends the same way: the request is the person's, exactly as it
-is without Jev.
+TypeSafe sometimes refuses a key it accepts moments before and after, so a call
+refused for its key is made once more, and both calls share one timeout. A
+timeout, a rate limit, a key refused twice, unreadable settings, an answer
+outside 0 to 1 — all of it ends the same way: the request is the person's,
+exactly as it is without Jev.
 
 The question is one gate, and it asks only whether the person should be asked
 before the request runs. It does not ask whether the request is permitted:

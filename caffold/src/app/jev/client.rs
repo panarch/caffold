@@ -130,12 +130,33 @@ struct Answer {
     noul: f64,
 }
 
+/// Asks Jev, once more if TypeSafe refuses the key.
+///
+/// TypeSafe sometimes refuses a key it accepts moments before and after, so one
+/// refusal does not yet mean the key is wrong.
+pub(super) async fn ask(
+    client: &Client,
+    api_base: &str,
+    key: &ApiKey,
+    query: &Query,
+) -> Result<Answers, JevFailure> {
+    let asking = async {
+        match ask_once(client, api_base, key, query).await {
+            Err(JevFailure::KeyRejected) => ask_once(client, api_base, key, query).await,
+            answered => answered,
+        }
+    };
+    tokio::time::timeout(REQUEST_TIMEOUT, asking)
+        .await
+        .unwrap_or(Err(JevFailure::Unavailable))
+}
+
 /// Asks Jev through `POST /v1/systemone`.
 ///
 /// The response body is read only when the request succeeded. TypeSafe's error
 /// bodies are not read at all, because the one for a rejected key can repeat
 /// part of that key.
-pub(super) async fn ask(
+async fn ask_once(
     client: &Client,
     api_base: &str,
     key: &ApiKey,
@@ -147,7 +168,6 @@ pub(super) async fn ask(
         .bearer_auth(key.expose())
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .body(body)
-        .timeout(REQUEST_TIMEOUT)
         .send()
         .await
         .map_err(|_| JevFailure::Unavailable)?;
@@ -175,7 +195,10 @@ pub(super) async fn ask(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     use axum::{
         Router,
@@ -227,6 +250,24 @@ mod tests {
             axum::serve(listener, app).await.unwrap();
         });
         format!("http://{address}")
+    }
+
+    async fn jev_server_answering_in_turn(
+        answers: Vec<(StatusCode, &'static str)>,
+    ) -> (String, Arc<AtomicUsize>) {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counted = calls.clone();
+        let app = Router::new().fallback(move || {
+            let call = counted.fetch_add(1, Ordering::SeqCst);
+            let (status, body) = answers[call.min(answers.len() - 1)];
+            async move { (status, [("content-type", "application/json")], body) }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (format!("http://{address}"), calls)
     }
 
     #[tokio::test]
@@ -326,6 +367,64 @@ mod tests {
 
             assert_eq!(failure, expected, "{status}");
             assert!(!failure.message().contains(SECRET));
+        }
+    }
+
+    #[tokio::test]
+    async fn a_refused_key_is_asked_once_more_and_that_answer_stands() {
+        let temp = TempDir::new().unwrap();
+        let key = api_key(&temp);
+
+        for refusal in [StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN] {
+            let (base, calls) = jev_server_answering_in_turn(vec![
+                (refusal, r#"{"error":"invalid key"}"#),
+                (
+                    StatusCode::OK,
+                    r#"{"model":"jev-1.13.0","answers":{"ask":{"noul":0.12}}}"#,
+                ),
+            ])
+            .await;
+            let query = Query::new(json!({})).asking("ask", "ask");
+
+            let answers = ask(&Client::new(), &base, &key, &query).await.unwrap();
+
+            assert_eq!(answers.noul("ask").unwrap(), 0.12, "{refusal}");
+            assert_eq!(calls.load(Ordering::SeqCst), 2, "{refusal}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_key_refused_twice_is_rejected() {
+        let temp = TempDir::new().unwrap();
+        let (base, calls) =
+            jev_server_answering_in_turn(vec![(StatusCode::UNAUTHORIZED, "{}")]).await;
+        let query = Query::new(json!({})).asking("ask", "ask");
+
+        let failure = ask(&Client::new(), &base, &api_key(&temp), &query)
+            .await
+            .unwrap_err();
+
+        assert_eq!(failure, JevFailure::KeyRejected);
+        assert_eq!(calls.load(Ordering::SeqCst), 2, "once more, and no further");
+    }
+
+    #[tokio::test]
+    async fn only_a_refused_key_is_asked_again() {
+        let temp = TempDir::new().unwrap();
+        let key = api_key(&temp);
+
+        for status in [
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::REQUEST_TIMEOUT,
+            StatusCode::BAD_GATEWAY,
+            StatusCode::BAD_REQUEST,
+        ] {
+            let (base, calls) = jev_server_answering_in_turn(vec![(status, "{}")]).await;
+            let query = Query::new(json!({})).asking("ask", "ask");
+
+            ask(&Client::new(), &base, &key, &query).await.unwrap_err();
+
+            assert_eq!(calls.load(Ordering::SeqCst), 1, "{status}");
         }
     }
 
