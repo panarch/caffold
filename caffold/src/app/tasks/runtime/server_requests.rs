@@ -700,13 +700,17 @@ impl TaskRuntime {
             .filter(|session| session.active_turn_id == request.turn_id)
             .and_then(|session| session.active_turn_prompt);
         reviewer
-            .review(&reviewed_request(
-                &request,
-                agent,
-                instructions,
-                working_directory,
-                turn_prompt,
-            ))
+            .review(
+                &thread_id,
+                approval_id,
+                &reviewed_request(
+                    &request,
+                    agent,
+                    instructions,
+                    working_directory,
+                    turn_prompt,
+                ),
+            )
             .await
     }
 
