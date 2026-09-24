@@ -538,11 +538,16 @@ opened lazily and only for a signed session, so neither route initialization
 nor a signing-key failure makes Codex or Grok a prerequisite for a Claude-only
 Caffold service.
 
-All three MCP catalogs use the Task-owned base names `rename_current_task` and
-`isolate_current_task`; Claude's transport qualifies them as
-`mcp__caffold__...` and Grok's as `caffold__...`, while Codex presents the base
-names directly. Only the pre-MCP Codex dynamic-tool compatibility path accepts
-the historical `rename_current_thread` name.
+All three MCP catalogs use the Task-owned base names `rename_current_task`,
+`isolate_current_task`, and `read_current_task_name`; Claude's transport
+qualifies them as `mcp__caffold__...` and Grok's as `caffold__...`, while Codex
+presents the base names directly. Only the pre-MCP Codex dynamic-tool
+compatibility path accepts the historical `rename_current_thread` name.
+
+`read_current_task_name` takes no arguments and answers with the Task's display
+name from Caffold Redb, the name the Task list shows. The answer is the same
+whichever agent asks, and no agent is consulted for it. The pre-MCP Codex
+dynamic-tool path does not serve it.
 
 The same catalogs serve the Notes tools: `list_notes`, `read_note`,
 `create_note`, `update_note_content`, `rename_note`, `move_note`, `delete_note`,

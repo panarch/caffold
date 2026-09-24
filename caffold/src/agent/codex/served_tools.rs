@@ -7,29 +7,31 @@
 //! Task operations. Caffold does not advertise dynamic tools on `thread/start`.
 
 #[cfg(test)]
-use crate::agent::http_mcp::{McpToolSpec, RENAME_CURRENT_TASK_TOOL_NAME, caffold_mcp_tool_specs};
+use crate::agent::http_mcp::{McpToolSpec, caffold_mcp_tool_specs};
 
 pub(crate) const LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME: &str = "rename_current_thread";
 
 /// Reconstruct the pre-MCP creation payload for its ignored compatibility test.
+/// That payload had no tool for reading the Task's name.
 #[cfg(test)]
 pub(super) fn legacy_dynamic_tool_specs() -> [McpToolSpec; 2] {
-    caffold_mcp_tool_specs().map(|tool| {
-        if tool.name == RENAME_CURRENT_TASK_TOOL_NAME {
-            McpToolSpec {
-                name: LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
-                ..tool
-            }
-        } else {
-            tool
-        }
-    })
+    let [rename, isolate, _read_name] = caffold_mcp_tool_specs();
+    [
+        McpToolSpec {
+            name: LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
+            ..rename
+        },
+        isolate,
+    ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::http_mcp::ISOLATE_CURRENT_TASK_TOOL_NAME;
+    use crate::agent::http_mcp::{
+        ISOLATE_CURRENT_TASK_TOOL_NAME, READ_CURRENT_TASK_NAME_TOOL_NAME,
+        RENAME_CURRENT_TASK_TOOL_NAME,
+    };
 
     #[test]
     fn the_new_mcp_name_is_task_owned_while_the_legacy_fixture_keeps_its_old_name() {
@@ -47,7 +49,8 @@ mod tests {
             mcp,
             [
                 RENAME_CURRENT_TASK_TOOL_NAME,
-                ISOLATE_CURRENT_TASK_TOOL_NAME
+                ISOLATE_CURRENT_TASK_TOOL_NAME,
+                READ_CURRENT_TASK_NAME_TOOL_NAME
             ]
         );
     }

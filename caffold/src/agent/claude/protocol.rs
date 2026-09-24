@@ -54,6 +54,8 @@ pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     "--allowedTools",
     ISOLATE_CURRENT_TASK_QUALIFIED_NAME,
     "--allowedTools",
+    READ_CURRENT_TASK_NAME_QUALIFIED_NAME,
+    "--allowedTools",
     "mcp__caffold__list_notes",
     "--allowedTools",
     "mcp__caffold__read_note",
@@ -588,6 +590,13 @@ pub(crate) const ISOLATE_CURRENT_TASK_TOOL_NAME: &str = "isolate_current_task";
 /// The isolate tool under the name the model calls it by.
 pub(crate) const ISOLATE_CURRENT_TASK_QUALIFIED_NAME: &str = "mcp__caffold__isolate_current_task";
 
+/// Read the user-facing name of the current Task.
+pub(crate) const READ_CURRENT_TASK_NAME_TOOL_NAME: &str = "read_current_task_name";
+
+/// The read-name tool under the name the model calls it by.
+pub(crate) const READ_CURRENT_TASK_NAME_QUALIFIED_NAME: &str =
+    "mcp__caffold__read_current_task_name";
+
 /// Answer one MCP request with its result.
 pub(crate) fn mcp_result(request_id: &str, mcp_id: &Value, result: Value) -> Value {
     control_response(
@@ -650,7 +659,8 @@ pub(crate) fn mcp_initialize_result(message: &Value) -> Value {
 /// name until the model chooses to load it — and a model instructed to call
 /// this one sometimes would not bother, measured as the first-turn rename
 /// landing on some runs and not others. A Notes tool answers a request the
-/// user makes, so it stays in the pool until the model looks for it.
+/// user makes, so it stays in the pool until the model looks for it; so does
+/// reading the Task's name, which nothing instructs the model to do.
 pub(crate) fn mcp_tool_listing() -> Value {
     let mut listing = serde_json::json!({
         "tools": [
@@ -695,6 +705,15 @@ pub(crate) fn mcp_tool_listing() -> Value {
                     },
                 },
                 "_meta": { "anthropic/alwaysLoad": true },
+            },
+            {
+                "name": READ_CURRENT_TASK_NAME_TOOL_NAME,
+                "description": "Read the user-facing name of the current Caffold task, as Caffold shows it. The result is the name alone, as plain text.",
+                "inputSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {},
+                },
             },
         ],
     });
@@ -997,6 +1016,10 @@ mod tests {
             ISOLATE_CURRENT_TASK_QUALIFIED_NAME,
             format!("mcp__{MCP_SERVER_NAME}__{ISOLATE_CURRENT_TASK_TOOL_NAME}")
         );
+        assert_eq!(
+            READ_CURRENT_TASK_NAME_QUALIFIED_NAME,
+            format!("mcp__{MCP_SERVER_NAME}__{READ_CURRENT_TASK_NAME_TOOL_NAME}")
+        );
     }
 
     #[test]
@@ -1094,10 +1117,22 @@ mod tests {
     }
 
     #[test]
+    fn the_listing_serves_the_read_name_tool_taking_nothing_and_not_loaded_up_front() {
+        let listing = mcp_tool_listing();
+        let tool = &listing["tools"][2];
+        assert_eq!(tool["name"], READ_CURRENT_TASK_NAME_TOOL_NAME);
+        assert_eq!(tool["inputSchema"]["properties"], json!({}));
+        assert_eq!(tool["inputSchema"]["additionalProperties"], false);
+        // No instruction tells the model to call it, so it waits in the
+        // search pool like a Notes tool.
+        assert!(tool.get("_meta").is_none());
+    }
+
+    #[test]
     fn the_listing_serves_every_notes_tool_after_the_task_tools_without_loading_them_up_front() {
         let listing = mcp_tool_listing();
         let tools = listing["tools"].as_array().unwrap();
-        let notes = &tools[2..];
+        let notes = &tools[3..];
         let specs = notes_tool_specs();
         assert_eq!(notes.len(), specs.len());
         for (tool, spec) in notes.iter().zip(specs) {

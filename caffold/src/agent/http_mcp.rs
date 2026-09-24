@@ -19,7 +19,8 @@ mod served_tools;
 mod signer;
 
 pub(crate) use served_tools::{
-    ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME, caffold_mcp_tools,
+    ISOLATE_CURRENT_TASK_TOOL_NAME, READ_CURRENT_TASK_NAME_TOOL_NAME,
+    RENAME_CURRENT_TASK_TOOL_NAME, caffold_mcp_tools,
 };
 #[cfg(test)]
 pub(in crate::agent) use served_tools::{McpToolSpec, caffold_mcp_tool_specs};

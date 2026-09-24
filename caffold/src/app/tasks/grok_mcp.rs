@@ -656,10 +656,10 @@ mod tests {
         assert_eq!(note.updated_by_thread_id, thread_id);
     }
 
-    /// A Grok Task calls the two Caffold tools through its own address: the
-    /// binding its session was started with names the Task, the rename lands
-    /// on the row and on the leader's session, and isolating prepares the
-    /// worktree and writes down the move without moving anything yet.
+    /// A Grok Task calls the rename and isolate tools through its own address:
+    /// the binding its session was started with names the Task, the rename
+    /// lands on the row and on the leader's session, and isolating prepares
+    /// the worktree and writes down the move without moving anything yet.
     #[tokio::test]
     async fn a_grok_task_renames_and_isolates_itself_through_its_own_address() {
         if !git_is_available() {

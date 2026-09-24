@@ -39,6 +39,7 @@ pub(crate) enum AskedTool {
         base_ref: Option<String>,
         include_changes: bool,
     },
+    ReadTaskName,
     Notes(NotesToolCall),
 }
 
@@ -186,6 +187,11 @@ fn tool_ask(message: &Value, request_id: &str, mcp_id: &Value) -> Result<ToolAsk
                 include_changes,
             }
         }
+        protocol::READ_CURRENT_TASK_NAME_TOOL_NAME => match params.get("arguments") {
+            None | Some(Value::Null) => AskedTool::ReadTaskName,
+            Some(Value::Object(given)) if given.is_empty() => AskedTool::ReadTaskName,
+            Some(_) => return Err(format!("`{tool}` takes no arguments.")),
+        },
         tool => return Err(format!("Caffold does not serve the tool `{tool}`.")),
     };
     Ok(ToolAsk {
@@ -510,6 +516,60 @@ mod tests {
             result["content"][0]["text"],
             "Arguments must use optional non-empty `branchName` and `baseRef` values plus \
              a boolean `includeChanges`."
+        );
+    }
+
+    #[tokio::test]
+    async fn a_read_name_call_is_published_for_the_application_to_answer() {
+        let (_client, runner, mut events) = watching().await;
+
+        runner
+            .say(
+                SESSION,
+                mcp_frame(8, "tools/call", json!({ "name": "read_current_task_name" })),
+            )
+            .await;
+
+        let ask = tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                if let Ok(ClaudeRuntimeEvent::ToolAsked { ask, .. }) = events.recv().await {
+                    return ask;
+                }
+            }
+        })
+        .await
+        .expect("the ask reaches the application");
+        assert!(
+            matches!(ask.asked, AskedTool::ReadTaskName),
+            "{:?}",
+            ask.asked
+        );
+    }
+
+    #[tokio::test]
+    async fn a_read_name_call_carrying_arguments_is_refused_with_nobody_asked() {
+        let (_client, runner, _events) = watching().await;
+
+        runner
+            .say(
+                SESSION,
+                mcp_frame(
+                    9,
+                    "tools/call",
+                    json!({
+                        "name": "read_current_task_name",
+                        "arguments": { "taskId": "another" },
+                    }),
+                ),
+            )
+            .await;
+
+        let refused = wrote(&runner, |frame| mcp_response_in(frame)["id"] == 9).await;
+        let result = &mcp_response_in(&refused)["result"];
+        assert_eq!(result["isError"], true);
+        assert_eq!(
+            result["content"][0]["text"],
+            "`read_current_task_name` takes no arguments."
         );
     }
 }

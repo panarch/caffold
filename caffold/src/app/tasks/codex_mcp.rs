@@ -1055,6 +1055,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_bound_connection_reads_its_tasks_name_without_asking_codex() {
+        let host = memory_host("http://127.0.0.1:5177".to_string());
+        let store = TaskStore::memory().unwrap();
+        store
+            .claim(
+                ManagedThread {
+                    display_name: "Codex MCP task".to_string(),
+                    ..ManagedThread::new("thread_1", RunBy::Codex, None, None, None)
+                },
+                1,
+            )
+            .unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let (shutdown, _) = broadcast::channel(1);
+        let runtime = TaskRuntime::new(
+            ClaudeClient::mock().0,
+            GrokClient::unreachable(),
+            TaskSessions::default(),
+            TaskEvents::default(),
+            store.clone(),
+            shutdown,
+        );
+        runtime.install_test_client(1, client.clone()).await;
+        host.attach_runtime(runtime);
+        let managed = bind_thread(&host, "thread_1").await;
+        let unmanaged = bind_thread(&host, "thread_2").await;
+        let read_name = |arguments: Value| {
+            json!({
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": { "name": "read_current_task_name", "arguments": arguments },
+            })
+        };
+
+        for nothing in [json!({}), Value::Null] {
+            let named =
+                response_json(bound_request(&host, &managed, read_name(nothing)).await).await;
+            assert_eq!(named["result"]["isError"], false, "{named}");
+            assert_eq!(named["result"]["content"][0]["text"], "Codex MCP task");
+        }
+
+        let with_arguments = response_json(
+            bound_request(
+                &host,
+                &managed,
+                read_name(json!({ "threadId": "thread_2" })),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(with_arguments["result"]["isError"], true);
+        assert_eq!(
+            with_arguments["result"]["content"][0]["text"],
+            "`read_current_task_name` takes no arguments."
+        );
+
+        let refused =
+            response_json(bound_request(&host, &unmanaged, read_name(json!({}))).await).await;
+        assert_eq!(refused["result"]["isError"], true);
+        assert_eq!(
+            refused["result"]["content"][0]["text"],
+            "Caffold can only read the name of a task that it manages."
+        );
+        assert!(client.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
     async fn a_binding_cannot_be_redirected_by_model_supplied_task_identity() {
         let host = memory_host("http://127.0.0.1:5177".to_string());
         let store = TaskStore::memory().unwrap();
