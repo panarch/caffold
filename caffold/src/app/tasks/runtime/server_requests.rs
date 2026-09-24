@@ -10,7 +10,9 @@ use crate::agent::codex::{
     approval_request, approval_response,
 };
 use crate::agent::driver::REVIEWED_PERMISSION_MODE;
-use crate::agent::http_mcp::{ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME};
+use crate::agent::http_mcp::{
+    ISOLATE_CURRENT_TASK_TOOL_NAME, READ_CURRENT_TASK_NAME_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME,
+};
 use crate::agent::notes_tools::{NotesToolCall, notes_tool_call};
 use crate::agent::{
     ApprovalDecision, ApprovalOutcome, ApprovalRequest, SessionEvent, SessionEventKind,
@@ -901,6 +903,14 @@ impl TaskRuntime {
         if let Some(call) = notes_tool_call(tool, &arguments) {
             return self.execute_notes_tool(thread_id, call?).await;
         }
+        if tool == READ_CURRENT_TASK_NAME_TOOL_NAME {
+            match &arguments {
+                JsonValue::Null => {}
+                JsonValue::Object(given) if given.is_empty() => {}
+                _ => return Err(format!("`{tool}` takes no arguments.")),
+            }
+            return self.current_task_name(thread_id).await;
+        }
         let tool = mcp_task_tool(tool)?;
         let Some(managed) = self.managed_thread(thread_id).await? else {
             return Err(unmanaged_task_error(tool));
@@ -1105,6 +1115,15 @@ impl TaskRuntime {
                 thread.ok_or_else(|| "renamed Task is no longer managed".to_string())
             })
             .map(|_| ())
+    }
+
+    /// The name Caffold keeps for the Task that asked. The name is Caffold's
+    /// own, so every agent is answered from the same row and none is asked.
+    pub(super) async fn current_task_name(&self, thread_id: &str) -> Result<String, String> {
+        match self.managed_thread(thread_id).await? {
+            Some(managed) => Ok(managed.display_name),
+            None => Err("Caffold can only read the name of a task that it manages.".to_string()),
+        }
     }
 
     /// Carry out a Notes tool call. Notes belong to no agent, so every agent's

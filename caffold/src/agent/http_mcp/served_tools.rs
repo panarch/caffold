@@ -7,6 +7,7 @@ use crate::agent::notes_tools::notes_tool_specs;
 
 pub(crate) const RENAME_CURRENT_TASK_TOOL_NAME: &str = "rename_current_task";
 pub(crate) const ISOLATE_CURRENT_TASK_TOOL_NAME: &str = "isolate_current_task";
+pub(crate) const READ_CURRENT_TASK_NAME_TOOL_NAME: &str = "read_current_task_name";
 
 pub(in crate::agent) struct McpToolSpec {
     pub(in crate::agent) name: &'static str,
@@ -33,8 +34,12 @@ fn listed_tool(name: &str, description: &str, input_schema: Value) -> Value {
     })
 }
 
-pub(in crate::agent) fn caffold_mcp_tool_specs() -> [McpToolSpec; 2] {
-    [rename_current_task_tool(), isolate_current_task_tool()]
+pub(in crate::agent) fn caffold_mcp_tool_specs() -> [McpToolSpec; 3] {
+    [
+        rename_current_task_tool(),
+        isolate_current_task_tool(),
+        read_current_task_name_tool(),
+    ]
 }
 
 fn isolate_current_task_tool() -> McpToolSpec {
@@ -79,6 +84,18 @@ fn rename_current_task_tool() -> McpToolSpec {
                 }
             },
             "required": ["name"]
+        }),
+    }
+}
+
+fn read_current_task_name_tool() -> McpToolSpec {
+    McpToolSpec {
+        name: READ_CURRENT_TASK_NAME_TOOL_NAME,
+        description: "Read the user-facing name of the current Caffold task, as Caffold shows it. The result is the name alone, as plain text.",
+        input_schema: json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
         }),
     }
 }

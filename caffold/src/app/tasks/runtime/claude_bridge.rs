@@ -268,6 +268,7 @@ impl TaskRuntime {
                 )
                 .await
             }
+            AskedTool::ReadTaskName => self.current_task_name(thread_id).await,
             AskedTool::Notes(call) => self.execute_notes_tool(thread_id, call.clone()).await,
         };
         if let Err(error) = self.claude.answer_tool_ask(thread_id, &ask, &outcome).await {
@@ -1041,6 +1042,59 @@ mod tests {
         );
         let kept = state.task_store.get(SESSION).unwrap().unwrap();
         assert_eq!(kept.display_name, "The name before");
+    }
+
+    fn read_name_call(id: u64) -> Value {
+        json!({
+            "type": "control_request",
+            "request_id": format!("agent-{id}"),
+            "request": {
+                "subtype": "mcp_message",
+                "server_name": "caffold",
+                "message": {
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "method": "tools/call",
+                    "params": { "name": "read_current_task_name", "arguments": {} },
+                },
+            },
+        })
+    }
+
+    #[tokio::test]
+    async fn the_agent_reads_the_name_its_task_goes_by_now() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = watched(root.path()).await;
+        state
+            .task_store
+            .claim(managed_claude_row(root.path()), 1)
+            .unwrap();
+
+        runner.say(SESSION, read_name_call(11)).await;
+        let answered = call_answered(&runner, 11).await;
+        assert_eq!(answered["content"][0]["text"], "The name before");
+        assert!(answered.get("isError").is_none());
+
+        runner.say(SESSION, rename_call(12, "A better name")).await;
+        call_answered(&runner, 12).await;
+        runner.say(SESSION, read_name_call(13)).await;
+        let answered = call_answered(&runner, 13).await;
+        assert_eq!(answered["content"][0]["text"], "A better name");
+    }
+
+    #[tokio::test]
+    async fn a_name_read_for_a_task_caffold_does_not_manage_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        let (_state, runner) = watched(root.path()).await;
+
+        runner.say(SESSION, read_name_call(14)).await;
+
+        let answered = call_answered(&runner, 14).await;
+        assert_eq!(answered["isError"], true);
+        assert_eq!(
+            answered["content"][0]["text"],
+            "Caffold can only read the name of a task that it manages."
+        );
     }
 
     #[tokio::test]

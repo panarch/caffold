@@ -153,7 +153,8 @@ install-issued capability fails closed without preventing a Caffold service
 that lacks one of the agents from starting.
 
 Codex, Claude, and Grok expose the same MCP base names: the Task-owned
-`rename_current_task` and `isolate_current_task`, and the Notes tools listed in
+`rename_current_task`, `isolate_current_task`, and `read_current_task_name`,
+plus the Notes tools listed in
 [Agent Runtimes](agent-runtimes.md#caffold-served-tools-and-worktrees).
 Claude's provider transport qualifies those names as `mcp__caffold__...` and
 Grok's as `caffold__...`;
