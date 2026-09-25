@@ -159,7 +159,7 @@ test("multiplexes Task List, Task Detail, and independent Watch scopes", async (
   assert.deepEqual(browser.publications[0], {
     connectionId: "connection-a",
     subscriptions: {
-      controlRevision: 4,
+      controlRevision: 1,
       taskList: { generation: list.generation },
       taskDetail: { generation: detail.generation, threadId: "thread-a" },
       watches: [
@@ -208,6 +208,58 @@ test("multiplexes Task List, Task Detail, and independent Watch scopes", async (
   list.close();
   browser.liveUpdates.disconnect();
 });
+
+test("sends the first Task List subscription after the gateway greeting under a new revision", async () => {
+  const { binding, published } = await publishedAfterGreeting(
+    (liveUpdates) => liveUpdates.subscribeTaskList({}),
+  );
+
+  assert.deepEqual(published.map(({ controlRevision }) => controlRevision), [1, 2]);
+  assert.equal(published[0].taskList, null);
+  assert.deepEqual(published[1].taskList, { generation: binding.generation });
+});
+
+test("sends the first Task Detail subscription after the gateway greeting under a new revision", async () => {
+  const { binding, published } = await publishedAfterGreeting(
+    (liveUpdates) => liveUpdates.subscribeTaskDetail("thread-a", {}),
+  );
+
+  assert.deepEqual(published.map(({ controlRevision }) => controlRevision), [1, 2]);
+  assert.equal(published[0].taskDetail, null);
+  assert.deepEqual(published[1].taskDetail, {
+    generation: binding.generation,
+    threadId: "thread-a",
+  });
+});
+
+test("sends the first Watch subscription after the gateway greeting under a new revision", async () => {
+  const { binding, published } = await publishedAfterGreeting(
+    (liveUpdates) => liveUpdates.subscribeWatch("repo", {}),
+  );
+
+  assert.deepEqual(published.map(({ controlRevision }) => controlRevision), [1, 2]);
+  assert.deepEqual(published[0].watches, []);
+  assert.deepEqual(published[1].watches, [
+    {
+      subscriptionId: binding.subscriptionId,
+      generation: binding.generation,
+      path: "repo",
+    },
+  ]);
+});
+
+async function publishedAfterGreeting(subscribe) {
+  const browser = harness();
+  browser.liveUpdates.connect();
+  browser.sources[0].emit("gateway-ready", { connectionId: "connection-a" });
+  await settle();
+  const binding = subscribe(browser.liveUpdates);
+  await settle();
+  const published = browser.publications.map(({ subscriptions }) => subscriptions);
+  binding.close();
+  browser.liveUpdates.disconnect();
+  return { binding, published };
+}
 
 test("keeps logical subscriptions across visibility replacement", async () => {
   const browser = harness();
