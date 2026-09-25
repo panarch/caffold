@@ -62,7 +62,7 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
           <h2 id="codex-readiness-title" data-readiness-title></h2>
           <p data-readiness-message role="status"></p>
           <p class="codex-readiness-runtime-requirement" hidden>
-            Caffold runs Tasks through Codex's background app server. The official standalone Codex CLI installation includes the runtime commands Caffold needs to start and connect to it. Other installations may provide the <code>codex</code> command without this app-server support. Caffold manages the connection automatically.
+            Caffold runs Codex Tasks through Codex's background app server. The official standalone Codex CLI installation includes the runtime commands Caffold needs to start and connect to it. Other installations may provide the <code>codex</code> command without this app-server support. Caffold manages the connection automatically.
           </p>
           <dl class="codex-readiness-versions" hidden>
             <div data-readiness-version="detected"><dt>Detected</dt><dd></dd></div>
@@ -422,20 +422,20 @@ function readinessContent(readiness) {
     return {
       title: "Install a compatible Codex CLI",
       message:
-        "The detected Codex installation does not include the runtime support Caffold Tasks require.",
+        "The detected Codex installation does not include the runtime support Codex Tasks require.",
       instruction:
         "Run the required command above, start codex and complete sign-in, then retry.",
     };
   }
   return {
     missing: {
-      title: "Install Codex to start Tasks",
-      message: "Caffold requires the official standalone Codex installation.",
+      title: "Install Codex to use Codex models",
+      message: "Codex Tasks need the official standalone Codex installation. Claude and Grok Tasks work without it.",
       instruction: "Run the required command above, start codex and complete sign-in, then retry.",
     },
     unsupportedInstall: {
       title: "Use the official standalone Codex",
-      message: "The detected Codex installation is not supported for Caffold Tasks.",
+      message: "The detected Codex installation is not supported for Codex Tasks.",
       instruction: "Run the required command above, start codex and complete sign-in, then retry.",
     },
     updateRequired: {
@@ -465,7 +465,7 @@ function readinessContent(readiness) {
     },
   }[readiness.state] ?? {
     title: "Codex setup is required",
-    message: "Codex is not ready for Task operations.",
+    message: "Codex is not ready for Codex Tasks.",
     instruction: "Retry the diagnosis or open Settings.",
   };
 }

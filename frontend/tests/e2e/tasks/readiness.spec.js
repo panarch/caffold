@@ -19,7 +19,7 @@ import {
 } from "../support/task-api-fixture.js";
 
 const BLOCKING_STATES = [
-  ["missing", "Install Codex to start Tasks", "Codex setup required."],
+  ["missing", "Install Codex to use Codex models", "Codex setup required."],
   [
     "unsupportedInstall",
     "Use the official standalone Codex",

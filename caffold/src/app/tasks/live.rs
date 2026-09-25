@@ -199,20 +199,35 @@ struct TaskListLiveSource {
 impl TaskListLiveSource {
     async fn stream(&self) -> Result<TaskListLiveStream, ApiError> {
         let receivers = TaskListEventReceivers::subscribe(self);
-        let connection = self.detail.connection().await?;
+        // Asking for the connection also starts the runtime signal driver that
+        // every agent's row updates travel through, so it is asked even when
+        // Codex then turns out to be unavailable.
+        let codex = match self.detail.connection().await {
+            Ok(connection) => Some(connection),
+            Err(error) => {
+                eprintln!(
+                    "failed to reach Codex for the Task list; Codex Tasks keep their Caffold rows: {error}"
+                );
+                None
+            }
+        };
         let projection = super::active_list::load_runtime_snapshot(
             self.store.clone(),
             &self.sessions,
-            connection.generation,
-            &connection.client,
+            codex.as_ref(),
             &self.claude,
             &self.grok,
         )
         .await?;
-        for thread in projection.observed_threads {
-            self.sessions
-                .observe_listed_thread_metadata(connection.generation, Conversation::from(&thread))
-                .await;
+        if let Some(connection) = &codex {
+            for thread in projection.observed_threads {
+                self.sessions
+                    .observe_listed_thread_metadata(
+                        connection.generation,
+                        Conversation::from(&thread),
+                    )
+                    .await;
+            }
         }
         Ok(task_list_event_stream(
             receivers,
@@ -314,7 +329,7 @@ mod tests {
     use futures_util::StreamExt;
     use serde_json::{Value as JsonValue, json};
 
-    use std::collections::BTreeSet;
+    use std::{collections::BTreeSet, time::Duration};
 
     use super::*;
     use crate::{
@@ -325,8 +340,8 @@ mod tests {
             lifecycle::ActiveTaskSectionIdentity,
             projection::{resolve_conversation_cwd, task_record_from_conversation},
             test_support::{
-                record_managed_worktree, task_state_with_codex_client, task_thread_list,
-                wait_for_mock_method,
+                record_managed_worktree, task_state_with_agents, task_state_with_codex_client,
+                task_thread_list, wait_for_mock_method,
             },
         },
         fs::RootedFs,
@@ -357,7 +372,7 @@ mod tests {
 
     /// The list's next event, which is already queued when this is asked.
     async fn queued_event(stream: &mut TaskListLiveStream) -> Option<TaskListLiveEvent> {
-        tokio::time::timeout(std::time::Duration::from_millis(100), stream.next())
+        tokio::time::timeout(Duration::from_millis(100), stream.next())
             .await
             .expect("the Task list answers from what is already queued")
     }
@@ -385,7 +400,7 @@ mod tests {
         state.task_runtime.spawn_test_bridge(client.clone(), 1);
 
         let mut events = TaskLiveSource::new(&state).task_list().await.unwrap();
-        let snapshot = tokio::time::timeout(std::time::Duration::from_millis(50), events.next())
+        let snapshot = tokio::time::timeout(Duration::from_millis(50), events.next())
             .await
             .expect("the Task list sends its snapshot")
             .expect("the Task list remains open");
@@ -671,7 +686,7 @@ mod tests {
         state.task_runtime.spawn_test_bridge(client.clone(), 1);
 
         let mut events = TaskLiveSource::new(&state).task_list().await.unwrap();
-        let snapshot = tokio::time::timeout(std::time::Duration::from_millis(50), events.next())
+        let snapshot = tokio::time::timeout(Duration::from_millis(50), events.next())
             .await
             .expect("Task List live source replays the current runtime snapshot")
             .expect("Task List live source remains open");
@@ -693,7 +708,7 @@ mod tests {
                 status: agent::codex::ThreadStatus::Idle,
             },
         ));
-        let sync = tokio::time::timeout(std::time::Duration::from_millis(100), events.next())
+        let sync = tokio::time::timeout(Duration::from_millis(100), events.next())
             .await
             .expect("tracked global Thread publishes later status changes")
             .expect("Task List live source remains open");
@@ -708,7 +723,7 @@ mod tests {
         assert!(payload.get("detail").is_none());
         assert!(payload.get("reason").is_none());
         assert!(
-            tokio::time::timeout(std::time::Duration::from_millis(20), events.next())
+            tokio::time::timeout(Duration::from_millis(20), events.next())
                 .await
                 .is_err(),
             "one complete snapshot must replace per-Task bootstrap frames"
@@ -729,7 +744,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn task_list_live_source_rejects_incomplete_pagination_without_cache_mutation() {
+    async fn task_list_leaves_codex_rows_out_of_incomplete_pagination_without_cache_mutation() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-list-repeated-cursor";
         let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
@@ -762,13 +777,132 @@ mod tests {
         );
         let before = cached_projection_rows(&state);
 
-        let result = TaskLiveSource::new(&state).task_list().await;
+        let mut events = TaskLiveSource::new(&state)
+            .task_list()
+            .await
+            .expect("a Codex list that does not end costs its rows, not the Task list");
 
-        assert!(matches!(
-            result,
-            Err(ApiError::Agent(message)) if message.contains("repeated")
-        ));
+        assert_snapshot_without_rows(&mut events).await;
         assert_eq!(cached_projection_rows(&state), before);
+    }
+
+    #[tokio::test]
+    async fn the_task_list_opens_while_codex_readiness_blocks() {
+        // Claude and Grok Tasks never consult Codex readiness, and the browser
+        // holds New Task back while this list is down.
+        let root = tempfile::tempdir().unwrap();
+        let state = task_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        claim_cached_active(
+            &state,
+            "thread-held-codex",
+            "Persisted name",
+            7,
+            "section-held-codex",
+            "",
+        );
+        state.task_runtime.hold_codex_readiness_for_tests().await;
+
+        let mut events = TaskLiveSource::new(&state)
+            .task_list()
+            .await
+            .expect("the Task list opens while Codex is held");
+
+        assert_snapshot_without_rows(&mut events).await;
+    }
+
+    #[tokio::test]
+    async fn a_task_list_opened_without_codex_still_carries_a_claude_session_change() {
+        // Opening the list is what starts the driver that turns every agent's
+        // session changes into the publications this list carries.
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let thread_id = "claude-while-codex-is-held";
+        let (state, runner) = task_state_with_agents(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        state.task_runtime.watch_claude();
+        state
+            .task_runtime
+            .claude()
+            .open_conversation(thread_id, &cwd, &Default::default())
+            .await
+            .expect("the conversation opens");
+        state
+            .task_store
+            .claim(
+                ManagedThread::new(
+                    thread_id,
+                    RunBy::Claude { cwd: cwd.clone() },
+                    Some(1_000),
+                    None,
+                    None,
+                ),
+                1_000,
+            )
+            .unwrap();
+        let agent = state
+            .task_runtime
+            .task_agent(thread_id)
+            .await
+            .expect("the Claude Task has its agent");
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&agent.driver(), agent.generation(), thread_id)
+            .await
+            .expect("the Claude Task is subscribed");
+        state.task_runtime.hold_codex_readiness_for_tests().await;
+        let mut events = TaskLiveSource::new(&state)
+            .task_list()
+            .await
+            .expect("the Task list opens while Codex is held");
+        assert!(matches!(
+            queued_event(&mut events).await,
+            Some(TaskListLiveEvent::Snapshot(_))
+        ));
+
+        runner
+            .say(
+                thread_id,
+                json!({
+                    "type": "system",
+                    "subtype": "session_state_changed",
+                    "state": "running",
+                    "session_id": thread_id,
+                }),
+            )
+            .await;
+
+        let sync = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let TaskListLiveEvent::Sync(sync) =
+                    events.next().await.expect("the Task list stays open")
+                    && sync.thread_id == thread_id
+                {
+                    return sync;
+                }
+            }
+        })
+        .await
+        .expect("the Claude session change reaches the list");
+        assert!(sync.task.is_some());
+    }
+
+    /// The list's first event is its snapshot, and no agent answered for a row.
+    async fn assert_snapshot_without_rows(events: &mut TaskListLiveStream) {
+        match queued_event(events).await {
+            Some(TaskListLiveEvent::Snapshot(snapshot)) => assert!(
+                snapshot.tasks.is_empty(),
+                "the Codex Task keeps its stored row: {:?}",
+                snapshot.tasks
+            ),
+            other => panic!("the Task list opens with its snapshot: {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -783,7 +917,7 @@ mod tests {
                 "nextCursor": null,
                 "backwardsCursor": null,
             }),
-            std::time::Duration::from_millis(50),
+            Duration::from_millis(50),
         )]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -818,7 +952,7 @@ mod tests {
         let mut received = Vec::new();
         for _ in 0..2 {
             received.push(
-                tokio::time::timeout(std::time::Duration::from_millis(100), events.next())
+                tokio::time::timeout(Duration::from_millis(100), events.next())
                     .await
                     .expect("expected live event")
                     .expect("Task List live source remains open"),

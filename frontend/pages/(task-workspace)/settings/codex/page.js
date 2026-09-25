@@ -774,7 +774,7 @@ function patchRepairSurface(root, readiness, readinessLabel, copyState) {
   const description = readiness.reasonCode === "appServerCommandsUnavailable"
     ? "The detected CLI lacks the app-server daemon commands Caffold uses to manage Task connections. Install or update the official standalone CLI with the required command below."
     : {
-      missing: "Caffold Tasks require the official standalone CLI because it includes the app-server daemon commands used for managed connections. Install it below, then run codex and sign in.",
+      missing: "Codex Tasks require the official standalone CLI because it includes the app-server daemon commands used for managed connections. Install it below, then run codex and sign in.",
       unsupportedInstall: "This installation does not provide a supported app-server daemon. Install the official standalone CLI with the required command below.",
       updateRequired: "Update the official standalone CLI with the required command below. Caffold rejects older versions before starting the app-server daemon.",
       signInRequired: "Run codex in a terminal and complete sign-in, then refresh this page.",

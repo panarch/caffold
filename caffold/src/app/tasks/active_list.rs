@@ -6,12 +6,7 @@ use std::{
 use serde::Serialize;
 
 use crate::{
-    agent::{
-        ThreadStatus,
-        claude::ClaudeClient,
-        codex::{CodexThread, CodexThreadClient},
-        grok::GrokClient,
-    },
+    agent::{ThreadStatus, claude::ClaudeClient, codex::CodexThread, grok::GrokClient},
     app::error::ApiError,
     app::tasks::sessions::TaskSessions,
     fs::RootedFs,
@@ -22,7 +17,7 @@ use crate::{
 };
 
 use super::{
-    TaskRecord,
+    CodexConnection, TaskRecord,
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason},
 };
 use crate::agent::Conversation;
@@ -187,8 +182,7 @@ pub(in crate::app::tasks) async fn load_cached(
 pub(in crate::app::tasks) async fn load_runtime_snapshot(
     store: TaskStore,
     sessions: &TaskSessions,
-    generation: u64,
-    client: &CodexThreadClient,
+    codex: Option<&CodexConnection>,
     claude: &ClaudeClient,
     grok: &GrokClient,
 ) -> Result<ActiveTaskRuntimeProjection, ApiError> {
@@ -213,14 +207,16 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
             observed_threads: Vec::new(),
         });
     }
-    for managed in managed.values() {
-        // Codex's bookkeeping, for Codex's threads. A Claude session counts
-        // its connections as one fixed generation of its own, and Codex's
-        // count must not be stamped over it.
-        if matches!(managed.run_by, RunBy::Codex) {
-            sessions
-                .track_listed_codex_thread(generation, &managed.thread_id)
-                .await;
+    if let Some(connection) = codex {
+        for managed in managed.values() {
+            // Codex's bookkeeping, for Codex's threads. A Claude session counts
+            // its connections as one fixed generation of its own, and Codex's
+            // count must not be stamped over it.
+            if matches!(managed.run_by, RunBy::Codex) {
+                sessions
+                    .track_listed_codex_thread(connection.generation, &managed.thread_id)
+                    .await;
+            }
         }
     }
 
@@ -234,7 +230,7 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
     };
     let mut tasks = Vec::new();
     let mut observed_threads = Vec::new();
-    for thread in super::recovery::list_all_global_threads(client).await? {
+    for thread in listed_codex_threads(codex).await {
         let Some(managed) = managed.get(&thread.id) else {
             continue;
         };
@@ -267,6 +263,26 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
         snapshot: ActiveTaskRuntimeSnapshot { tasks },
         observed_threads,
     })
+}
+
+/// Every thread Codex lists, or none when Codex cannot be asked or its list
+/// does not come to an end.
+///
+/// A Codex Task left out keeps its stored row, as a conversation nobody is
+/// watching does: an agent that cannot answer costs its own rows, not the list.
+async fn listed_codex_threads(codex: Option<&CodexConnection>) -> Vec<CodexThread> {
+    let Some(connection) = codex else {
+        return Vec::new();
+    };
+    match super::recovery::list_all_global_threads(&connection.client).await {
+        Ok(threads) => threads,
+        Err(error) => {
+            eprintln!(
+                "failed to list Codex threads for the Task list; Codex Tasks keep their Caffold rows: {error}"
+            );
+            Vec::new()
+        }
+    }
 }
 
 impl ActiveTask {
@@ -376,10 +392,15 @@ async fn repository_sections(
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
     use crate::agent;
-    use crate::agent::codex::MockCodexResponse;
-    use crate::app::tasks::{recovery, sessions, test_support::record_managed_worktree};
+    use crate::agent::codex::{CodexThreadClient, MockCodexResponse};
+    use crate::app::tasks::{
+        recovery, sessions,
+        test_support::{record_managed_worktree, task_thread_list},
+    };
     use crate::task_store::RunBy;
 
     fn fixture() -> (tempfile::TempDir, Arc<RootedFs>, TaskStore) {
@@ -444,11 +465,14 @@ mod tests {
         claude
     }
 
-    fn an_empty_codex() -> CodexThreadClient {
-        CodexThreadClient::mock(vec![MockCodexResponse::ok(
-            "thread/list",
-            serde_json::json!({ "data": [], "nextCursor": null, "backwardsCursor": null }),
-        )])
+    fn an_empty_codex(generation: u64) -> CodexConnection {
+        CodexConnection {
+            client: CodexThreadClient::mock(vec![MockCodexResponse::ok(
+                "thread/list",
+                serde_json::json!({ "data": [], "nextCursor": null, "backwardsCursor": null }),
+            )]),
+            generation,
+        }
     }
 
     #[tokio::test]
@@ -482,8 +506,7 @@ mod tests {
         let projection = load_runtime_snapshot(
             store,
             &sessions::TaskSessions::default(),
-            1,
-            &an_empty_codex(),
+            Some(&an_empty_codex(1)),
             &claude,
             &agent::grok::GrokClient::unreachable(),
         )
@@ -540,8 +563,7 @@ mod tests {
         let projection = load_runtime_snapshot(
             store,
             &sessions,
-            2,
-            &an_empty_codex(),
+            Some(&an_empty_codex(2)),
             &claude,
             &agent::grok::GrokClient::unreachable(),
         )
@@ -593,8 +615,7 @@ mod tests {
         let projection = load_runtime_snapshot(
             store,
             &sessions::TaskSessions::default(),
-            1,
-            &an_empty_codex(),
+            Some(&an_empty_codex(1)),
             &claude,
             &agent::grok::GrokClient::unreachable(),
         )
@@ -634,8 +655,7 @@ mod tests {
         let projection = load_runtime_snapshot(
             store,
             &sessions::TaskSessions::default(),
-            1,
-            &an_empty_codex(),
+            Some(&an_empty_codex(1)),
             &claude,
             &agent::grok::GrokClient::unreachable(),
         )
@@ -649,6 +669,112 @@ mod tests {
             .find(|task| task.thread_id == "claude-isolated")
             .expect("the watched conversation is a row");
         assert!(row.worktree);
+    }
+
+    /// A Codex Task and a Claude Task whose conversation is being watched.
+    async fn a_codex_task_and_a_watched_claude_task(store: &TaskStore) -> ClaudeClient {
+        let cwd = "/Users/example/project";
+        store
+            .claim(
+                ManagedThread::new("codex-1", RunBy::Codex, Some(400), None, None),
+                400,
+            )
+            .unwrap();
+        store
+            .claim(
+                ManagedThread::new(
+                    "claude-1",
+                    RunBy::Claude {
+                        cwd: cwd.to_string(),
+                    },
+                    Some(500),
+                    None,
+                    None,
+                ),
+                500,
+            )
+            .unwrap();
+        watching_a_claude_conversation("claude-1", cwd).await
+    }
+
+    fn row_ids(projection: &ActiveTaskRuntimeProjection) -> Vec<&str> {
+        projection
+            .snapshot
+            .tasks
+            .iter()
+            .map(|task| task.thread_id.as_str())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn runtime_snapshot_without_codex_leaves_codex_tasks_to_their_stored_rows() {
+        // Codex being unavailable costs the list its own rows and nothing else.
+        let store = TaskStore::memory().unwrap();
+        let claude = a_codex_task_and_a_watched_claude_task(&store).await;
+        let sessions = sessions::TaskSessions::default();
+
+        let projection = load_runtime_snapshot(
+            store,
+            &sessions,
+            None,
+            &claude,
+            &agent::grok::GrokClient::unreachable(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(row_ids(&projection), ["claude-1"]);
+        assert!(projection.observed_threads.is_empty());
+        assert!(
+            sessions.snapshot("codex-1").await.is_none(),
+            "no Codex bookkeeping without a Codex connection"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_codex_list_that_does_not_end_leaves_only_the_codex_rows_out() {
+        let store = TaskStore::memory().unwrap();
+        let claude = a_codex_task_and_a_watched_claude_task(&store).await;
+        let thread =
+            task_thread_list("codex-1", Path::new("/Users/example/project"))["data"][0].clone();
+        let codex = CodexConnection {
+            client: CodexThreadClient::mock(vec![
+                MockCodexResponse::ok(
+                    "thread/list",
+                    serde_json::json!({
+                        "data": [thread],
+                        "nextCursor": "repeated",
+                        "backwardsCursor": null,
+                    }),
+                ),
+                MockCodexResponse::ok(
+                    "thread/list",
+                    serde_json::json!({
+                        "data": [],
+                        "nextCursor": "repeated",
+                        "backwardsCursor": null,
+                    }),
+                ),
+            ]),
+            generation: 1,
+        };
+
+        let projection = load_runtime_snapshot(
+            store,
+            &sessions::TaskSessions::default(),
+            Some(&codex),
+            &claude,
+            &agent::grok::GrokClient::unreachable(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            row_ids(&projection),
+            ["claude-1"],
+            "the page Codex did answer is not taken for its whole list"
+        );
+        assert!(projection.observed_threads.is_empty());
     }
 
     #[tokio::test]
