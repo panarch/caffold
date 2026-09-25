@@ -616,12 +616,15 @@ Task Detail.
 The Task List live channel complements that persisted identity with process-local
 runtime state. A new connection registers cached managed Codex threads before
 paging app-server's global state-DB-backed `thread/list`, and also projects the
-managed Claude sessions the runner is currently holding. Only managed IDs are
-shown, and the browser receives one complete `task-list-snapshot` before queued
-steady-state events. Agent-owned names never replace Redb display names, and
-managed IDs missing from the live snapshot keep their cached not-loaded rows.
-The browser therefore renders the cached list immediately and upgrades the
-available status chips without opening Tasks one at a time. Steady-state
+managed Claude and Grok conversations this process is watching. Only managed IDs
+are shown, and the browser receives one complete `task-list-snapshot` before
+queued steady-state events. Agent-owned names never replace Redb display names,
+and managed IDs missing from the live snapshot keep their cached not-loaded rows.
+Codex readiness does not gate the channel: when Codex cannot be asked or its
+`thread/list` does not come to an end, the snapshot leaves every Codex Task to
+its cached row and the server logs why, while the other agents' rows are still
+projected. The browser therefore renders the cached list immediately and upgrades
+the available status chips without opening Tasks one at a time. Steady-state
 `task-sync` frames contain only the conversation ID, revision, and the nullable
 list row of the Task that Task Detail published. Transcript, history, approval,
 file-link, and Task-detail settings remain on the logical Task Detail channel.
