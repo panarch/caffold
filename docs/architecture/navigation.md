@@ -254,6 +254,10 @@ a tab returns to the depth it was left at. A tab that has not been visited
 opens the route its owner supplies: Tasks and Notes open their own home, and
 Settings opens its Codex page while blocked Codex operations need repair.
 
+Selecting the tab already shown requests no route. Its route stays, an open
+Task included, and the Task Workspace scrolls that tab's navigator back to the
+top.
+
 ## History policy
 
 A route request decides its own history treatment from `routeRelation(from,

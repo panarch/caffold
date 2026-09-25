@@ -253,6 +253,12 @@ class CaffoldTaskWorkspace extends HTMLElement {
       (event) => {
         event.stopPropagation();
         const tab = event.detail?.mode;
+        // Choosing the tab already shown keeps its route, an open Task
+        // included, and only brings its list back to the top.
+        if (tab === this.mode) {
+          this.navigatorForTab(tab).scrollToTop();
+          return;
+        }
         this.dispatchEvent(
           new CustomEvent("caffold:request-workspace-tab", {
             bubbles: true,
@@ -385,6 +391,17 @@ class CaffoldTaskWorkspace extends HTMLElement {
     }
 
     return { kind: "tasks" };
+  }
+
+  navigatorForTab(tab) {
+    if (tab === "notes") {
+      return this.notesNavigator;
+    }
+    if (tab === "settings") {
+      return this.settingsNavigator;
+    }
+
+    return this.taskNavigator;
   }
 
   prepareRoute(route, options = {}) {

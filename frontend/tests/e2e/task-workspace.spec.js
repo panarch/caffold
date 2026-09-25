@@ -825,7 +825,62 @@ test("draws a light divider only between two unselected workspace tabs", { tag: 
   await captureReviewScreenshot(page, testInfo, "workspace-tabs-settings");
 });
 
-async function installTaskRoutes(page, task) {
+test("choosing the Tasks tab again brings the Task list back to the top", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  await installEventSourceMock(page);
+  const tasks = Array.from({ length: 40 }, (_, index) => {
+    const task = workspaceTask();
+    return {
+      ...task,
+      id: `thread_workspace_${index}`,
+      threadId: `thread_workspace_${index}`,
+      title: `Workspace task ${index}`,
+      preview: `Workspace task ${index}`,
+      updatedMs: task.updatedMs - index * 1_000,
+      recencyMs: task.recencyMs - index * 1_000,
+    };
+  });
+  await installTaskRoutes(page, tasks[0], tasks);
+  // A phone shows the tabs only over the list. A desktop shows them beside an
+  // open Task too, and choosing Tasks again must leave that Task open.
+  const route = testInfo.project.name === "phone"
+    ? "/"
+    : `/tasks/${tasks[0].threadId}`;
+  await page.goto(route);
+
+  const taskWorkspace = page.locator("caffold-task-workspace");
+  const list = taskWorkspace.locator("caffold-task-navigator > .task-list-scroll");
+  await expect(list).toContainText("Workspace task 39");
+  if (testInfo.project.name !== "phone") {
+    await expect(list.locator('.task-row[aria-current="true"]'))
+      .toContainText("Workspace task 0");
+  }
+  // Settle the frame in which the list reveals the open Task's row, so only
+  // the tab can move the list after this.
+  const bottom = await list.evaluate(async (element) => {
+    await new Promise((resolve) => requestAnimationFrame(() =>
+      requestAnimationFrame(resolve)
+    ));
+    element.scrollTop = element.scrollHeight;
+    await new Promise((resolve) => requestAnimationFrame(() =>
+      requestAnimationFrame(resolve)
+    ));
+    return element.scrollTop;
+  });
+  expect(bottom).toBeGreaterThan(0);
+  const entries = await page.evaluate(() => window.history.length);
+
+  await taskWorkspace
+    .locator('.task-workspace-navigation button[data-workspace-mode="tasks"]')
+    .click();
+
+  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBe(0);
+  await expect(page).toHaveURL(route);
+  expect(await page.evaluate(() => window.history.length)).toBe(entries);
+});
+
+async function installTaskRoutes(page, task, listed = [task]) {
   await page.route("**/api/tasks**", (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -835,7 +890,7 @@ async function installTaskRoutes(page, task) {
     if (url.pathname === "/api/tasks") {
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify(activeTaskProjection([task])),
+        body: JSON.stringify(activeTaskProjection(listed)),
       });
     }
     if (url.pathname === "/api/tasks/archived") {

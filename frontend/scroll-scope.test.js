@@ -9,6 +9,7 @@ import {
   hasVerticalScrollOverflow,
   mergeScrollSurfaceScopes,
   normalizeScrollAxes,
+  scrollBackToTop,
 } from "./scroll-scope.js";
 
 test("Scroll surface scopes compose direct owners in declaration order", () => {
@@ -89,4 +90,25 @@ test("normalizes owner-declared axes and intersects exact current overflow", () 
     scrollWidth: 160,
   }, ["vertical", "horizontal"]), ["horizontal"]);
   assert.equal(availableScrollAxes({}, []), null);
+});
+
+test("scrolls back to the top smoothly unless reduced motion is preferred", (t) => {
+  const scrolls = [];
+  const scrollport = { scrollTo: (options) => scrolls.push(options) };
+  let reduceMotion = false;
+  globalThis.matchMedia = (query) => ({
+    matches: query === "(prefers-reduced-motion: reduce)" && reduceMotion,
+  });
+  t.after(() => {
+    delete globalThis.matchMedia;
+  });
+
+  scrollBackToTop(scrollport);
+  reduceMotion = true;
+  scrollBackToTop(scrollport);
+
+  assert.deepEqual(scrolls, [
+    { top: 0, behavior: "smooth" },
+    { top: 0, behavior: "auto" },
+  ]);
 });
