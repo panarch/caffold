@@ -48,6 +48,7 @@ export function installTaskSseControllerInBrowser() {
       return;
     }
     source.connectionId = `mock-live-${++connectionSequence}`;
+    source.controlRevision = 0;
     connections.set(source.connectionId, source);
     nativeEmit(source, "gateway-ready", {
       connectionId: source.connectionId,
@@ -336,10 +337,13 @@ export function installTaskSseControllerInBrowser() {
           { status: 404, headers: { "content-type": "application/json" } },
         );
       }
-      applySubscriptions(
-        physical,
-        JSON.parse(`${init.body ?? "{}"}`),
-      );
+      const subscriptions = JSON.parse(`${init.body ?? "{}"}`);
+      // Like the gateway, ignore a snapshot whose revision is not newer than
+      // the last one this connection applied.
+      if (subscriptions.controlRevision > physical.controlRevision) {
+        physical.controlRevision = subscriptions.controlRevision;
+        applySubscriptions(physical, subscriptions);
+      }
       return new Response(null, { status: 204 });
     }
     return originalFetch(input, init);

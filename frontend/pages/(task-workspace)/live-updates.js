@@ -219,7 +219,6 @@ export class WorkspaceLiveUpdates {
   }
 
   subscriptionsChanged() {
-    this.controlRevision += 1;
     this.controlDirty = true;
     void this.flushSubscriptions();
   }
@@ -228,7 +227,7 @@ export class WorkspaceLiveUpdates {
     const taskList = this.bindings.get("task-list");
     const taskDetail = this.bindings.get("task-detail");
     return {
-      controlRevision: Math.max(1, this.controlRevision),
+      controlRevision: this.controlRevision,
       taskList: taskList
         ? { generation: taskList.generation }
         : null,
@@ -263,6 +262,10 @@ export class WorkspaceLiveUpdates {
         this.isCurrentConnection(sourceGeneration, connectionId)
       ) {
         this.controlDirty = false;
+        // The gateway ignores a snapshot whose revision is not newer than the
+        // last one it applied, so every snapshot sent, the first after
+        // gateway-ready included, takes a new revision.
+        this.controlRevision += 1;
         const subscriptions = this.desiredSubscriptions();
         try {
           await this.publishSubscriptions(connectionId, subscriptions);

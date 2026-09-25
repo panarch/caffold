@@ -29,10 +29,11 @@ the complete desired logical subscription snapshot to
 
 The control request must be same-origin. `controlRevision` is positive and
 orders complete snapshots for one connection; an older or repeated revision
-does not replace newer desired state. Task List and Task Detail each have at
-most one logical subscription. Watch is a set because independently active
-consumers may watch different canonical scopes. A Watch `subscriptionId` is
-unique within the snapshot.
+does not replace newer desired state. The browser therefore gives every
+snapshot it sends, the first one after `gateway-ready` included, a new
+revision. Task List and Task Detail each have at most one logical subscription.
+Watch is a set because independently active consumers may watch different
+canonical scopes. A Watch `subscriptionId` is unique within the snapshot.
 
 Each logical subscription carries its own positive generation. Replacing a
 Task, retrying one channel, or changing a Watch scope advances only that
