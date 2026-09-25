@@ -65,10 +65,11 @@ function documentRequests(page, testInfo, suffix = "") {
   return { pattern, requests };
 }
 
-async function openDocument(page, testInfo, view = "preview") {
+async function openDocument(page, testInfo, view = "preview", { beforeOpen } = {}) {
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await beforeOpen?.();
   await page.goto(
     `/tasks/${taskScenario.threadId}/review?nav=files&view=${view}` +
       `&file=${documentRouteParam(testInfo)}`,
@@ -142,9 +143,20 @@ test("reads the document again after the file changes", { tag: "@desktop" }, asy
 }, testInfo) => {
   const { pattern, requests } = documentRequests(page, testInfo);
 
-  const { taskReview } = await openDocument(page, testInfo);
+  const { taskReview } = await openDocument(page, testInfo, "preview", {
+    // When the working-tree status arrives it reloads the viewer, which reads
+    // the document again if the navigator has listed it by then.
+    beforeOpen: () => page.route(/\/api\/git\/status(?:\?|$)/, () => {}),
+  });
   const viewer = taskReview.locator("caffold-pdf-viewer");
   await expect(viewer).toHaveAttribute("data-render-state", "pdf");
+  // The viewer does not wait for the navigator, and the refresh below reports a
+  // change only to a file the navigator has listed and selected.
+  await expect(
+    taskReview
+      .locator("caffold-file-navigator")
+      .locator(`button[data-file-tree-path="src/${documentRoute(testInfo)}"]`),
+  ).toHaveAttribute("aria-current", "true");
   expect(requests).toHaveLength(1);
 
   const original = await readFile(FIXTURE_DOCUMENT);
