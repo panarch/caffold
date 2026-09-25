@@ -4,7 +4,7 @@ caffold-task-review {
   --review-navigator-action-inline-end: var(--interface-space-6);
   --review-navigator-axis-inline-size: 7rem;
   --review-navigator-control-inline-size: calc(
-    attr(data-review-navigator-choice-count type(<number>), 1) *
+    var(--review-navigator-choice-count, 1) *
       var(--review-navigator-axis-inline-size) / 2
   );
   --review-viewer-action-inline-end: calc(
@@ -12,7 +12,7 @@ caffold-task-review {
   );
   --review-viewer-axis-inline-size: 7.5rem;
   --review-viewer-control-inline-size: calc(
-    attr(data-review-viewer-choice-count type(<number>), 1) *
+    var(--review-viewer-choice-count, 1) *
       var(--review-viewer-axis-inline-size) / 2
   );
   --review-pane-title-size: 0.82rem;
@@ -29,6 +29,19 @@ caffold-task-review {
   height: 100%;
   overflow: hidden;
   background: var(--surface);
+
+  /* Shipping iPadOS Safari cannot read a typed attr(), so each count is mapped here. */
+  &[data-review-navigator-choice-count="2"] {
+    --review-navigator-choice-count: 2;
+  }
+
+  &[data-review-viewer-choice-count="2"] {
+    --review-viewer-choice-count: 2;
+  }
+
+  &[data-review-viewer-choice-count="3"] {
+    --review-viewer-choice-count: 3;
+  }
 
   & .task-review-workspace {
     display: grid;

@@ -21,7 +21,7 @@ caffold-file-list {
     height: var(--review-header-height, auto);
     min-height: 0;
     overflow: hidden;
-    padding: 0.4375rem 0.875rem;
+    padding: 0 0.875rem;
     padding-left: var(--review-navigator-header-padding-inline, 0.875rem);
     padding-right: var(--review-pane-action-clearance, 0.875rem);
     border-bottom: 1px solid var(--border);
