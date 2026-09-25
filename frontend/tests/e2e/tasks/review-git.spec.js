@@ -998,6 +998,7 @@ test("keeps compact review controls and available panes inside the workspace", {
       titleFontSize: Number.parseFloat(getComputedStyle(title).fontSize),
       selectHeight: select.getBoundingClientRect().height,
       labelOverflows: label.scrollWidth > label.clientWidth,
+      labelClipsVertically: label.scrollHeight > label.clientHeight + 1,
       primaryBeforeSecondary:
         primary.getBoundingClientRect().right <=
         secondary.getBoundingClientRect().left + 1,
@@ -1013,6 +1014,7 @@ test("keeps compact review controls and available panes inside the workspace", {
     };
   });
   expect(compareHeaderMetrics.labelOverflows).toBe(true);
+  expect(compareHeaderMetrics.labelClipsVertically).toBe(false);
   expect(compareHeaderMetrics.primaryBeforeSecondary).toBe(true);
   expect(compareHeaderMetrics.labelBelowTitle).toBe(true);
   expect(compareHeaderMetrics.chevronVisible).toBe(true);
@@ -1029,12 +1031,18 @@ test("keeps compact review controls and available panes inside the workspace", {
     "caffold-git-diff-changes-tree .changes-tree-panel > header",
   );
   await expect(changesHeader).toBeVisible();
-  const changesHeaderMetrics = await changesHeader.evaluate((header) => ({
-    height: header.getBoundingClientRect().height,
-    titleFontSize: Number.parseFloat(
-      getComputedStyle(header.querySelector("h2")).fontSize,
-    ),
-  }));
+  await expect(changesHeader.locator(".changes-branch")).toBeVisible();
+  const changesHeaderMetrics = await changesHeader.evaluate((header) => {
+    const branch = header.querySelector(".changes-branch");
+    return {
+      height: header.getBoundingClientRect().height,
+      titleFontSize: Number.parseFloat(
+        getComputedStyle(header.querySelector("h2")).fontSize,
+      ),
+      branchClipsVertically: branch.scrollHeight > branch.clientHeight + 1,
+    };
+  });
+  expect(changesHeaderMetrics.branchClipsVertically).toBe(false);
   expect(
     Math.abs(compareHeaderMetrics.height - changesHeaderMetrics.height),
   ).toBeLessThanOrEqual(1);
@@ -1083,12 +1091,18 @@ test("keeps compact review controls and available panes inside the workspace", {
   );
   await expect(filesHeader).toBeVisible();
   await expect(filesHeader.locator(".entry-count")).toBeVisible();
-  const filesHeaderMetrics = await filesHeader.evaluate((header) => ({
-    height: header.getBoundingClientRect().height,
-    titleFontSize: Number.parseFloat(
-      getComputedStyle(header.querySelector("h2")).fontSize,
-    ),
-  }));
+  await expect(filesHeader.locator(".git-summary")).toBeVisible();
+  const filesHeaderMetrics = await filesHeader.evaluate((header) => {
+    const branch = header.querySelector(".git-summary");
+    return {
+      height: header.getBoundingClientRect().height,
+      titleFontSize: Number.parseFloat(
+        getComputedStyle(header.querySelector("h2")).fontSize,
+      ),
+      branchClipsVertically: branch.scrollHeight > branch.clientHeight + 1,
+    };
+  });
+  expect(filesHeaderMetrics.branchClipsVertically).toBe(false);
   expect(
     Math.abs(filesHeaderMetrics.height - changesHeaderMetrics.height),
   ).toBeLessThanOrEqual(1);
