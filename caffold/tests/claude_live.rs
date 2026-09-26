@@ -493,6 +493,8 @@ async fn a_question_nobody_answered_is_asked_again_after_the_backend_is_replaced
         .start_task_asking_permission(NEEDS_APPROVAL, MODEL)
         .await;
     let asked = task.wait_for_a_question(Duration::from_secs(120)).await;
+    let asked_in = task.detail().await["pendingApprovals"][0]["payload"]["turnId"].clone();
+    assert!(asked_in.is_string(), "the question is asked in a turn");
 
     backend.replace().await;
 
@@ -500,6 +502,17 @@ async fn a_question_nobody_answered_is_asked_again_after_the_backend_is_replaced
     assert_eq!(
         asked_again, asked,
         "the same question, under the identity the agent gave it"
+    );
+    // The agent is held up in the turn it asked in, so the replacement takes
+    // that turn up rather than leaving the question belonging to nothing.
+    let detail = task.detail().await;
+    assert_eq!(
+        detail["pendingApprovals"][0]["payload"]["turnId"], asked_in,
+        "the question comes back in the turn it was asked in"
+    );
+    assert_eq!(
+        detail["task"]["activeTurn"]["id"], asked_in,
+        "and that turn is still running"
     );
     task.answer(&asked_again, "allow").await;
     // Answering has to reach the agent, or knowing about the question would not
