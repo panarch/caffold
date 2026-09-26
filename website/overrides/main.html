@@ -1,8 +1,32 @@
 {% extends "base.html" %}
 
-{#- Only caffold.dev serves the manual of the latest release. Anywhere else,
-    such as a branch preview or a local server, the banner says so. -#}
 {% block extrahead %}
+  {#- A shared link shows the page's title and description, and the same card
+      image for every page. -#}
+  {%- if page.title %}
+    {%- set share_title = (page.title | striptags) ~ " - " ~ config.site_name %}
+  {%- else %}
+    {%- set share_title = config.site_name %}
+  {%- endif %}
+  {%- if page.meta and page.meta.description %}
+    {%- set share_description = page.meta.description %}
+  {%- else %}
+    {%- set share_description = config.site_description %}
+  {%- endif %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ share_title }}">
+  <meta property="og:description" content="{{ share_description }}">
+  {%- if page.canonical_url %}
+  <meta property="og:url" content="{{ page.canonical_url }}">
+  {%- endif %}
+  <meta property="og:image" content="{{ config.site_url }}assets/brand/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Leave your desk. Keep working. One Caffold Task's diff on an unfolded foldable beside its conversation on a phone.">
+  <meta name="twitter:card" content="summary_large_image">
+  {#- Only caffold.dev serves the manual of the latest release. Anywhere else,
+      such as a branch preview or a local server, the banner says so. -#}
   <script>
     if (location.hostname !== new URL({{ config.site_url | tojson }}).hostname) {
       document.documentElement.classList.add("cf-development");

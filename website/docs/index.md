@@ -1,6 +1,7 @@
 ---
 template: home.html
-title: Caffold
+title: Leave your desk. Keep working.
+description: Leave your desk. Keep working. Codex, Claude Code, and Grok run on your Mac, and you follow, review, and direct them from any screen.
 hide:
   - navigation
   - toc
