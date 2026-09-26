@@ -22,6 +22,7 @@ HEALTH_ATTEMPTS="${CAFFOLD_SERVER_HEALTH_ATTEMPTS:-120}"
 HEALTH_INTERVAL="${CAFFOLD_SERVER_HEALTH_INTERVAL:-0.25}"
 SKIP_BUILD="${CAFFOLD_LOCAL_INSTALL_SKIP_BUILD:-false}"
 EXPECTED_COMMIT="$(git -C "${REPO_DIR}" rev-parse --short=8 HEAD)"
+PATH="${PATH}:/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support"
 
 backup_created=false
 replacement_started=false
@@ -175,6 +176,15 @@ start_and_verify() {
   verify_running_server "${expected_commit}" "${context}"
 }
 
+unregister_app() {
+  local app_path="$1"
+  local output
+  # -10814 (kLSApplicationNotFoundErr) means nothing was registered at the path.
+  if ! output="$(lsregister -u "${app_path}" 2>&1)" && [[ "${output}" != *-10814* ]]; then
+    echo "LaunchServices did not unregister ${app_path}: ${output}" >&2
+  fi
+}
+
 rollback_on_error() {
   local status=$?
   trap - EXIT
@@ -198,6 +208,7 @@ rollback_on_error() {
 
   if [[ -d "${TARGET_APP}" ]]; then
     mv -- "${TARGET_APP}" "${FAILED_APP}"
+    unregister_app "${FAILED_APP}"
     echo "failed app: ${FAILED_APP}" >&2
   fi
   if [[ "${backup_created}" == true && -d "${BACKUP_APP}" ]]; then
@@ -293,6 +304,12 @@ mv -- "${STAGING_APP}" "${TARGET_APP}"
 
 start_and_verify "${EXPECTED_COMMIT}" "The new Caffold Server"
 install_finished=true
+
+# The installed app is the only copy LaunchServices may know for this bundle id.
+unregister_app "${SOURCE_APP}"
+if [[ "${backup_created}" == true ]]; then
+  unregister_app "${BACKUP_APP}"
+fi
 
 echo "installed: ${TARGET_APP}"
 if [[ "${backup_created}" == true ]]; then

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -105,12 +106,73 @@ test("rollback stops the replacement before restoring and verifies old health", 
 });
 
 test("failed replacement restores the previous app only after the new runtime stops", () => {
-  const directory = mkdtempSync(join(tmpdir(), "caffold-install-rollback-"));
+  replaceInstalledApp(
+    { healthyMarker: "old" },
+    ({ result, directory, targetApp, stateFile, lsregisterCalls }) => {
+      assert.notEqual(result.status, 0, "the intentionally unhealthy new app must fail");
+      assert.equal(readFileSync(join(targetApp, "marker"), "utf8").trim(), "old");
+      assert.equal(readFileSync(stateFile, "utf8").trim(), "old");
+      assert.match(result.stderr, /previous app was restored and is healthy/);
+
+      const failedBundle = readdirSync(join(directory, "installed")).find((name) =>
+        name.startsWith(".Caffold Server.failed."),
+      );
+      assert.ok(failedBundle, "the failed replacement must be retained for inspection");
+      assert.equal(
+        readFileSync(join(directory, "installed", failedBundle, "marker"), "utf8").trim(),
+        "new",
+      );
+      assert.deepEqual(lsregisterCalls, [`-u ${join(directory, "installed", failedBundle)}`]);
+    },
+  );
+});
+
+test("successful replacement unregisters the build and the replaced app", () => {
+  replaceInstalledApp(
+    { healthyMarker: "new" },
+    ({ result, sourceApp, targetApp, backupDir, lsregisterCalls }) => {
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(readFileSync(join(targetApp, "marker"), "utf8").trim(), "new");
+      const [backup] = readdirSync(backupDir);
+      assert.equal(readFileSync(join(backupDir, backup, "marker"), "utf8").trim(), "old");
+      assert.deepEqual(lsregisterCalls, [`-u ${sourceApp}`, `-u ${join(backupDir, backup)}`]);
+    },
+  );
+});
+
+test("unregistering tolerates an unregistered path and reports any other failure", () => {
+  const lsregister = [
+    'printf "%s\\n" "$*" >>"$FAKE_LSREGISTER_LOG"',
+    'case "$2" in',
+    '  */source/*) printf "failed to scan %s: -10814\\n" "$2" ;;',
+    '  *) printf "failed to scan %s: -10822\\n" "$2" ;;',
+    "esac",
+    "exit 1",
+  ].join("\n");
+  replaceInstalledApp({ healthyMarker: "new", lsregister }, ({ result, sourceApp, backupDir }) => {
+    assert.equal(result.status, 0, result.stderr);
+    const [backup] = readdirSync(backupDir);
+    assert.doesNotMatch(result.stderr, /-10814/);
+    assert.ok(
+      result.stderr.includes(`LaunchServices did not unregister ${join(backupDir, backup)}`),
+      result.stderr,
+    );
+    assert.ok(!result.stderr.includes(sourceApp), result.stderr);
+  });
+});
+
+function replaceInstalledApp({ healthyMarker, lsregister }, operation) {
+  const directory = mkdtempSync(join(tmpdir(), "caffold-install-replace-"));
   const fakeBin = join(directory, "bin");
   const sourceApp = join(directory, "source", "Caffold Server.app");
   const targetApp = join(directory, "installed", "Caffold Server.app");
   const backupDir = join(directory, "backups");
   const stateFile = join(directory, "runtime-state");
+  const lsregisterLog = join(directory, "lsregister.log");
+  const commit = spawnSync("git", ["rev-parse", "--short=8", "HEAD"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  }).stdout.trim();
   mkdirSync(fakeBin, { recursive: true });
 
   function makeApp(path, marker) {
@@ -149,8 +211,9 @@ test("failed replacement restores the previous app only after the new runtime st
   tool("osascript", 'printf "stopped\\n" >"$FAKE_STATE_FILE"');
   tool(
     "curl",
-    'state="$(/bin/cat "$FAKE_STATE_FILE")"\nif [ "$state" = old ]; then\n  printf \'{"status":"ok","buildId":"old"}\\n\'\n  exit 0\nfi\nexit 22',
+    'state="$(/bin/cat "$FAKE_STATE_FILE")"\nif [ "$state" = "$FAKE_HEALTHY_MARKER" ]; then\n  printf \'{"status":"ok","buildId":"%s"}\\n\' "$FAKE_BUILD_ID"\n  exit 0\nfi\nexit 22',
   );
+  tool("lsregister", lsregister ?? 'printf "%s\\n" "$*" >>"$FAKE_LSREGISTER_LOG"');
   tool(
     "lsof",
     'state="$(/bin/cat "$FAKE_STATE_FILE")"\nif [ "$state" != stopped ]; then printf "902\\n"; fi',
@@ -169,6 +232,9 @@ test("failed replacement restores the previous app only after the new runtime st
         PATH: `${fakeBin}:/usr/bin:/bin:/usr/sbin:/sbin`,
         FAKE_STATE_FILE: stateFile,
         FAKE_TARGET_APP: targetApp,
+        FAKE_HEALTHY_MARKER: healthyMarker,
+        FAKE_BUILD_ID: commit,
+        FAKE_LSREGISTER_LOG: lsregisterLog,
         CAFFOLD_SERVER_APP_SOURCE: sourceApp,
         CAFFOLD_SERVER_APP_TARGET: targetApp,
         CAFFOLD_SERVER_BACKUP_DIR: backupDir,
@@ -179,21 +245,19 @@ test("failed replacement restores the previous app only after the new runtime st
         CAFFOLD_SERVER_HEALTH_INTERVAL: "0",
       },
     });
-
-    assert.notEqual(result.status, 0, "the intentionally unhealthy new app must fail");
-    assert.equal(readFileSync(join(targetApp, "marker"), "utf8").trim(), "old");
-    assert.equal(readFileSync(stateFile, "utf8").trim(), "old");
-    assert.match(result.stderr, /previous app was restored and is healthy/);
-
-    const failedBundle = readdirSync(join(directory, "installed")).find((name) =>
-      name.startsWith(".Caffold Server.failed."),
-    );
-    assert.ok(failedBundle, "the failed replacement must be retained for inspection");
-    assert.equal(
-      readFileSync(join(directory, "installed", failedBundle, "marker"), "utf8").trim(),
-      "new",
-    );
+    const lsregisterCalls = existsSync(lsregisterLog)
+      ? readFileSync(lsregisterLog, "utf8").split("\n").filter(Boolean)
+      : [];
+    return operation({
+      result,
+      directory,
+      sourceApp,
+      targetApp,
+      backupDir,
+      stateFile,
+      lsregisterCalls,
+    });
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-});
+}
