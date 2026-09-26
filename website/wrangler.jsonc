@@ -1,0 +1,14 @@
+// Cloudflare Workers Builds deploys the built site from `site/`. A build of the
+// production branch runs `wrangler deploy`; any other branch runs
+// `wrangler preview`, which serves it at its own workers.dev address.
+{
+  "name": "caffold",
+  "compatibility_date": "2026-09-25",
+  "assets": {
+    "directory": "./site",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  },
+  "routes": [{ "pattern": "caffold.dev", "custom_domain": true }],
+  "previews": {}
+}

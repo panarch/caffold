@@ -102,7 +102,7 @@ verification it performs:
 | Job | Reusable workflow in `.github/workflows/` | Verifies |
 | --- | --- | --- |
 | Frontend Tests | `frontend-tests.yml` | colocated units and frontend contracts |
-| Documentation Contracts | `documentation-contracts.yml` | the documentation index, links, and command index |
+| Documentation Contracts | `documentation-contracts.yml` | the documentation index, links, and command index, and the user manual's strict build |
 | Repository Tooling Tests | `repository-tooling-tests.yml` | the release version tooling, by calling it |
 | macOS Packaging Contracts | `macos-packaging-contracts.yml` | packaging, release, and installer definitions |
 | Browser Tests / _viewport_ | `browser-tests.yml` | browser behavior, one job per viewport |

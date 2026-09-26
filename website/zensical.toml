@@ -1,6 +1,7 @@
 [project]
 site_name = "Caffold"
 site_description = "A self-hosted workspace for running and reviewing coding-agent work from any screen."
+site_url = "https://caffold.dev/"
 repo_url = "https://github.com/panarch/caffold"
 repo_name = "panarch/caffold"
 copyright = "Caffold is available under the Apache License 2.0."

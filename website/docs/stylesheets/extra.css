@@ -93,6 +93,11 @@
   color: var(--caffold-text);
 }
 
+/* The development banner shows only away from caffold.dev. */
+html:not(.cf-development) [data-md-component="announce"] {
+  display: none;
+}
+
 /* The meerkat sits low in its square canvas; lift it to the title's center. */
 .md-header__button.md-logo img {
   transform: translateY(-12%);

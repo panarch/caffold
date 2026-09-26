@@ -149,6 +149,7 @@ test("release checks the source before versioning and packaging on macOS", () =>
   const macosCall = workflowJob(source, "macos");
   const releaseJob = workflowJob(source, "publish_release");
   const homebrewJob = workflowJob(source, "publish_homebrew");
+  const siteJob = workflowJob(source, "publish_site");
   const common = Object.values(sharedWorkflows).map(readWorkflow).join("\n");
   const macos = readWorkflow("macos-release.yml");
   const checks = readWorkflow("checks.yml");
@@ -310,6 +311,14 @@ test("release checks the source before versioning and packaging on macOS", () =>
   assert.match(homebrewJob, /brew install --cask panarch\/tap\/caffold/);
   assert.match(homebrewJob, /git push origin HEAD:main/);
   assert.doesNotMatch(homebrewJob, /gh release create/);
+
+  // The website's production branch follows the release only after Homebrew
+  // serves it, and only ever fast-forwards.
+  assert.match(siteJob, /^    if: inputs\.action != 'dry-run'$/m);
+  assert.match(siteJob, /^\s+contents: write$/m);
+  assert.match(siteJob, /RELEASE_SHA: \$\{\{ needs\.macos\.outputs\.release_sha \}\}/);
+  assert.match(siteJob, /git push origin "\$\{RELEASE_SHA\}:refs\/heads\/site"/);
+  assert.doesNotMatch(siteJob, /HOMEBREW_TAP_TOKEN|--force|gh release create/);
 });
 
 test("failed or skipped checks block the release chain in every mode", () => {
@@ -321,11 +330,12 @@ test("failed or skipped checks block the release chain in every mode", () => {
       ? [...list.matchAll(/- (\w+)/g)].map(([, dependency]) => dependency)
       : [job.match(/^    needs: (\w+)$/m)?.[1]];
   };
-  const chain = ["macos", "publish_release", "publish_homebrew"];
+  const chain = ["macos", "publish_release", "publish_homebrew", "publish_site"];
   const requiredChecks = Object.keys(sharedWorkflows);
   assert.deepEqual(dependencies("macos"), requiredChecks);
   assert.deepEqual(dependencies("publish_release"), ["macos"]);
   assert.deepEqual(dependencies("publish_homebrew"), ["macos", "publish_release"]);
+  assert.deepEqual(dependencies("publish_site"), ["macos", "publish_homebrew"]);
   // These jobs intentionally use Actions' default success() condition. A
   // status-function override would invalidate this failure-propagation model.
   for (const name of chain) {
@@ -347,12 +357,18 @@ test("failed or skipped checks block the release chain in every mode", () => {
     assert.equal(success.macos, "success");
     assert.equal(success.publish_release, action === "dry-run" ? "skipped" : "success");
     assert.equal(success.publish_homebrew, success.publish_release);
-    for (const name of [...requiredChecks, "macos", "publish_release"]) {
+    assert.equal(success.publish_site, success.publish_homebrew);
+    for (const name of [...requiredChecks, "macos", "publish_release", "publish_homebrew"]) {
       for (const result of ["failure", "cancelled", "skipped"]) {
         const failed = runChain(action, { [name]: result });
         if (requiredChecks.includes(name)) assert.equal(failed.macos, "skipped");
-        if (name !== "publish_release") assert.equal(failed.publish_release, "skipped");
-        assert.equal(failed.publish_homebrew, "skipped", `${action}: ${name} ${result} must stop publication`);
+        if (!["publish_release", "publish_homebrew"].includes(name)) {
+          assert.equal(failed.publish_release, "skipped");
+        }
+        if (name !== "publish_homebrew") {
+          assert.equal(failed.publish_homebrew, "skipped", `${action}: ${name} ${result} must stop publication`);
+        }
+        assert.equal(failed.publish_site, "skipped", `${action}: ${name} ${result} must stop the website`);
       }
     }
   }
