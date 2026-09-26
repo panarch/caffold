@@ -22,13 +22,7 @@ mod schema_migration;
 pub(crate) use managed_section::ManagedSection;
 pub(crate) use managed_thread::{ManagedThread, RunBy, TaskProvider};
 pub(crate) use managed_worktree::{CheckoutAnchor, ManagedWorktree, ManagedWorktreeState};
-pub(crate) use migration::{
-    ManagedThreadMigrationInventory, NavigatorMigrationSection, NavigatorMigrationSnapshot,
-    NavigatorMigrationThread, NavigatorMigrationThreadClassification, PendingTaskStoreMigration,
-    PreparedTaskStoreMigration, prepare_to_latest as prepare_task_store_migration,
-};
-#[cfg(test)]
-pub(crate) use migration::{write_empty_v4_test_store, write_v4_test_store};
+pub(crate) use migration::migrate_to_latest as migrate_task_store;
 pub(crate) use note::{Note, NoteContentUpdate, NoteSummary};
 pub(crate) use note_directory::NoteDirectory;
 pub(crate) use push_installation::{
@@ -77,14 +71,16 @@ pub(crate) enum TaskStoreError {
     },
     #[error("managed worktree cannot transition from {from} to {to}")]
     InvalidManagedWorktreeTransition { from: String, to: String },
-    #[error("thread exists in both legacy active and archived tables: {0}")]
-    DuplicateLegacyThread(String),
     #[error("Caffold schema v{0} requires migration before opening")]
     MigrationRequired(i64),
     #[error("Caffold migration path does not exist: {0}")]
     MigrationPathMissing(String),
     #[error("Caffold migration path is not a file: {0}")]
     MigrationPathNotFile(String),
+    #[error(
+        "Caffold schema v{found} in {path} comes from a release before Caffold v0.7.0 and can no longer be upgraded. Open it once with Caffold v0.16.0 to upgrade it, or remove it to start with an empty Task list."
+    )]
+    UnsupportedOlderSchemaVersion { found: i64, path: String },
     #[error("Caffold schema v{found} is newer than supported schema v{supported}")]
     UnsupportedNewerSchemaVersion { found: i64, supported: i64 },
     #[error("unexpected table in Caffold schema: {0}")]
@@ -95,8 +91,6 @@ pub(crate) enum TaskStoreError {
     InvalidSchemaMigrationHistory,
     #[error("incomplete Caffold thread schema")]
     IncompleteSchema,
-    #[error("invalid Caffold navigator migration snapshot: {0}")]
-    InvalidMigrationSnapshot(&'static str),
     #[error("task store mutex was poisoned")]
     Poisoned,
     #[error("task store error: {0}")]
@@ -495,7 +489,7 @@ impl TaskStore {
         }
         let storage = RedbStorage::new(path)?;
         let mut glue = Glue::new(storage);
-        migration::initialize_redb(&mut glue)?;
+        migration::initialize_redb(&mut glue, path)?;
         Ok(Self::Redb(Arc::new(Mutex::new(glue))))
     }
 
@@ -1234,7 +1228,7 @@ mod tests {
 
         assert!(matches!(
             TaskStore::redb(&path),
-            Err(TaskStoreError::MigrationRequired(0))
+            Err(TaskStoreError::UnsupportedOlderSchemaVersion { found: 0, .. })
         ));
         assert_eq!(
             std::fs::read_dir(temp.path())

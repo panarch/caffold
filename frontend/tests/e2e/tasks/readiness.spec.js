@@ -466,39 +466,6 @@ test("a failed Task-store migration has its own explicit retry lifecycle", { tag
   await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
 });
 
-test("Codex remains the visible cause while migration waits for it", { tag: "@all-viewports" }, async ({
-  page,
-}) => {
-  const cached = cachedTask("thread_cached_waiting_migration");
-  const status = statusFor("updateRequired");
-  status.taskStoreReadiness = {
-    state: "waitingForCodex",
-    blocksTaskOperations: true,
-    diagnosticMessage: "Task-store migration is waiting for Codex.",
-  };
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({ json: status })
-  );
-  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
-    route.fulfill({ json: activeTaskProjection([cached]) })
-  );
-
-  await page.goto("/");
-
-  const setup = page.locator('[data-readiness-state="updateRequired"]');
-  await expect(setup).toBeVisible();
-  await expect(
-    setup.getByRole("heading", { name: "Update Codex to continue" }),
-  ).toBeVisible();
-  await expect(setup.getByRole("button", { name: "Retry Task setup" }))
-    .toBeEnabled();
-  await expect(
-    page.locator(
-      `.task-row[data-thread-id="${cached.threadId}"]`,
-    ),
-  ).toContainText("Cached Task identity");
-});
-
 test("Retry transitions from setup into the ready Task surface", { tag: "@all-viewports" }, async ({ page }) => {
   let ready = false;
   let taskRequests = 0;

@@ -43,10 +43,6 @@ pub(crate) use protocol::CodexMcpServerDiagnostic;
 /// carrying one. A Task's status is the shared one, converted here.
 #[cfg(test)]
 pub(crate) use protocol::ThreadStatus;
-/// Codex's own turn status, for the tests that read a turn straight off the
-/// wire rather than through the conversation.
-#[cfg(test)]
-pub(crate) use protocol::TurnStatus;
 use protocol::{
     ACCOUNT_RATE_LIMIT_RESET_CREDIT_CONSUME, ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ,
     ACCOUNT_USAGE_READ, AccountReadResponse, CAFFOLD_CLIENT_NAME, CAFFOLD_CLIENT_TITLE,
@@ -54,24 +50,20 @@ use protocol::{
     MCP_SERVER_RESOURCE_READ, MCP_SERVER_STATUS_LIST, MODEL_LIST, McpServerStatusListResponse,
     PERMISSION_PROFILE_LIST, PermissionProfileListResponse, RateLimitResetCreditConsumeParams,
     THREAD_ARCHIVE, THREAD_DELETE, THREAD_FORK, THREAD_LIST, THREAD_NAME_SET, THREAD_READ,
-    THREAD_RESUME, THREAD_SECTION_CREATE, THREAD_SECTION_LIST, THREAD_SECTION_MOVE, THREAD_START,
-    THREAD_TURNS_LIST, THREAD_UNARCHIVE, THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START,
-    TURN_STEER, ThreadForkResponse, ThreadReadResponse, ThreadSectionCreateResponse,
-    ThreadSectionMoveResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse,
-    account_read_params, config_read_params, decode_response, mcp_server_status_list_params,
-    model_list_params, permission_profile_list_params, section_thread_list_params,
-    thread_archive_params, thread_delete_params, thread_fork_params_with_config,
-    thread_list_params, thread_read_params, thread_resume_params_with_config,
-    thread_section_create_params, thread_section_list_params, thread_section_move_params,
-    thread_set_name_params, thread_start_params_with_config, thread_turns_list_params,
-    thread_unarchive_params, thread_unsubscribe_params, turn_interrupt_params, turn_start_params,
-    turn_steer_params,
+    THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE, THREAD_UNSUBSCRIBE,
+    TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadForkResponse, ThreadReadResponse,
+    ThreadStartResponse, TurnStartResponse, TurnSteerResponse, account_read_params,
+    config_read_params, decode_response, mcp_server_status_list_params, model_list_params,
+    permission_profile_list_params, thread_archive_params, thread_delete_params,
+    thread_fork_params_with_config, thread_list_params, thread_read_params,
+    thread_resume_params_with_config, thread_set_name_params, thread_start_params_with_config,
+    thread_turns_list_params, thread_unarchive_params, thread_unsubscribe_params,
+    turn_interrupt_params, turn_start_params, turn_steer_params,
 };
 pub(crate) use protocol::{
     CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest, CodexThread,
     CodexTurn, ModelListResponse, PermissionProfileSummary, RateLimitResetCreditConsumeResponse,
-    SortDirection, ThreadResumeResponse, ThreadSection, ThreadSectionFilter,
-    ThreadSectionListResponse, ThreadUnsubscribeResponse, TurnsPage,
+    SortDirection, ThreadResumeResponse, ThreadUnsubscribeResponse, TurnsPage,
 };
 #[cfg(test)]
 pub(crate) use protocol::{MCP_SERVER_TOOL_CALL, decode_notification, decode_server_request};
@@ -111,7 +103,7 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
 fn request_timeout(method: &str) -> Duration {
     match method {
         THREAD_LIST | THREAD_LOADED_LIST | THREAD_READ | THREAD_RESUME | THREAD_FORK
-        | THREAD_SECTION_LIST | THREAD_TURNS_LIST => HISTORY_REQUEST_TIMEOUT,
+        | THREAD_TURNS_LIST => HISTORY_REQUEST_TIMEOUT,
         _ => INTERACTIVE_REQUEST_TIMEOUT,
     }
 }
@@ -409,10 +401,6 @@ impl From<CodexThreadError> for super::driver::TurnRejected {
 }
 
 impl CodexThreadError {
-    pub(crate) fn is_thread_unavailable(&self) -> bool {
-        matches!(self, Self::ThreadUnavailable(_))
-    }
-
     pub(crate) fn is_connection_failure(&self) -> bool {
         matches!(self, Self::ProcessUnavailable)
     }
@@ -765,58 +753,6 @@ impl CodexThreadClient {
             protocol::archived_thread_list_params(cursor, limit),
         )
         .await
-    }
-
-    pub(crate) async fn list_section_threads(
-        &self,
-        section: ThreadSectionFilter<'_>,
-        cursor: Option<&str>,
-        limit: usize,
-    ) -> Result<ThreadListResponse, CodexThreadError> {
-        self.request_typed(
-            THREAD_LIST,
-            section_thread_list_params(section, cursor, limit),
-        )
-        .await
-    }
-
-    pub(crate) async fn list_thread_sections(
-        &self,
-        cursor: Option<&str>,
-        limit: usize,
-    ) -> Result<ThreadSectionListResponse, CodexThreadError> {
-        self.request_typed(
-            THREAD_SECTION_LIST,
-            thread_section_list_params(cursor, limit),
-        )
-        .await
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) async fn create_thread_section(
-        &self,
-        name: &str,
-    ) -> Result<ThreadSection, CodexThreadError> {
-        let response: ThreadSectionCreateResponse = self
-            .request_typed(THREAD_SECTION_CREATE, thread_section_create_params(name))
-            .await?;
-        Ok(response.section)
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) async fn move_thread_to_section(
-        &self,
-        thread_id: &str,
-        section_id: Option<&str>,
-        before_thread_id: Option<&str>,
-    ) -> Result<(), CodexThreadError> {
-        let _: ThreadSectionMoveResponse = self
-            .request_typed(
-                THREAD_SECTION_MOVE,
-                thread_section_move_params(thread_id, section_id, before_thread_id),
-            )
-            .await?;
-        Ok(())
     }
 
     pub(crate) async fn read_thread(
@@ -2107,7 +2043,6 @@ esac
             THREAD_READ,
             THREAD_RESUME,
             THREAD_FORK,
-            THREAD_SECTION_LIST,
             THREAD_TURNS_LIST,
         ] {
             assert_eq!(
@@ -2126,8 +2061,6 @@ esac
             TURN_INTERRUPT,
             THREAD_ARCHIVE,
             THREAD_UNARCHIVE,
-            THREAD_SECTION_CREATE,
-            THREAD_SECTION_MOVE,
         ] {
             assert_eq!(
                 request_timeout(method),
@@ -2307,21 +2240,6 @@ esac
         assert!(!error.is_connection_failure());
     }
 
-    #[test]
-    fn structured_thread_unavailable_errors_identify_the_thread_state() {
-        assert!(
-            CodexThreadError::ThreadUnavailable("019f-test".to_string()).is_thread_unavailable()
-        );
-        assert!(
-            !CodexThreadError::RequestTimeout {
-                method: THREAD_RESUME,
-                request_id: 1,
-                timeout_ms: HISTORY_REQUEST_TIMEOUT.as_millis() as u64,
-            }
-            .is_thread_unavailable()
-        );
-    }
-
     #[tokio::test]
     async fn external_thread_sync_reads_without_resuming_or_unsubscribing() {
         let idle_thread = json!({
@@ -2397,82 +2315,6 @@ esac
                     "useStateDbOnly": true
                 })
             )]
-        );
-    }
-
-    #[tokio::test]
-    async fn lists_creates_and_moves_thread_sections_with_stable_methods() {
-        let client = CodexThreadClient::mock(vec![
-            MockCodexResponse::ok_for(
-                THREAD_SECTION_LIST,
-                json!({ "limit": 100 }),
-                json!({
-                    "data": [{ "id": "section-1", "name": "Workspace/rust/codger" }],
-                    "nextCursor": null
-                }),
-            ),
-            MockCodexResponse::ok_for(
-                THREAD_LIST,
-                json!({
-                    "limit": 100,
-                    "sortKey": "section_position",
-                    "sortDirection": "asc",
-                    "archived": false,
-                    "useStateDbOnly": true,
-                    "sectionId": "section-1"
-                }),
-                json!({ "data": [], "nextCursor": null }),
-            ),
-            MockCodexResponse::ok_for(
-                THREAD_SECTION_CREATE,
-                json!({ "name": "Workspace/rust/other" }),
-                json!({
-                    "section": { "id": "section-2", "name": "Workspace/rust/other" }
-                }),
-            ),
-            MockCodexResponse::ok_for(
-                THREAD_SECTION_MOVE,
-                json!({
-                    "threadId": "thread-1",
-                    "sectionId": "section-2",
-                    "beforeThreadId": "thread-2"
-                }),
-                json!({}),
-            ),
-        ]);
-
-        let sections = client
-            .list_thread_sections(None, 100)
-            .await
-            .expect("list sections");
-        assert_eq!(sections.data[0].id, "section-1");
-        client
-            .list_section_threads(ThreadSectionFilter::Section("section-1"), None, 100)
-            .await
-            .expect("list section threads");
-        let created = client
-            .create_thread_section("Workspace/rust/other")
-            .await
-            .expect("create section");
-        assert_eq!(created.id, "section-2");
-        client
-            .move_thread_to_section("thread-1", Some("section-2"), Some("thread-2"))
-            .await
-            .expect("move thread");
-
-        assert_eq!(
-            client
-                .mock_requests()
-                .await
-                .iter()
-                .map(|(method, _)| method.as_str())
-                .collect::<Vec<_>>(),
-            [
-                THREAD_SECTION_LIST,
-                THREAD_LIST,
-                THREAD_SECTION_CREATE,
-                THREAD_SECTION_MOVE,
-            ]
         );
     }
 
