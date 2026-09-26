@@ -650,15 +650,14 @@ reorder commands mutate only their respective local order, commit the move
 transaction, and then request a fresh Task-list projection; they do not call
 app-server or infer another placement from Codex state.
 
-Upgrading a legacy Task store is a startup-owned exception. The coordinator
-first stages the local schema through v4, collects a read-only Codex snapshot
-for the managed inventory when one is required, and gives that structured
-snapshot to the v4-to-v5 executor. It then applies the remaining local
-migrations and replaces the source only with a fully validated v9 staging
-database. The v6-to-v7 migration initializes durable Section positions from the
-previous active navigator's recency-derived order and deterministically places
-Sections without active Tasks afterward. The v7-to-v8 migration adds nullable
-Section composer fields without backfilling historical selections; Sections
+Upgrading an older Task store at startup does not call app-server either. The
+startup coordinator applies the local migrations to a staged copy and replaces
+the source only with a fully validated staging database; a store older than the
+[supported start version](../review/backend.md#storage-migration-review) is
+refused and left unchanged. The v6-to-v7 migration initializes durable Section
+positions from the previous active navigator's recency-derived order and
+deterministically places Sections without active Tasks afterward. The v7-to-v8
+migration adds nullable Section composer fields without backfilling historical selections; Sections
 begin recording them only after a later turn starts successfully. The v8-to-v9
 migration marks every existing Task as Codex and adds the nullable cwd field
 required by Claude Tasks, without copying Codex-owned cwd state. While Codex

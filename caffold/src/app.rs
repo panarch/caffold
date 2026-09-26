@@ -13,7 +13,6 @@ mod jev;
 mod live_updates;
 mod notes;
 mod shell;
-mod startup_migration;
 mod tailscale;
 mod tasks;
 mod voice;

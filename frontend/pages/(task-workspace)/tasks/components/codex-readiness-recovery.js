@@ -261,10 +261,7 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
       return;
     }
     const taskStore = this.snapshotValue.status?.taskStoreReadiness;
-    if (
-      taskStore?.blocksTaskOperations &&
-      taskStore.state !== "waitingForCodex"
-    ) {
+    if (taskStore?.blocksTaskOperations) {
       const failed = taskStore.state === "failed";
       patchReadinessCard(this, {
         state: `taskStore-${taskStore.state ?? "blocked"}`,
@@ -339,9 +336,7 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
       showInstall,
       showGuide,
       showRestart: readiness.state === "restartRequired",
-      retryLabel: taskStore?.blocksTaskOperations
-        ? "Retry Task setup"
-        : "Retry",
+      retryLabel: "Retry",
       retryDisabled: false,
       showSettings: true,
       restartState: this.restartStateValue.state,

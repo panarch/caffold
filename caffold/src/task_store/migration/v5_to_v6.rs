@@ -155,7 +155,7 @@ mod tests {
     use gluesql::core::query_builder::table;
 
     use super::*;
-    use crate::task_store::TaskStore;
+    use crate::task_store::{TaskStore, migration::migrate_to_latest};
 
     fn timestamp(milliseconds: i64) -> NaiveDateTime {
         chrono::DateTime::from_timestamp_millis(milliseconds)
@@ -178,23 +178,9 @@ mod tests {
     }
 
     fn write_v5(path: &Path, rows: &[V5ManagedWorktreeRow]) {
-        {
-            let mut glue = Glue::new(RedbStorage::new(path).unwrap());
-            schema::v1::create(&mut glue, timestamp(1)).unwrap();
-        }
-        super::super::v1_to_v2::migrate(path).unwrap();
-        super::super::v2_to_v3::migrate(path).unwrap();
-        super::super::v3_to_v4::migrate(path).unwrap();
-        super::super::v4_to_v5::migrate(
-            path,
-            &super::super::NavigatorMigrationSnapshot {
-                sections: Vec::new(),
-                threads: Vec::new(),
-            },
-        )
-        .unwrap();
+        let mut glue = Glue::new(RedbStorage::new(path).unwrap());
+        schema::v5::create(&mut glue, timestamp(1)).unwrap();
         if !rows.is_empty() {
-            let mut glue = Glue::new(RedbStorage::new(path).unwrap());
             table(schema::v5::MANAGED_WORKTREES_TABLE)
                 .insert()
                 .values_from(rows)
@@ -361,10 +347,7 @@ mod tests {
             ],
         );
 
-        assert!(matches!(
-            super::super::prepare_to_latest(&valid_path).unwrap(),
-            super::super::PreparedTaskStoreMigration::Ready
-        ));
+        migrate_to_latest(&valid_path).unwrap();
         let valid_store = TaskStore::redb(&valid_path).unwrap();
         assert_eq!(valid_store.managed_worktrees().unwrap().len(), 2);
 
@@ -375,7 +358,7 @@ mod tests {
         let source_before = std::fs::read(&invalid_path).unwrap();
 
         assert!(matches!(
-            super::super::prepare_to_latest(&invalid_path),
+            migrate_to_latest(&invalid_path),
             Err(TaskStoreError::InvalidManagedWorktreeState(_))
         ));
         assert_eq!(

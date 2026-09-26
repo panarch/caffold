@@ -160,12 +160,19 @@ Keep storage modules aligned with physical persistence ownership.
 
 ## Storage Migration Review
 
-Treat every released storage schema and version transition as an immutable
-historical contract.
+Caffold upgrades a Task store from schema v5 onward: v5 is the oldest supported
+start version. Treat every released storage schema from that version on, and
+every transition between them, as an immutable historical contract. Schema
+snapshots and transitions below the supported start version are not kept.
 
-- Migration orchestration owns version detection, ordered execution, staged
-  replacement, final validation, and publication. A version transition owns
-  only its fixed input and output versions.
+A store older than the supported start version is refused before anything is
+staged. The source stays byte-for-byte unchanged, and the diagnostic names a
+release that can still upgrade it.
+
+- Migration orchestration owns version detection, refusal of unsupported
+  versions, ordered execution, staged replacement, final validation, and
+  publication. A version transition owns only its fixed input and output
+  versions.
 - Keep each historical schema snapshot and transition independent from mutable
   application table definitions, row types, creation functions, and validators.
   Small duplicated definitions are intentional when they preserve that
@@ -183,7 +190,8 @@ historical contract.
 
 Review every migration with exact input-version, output-version, data
 preservation, wrong-version rollback, migration-history, and supported
-start-version coverage. Replacement migrations must also prove that
+start-version coverage, including the refusal of each version below the
+supported start version. Replacement migrations must also prove that
 intermediate and final-validation failures preserve the original database and
 remove staged state.
 

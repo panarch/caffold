@@ -18,15 +18,14 @@ use super::TasksApp;
 use crate::{
     agent::codex::{
         CodexReadiness, CodexReadinessReason, CodexReadinessState, CodexStatusResponse,
-        CodexThreadClient,
     },
     fs::RootedFs,
+    task_store::{TaskStoreError, migrate_task_store},
     watch::WatchHub,
 };
 
 use super::{CodexMcpHost, GrokMcpHost};
 use crate::app::jev::PermissionReviewer;
-use crate::app::startup_migration;
 
 #[derive(Clone)]
 struct TaskRouterGateway {
@@ -59,7 +58,6 @@ impl TaskRouterGateway {
 #[serde(rename_all = "camelCase")]
 enum TaskStoreReadinessState {
     Migrating,
-    WaitingForCodex,
     Failed,
 }
 
@@ -174,7 +172,7 @@ impl PersistentTasksGateway {
     pub(in crate::app) async fn run_startup(&self) {
         let mut shutdown_receiver = self.shutdown.subscribe();
         loop {
-            let result = startup_migration::migrate_task_store(self.database_path.clone()).await;
+            let result = migrate_existing_task_store(self.database_path.clone()).await;
             match result {
                 Ok(()) => match TasksApp::persistent(
                     self.fs.clone(),
@@ -199,20 +197,7 @@ impl PersistentTasksGateway {
                         set_storage_failure(self.status.clone(), error.to_string()).await;
                     }
                 },
-                Err(startup_migration::StartupMigrationError::CodexReadiness(codex)) => {
-                    set_codex_wait(self.status.clone(), *codex).await;
-                }
-                Err(startup_migration::StartupMigrationError::Codex(error)) => {
-                    set_codex_wait(
-                        self.status.clone(),
-                        CodexThreadClient::unavailable_status(&error),
-                    )
-                    .await;
-                }
-                Err(startup_migration::StartupMigrationError::Store(error)) => {
-                    set_storage_failure(self.status.clone(), error.to_string()).await;
-                }
-                Err(startup_migration::StartupMigrationError::Worker(error)) => {
+                Err(error) => {
                     set_storage_failure(self.status.clone(), error.to_string()).await;
                 }
             }
@@ -288,19 +273,22 @@ async fn startup_task_blocked(
         .into_response()
 }
 
-async fn set_codex_wait(status: Arc<RwLock<StartupTaskStatus>>, codex: CodexStatusResponse) {
-    let message = codex.readiness.diagnostic_message.clone();
-    *status.write().await = StartupTaskStatus {
-        codex,
-        task_store: TaskStoreReadiness {
-            state: TaskStoreReadinessState::WaitingForCodex,
-            blocks_task_operations: true,
-            diagnostic_message: format!(
-                "Task-store migration is waiting for Codex readiness. {message}"
-            ),
-        },
-        error_code: "codex_readiness_blocked",
-    };
+#[derive(Debug, thiserror::Error)]
+enum StartupMigrationError {
+    #[error(transparent)]
+    Store(#[from] TaskStoreError),
+    #[error("Task-store migration worker failed: {0}")]
+    Worker(#[from] tokio::task::JoinError),
+}
+
+async fn migrate_existing_task_store(path: PathBuf) -> Result<(), StartupMigrationError> {
+    // A missing database is a fresh install, not a migration. TasksApp owns
+    // creation of the current schema after this returns.
+    if !path.exists() {
+        return Ok(());
+    }
+    tokio::task::spawn_blocking(move || migrate_task_store(&path)).await??;
+    Ok(())
 }
 
 async fn set_storage_failure(status: Arc<RwLock<StartupTaskStatus>>, message: String) {
@@ -318,7 +306,7 @@ fn pending_codex_status() -> CodexStatusResponse {
         readiness: CodexReadiness::blocking(
             CodexReadinessState::Error,
             CodexReadinessReason::ReadyRuntimeUnavailable,
-            "Codex readiness will be checked if Task-store migration requires it.",
+            "Codex readiness is checked once the Task store is ready.",
             None,
         ),
         account: None,
@@ -334,6 +322,66 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use crate::task_store::TaskStore;
+
+    #[tokio::test]
+    async fn a_missing_database_is_left_for_fresh_schema_initialization() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("caffold.redb");
+
+        migrate_existing_task_store(path.clone()).await.unwrap();
+
+        assert!(!path.exists());
+        let store = TaskStore::redb(&path).unwrap();
+        assert!(path.is_file());
+        assert_eq!(
+            store
+                .read(|tables| Ok((tables.managed_sections()?, tables.active_managed_threads()?)))
+                .unwrap(),
+            (Vec::new(), Vec::new())
+        );
+    }
+
+    #[tokio::test]
+    async fn a_current_store_passes_through_without_being_replaced() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("caffold.redb");
+        drop(TaskStore::redb(&path).unwrap());
+        let before = std::fs::read(&path).unwrap();
+
+        migrate_existing_task_store(path.clone()).await.unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(TaskStore::redb(&path).is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_store_older_than_v5_fails_as_storage_and_stays_unchanged() {
+        use gluesql::{
+            core::query_builder::{Execute, table},
+            prelude::{Glue, RedbStorage},
+        };
+
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("caffold.redb");
+        {
+            let mut glue = Glue::new(RedbStorage::new(&path).unwrap());
+            table("managed_threads")
+                .create_table()
+                .add_column("thread_id TEXT PRIMARY KEY")
+                .execute(&mut glue)
+                .unwrap();
+        }
+        let before = std::fs::read(&path).unwrap();
+
+        assert!(matches!(
+            migrate_existing_task_store(path.clone()).await,
+            Err(StartupMigrationError::Store(
+                TaskStoreError::UnsupportedOlderSchemaVersion { found: 0, .. }
+            ))
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
 
     fn startup_test_state(state: TaskStoreReadinessState) -> StartupTaskState {
         StartupTaskState {
@@ -352,13 +400,13 @@ mod tests {
 
     #[tokio::test]
     async fn startup_status_get_is_observational_and_does_not_retry_migration() {
-        let state = startup_test_state(TaskStoreReadinessState::WaitingForCodex);
+        let state = startup_test_state(TaskStoreReadinessState::Failed);
 
         let response = startup_codex_status(axum::extract::State(state.clone())).await;
 
         assert!(matches!(
             response.0.task_store_readiness.state,
-            TaskStoreReadinessState::WaitingForCodex
+            TaskStoreReadinessState::Failed
         ));
         assert!(
             tokio::time::timeout(Duration::from_millis(10), state.retry.notified())
@@ -389,7 +437,7 @@ mod tests {
         use axum::{body::Body, http::Request, routing::get};
         use tower::ServiceExt;
 
-        let state = startup_test_state(TaskStoreReadinessState::WaitingForCodex);
+        let state = startup_test_state(TaskStoreReadinessState::Migrating);
         let startup = Router::new()
             .fallback(any(startup_task_blocked))
             .with_state(state);

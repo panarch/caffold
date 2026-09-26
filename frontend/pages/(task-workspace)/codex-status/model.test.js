@@ -89,12 +89,6 @@ test("only the Task store takes every Task operation, and only when it says so",
     blocksTaskOperations: true,
     diagnosticMessage: "Applying the staged v5 database.",
   };
-  const waiting = codexStatus("updateRequired", true);
-  waiting.taskStoreReadiness = {
-    state: "waitingForCodex",
-    blocksTaskOperations: true,
-    diagnosticMessage: "Task-store migration is waiting for Codex.",
-  };
   const failed = codexStatus("ready", false);
   failed.taskStoreReadiness = {
     state: "failed",
@@ -103,7 +97,7 @@ test("only the Task store takes every Task operation, and only when it says so",
   };
 
   assert.deepEqual(
-    [migrating, waiting, failed].map((status) => {
+    [migrating, failed].map((status) => {
       const view = taskStoreOperationsPresentation(loadedSnapshot(status));
       return {
         phase: view.phase,
@@ -116,11 +110,6 @@ test("only the Task store takes every Task operation, and only when it says so",
         phase: "taskStore:migrating",
         title: "Preparing Tasks…",
         message: "Applying the staged v5 database.",
-      },
-      {
-        phase: "taskStore:waitingForCodex",
-        title: "Codex update required",
-        message: "The runtime version differs.",
       },
       {
         phase: "taskStore:failed",

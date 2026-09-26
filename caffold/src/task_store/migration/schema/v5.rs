@@ -1,8 +1,12 @@
+#[cfg(test)]
+use chrono::NaiveDateTime;
 use gluesql::{
     core::store::{GStore, GStoreMut, Planner},
     prelude::Glue,
 };
 
+#[cfg(test)]
+use super::create_table;
 use super::{validate_table, validate_table_names};
 use crate::task_store::{Result, schema_migration};
 
@@ -60,6 +64,46 @@ const PUSH_VAPID_KEY_COLUMN_DEFINITIONS: &[&str] = &[
     "private_key TEXT",
     "created_at TIMESTAMP",
 ];
+
+#[cfg(test)]
+pub(in crate::task_store::migration) fn create<S>(
+    glue: &mut Glue<S>,
+    applied_at: NaiveDateTime,
+) -> Result<()>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    create_table(
+        glue,
+        MANAGED_THREADS_TABLE,
+        MANAGED_THREAD_COLUMN_DEFINITIONS,
+    )?;
+    create_table(
+        glue,
+        MANAGED_SECTIONS_TABLE,
+        MANAGED_SECTION_COLUMN_DEFINITIONS,
+    )?;
+    create_table(
+        glue,
+        MANAGED_WORKTREES_TABLE,
+        MANAGED_WORKTREE_COLUMN_DEFINITIONS,
+    )?;
+    create_table(
+        glue,
+        PUSH_INSTALLATIONS_TABLE,
+        PUSH_INSTALLATION_COLUMN_DEFINITIONS,
+    )?;
+    create_table(
+        glue,
+        PUSH_VAPID_KEYS_TABLE,
+        PUSH_VAPID_KEY_COLUMN_DEFINITIONS,
+    )?;
+    schema_migration::create_table(glue)?;
+    for version in 1..=5 {
+        schema_migration::record(glue, version, applied_at)?;
+    }
+    Ok(())
+}
 
 pub(in crate::task_store::migration) fn validate<S>(glue: &Glue<S>) -> Result<()>
 where

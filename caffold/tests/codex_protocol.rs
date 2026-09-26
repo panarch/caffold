@@ -142,10 +142,7 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
         "thread/read",
         "thread/fork",
         "thread/delete",
-        "thread/section/move",
         "thread/resume",
-        "threadSection/list",
-        "threadSection/create",
         "thread/unsubscribe",
         "thread/turns/list",
         "turn/start",
@@ -216,24 +213,7 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
             "sortKey",
             "sortDirection",
             "archived",
-            "sectionId?: string | null",
             "useStateDbOnly",
-        ],
-    );
-    schema.assert_declares("v2/ThreadSortKey.ts", &["\"section_position\""]);
-    schema.assert_declares("v2/ThreadSection.ts", &["id: string", "name: string"]);
-    schema.assert_declares(
-        "v2/ThreadSectionListResponse.ts",
-        &["data: Array<ThreadSection>", "nextCursor: string | null"],
-    );
-    schema.assert_declares("v2/ThreadSectionListParams.ts", &["cursor", "limit"]);
-    schema.assert_declares("v2/ThreadSectionCreateParams.ts", &["name: string"]);
-    schema.assert_declares(
-        "v2/ThreadSectionMoveParams.ts",
-        &[
-            "threadId: string",
-            "sectionId: string | null",
-            "beforeThreadId?: string | null",
         ],
     );
     schema.assert_declares("v2/ThreadReadParams.ts", &["includeTurns?: boolean"]);

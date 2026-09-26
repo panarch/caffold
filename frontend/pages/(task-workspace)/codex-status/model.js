@@ -132,7 +132,7 @@ export function taskStoreOperationsPresentation(snapshot) {
   if (!taskStore?.blocksTaskOperations) {
     return READY_TASK_OPERATIONS;
   }
-  const content = taskStoreReadinessContent(taskStore, snapshot);
+  const content = taskStoreReadinessContent(taskStore);
   return taskOperationsPresentation({
     phase: `taskStore:${taskStore.state ?? "blocked"}`,
     blocked: true,
@@ -188,16 +188,7 @@ export function formatCodexReadiness(snapshot) {
   }[state] ?? "Unavailable";
 }
 
-function taskStoreReadinessContent(taskStore, snapshot) {
-  if (taskStore.state === "waitingForCodex") {
-    const title = `Codex ${formatCodexReadiness(snapshot).toLowerCase()}`;
-    return {
-      title,
-      message:
-        snapshot?.status?.readiness?.diagnosticMessage ||
-        `${title}.`,
-    };
-  }
+function taskStoreReadinessContent(taskStore) {
   if (taskStore.state === "failed") {
     return {
       title: "Task data upgrade failed",
