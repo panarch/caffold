@@ -180,6 +180,11 @@ class CaffoldNotesNavigator extends HTMLElement {
     });
   }
 
+  scrollToTop() {
+    this.ensureRendered();
+    this.fileTree().scrollToTop();
+  }
+
   dispatchIntent(detail) {
     this.dispatchEvent(new CustomEvent(NOTES_NAVIGATOR_INTENT_EVENT, {
       bubbles: true,

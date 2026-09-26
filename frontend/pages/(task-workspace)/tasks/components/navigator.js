@@ -20,6 +20,7 @@ import "../../../../keyboard-navigation/components/presentation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
+  scrollBackToTop,
 } from "../../../../scroll-scope.js";
 import {
   TASK_TRANSPORT_STATE,
@@ -409,6 +410,11 @@ class CaffoldTaskNavigator extends HTMLElement {
       resizeElements: [this, scrollport],
       scrollRoots: [scrollport],
     };
+  }
+
+  scrollToTop() {
+    this.ensureChildren();
+    scrollBackToTop(this.querySelector(":scope > .task-list-scroll"));
   }
 
   setLiveUpdates(liveUpdates) {

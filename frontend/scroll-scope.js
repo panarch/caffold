@@ -95,3 +95,10 @@ export function availableScrollAxes(element, axes, tolerance = 1) {
       : hasHorizontalScrollOverflow(element, tolerance)
   );
 }
+
+export function scrollBackToTop(scrollport) {
+  const reduceMotion = globalThis.matchMedia?.(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+  scrollport.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+}

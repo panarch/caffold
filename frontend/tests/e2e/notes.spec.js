@@ -492,6 +492,41 @@ test("a phone places Note details where it places Task details", { tag: "@phone"
   await captureReviewScreenshot(page, testInfo, "notes-phone-details");
 });
 
+test("choosing the Notes tab again brings the tree back to the top", { tag: "@phone" }, async ({
+  page,
+}) => {
+  await stubNotes(page, {
+    tree: {
+      directories: [],
+      notes: Array.from({ length: 40 }, (_, index) => ({
+        id: `note-${index}`,
+        directoryId: null,
+        name: `Note ${String(index).padStart(2, "0")}`,
+        updatedAtMs: 1_000,
+      })),
+    },
+  });
+  await page.goto("/notes");
+
+  const scroller = notesNavigator(page).locator(
+    ":scope > caffold-file-tree > .file-tree-scroll",
+  );
+  await expect(treeEntry(page, "Note 39")).toBeAttached();
+  const bottom = await scroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    return element.scrollTop;
+  });
+  expect(bottom).toBeGreaterThan(0);
+
+  await page
+    .locator('caffold-task-workspace-navigation button[data-workspace-mode="notes"]')
+    .click();
+
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop))
+    .toBe(0);
+  await expect(page).toHaveURL(/\/notes$/);
+});
+
 test("a Note URL survives reload and browser history", { tag: "@desktop" }, async ({
   page,
 }) => {

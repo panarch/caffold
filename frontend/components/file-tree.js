@@ -7,6 +7,7 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
+  scrollBackToTop,
 } from "../scroll-scope.js";
 import { fileStatusPresentation } from "../file-status.js";
 import {
@@ -194,6 +195,11 @@ class CaffoldFileTree extends HTMLElement {
         scroller.scrollLeft = scroll.left;
       }
     });
+  }
+
+  scrollToTop() {
+    this.ensureRendered();
+    scrollBackToTop(this.scroller());
   }
 
   async revealKey(key) {

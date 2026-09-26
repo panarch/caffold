@@ -126,6 +126,29 @@ test("leaving a Settings page rewinds its entry instead of stacking one", { tag:
   await expect(page).toHaveURL("/settings/appearance");
 });
 
+test("choosing the Settings tab again brings its list back to the top", { tag: "@phone" }, async ({
+  page,
+}) => {
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: viewport.width, height: 340 });
+  await page.goto("/settings");
+
+  const list = page.locator("caffold-settings-navigator > .settings-navigator-list");
+  await expect(list.locator('button[data-settings-section="about"]')).toBeAttached();
+  const bottom = await list.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    return element.scrollTop;
+  });
+  expect(bottom).toBeGreaterThan(0);
+
+  await page
+    .locator('caffold-task-workspace-navigation button[data-workspace-mode="settings"]')
+    .click();
+
+  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBe(0);
+  await expect(page).toHaveURL("/settings");
+});
+
 test("collects MCP status only when About diagnostics are copied", { tag: "@desktop" }, async ({
   context,
   page,
