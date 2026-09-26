@@ -4021,6 +4021,7 @@ mod claude_tests {
         let shot = ".caffold/uploads/20260926-153012-a1b2/shot.png";
         let (status, _) = call(&app, detail()).await;
         assert_eq!(status, StatusCode::OK);
+        until_task_directory_is_ready(&state, root.path()).await;
         let (status, uploaded) = call(
             &app,
             Request::put(format!(
@@ -4067,8 +4068,10 @@ mod claude_tests {
         let (state, runner) = claude_task(root.path()).await;
         let app = router(state.clone());
         let notes = ".caffold/uploads/20260926-153012-a1b2/notes.png";
-        call(&app, detail()).await;
-        call(
+        let (status, detail) = call(&app, detail()).await;
+        assert_eq!(status, StatusCode::OK, "{detail}");
+        until_task_directory_is_ready(&state, root.path()).await;
+        let (status, uploaded) = call(
             &app,
             Request::put(format!(
                 "/api/tasks/{SESSION}/{}",
@@ -4078,6 +4081,7 @@ mod claude_tests {
             .unwrap(),
         )
         .await;
+        assert_eq!(status, StatusCode::CREATED, "{uploaded}");
 
         let (status, refused) = call(
             &app,
@@ -4907,6 +4911,23 @@ mod claude_tests {
                 .conversation
                 .as_ref()
                 .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
+    }
+
+    /// Detail starts the Claude session bootstrap in the background; an OK
+    /// response does not yet mean uploads can resolve the Task directory.
+    async fn until_task_directory_is_ready(state: &TaskState, cwd: &Path) {
+        let cwd = cwd.display().to_string();
+        until(
+            state,
+            "the Claude Task has a working directory",
+            |snapshot| {
+                snapshot
+                    .conversation
+                    .as_ref()
+                    .is_some_and(|conversation| conversation.cwd == cwd)
+            },
+        )
+        .await;
     }
 
     /// Wait until the Task's session reads the way `settled` says.
