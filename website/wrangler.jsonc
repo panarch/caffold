@@ -10,5 +10,6 @@
     "html_handling": "auto-trailing-slash"
   },
   "routes": [{ "pattern": "caffold.dev", "custom_domain": true }],
+  "preview_urls": true,
   "previews": {}
 }
