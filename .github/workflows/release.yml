@@ -252,10 +252,13 @@ jobs:
       RELEASE_SHA: ${{ needs.macos.outputs.release_sha }}
 
     steps:
+      # Git accepts the push to site as a fast-forward only when the commit
+      # site points to is in the local history, so this checkout keeps it all.
       - name: Check out the release source
         uses: actions/checkout@v7
         with:
           ref: ${{ needs.macos.outputs.release_sha }}
+          fetch-depth: 0
           persist-credentials: true
 
       # Cloudflare builds caffold.dev from the site branch, so the published

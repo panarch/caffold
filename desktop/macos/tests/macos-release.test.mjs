@@ -318,6 +318,8 @@ test("release checks the source before versioning and packaging on macOS", () =>
   assert.match(siteJob, /^\s+contents: write$/m);
   assert.match(siteJob, /RELEASE_SHA: \$\{\{ needs\.macos\.outputs\.release_sha \}\}/);
   assert.match(siteJob, /git push origin "\$\{RELEASE_SHA\}:refs\/heads\/site"/);
+  // A shallow checkout lacks site's commit, and Git rejects the push.
+  assert.match(siteJob, /^\s+fetch-depth: 0$/m);
   assert.doesNotMatch(siteJob, /HOMEBREW_TAP_TOKEN|--force|gh release create/);
 });
 
