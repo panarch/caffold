@@ -120,6 +120,12 @@ workflows choose which checks to run and enforce their dependencies. Every
 shared check tests the caller's commit directly, without release-specific
 inputs or candidate restoration.
 
+A pull request or `main` push that changes only files under `website/` skips
+`checks.yml`: the user manual's pages, images, and build settings reach no
+other owner's check, so `website-checks.yml` runs Documentation Contracts
+alone. A change that also touches anything else runs both workflows, and a
+release always runs every check.
+
 After all shared checks pass, `.github/workflows/macos-release.yml` prepares
 the release in one macOS job. For a new release it bumps the version and commits
 the candidate locally, then runs Swift application tests, Rust tests and lints,

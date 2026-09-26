@@ -1,0 +1,22 @@
+name: Website Checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "website/**"
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  documentation:
+    uses: ./.github/workflows/documentation-contracts.yml
