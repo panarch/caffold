@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{#- Only caffold.dev serves the manual of the latest release. Anywhere else,
+    such as a branch preview or a local server, the banner says so. -#}
+{% block extrahead %}
+  <script>
+    if (location.hostname !== new URL({{ config.site_url | tojson }}).hostname) {
+      document.documentElement.classList.add("cf-development");
+    }
+  </script>
+{% endblock %}
+
+{% block announce %}
+  This is the manual for the next Caffold release.
+  <a href="{{ config.site_url }}{% if page %}{{ page.url }}{% endif %}">Read the manual for the latest release</a>.
+{% endblock %}

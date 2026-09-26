@@ -237,3 +237,28 @@ jobs:
         if: steps.tap_update.outputs.changed == 'true'
         working-directory: homebrew-tap
         run: git push origin HEAD:main
+
+  publish_site:
+    name: Publish the website
+    needs:
+      - macos
+      - publish_homebrew
+    if: inputs.action != 'dry-run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      RELEASE_SHA: ${{ needs.macos.outputs.release_sha }}
+
+    steps:
+      - name: Check out the release source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.macos.outputs.release_sha }}
+          persist-credentials: true
+
+      # Cloudflare builds caffold.dev from the site branch, so the published
+      # manual moves only once the release it describes installs from Homebrew.
+      - name: Move the site branch to the release
+        run: git push origin "${RELEASE_SHA}:refs/heads/site"

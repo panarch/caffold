@@ -38,6 +38,7 @@ caffold-task-detail-info {
   }
 
   & .task-detail-info-button .task-status-chip {
+    position: relative;
     grid-auto-flow: initial;
     place-items: center;
     pointer-events: none;

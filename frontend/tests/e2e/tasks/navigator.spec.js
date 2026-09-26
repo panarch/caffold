@@ -1404,6 +1404,61 @@ test("starts active Task navigator spinners at independent phases", { tag: "@all
   await expect(detailSpinner).toHaveCSS("animation-delay", "0s");
 });
 
+test("paints the Task details status icon over the button's surface", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const now = Date.now();
+  const task = {
+    id: "thread_waiting_icon",
+    threadId: "thread_waiting_icon",
+    ...canonicalTaskState("active", { activeFlags: ["waitingOnApproval"] }),
+    title: "Waiting for approval",
+    preview: "Waiting for approval",
+    cwd: "frontend/tests/e2e/fixtures/home",
+    cwdPath: "frontend/tests/e2e/fixtures/home",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Waiting for approval",
+    unseen: false,
+  };
+  const detail = {
+    revision: 1,
+    eventRevision: 1,
+    threadId: task.threadId,
+    syncState: "ready",
+    task,
+    events: [],
+    eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
+    pendingApprovals: [],
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+  await page.route(/\/api\/tasks\/thread_waiting_icon(?:\?|$)/, (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/tasks/thread_waiting_icon");
+  await emitTaskDetailBootstrap(page, detail);
+  const button = page.locator("caffold-task-detail-info .task-detail-info-button");
+  await expect(button).toHaveAttribute("aria-label", /waiting for approval/);
+  const icon = button.locator(".task-status-icon");
+  await expect(icon).toBeVisible();
+  const painted = await button.screenshot({ animations: "disabled" });
+  await icon.evaluate((element) => {
+    element.style.visibility = "hidden";
+  });
+  // An icon the button's own surface paints over leaves the same pixels
+  // whether it is shown or hidden.
+  expect((await button.screenshot({ animations: "disabled" })).equals(painted)).toBe(false);
+});
+
 test("keeps unseen completion markers blinking, phase-shifted, and motion-safe", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
@@ -1647,7 +1702,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   await page.getByRole("button", { name: /Task details/ }).click();
   await expect(
     page.getByText(
-      "Archive removes this task from the active list. Its worktree and files are retained.",
+      "Archive removes this task from the active list. If Caffold prepared its worktree, the worktree is removed and its branch is kept.",
     ),
   ).toBeVisible();
   await page.getByRole("button", { name: "Archive task" }).click();

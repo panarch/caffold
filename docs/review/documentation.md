@@ -2,7 +2,8 @@
 
 This policy extends the common [Review Policy](policy.md) for tracked
 documentation, including repository entry points, contributor and operator
-guides, product and architecture documents, and review policy.
+guides, product and architecture documents, review policy, and the user manual
+in `website/docs/` with its screenshots.
 
 Unless a document explicitly owns planned or historical material, repository
 documentation describes the supported current system. It is not a running
@@ -39,6 +40,10 @@ owning document.
 
 - Product documents own supported behavior, workflows, and surfaces at their
   declared level. Only the roadmap owns planned product direction.
+- The user manual owns the procedures a person follows to install, set up, and
+  use Caffold, and explains supported behavior as a user meets it. It states
+  what a user needs from a product contract without restating the contract's
+  complete rules, states, or exceptions.
 - Architecture documents own implemented boundaries, state ownership, and
   detailed system contracts.
 - Development and operations documents own reproducible procedures for their
@@ -70,6 +75,14 @@ Update or remove every directly affected statement in the same change,
 including obsolete examples, headings, and links. A change is not ready while
 it leaves a conflicting current-state description or an outdated procedure
 elsewhere in the repository.
+
+The user manual is part of that neighborhood. A change that alters a surface,
+label, or procedure the manual describes updates the manual text in the same
+change. A change that alters a surface a manual image shows also replaces that
+image, and updates its scenario when the shown state changes, following
+[User manual scenarios](../development/testing.md#user-manual-scenarios). A
+scenario and its image are named after the surface they show, so the same
+search that finds the text finds them.
 
 Do not broaden a focused change into cleanup of unrelated pre-existing
 documentation. Record unrelated findings separately when they cannot be fixed

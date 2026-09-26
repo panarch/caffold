@@ -14,11 +14,12 @@ function markdownFiles(directory) {
   });
 }
 
-// Every tracked Markdown file is contributor documentation, wherever its owner
-// keeps it. Asking Git for the list excludes ignored trees — local notes,
-// node_modules, build output — without naming them. Fixture Markdown is test
-// data rather than documentation, so it stays out.
-const contributorDocs = execFileSync("git", ["ls-files", "*.md"], {
+// Every tracked Markdown file is documentation, wherever its owner keeps it,
+// including the user manual under website/docs. Asking Git for the list
+// excludes ignored trees — local notes, node_modules, build output — without
+// naming them. Fixture Markdown is test data rather than documentation, so it
+// stays out.
+const trackedDocs = execFileSync("git", ["ls-files", "*.md"], {
   cwd: repoRoot,
   encoding: "utf8",
 })
@@ -27,7 +28,7 @@ const contributorDocs = execFileSync("git", ["ls-files", "*.md"], {
   .map((path) => resolve(repoRoot, path));
 
 test("official documentation uses repository-owned entrypoints", () => {
-  for (const path of contributorDocs) {
+  for (const path of trackedDocs) {
     const source = readFileSync(path, "utf8");
     assert.doesNotMatch(source, /(?:^|[\s`(])\.notes\//m, `${path} references .notes`);
   }
@@ -46,9 +47,9 @@ test("the documentation index links every document", () => {
   }
 });
 
-test("local Markdown links in contributor documentation resolve", () => {
+test("local Markdown links in tracked documentation resolve", () => {
   const linkPattern = /\[[^\]]*\]\(([^)]+)\)/g;
-  for (const path of contributorDocs) {
+  for (const path of trackedDocs) {
     const source = readFileSync(path, "utf8");
     for (const match of source.matchAll(linkPattern)) {
       const rawTarget = match[1].trim().replace(/^<|>$/g, "");

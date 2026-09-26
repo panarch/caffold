@@ -90,6 +90,8 @@ With any `release-*` action or `resume`, two publication jobs run after the macO
 
 The GitHub Release and Homebrew publication jobs never edit or commit Caffold source. After a GitHub Release exists, its tag and validated assets remain canonical, so a later workflow-fix commit with the same application version can `resume` a failed tap update without replacing the release. Archive verification checks the published version rather than a value derived from the verifying commit, so a later workflow commit revalidates the same assets. When no release exists yet, an existing version tag must still point to the selected release commit before assets can be published.
 
+After the Homebrew job succeeds, `publish_site` pushes the release commit to the `site` branch with `contents: write` and no tap token. Cloudflare Workers Builds deploys `https://caffold.dev` from that branch, as described in the [website README](../../website/README.md#deployment), so the published user manual changes only once the release it describes installs from Homebrew. The push only fast-forwards; a failed push leaves the release and Cask in place, and `resume` repeats it.
+
 `resume` is desired-state reconciliation, not continuation from a stored step number. Completed external state is validated and reused; missing state is created in order. Conflicting tag ownership, invalid or missing canonical assets, or mismatched release metadata stop with an error instead of being overwritten.
 
 ## Public release transaction
@@ -98,7 +100,7 @@ Public distribution is a separately approved operation. Once started, the follow
 
 1. confirm the reviewed source is pushed and `origin/main` is the current commit;
 2. manually run `Release` with the intended `release-patch`, `release-minor`, or `release-major` action, or use `resume` after a partial failure;
-3. confirm the workflow produced the version tag, GitHub Release assets, and matching `Casks/caffold.rb` commit in `panarch/homebrew-tap`;
+3. confirm the workflow produced the version tag, GitHub Release assets, and matching `Casks/caffold.rb` commit in `panarch/homebrew-tap`, and that `https://caffold.dev` shows the manual of the new release;
 4. confirm the tap's own `Homebrew audit` workflow passed;
 5. install with `brew install --cask panarch/tap/caffold` on the target Mac;
 6. launch the installed app and verify `/api/health`, the build ID, agent

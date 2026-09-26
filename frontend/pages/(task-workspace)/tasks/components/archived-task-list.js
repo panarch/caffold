@@ -582,7 +582,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
         : `Restore ${task.title}`;
     const restoreTitle = restoring
       ? "Restoring task"
-      : restoreError?.message ?? "Restore task; its worktree was retained";
+      : restoreError?.message ?? "Restore task";
     const restoreIcon = restoring ? "LoaderCircle" : "ArchiveRestore";
     const deleteLabel = deleting
       ? `Deleting ${task.title}`

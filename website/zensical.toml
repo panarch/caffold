@@ -1,0 +1,113 @@
+[project]
+site_name = "Caffold"
+site_description = "A self-hosted workspace for running and reviewing coding-agent work from any screen."
+site_url = "https://caffold.dev/"
+repo_url = "https://github.com/panarch/caffold"
+repo_name = "panarch/caffold"
+copyright = "Caffold is available under the Apache License 2.0."
+
+nav = [
+  { "Get started" = [
+    "get-started/how-caffold-works.md",
+    "get-started/install.md",
+    "get-started/agents.md",
+    "get-started/first-task.md",
+    "get-started/other-devices.md",
+    "get-started/notifications.md",
+  ] },
+  { "Guide" = [
+    { "Run a Task" = [
+      "tasks/start-a-task.md",
+      "tasks/conversation.md",
+      "tasks/steer-and-stop.md",
+      "tasks/approvals.md",
+      "tasks/ask-jev-first.md",
+      "tasks/current-plan.md",
+    ] },
+    { "Organize Tasks" = [
+      "tasks/sections.md",
+      "tasks/worktrees.md",
+      "tasks/fork.md",
+      "tasks/archive-and-delete.md",
+    ] },
+    { "Review" = [
+      "review/changes.md",
+      "review/git.md",
+      "review/github.md",
+    ] },
+    { "Notes" = ["notes/index.md"] },
+    { "Voice and keyboard" = [
+      "voice-input.md",
+      "keyboard.md",
+    ] },
+  ] },
+  { "Reference" = [
+    "reference/settings.md",
+    "reference/menu-bar-app.md",
+    "reference/updates.md",
+    "reference/data-and-privacy.md",
+    "reference/limits.md",
+    "reference/troubleshooting.md",
+    "reference/uninstall.md",
+  ] },
+]
+
+extra_css = ["stylesheets/extra.css"]
+
+[project.theme]
+custom_dir = "overrides"
+language = "en"
+logo = "assets/brand/caffold.png"
+favicon = "assets/brand/favicon-32.png"
+font = false
+features = [
+  "content.code.copy",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.tabs",
+  "navigation.tabs.sticky",
+  "navigation.tracking",
+  "navigation.top",
+  "search.highlight",
+  "toc.follow",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to system preference"
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+def_list = {}
+md_in_html = {}
+toc.permalink = true
+pymdownx.details = {}
+pymdownx.highlight.anchor_linenums = true
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.inlinehilite = {}
+pymdownx.keys = {}
+pymdownx.superfences = {}
+pymdownx.tabbed.alternate_style = true

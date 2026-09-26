@@ -4,12 +4,18 @@ Caffold documentation is organized by purpose. All tracked documents are part
 of the repository documentation; their directory identifies what they explain,
 not who is allowed to read them.
 
+## User manual
+
+The user manual in `website/docs/` is the source of the Caffold website. It
+owns how to install, set up, and use Caffold, starting at
+[Install](../website/docs/get-started/install.md); [its README](../website/README.md)
+describes how the site is built.
+
 ## Product
 
 These documents describe the product, its current behavior, and its direction.
 Only the roadmap should present unfinished product behavior as planned work.
 
-- [Installation and Operation](product/installation.md)
 - [Vision](product/vision.md)
 - [Current Product Status](product/status.md)
 - [Product Workflows](product/workflows.md)

@@ -98,7 +98,7 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
         <p class="task-detail-action-error task-detail-fork-error" role="alert" hidden></p>
       </div>
       <div class="task-detail-task-action task-detail-archive-action">
-        <p>Archive removes this task from the active list. Its worktree and files are retained.</p>
+        <p>Archive removes this task from the active list. If Caffold prepared its worktree, the worktree is removed and its branch is kept.</p>
         <button
           type="button"
           class="task-secondary-button"
