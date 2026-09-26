@@ -42,6 +42,14 @@ export async function installTaskLoopFixture(
   let initialPromptRequests = 0;
   let initialPromptBody = null;
   let followUpRequests = 0;
+  const uploads = [];
+  const discardedUploads = [];
+  // What an agent's history shows for an uploaded picture: its own bytes.
+  const uploadedPicture = (path) => {
+    const upload = uploads.find((candidate) => candidate.path === path);
+    expect(upload, `${path} was uploaded before the prompt named it`).toBeTruthy();
+    return `data:image/png;base64,${upload.bytes.toString("base64")}`;
+  };
   let taskDetailReadRequests = 0;
   let approvalRequests = 0;
   let omitCompletedCommandFromDetail = false;
@@ -190,6 +198,22 @@ export async function installTaskLoopFixture(
     const segments = url.pathname.split("/").filter(Boolean);
     const method = request.method();
 
+    if (segments[2] === threadId && segments[3] === "uploads") {
+      const folder = decodeURIComponent(segments[4]);
+      if (method === "DELETE") {
+        discardedUploads.push(folder);
+        return route.fulfill({ status: 204 });
+      }
+      expect(method).toBe("PUT");
+      const path = `.caffold/uploads/${folder}/${decodeURIComponent(segments[5])}`;
+      uploads.push({ path, bytes: request.postDataBuffer() });
+      return route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ path }),
+      });
+    }
+
     if (segments.length === 2 && method === "GET") {
       expect(url.searchParams.get("cwd")).toBeNull();
       return route.fulfill({
@@ -278,14 +302,18 @@ export async function installTaskLoopFixture(
       method === "POST"
     ) {
       const body = request.postDataJSON();
-      if (body.prompt === "Inspect the planner changes") {
+      const [words] = body.prompt.split("\n\nAttached files:\n");
+      if (words === "Inspect the planner changes") {
         initialPromptRequests += 1;
         initialPromptBody = body;
         expect(body.model).toBe("gpt-5.6-sol");
         expect(body.effort).toBe("xhigh");
         expect(body.activeTurnId).toBeNull();
-        expect(body.images).toHaveLength(1);
-        expect(body.images[0]).toMatch(/^data:image\/png;base64,/);
+        expect(body.imagePaths).toHaveLength(1);
+        expect(body.prompt).toBe(
+          `${words}\n\nAttached files:\n- ${body.imagePaths[0]}`,
+        );
+        const picture = uploadedPicture(body.imagePaths[0]);
         resolveInitialPromptRequest();
         const outcome = deferInitialPrompt
           ? await initialPromptResponseReleased
@@ -335,7 +363,7 @@ export async function installTaskLoopFixture(
                 { type: "text", text: body.prompt },
                 {
                   type: "image",
-                  url: body.images[0],
+                  url: picture,
                   name: "planner-layout.png",
                 },
                 {
@@ -377,7 +405,7 @@ export async function installTaskLoopFixture(
           ),
         ];
         resolveInitialPromptHandled();
-        return route.fulfill({
+        await route.fulfill({
           contentType: "application/json",
           body: JSON.stringify({
             threadId,
@@ -386,6 +414,18 @@ export async function installTaskLoopFixture(
             steered: false,
           }),
         });
+        // The Task's stream may already have opened while the files went up;
+        // it hears the accepted turn the way the server would tell it. A
+        // stream that opens later reads the same events in its bootstrap.
+        if (!deferInitialPrompt) {
+          await emitToOpenDetailStream("task-sync", {
+            threadId,
+            revision: 1,
+            reason: "canonical-sync",
+            detail: detailResponse(),
+          });
+        }
+        return;
       }
       followUpRequests += 1;
       if (body.prompt === "Prompt that fails") {
@@ -430,12 +470,15 @@ export async function installTaskLoopFixture(
           }),
         });
       }
-      expect(body.prompt).toBe("Please tighten the tests");
+      expect(words).toBe("Please tighten the tests");
       expect(body.model).toBe("gpt-5.6-sol");
       expect(body.effort).toBe("ultra");
       expect(body.activeTurnId).toBeNull();
-      expect(body.images).toHaveLength(1);
-      expect(body.images[0]).toMatch(/^data:image\/png;base64,/);
+      expect(body.imagePaths).toHaveLength(1);
+      expect(body.prompt).toBe(
+        `${words}\n\nAttached files:\n- ${body.imagePaths[0]}`,
+      );
+      const followUpPicture = uploadedPicture(body.imagePaths[0]);
       resolveFollowUpRequest();
       await followUpResponseReleased;
       events = [
@@ -457,7 +500,7 @@ export async function installTaskLoopFixture(
             itemId: "message_6",
             content: [
               { type: "text", text: body.prompt },
-              { type: "image", url: body.images[0], name: "follow-up.png" },
+              { type: "image", url: followUpPicture, name: "follow-up.png" },
             ],
           },
           14,
@@ -722,6 +765,17 @@ export async function installTaskLoopFixture(
     );
   };
 
+  // Best effort: a test may already have ended, and with it the page.
+  const emitToOpenDetailStream = (type, payload) =>
+    page.evaluate(
+      ({ streamUrl, type, payload }) => {
+        window.__caffoldMockEventSources
+          .find((candidate) => candidate.url === streamUrl && candidate.readyState !== 2)
+          ?.emit(type, payload);
+      },
+      { streamUrl: `/api/tasks/${threadId}/stream`, type, payload },
+    ).catch(() => {});
+
   // Release the ordinary initial prompt response, then project the exact
   // accepted user item through the Task stream.
   const releaseInitialPrompt = async () => {
@@ -765,17 +819,25 @@ export async function installTaskLoopFixture(
     );
     await page.evaluate(
       async ({ threadId, image }) => {
+        const path = ".caffold/uploads/20270101-000000-seed/planner-layout.png";
+        const uploaded = await fetch(
+          `/api/tasks/${threadId}/uploads/20270101-000000-seed/planner-layout.png`,
+          { method: "PUT", body: await (await fetch(image)).blob() },
+        );
+        if (!uploaded.ok) {
+          throw new Error(`task upload seed failed: ${uploaded.status}`);
+        }
         const prompted = await fetch(`/api/tasks/${threadId}/prompts`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            prompt: "Inspect the planner changes",
+            prompt: `Inspect the planner changes\n\nAttached files:\n- ${path}`,
             model: "gpt-5.6-sol",
             effort: "xhigh",
             permissionMode: "approveForMe",
             fastMode: false,
             activeTurnId: null,
-            images: [image],
+            imagePaths: [path],
           }),
         });
         if (!prompted.ok) {
@@ -837,6 +899,12 @@ export async function installTaskLoopFixture(
     },
     get followUpRequests() {
       return followUpRequests;
+    },
+    get uploads() {
+      return uploads;
+    },
+    get discardedUploads() {
+      return discardedUploads;
     },
     get taskDetailReadRequests() {
       return taskDetailReadRequests;

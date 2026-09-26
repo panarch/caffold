@@ -240,8 +240,8 @@ test("returns the messages a stop cancelled to the composer ahead of the draft",
   const stoppedDetail = taskDetailFixture();
   stoppedDetail.revision = 2;
   stoppedDetail.task.title = runningDetail.task.title;
-  const picture =
-    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  const withPicture =
+    "And look at this.\n\nAttached files:\n- .caffold/uploads/20260926-153012-a1b2/shot.png";
   let interruptRequests = 0;
   let releaseInterrupt;
   const interruptGate = new Promise((resolve) => {
@@ -257,8 +257,8 @@ test("returns the messages a stop cancelled to the composer ahead of the draft",
       json: {
         ...stoppedDetail,
         cancelledPrompts: [
-          { prompt: "Also say pong.", images: [] },
-          { prompt: "And look at this.", images: [picture] },
+          { prompt: "Also say pong." },
+          { prompt: withPicture },
         ],
       },
     });
@@ -276,13 +276,12 @@ test("returns the messages a stop cancelled to the composer ahead of the draft",
 
   releaseInterrupt();
 
+  // A message's files come back as the words that name them; they are still
+  // where they were uploaded, so sending the words again points at them.
   await expect(prompt).toHaveValue(
-    "Also say pong.\n\nAnd look at this.\n\nContinue after the stop",
+    `Also say pong.\n\n${withPicture}\n\nContinue after the stop`,
   );
-  await expect(form.locator(".task-composer-attachment img")).toHaveAttribute(
-    "src",
-    picture,
-  );
+  await expect(form.locator(".task-composer-attachment")).toHaveCount(0);
 });
 
 test("updates stable detail regions and preserves an active IME composition", { tag: "@all-viewports" }, async ({
@@ -1469,7 +1468,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   await tasksPage.evaluate((element) => {
     const detail = element.querySelector("caffold-task-detail");
     const composer = detail.followUpComposer();
-    const image = composer.stateFor().images[0];
+    const image = composer.stateFor().attachments[0];
     composer.dataset.cacheIdentity = "stateful";
     window.__statefulTaskComposer = composer;
     window.__statefulTaskImage = image;
@@ -1489,7 +1488,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
     const composer = detail.followUpComposers.get(threadId);
     return {
       sameComposer: composer === window.__statefulTaskComposer,
-      sameImage: composer.stateFor().images[0] === window.__statefulTaskImage,
+      sameImage: composer.stateFor().attachments[0] === window.__statefulTaskImage,
       sameAttachment:
         composer.querySelector(".task-composer-attachment") ===
         window.__statefulTaskAttachment,
@@ -1528,11 +1527,11 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
       statefulRetained: stateful === window.__statefulTaskComposer,
       statefulConnected: window.__statefulTaskComposer.isConnected,
       statefulImageRetained:
-        stateful.stateFor().images[0] === window.__statefulTaskImage,
+        stateful.stateFor().attachments[0] === window.__statefulTaskImage,
       oldestCleanRetained: detail.followUpComposers.has(ids[1]),
       oldestCleanConnected: window.__oldestCleanTaskComposer.isConnected,
       activeThreadId: active?.dataset.threadId ?? "",
-      activeImageCount: active.stateFor().images.length,
+      activeImageCount: active.stateFor().attachments.length,
       connectedComposers: element.querySelectorAll(
         "caffold-task-detail caffold-task-composer",
       ).length,
@@ -1563,7 +1562,6 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
         submissionId: "stale-submission",
         threadId: staleThreadId,
         prompt: "Do not send this stale prompt",
-        images: [window.__statefulTaskImage.dataUrl],
         attachments: [window.__statefulTaskImage],
       });
       return {
@@ -1610,7 +1608,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
     return {
       sameComposer: detail.followUpComposer() === window.__statefulTaskComposer,
       sameImage:
-        detail.followUpComposer().stateFor().images[0] ===
+        detail.followUpComposer().stateFor().attachments[0] ===
         window.__statefulTaskImage,
     };
   });

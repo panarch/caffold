@@ -502,6 +502,7 @@ function renderMessageEvent(event, role, text, options = {}) {
     ? ` data-delivery-state="${escapeHtml(submissionState)}"`
     : "";
   const deliveryLabel = {
+    [PROMPT_SUBMISSION_STATE.UPLOADING]: "Uploading 0%",
     [PROMPT_SUBMISSION_STATE.SENDING]: "Sending...",
     [PROMPT_SUBMISSION_STATE.ACCEPTED]: "Accepted - syncing...",
     [PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN]: "Delivery unconfirmed",
@@ -516,11 +517,33 @@ function renderMessageEvent(event, role, text, options = {}) {
       ${renderMessageAttachments(attachments)}
       ${value ? `
         <div class="task-message-content">
-          <div class="task-message-text">${escapeHtml(value)}</div>
+          <div class="task-message-text">${
+            submissionState === PROMPT_SUBMISSION_STATE.UPLOADING
+              ? renderUploadingText(value, event.payload?.upload?.lines ?? [])
+              : escapeHtml(value)
+          }</div>
         </div>
       ` : ""}
     </li>
   `;
+}
+
+// The same characters the message will show once sent, with each listed file
+// on a line of its own so its progress can sit beneath it without moving text.
+function renderUploadingText(value, lines) {
+  const list = lines.map((line) => `- ${line.path}`).join("\n");
+  if (!lines.length || !value.endsWith(`\n${list}`)) {
+    return escapeHtml(value);
+  }
+  const head = value.slice(0, value.length - list.length - 1);
+  return `${escapeHtml(head)}${lines
+    .map(
+      (line, index) =>
+        `<span class="task-message-upload-line" data-upload-line="${index}">${escapeHtml(`- ${line.path}`)}${
+          line.done ? "" : '<span class="task-message-upload-bar" aria-hidden="true"></span>'
+        }</span>`,
+    )
+    .join("")}`;
 }
 
 // What the agent said, in whichever list the conversation is placing it.

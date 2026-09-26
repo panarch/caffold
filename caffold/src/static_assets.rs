@@ -637,6 +637,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js"
         ))),
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/session.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/session.js"
         ))),
@@ -1872,6 +1882,8 @@ mod tests {
         for path in [
             "pages/(task-workspace)/tasks/(detail)/(task)/layout/conversation.js",
             "pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.js",
         ] {
             let asset = get(path).expect("task conversation owner asset");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");

@@ -105,6 +105,7 @@ class CaffoldTaskConversation extends HTMLElement {
     this.disclosureByThread = new Map();
     this.pendingDisclosureAnchorByThread = new Map();
     this.pendingMarkdownScrollByThread = new Map();
+    this.uploadProgressByEvent = new Map();
     this.resizeObserver = null;
     this.boundClick = (event) => this.handleClick(event);
     this.boundApprovalIntent = (event) => this.handleApprovalIntent(event);
@@ -171,6 +172,39 @@ class CaffoldTaskConversation extends HTMLElement {
         : storedScroll,
     );
     return true;
+  }
+
+  // How far a message's files have gone up, painted onto the message already
+  // on screen rather than drawn again; a later render paints it back.
+  setPromptUploadProgress(eventId, progress) {
+    this.ensureState();
+    if (progress) {
+      this.uploadProgressByEvent.set(eventId, progress);
+    } else {
+      this.uploadProgressByEvent.delete(eventId);
+    }
+    this.paintUploadProgress(eventId);
+  }
+
+  paintUploadProgress(eventId) {
+    const progress = this.uploadProgressByEvent.get(eventId);
+    const entry = progress
+      ? Array.from(this.querySelectorAll(".task-message[data-event-id]"))
+          .find((candidate) => candidate.dataset.eventId === eventId)
+      : null;
+    if (!entry) {
+      return;
+    }
+    const delivery = entry.querySelector(".task-message-delivery");
+    if (delivery) {
+      delivery.textContent = `Uploading ${progress.percent}%`;
+    }
+    for (const line of entry.querySelectorAll("[data-upload-line]")) {
+      line.style.setProperty(
+        "--upload-progress",
+        `${progress.lines[Number(line.dataset.uploadLine)] ?? 0}`,
+      );
+    }
   }
 
   setApprovalError(approvalId, error) {
@@ -605,6 +639,9 @@ class CaffoldTaskConversation extends HTMLElement {
     }
     const scrollToRestore =
       this.pendingMarkdownScrollByThread.get(threadId) ?? previousScroll;
+    for (const eventId of this.uploadProgressByEvent.keys()) {
+      this.paintUploadProgress(eventId);
+    }
     this.restoreDisclosureState();
     this.restoreScroll(scrollToRestore);
     this.restorePendingDisclosureAnchor(

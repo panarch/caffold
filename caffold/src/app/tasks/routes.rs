@@ -23,6 +23,7 @@ mod grok;
 mod list;
 mod membership;
 mod store;
+mod uploads;
 
 use agent::{agent_models, agent_permissions};
 use claude::{claude_restart, claude_status};
@@ -45,6 +46,7 @@ use membership::{
 };
 #[cfg(test)]
 use store::{task_store_claim, task_store_get, task_store_update_composer_settings};
+use uploads::{task_upload, task_upload_discard};
 
 use super::active_list::ActiveTask;
 use super::lifecycle::ActiveTaskTopPlacement;
@@ -66,7 +68,7 @@ use crate::{
     app::tasks::sessions::SessionsDiagnostics,
 };
 
-const MAX_TASK_IMAGES: usize = 4;
+const MAX_TASK_IMAGES: usize = 10;
 const MAX_TASK_REQUEST_BYTES: usize = 64 * 1024 * 1024;
 const TASK_LIST_PAGE_SIZE: usize = 30;
 const TASK_CANONICAL_READ_CONCURRENCY: usize = 8;
@@ -121,8 +123,10 @@ struct CreateTaskRequest {
 #[serde(rename_all = "camelCase")]
 struct TaskPromptRequest {
     prompt: String,
+    /// Uploaded pictures to show the agent, as `.caffold/uploads/...` paths
+    /// under its working directory.
     #[serde(default)]
-    images: Vec<String>,
+    image_paths: Vec<String>,
     model: Option<String>,
     effort: Option<String>,
     #[serde(default)]
@@ -160,7 +164,6 @@ struct TaskInterruptResponse {
 #[derive(Debug, Serialize)]
 struct CancelledPromptResponse {
     prompt: String,
-    images: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -311,6 +314,14 @@ pub(super) fn router(state: TaskState) -> Router {
         .route(
             "/api/tasks/{thread_id}/prompts",
             post(task_prompt).layer(DefaultBodyLimit::max(MAX_TASK_REQUEST_BYTES)),
+        )
+        .route(
+            "/api/tasks/{thread_id}/uploads/{folder}",
+            axum::routing::delete(task_upload_discard),
+        )
+        .route(
+            "/api/tasks/{thread_id}/uploads/{folder}/{name}",
+            axum::routing::put(task_upload).layer(DefaultBodyLimit::disable()),
         )
         .route("/api/tasks/{thread_id}/interrupt", post(task_interrupt))
         .route(

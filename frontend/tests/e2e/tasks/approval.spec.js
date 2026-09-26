@@ -250,18 +250,28 @@ test("renders permission and network approvals without clipping at appearance ex
     if (!created.ok) {
       throw new Error(`task seed failed: ${created.status}`);
     }
+    const picture = ".caffold/uploads/20270101-000000-seed/planner-layout.png";
+    const uploaded = await fetch(`/api/tasks/${threadId}/uploads/20270101-000000-seed/planner-layout.png`, {
+      method: "PUT",
+      body: await (
+        await fetch(
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        )
+      ).blob(),
+    });
+    if (!uploaded.ok) {
+      throw new Error(`task upload seed failed: ${uploaded.status}`);
+    }
     const prompted = await fetch(`/api/tasks/${threadId}/prompts`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        prompt: "Inspect the planner changes",
+        prompt: `Inspect the planner changes\n\nAttached files:\n- ${picture}`,
         model: "gpt-5.6-sol",
         effort: "xhigh",
         permissionMode: "approveForMe",
         activeTurnId: null,
-        images: [
-          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-        ],
+        imagePaths: [picture],
       }),
     });
     if (!prompted.ok) {

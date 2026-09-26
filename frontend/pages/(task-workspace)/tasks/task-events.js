@@ -359,7 +359,15 @@ function projectPrimaryEvent(primary, supplemental, position) {
   };
 }
 
-export function optimisticUserMessageEvent(threadId, prompt, images, requestId) {
+// `uploadPaths` are the files the prompt's words list, still on their way up;
+// the conversation shows each one's progress on its own line of that list.
+export function optimisticUserMessageEvent(
+  threadId,
+  prompt,
+  images,
+  requestId,
+  uploadPaths = [],
+) {
   const anchorMs = Date.now();
   const content = [
     ...(prompt ? [{ type: "text", text: prompt }] : []),
@@ -378,7 +386,12 @@ export function optimisticUserMessageEvent(threadId, prompt, images, requestId) 
       text: prompt,
       content,
       optimistic: true,
-      submissionState: PROMPT_SUBMISSION_STATE.SENDING,
+      submissionState: uploadPaths.length
+        ? PROMPT_SUBMISSION_STATE.UPLOADING
+        : PROMPT_SUBMISSION_STATE.SENDING,
+      ...(uploadPaths.length
+        ? { upload: { lines: uploadPaths.map((path) => ({ path, done: false })) } }
+        : {}),
     },
     position: { anchorMs, index: 0 },
     observedMs: anchorMs,

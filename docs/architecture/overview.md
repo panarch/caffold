@@ -167,6 +167,8 @@ caffold/src/app/live_updates.rs        tab SSE, logical controls, framing, chann
 caffold/src/app/notes.rs               Notes operations, Notes tool answers, read-only Notes routes
 caffold/src/app/tasks.rs               private Tasks state and runtime shutdown
 caffold/src/app/tasks/routes.rs        Task/agent HTTP DTOs, handlers, REST routes
+caffold/src/app/tasks/routes/uploads.rs
+                                      prompt attachment uploads in the Task working directory
 caffold/src/app/tasks/live.rs          typed Task List and Task Detail live capabilities
 caffold/src/app/tasks/detail.rs        canonical Task detail and history application
 caffold/src/app/tasks/sessions.rs      ephemeral viewer, revision, and live-session state

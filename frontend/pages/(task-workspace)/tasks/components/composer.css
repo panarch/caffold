@@ -182,7 +182,99 @@ caffold-task-composer {
     height: var(--interface-icon-small-size);
   }
 
-  & .task-composer-image-error {
+  & .task-composer-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--interface-space-2);
+    min-width: 0;
+    padding: 0.625rem 0.875rem 0;
+  }
+
+  /* Content-sized up to the Composer's width; a long name is cut at the end
+     of its stem, never its extension. */
+  & .task-composer-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    max-width: 100%;
+    min-width: 0;
+    min-height: var(--interface-compact-visual-size);
+    padding-inline: 0.5rem 0;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface-muted);
+    color: var(--text);
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-composer-file-icon {
+    display: block;
+    flex: none;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+    color: var(--muted);
+  }
+
+  & .task-composer-file-name {
+    display: flex;
+    min-width: 0;
+    white-space: pre;
+  }
+
+  & .task-composer-file-stem {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  & .task-composer-file-extension {
+    flex: none;
+  }
+
+  & .task-composer-file-remove {
+    position: relative;
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-visual-size);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  & .task-composer-file-remove::before {
+    position: absolute;
+    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
+    content: "";
+  }
+
+  & .task-composer-file-remove:hover,
+  & .task-composer-file-remove:focus-visible {
+    color: var(--text);
+    outline: none;
+  }
+
+  & .task-composer-file-remove:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+
+  & .task-composer-file-remove-icon {
+    position: relative;
+    display: block;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+  }
+
+  & .task-composer-panel[data-drop-target] {
+    border-color: var(--focus-ring);
+    box-shadow: 0 0 0 1px var(--focus-ring), var(--structural-shadow-panel);
+  }
+
+  & .task-composer-attachment-error {
     margin: 0;
     padding: 0 1.125rem 0.25rem;
     color: var(--danger);
@@ -297,6 +389,7 @@ caffold-task-composer {
     outline: none;
   }
 
+  & .task-composer-attach-button,
   & .task-voice-button,
   & .task-voice-cancel-button {
     position: relative;
@@ -329,6 +422,7 @@ caffold-task-composer {
     font-weight: 600;
   }
 
+  & .task-composer-attach-button::before,
   & .task-voice-button::before,
   & .task-voice-cancel-button::before {
     position: absolute;
@@ -337,6 +431,8 @@ caffold-task-composer {
     content: "";
   }
 
+  & .task-composer-attach-button:hover,
+  & .task-composer-attach-button:focus-visible,
   & .task-voice-button:hover,
   & .task-voice-button:focus-visible,
   & .task-voice-cancel-button:hover,
@@ -356,10 +452,20 @@ caffold-task-composer {
     opacity: 0.55;
   }
 
+  & .task-composer-attach-button:disabled {
+    cursor: default;
+    opacity: 0.55;
+  }
+
+  & .task-composer-attach-button:disabled:hover {
+    background: transparent;
+  }
+
   & .task-voice-button:disabled:hover {
     background: transparent;
   }
 
+  & .task-composer-attach-icon,
   & .task-voice-icon,
   & .task-voice-cancel-icon {
     position: relative;
@@ -474,7 +580,7 @@ caffold-task-composer {
         [data-voice-state="recording"],
         [data-voice-state="transcribing"]
       )
-      .task-permission-picker {
+      :is(.task-permission-picker, .task-composer-attach-button) {
       display: none;
     }
 

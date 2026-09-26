@@ -135,6 +135,32 @@ caffold-task-conversation {
     white-space: pre-wrap;
   }
 
+  /* One line of the message's file list while it uploads: laid out exactly as
+     the plain text it becomes, with its progress drawn over the bottom of the
+     line box so the bar takes no room of its own. */
+  & .task-message-upload-line {
+    display: block;
+    position: relative;
+  }
+
+  & .task-message-upload-bar {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 2px;
+    overflow: hidden;
+    border-radius: 1px;
+    background: var(--border);
+  }
+
+  & .task-message-upload-bar::after {
+    display: block;
+    width: calc(var(--upload-progress, 0) * 100%);
+    height: 100%;
+    background: var(--focus-ring);
+    content: "";
+  }
+
   & .task-tool-card pre {
     margin: 0;
     font-size: var(--code-font-size);

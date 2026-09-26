@@ -3,15 +3,15 @@ use super::conversation::task_not_managed_error;
 use super::store::{
     task_store_get, task_store_update_composer_settings, task_store_worktree_for_thread,
 };
+use super::uploads::uploaded_file;
 use super::{
     CancelledPromptResponse, CreateTaskRequest, CreatedTaskResponse, MAX_TASK_IMAGES,
     TaskApprovalRequest, TaskInterruptResponse, TaskPromptOutcome, TaskPromptRequest,
     TaskPromptResponse, TasksQuery,
 };
-use crate::agent::AgentError;
 use crate::agent::codex::{CodexThreadClient, CodexThreadError};
 use crate::agent::driver::REVIEWED_PERMISSION_MODE;
-use crate::agent::{TurnOptions, TurnRejected};
+use crate::agent::{AgentError, PromptImage, TurnOptions, TurnRejected};
 use crate::app::error::ApiError;
 use crate::app::tasks::lifecycle::CreateTask;
 use crate::app::tasks::sessions::{PromptTarget, SessionSnapshot};
@@ -30,6 +30,7 @@ use axum::Json;
 use axum::extract::Path as AxumPath;
 use axum::extract::{Query, State};
 use serde::Serialize;
+use std::io::Read;
 use std::path::Path;
 
 pub(super) async fn create_task(
@@ -107,7 +108,7 @@ async fn task_prompt_owned(
         .ok_or_else(task_not_managed_error)?;
     let managed_worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
     let managed_cwd = managed_prompt_cwd(managed_worktree.as_ref())?;
-    let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
+    let (prompt, image_paths) = normalize_task_input(&request.prompt, request.image_paths)?;
     let _requested_active_turn_id = request.active_turn_id;
     let agent = state.task_runtime.task_agent(&thread_id).await?;
     let requested_model = request.model;
@@ -143,6 +144,15 @@ async fn task_prompt_owned(
             state.task_sessions.snapshot(&thread_id).await.as_ref(),
         )?;
     }
+    let images = if image_paths.is_empty() {
+        Vec::new()
+    } else {
+        let working_directory = working_directory(
+            managed_cwd.as_deref(),
+            state.task_sessions.snapshot(&thread_id).await.as_ref(),
+        )?;
+        prompt_images(state.fs.root(), &working_directory, &image_paths)?
+    };
     let mut refreshed_stale_turn = false;
     let outcome = loop {
         let attempted_steer = matches!(&target, PromptTarget::Steer { .. });
@@ -429,7 +439,6 @@ pub(super) async fn task_interrupt(
             .into_iter()
             .map(|sent| CancelledPromptResponse {
                 prompt: sent.prompt,
-                images: sent.images,
             })
             .collect(),
     }))
@@ -628,75 +637,101 @@ pub(super) fn normalize_logical_path(path: &str) -> Result<String, ApiError> {
 
 pub(super) fn normalize_task_input(
     prompt: &str,
-    images: Vec<String>,
+    image_paths: Vec<String>,
 ) -> Result<(String, Vec<String>), ApiError> {
     let prompt = prompt.trim().to_string();
-    if prompt.is_empty() && images.is_empty() {
+    if prompt.is_empty() && image_paths.is_empty() {
         return Err(ApiError::BadRequest {
             code: "empty_task_prompt",
             message: "task prompt or image cannot be empty".to_string(),
         });
     }
-    if images.len() > MAX_TASK_IMAGES {
+    if image_paths.len() > MAX_TASK_IMAGES {
         return Err(ApiError::BadRequest {
             code: "too_many_task_images",
             message: format!("a task turn can include at most {MAX_TASK_IMAGES} images"),
         });
     }
-    for image in &images {
-        validate_task_image_data_url(image)?;
-    }
-    Ok((prompt, images))
+    Ok((prompt, image_paths))
 }
 
-pub(super) fn validate_task_image_data_url(image: &str) -> Result<(), ApiError> {
-    const PREFIXES: [&str; 6] = [
-        "data:image/avif;base64,",
-        "data:image/gif;base64,",
-        "data:image/jpeg;base64,",
-        "data:image/jpg;base64,",
-        "data:image/png;base64,",
-        "data:image/webp;base64,",
-    ];
-    let Some(encoded) = PREFIXES
+/// The directory the Task's agent works in: its managed worktree once that is
+/// ready, otherwise the directory its conversation runs in.
+pub(super) fn working_directory(
+    managed_cwd: Option<&str>,
+    snapshot: Option<&SessionSnapshot>,
+) -> Result<String, ApiError> {
+    if let Some(cwd) = managed_cwd {
+        return Ok(cwd.to_string());
+    }
+    snapshot
+        .and_then(|snapshot| snapshot.conversation.as_ref())
+        .map(|conversation| conversation.cwd.clone())
+        .filter(|cwd| !cwd.is_empty())
+        .ok_or_else(|| ApiError::Conflict {
+            code: "task_directory_unavailable",
+            message: "the task's conversation is not open, so where its agent works is unknown; \
+                      reopen the task and try again"
+                .to_string(),
+        })
+}
+
+/// The uploaded pictures a prompt shows its agent, each one of the raster
+/// formats every agent reads.
+fn prompt_images(
+    root: &Path,
+    working_directory: &str,
+    image_paths: &[String],
+) -> Result<Vec<PromptImage>, ApiError> {
+    image_paths
         .iter()
-        .find_map(|prefix| image.strip_prefix(prefix))
-    else {
-        return Err(ApiError::BadRequest {
-            code: "invalid_task_image",
-            message: "task images must be base64-encoded raster image data URLs".to_string(),
-        });
-    };
-    if encoded.is_empty()
-        || encoded.len() % 4 != 0
-        || encoded
-            .bytes()
-            .any(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'+' | b'/' | b'='))
-    {
-        return Err(ApiError::BadRequest {
-            code: "invalid_task_image",
-            message: "task image data is not valid base64".to_string(),
-        });
-    }
-    let padding = encoded
-        .bytes()
-        .rev()
-        .take_while(|byte| *byte == b'=')
-        .count();
-    if padding > 2 || encoded[..encoded.len().saturating_sub(padding)].contains('=') {
-        return Err(ApiError::BadRequest {
-            code: "invalid_task_image",
-            message: "task image data is not valid base64".to_string(),
-        });
-    }
-    let decoded_bytes = encoded.len() / 4 * 3 - padding;
-    if decoded_bytes as u64 > MAX_IMAGE_BYTES {
+        .map(|relative| {
+            let path = uploaded_file(root, working_directory, relative)?;
+            let media_type = raster_media_type(&path, relative)?;
+            Ok(PromptImage {
+                path: path.display().to_string(),
+                media_type,
+            })
+        })
+        .collect()
+}
+
+/// What the file's first bytes say it is. The browser judged by the name; the
+/// agent is told what the bytes are.
+fn raster_media_type(path: &Path, relative: &str) -> Result<&'static str, ApiError> {
+    let unreadable =
+        |error: std::io::Error| ApiError::Internal(format!("could not read {relative}: {error}"));
+    let size = std::fs::metadata(path).map_err(unreadable)?.len();
+    if size > MAX_IMAGE_BYTES {
         return Err(ApiError::BadRequest {
             code: "task_image_too_large",
             message: format!("task images must be at most {MAX_IMAGE_BYTES} bytes each"),
         });
     }
-    Ok(())
+    let mut header = Vec::with_capacity(12);
+    std::fs::File::open(path)
+        .and_then(|file| file.take(12).read_to_end(&mut header))
+        .map_err(unreadable)?;
+    let header = header.as_slice();
+    let media_type = if header.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if header.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("image/jpeg")
+    } else if header.starts_with(b"GIF87a") || header.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if header.starts_with(b"RIFF") && header.get(8..12) == Some(b"WEBP") {
+        Some("image/webp")
+    } else if header.get(4..8) == Some(b"ftyp")
+        && matches!(header.get(8..12), Some(b"avif" | b"avis"))
+    {
+        Some("image/avif")
+    } else {
+        None
+    };
+    media_type.ok_or_else(|| ApiError::BadRequest {
+        code: "invalid_task_image",
+        message: format!("{relative} is not a PNG, JPEG, GIF, WebP, or AVIF image"),
+    })
 }
 
 #[cfg(test)]
@@ -1382,7 +1417,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Use the selected approval mode".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: None,
                 effort: None,
                 fast_mode: false,
@@ -1550,7 +1585,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Use xhigh".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: Some("gpt-5.6-sol".to_string()),
                 effort: Some("xhigh".to_string()),
                 fast_mode: true,
@@ -1738,7 +1773,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Read the planner".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: None,
                 effort: None,
                 fast_mode: false,
@@ -1803,7 +1838,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Read the planner".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: None,
                 effort: None,
                 fast_mode: false,
@@ -1981,7 +2016,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Continue with xhigh".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: Some("gpt-5.6-sol".to_string()),
                 effort: Some("xhigh".to_string()),
                 fast_mode: true,
@@ -2103,7 +2138,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Review the issue now".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: None,
                 effort: None,
                 fast_mode: false,
@@ -2169,7 +2204,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Do not start in a missing directory".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: None,
                 effort: None,
                 fast_mode: false,
@@ -2221,7 +2256,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Do not lose my work".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: None,
                 effort: None,
                 fast_mode: false,
@@ -2298,7 +2333,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Do not steer the old turn".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: None,
                 effort: None,
                 fast_mode: false,
@@ -2391,7 +2426,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Steer the managed turn after restart".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: None,
                 effort: None,
                 fast_mode: false,
@@ -2621,7 +2656,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Retry after the failed turn".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: None,
                 effort: None,
                 fast_mode: false,
@@ -2702,7 +2737,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Continue after restore".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: None,
                 effort: None,
                 fast_mode: false,
@@ -2723,6 +2758,85 @@ mod tests {
                 .map(|(method, _)| method)
                 .collect::<Vec<_>>(),
             ["thread/resume", "thread/resume", "turn/start"]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_uploaded_picture_reaches_codex_as_a_file_it_opens_itself() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-uploaded-picture";
+        let resume = json!({
+            "thread": {
+                "id": thread_id,
+                "preview": "Uploaded picture",
+                "status": { "type": "idle" },
+                "cwd": root.path().display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 2.0,
+                "turns": []
+            },
+            "cwd": root.path().display().to_string(),
+            "initialTurnsPage": { "data": [], "nextCursor": null, "backwardsCursor": null }
+        });
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/resume", resume),
+            MockCodexResponse::ok(
+                "turn/start",
+                json!({ "turn": { "id": "turn-picture", "items": [], "status": "inProgress" } }),
+            ),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        cache_and_manage_test_thread(&state, thread_id, root.path()).await;
+        let shot = ".caffold/uploads/20260926-153012-a1b2/shot.png";
+        let uploaded = router(state.clone())
+            .oneshot(
+                axum::http::Request::put(format!(
+                    "/api/tasks/{thread_id}/uploads/20260926-153012-a1b2/shot.png"
+                ))
+                .body(Body::from(b"\x89PNG\r\n\x1a\npicture".to_vec()))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(uploaded.status(), axum::http::StatusCode::CREATED);
+
+        let response = task_prompt(
+            State(state),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+            Json(TaskPromptRequest {
+                prompt: format!("What is this?\n\nAttached files:\n- {shot}"),
+                image_paths: vec![shot.to_string()],
+                model: None,
+                effort: None,
+                fast_mode: false,
+                permission_mode: None,
+                active_turn_id: None,
+            }),
+        )
+        .await
+        .expect("the prompt starts a turn");
+        assert!(!response.0.steered);
+
+        let (_, params) = client
+            .mock_requests()
+            .await
+            .into_iter()
+            .find(|(method, _)| method == "turn/start")
+            .expect("the turn is started");
+        assert_eq!(
+            params["input"][1],
+            json!({
+                "type": "localImage",
+                "path": root
+                    .path()
+                    .canonicalize()
+                    .unwrap()
+                    .join(shot)
+                    .display()
+                    .to_string(),
+            })
         );
     }
 
@@ -2774,7 +2888,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Keep the user before the answer".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: None,
                 effort: None,
                 fast_mode: false,
@@ -2877,7 +2991,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: prompt.to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: Some("gpt-not-applied-by-steer".to_string()),
                 effort: Some("xhigh".to_string()),
                 fast_mode: true,
@@ -3031,7 +3145,7 @@ mod tests {
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
                 prompt: "Start after the completed turn".to_string(),
-                images: Vec::new(),
+                image_paths: Vec::new(),
                 model: None,
                 effort: None,
                 fast_mode: false,
@@ -3055,51 +3169,140 @@ mod tests {
         );
     }
 
+    const SHOT: &str = ".caffold/uploads/20260926-153012-a1b2/shot.png";
+
     #[test]
-    fn task_input_accepts_text_and_raster_images() {
-        let image = "data:image/png;base64,aGVsbG8=".to_string();
+    fn task_input_trims_the_words_and_keeps_the_image_paths() {
         assert_eq!(
-            normalize_task_input("  inspect this  ", vec![image.clone()]).unwrap(),
-            ("inspect this".to_string(), vec![image])
+            normalize_task_input("  inspect this  ", vec![SHOT.to_string()]).unwrap(),
+            ("inspect this".to_string(), vec![SHOT.to_string()])
+        );
+        assert_eq!(
+            normalize_task_input("", vec![SHOT.to_string()]).unwrap(),
+            (String::new(), vec![SHOT.to_string()])
         );
     }
 
     #[test]
-    fn task_input_accepts_an_image_without_text() {
-        let image = "data:image/webp;base64,aGVsbG8=".to_string();
-        assert_eq!(
-            normalize_task_input("", vec![image.clone()]).unwrap(),
-            (String::new(), vec![image])
-        );
-    }
-
-    #[test]
-    fn task_input_rejects_unsupported_or_malformed_images() {
-        for image in [
-            "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
-            "data:image/png;base64,not base64",
-            "data:image/png;base64,a===",
-        ] {
-            assert!(matches!(
-                normalize_task_input("inspect", vec![image.to_string()]),
-                Err(ApiError::BadRequest {
-                    code: "invalid_task_image",
-                    ..
-                })
-            ));
-        }
+    fn task_input_needs_words_or_an_image() {
+        assert!(matches!(
+            normalize_task_input("   ", Vec::new()),
+            Err(ApiError::BadRequest {
+                code: "empty_task_prompt",
+                ..
+            })
+        ));
     }
 
     #[test]
     fn task_input_limits_image_count() {
-        let images = vec!["data:image/png;base64,aGVsbG8=".to_string(); MAX_TASK_IMAGES + 1];
+        assert!(normalize_task_input("inspect", vec![SHOT.to_string(); MAX_TASK_IMAGES]).is_ok());
         assert!(matches!(
-            normalize_task_input("inspect", images),
+            normalize_task_input("inspect", vec![SHOT.to_string(); MAX_TASK_IMAGES + 1]),
             Err(ApiError::BadRequest {
                 code: "too_many_task_images",
                 ..
             })
         ));
+    }
+
+    #[tokio::test]
+    async fn the_working_directory_is_the_managed_worktree_before_the_conversation_cwd() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-working-directory";
+        let state = task_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        assert!(matches!(
+            working_directory(None, state.task_sessions.snapshot(thread_id).await.as_ref()),
+            Err(ApiError::Conflict {
+                code: "task_directory_unavailable",
+                ..
+            })
+        ));
+
+        cache_and_manage_test_thread(&state, thread_id, root.path()).await;
+        let snapshot = state.task_sessions.snapshot(thread_id).await;
+
+        assert_eq!(
+            working_directory(None, snapshot.as_ref()).unwrap(),
+            root.path().display().to_string()
+        );
+        assert_eq!(
+            working_directory(Some("/worktrees/one"), snapshot.as_ref()).unwrap(),
+            "/worktrees/one"
+        );
+    }
+
+    #[test]
+    fn a_prompt_image_is_named_by_what_its_bytes_are() {
+        let root = tempfile::tempdir().unwrap();
+        let working_directory = root.path().display().to_string();
+        let folder = root.path().join(".caffold/uploads/20260926-153012-a1b2");
+        std::fs::create_dir_all(&folder).unwrap();
+        let cases: [(&str, &[u8], &str); 6] = [
+            ("a.png", b"\x89PNG\r\n\x1a\nrest", "image/png"),
+            ("b.jpg", b"\xff\xd8\xff\xe0rest", "image/jpeg"),
+            ("c.gif", b"GIF89arest", "image/gif"),
+            ("d.webp", b"RIFF\0\0\0\0WEBPrest", "image/webp"),
+            ("e.avif", b"\0\0\0\x1cftypavifrest", "image/avif"),
+            // The browser went by the name; the bytes decide.
+            ("f.jpg", b"\x89PNG\r\n\x1a\nrest", "image/png"),
+        ];
+        for (name, bytes, _) in &cases {
+            std::fs::write(folder.join(name), bytes).unwrap();
+        }
+        let paths = cases
+            .iter()
+            .map(|(name, _, _)| format!(".caffold/uploads/20260926-153012-a1b2/{name}"))
+            .collect::<Vec<_>>();
+
+        let images = prompt_images(root.path(), &working_directory, &paths).unwrap();
+
+        assert_eq!(
+            images
+                .iter()
+                .map(|image| image.media_type)
+                .collect::<Vec<_>>(),
+            cases
+                .iter()
+                .map(|(_, _, media_type)| *media_type)
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            images
+                .iter()
+                .all(|image| Path::new(&image.path).is_absolute())
+        );
+    }
+
+    #[test]
+    fn a_prompt_image_must_be_a_supported_raster_within_the_size_limit() {
+        let root = tempfile::tempdir().unwrap();
+        let working_directory = root.path().display().to_string();
+        let folder = root.path().join(".caffold/uploads/20260926-153012-a1b2");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("vector.svg"), "<svg/>").unwrap();
+        std::fs::write(folder.join("empty.png"), "").unwrap();
+        let large = std::fs::File::create(folder.join("large.png")).unwrap();
+        large.set_len(MAX_IMAGE_BYTES + 1).unwrap();
+
+        for (name, code) in [
+            ("vector.svg", "invalid_task_image"),
+            ("empty.png", "invalid_task_image"),
+            ("large.png", "task_image_too_large"),
+        ] {
+            let Err(ApiError::BadRequest { code: actual, .. }) = prompt_images(
+                root.path(),
+                &working_directory,
+                &[format!(".caffold/uploads/20260926-153012-a1b2/{name}")],
+            ) else {
+                panic!("{name} was shown to the agent");
+            };
+            assert_eq!(actual, code, "{name}");
+        }
     }
 }
 
@@ -3178,6 +3381,7 @@ mod grok_tests {
 
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
     use serde_json::json;
     use tokio::sync::broadcast::error::RecvError;
     use tokio::time::{Instant, sleep, timeout};
@@ -3409,6 +3613,53 @@ mod grok_tests {
             "{interjected}"
         );
         assert_eq!(leader.requests("session/prompt").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn an_uploaded_picture_reaches_grok_inside_the_prompt_that_names_it() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, leader, _memory, _host) = task_state_with_grok(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let app = router(state);
+        let thread_id = created_grok_task(&app, &leader).await;
+        let picture = b"\x89PNG\r\n\x1a\nthe rest of the picture".to_vec();
+        let (status, uploaded) = call(
+            &app,
+            Request::put(format!(
+                "/api/tasks/{thread_id}/uploads/20260926-153012-a1b2/shot.png"
+            ))
+            .body(Body::from(picture.clone()))
+            .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{uploaded}");
+
+        let (status, prompted) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({
+                    "prompt": "What is this?",
+                    "imagePaths": [".caffold/uploads/20260926-153012-a1b2/shot.png"],
+                }),
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        let prompt = leader.wait_for("session/prompt").await;
+        assert_eq!(
+            prompt["prompt"][1],
+            json!({
+                "type": "image",
+                "mimeType": "image/png",
+                "data": STANDARD.encode(&picture),
+            }),
+            "{prompt}"
+        );
     }
 
     #[tokio::test]
@@ -3742,6 +3993,7 @@ mod claude_tests {
     use axum::Router;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
     use serde_json::{Value, json};
     use tokio::time::{Instant, sleep, timeout};
 
@@ -3759,6 +4011,94 @@ mod claude_tests {
 
     const SESSION: &str = "claude-thread-1";
     const WAIT: Duration = Duration::from_secs(5);
+
+    #[tokio::test]
+    async fn an_uploaded_picture_reaches_claude_inside_the_prompt_that_names_it() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let picture = b"\x89PNG\r\n\x1a\nthe rest of the picture".to_vec();
+        let shot = ".caffold/uploads/20260926-153012-a1b2/shot.png";
+        let (status, _) = call(&app, detail()).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, uploaded) = call(
+            &app,
+            Request::put(format!(
+                "/api/tasks/{SESSION}/{}",
+                shot.replace(".caffold/", "")
+            ))
+            .body(Body::from(picture.clone()))
+            .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{uploaded}");
+        let words = format!("What is this?\n\nAttached files:\n- {shot}");
+
+        let (status, prompted) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{SESSION}/prompts"),
+                json!({ "prompt": words, "imagePaths": [shot] }),
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        let heard = runner
+            .heard(SESSION)
+            .await
+            .into_iter()
+            .find(|frame| frame["message"]["content"][0]["text"] == words.as_str())
+            .expect("the prompt reaches Claude with the path in its words");
+        assert_eq!(heard["message"]["content"][1]["type"], "image");
+        assert_eq!(
+            heard["message"]["content"][1]["source"],
+            json!({
+                "type": "base64",
+                "media_type": "image/png",
+                "data": STANDARD.encode(&picture),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_prompt_that_names_a_file_as_a_picture_it_is_not_reaches_no_agent() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = claude_task(root.path()).await;
+        let app = router(state.clone());
+        let notes = ".caffold/uploads/20260926-153012-a1b2/notes.png";
+        call(&app, detail()).await;
+        call(
+            &app,
+            Request::put(format!(
+                "/api/tasks/{SESSION}/{}",
+                notes.replace(".caffold/", "")
+            ))
+            .body(Body::from("plain words"))
+            .unwrap(),
+        )
+        .await;
+
+        let (status, refused) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{SESSION}/prompts"),
+                json!({ "prompt": "Look.", "imagePaths": [notes] }),
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+        assert_eq!(refused["error"]["code"], "invalid_task_image");
+        assert!(
+            !runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .any(|frame| frame["type"] == "user"),
+            "nothing is sent"
+        );
+    }
 
     #[tokio::test]
     async fn a_prompt_while_a_backgrounded_subagent_keeps_claude_working_starts_a_new_turn() {
@@ -4125,7 +4465,7 @@ mod claude_tests {
         );
         assert_eq!(
             stopped["cancelledPrompts"],
-            json!([{ "prompt": "Also say pong.", "images": [] }])
+            json!([{ "prompt": "Also say pong." }])
         );
         state
             .task_runtime
@@ -4608,5 +4948,11 @@ mod claude_tests {
             &format!("/api/tasks/{SESSION}/prompts"),
             json!({ "prompt": text }),
         )
+    }
+
+    fn detail() -> Request<Body> {
+        Request::get(format!("/api/tasks/{SESSION}"))
+            .body(Body::empty())
+            .unwrap()
     }
 }

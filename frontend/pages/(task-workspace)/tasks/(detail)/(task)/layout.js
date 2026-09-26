@@ -1,11 +1,13 @@
 import {
   archiveTask,
+  discardTaskUploads,
   forkTask,
   getTask,
   interruptTask,
   markTaskSeen,
   resolveTaskApproval,
   sendTaskPrompt,
+  uploadTaskFile,
 } from "../../../../../api.js";
 import { escapeHtml } from "../../../../../components/dom.js";
 import { routeDomain } from "../../../../../navigation-routes.js";
@@ -32,6 +34,17 @@ import "./components/current-plan.js";
 import { TaskDetailSession } from "./session.js";
 import { ConversationProjection, projectionRevision } from "./layout/conversation.js";
 import { ConversationHistory } from "./layout/history.js";
+import {
+  promptWithAttachedFiles,
+  uploadFileNames,
+  uploadFolderName,
+  uploadPath,
+} from "./layout/prompt-attachments.js";
+import {
+  PROMPT_SUBMISSION_EVENT,
+  PROMPT_SUBMISSION_NODE,
+  nextPromptSubmissionNode,
+} from "./layout/prompt-submission.js";
 import {
   PROMPT_SUBMISSION_STATE,
   TASK_TRANSPORT_STATE,
@@ -199,6 +212,9 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       event.stopPropagation();
+      // Stop takes back a message still uploading, and stops the turn as well
+      // when one is running.
+      this.stopPromptUpload(this.selectedThreadId);
       void this.interruptSelectedTask();
     });
     this.addEventListener("caffold:task-composer-layout-change", (event) => {
@@ -812,7 +828,15 @@ class CaffoldTaskDetail extends HTMLElement {
     confirmedEvent,
     handoffPosition,
   ) {
-    request.state = PROMPT_SUBMISSION_STATE.ACCEPTED;
+    if (
+      !this.advancePromptSubmission(
+        threadId,
+        request,
+        PROMPT_SUBMISSION_EVENT.CANONICAL_CONFIRMED,
+      )
+    ) {
+      return;
+    }
     request.canonicalConfirmed = true;
     const currentEvents = this.eventsByThread.get(threadId) ?? [];
     this.setThreadEvents(
@@ -831,9 +855,6 @@ class CaffoldTaskDetail extends HTMLElement {
     request.composer?.resolveSubmission(request.submissionId, {
       status: "accepted",
     });
-    if (this.followUpRequests.get(threadId) === request) {
-      this.followUpRequests.delete(threadId);
-    }
   }
 
   releaseConfirmedFollowUpOverrides(request) {
@@ -943,9 +964,8 @@ class CaffoldTaskDetail extends HTMLElement {
     const submissionId = `${submission.submissionId ?? ""}`;
     const threadId = `${submission.threadId ?? this.selectedThreadId ?? ""}`.trim();
     const prompt = `${submission.prompt ?? ""}`.trim();
-    const images = [...(submission.images ?? [])];
     const attachments = [...(submission.attachments ?? [])];
-    if (!submissionId || !threadId || (!prompt && !images.length)) {
+    if (!submissionId || !threadId || (!prompt && !attachments.length)) {
       composer.resolveSubmission(submissionId, {
         status: "rejected",
         error: new Error("Could not identify this task prompt."),
@@ -975,10 +995,13 @@ class CaffoldTaskDetail extends HTMLElement {
       });
       return;
     }
-    if (
-      this.followUpRequests.get(threadId)?.state ===
-      PROMPT_SUBMISSION_STATE.SENDING
-    ) {
+    const node = nextPromptSubmissionNode(
+      this.followUpRequests.get(threadId)?.node ?? PROMPT_SUBMISSION_NODE.IDLE,
+      attachments.length
+        ? PROMPT_SUBMISSION_EVENT.SUBMIT_WITH_FILES
+        : PROMPT_SUBMISSION_EVENT.SUBMIT,
+    );
+    if (!node) {
       composer.resolveSubmission(submissionId, {
         status: "rejected",
         error: new Error("A prompt is already being submitted for this task."),
@@ -986,6 +1009,12 @@ class CaffoldTaskDetail extends HTMLElement {
       return;
     }
 
+    const upload = attachments.length ? plannedUpload(attachments) : null;
+    const paths = upload?.files.map((file) => file.path) ?? [];
+    const text = upload ? promptWithAttachedFiles(prompt, paths) : prompt;
+    const imagePaths = upload?.files
+      .filter((file) => file.attachment.imageInput)
+      .map((file) => file.path) ?? [];
     const previousTask =
       taskThreadId(this.taskDetail?.task) === threadId
         ? this.taskDetail.task
@@ -1002,9 +1031,10 @@ class CaffoldTaskDetail extends HTMLElement {
     const requestId = ++this.promptSubmissionSequence;
     const optimisticEvent = optimisticUserMessageEvent(
       threadId,
-      prompt,
-      attachments,
+      text,
+      attachments.filter((attachment) => attachment.imageInput),
       requestId,
+      paths,
     );
     const followUpRequest = {
       submissionId,
@@ -1013,7 +1043,8 @@ class CaffoldTaskDetail extends HTMLElement {
       optimisticEventId: optimisticEvent.id,
       acceptedItemId: "",
       detailPositionKeys: new Set(),
-      state: PROMPT_SUBMISSION_STATE.SENDING,
+      node,
+      upload,
       canonicalConfirmed: false,
       resetOverridesOnCanonical: null,
       overridesReleased: false,
@@ -1030,11 +1061,14 @@ class CaffoldTaskDetail extends HTMLElement {
     this.render();
 
     try {
+      if (upload && !(await this.uploadPromptFiles(followUpRequest))) {
+        return;
+      }
       const response = await sendTaskPrompt(
         threadId,
-        prompt,
+        text,
         options,
-        images,
+        imagePaths,
       );
       if (response?.threadId !== threadId) {
         throw new Error("The agent accepted the prompt for a different task.");
@@ -1044,7 +1078,11 @@ class CaffoldTaskDetail extends HTMLElement {
           "The agent accepted the prompt without identifying its user message.",
         );
       }
-      followUpRequest.state = PROMPT_SUBMISSION_STATE.ACCEPTED;
+      this.advancePromptSubmission(
+        threadId,
+        followUpRequest,
+        PROMPT_SUBMISSION_EVENT.PROMPT_ACCEPTED,
+      );
       followUpRequest.acceptedItemId = `${response.userMessageId}`;
       followUpRequest.resetOverridesOnCanonical = !response?.steered;
       this.releaseConfirmedFollowUpOverrides(followUpRequest);
@@ -1070,12 +1108,29 @@ class CaffoldTaskDetail extends HTMLElement {
         this.conversationUpdateKind = "live";
       }
     } catch (error) {
-      if (followUpRequest.state === PROMPT_SUBMISSION_STATE.ACCEPTED) {
+      if (followUpRequest.node === PROMPT_SUBMISSION_NODE.UPLOADING) {
+        if (
+          this.advancePromptSubmission(
+            threadId,
+            followUpRequest,
+            PROMPT_SUBMISSION_EVENT.UPLOAD_FAILED,
+          )
+        ) {
+          this.withdrawPromptSubmission(followUpRequest, uploadFailure(error, upload));
+        }
+        return;
+      }
+      if (followUpRequest.node !== PROMPT_SUBMISSION_NODE.SENDING) {
         return;
       }
       const failureState = classifyPromptFailure(error);
-      followUpRequest.state = failureState;
       if (failureState === PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN) {
+        this.advancePromptSubmission(
+          threadId,
+          followUpRequest,
+          PROMPT_SUBMISSION_EVENT.PROMPT_OUTCOME_UNKNOWN,
+        );
+        // The agent may have the message, and be reading its files.
         this.setThreadEvents(
           threadId,
           (this.eventsByThread.get(threadId) ?? []).map((event) =>
@@ -1092,27 +1147,14 @@ class CaffoldTaskDetail extends HTMLElement {
           this.conversationUpdateKind = "live";
         }
       } else {
-        this.setThreadEvents(
+        this.advancePromptSubmission(
           threadId,
-          (this.eventsByThread.get(threadId) ?? []).filter(
-            (event) => event.id !== optimisticEvent.id,
-          ),
+          followUpRequest,
+          PROMPT_SUBMISSION_EVENT.PROMPT_REJECTED,
         );
-        composer.resolveSubmission(submissionId, {
-          status: "rejected",
-          error,
-        });
-        if (threadId === this.selectedThreadId) {
-          this.conversationUpdateKind = "preserve";
-        }
+        this.withdrawPromptSubmission(followUpRequest, error);
       }
     } finally {
-      if (
-        this.followUpRequests.get(threadId) === followUpRequest &&
-        followUpRequest.state !== PROMPT_SUBMISSION_STATE.ACCEPTED
-      ) {
-        this.followUpRequests.delete(threadId);
-      }
       if (this.activeFollowUpComposerThreadId !== threadId) {
         this.endFollowUpComposerEditingLifetime(threadId, composer);
       }
@@ -1120,6 +1162,132 @@ class CaffoldTaskDetail extends HTMLElement {
       if (threadId === this.selectedThreadId) {
         this.render();
       }
+    }
+  }
+
+  // The one place a pending prompt's node changes. False when the event does
+  // not belong to where the prompt is, or the prompt is no longer the Task's.
+  advancePromptSubmission(threadId, request, event) {
+    if (this.followUpRequests.get(threadId) !== request) {
+      return false;
+    }
+    const next = nextPromptSubmissionNode(request.node, event);
+    if (!next) {
+      return false;
+    }
+    request.node = next;
+    if (next === PROMPT_SUBMISSION_NODE.IDLE) {
+      this.followUpRequests.delete(threadId);
+    }
+    return true;
+  }
+
+  // Up one file at a time, in the order they were attached. False when the
+  // prompt was stopped meanwhile, which already settled it.
+  async uploadPromptFiles(request) {
+    const { threadId, upload } = request;
+    for (const [index, file] of upload.files.entries()) {
+      upload.current = index;
+      await uploadTaskFile(threadId, upload.folder, file.name, file.attachment.file, {
+        signal: upload.abort.signal,
+        onProgress: (loaded) => {
+          file.loaded = Math.min(loaded, file.size);
+          this.showUploadProgress(request);
+        },
+      });
+      const last = index === upload.files.length - 1;
+      if (
+        !this.advancePromptSubmission(
+          threadId,
+          request,
+          last
+            ? PROMPT_SUBMISSION_EVENT.FILES_UPLOADED
+            : PROMPT_SUBMISSION_EVENT.FILE_UPLOADED,
+        )
+      ) {
+        return false;
+      }
+      file.loaded = file.size;
+      file.done = true;
+      this.showUploadProgress(request);
+      this.setThreadEvents(
+        threadId,
+        (this.eventsByThread.get(threadId) ?? []).map((event) =>
+          event.id === request.optimisticEventId
+            ? withUploadedLines(event, upload, last)
+            : event,
+        ),
+      );
+      if (last) {
+        this.conversationComponent()?.setPromptUploadProgress(
+          request.optimisticEventId,
+          null,
+        );
+      }
+      if (threadId === this.selectedThreadId) {
+        this.conversationUpdateKind = "live";
+        this.render();
+      }
+    }
+    return true;
+  }
+
+  showUploadProgress(request) {
+    const { files } = request.upload;
+    const total = files.reduce((sum, file) => sum + file.size, 0);
+    const loaded = files.reduce((sum, file) => sum + file.loaded, 0);
+    const percent = total
+      ? Math.floor((loaded / total) * 100)
+      : Math.floor((files.filter((file) => file.done).length / files.length) * 100);
+    this.conversationComponent()?.setPromptUploadProgress(
+      request.optimisticEventId,
+      {
+        percent,
+        lines: files.map((file) =>
+          file.done ? 1 : file.size ? file.loaded / file.size : 0,
+        ),
+      },
+    );
+  }
+
+  // Take back a message still uploading. Its files never reached the agent.
+  stopPromptUpload(threadId) {
+    const request = this.followUpRequests.get(threadId);
+    if (
+      request?.node !== PROMPT_SUBMISSION_NODE.UPLOADING ||
+      !this.advancePromptSubmission(threadId, request, PROMPT_SUBMISSION_EVENT.STOP)
+    ) {
+      return false;
+    }
+    request.upload.abort.abort();
+    this.withdrawPromptSubmission(request, null);
+    this.render();
+    return true;
+  }
+
+  // A message the agent never received leaves the conversation and returns
+  // to the Composer, and the files uploaded for it go.
+  withdrawPromptSubmission(request, error) {
+    const { threadId } = request;
+    if (request.upload) {
+      this.conversationComponent()?.setPromptUploadProgress(
+        request.optimisticEventId,
+        null,
+      );
+      void discardTaskUploads(threadId, request.upload.folder).catch(() => {});
+    }
+    this.setThreadEvents(
+      threadId,
+      (this.eventsByThread.get(threadId) ?? []).filter(
+        (event) => event.id !== request.optimisticEventId,
+      ),
+    );
+    request.composer.resolveSubmission(request.submissionId, {
+      status: "rejected",
+      error,
+    });
+    if (threadId === this.selectedThreadId) {
+      this.conversationUpdateKind = "preserve";
     }
   }
 
@@ -1539,6 +1707,9 @@ class CaffoldTaskDetail extends HTMLElement {
       disabled: isTaskTransportStale(this.detailSession.state),
       settingsLocked: isTaskActivelyWorking(task),
       turnActive: isTaskActivelyWorking(task),
+      uploading:
+        this.followUpRequests.get(threadId)?.node ===
+        PROMPT_SUBMISSION_NODE.UPLOADING,
       interrupting: this.interruptStateValue.loading,
       interruptError: `${
         this.interruptStateValue.error?.message ??
@@ -1875,6 +2046,50 @@ function isVisibleStreamState(state) {
   return isTaskTransportStale(state);
 }
 
+
+// Where each attached file goes when the prompt is sent: one folder for the
+// send, and a name within it no other file of the send has.
+function plannedUpload(attachments) {
+  const folder = uploadFolderName();
+  const names = uploadFileNames(attachments.map((attachment) => attachment.name));
+  return {
+    folder,
+    abort: new AbortController(),
+    current: 0,
+    files: attachments.map((attachment, index) => ({
+      attachment,
+      name: names[index],
+      path: uploadPath(folder, names[index]),
+      size: attachment.size ?? attachment.file?.size ?? 0,
+      loaded: 0,
+      done: false,
+    })),
+  };
+}
+
+function withUploadedLines(event, upload, finished) {
+  const payload = { ...event.payload };
+  delete payload.upload;
+  return {
+    ...event,
+    payload: finished
+      ? { ...payload, submissionState: PROMPT_SUBMISSION_STATE.SENDING }
+      : {
+          ...payload,
+          upload: {
+            lines: upload.files.map((file) => ({ path: file.path, done: file.done })),
+          },
+        },
+  };
+}
+
+function uploadFailure(error, upload) {
+  const name = upload?.files[upload.current]?.name ?? "a file";
+  const failure = new Error(`Could not upload ${name}: ${error?.message ?? error}`);
+  failure.code = error?.code;
+  failure.status = error?.status;
+  return failure;
+}
 
 function withDetailFileLinks(events, fileLinks) {
   const linksByEvent = new Map();

@@ -704,6 +704,19 @@ state. Creation and prompt submission are separate HTTP requests, while this
 in-page handoff preserves the one-action experience and prevents a duplicate
 request between them.
 
+A pending prompt moves through one transition table in the Detail layout's
+private `layout/prompt-submission.js`: idle, uploading, sending, and accepted.
+Every change of node goes through that table, so an upload finishing, a stop,
+the prompt response, and the canonical item each apply only from the node they
+belong to; a late arrival for a prompt that has moved on is dropped. A prompt
+with attachments uploads them one at a time before its prompt request, and a
+new prompt may still replace one that is accepted but not yet canonical. Upload
+progress is presentation rather than a node: Detail hands each byte count to
+Conversation, which paints the message's header and file-list bars in place
+instead of rendering the list again. A stop while uploading aborts the upload,
+discards the send's folder, and returns the message to the Composer,
+separately from the interrupt request the same stop makes for a running turn.
+
 Detail shows every prompt optimistically. The prompt response returns the
 user-item identity established by the agent adapter; only a backend Detail or
 live stream event carrying that exact item identity retires the optimistic

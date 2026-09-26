@@ -1862,7 +1862,7 @@ async function captureActionHintVisualState(page) {
       );
     }
     for (const control of taskNew?.querySelectorAll(
-      'button[data-composer-action="browse-cwd"], button[data-composer-action="voice"]',
+      'button[data-composer-action="attach"], button[data-composer-action="browse-cwd"], button[data-composer-action="voice"]',
     ) ?? []) {
       if (control.disabled) {
         continue;

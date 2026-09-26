@@ -210,6 +210,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/session.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/layout/conversation.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/model.js",
