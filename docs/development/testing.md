@@ -189,23 +189,6 @@ For layout changes, inspect the generated screenshots under `test-results` and
 exercise the relevant desktop, foldable, and phone projects. For fixture or
 shared-state changes, compare normal parallel execution with `--workers=1`.
 
-`frontend/tests/e2e/showcase.spec.js` owns a small documentation-oriented desktop
-scenario. Its dedicated fixture presents a completed review-first Task and a
-representative Working Tree diff without an authenticated Codex session. Run it
-with:
-
-```sh
-npm run test:e2e -- tests/e2e/showcase.spec.js --project=desktop
-```
-
-The test writes candidate screenshots under `test-results`. They are review
-artifacts rather than committed visual baselines or live app-server evidence.
-After visual review, the README copies live under `docs/assets`; refresh those
-files only from a passing showcase run so the documented UI remains
-reproducible.
-Keep the showcase copy concise and representative; edge cases and layout stress
-data belong in the owning behavioral fixtures.
-
 Foreground recovery changes require the adjacent unit tests, the owning
 Playwright lifecycle spec, and, when platform signals are affected, the
 installed-Android checks in `mobile-pwa-testing.md`. These are separate
@@ -234,6 +217,32 @@ registration-slot polling.
 Production activation behavior remains separate contract and mocked-browser
 evidence. Report unit, complete-shell inventory, deterministic browser, and
 real-browser evidence separately.
+
+### User manual scenarios
+
+`frontend/tests/e2e/manual/` owns the screenshots in the user manual and the
+README. Each test renders one state the manual shows from
+`frontend/tests/e2e/support/manual-fixture.js`, a sample workspace with a fixed
+clock, time zone, theme, and typefaces, and checks what the manual says about
+that state before it captures the image. A renamed label or a removed control
+therefore fails its scenario; a purely visual change does not. Run them with:
+
+```sh
+npm run test:e2e -- tests/e2e/manual
+```
+
+Each scenario writes `<name>-<project>.png` under `test-results`, which every
+run empties. These are candidate images, not committed visual baselines. Open
+each one before using it, because a passing scenario can still capture an
+error, an empty state, or a clipped control. Then copy the images of that
+passing run, unchanged and under the same names, to
+`website/docs/assets/screenshots/`, where the manual and the README reference
+them. [Documentation Review](../review/documentation.md#change-completeness)
+defines when an image has to be replaced.
+
+Name a scenario and its image after the surface they show, so that a search
+for the surface finds both. Keep the sample content short and representative;
+edge cases and layout stress data belong in the owning behavioral fixtures.
 
 ## Codex compatibility and live tests
 

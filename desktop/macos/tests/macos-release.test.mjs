@@ -22,7 +22,7 @@ const bundlePlist = resolve(repoRoot, "desktop/macos/Info.plist");
 const menuBarWrapper = resolve(repoRoot, "desktop/macos/CaffoldServer.swift");
 const rootReadme = resolve(repoRoot, "README.md");
 const macosReadme = resolve(repoRoot, "desktop/macos/README.md");
-const productInstallGuide = resolve(repoRoot, "docs/product/installation.md");
+const productInstallGuide = resolve(repoRoot, "website/docs/get-started/install.md");
 const macosArm64Only =
   process.platform === "darwin" && process.arch === "arm64"
     ? false

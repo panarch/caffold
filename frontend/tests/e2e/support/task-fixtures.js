@@ -149,11 +149,12 @@ export async function pasteImage(locator, name = "clipboard-image.png") {
   );
 }
 
-export async function captureReviewScreenshot(page, testInfo, name) {
+export async function captureReviewScreenshot(page, testInfo, name, { clip } = {}) {
   const path = testInfo.outputPath(`${name}-${testInfo.project.name}.png`);
   await page.screenshot({
     path,
-    fullPage: true,
+    fullPage: !clip,
+    clip,
     animations: "disabled",
   });
   await testInfo.attach(`${name}-${testInfo.project.name}`, {

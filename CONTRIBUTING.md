@@ -96,6 +96,8 @@ live-test boundary and the coverage workflow.
 
 ## Documentation ownership
 
+- `website/docs/` is the user manual that the Caffold website is built from. It
+  owns installation and usage procedures.
 - `docs/product/` describes product behavior and direction. Unfinished behavior
   belongs in the roadmap rather than current workflow or surface documents.
 - `docs/architecture/` defines implementation and source-of-truth boundaries.

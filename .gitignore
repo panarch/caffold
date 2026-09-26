@@ -11,3 +11,6 @@
 .caffold-dev/
 .notes/
 .DS_Store
+/website/.venv/
+/website/site/
+/website/.cache/

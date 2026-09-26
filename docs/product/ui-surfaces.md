@@ -79,6 +79,28 @@ does not change it. Archived Tasks are not listed. An empty active list is
 stated rather than left blank, and a list that has not loaded is reported as
 unloaded rather than as empty.
 
+## Keyboard navigation
+
+While keyboard navigation is on, single keys typed outside an editing field
+drive the workspace, an open dialog, or an open popover, whichever holds the
+current context:
+
+- `F` puts short codes on the actions available there. Typing a code runs
+  that action, `Backspace` removes the last typed letter, and `Escape` leaves.
+- `S` puts codes on the scroll areas there. In the chosen area `J` and `K`
+  scroll down and up by a tenth of its height, `D` and `U` by half of it, and
+  `H` and `L` left and right. `S` chooses another area, `F` switches to
+  actions, and `Escape` leaves.
+- `T` opens the [Task Switcher](#task-switcher) on the Tasks surface.
+- `?` opens the keyboard shortcut help, which lists these keys.
+- `Escape` in an editor leaves it where its surface supports that, so the keys
+  work again.
+
+A key held with Ctrl, Alt, or Meta, a repeated key, and a key typed during
+input composition are left to the browser. **Settings → Keyboard** turns
+keyboard navigation off for the browser. The App Shell ownership and mode
+contract belongs to [Frontend Architecture](../architecture/frontend.md#task-workspace).
+
 ## New Task
 
 Global New owns:
@@ -327,6 +349,10 @@ Settings includes:
 
 - Appearance controls for System/Light/Dark theme, the Interface and Code
   typefaces, Interface scale, Conversation text, and Code text;
+- Keyboard, which turns [keyboard navigation](#keyboard-navigation) on or off
+  and lists the shortcuts it provides;
+- Files, which orders shared file trees either folders first or with every
+  entry by name; the Working Directory Picker always keeps folders first;
 - Notifications controls for the current browser's permission and subscription,
   plus the active browser-installation count, labels, short IDs, and removal;
 - Remote Access status and constrained Tailscale Serve controls, with the ready
@@ -343,7 +369,8 @@ Settings includes:
   version, whether a key is saved, and what checking that key found when it was
   saved. Without a key, **Ask Jev first** stays in every composer's
   approval-mode list and says what is missing rather than disappearing;
-- Codex plan usage as Codex reports it, installation readiness and repair
+- Codex plan usage and rate-limit reset credits as Codex reports them,
+  installation readiness and repair
   guidance, runtime status with an explicit confirmed runtime restart
   available while the canonical runtime is ready or requires restart (the
   ready-state action is neutral, while a required restart retains attention
@@ -371,8 +398,8 @@ Normal update checking and readiness are distinct from the viewport-fixed red
 build-mismatch alert. That exceptional alert appears only after update checking
 has settled without a prepared replacement for a differing server build.
 
-Appearance choices are persisted in browser-local settings rather than Task or
-server state.
+Appearance, Keyboard, and Files choices are persisted in browser-local settings
+rather than Task or server state.
 
 Notifications reconcile a browser-owned `PushSubscription` and local
 installation ID with server-owned registration or revocation state. Permission
@@ -416,6 +443,17 @@ in Task setup.
 [Codex App Server](../architecture/codex-app-server.md#explicit-update) owns
 the update contract.
 
+Codex Settings lists the rate-limit reset credits Codex reports below its
+usage, each with its expiry when Codex gives one. While Codex is ready and
+signed in with ChatGPT, **Use this reset** on a listed credit asks Codex to use
+that credit; when Codex counts credits it does not list, **Let Codex choose a
+reset** asks it to use one of those. Both ask for confirmation first, because
+Codex uses a credit only when an eligible rate-limit window can be reset and a
+used credit cannot be restored. Each request carries its own idempotency key.
+When Caffold cannot confirm the outcome, it offers **Retry previous reset
+request**, which sends that same request again so Codex does not use a second
+credit for it; the other reset actions stay unavailable until then.
+
 ## Product boundaries
 
 The browser UI does not provide:
@@ -427,7 +465,7 @@ The browser UI does not provide:
 - external-worktree adoption or force cleanup;
 - force deletion of dirty managed worktrees;
 - split diff, hunk comments, or durable review annotations;
-- a Caffold-owned duplicate of either agent's transcript;
+- a Caffold-owned duplicate of an agent's conversation;
 - editing, checklist mutation, or archive controls for current plan documents;
 - creating, editing, renaming, moving, or deleting Notes by hand, or Note
   history and restore;

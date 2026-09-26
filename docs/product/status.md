@@ -36,6 +36,9 @@ boundaries.
   Notes tab;
 - agent-owned model and permission semantics rather than Caffold-defined
   provider profiles;
+- keyboard navigation outside editing fields — action codes, scroll-area
+  selection, the Task Switcher, and shortcut help — which each browser can turn
+  off;
 - separate Codex, Claude, and Grok Settings diagnostics, including Claude
   account, plan usage, and runner state, and the Grok executable, leader,
   connection, account, and plan usage, as each CLI reports them;
@@ -79,7 +82,7 @@ boundaries.
 - Conversation presents command and tool output but does not provide a full
   terminal, tmux, or Zellij workspace.
 - Review uses unified diffs without durable hunk comments or annotations.
-- Caffold does not duplicate either agent's transcript or canonical lifecycle
+- Caffold does not duplicate an agent's conversation or canonical lifecycle
   state as a local source of truth.
 - Current plans are filesystem documents rather than database or native agent
   Plan-mode state. Caffold does not edit them, archive their history, select a

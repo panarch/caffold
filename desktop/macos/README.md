@@ -5,7 +5,8 @@
 ## Install
 
 The supported user installation, first-run, integration, update, and removal
-workflow is owned by [Installation and operation](../../docs/product/installation.md).
+workflow is owned by the user manual, starting at
+[Install](../../website/docs/get-started/install.md).
 The macOS application requires an Apple silicon Mac running macOS 14 or later
 and is installed with Homebrew:
 

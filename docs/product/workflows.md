@@ -104,7 +104,8 @@ unclaimed child.
    Caffold-owned Active-list row while readable conversation data loads.
 2. Caffold opens the conversation through the Task's recorded agent. Codex
    reads its app-server thread; Claude reads its transcript and overlays any
-   live runner-held session state.
+   live runner-held session state; Grok loads the session its leader holds and
+   reads the session record.
 3. Reconnecting preserves an already readable Detail while Caffold recovers
    current data. If live updates remain unavailable, the Detail reports that
    state without discarding readable content.
@@ -258,9 +259,10 @@ cwd movement, ownership, archive, and restore follow the
   returns the same Task to the active navigator.
 - Tasks without a managed-worktree ownership record retain their cwd and files.
 - Permanent deletion is available only after archive. It removes the
-  agent-owned conversation through that Task's driver — the Codex thread or the
-  Claude transcript and its same-session files — then removes Caffold's Task
-  and worktree-ownership records. It does not delete the retained Git branch.
+  agent-owned conversation through that Task's driver — the Codex thread, the
+  Claude transcript and its same-session files, or every Grok session the Task
+  ran on — then removes Caffold's Task and worktree-ownership records. It does
+  not delete the retained Git branch.
 
 Archive and filesystem cleanup are coordinated but distinct state changes. An
 external worktree is never deleted merely because a Task uses it.
@@ -275,7 +277,7 @@ independent objects:
 | --- | --- |
 | Origin | Global New, managed Section, explicit GitHub Issue/PR Start Task, or a native fork of an existing Codex conversation. |
 | Task | Caffold-owned membership, display identity, selected agent, and review entry point. |
-| Agent conversation | Codex app-server thread or Claude session/transcript that owns prompts, turns, and agent activity. |
+| Agent conversation | Codex app-server thread, Claude session/transcript, or Grok leader-held session that owns prompts, turns, and agent activity. |
 | Note | Caffold-owned Markdown record shared by every Task, changed only through agents' Notes tools. |
 | Repository | Git repository in which the job is evaluated. |
 | Worktree | Git-owned execution and inspection environment. |
@@ -290,8 +292,9 @@ adding one synthetic persisted status that overwrites the independent owners.
 All Tasks on one host share the Caffold backend, but they do not share one
 synthetic agent runtime. Codex Tasks use the user-global Codex app-server
 daemon. Claude Tasks use one Caffold runner per data directory and one `claude`
-process per live session. Preparing a worktree changes the Task's cwd; it does
-not create another agent service.
+process per live session. Grok Tasks use the one Grok leader Caffold starts for
+itself. Preparing a worktree changes the Task's cwd; it does not create another
+agent service.
 
 See [Agent runtimes](../architecture/agent-runtimes.md),
 [Architecture Overview](../architecture/overview.md), and

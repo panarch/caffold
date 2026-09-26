@@ -16,17 +16,17 @@ your Mac.
 
 ## What it looks like
 
-![A completed Caffold Task with its conversation, current plan, test result, and changed files](docs/assets/showcase-conversation.png)
+![A finished Caffold Task with its conversation, current plan, and the Task list](website/docs/assets/screenshots/task-conversation-desktop.png)
 
 _Follow a Task as it runs, then read the result and decide what comes next._
 
-![The same Caffold Task reviewing a README diff in Working Tree](docs/assets/showcase-working-tree.png)
+![The same Caffold Task's changed files and diff in Working Tree](website/docs/assets/screenshots/review-working-tree-desktop.png)
 
 _Open Working Tree to review the actual files and diff without leaving the
 Task._
 
-_These deterministic showcase images use a Codex Task. Claude and Grok Tasks
-use the same Conversation and review workspace._
+_These images show a Codex Task. Claude and Grok Tasks use the same
+Conversation and review workspace._
 
 ## One workspace, native agents
 
@@ -112,9 +112,9 @@ in to at least one supported agent:
 - the Grok CLI `1.0.30` or newer, available as `grok` on the app's `PATH` or
   at `~/.grok/bin/grok` or `~/.local/bin/grok`.
 
-Any of them may be installed, and Caffold will offer the models it can reach. The
-[installation guide](docs/product/installation.md) has the agent-specific
-setup and diagnostics.
+Any of them may be installed, and Caffold will offer the models it can reach.
+[Set up your agents](website/docs/get-started/agents.md) in the user manual has
+the agent-specific setup.
 
 Install Caffold with Homebrew:
 
@@ -160,7 +160,8 @@ are tracked in [Current Product Status](docs/product/status.md).
 
 ## Documentation and development
 
-- [Installation and operation](docs/product/installation.md)
+- [User manual](website/docs/get-started/how-caffold-works.md), starting with
+  [Install](website/docs/get-started/install.md)
 - [Product vision](docs/product/vision.md)
 - [Current product status](docs/product/status.md)
 - [Product workflows](docs/product/workflows.md)
