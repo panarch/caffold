@@ -8,7 +8,8 @@ for.
 
 ## What the conversation shows
 
-- **Your prompts**, exactly as you typed them.
+- **Your prompts**, as you sent them, with their
+  [attached files](start-a-task.md#attach-files).
 - **The agent's messages**, formatted as Markdown. While a turn runs, its
   progress messages appear as they arrive.
 - **The work**: commands with their output, changed files, reasoning

@@ -13,6 +13,6 @@ While a turn runs and the Composer is empty, the send button becomes
 **Stop current turn**. Stopping keeps everything the agent already did.
 
 Prompts you sent into the turn that the agent had not taken in yet come back
-to the Composer with their [images](start-a-task.md#add-images), in the order
-you sent them and ahead of anything you were typing, so you can send them again
-or discard them.
+to the Composer, in the order you sent them and ahead of anything you were
+typing, so you can send them again or discard them. Their **Attached files**
+lists still name the files already uploaded; pictures are not attached again.

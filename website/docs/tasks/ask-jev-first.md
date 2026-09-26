@@ -54,6 +54,8 @@ To see the record, choose **Task details** at the top right of the Task, then
 **What your prompts settled**, which appears while the Task uses
 **Ask Jev first**. **Forget these** clears the record; this cannot be undone.
 
+![What this Task's prompts settled: two kept prompts, oldest first, and Forget these](../assets/screenshots/permission-instructions-desktop.png)
+
 ## What Jev sees
 
 Choosing **Ask Jev first** sends information to TypeSafe:

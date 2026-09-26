@@ -6,7 +6,8 @@ import {
   installManualTasks,
   MANUAL_SECTION_ID,
   MANUAL_TASKS,
-  pasteManualScreenshots,
+  MANUAL_UPLOAD_PROMPT,
+  attachManualUploadFiles,
 } from "../support/manual-fixture.js";
 import { captureReviewScreenshot } from "../support/task-fixtures.js";
 
@@ -87,20 +88,35 @@ test("New Task groups the models by agent", { tag: "@desktop" }, async ({ page }
   await captureReviewScreenshot(page, testInfo, "new-task-model-picker");
 });
 
-test("pasted images wait in the Composer", { tag: "@desktop" }, async ({ page }, testInfo) => {
-  await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
+test("attached files wait in the Composer", { tag: "@desktop" }, async ({ page }, testInfo) => {
+  await page.goto("/tasks/new?cwd=Workspace%2Flumen");
 
-  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
-  const prompt = form.locator("textarea[name='prompt']");
-  await prompt.fill(
-    "The selected theme is hard to see in dark mode. Make it stand out on the desktop and on the phone.",
-  );
-  await pasteManualScreenshots(prompt);
-  const images = page.locator(".task-composer-attachments .task-composer-attachment");
-  await expect(images).toHaveCount(2);
-  await expect(images.getByRole("button", { name: /^Preview / })).toHaveCount(2);
-  await expect(images.getByRole("button", { name: /^Remove / })).toHaveCount(2);
-  await captureReviewScreenshot(page, testInfo, "composer-images");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  await form.locator("textarea[name='prompt']").fill(MANUAL_UPLOAD_PROMPT);
+  await attachManualUploadFiles(form);
+  await expect(form.getByRole("button", { name: "Attach files" })).toBeVisible();
+  await expect(form.locator(".task-composer-attachment")).toHaveCount(1);
+  await expect(form.getByRole("button", { name: "Preview upload-stall.png" })).toBeVisible();
+  await expect(form.locator(".task-composer-file")).toHaveCount(1);
+  await expect(form.locator(".task-composer-file")).toContainText("upload.log");
+  await expect(form.getByRole("button", { name: /^Remove / })).toHaveCount(2);
+  await captureReviewScreenshot(page, testInfo, "composer-attachments");
+});
+
+test("a sent prompt shows its pictures and lists its attached files", { tag: "@desktop" }, async ({ page }, testInfo) => {
+  await page.goto(`/tasks/${MANUAL_TASKS.uploadsReview.threadId}`);
+
+  const message = page.locator("caffold-task-user-message").first();
+  await expect(message).toContainText("Attached files:");
+  await expect(message).toContainText(".caffold/uploads/20260924-134012-k3v9/upload.log");
+  await expect(message.locator(".task-message-attachment")).toHaveCount(1);
+  await expect(
+    page.locator('caffold-task-assistant-message[data-message-phase="final"]'),
+  ).toContainText("The last chunk is never acknowledged");
+  await page.locator("caffold-task-conversation > .task-conversation-scroll").evaluate((scroller) => {
+    scroller.scrollTop = 0;
+  });
+  await captureReviewScreenshot(page, testInfo, "conversation-attachments");
 });
 
 test("an approval request waits in the conversation", { tag: "@desktop" }, async ({ page }, testInfo) => {
@@ -178,6 +194,23 @@ test("Task details shows the worktree and holds Fork task and Archive task", { t
   await expect(details.getByRole("button", { name: "Fork task" })).toBeVisible();
   await expect(details.getByRole("button", { name: "Archive task" })).toBeVisible();
   await captureReviewScreenshot(page, testInfo, "task-details");
+});
+
+test("the prompts a Task settled open from its details", { tag: "@desktop" }, async ({ page }, testInfo) => {
+  await page.goto(`/tasks/${MANUAL_TASKS.pagination.threadId}`);
+
+  await page.getByRole("button", { name: /^Task details/ }).click();
+  await page.getByRole("button", { name: "What your prompts settled" }).click();
+  const dialog = page.locator("caffold-task-permission-instructions-dialog > dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".task-permission-instructions-text")).toContainText(
+    "never touch config/production.yml",
+  );
+  await expect(dialog.locator(".task-permission-instructions-text")).toContainText(
+    "reset the local database",
+  );
+  await expect(dialog.getByRole("button", { name: "Forget these" })).toBeEnabled();
+  await captureReviewScreenshot(page, testInfo, "permission-instructions");
 });
 
 test("a Section opens New Task in its directory", { tag: "@desktop" }, async ({ page }, testInfo) => {

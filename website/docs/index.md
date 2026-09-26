@@ -44,7 +44,7 @@ brew install --cask panarch/tap/caffold
 ### Ask
 
 Start a Task where the work belongs, choose a Codex, Claude, or Grok model,
-and describe the work, with screenshots if they help.
+and describe the work, with files or screenshots if they help.
 </div>
 
 <div class="cf-step" markdown>
@@ -150,7 +150,7 @@ layout changes with the screen, the work does not.
 - Reach the Mac privately from your other devices with Tailscale.
 - Install Caffold as an app and get notified when a turn ends or an approval
   waits.
-- Paste screenshots into any prompt.
+- Attach files and screenshots to any prompt.
 - Dictate prompts, on the Mac or with your own speech-to-text key.
 - Run actions and scroll from the keyboard on a desktop.
 

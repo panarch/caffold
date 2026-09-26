@@ -1,3 +1,4 @@
+import { crc32, deflateSync } from "node:zlib";
 import { AGENT_CATALOG, agentPermissionModes } from "./agent-catalog-fixture.js";
 import { mockCodexStatus } from "./browser-defaults.js";
 import {
@@ -173,8 +174,8 @@ export async function installManualTasks(page, { runningCheckout = false } = {})
   const details = {
     [MANUAL_TASKS.darkTheme.threadId]: darkThemeDetail(),
     [checkout.threadId]: runningCheckout ? runningCheckoutDetail() : flakyCheckoutDetail(),
-    [MANUAL_TASKS.uploadsReview.threadId]: emptyDetail(MANUAL_TASKS.uploadsReview),
-    [MANUAL_TASKS.pagination.threadId]: emptyDetail(MANUAL_TASKS.pagination),
+    [MANUAL_TASKS.uploadsReview.threadId]: uploadsReviewDetail(),
+    [MANUAL_TASKS.pagination.threadId]: paginationDetail(),
     [MANUAL_TASKS.announcement.threadId]: emptyDetail(MANUAL_TASKS.announcement),
   };
   await page.exposeFunction(
@@ -208,6 +209,10 @@ export async function installManualTasks(page, { runningCheckout = false } = {})
       ? route.fulfill({ json: detail })
       : route.fulfill({ status: 404, json: { error: { code: "not_found" } } });
   });
+  await page.route(
+    `**/api/tasks/${MANUAL_TASKS.pagination.threadId}/permission-instructions`,
+    (route) => route.fulfill({ json: { instructions: PAGINATION_SETTLED } }),
+  );
   await page.route(/\/api\/current-plan(?:\?|$)/, (route) => {
     const path = new URL(route.request().url()).searchParams.get("path");
     return route.fulfill({
@@ -240,51 +245,81 @@ export async function installManualTasks(page, { runningCheckout = false } = {})
   );
 }
 
-// Pastes two screenshots of Lumen's dark Settings page, one from a desktop and
-// one from a phone, into a Composer's prompt as a clipboard paste.
-export async function pasteManualScreenshots(prompt) {
-  await prompt.evaluate(async (textarea) => {
-    const screenshot = (width, height, sidebar) => {
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext("2d");
-      context.fillStyle = "#15171c";
-      context.fillRect(0, 0, width, height);
-      if (sidebar) {
-        context.fillStyle = "#1d2027";
-        context.fillRect(0, 0, 240, height);
-      }
-      const left = sidebar ? 288 : 32;
-      context.fillStyle = "#e6e8ee";
-      context.font = "600 36px sans-serif";
-      context.fillText("Appearance", left, 96);
-      ["System", "Light", "Dark"].forEach((label, index) => {
-        const top = 150 + index * 88;
-        context.fillStyle = index === 2 ? "#23262e" : "#1d2027";
-        context.fillRect(left, top, width - left - 32, 64);
-        context.fillStyle = index === 2 ? "#3a3e48" : "#aab0bd";
-        context.font = "28px sans-serif";
-        context.fillText(label, left + 24, top + 42);
-      });
-      return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-    };
+// The files sent with the uploads review prompt: a phone screenshot of an
+// upload stuck at 99% and the upload log.
+export const MANUAL_UPLOAD_PROMPT =
+  "Review PR #214. With it, uploads from the phone stall at 99%; the screenshot and the log are attached.";
+const UPLOAD_FOLDER = ".caffold/uploads/20260924-134012-k3v9";
+const UPLOAD_SCREENSHOT = uploadScreenshotPng();
+const UPLOAD_LOG = [
+  "13:31:58 upload 7f3c started: 48 chunks",
+  "13:32:07 chunk 47/48 acknowledged",
+  "13:32:07 chunk 48/48 sent",
+  "13:33:07 chunk 48/48 timed out",
+].join("\n");
+
+// Attaches the uploads review files to a Composer the two ways a person can:
+// the screenshot pasted into the prompt, the log through Attach files.
+export async function attachManualUploadFiles(form) {
+  await form.locator("textarea[name='prompt']").evaluate((textarea, base64) => {
+    const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
     const clipboard = new DataTransfer();
-    clipboard.items.add(
-      new File([await screenshot(1280, 800, true)], "settings-dark-desktop.png", {
-        type: "image/png",
-      }),
-    );
-    clipboard.items.add(
-      new File([await screenshot(390, 844, false)], "settings-dark-phone.png", {
-        type: "image/png",
-      }),
-    );
+    clipboard.items.add(new File([bytes], "upload-stall.png", { type: "image/png" }));
     textarea.focus();
     textarea.dispatchEvent(
       new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }),
     );
+  }, UPLOAD_SCREENSHOT.toString("base64"));
+  await form.locator("input[data-composer-file-input]").setInputFiles({
+    name: "upload.log",
+    mimeType: "text/plain",
+    buffer: Buffer.from(UPLOAD_LOG),
   });
+}
+
+// A phone screen with one upload whose progress bar has stopped at 99%.
+function uploadScreenshotPng() {
+  const width = 180;
+  const height = 390;
+  const rectangles = [
+    [0, 0, width, 44, [255, 255, 255]],
+    [0, 44, width, 45, [223, 227, 234]],
+    [16, 16, 72, 28, [58, 63, 74]],
+    [16, 112, 164, 216, [255, 255, 255]],
+    [28, 128, 128, 138, [58, 63, 74]],
+    [28, 148, 92, 156, [150, 156, 168]],
+    [28, 180, 152, 190, [223, 227, 234]],
+    [28, 180, 151, 190, [22, 124, 92]],
+    [132, 196, 152, 204, [150, 156, 168]],
+  ];
+  const row = width * 3 + 1;
+  const pixels = Buffer.alloc(row * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const color = rectangles.findLast(
+        ([left, top, right, bottom]) => x >= left && x < right && y >= top && y < bottom,
+      )?.[4] ?? [244, 245, 247];
+      pixels.set(color, y * row + 1 + x * 3);
+    }
+  }
+  const chunk = (type, data) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const checksum = Buffer.alloc(4);
+    checksum.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, checksum]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(pixels)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
 }
 
 // The dark theme Task's repository: its uncommitted changes, the refs Git
@@ -725,6 +760,106 @@ function darkThemeDetail() {
         ].join("\n"),
       }),
       event(task.threadId, at(300), "dark-theme-complete", "turn_completed", "Turn completed", {
+        turnId,
+        status: "completed",
+      }),
+    ],
+  });
+}
+
+// The pagination Task runs under Ask Jev first, and both of its prompts say
+// what the agent may do, so Jev kept each of them word for word.
+const PAGINATION_PROMPTS = [
+  {
+    atMs: MANUAL_TASKS.pagination.updatedMs - 25 * 60_000,
+    text:
+      "Paginate GET /photos with a cursor. You can run the API tests and local " +
+      "migrations without asking, but never touch config/production.yml.",
+  },
+  {
+    atMs: MANUAL_TASKS.pagination.updatedMs - 12 * 60_000,
+    text: "You can also reset the local database if a migration fails.",
+  },
+];
+const PAGINATION_SETTLED = PAGINATION_PROMPTS.map(
+  ({ atMs, text }) =>
+    `[${new Date(atMs).toISOString().slice(0, 16).replace("T", " ")} UTC]\n${text}`,
+).join("\n\n");
+
+function paginationDetail() {
+  const task = MANUAL_TASKS.pagination;
+  const [first, second] = PAGINATION_PROMPTS;
+  return detailFor(task, {
+    permissionMode: ASK_JEV_FIRST,
+    events: [
+      event(task.threadId, first.atMs, "pagination-prompt", "user_message", "User prompt", {
+        turnId: "turn_manual_pagination_1",
+        text: first.text,
+      }),
+      event(task.threadId, first.atMs + 600_000, "pagination-first-answer", "assistant_message", "Assistant response", {
+        turnId: "turn_manual_pagination_1",
+        phase: "final",
+        text: "`GET /photos` now takes `cursor` and `limit` and returns `nextCursor`. One migration adds an index on `(created_at, id)`.",
+      }),
+      event(task.threadId, first.atMs + 610_000, "pagination-first-complete", "turn_completed", "Turn completed", {
+        turnId: "turn_manual_pagination_1",
+        status: "completed",
+      }),
+      event(task.threadId, second.atMs, "pagination-steer", "user_message", "User prompt", {
+        turnId: "turn_manual_pagination_2",
+        text: second.text,
+      }),
+      event(task.threadId, task.updatedMs - 60_000, "pagination-second-answer", "assistant_message", "Assistant response", {
+        turnId: "turn_manual_pagination_2",
+        phase: "final",
+        text: "The migration applies cleanly after a reset, and the API tests pass.",
+      }),
+      event(task.threadId, task.updatedMs, "pagination-second-complete", "turn_completed", "Turn completed", {
+        turnId: "turn_manual_pagination_2",
+        status: "completed",
+      }),
+    ],
+  });
+}
+
+function uploadsReviewDetail() {
+  const task = MANUAL_TASKS.uploadsReview;
+  const turnId = "turn_manual_uploads_review";
+  const start = task.updatedMs - 9 * 60_000;
+  const at = (seconds) => start + seconds * 1000;
+  const text = [
+    MANUAL_UPLOAD_PROMPT,
+    "",
+    "Attached files:",
+    `- ${UPLOAD_FOLDER}/upload-stall.png`,
+    `- ${UPLOAD_FOLDER}/upload.log`,
+  ].join("\n");
+  return detailFor(task, {
+    events: [
+      event(task.threadId, at(0), "uploads-prompt", "user_message", "User prompt", {
+        turnId,
+        text,
+        content: [
+          { type: "text", text },
+          {
+            type: "image",
+            url: `data:image/png;base64,${UPLOAD_SCREENSHOT.toString("base64")}`,
+            name: "upload-stall.png",
+          },
+        ],
+      }),
+      event(task.threadId, at(520), "uploads-answer", "assistant_message", "Assistant response", {
+        turnId,
+        phase: "final",
+        text: [
+          "## The last chunk is never acknowledged",
+          "",
+          "The log shows chunk 48 sent and then timing out. PR #214 waits for an acknowledgement of the final chunk, but the server answers the final chunk with `201 Created`, which the client does not count as one.",
+          "",
+          "Treat `201` like `200` for the final chunk, and add a test for a file whose size is an exact multiple of the chunk size.",
+        ].join("\n"),
+      }),
+      event(task.threadId, at(540), "uploads-complete", "turn_completed", "Turn completed", {
         turnId,
         status: "completed",
       }),

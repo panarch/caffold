@@ -44,5 +44,7 @@ as `CHECKLIST.md missing`, instead of a count. Choose it to see the problem.
 
 A finished checklist does not end the plan: it stays current while both files
 exist. Ask the agent to move or delete them when you are done. Caffold never
-moves, deletes, or edits them, and does not change `.gitignore` for them; if
-they are ignored or untracked, they disappear with the worktree they are in.
+moves, deletes, or edits them, and does not change `.gitignore` for them. In a
+Caffold worktree, untracked plan files keep the Task from being
+[archived](archive-and-delete.md#archive), and ignored ones are removed with
+the worktree.

@@ -17,29 +17,47 @@ a model, and a first prompt.
    **Speed**.
 4. Choose an approval mode from the button beside it. See
    [Approvals](approvals.md).
-5. Write the prompt and send it. You can [paste images](#add-images) into it,
+5. Write the prompt and send it. You can [attach files](#attach-files) to it,
    or [dictate it](../voice-input.md).
 
 The Task opens right away with your message. Near the end of the first turn,
 the agent names the Task after what you asked for. To rename it later, ask the
 agent, for example `Rename this task to Dark theme`.
 
-## Add images
+## Attach files
 
-Paste a screenshot or another image into the prompt. This works in every
-Composer: New Task, a Task's next prompt, and a prompt you send into a running
-turn.
+Every Composer takes files: New Task, a Task's next prompt, and a prompt you
+send into a running turn. Attach up to ten files of up to 100 MB each:
 
-![A Task's Composer with two pasted screenshots above the prompt](../assets/screenshots/composer-images-desktop.png)
+- choose **Attach files**, the paper clip, and pick them;
+- paste files or screenshots into the prompt; or
+- drop them on the Composer.
 
-Each image shows as a thumbnail above the prompt. Choose a thumbnail to see it
-larger, or the X on it to take it out.
+Folders cannot be attached. A picture shows as a thumbnail you can choose to
+see larger, and any other file by its name; the X on each takes it out.
 
-- Up to four images per prompt.
-- PNG, JPEG, GIF, WebP, or AVIF, each up to 10 MB.
+![New Task with a pasted screenshot and an attached log](../assets/screenshots/composer-attachments-desktop.png)
 
-The images appear with your prompt in the conversation. Whether the agent reads
-them depends on the model you chose.
+Sending uploads the files to the Mac one at a time, into a folder of their own
+under `.caffold/uploads/` in the Task's working directory, and the message
+shows the upload's progress. **Cancel upload** stops it and returns the prompt
+to the Composer; during a running turn, that button is **Stop current turn** and
+also stops the turn.
+
+Once the files are up, the prompt reaches the agent with an **Attached files**
+list of their paths, which the agent reads and the conversation shows.
+
+![The sent prompt with its screenshot and its Attached files list](../assets/screenshots/conversation-attachments-desktop.png)
+
+A PNG, JPEG, GIF, WebP, or AVIF picture of up to 10 MB also reaches the agent
+as an image; whether the agent reads it depends on the model you chose. Any
+other file reaches the agent through its path.
+
+Files the agent received stay in the working directory, and Caffold does not
+change Git tracking for `.caffold/`. Unless the repository ignores
+`.caffold/uploads/`, they show in [Working Tree](../review/changes.md) like any
+new file, and in a Caffold worktree they keep the Task from being
+[archived](archive-and-delete.md#archive) until you remove them.
 
 ## The model chooses the agent
 
