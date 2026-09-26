@@ -181,10 +181,24 @@ mod tests {
     };
 
     use super::*;
-    use crate::task_store::migration::{
-        NavigatorMigrationSection, NavigatorMigrationSnapshot, NavigatorMigrationThread,
-        NavigatorMigrationThreadClassification, write_v4_test_store,
-    };
+    use crate::task_store::migration::v5_to_v6;
+
+    #[derive(ToGlueRow)]
+    struct V5ManagedThreadRow {
+        thread_id: String,
+        archived_at: Option<NaiveDateTime>,
+        last_observed_recency_at: Option<NaiveDateTime>,
+        claimed_at: NaiveDateTime,
+        last_opened_at: Option<NaiveDateTime>,
+        last_seen_activity_at: Option<NaiveDateTime>,
+        last_completed_at: Option<NaiveDateTime>,
+        model: Option<String>,
+        reasoning_effort: Option<String>,
+        fast_mode: bool,
+        display_name: String,
+        section_id: Option<String>,
+        position_in_section: Option<i64>,
+    }
 
     fn timestamp(milliseconds: i64) -> NaiveDateTime {
         chrono::DateTime::from_timestamp_millis(milliseconds)
@@ -193,91 +207,66 @@ mod tests {
     }
 
     fn write_v6(path: &Path) {
-        write_v4_test_store(
-            path,
-            &[
-                ("older".to_string(), false),
-                ("older-fresh".to_string(), false),
-                ("newer".to_string(), false),
-                ("claimed".to_string(), false),
-                ("unsectioned".to_string(), false),
-                ("archived".to_string(), true),
-            ],
-        )
-        .unwrap();
-        super::super::v4_to_v5::migrate(
-            path,
-            &NavigatorMigrationSnapshot {
-                sections: vec![
-                    NavigatorMigrationSection {
-                        section_id: "section-hidden-z".to_string(),
-                        logical_path: "Workspace/z-hidden".to_string(),
-                    },
-                    NavigatorMigrationSection {
-                        section_id: "section-hidden-a".to_string(),
-                        logical_path: "Workspace/a-hidden".to_string(),
-                    },
-                    NavigatorMigrationSection {
-                        section_id: "section-older".to_string(),
-                        logical_path: "Workspace/older".to_string(),
-                    },
-                    NavigatorMigrationSection {
-                        section_id: "section-newer".to_string(),
-                        logical_path: "Workspace/newer".to_string(),
-                    },
-                    NavigatorMigrationSection {
-                        section_id: "section-claimed".to_string(),
-                        logical_path: "Workspace/claimed".to_string(),
-                    },
-                ],
-                threads: vec![
-                    NavigatorMigrationThread {
-                        thread_id: "older".to_string(),
-                        display_name: "Older".to_string(),
-                        classification: NavigatorMigrationThreadClassification::ActiveSectioned,
-                        section_id: Some("section-older".to_string()),
-                        position_in_section: Some(0),
-                    },
-                    NavigatorMigrationThread {
-                        thread_id: "older-fresh".to_string(),
-                        display_name: "Older fresh".to_string(),
-                        classification: NavigatorMigrationThreadClassification::ActiveSectioned,
-                        section_id: Some("section-older".to_string()),
-                        position_in_section: Some(1),
-                    },
-                    NavigatorMigrationThread {
-                        thread_id: "newer".to_string(),
-                        display_name: "Newer".to_string(),
-                        classification: NavigatorMigrationThreadClassification::ActiveSectioned,
-                        section_id: Some("section-newer".to_string()),
-                        position_in_section: Some(0),
-                    },
-                    NavigatorMigrationThread {
-                        thread_id: "claimed".to_string(),
-                        display_name: "Claimed".to_string(),
-                        classification: NavigatorMigrationThreadClassification::ActiveSectioned,
-                        section_id: Some("section-claimed".to_string()),
-                        position_in_section: Some(0),
-                    },
-                    NavigatorMigrationThread {
-                        thread_id: "unsectioned".to_string(),
-                        display_name: "Unsectioned".to_string(),
-                        classification: NavigatorMigrationThreadClassification::ActiveUnsectioned,
-                        section_id: None,
-                        position_in_section: None,
-                    },
-                    NavigatorMigrationThread {
-                        thread_id: "archived".to_string(),
-                        display_name: "Archived".to_string(),
-                        classification: NavigatorMigrationThreadClassification::LocallyArchived,
-                        section_id: None,
-                        position_in_section: None,
-                    },
-                ],
-            },
-        )
-        .unwrap();
-        super::super::v5_to_v6::migrate(path).unwrap();
+        {
+            let mut glue = Glue::new(RedbStorage::new(path).unwrap());
+            schema::v5::create(&mut glue, timestamp(1)).unwrap();
+            table(schema::v5::MANAGED_SECTIONS_TABLE)
+                .insert()
+                .columns(vec!["section_id", "logical_path"])
+                .values(
+                    [
+                        ("section-hidden-z", "Workspace/z-hidden"),
+                        ("section-hidden-a", "Workspace/a-hidden"),
+                        ("section-older", "Workspace/older"),
+                        ("section-newer", "Workspace/newer"),
+                        ("section-claimed", "Workspace/claimed"),
+                    ]
+                    .into_iter()
+                    .map(|(section_id, logical_path)| vec![text(section_id), text(logical_path)])
+                    .collect::<Vec<_>>(),
+                )
+                .execute(&mut glue)
+                .unwrap();
+            let threads = [
+                ("older", "Older", Some(("section-older", 0)), false),
+                (
+                    "older-fresh",
+                    "Older fresh",
+                    Some(("section-older", 1)),
+                    false,
+                ),
+                ("newer", "Newer", Some(("section-newer", 0)), false),
+                ("claimed", "Claimed", Some(("section-claimed", 0)), false),
+                ("unsectioned", "Unsectioned", None, false),
+                ("archived", "Archived", None, true),
+            ]
+            .into_iter()
+            .map(
+                |(thread_id, display_name, placement, archived)| V5ManagedThreadRow {
+                    thread_id: thread_id.to_string(),
+                    archived_at: archived.then(|| timestamp(1)),
+                    last_observed_recency_at: None,
+                    claimed_at: timestamp(1),
+                    last_opened_at: None,
+                    last_seen_activity_at: None,
+                    last_completed_at: None,
+                    model: None,
+                    reasoning_effort: None,
+                    fast_mode: false,
+                    display_name: display_name.to_string(),
+                    section_id: placement.map(|(section_id, _)| section_id.to_string()),
+                    position_in_section: placement.map(|(_, position)| position),
+                },
+            )
+            .collect::<Vec<_>>();
+            table(schema::v5::MANAGED_THREADS_TABLE)
+                .insert()
+                .values_from(&threads)
+                .unwrap()
+                .execute(&mut glue)
+                .unwrap();
+        }
+        v5_to_v6::migrate(path).unwrap();
         let mut glue = Glue::new(RedbStorage::new(path).unwrap());
         for (thread_id, recency) in [("older", 1_000), ("older-fresh", 1_500), ("newer", 2_000)] {
             table(schema::v6::MANAGED_THREADS_TABLE)

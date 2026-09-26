@@ -9,24 +9,13 @@ use super::served_tools;
 
 mod mcp_status;
 mod thread_list;
-mod thread_section;
 
 pub(crate) use mcp_status::{
     CodexMcpServerDiagnostic, MCP_SERVER_STATUS_LIST, McpServerStatusListResponse,
     mcp_server_status_list_params,
 };
-pub(crate) use thread_list::{ThreadListResponse, ThreadSectionFilter};
-pub(crate) use thread_list::{
-    archived_thread_list_params, section_thread_list_params, thread_list_params,
-};
-pub(crate) use thread_section::{
-    THREAD_SECTION_CREATE, THREAD_SECTION_LIST, THREAD_SECTION_MOVE, thread_section_create_params,
-    thread_section_list_params, thread_section_move_params,
-};
-pub(crate) use thread_section::{
-    ThreadSection, ThreadSectionCreateResponse, ThreadSectionListResponse,
-    ThreadSectionMoveResponse,
-};
+pub(crate) use thread_list::ThreadListResponse;
+pub(crate) use thread_list::{archived_thread_list_params, thread_list_params};
 
 pub const MINIMUM_SUPPORTED_CODEX_CLI_VERSION: &str = "0.155.1";
 
