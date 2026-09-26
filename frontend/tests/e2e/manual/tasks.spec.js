@@ -119,7 +119,7 @@ test("a sent prompt shows its pictures and lists its attached files", { tag: "@d
   await captureReviewScreenshot(page, testInfo, "conversation-attachments");
 });
 
-test("an approval request waits in the conversation", { tag: "@desktop" }, async ({ page }, testInfo) => {
+test("an approval request waits in the conversation", { tag: ["@desktop", "@phone"] }, async ({ page }, testInfo) => {
   await page.goto(`/tasks/${MANUAL_TASKS.flakyCheckout.threadId}`);
 
   const card = page.locator('.task-approval-card[data-approval-id="checkout-repeat"]');

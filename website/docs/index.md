@@ -11,11 +11,12 @@ hide:
 
 <p class="cf-eyebrow">Caffold · self-hosted on your Mac</p>
 
-<h1><span>Keep your coding agents working.</span> <span>Review from any screen.</span></h1>
+<h1><span>Leave your desk.</span> <span>Keep working.</span></h1>
 
-<p class="cf-lede">Caffold runs Codex, Claude Code, or Grok on a Mac you
-control. Follow each conversation, answer its approvals, and read the actual
-files and diff from a desktop, a tablet, or a phone.</p>
+<p class="cf-lede">Codex, Claude Code, and Grok run on your Mac. From a
+desktop, a tablet, or a phone, follow their work, answer their approvals, read
+the actual diff, and send the next instruction. Unfold a foldable, and you have
+the whole workspace.</p>
 
 <div class="cf-actions" markdown>
 [Get started](get-started/how-caffold-works.md){ .cf-button .cf-button--primary }
@@ -28,9 +29,19 @@ brew install --cask panarch/tap/caffold
 
 </section>
 
-<figure class="cf-shot cf-shot--wide" markdown>
-![A finished Caffold Task: the request, the agent's answer, its plan, and the Task list](assets/screenshots/task-conversation-desktop.png)
+<div class="cf-devices" markdown>
+
+<figure class="cf-device" markdown>
+![Working Tree on an unfolded foldable: the changed files beside the diff](assets/screenshots/review-working-tree-foldable.png)
+<figcaption>Unfolded foldable · Working Tree</figcaption>
 </figure>
+
+<figure class="cf-device" markdown>
+![The same Task's conversation on a phone](assets/screenshots/task-conversation-phone.png)
+<figcaption>Phone · Conversation</figcaption>
+</figure>
+
+</div>
 
 <section class="cf-section" markdown>
 
@@ -75,6 +86,10 @@ running turn, or pick up the same Task later.
 </div>
 
 </div>
+
+<figure class="cf-shot" markdown>
+![A finished Caffold Task on a desktop: the request, the agent's answer, its plan, and the Task list](assets/screenshots/task-conversation-desktop.png)
+</figure>
 
 </section>
 
@@ -137,7 +152,7 @@ keeps the repository it worked in:
 <section class="cf-section cf-split cf-split--phone" markdown>
 
 <figure class="cf-shot cf-shot--phone" markdown>
-![The same Task on a phone](assets/screenshots/task-conversation-phone.png)
+![An approval request waiting on a phone](assets/screenshots/approval-card-phone.png)
 </figure>
 
 <div markdown>

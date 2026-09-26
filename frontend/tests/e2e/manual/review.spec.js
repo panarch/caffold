@@ -20,7 +20,7 @@ test.beforeEach(async ({ page }) => {
   await installManualRepository(page);
 });
 
-test("Working Tree shows the Task's changed files and their diff", { tag: "@desktop" }, async ({ page }, testInfo) => {
+test("Working Tree shows the Task's changed files and their diff", { tag: ["@desktop", "@foldable"] }, async ({ page }, testInfo) => {
   await page.goto(`/tasks/${MANUAL_TASKS.darkTheme.threadId}`);
   await page.getByRole("button", { name: "Working Tree", exact: true }).click();
 

@@ -167,6 +167,48 @@ html:not(.cf-development) [data-md-component="announce"] {
   }
 }
 
+/* The same Task on two screens, side by side at one height: the columns
+   share the width in the ratio of the screenshots' aspect ratios
+   (933 x 704 against 390 x 844), and the edge is a shadow so it adds no size. */
+.cf-devices {
+  display: grid;
+  grid-template-columns: minmax(0, 2.868fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.cf-devices .cf-device {
+  width: auto;
+  max-width: none;
+  margin: 0;
+
+  & > p {
+    margin: 0;
+  }
+
+  .md-typeset & img[src] {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 0;
+    border-radius: 0.6rem;
+    box-shadow:
+      0 0 0 1px var(--caffold-border-strong),
+      0 1px 2px rgb(0 0 0 / 4%),
+      0 12px 32px rgb(0 0 0 / 7%);
+  }
+
+  & figcaption {
+    margin: 0.7rem 0 0;
+    color: var(--caffold-muted);
+    font-family: var(--md-code-font-family);
+    font-size: 0.7rem;
+    font-style: normal;
+    letter-spacing: 0.02em;
+    text-align: left;
+  }
+}
+
 .cf-eyebrow {
   margin: 0 0 1rem;
   color: var(--caffold-muted);
@@ -239,6 +281,10 @@ html:not(.cf-development) [data-md-component="announce"] {
 
 .cf-shot {
   margin: 0;
+
+  .cf-steps + & {
+    margin-top: 2rem;
+  }
 
   & img {
     display: block;
@@ -330,6 +376,16 @@ html:not(.cf-development) [data-md-component="announce"] {
 
   .cf-split--phone .cf-shot--phone {
     order: 1;
+  }
+
+  .cf-devices {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+  }
+
+  .cf-devices .cf-device:last-child {
+    width: 60%;
+    justify-self: center;
   }
 
   .cf-closing {
