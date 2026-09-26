@@ -1592,9 +1592,9 @@ fn status_of(state: &SessionState) -> ThreadStatus {
     }
     if !state.pending_approvals.is_empty() {
         // Waiting on a person is not being idle, whether or not a turn is open
-        // here. A conversation taken up while the agent was already blocked on a
-        // question has the question and not yet the turn it belongs to, and
-        // reading that as idle would withdraw the very question just recovered.
+        // here. A question can come back for a turn the transcript could not
+        // name, and reading that as idle would withdraw the very question just
+        // recovered.
         return ThreadStatus::Active {
             active_flags: vec![ThreadActiveFlag::WaitingOnApproval],
         };

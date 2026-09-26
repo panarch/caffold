@@ -241,7 +241,8 @@ impl ClaudeClient {
         if let Some(activity) = activity {
             session.state.lock().await.activity = Some(activity);
         }
-        // The agent answers *that* a prompt is outstanding and not *which*
+        // The agent answers *that* a prompt is outstanding — working on it, or
+        // held up on a question it asked while working on it — and not *which*
         // turn it belongs to, so which one is read from the conversation the
         // agent writes for itself: a prompt still being answered opened the
         // newest turn there. Without this, work arriving for a turn nothing
@@ -249,7 +250,10 @@ impl ClaudeClient {
         // as idle for as long as the turn runs. It is read before the agent
         // has necessarily written that prompt, though, so the first thing the
         // agent says is when the file is asked again.
-        if activity == Some(SessionActivity::Running) {
+        if matches!(
+            activity,
+            Some(SessionActivity::Running | SessionActivity::RequiresAction)
+        ) {
             let cwd = session.cwd.lock().await.clone();
             let filed = self.newest_filed_turn(&cwd, &session.id).await;
             let mut state = session.state.lock().await;
@@ -407,15 +411,14 @@ mod tests {
 
     #[tokio::test]
     async fn a_conversation_waiting_on_a_person_is_not_idle_without_a_turn_to_show() {
-        // A conversation taken up while the agent was already blocked has the
-        // question before it has the turn the question belongs to. Read as idle
-        // in that moment, the Task withdraws the very question it just
+        // A question can come back for a turn the transcript cannot name. Read
+        // as idle in that moment, the Task withdraws the very question it just
         // recovered, and the agent waits for an answer nobody can give.
-        let projects = written_conversation();
-        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        let nothing_written = tempfile::tempdir().expect("a projects directory");
+        let (client, runner) = ClaudeClient::mock_writing_to(nothing_written.path().to_path_buf());
         runner
             .greet_next_session_as(json!({
-                "response": { "session_state": "running" },
+                "response": { "session_state": "requires_action" },
                 "pending_permission_requests": [{
                     "type": "control_request",
                     "request_id": "req-left-waiting",
@@ -437,16 +440,10 @@ mod tests {
             .expect("the conversation opens");
 
         let session = client.session(SESSION).await.expect("the session");
-        {
-            // The turn it belongs to is not always recoverable, and the
-            // question is outstanding either way.
-            let mut state = session.state.lock().await;
-            state.active_turn = None;
-        }
-
-        let status = status_of(&*session.state.lock().await);
+        let state = session.state.lock().await;
+        assert!(state.active_turn.is_none(), "no turn could be named");
         assert_eq!(
-            status,
+            status_of(&state),
             ThreadStatus::Active {
                 active_flags: vec![ThreadActiveFlag::WaitingOnApproval],
             },
@@ -454,18 +451,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_question_the_agent_is_held_up_by_comes_back_when_it_is_greeted() {
+    async fn a_question_the_agent_is_held_up_by_comes_back_in_the_turn_it_was_asked_in() {
         // The client that was asked is gone, and the agent is waiting on an
         // answer only a client can give. It hands the question back, as it
         // asked it, to whichever client says hello next — so the question
         // arrives here by the path every other question takes, and nothing has
-        // to be kept anywhere in the meantime.
+        // to be kept anywhere in the meantime. An agent held up on a question
+        // is still in the turn it asked it in, so the question comes back in
+        // that turn and the turn still reads as running.
         let projects = written_conversation();
         let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
         let events = client.subscribe();
         runner
             .greet_next_session_as(json!({
-                "response": { "session_state": "running" },
+                "response": { "session_state": "requires_action" },
                 "pending_permission_requests": [{
                     "type": "control_request",
                     "request_id": "req-left-waiting",
@@ -498,6 +497,18 @@ mod tests {
         .await
         .expect("the question is put to somebody who can answer it");
         assert_eq!(asked.id, "req-left-waiting");
+        assert_eq!(
+            asked.turn_id.as_deref(),
+            Some("e848560b-26f6-4bcf-92e2-86539d420ab9")
+        );
+
+        let page = client
+            .read_turns(SESSION, CWD, None, 8)
+            .await
+            .expect("the written turns are readable");
+        let held_up = page.turns.first().expect("the turn it was working on");
+        assert_eq!(held_up.id, "e848560b-26f6-4bcf-92e2-86539d420ab9");
+        assert_eq!(held_up.status, TurnStatus::InProgress);
     }
 
     #[tokio::test]

@@ -248,7 +248,7 @@ impl Backend {
             )
             .await
             .expect("the Task is created");
-        let thread_id = created["threadId"]
+        let thread_id = created["detail"]["threadId"]
             .as_str()
             .unwrap_or_else(|| panic!("a created Task is named: {created}"))
             .to_string();
