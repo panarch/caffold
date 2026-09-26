@@ -1,6 +1,6 @@
 [project]
 site_name = "Caffold"
-site_description = "A self-hosted workspace for running and reviewing coding-agent work from any screen."
+site_description = "Codex, Claude Code, and Grok run on your Mac. Follow their work, read the actual diff, and send the next instruction from a desktop, tablet, foldable, or phone."
 site_url = "https://caffold.dev/"
 repo_url = "https://github.com/panarch/caffold"
 repo_name = "panarch/caffold"

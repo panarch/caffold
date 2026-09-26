@@ -12,7 +12,9 @@ only about building them.
 | `docs/assets/screenshots/` | images from the [user manual scenarios](../docs/development/testing.md#user-manual-scenarios) |
 | `docs/assets/fonts/` | the app's Geist fonts and their licenses |
 | `docs/stylesheets/extra.css` | the site's typefaces, colors, and homepage layout |
-| `overrides/main.html` | the banner that marks every copy outside `caffold.dev` as the next release's manual |
+| `overrides/main.html` | link preview tags, and the banner that marks every copy outside `caffold.dev` as the next release's manual |
+| `og-card.html`, `docs/assets/brand/og.png` | the link preview image and the page it is rendered from |
+| `docs/robots.txt` | lets search engines crawl the site and points them to its sitemap |
 | `zensical.toml` | site settings and navigation |
 | `wrangler.jsonc` | the Cloudflare Worker that serves the built site |
 | `pyproject.toml`, `uv.lock` | the Zensical dependency and its locked release |
@@ -33,6 +35,17 @@ uv run zensical build --strict
 ```
 
 writes the site to `site/` and fails on any warning.
+
+## Link preview image
+
+Shared links to any page show `docs/assets/brand/og.png`, rendered from
+`og-card.html` with two of the manual's screenshots. When either screenshot
+changes, render the image again from the `frontend/` directory:
+
+```sh
+npx playwright screenshot --viewport-size="1200,630" --wait-for-timeout=500 \
+  "file://$PWD/../website/og-card.html" ../website/docs/assets/brand/og.png
+```
 
 ## Deployment
 

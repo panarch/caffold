@@ -5,6 +5,8 @@ from any screen. Keep Codex, Claude Code, or Grok working on a Mac you control, 
 follow the conversation, answer approvals, inspect commands and tests, and read
 the actual files and diff from a desktop, foldable, tablet, or phone.
 
+The user manual is at [caffold.dev](https://caffold.dev).
+
 The layout adapts to the screen; the workflow stays the same. A Task still
 contains one agent conversation and the repository context needed to judge its
 work. Start on one device, leave the turn running on the Mac, and return from
@@ -160,7 +162,8 @@ are tracked in [Current Product Status](docs/product/status.md).
 
 ## Documentation and development
 
-- [User manual](website/docs/get-started/how-caffold-works.md), starting with
+- [User manual](https://caffold.dev), with its pages in
+  [website/docs](website/docs/get-started/how-caffold-works.md), starting with
   [Install](website/docs/get-started/install.md)
 - [Product vision](docs/product/vision.md)
 - [Current product status](docs/product/status.md)
