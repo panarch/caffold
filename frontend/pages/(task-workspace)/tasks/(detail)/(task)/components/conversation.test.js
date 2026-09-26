@@ -166,22 +166,21 @@ function layoutElement(properties = {}) {
   return { getClientRects: () => [{}], ...properties };
 }
 
+function childProvider(targetId) {
+  const provider = {
+    actionHintScope(options) {
+      provider.options = options;
+      return {
+        targets: [{ id: targetId, invalidationOwner: provider }],
+        mutationRoots: [provider],
+      };
+    },
+  };
+  return provider;
+}
+
 test("merges owned Conversation actions with direct retained child providers", () => {
   const detailButton = conversationButton({ conversationAction: "retry-detail" }, "Older messages");
-  const earlierPreviewEntry = {
-    dataset: { conversationEntryKey: "event-earlier" },
-  };
-  const earlierPreview = conversationButton(
-    { conversationAction: "preview-image", imageName: "earlier.png" },
-    "Preview earlier.png",
-  );
-  earlierPreview.closest = () => earlierPreviewEntry;
-  const previewEntry = { dataset: { conversationEntryKey: "event-a" } };
-  const preview = conversationButton(
-    { conversationAction: "preview-image", imageName: "shot.png" },
-    "Preview shot.png",
-  );
-  preview.closest = () => previewEntry;
   const approvalTarget = { id: "approval-choice" };
   let approvalOptions;
   const approvalCard = {
@@ -213,9 +212,25 @@ test("merges owned Conversation actions with direct retained child providers", (
       return selector.includes("caffold-task-command") ? command : null;
     },
   };
-  const list = { children: [entry] };
+  const prompt = childProvider("prompt-preview");
+  const promptEntry = {
+    dataset: { conversationEntryKey: "prompt-a" },
+    querySelector(selector) {
+      return selector.includes("caffold-task-user-message") ? prompt : null;
+    },
+  };
+  const picture = childProvider("generated-preview");
+  const pictureEntry = {
+    dataset: { conversationEntryKey: "picture-a" },
+    querySelector(selector) {
+      return selector === ":scope > caffold-task-message-attachments"
+        ? picture
+        : null;
+    },
+  };
+  const list = { children: [entry, promptEntry, pictureEntry] };
   const scrollport = {};
-  let controls = [detailButton, earlierPreview, preview];
+  let controls = [detailButton];
   const owner = {
     active: true,
     hidden: false,
@@ -225,16 +240,11 @@ test("merges owned Conversation actions with direct retained child providers", (
     scroller: () => scrollport,
     conversationList: () => list,
     olderHistory: () => olderHistory,
-    approvalComponents: () => [approvalCard],
+    approvalComponents: (candidate) =>
+      candidate === entry || candidate === undefined ? [approvalCard] : [],
     contains: (control) => controls.includes(control),
     querySelector(selector) {
       return selector.includes("retry-detail") ? detailButton : null;
-    },
-    querySelectorAll(selector) {
-      if (selector.includes("preview-image")) {
-        return [earlierPreview, preview];
-      }
-      return [];
     },
   };
 
@@ -243,23 +253,25 @@ test("merges owned Conversation actions with direct retained child providers", (
   });
   assert.deepEqual(scope.targets.map(({ id }) => id), [
     "task:thread-a:conversation:retry-detail",
-    "task:thread-a:conversation:preview-image:event-earlier:1",
-    "task:thread-a:conversation:preview-image:event-a:1",
     "older-page",
     "approval-choice",
     "command-output",
+    "prompt-preview",
+    "generated-preview",
   ]);
   assert.deepEqual(scope.targets.map(({ invalidationOwner }) =>
     invalidationOwner
-  ), [owner, earlierPreviewEntry, previewEntry, olderHistory, approvalCard, command]);
-  scope.targets.slice(0, 3).forEach((target) => target.activate());
-  assert.deepEqual(
-    [detailButton, earlierPreview, preview].map(({ clicks }) => clicks),
-    [1, 1, 1],
+  ), [owner, olderHistory, approvalCard, command, prompt, picture]);
+  assert.equal(
+    prompt.options.scopeId,
+    "task:thread-a:conversation:message:prompt-a",
   );
-  previewEntry.dataset.conversationEntryKey = "event-b";
-  assert.equal(scope.targets[2].isActionable(), false);
-  previewEntry.dataset.conversationEntryKey = "event-a";
+  assert.equal(
+    picture.options.scopeId,
+    "task:thread-a:conversation:attachments:picture-a",
+  );
+  scope.targets[0].activate();
+  assert.equal(detailButton.clicks, 1);
   assert.equal(approvalOptions.scopeId, "task:thread-a:conversation:approval:approval-a:command-a");
   assert.equal(approvalOptions.isCurrent(), true);
   owner.snapshot = { threadId: "thread-b", task: { threadId: "thread-b" } };

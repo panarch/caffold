@@ -57,7 +57,7 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
 
   await expect(finalMarkdown).toHaveAttribute("code-block-controls", "");
   await expect(userMessage.locator("caffold-task-markdown-code-block")).toHaveCount(0);
-  await expect(userMessage.locator(".task-message-text")).toContainText("```sh");
+  await expect(userMessage.locator(".task-user-message-text")).toContainText("```sh");
   await expect(blocks).toHaveCount(3);
   await expect(finalMarkdown.locator(".code-block-label")).toHaveText([
     "rust",

@@ -488,7 +488,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
   await expect(prompt).not.toBeFocused();
   await expect(tasksPage).toContainText("Codex app-server request timed out.");
   await expect(
-    tasksPage.locator('.task-message[data-message-role="user"]').filter({
+    tasksPage.locator("caffold-task-user-message").filter({
       hasText: "Timed out prompt",
     }),
   ).toHaveAttribute("data-delivery-state", "outcomeUnknown");

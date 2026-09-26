@@ -51,12 +51,13 @@ test("uploads each attached file in turn before the prompt that names them", { t
   ];
   const words = withAttachedFiles("Look at these", paths);
   await expect(prompt).toHaveValue("");
-  await expect(message.locator(".task-message-delivery")).toHaveText(/^Uploading \d+%$/);
-  await expect(message.locator(".task-message-text")).toHaveText(words, {
+  await expect(message.locator(".task-user-message-delivery")).toHaveText(/^Uploading \d+%$/);
+  await expect(message.locator(".task-user-message-text")).toHaveText(words, {
     useInnerText: true,
   });
-  await expect(message.locator(".task-message-upload-bar")).toHaveCount(2);
+  await expect(message.locator(".task-user-message-upload-bar")).toHaveCount(2);
   await expect(message.locator(".task-message-attachment")).toHaveCount(1);
+  const picture = await message.locator(".task-message-attachment img").elementHandle();
   await expect(form.locator(".task-primary-action-button")).toHaveAttribute(
     "aria-label",
     "Cancel upload",
@@ -67,8 +68,8 @@ test("uploads each attached file in turn before the prompt that names them", { t
     "server.log",
     "shot.png",
   ]);
-  await expect(message.locator('[data-upload-line="0"] .task-message-upload-bar')).toHaveCount(0);
-  await expect(message.locator('[data-upload-line="1"] .task-message-upload-bar')).toHaveCount(1);
+  await expect(message.locator('[data-upload-line="0"] .task-user-message-upload-bar')).toHaveCount(0);
+  await expect(message.locator('[data-upload-line="1"] .task-user-message-upload-bar')).toHaveCount(1);
   expect(prompts).toEqual([]);
 
   gates["shot.png"].resolve();
@@ -76,8 +77,10 @@ test("uploads each attached file in turn before the prompt that names them", { t
   expect(prompts[0]).toMatchObject({ prompt: words, imagePaths: [paths[1]] });
   expect(sent.uploads[0].bytes.equals(LOG)).toBe(true);
   expect(sent.uploads[1].bytes.equals(PICTURE)).toBe(true);
-  await expect(message.locator(".task-message-delivery")).toHaveText("Accepted - syncing...");
-  await expect(message.locator(".task-message-upload-bar")).toHaveCount(0);
+  await expect(message.locator(".task-user-message-delivery")).toHaveText("Accepted - syncing...");
+  await expect(message.locator(".task-user-message-upload-bar")).toHaveCount(0);
+  // Each delivery change patches the message, so its picture is never drawn again.
+  expect(await picture.evaluate((element) => element.isConnected)).toBe(true);
   expect(sent.discarded).toEqual([]);
 });
 
@@ -92,7 +95,7 @@ test("paints how far each file has gone without drawing the message again", { ta
     { name: "b.log", mimeType: "text/plain", buffer: LOG },
   ]);
   await prompt.press("Enter");
-  await expect(message.locator(".task-message-upload-bar")).toHaveCount(2);
+  await expect(message.locator(".task-user-message-upload-bar")).toHaveCount(2);
   const rendered = await message.elementHandle();
 
   await page.evaluate(() => {
@@ -103,7 +106,7 @@ test("paints how far each file has gone without drawing the message again", { ta
     conversation.setPromptUploadProgress(eventId, { percent: 42, lines: [0.75, 0] });
   });
 
-  await expect(message.locator(".task-message-delivery")).toHaveText("Uploading 42%");
+  await expect(message.locator(".task-user-message-delivery")).toHaveText("Uploading 42%");
   await expect(message.locator('[data-upload-line="0"]')).toHaveCSS("--upload-progress", "0.75");
   await expect(message.locator('[data-upload-line="1"]')).toHaveCSS("--upload-progress", "0");
   expect(await rendered.evaluate((element) => element.isConnected)).toBe(true);
@@ -129,8 +132,8 @@ test("keeps every line where it is while bars go and the message is confirmed", 
     { name: "shot.png", mimeType: "image/png", buffer: PICTURE },
   ]);
   await prompt.press("Enter");
-  await expect(message.locator('[data-upload-line="0"] .task-message-upload-bar')).toHaveCount(0);
-  await expect(message.locator('[data-upload-line="1"] .task-message-upload-bar')).toHaveCount(1);
+  await expect(message.locator('[data-upload-line="0"] .task-user-message-upload-bar')).toHaveCount(0);
+  await expect(message.locator('[data-upload-line="1"] .task-user-message-upload-bar')).toHaveCount(1);
   await page.evaluate(() => {
     const conversation = document.querySelector("caffold-task-conversation");
     const eventId = conversation.querySelector(
@@ -142,7 +145,7 @@ test("keeps every line where it is while bars go and the message is confirmed", 
   const uploading = await textBox(message);
 
   gate.resolve();
-  await expect(message.locator(".task-message-delivery")).toHaveText("Accepted - syncing...");
+  await expect(message.locator(".task-user-message-delivery")).toHaveText("Accepted - syncing...");
   expect(await textBox(message)).toEqual(uploading);
 
   const words = prompts[0].prompt;
@@ -172,8 +175,8 @@ test("keeps every line where it is while bars go and the message is confirmed", 
       },
     ],
   });
-  await expect(message.locator(".task-message-delivery")).toHaveCount(0);
-  await expect(message.locator(".task-message-text")).toHaveText(words, {
+  await expect(message.locator(".task-user-message-delivery")).toBeHidden();
+  await expect(message.locator(".task-user-message-text")).toHaveText(words, {
     useInnerText: true,
   });
   // The words wrap exactly as they did; only the delivery label above them,
@@ -293,7 +296,7 @@ test("keeps the files of a message whose delivery is unconfirmed", { tag: "@desk
   await prompt.press("Enter");
 
   await expect.poll(() => prompts.length).toBe(1);
-  await expect(message.locator(".task-message-delivery")).toHaveText("Delivery unconfirmed");
+  await expect(message.locator(".task-user-message-delivery")).toHaveText("Delivery unconfirmed");
   await expect(prompt).toHaveValue("");
   expect(sent.discarded).toEqual([]);
 });
@@ -347,7 +350,7 @@ function attach(form, files) {
 }
 
 function textBox(message) {
-  return message.locator(".task-message-text").evaluate((element) => {
+  return message.locator(".task-user-message-text").evaluate((element) => {
     const box = element.getBoundingClientRect();
     const owner = element.closest(".task-message").getBoundingClientRect();
     return {

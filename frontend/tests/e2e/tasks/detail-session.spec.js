@@ -2665,7 +2665,7 @@ test("makes disconnected task state unavailable and preserves an unidentifiable 
   }, threadId);
 
   const uncertainPrompt = tasksPage
-    .locator('.task-message[data-message-role="user"]')
+    .locator("caffold-task-user-message")
     .filter({ hasText: promptText });
   await expect(uncertainPrompt).toHaveAttribute(
     "data-delivery-state",
@@ -2729,16 +2729,12 @@ test("makes disconnected task state unavailable and preserves an unidentifiable 
   await expect(canonicalPrompt).toHaveCount(2);
   await expect(
     tasksPage
-      .locator(
-        '.task-message[data-message-role="user"][data-delivery-state="outcomeUnknown"]',
-      )
+      .locator('caffold-task-user-message[data-delivery-state="outcomeUnknown"]')
       .filter({ hasText: promptText }),
   ).toHaveCount(1);
   await expect(
     tasksPage
-      .locator(
-        '.task-message[data-message-role="user"]:not([data-delivery-state])',
-      )
+      .locator("caffold-task-user-message:not([data-delivery-state])")
       .filter({ hasText: promptText }),
   ).toHaveCount(1);
   await expect(page.locator(".app-foreground-recovery")).toBeHidden();

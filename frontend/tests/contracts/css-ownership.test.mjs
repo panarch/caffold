@@ -104,6 +104,14 @@ const ownership = new Map([
     ["caffold-task-assistant-message-copy-button"],
   ],
   [
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.css",
+    ["caffold-task-message-attachments"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.css",
+    ["caffold-task-user-message"],
+  ],
+  [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
     ["caffold-task-changed-files"],
   ],
@@ -546,9 +554,12 @@ const componentChildren = new Map([
       "caffold-task-changed-files",
       "caffold-task-command",
       "caffold-task-markdown",
+      "caffold-task-message-attachments",
+      "caffold-task-user-message",
       "caffold-task-work-details",
     ],
   ],
+  ["caffold-task-user-message", ["caffold-task-message-attachments"]],
   ["caffold-task-markdown", ["caffold-task-markdown-code-block"]],
   [
     "caffold-task-work-details",
