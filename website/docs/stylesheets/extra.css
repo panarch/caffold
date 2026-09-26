@@ -93,6 +93,11 @@
   color: var(--caffold-text);
 }
 
+/* A page title's permalink is the page's own address. */
+.md-typeset h1 .headerlink {
+  display: none;
+}
+
 /* The development banner shows only away from caffold.dev. */
 html:not(.cf-development) [data-md-component="announce"] {
   display: none;
@@ -149,6 +154,12 @@ html:not(.cf-development) [data-md-component="announce"] {
     font-weight: 700;
     letter-spacing: -0.045em;
     line-height: 1.02;
+  }
+
+  /* Each sentence starts its own line and wraps evenly within it. */
+  & h1 > span {
+    display: block;
+    text-wrap: balance;
   }
 
   & .highlight {

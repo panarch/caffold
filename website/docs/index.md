@@ -11,7 +11,7 @@ hide:
 
 <p class="cf-eyebrow">Caffold · self-hosted on your Mac</p>
 
-# Keep your coding agents working. Review from any screen.
+<h1><span>Keep your coding agents working.</span> <span>Review from any screen.</span></h1>
 
 <p class="cf-lede">Caffold runs Codex, Claude Code, or Grok on a Mac you
 control. Follow each conversation, answer its approvals, and read the actual
