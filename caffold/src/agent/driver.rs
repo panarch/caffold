@@ -25,6 +25,7 @@
 
 use std::collections::BTreeMap;
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -321,17 +322,17 @@ fn mismatched_agent() -> AgentError {
 /// on every projection of the user message. Constructing the shared item here
 /// keeps the application from inventing another placeholder identity or
 /// matching later by presentation text.
-fn submitted_user_message(id: &str, text: &str, images: &[String]) -> ConversationItem {
+fn submitted_user_message(id: &str, text: &str, image_paths: &[String]) -> ConversationItem {
     let content = (!text.is_empty())
         .then(|| MessageContent::Text {
             text: text.to_string(),
         })
         .into_iter()
         .chain(
-            images
+            image_paths
                 .iter()
                 .cloned()
-                .map(|url| MessageContent::Image { url }),
+                .map(|path| MessageContent::LocalImage { path }),
         )
         .collect();
     ConversationItem {
@@ -378,11 +379,49 @@ pub(crate) enum TurnRejected {
 }
 
 /// A message added to a running turn that stopping the turn cancelled before
-/// the agent took it in, as it was sent.
+/// the agent took it in, as its words were sent.
+///
+/// The words already name every file the message carried, so they are what
+/// comes back; a picture it also showed the agent is not shown again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CancelledPrompt {
     pub(crate) prompt: String,
-    pub(crate) images: Vec<String>,
+}
+
+/// A picture a prompt shows the agent, as the file it was uploaded to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PromptImage {
+    /// Absolute, so an agent that reads the file itself finds it from any
+    /// directory.
+    pub(crate) path: String,
+    pub(crate) media_type: &'static str,
+}
+
+impl PromptImage {
+    /// The picture carried inside the prompt, for an agent that has no way to
+    /// be pointed at a file.
+    async fn data_url(&self) -> Result<String, AgentError> {
+        let bytes = tokio::fs::read(&self.path).await.map_err(|error| {
+            AgentError::Failed(format!("could not read image {}: {error}", self.path))
+        })?;
+        Ok(format!(
+            "data:{};base64,{}",
+            self.media_type,
+            STANDARD.encode(bytes)
+        ))
+    }
+}
+
+async fn image_data_urls(images: &[PromptImage]) -> Result<Vec<String>, AgentError> {
+    let mut urls = Vec::with_capacity(images.len());
+    for image in images {
+        urls.push(image.data_url().await?);
+    }
+    Ok(urls)
+}
+
+fn image_paths(images: &[PromptImage]) -> Vec<String> {
+    images.iter().map(|image| image.path.clone()).collect()
 }
 
 impl Driver {
@@ -555,35 +594,40 @@ impl Driver {
     }
 
     /// Begin a turn on options the agent has already agreed to.
+    ///
+    /// Codex opens an image file itself; Claude and Grok are handed the
+    /// picture inside the prompt.
     pub(crate) async fn start_turn(
         &self,
         conversation_id: &str,
         cwd: &str,
         prompt: &str,
-        images: &[String],
+        images: &[PromptImage],
         options: &AcceptedTurnOptions,
     ) -> Result<StartedTurn, AgentError> {
         match self {
             Self::Codex(client) => {
+                let paths = image_paths(images);
                 let started = client
                     .start_turn(
                         conversation_id,
                         cwd,
                         prompt,
-                        images,
+                        &paths,
                         options.codex()?.clone(),
                     )
                     .await?;
                 Ok(StartedTurn {
                     turn: TurnState::from(&started.turn),
-                    user_message: submitted_user_message(&started.user_message_id, prompt, images),
+                    user_message: submitted_user_message(&started.user_message_id, prompt, &paths),
                     applied: options.applied.clone(),
                 })
             }
             Self::Claude(claude) => {
+                let urls = image_data_urls(images).await?;
                 let turn = claude
                     .client
-                    .start_turn(conversation_id, prompt, images, options.claude()?)
+                    .start_turn(conversation_id, prompt, &urls, options.claude()?)
                     .await?;
                 let user_message = turn
                     .items
@@ -603,8 +647,9 @@ impl Driver {
                 })
             }
             Self::Grok(client) => {
+                let urls = image_data_urls(images).await?;
                 let turn = client
-                    .start_turn(conversation_id, cwd, prompt, images, options.grok()?)
+                    .start_turn(conversation_id, cwd, prompt, &urls, options.grok()?)
                     .await?;
                 let user_message = turn
                     .items
@@ -632,12 +677,13 @@ impl Driver {
         conversation_id: &str,
         turn_id: &str,
         prompt: &str,
-        images: &[String],
+        images: &[PromptImage],
     ) -> Result<ConversationItem, AgentError> {
         match self {
             Self::Codex(client) => {
+                let paths = image_paths(images);
                 let steered = client
-                    .steer_turn(conversation_id, turn_id, prompt, images)
+                    .steer_turn(conversation_id, turn_id, prompt, &paths)
                     .await?;
                 if steered.turn_id != turn_id {
                     return Err(AgentError::Failed(format!(
@@ -648,16 +694,22 @@ impl Driver {
                 Ok(submitted_user_message(
                     &steered.user_message_id,
                     prompt,
-                    images,
+                    &paths,
                 ))
             }
-            Self::Claude(claude) => Ok(claude
-                .client
-                .steer_turn(conversation_id, turn_id, prompt, images)
-                .await?),
-            Self::Grok(client) => Ok(client
-                .steer_turn(conversation_id, turn_id, prompt, images)
-                .await?),
+            Self::Claude(claude) => {
+                let urls = image_data_urls(images).await?;
+                Ok(claude
+                    .client
+                    .steer_turn(conversation_id, turn_id, prompt, &urls)
+                    .await?)
+            }
+            Self::Grok(client) => {
+                let urls = image_data_urls(images).await?;
+                Ok(client
+                    .steer_turn(conversation_id, turn_id, prompt, &urls)
+                    .await?)
+            }
         }
     }
 

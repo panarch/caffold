@@ -144,6 +144,7 @@ of these paths deletes a Git branch.
 | Working directory | Reported and owned by the Codex thread | Persisted with the Caffold Task and supplied whenever the Claude session starts or resumes | Persisted with the Task; the driver's binding names the native session that runs there, and a worktree move forks the session |
 | Caffold-served tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized | Caffold-owned HTTP MCP server declared on session start and load, bound to the Task before its session exists |
 | Current-plan instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions | `_meta.rules` on a new session and the MCP `initialize` instructions on every load |
+| Prompt pictures | A `localImage` input naming the uploaded file, which Codex opens | A base64 image block the driver reads from the uploaded file | An ACP image block the driver reads from the uploaded file |
 | Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure | Diagnostic status; an attempted operation reports its own failure |
 | Idle release | A thread subscription may be dropped when no viewer, request, or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation | The session stays loaded on the bridge; the leader is not asked to unload |
 
@@ -332,7 +333,7 @@ can show the current mode as uneditable; a later turn that asks for another
 mode is still refused. Choosing **Ask Jev first** on a session already created
 with neither flag asks Grok for nothing new, because that is the flagless
 session it is already running. The Task's composer settings keep the mode a
-person chose, because the leader does not report autoMode again after load. Images are sent as prompt blocks. The
+person chose, because the leader does not report autoMode again after load. The
 Settings report reads the installation without touching any of this: the
 executable by running it, the leader through `grok leader info`, the connection
 as the bridge stands, and the account through a leader that is already

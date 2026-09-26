@@ -4,11 +4,14 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
+  captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
   mockAgentModels,
   pasteImage,
+  routeTaskUploads,
   scrollTop,
+  withAttachedFiles,
 } from "../support/task-fixtures.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 
@@ -242,7 +245,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
     const body = route.request().postDataJSON();
     submittedPrompts.push(body.prompt);
     submittedBodies.push(body);
-    if (body.prompt === "Rejected image prompt" && rejectedAttempts++ === 0) {
+    if (body.prompt.startsWith("Rejected image prompt") && rejectedAttempts++ === 0) {
       return route.fulfill({
         status: 422,
         contentType: "application/json",
@@ -271,6 +274,8 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
       }),
     });
   });
+
+  const sent = await routeTaskUploads(page);
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
   await emitTaskDetailBootstrap(page, detail());
@@ -437,9 +442,16 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
   await pasteImage(prompt, "retry-after-failure.png");
   await expect(form.locator(".task-composer-attachment")).toHaveCount(1);
   await send.click();
-  await expect.poll(() => submittedPrompts.at(-1)).toBe("Rejected image prompt");
-  expect(submittedBodies.at(-1).images).toHaveLength(1);
-  expect(submittedBodies.at(-1).images[0]).toMatch(/^data:image\/png;base64,/);
+  await expect.poll(() => sent.uploads.length).toBe(1);
+  const [firstUpload] = sent.uploads;
+  expect(firstUpload.name).toBe("retry-after-failure.png");
+  expect(firstUpload.bytes.subarray(1, 4).toString()).toBe("PNG");
+  await expect
+    .poll(() => submittedPrompts.at(-1))
+    .toBe(withAttachedFiles("Rejected image prompt", [firstUpload.path]));
+  expect(submittedBodies.at(-1).imagePaths).toEqual([firstUpload.path]);
+  // The agent never received it, so nothing it uploaded stays.
+  await expect.poll(() => sent.discarded).toEqual([firstUpload.folder]);
   await expect(form).toHaveAttribute("aria-busy", "false");
   await expect(prompt).not.toBeFocused();
   await expect(prompt).toHaveValue("Rejected image prompt");
@@ -452,11 +464,13 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
   ).toHaveCount(0);
 
   await send.click();
+  await expect.poll(() => sent.uploads.length).toBe(2);
+  const retriedUpload = sent.uploads[1];
   await expect.poll(() => submittedPrompts.slice(-2)).toEqual([
-    "Rejected image prompt",
-    "Rejected image prompt",
+    withAttachedFiles("Rejected image prompt", [firstUpload.path]),
+    withAttachedFiles("Rejected image prompt", [retriedUpload.path]),
   ]);
-  expect(submittedBodies.at(-1).images).toHaveLength(1);
+  expect(submittedBodies.at(-1).imagePaths).toEqual([retriedUpload.path]);
   await expect(form).toHaveAttribute("aria-busy", "false");
   await expect(prompt).toHaveValue("");
   await expect(form.locator(".task-composer-attachment")).toHaveCount(0);
@@ -474,7 +488,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
   await expect(prompt).not.toBeFocused();
   await expect(tasksPage).toContainText("Codex app-server request timed out.");
   await expect(
-    tasksPage.locator('.task-message[data-message-role="user"]').filter({
+    tasksPage.locator("caffold-task-user-message").filter({
       hasText: "Timed out prompt",
     }),
   ).toHaveAttribute("data-delivery-state", "outcomeUnknown");
@@ -1011,6 +1025,124 @@ test("places attachment remove controls over thumbnail corners inside the attach
         `remove control ${index + 1} at ${interfaceScalePercent}% receives taps outside its thumbnail`,
       ).toBe(true);
     }
+  }
+});
+
+test("attaches files from the picker, the clipboard, and a drop onto the Composer", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page);
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+  const form = page.locator('form[data-task-form="create"]');
+  const prompt = form.locator('textarea[name="prompt"]');
+  const panel = form.locator(".task-composer-panel");
+  const files = form.locator(".task-composer-file");
+
+  await form.getByRole("button", { name: "Attach files" }).click();
+  await form.locator("input[data-composer-file-input]").setInputFiles([
+    { name: "photo.heic", mimeType: "image/heic", buffer: Buffer.from("heic") },
+  ]);
+  await expect(files).toHaveCount(1);
+
+  await prompt.evaluate((textarea) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.items.add(new File(["a,b\n"], "table.csv", { type: "text/csv" }));
+    textarea.dispatchEvent(
+      new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData }),
+    );
+  });
+  await expect(files).toHaveCount(2);
+
+  const dropped = await panel.evaluateHandle(() => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(["log"], "server.log", { type: "text/plain" }));
+    return dataTransfer;
+  });
+  await panel.dispatchEvent("dragover", { dataTransfer: dropped });
+  await expect(panel).toHaveAttribute("data-drop-target", "");
+  await panel.dispatchEvent("drop", { dataTransfer: dropped });
+  await expect(panel).not.toHaveAttribute("data-drop-target");
+
+  await expect(files).toHaveCount(3);
+  await expect(files.nth(0)).toHaveAttribute("title", "photo.heic");
+  await expect(files.nth(1)).toHaveAttribute("title", "table.csv");
+  await expect(files.nth(2)).toHaveAttribute("title", "server.log");
+  await expect(form.locator(".task-composer-attachment")).toHaveCount(0);
+
+  await files.nth(1).getByRole("button", { name: "Remove table.csv" }).click();
+  await expect(files).toHaveCount(2);
+});
+
+test("stops at ten attachments and says so", { tag: "@desktop" }, async ({ page }) => {
+  const scenario = await installTaskLoopFixture(page);
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+  const form = page.locator('form[data-task-form="create"]');
+
+  await form.locator("input[data-composer-file-input]").setInputFiles(
+    Array.from({ length: 11 }, (_, index) => ({
+      name: `note-${index + 1}.txt`,
+      mimeType: "text/plain",
+      buffer: Buffer.from(`${index}`),
+    })),
+  );
+
+  await expect(form.locator(".task-composer-file")).toHaveCount(10);
+  await expect(form.locator(".task-composer-attachment-error")).toHaveText(
+    "Attach up to 10 files.",
+  );
+});
+
+test("keeps a file chip to its name, its extension whole, within the Composer", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const scenario = await installTaskLoopFixture(page);
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+  const form = page.locator('form[data-task-form="create"]');
+  const longName = `release-metadata-${"with-a-deliberately-long-directory-name-".repeat(4)}cache.json`;
+
+  await form.locator("input[data-composer-file-input]").setInputFiles(
+    ["a.md", "b.txt", longName].map((name) => ({
+      name,
+      mimeType: "text/plain",
+      buffer: Buffer.from(name),
+    })),
+  );
+  await expect(form.locator(".task-composer-file")).toHaveCount(3);
+  await pasteImage(form.locator('textarea[name="prompt"]'), "shot.png");
+  await expect(form.locator(".task-composer-attachment")).toHaveCount(1);
+  await captureReviewScreenshot(page, testInfo, "tasks-composer-file-chips");
+
+  const chips = await form.locator(".task-composer-files").evaluate((row) => {
+    const rowBox = row.getBoundingClientRect();
+    const rowStyle = getComputedStyle(row);
+    const contentRight = rowBox.right - Number.parseFloat(rowStyle.paddingRight);
+    return [...row.querySelectorAll(".task-composer-file")].map((chip) => {
+      const box = chip.getBoundingClientRect();
+      const stem = chip.querySelector(".task-composer-file-stem");
+      const extension = chip.querySelector(".task-composer-file-extension");
+      return {
+        top: Math.round(box.top),
+        width: box.width,
+        withinRow: box.right <= contentRight + 0.5,
+        stemClipped: stem.scrollWidth > stem.clientWidth,
+        extensionWhole: extension.scrollWidth <= extension.clientWidth,
+        extension: extension.textContent,
+        rowWidth: contentRight - rowBox.left,
+      };
+    });
+  });
+  const [short, alsoShort, long] = chips;
+  expect(short.top, "short names share a line").toBe(alsoShort.top);
+  expect(short.stemClipped).toBe(false);
+  expect(short.width, "a short name's chip is only as wide as its name").toBeLessThan(
+    short.rowWidth / 2,
+  );
+  expect(long.withinRow, "a long name stops at the Composer's edge").toBe(true);
+  expect(long.stemClipped, "a long name gives up the end of its stem").toBe(true);
+  expect(long.extensionWhole, "the extension stays whole").toBe(true);
+  expect(long.extension).toBe(".json");
+  for (const chip of chips) {
+    expect(chip.withinRow).toBe(true);
   }
 });
 

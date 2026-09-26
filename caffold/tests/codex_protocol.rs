@@ -286,6 +286,11 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
         "v2/TurnSteerParams.ts",
         &["clientUserMessageId?: string | null"],
     );
+    // A prompt's uploaded pictures are handed over as files Codex opens.
+    schema.assert_declares(
+        "v2/UserInput.ts",
+        &["\"type\": \"localImage\"", "path: string"],
+    );
     schema.assert_declares("v2/ThreadStartResponse.ts", &["serviceTier: string | null"]);
     schema.assert_declares(
         "v2/ThreadTurnsListResponse.ts",

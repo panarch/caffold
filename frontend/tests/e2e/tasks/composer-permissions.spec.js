@@ -12,6 +12,8 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
   pasteImage,
+  routeTaskUploads,
+  withAttachedFiles,
 } from "../support/task-fixtures.js";
 
 // A Claude installation: the agent names its own modes, and only some of its
@@ -1097,6 +1099,7 @@ test("new task submission stays single-flight and restores local input after rej
       },
     });
   });
+  const sent = await routeTaskUploads(page);
 
   await page.goto("/tasks/new?cwd=src");
   const composer = page.locator("caffold-task-composer");
@@ -1136,12 +1139,17 @@ test("new task submission stays single-flight and restores local input after rej
   expect(submittedBodies[1]).not.toHaveProperty("images");
   await expect(page).toHaveURL("/tasks/thread-1");
   await expect.poll(() => initialPromptBody).not.toBeNull();
+  // Creation carries no file; the created Task receives it through its own
+  // upload, before the ordinary prompt names it.
+  expect(sent.uploads.map(({ threadId, name }) => ({ threadId, name }))).toEqual([
+    { threadId: "thread-1", name: "create-retry.png" },
+  ]);
   expect(initialPromptBody).toMatchObject({
-    prompt: "Retry this exact task",
+    prompt: withAttachedFiles("Retry this exact task", [sent.uploads[0].path]),
+    imagePaths: [sent.uploads[0].path],
     fastMode: true,
     activeTurnId: null,
   });
-  expect(initialPromptBody.images).toHaveLength(1);
   expect(adoptedDetailReads).toBe(0);
 });
 

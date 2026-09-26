@@ -46,10 +46,11 @@ test("scales visible Task controls without shrinking their touch targets", { tag
     const composer = document.querySelector(
       "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
     );
-    composer.stateFor().images = [
+    composer.stateFor().attachments = [
       {
         id: "scale-audit-image",
         name: "scale-audit.png",
+        imageInput: true,
         dataUrl:
           "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
       },

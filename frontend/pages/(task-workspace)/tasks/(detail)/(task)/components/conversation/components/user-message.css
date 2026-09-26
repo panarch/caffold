@@ -1,0 +1,89 @@
+caffold-task-user-message {
+  display: grid;
+  gap: 0.3125rem;
+  width: 100%;
+  min-width: 0;
+
+  & > .task-user-message-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 1rem;
+    padding-right: 0.625rem;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & > .task-user-message-header > :empty {
+    display: none;
+  }
+
+  & > .task-user-message-header > .task-user-message-delivery {
+    margin-right: 0.4375rem;
+    color: var(--warning);
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & > caffold-task-message-attachments {
+    justify-self: end;
+    width: min(76%, 700px);
+  }
+
+  & > .task-user-message-content {
+    justify-self: end;
+    width: fit-content;
+    min-width: 0;
+    max-width: min(76%, 700px);
+    padding: 0.625rem 0.875rem;
+    border: 0;
+    border-radius: 18px;
+    background: var(--surface-muted);
+    box-shadow: inset 0 0 0 1px rgb(var(--shadow-rgb) / 8%);
+    font-size: var(--conversation-font-size);
+    line-height: var(--conversation-line-height);
+    overflow-wrap: anywhere;
+  }
+
+  & .task-user-message-text {
+    white-space: pre-wrap;
+  }
+
+  /* One line of the message's file list while it uploads: laid out exactly as
+     the plain text it becomes, with its progress drawn over the bottom of the
+     line box so the bar takes no room of its own. */
+  & .task-user-message-upload-line {
+    display: block;
+    position: relative;
+  }
+
+  & .task-user-message-upload-bar {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 2px;
+    overflow: hidden;
+    border-radius: 1px;
+    background: var(--border);
+  }
+
+  & .task-user-message-upload-bar::after {
+    display: block;
+    width: calc(var(--upload-progress, 0) * 100%);
+    height: 100%;
+    background: var(--focus-ring);
+    content: "";
+  }
+}
+
+@media (max-width: 860px) {
+  caffold-task-user-message {
+    & > caffold-task-message-attachments {
+      width: min(92%, 760px);
+    }
+
+    & > .task-user-message-content {
+      max-width: min(92%, 760px);
+    }
+  }
+}

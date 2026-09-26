@@ -304,14 +304,69 @@ export async function getTask(threadId, cursor = null, { signal } = {}) {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { cursor }, { signal });
 }
 
-export async function sendTaskPrompt(threadId, prompt, options = {}, images = []) {
+export async function sendTaskPrompt(threadId, prompt, options = {}, imagePaths = []) {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/prompts`,
     {},
     {
       method: "POST",
-      body: { prompt, images, ...options },
+      body: { prompt, imagePaths, ...options },
     },
+  );
+}
+
+// XMLHttpRequest rather than fetch, because only it reports how much of a
+// request body has gone out.
+export function uploadTaskFile(threadId, folder, name, file, { onProgress, signal } = {}) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(uploadCancelled());
+      return;
+    }
+    const request = new XMLHttpRequest();
+    const cancel = () => request.abort();
+    const settle = (finish) => {
+      signal?.removeEventListener("abort", cancel);
+      finish();
+    };
+    request.open(
+      "PUT",
+      `/api/tasks/${encodeURIComponent(threadId)}/uploads/${encodeURIComponent(folder)}/${encodeURIComponent(name)}`,
+    );
+    request.setRequestHeader("content-type", "application/octet-stream");
+    request.upload.addEventListener("progress", (event) => {
+      onProgress?.(event.loaded);
+    });
+    request.addEventListener("load", () =>
+      settle(() => {
+        reportOriginReachable();
+        const payload = parseJson(request.responseText);
+        if (request.status >= 200 && request.status < 300) {
+          resolve(payload);
+        } else {
+          reject(responseError(payload, request.status));
+        }
+      }),
+    );
+    request.addEventListener("error", () =>
+      settle(() => {
+        const error = new Error(`Could not reach Caffold to upload ${name}.`);
+        error.code = "upload_unreachable";
+        error.status = 0;
+        reject(error);
+      }),
+    );
+    request.addEventListener("abort", () => settle(() => reject(uploadCancelled())));
+    signal?.addEventListener("abort", cancel, { once: true });
+    request.send(file);
+  });
+}
+
+export async function discardTaskUploads(threadId, folder) {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(threadId)}/uploads/${encodeURIComponent(folder)}`,
+    {},
+    { method: "DELETE", expectJson: false },
   );
 }
 
@@ -527,14 +582,7 @@ async function requestJson(endpoint, params = {}, options = {}) {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const error = new Error(
-      payload?.error?.message ??
-        (typeof payload?.error === "string" ? payload.error : null) ??
-        `Request failed with HTTP ${response.status}`,
-    );
-    error.code = payload?.error?.code ?? "request_failed";
-    error.status = response.status;
-    throw error;
+    throw responseError(payload, response.status);
   }
 
   if (options.expectJson === false) {
@@ -542,4 +590,31 @@ async function requestJson(endpoint, params = {}, options = {}) {
   }
 
   return payload;
+}
+
+function responseError(payload, status) {
+  const error = new Error(
+    payload?.error?.message ??
+      (typeof payload?.error === "string" ? payload.error : null) ??
+      `Request failed with HTTP ${status}`,
+  );
+  error.code = payload?.error?.code ?? "request_failed";
+  error.status = status;
+  return error;
+}
+
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function uploadCancelled() {
+  const error = new Error("The upload was cancelled.");
+  error.name = "AbortError";
+  error.code = "upload_cancelled";
+  error.status = 0;
+  return error;
 }

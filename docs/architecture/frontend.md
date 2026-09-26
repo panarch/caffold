@@ -362,9 +362,11 @@ root as mutation dependencies.
 Custom children retain their own action knowledge. Work Details merges its own
 summary with its direct retained children. Command declares active disclosure
 or terminal View output from the same provider, Assistant Message Copy declares
-its one button, Markdown Code Block declares Wrap, Copy, and Preview, and
-Conversation merges those public scopes through its retained Assistant Message,
-Markdown, and Work Details children. Reusable controls such as the segmented
+its one button, Message Attachments declares one Preview per picture it can
+open, Markdown Code Block declares Wrap, Copy, and Preview, and Conversation
+merges those public scopes through its retained Assistant Message, User
+Message, Message Attachments, Markdown, and Work Details children. Reusable
+controls such as the segmented
 control, file tree, pagination, file navigator, and file viewer expose public
 scope providers; their screen owner supplies the semantic action and scope
 context. Ancestors never discover these actions by scanning descendant buttons,
@@ -704,6 +706,20 @@ state. Creation and prompt submission are separate HTTP requests, while this
 in-page handoff preserves the one-action experience and prevents a duplicate
 request between them.
 
+A pending prompt moves through one transition table in the Detail layout's
+private `layout/prompt-submission.js`: idle, uploading, sending, and accepted.
+Every change of node goes through that table, so an upload finishing, a stop,
+the prompt response, and the canonical item each apply only from the node they
+belong to; a late arrival for a prompt that has moved on is dropped. A prompt
+with attachments uploads them one at a time before its prompt request, and a
+new prompt may still replace one that is accepted but not yet canonical. Upload
+progress is presentation rather than a node: Detail hands each byte count to
+Conversation, which passes it to that prompt's User Message; the message paints
+its header and file-list bars in place instead of rendering the list again. A
+stop while uploading aborts the upload,
+discards the send's folder, and returns the message to the Composer,
+separately from the interrupt request the same stop makes for a running turn.
+
 Detail shows every prompt optimistically. The prompt response returns the
 user-item identity established by the agent adapter; only a backend Detail or
 live stream event carrying that exact item identity retires the optimistic
@@ -838,13 +854,14 @@ the Task subject and are preserved by Task identity through incremental shell
 updates. Moving from Tasks to Settings ends active editing and transport work
 without destroying a retained Composer draft.
 
-Conversation also owns its Detail retry, attachment-preview, and exact rendered
-Thinking disclosure controls. Detail retry uses Conversation's coarse owner;
-each attachment preview and Thinking disclosure uses the exact retained timeline
-entry that contains it. A custom child owns its own controls: Approval owns its
-offered decisions, Command owns its active disclosure or terminal View output,
-Work Details owns its root disclosure, and Markdown Code Block owns Wrap,
-Copy, and Preview. Preview appears only on a `markdown` or `md` fence and asks
+Conversation also owns its Detail retry and exact rendered Thinking disclosure
+controls. Detail retry uses Conversation's coarse owner; each Thinking
+disclosure uses the exact retained timeline entry that contains it. A custom
+child owns its own controls: Approval owns its offered decisions, Command owns
+its active disclosure or terminal View output, Work Details owns its root
+disclosure, Message Attachments owns each picture's preview, and Markdown Code
+Block owns Wrap, Copy, and Preview. Preview appears only on a `markdown` or `md`
+fence and asks
 Task Detail to open its code-block Markdown preview dialog with the block's text
 at that moment, rendered through the shared Markdown Preview.
 Assistant Message mounts its Copy control as a component of its own and
@@ -853,8 +870,14 @@ button, the outcome it reports, and the timer that clears it. It copies the
 message snapshot's text rather than the rendered Markdown, and text arriving
 for a different message retires a copy still in flight. Thinking Markdown
 intentionally remains outside code-block controls.
-Assistant Message, Markdown, and Work Details merge only the direct retained
-children they mount. A stream patch can therefore retire only the replaced
+User Message draws a prompt from a snapshot of its text, pictures, delivery
+state, time, and uploading file lines, and mounts Message Attachments for the
+pictures; a generated picture's entry mounts the same list directly.
+Conversation retains a prompt's entry by identity, so a delivery change or an
+upload's progress patches the message already on screen.
+Assistant Message, User Message, Markdown, and Work Details merge only the
+direct retained children they mount. A stream patch can therefore retire only
+the replaced
 entry, approval card, or child owner while unaffected sibling, App Shell, and
 Composer codes remain frozen, without introducing a descendant-DOM scan.
 

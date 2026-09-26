@@ -768,8 +768,8 @@ test("shows a prompt as the characters a person typed", { tag: "@all-viewports" 
 
   const tasksPage = page.locator("caffold-tasks-page");
   const userMessage = tasksPage.locator('.task-message[data-message-role="user"]');
-  const bubble = userMessage.locator(".task-message-content");
-  const promptText = userMessage.locator(".task-message-text");
+  const bubble = userMessage.locator(".task-user-message-content");
+  const promptText = userMessage.locator(".task-user-message-text");
   await expect(
     tasksPage.locator('.task-assistant-message caffold-task-markdown'),
   ).toHaveAttribute("data-render-state", "markdown");

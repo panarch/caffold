@@ -54,20 +54,82 @@ test("delegates active-turn presentation to its component snapshot", () => {
   });
 });
 
-test("shows a prompt as the text it was typed as", () => {
-  const stableUser = renderConversationEvent(messageEvent("user_message"), {});
-  const pendingUser = renderConversationEvent(
+test("hands a prompt to its component as the text it was typed as", () => {
+  for (const event of [
+    messageEvent("user_message"),
     messageEvent("user_message", { optimistic: true }),
-    {},
-  );
+  ]) {
+    const messages = new Map();
+    const html = renderConversationEvent(event, {}, { messages });
 
-  for (const html of [stableUser, pendingUser]) {
     assert.doesNotMatch(html, /<caffold-task-markdown/);
     assert.match(
       html,
-      /<div class="task-message-text">```example\nvalue\n```<\/div>/,
+      /<li class="task-event task-message"[^>]*data-message-role="user">\s*<caffold-task-user-message><\/caffold-task-user-message>/,
     );
+    assert.equal(messages.get(event.id).text, "```example\nvalue\n```");
   }
+});
+
+test("tells a prompt how far its delivery has got", () => {
+  const lines = [{ path: ".caffold/uploads/a/server.log", done: false }];
+  const pending = messageEvent("user_message", {
+    optimistic: true,
+    submissionState: "uploading",
+    upload: { lines },
+  });
+  const messages = new Map();
+  renderConversationEvent(pending, {}, { messages });
+  assert.equal(messages.get(pending.id).deliveryState, "uploading");
+  assert.deepEqual(messages.get(pending.id).uploadLines, lines);
+
+  const sent = messageEvent("user_message");
+  renderConversationEvent(sent, {}, { messages });
+  assert.equal(messages.get(sent.id).deliveryState, null);
+});
+
+test("hands a prompt's pictures to its component", () => {
+  const url = "data:image/png;base64,AAAA";
+  const event = messageEvent("user_message", {
+    content: [{ type: "image", url, name: "shot.png" }],
+  });
+  const messages = new Map();
+  renderConversationEvent(event, {}, { messages });
+
+  assert.deepEqual(messages.get(event.id).attachments, [
+    { src: url, name: "shot.png" },
+  ]);
+});
+
+test("shows a generated picture through the message attachment list", () => {
+  const event = {
+    id: "image-1",
+    threadId: "thread-1",
+    type: "generated_image",
+    summary: "Generated image",
+    payload: { itemId: "image-item", available: true },
+    position: { anchorMs: 1, index: 0 },
+  };
+  const messages = new Map();
+  const html = renderConversationEvent(event, {}, { messages });
+
+  assert.match(
+    html,
+    /data-message-role="assistant">[\s\S]*<caffold-task-message-attachments><\/caffold-task-message-attachments>/,
+  );
+  const key = [...messages.keys()][0];
+  assert.match(html, new RegExp(`data-conversation-entry-key="${key}"`));
+  assert.deepEqual(messages.get(key).attachments, [{
+    src: "/api/tasks/thread-1/generated-images/image-item",
+    name: "Generated image.png",
+  }]);
+  assert.doesNotMatch(
+    renderConversationEvent({
+      ...event,
+      payload: { ...event.payload, available: false },
+    }, {}),
+    /caffold-task-message-attachments/,
+  );
 });
 
 test("renders Thinking with a retained aria-hidden disclosure marker", () => {
@@ -114,8 +176,14 @@ test("does not present a history placement anchor as an item timestamp", () => {
     observedMs: 2,
   };
 
-  assert.doesNotMatch(renderConversationEvent(historyOnly, {}), /<time>/);
-  assert.match(renderConversationEvent(directlyObserved, {}), /<time>/);
+  const timeOf = (event) => {
+    const messages = new Map();
+    renderConversationEvent(event, {}, { messages });
+    return messages.get(event.id).time;
+  };
+
+  assert.equal(timeOf(historyOnly), "");
+  assert.notEqual(timeOf(directlyObserved), "");
 });
 
 test("conversation position alone does not replace an entry's content", () => {

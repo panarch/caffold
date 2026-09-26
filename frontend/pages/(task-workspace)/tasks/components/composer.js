@@ -17,8 +17,11 @@ import {
   voiceCaptureSupport,
 } from "./voice-recorder.js";
 
-const MAX_IMAGES = 4;
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_ATTACHMENTS = 10;
+const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+const MAX_IMAGE_INPUT_BYTES = 10 * 1024 * 1024;
+const TOO_MANY_ATTACHMENTS = `Attach up to ${MAX_ATTACHMENTS} files.`;
+const drawnIcons = new WeakMap();
 const DEFAULT_MAX_RECORDING_SECONDS = 5 * 60;
 const VOICE_PHASE_EDGES = new Map([
   ["checking", new Set(["unavailable", "notReady", "idle", "error"])],
@@ -36,7 +39,9 @@ const VOICE_STATUS_REFRESH_PHASES = new Set([
   "idle",
   "error",
 ]);
-const IMAGE_TYPES = new Set([
+// Pictures every agent can be shown. Anything else is attached as a file the
+// agent opens by its path.
+const IMAGE_INPUT_TYPES = new Set([
   "image/avif",
   "image/gif",
   "image/jpeg",
@@ -47,8 +52,8 @@ const IMAGE_TYPES = new Set([
 function createComposerState() {
   return {
     prompt: "",
-    images: [],
-    imageError: "",
+    attachments: [],
+    attachmentError: "",
     selectionStart: 0,
     selectionEnd: 0,
     activeSubmissionId: "",
@@ -69,6 +74,10 @@ class CaffoldTaskComposer extends HTMLElement {
     this.addEventListener("compositionstart", this.boundCompositionStart);
     this.addEventListener("compositionend", this.boundCompositionEnd);
     this.addEventListener("paste", this.boundPaste, true);
+    this.addEventListener("change", this.boundChange);
+    this.addEventListener("dragover", this.boundDragover);
+    this.addEventListener("dragleave", this.boundDragleave);
+    this.addEventListener("drop", this.boundDrop);
     this.addEventListener("submit", this.boundSubmit, true);
     this.addEventListener(
       "caffold:task-turn-options-change",
@@ -96,6 +105,10 @@ class CaffoldTaskComposer extends HTMLElement {
     this.removeEventListener("compositionstart", this.boundCompositionStart);
     this.removeEventListener("compositionend", this.boundCompositionEnd);
     this.removeEventListener("paste", this.boundPaste, true);
+    this.removeEventListener("change", this.boundChange);
+    this.removeEventListener("dragover", this.boundDragover);
+    this.removeEventListener("dragleave", this.boundDragleave);
+    this.removeEventListener("drop", this.boundDrop);
     this.removeEventListener("submit", this.boundSubmit, true);
     this.removeEventListener(
       "caffold:task-turn-options-change",
@@ -138,6 +151,7 @@ class CaffoldTaskComposer extends HTMLElement {
       settingsLocked: false,
       requestError: "",
       turnActive: false,
+      uploading: false,
       interrupting: false,
       interruptError: "",
       fastMode: false,
@@ -191,6 +205,14 @@ class CaffoldTaskComposer extends HTMLElement {
     this.boundPaste = (event) => {
       void this.handlePaste(event);
     };
+    this.boundChange = (event) => {
+      void this.handleFileChoice(event);
+    };
+    this.boundDragover = (event) => this.handleDragover(event);
+    this.boundDragleave = (event) => this.handleDragleave(event);
+    this.boundDrop = (event) => {
+      void this.handleDrop(event);
+    };
     this.boundSubmit = (event) => this.handleSubmit(event);
     this.boundIconsReady = () => this.render();
     this.boundVoiceSettingsChanged = () => {
@@ -235,6 +257,7 @@ class CaffoldTaskComposer extends HTMLElement {
       disabled: Boolean(context.disabled),
       settingsLocked: Boolean(context.settingsLocked),
       turnActive: Boolean(context.turnActive),
+      uploading: Boolean(context.uploading),
       interrupting: Boolean(context.interrupting),
       requestError: Object.hasOwn(context, "requestError")
         ? `${context.requestError ?? ""}`
@@ -267,11 +290,7 @@ class CaffoldTaskComposer extends HTMLElement {
     }
     const rejected = result.status === "rejected";
     if (rejected) {
-      state.prompt ||= submission.prompt;
-      if (!state.images.length) {
-        state.images = [...submission.images];
-      }
-      state.imageError = "";
+      this.restoreAheadOfDraft([submission.prompt], submission.attachments);
     }
     if (result.resetOverrides) {
       this.turnOptions()?.resetOverrides();
@@ -296,30 +315,28 @@ class CaffoldTaskComposer extends HTMLElement {
     if (!cancelled.length) {
       return false;
     }
+    this.restoreAheadOfDraft(
+      cancelled.map((sent) => `${sent?.prompt ?? ""}`),
+      [],
+    );
+    this.render();
+    return true;
+  }
+
+  // Messages that never reached the agent go back in the order they were
+  // sent, ahead of whatever was written since.
+  restoreAheadOfDraft(prompts, attachments) {
     this.captureCurrentState();
     const state = this.stateFor();
-    state.prompt = [...cancelled.map((sent) => `${sent?.prompt ?? ""}`), state.prompt]
-      .filter((text) => text.trim())
+    state.prompt = [...prompts, state.prompt]
+      .filter((text) => `${text ?? ""}`.trim())
       .join("\n\n");
     state.selectionStart = state.prompt.length;
     state.selectionEnd = state.prompt.length;
-    const images = [
-      ...cancelled
-        .flatMap((sent) => (Array.isArray(sent?.images) ? sent.images : []))
-        .map((dataUrl, index) => ({
-          id: `cancelled:${Date.now()}:${index}:${Math.random().toString(36).slice(2)}`,
-          name: `image-${index + 1}`,
-          type: `${dataUrl}`.match(/^data:([^;,]+)/)?.[1] ?? "image/png",
-          size: 0,
-          dataUrl: `${dataUrl}`,
-        })),
-      ...state.images,
-    ];
-    state.images = images.slice(0, MAX_IMAGES);
-    state.imageError =
-      images.length > MAX_IMAGES ? `Attach up to ${MAX_IMAGES} images.` : "";
-    this.render();
-    return true;
+    const restored = [...attachments, ...state.attachments];
+    state.attachments = restored.slice(0, MAX_ATTACHMENTS);
+    state.attachmentError =
+      restored.length > MAX_ATTACHMENTS ? TOO_MANY_ATTACHMENTS : "";
   }
 
   // Remove an in-flight submission from this composer without accepting or
@@ -368,8 +385,8 @@ class CaffoldTaskComposer extends HTMLElement {
     const state = this.stateFor();
     state.activeSubmissionId = submission.id;
     state.prompt = "";
-    state.images = [];
-    state.imageError = "";
+    state.attachments = [];
+    state.attachmentError = "";
     this.context.requestError = "";
     const turnOptionsContext = this.turnOptionsContext();
     this.turnOptions()?.reset({
@@ -399,7 +416,7 @@ class CaffoldTaskComposer extends HTMLElement {
     this.captureCurrentState();
     const state = this.stateFor();
     return Boolean(
-      state.prompt.trim() || state.images.length || this.activeSubmissionFor()
+      state.prompt.trim() || state.attachments.length || this.activeSubmissionFor()
     );
   }
 
@@ -417,8 +434,8 @@ class CaffoldTaskComposer extends HTMLElement {
     const state = this.stateFor();
     return Boolean(
       state.prompt.trim() ||
-        state.images.length ||
-        state.imageError ||
+        state.attachments.length ||
+        state.attachmentError ||
         this.activeSubmissionFor() ||
         this.context.requestError,
     );
@@ -512,6 +529,7 @@ class CaffoldTaskComposer extends HTMLElement {
     ]);
     const definitions = [];
     for (const [id, selector] of [
+      ["attach", 'button[data-composer-action="attach"]'],
       ["browse-cwd", 'button[data-composer-action="browse-cwd"]'],
       ["voice", 'button[data-composer-action="voice"]'],
       ["cancel-voice", 'button[data-composer-action="cancel-voice"]'],
@@ -533,21 +551,27 @@ class CaffoldTaskComposer extends HTMLElement {
         });
       }
     }
-    for (const control of this.querySelectorAll(
-      'button[data-composer-action="preview-image"][data-image-id], button[data-composer-action="remove-image"][data-image-id]',
-    )) {
-      const action = `${control.dataset.composerAction ?? ""}`;
-      const imageId = `${control.dataset.imageId ?? ""}`;
-      if (!imageId) {
-        continue;
+    for (const [action, key] of [
+      ["preview-image", "imageId"],
+      ["remove-image", "imageId"],
+      ["remove-file", "fileId"],
+    ]) {
+      const attribute = key === "imageId" ? "data-image-id" : "data-file-id";
+      for (const control of this.querySelectorAll(
+        `button[data-composer-action="${action}"][${attribute}]`,
+      )) {
+        const attachmentId = `${control.dataset[key] ?? ""}`;
+        if (!attachmentId) {
+          continue;
+        }
+        definitions.push({
+          id: `${action}:${attachmentId}`,
+          selector: `button[data-composer-action="${action}"][${attribute}]`,
+          control,
+          identity: (candidate) => candidate.dataset[key] === attachmentId,
+          attachmentId,
+        });
       }
-      definitions.push({
-        id: `${action}:${imageId}`,
-        selector: `button[data-composer-action="${action}"][data-image-id]`,
-        control,
-        identity: (candidate) => candidate.dataset.imageId === imageId,
-        imageId,
-      });
     }
     return definitions.flatMap((definition) => {
       const { control } = definition;
@@ -578,8 +602,8 @@ class CaffoldTaskComposer extends HTMLElement {
               `${this.stateFor().activeSubmissionId ?? ""}`,
             ]) === contextKey &&
           currentControl() === control &&
-          (!definition.imageId || this.stateFor().images.some(
-            (image) => image.id === definition.imageId
+          (!definition.attachmentId || this.stateFor().attachments.some(
+            (attachment) => attachment.id === definition.attachmentId
           )) &&
           !control.disabled &&
           hasActionHintLayoutBox(control),
@@ -609,7 +633,7 @@ class CaffoldTaskComposer extends HTMLElement {
   primaryActionView() {
     const state = this.stateFor();
     const submitting = Boolean(this.activeSubmissionFor());
-    const hasDraft = Boolean(state.prompt.trim() || state.images.length);
+    const hasDraft = Boolean(state.prompt.trim() || state.attachments.length);
     const voicePhase = this.voice.phase;
     const transportBlocked = this.context.disabled;
     const optionsReady = this.turnOptions().readyForSubmission();
@@ -626,10 +650,12 @@ class CaffoldTaskComposer extends HTMLElement {
           : label,
       disabled: transportBlocked || disabled || !optionsReady,
     });
-    const stop = ({ disabled = false, title = "Stop current turn" } = {}) => ({
+    const stop = (
+      { disabled = false, label = "Stop current turn", title = label } = {},
+    ) => ({
       kind: "stop",
       icon: "Square",
-      label: "Stop current turn",
+      label,
       title: transportBlocked ? "Caffold server is reconnecting." : title,
       disabled: transportBlocked || disabled,
     });
@@ -638,6 +664,13 @@ class CaffoldTaskComposer extends HTMLElement {
       return send({
         disabled: submitting,
         label: "Finish voice input and send",
+      });
+    }
+    // A message still uploading has not reached the agent, so stopping takes
+    // it back — and stops the turn too when one is running.
+    if (this.context.uploading && !this.context.interrupting) {
+      return stop({
+        label: this.context.turnActive ? "Stop current turn" : "Cancel upload",
       });
     }
     if (submitting) {
@@ -785,7 +818,7 @@ class CaffoldTaskComposer extends HTMLElement {
     if (
       !textarea ||
       !form ||
-      (!textarea.value.trim() && !this.stateFor().images.length)
+      (!textarea.value.trim() && !this.stateFor().attachments.length)
     ) {
       return;
     }
@@ -816,8 +849,12 @@ class CaffoldTaskComposer extends HTMLElement {
       this.dispatchIntent(type);
       return;
     }
+    if (type === "attach") {
+      this.querySelector("input[data-composer-file-input]")?.click();
+      return;
+    }
     if (type === "preview-image") {
-      const image = this.stateFor().images.find(
+      const image = this.stateFor().attachments.find(
         (candidate) => candidate.id === action.dataset.imageId,
       );
       if (image) {
@@ -828,12 +865,13 @@ class CaffoldTaskComposer extends HTMLElement {
       }
       return;
     }
-    if (type === "remove-image") {
+    if (type === "remove-image" || type === "remove-file") {
+      const removed = action.dataset.imageId ?? action.dataset.fileId;
       const state = this.stateFor();
-      state.images = state.images.filter(
-        (image) => image.id !== action.dataset.imageId,
+      state.attachments = state.attachments.filter(
+        (attachment) => attachment.id !== removed,
       );
-      state.imageError = "";
+      state.attachmentError = "";
       this.render();
       return;
     }
@@ -1049,55 +1087,121 @@ class CaffoldTaskComposer extends HTMLElement {
 
   async handlePaste(event) {
     const textarea = closestElement(event.target, "textarea[name='prompt']");
-    if (
-      !textarea ||
-      (this.context.mode === "create" && this.activeSubmissionFor())
-    ) {
+    if (!textarea || !this.acceptsAttachments()) {
       return;
     }
     const files = Array.from(event.clipboardData?.items ?? [])
-      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .filter((item) => item.kind === "file")
       .map((item) => item.getAsFile())
       .filter(Boolean);
     if (!files.length) {
       return;
     }
     event.preventDefault();
-    const state = this.stateFor();
-    const availableSlots = MAX_IMAGES - state.images.length;
-    if (availableSlots <= 0) {
-      state.imageError = `Attach up to ${MAX_IMAGES} images.`;
-      this.render();
+    await this.addAttachments(files, { pasted: true });
+  }
+
+  async handleFileChoice(event) {
+    const input = closestElement(event.target, "input[data-composer-file-input]");
+    if (!input) {
       return;
     }
-    const accepted = [];
-    let error =
-      files.length > availableSlots ? `Attach up to ${MAX_IMAGES} images.` : "";
-    for (const [index, file] of files.slice(0, availableSlots).entries()) {
-      if (!IMAGE_TYPES.has(file.type)) {
-        error = "Use PNG, JPEG, GIF, WebP, or AVIF images.";
-        continue;
-      }
-      if (file.size > MAX_IMAGE_BYTES) {
-        error = "Each image must be 10 MB or smaller.";
-        continue;
-      }
-      try {
-        accepted.push({
-          id: `clipboard:${Date.now()}:${index}:${Math.random().toString(36).slice(2)}`,
-          name:
-            file.name ||
-            `clipboard-image-${state.images.length + accepted.length + 1}.${imageExtension(file.type)}`,
-          type: file.type,
-          size: file.size,
-          dataUrl: await readFileAsDataUrl(file),
-        });
-      } catch {
-        error = "Could not read the pasted image.";
-      }
+    const files = Array.from(input.files ?? []);
+    input.value = "";
+    if (files.length && this.acceptsAttachments()) {
+      await this.addAttachments(files);
     }
-    state.images = [...state.images, ...accepted];
-    state.imageError = error;
+  }
+
+  handleDragover(event) {
+    if (!carriesFiles(event.dataTransfer) || !this.acceptsAttachments()) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    this.setDropTarget(true);
+  }
+
+  handleDragleave(event) {
+    if (!this.contains(event.relatedTarget)) {
+      this.setDropTarget(false);
+    }
+  }
+
+  async handleDrop(event) {
+    if (!carriesFiles(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    this.setDropTarget(false);
+    if (!this.acceptsAttachments()) {
+      return;
+    }
+    const items = Array.from(event.dataTransfer.items ?? []);
+    const folders = items.some((item) => item.webkitGetAsEntry?.()?.isDirectory);
+    const files = items.length
+      ? items
+          .filter((item) => item.kind === "file" && !item.webkitGetAsEntry?.()?.isDirectory)
+          .map((item) => item.getAsFile())
+          .filter(Boolean)
+      : Array.from(event.dataTransfer.files ?? []);
+    await this.addAttachments(files, {
+      error: folders ? "Folders cannot be attached." : "",
+    });
+  }
+
+  setDropTarget(active) {
+    const panel = this.querySelector(".task-composer-panel");
+    if (panel) {
+      panel.toggleAttribute("data-drop-target", active);
+    }
+  }
+
+  acceptsAttachments() {
+    return !this.context.disabled &&
+      !(this.context.mode === "create" && this.activeSubmissionFor());
+  }
+
+  async addAttachments(files, { pasted = false, error: initialError = "" } = {}) {
+    const state = this.stateFor();
+    const accepted = [];
+    let error = initialError;
+    for (const [index, file] of files.entries()) {
+      if (state.attachments.length + accepted.length >= MAX_ATTACHMENTS) {
+        error = TOO_MANY_ATTACHMENTS;
+        break;
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        error = `${file.name || "A file"} is larger than 100 MB.`;
+        continue;
+      }
+      const imageInput = IMAGE_INPUT_TYPES.has(file.type) &&
+        file.size <= MAX_IMAGE_INPUT_BYTES;
+      const attachment = {
+        id: `attachment:${Date.now()}:${index}:${Math.random().toString(36).slice(2)}`,
+        file,
+        name: file.name || (
+          pasted && imageInput
+            ? `clipboard-image-${state.attachments.length + accepted.length + 1}.${imageExtension(file.type)}`
+            : `file-${state.attachments.length + accepted.length + 1}`
+        ),
+        type: file.type,
+        size: file.size,
+        imageInput,
+        dataUrl: "",
+      };
+      if (imageInput) {
+        try {
+          attachment.dataUrl = await readFileAsDataUrl(file);
+        } catch {
+          error = `Could not read ${attachment.name}.`;
+          continue;
+        }
+      }
+      accepted.push(attachment);
+    }
+    state.attachments = [...state.attachments, ...accepted];
+    state.attachmentError = error;
     this.render();
   }
 
@@ -1128,7 +1232,7 @@ class CaffoldTaskComposer extends HTMLElement {
     this.captureCurrentState();
     const state = this.stateFor();
     const prompt = state.prompt.trim();
-    if (!prompt && !state.images.length) {
+    if (!prompt && !state.attachments.length) {
       return;
     }
     const submissionId = [
@@ -1145,15 +1249,15 @@ class CaffoldTaskComposer extends HTMLElement {
     const submission = {
       id: submissionId,
       prompt,
-      images: [...state.images],
+      attachments: [...state.attachments],
       options: { ...options },
       restorePromptFocusOnRejection,
     };
     this.activeSubmissions.set(submissionId, submission);
     state.activeSubmissionId = submissionId;
     state.prompt = "";
-    state.images = [];
-    state.imageError = "";
+    state.attachments = [];
+    state.attachmentError = "";
     this.context.requestError = "";
     this.turnOptions()?.hidePopovers();
     if (restorePromptFocusOnRejection) {
@@ -1168,8 +1272,7 @@ class CaffoldTaskComposer extends HTMLElement {
           submissionId,
           threadId: `${this.context.threadId ?? ""}`,
           prompt,
-          images: submission.images.map((image) => image.dataUrl),
-          attachments: [...submission.images],
+          attachments: [...submission.attachments],
           options,
         },
       }),
@@ -1229,7 +1332,15 @@ class CaffoldTaskComposer extends HTMLElement {
           </div>`
         : "",
     );
-    this.setRegion("images", renderImages(state.images));
+    this.setRegion("attachments", renderAttachments(state.attachments));
+    const attach = this.querySelector('button[data-composer-action="attach"]');
+    attach.disabled = fieldDisabled || !this.acceptsAttachments();
+    // Drawn again once the icon set has loaded, as the other toolbar icons are.
+    const attachIcon = renderInlineIcon("Paperclip", "Attach files", "task-composer-attach-icon");
+    if (drawnIcons.get(attach) !== attachIcon) {
+      drawnIcons.set(attach, attachIcon);
+      attach.innerHTML = attachIcon;
+    }
 
     const textarea = this.querySelector("textarea[name='prompt']");
     const textareaFocused = document.activeElement === textarea;
@@ -1260,9 +1371,9 @@ class CaffoldTaskComposer extends HTMLElement {
         : "",
     );
     this.setRegion(
-      "image-error",
-      state.imageError
-        ? `<p class="task-composer-image-error" role="alert">${escapeHtml(state.imageError)}</p>`
+      "attachment-error",
+      state.attachmentError
+        ? `<p class="task-composer-attachment-error" role="alert">${escapeHtml(state.attachmentError)}</p>`
         : "",
     );
     this.setRegion(
@@ -1308,12 +1419,12 @@ class CaffoldTaskComposer extends HTMLElement {
       <form class="task-composer" data-task-form="create">
         <div class="task-composer-panel">
           <div class="task-composer-render-region" data-composer-region="context"></div>
-          <div class="task-composer-render-region" data-composer-region="images"></div>
+          <div class="task-composer-render-region" data-composer-region="attachments"></div>
           <textarea name="prompt" rows="1"></textarea>
           <div class="task-composer-render-region" data-composer-region="create-status"></div>
           <div class="task-composer-render-region" data-composer-region="voice-status"></div>
           <div class="task-composer-render-region" data-composer-region="interrupt-error"></div>
-          <div class="task-composer-render-region" data-composer-region="image-error"></div>
+          <div class="task-composer-render-region" data-composer-region="attachment-error"></div>
           <div class="task-composer-render-region" data-composer-region="request-error"></div>
           <input type="hidden" name="model">
           <input type="hidden" name="effort">
@@ -1321,6 +1432,14 @@ class CaffoldTaskComposer extends HTMLElement {
           <input type="hidden" name="permissionMode">
           <div class="task-composer-toolbar">
             <div class="task-composer-tools">
+              <button
+                type="button"
+                class="task-composer-attach-button"
+                data-composer-action="attach"
+                aria-label="Attach files"
+                title="Attach files"
+              ></button>
+              <input type="file" multiple hidden data-composer-file-input>
               <div class="task-composer-render-region" data-composer-region="cancel"></div>
               <caffold-task-turn-options></caffold-task-turn-options>
             </div>
@@ -1473,11 +1592,10 @@ class CaffoldTaskComposer extends HTMLElement {
 
 const COMPOSER_KEYBOARD_CONTEXT_MODES = new Set(["create", "follow-up"]);
 
-function renderImages(images) {
-  if (!images.length) {
-    return "";
-  }
-  return `
+function renderAttachments(attachments) {
+  const images = attachments.filter((attachment) => attachment.imageInput);
+  const files = attachments.filter((attachment) => !attachment.imageInput);
+  return `${images.length ? `
     <div class="task-composer-attachments" aria-label="Images to send">
       ${images
         .map(
@@ -1504,7 +1622,42 @@ function renderImages(images) {
         )
         .join("")}
     </div>
-  `;
+  ` : ""}${files.length ? `
+    <div class="task-composer-files" aria-label="Files to send">
+      ${files
+        .map((file) => {
+          const { stem, extension } = splitFileName(file.name);
+          return `
+            <span class="task-composer-file" title="${escapeHtml(file.name)}">
+              ${renderInlineIcon("File", "File", "task-composer-file-icon")}
+              <span class="task-composer-file-name"><span class="task-composer-file-stem">${escapeHtml(stem)}</span><span class="task-composer-file-extension">${escapeHtml(extension)}</span></span>
+              <button
+                type="button"
+                class="task-composer-file-remove"
+                data-composer-action="remove-file"
+                data-file-id="${escapeHtml(file.id)}"
+                aria-label="Remove ${escapeHtml(file.name)}"
+                title="Remove file"
+              >${renderInlineIcon("X", "Remove file", "task-composer-file-remove-icon")}</button>
+            </span>
+          `;
+        })
+        .join("")}
+    </div>
+  ` : ""}`;
+}
+
+// The extension stays whole when a long name is cut short, so a file is still
+// told apart by its kind.
+function splitFileName(name) {
+  const dot = name.lastIndexOf(".");
+  return dot > 0
+    ? { stem: name.slice(0, dot), extension: name.slice(dot) }
+    : { stem: name, extension: "" };
+}
+
+function carriesFiles(dataTransfer) {
+  return Array.from(dataTransfer?.types ?? []).includes("Files");
 }
 
 function voiceActionLabel(phase, ready) {
@@ -1599,8 +1752,7 @@ function submissionDetail(submission, threadId = "") {
     submissionId: submission.id,
     threadId: `${threadId ?? ""}`,
     prompt: submission.prompt,
-    images: submission.images.map((image) => image.dataUrl),
-    attachments: [...submission.images],
+    attachments: [...submission.attachments],
     options: { ...(submission.options ?? {}) },
     restorePromptFocusOnRejection: Boolean(
       submission.restorePromptFocusOnRejection,
@@ -1611,27 +1763,15 @@ function submissionDetail(submission, threadId = "") {
 function normalizeAdoptedSubmission(value) {
   const id = `${value?.submissionId ?? value?.id ?? ""}`.trim();
   const prompt = `${value?.prompt ?? ""}`.trim();
-  const providedAttachments = Array.isArray(value?.attachments)
-    ? value.attachments
-    : [];
-  const attachments = providedAttachments.length
-    ? providedAttachments.map((image) => ({ ...image }))
-    : (Array.isArray(value?.images) ? value.images : []).map(
-        (dataUrl, index) => ({
-          id: `adopted:${id}:${index}`,
-          name: `image-${index + 1}`,
-          type: `${dataUrl}`.match(/^data:([^;,]+)/)?.[1] ?? "image/png",
-          size: 0,
-          dataUrl: `${dataUrl}`,
-        }),
-      );
+  const attachments = (Array.isArray(value?.attachments) ? value.attachments : [])
+    .map((attachment) => ({ ...attachment }));
   if (!id || (!prompt && !attachments.length)) {
     return null;
   }
   return {
     id,
     prompt,
-    images: attachments,
+    attachments,
     options: { ...(value?.options ?? {}) },
     restorePromptFocusOnRejection: Boolean(
       value?.restorePromptFocusOnRejection,

@@ -8,6 +8,7 @@ export const TASK_TRANSPORT_STATE = Object.freeze({
 });
 
 export const PROMPT_SUBMISSION_STATE = Object.freeze({
+  UPLOADING: "uploading",
   SENDING: "sending",
   ACCEPTED: "accepted",
   OUTCOME_UNKNOWN: "outcomeUnknown",

@@ -612,8 +612,8 @@ pub(crate) enum UserInput<'a> {
         text: &'a str,
         text_elements: [Value; 0],
     },
-    #[serde(rename = "image")]
-    Image { url: &'a str },
+    #[serde(rename = "localImage")]
+    LocalImage { path: &'a str },
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -1403,13 +1403,13 @@ pub(crate) fn turn_start_params<'a>(
     thread_id: &'a str,
     cwd: &'a str,
     prompt: &'a str,
-    image_urls: &'a [String],
+    image_paths: &'a [String],
     client_user_message_id: &'a str,
     options: &'a CodexTurnOptions,
 ) -> TurnStartParams<'a> {
     TurnStartParams {
         thread_id,
-        input: turn_input(prompt, image_urls),
+        input: turn_input(prompt, image_paths),
         client_user_message_id,
         cwd,
         runtime_workspace_roots: [cwd],
@@ -1433,18 +1433,18 @@ pub(crate) fn turn_steer_params<'a>(
     thread_id: &'a str,
     expected_turn_id: &'a str,
     prompt: &'a str,
-    image_urls: &'a [String],
+    image_paths: &'a [String],
     client_user_message_id: &'a str,
 ) -> TurnSteerParams<'a> {
     TurnSteerParams {
         thread_id,
-        input: turn_input(prompt, image_urls),
+        input: turn_input(prompt, image_paths),
         client_user_message_id,
         expected_turn_id,
     }
 }
 
-fn turn_input<'a>(prompt: &'a str, image_urls: &'a [String]) -> Vec<UserInput<'a>> {
+fn turn_input<'a>(prompt: &'a str, image_paths: &'a [String]) -> Vec<UserInput<'a>> {
     let mut input = Vec::new();
     if !prompt.is_empty() {
         input.push(UserInput::Text {
@@ -1452,11 +1452,9 @@ fn turn_input<'a>(prompt: &'a str, image_urls: &'a [String]) -> Vec<UserInput<'a
             text_elements: [],
         });
     }
-    input.extend(
-        image_urls
-            .iter()
-            .map(|url| UserInput::Image { url: url.as_str() }),
-    );
+    input.extend(image_paths.iter().map(|path| UserInput::LocalImage {
+        path: path.as_str(),
+    }));
     input
 }
 
@@ -1860,7 +1858,8 @@ mod tests {
 
     #[test]
     fn serializes_supported_request_shapes() {
-        let images = vec!["data:image/png;base64,aGVsbG8=".to_string()];
+        let images =
+            vec!["/workspace/project/.caffold/uploads/20260926-153012-a1b2/shot.png".to_string()];
         let fixtures = [
             (
                 ACCOUNT_READ,
@@ -1966,7 +1965,7 @@ mod tests {
                     "threadId": "thread_1",
                     "input": [
                         { "type": "text", "text": "Inspect", "text_elements": [] },
-                        { "type": "image", "url": "data:image/png;base64,aGVsbG8=" }
+                        { "type": "localImage", "path": "/workspace/project/.caffold/uploads/20260926-153012-a1b2/shot.png" }
                     ],
                     "clientUserMessageId": "message_1",
                     "cwd": "/workspace/project",
@@ -1993,7 +1992,7 @@ mod tests {
                     "threadId": "thread_1",
                     "input": [
                         { "type": "text", "text": "Continue", "text_elements": [] },
-                        { "type": "image", "url": "data:image/png;base64,aGVsbG8=" }
+                        { "type": "localImage", "path": "/workspace/project/.caffold/uploads/20260926-153012-a1b2/shot.png" }
                     ],
                     "clientUserMessageId": "message_2",
                     "expectedTurnId": "turn_1"

@@ -1513,22 +1513,12 @@ fn withdraw_cancelled(
     (prompts, retold)
 }
 
-/// A message Caffold sent, as it was sent, out of the item that draws it.
+/// The words of a message Caffold sent, out of the item that draws it.
 fn as_sent(item: ConversationItem) -> Option<CancelledPrompt> {
-    let ItemKind::UserMessage { text, content } = item.kind else {
+    let ItemKind::UserMessage { text, .. } = item.kind else {
         return None;
     };
-    let images = content
-        .into_iter()
-        .filter_map(|part| match part {
-            MessageContent::Image { url } => Some(url),
-            MessageContent::Text { .. } | MessageContent::LocalImage { .. } => None,
-        })
-        .collect();
-    Some(CancelledPrompt {
-        prompt: text,
-        images,
-    })
+    Some(CancelledPrompt { prompt: text })
 }
 
 /// A turn this session had open, closed.
@@ -2568,9 +2558,8 @@ mod tests {
             cancelled,
             [CancelledPrompt {
                 prompt: "second".to_string(),
-                images: vec![picture],
             }],
-            "the cancelled message comes back as it was sent"
+            "the cancelled message comes back as its words were sent, without the picture"
         );
         assert_eq!(
             steer_items_of(&client, &story.id).await,

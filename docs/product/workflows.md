@@ -169,6 +169,32 @@ history names, are optional organization conventions only. Caffold does not
 parse, validate, or index them and provides no resolved-plan list; they remain
 ordinary files in Files.
 
+### Send files with a prompt
+
+1. Files attached in the Composer stay in the browser until the prompt is
+   sent.
+2. Sending uploads them one at a time, in the order they were attached, into a
+   folder of their own under the Task's effective working directory:
+   `.caffold/uploads/<YYYYMMDD-HHMMSS-xxxx>/<name>`. The folder is named by when
+   the prompt was sent and four random characters. A name that repeats within
+   one send is numbered before its extension, as `log.txt` and `log-2.txt`.
+   An uploaded file is never replaced.
+3. Once every file is up, the prompt is sent with an `Attached files:` list of
+   their paths, relative to the working directory, after its words. The list is
+   part of the message: the agent reads it, and the conversation shows it as
+   written.
+4. A PNG, JPEG, GIF, WebP, or AVIF picture of up to 10 MB also reaches the agent
+   as an image. Codex opens the uploaded file itself; Claude and Grok receive its
+   bytes inside the prompt. Every other file, including a larger picture or one
+   in another format, reaches the agent only through its path.
+5. Caffold deletes a send's folder only when the agent certainly did not
+   receive the prompt: an upload failed or was cancelled, or the server
+   definitively rejected the prompt. A prompt whose delivery is unconfirmed
+   keeps its files, and so does a message that a stop returns to the Composer,
+   whose words still name them. Caffold removes uploaded files in no other case,
+   including when a Task is deleted, and does not change Git tracking for
+   `.caffold/`.
+
 ### Keep Notes through a Task
 
 1. In any Task, ask its agent to save something as a Note, or to change, move,
