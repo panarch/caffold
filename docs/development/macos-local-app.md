@@ -32,7 +32,8 @@ The installer:
 7. opens the new application and verifies `/api/health`, the expected commit in
    `buildId`, and the exact bundled server that owns the port;
 8. unregisters the source bundle and the backup from LaunchServices, so only the
-   installed application stays registered.
+   installed application stays registered;
+9. removes all but the ten newest backups, unregistering each first.
 
 Run the read-only shutdown preflight independently with:
 
@@ -71,26 +72,68 @@ wrapper is then left without a server it owns, and a replacement started
 separately is reported as `External`, which disables `Restart Server` and
 application updates until that server stops.
 
+## Install artifacts
+
+| Path | Holds | Kept |
+| --- | --- | --- |
+| `/Applications/Caffold Server.app` | the installed application | one |
+| `~/Library/Application Support/Caffold/install-backups` | applications replaced by successful installs | ten newest |
+| `~/Library/Application Support/Caffold/install-failures` | new applications set aside by a rollback | three newest |
+
+Backups and failed bundles are named
+`Caffold Server-<date>-<time>-<commit>.app`: the installer's start time and the
+`CaffoldBuildCommit` of the bundle inside, which is the commit the About panel
+shows. Names sort oldest first, and pruning removes from the front of that
+order. Pruning touches only application bundles named this way, so other files
+in those directories stay.
+
+In the normal state `/Applications` holds one Caffold bundle, and
+`lsregister -dump` lists one registration for `io.panarch.caffold.server`, at
+`/Applications/Caffold Server.app`. The installer unregisters only the bundles
+it moves or removes. A registration made another way stays until
+`lsregister -u <path>` removes it. AppleScript's
+`path to application id "io.panarch.caffold.server"` is one such way: it can
+register a kept backup.
+
 ## Rollback
 
-If the new application fails validation after replacement, the installer first
-stops the new wrapper and server completely. Only then does it move the failed
-bundle aside and unregister it from LaunchServices, restore the backup to the
-canonical path, reopen it, and verify health again.
+The installer rolls back on its own. If the new application fails validation
+after replacement, the installer first stops the new wrapper and server
+completely. Only then does it move the failed bundle into `install-failures`
+and unregister it from LaunchServices, restore the backup to the canonical
+path, reopen it, and verify health again.
 
-Failed bundles are preserved as:
+A manual rollback returns to an earlier build after the installed one has been
+judged, from any backup still kept. Its reach is the last ten installs, not a
+length of time; on a busy day that is a few hours.
 
-```text
-/Applications/.Caffold Server.failed.<pid>.app
+### Restore a backup by hand
+
+Quit the application and confirm the runtime is fully stopped before moving
+anything. Then retire the installed application into the backups under the
+same name form, and put the chosen backup in its place. LaunchServices keeps a
+registration through a move, so unregister the retired bundle and register the
+restored one:
+
+```sh
+lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+app="/Applications/Caffold Server.app"
+backups="$HOME/Library/Application Support/Caffold/install-backups"
+restored="$backups/Caffold Server-<date>-<time>-<commit>.app"
+
+osascript -e 'tell application id "io.panarch.caffold.server" to quit'
+desktop/macos/install-local --check-stopped
+
+retired="$backups/Caffold Server-$(date '+%Y%m%d-%H%M%S')-$(plutil -extract CaffoldBuildCommit raw -o - "$app/Contents/Info.plist").app"
+mv "$app" "$retired"
+"$lsregister" -u "$retired"
+mv "$restored" "$app"
+"$lsregister" -f "$app"
+open "$app"
 ```
 
-They exist for failure inspection and are not removed automatically. Once the
-failure is understood and a healthy app is confirmed, remove a specific failed
-bundle manually. Backups are kept under:
-
-```text
-~/Library/Application Support/Caffold/install-backups
-```
+Replace `restored` with the backup to return to. Run the moves only after
+`--check-stopped` succeeds.
 
 ## Data and path isolation
 
@@ -114,4 +157,5 @@ CAFFOLD_SERVER_PORT=18765 \
 desktop/macos/install-local
 ```
 
-`CAFFOLD_SERVER_APP_TARGET` must be an absolute `.app` path.
+`CAFFOLD_SERVER_APP_TARGET` must be an absolute `.app` path. Failed bundles go
+to an `install-failures` directory beside `CAFFOLD_SERVER_BACKUP_DIR`.

@@ -10,9 +10,11 @@ TARGET_DIR="$(dirname -- "${TARGET_APP}")"
 TARGET_EXECUTABLE="${TARGET_APP}/Contents/MacOS/CaffoldServer"
 TARGET_SERVER="${TARGET_APP}/Contents/Resources/caffold"
 STAGING_APP="${TARGET_DIR}/.Caffold Server.installing.$$.app"
-FAILED_APP="${TARGET_DIR}/.Caffold Server.failed.$$.app"
 BACKUP_ROOT="${CAFFOLD_SERVER_BACKUP_DIR:-${HOME}/Library/Application Support/Caffold/install-backups}"
-BACKUP_APP="${BACKUP_ROOT}/Caffold Server-$(date '+%Y%m%d-%H%M%S')-$$.app"
+BACKUP_KEEP=10
+FAILURE_ROOT="$(dirname -- "${BACKUP_ROOT}")/install-failures"
+FAILURE_KEEP=3
+INSTALL_TIME="$(date '+%Y%m%d-%H%M%S')"
 PORT="${CAFFOLD_SERVER_PORT:-5178}"
 HEALTH_URL="http://127.0.0.1:${PORT}/api/health"
 BUNDLE_ID="io.panarch.caffold.server"
@@ -24,6 +26,7 @@ SKIP_BUILD="${CAFFOLD_LOCAL_INSTALL_SKIP_BUILD:-false}"
 EXPECTED_COMMIT="$(git -C "${REPO_DIR}" rev-parse --short=8 HEAD)"
 PATH="${PATH}:/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support"
 
+backup_app=""
 backup_created=false
 replacement_started=false
 install_finished=false
@@ -185,6 +188,34 @@ unregister_app() {
   fi
 }
 
+retired_app_path() {
+  local directory="$1"
+  local commit
+  commit="$(plutil -extract CaffoldBuildCommit raw -o - "${TARGET_APP}/Contents/Info.plist" 2>/dev/null || true)"
+  echo "${directory}/Caffold Server-${INSTALL_TIME}-${commit:-unknown}.app"
+}
+
+prune_bundles() {
+  local directory="$1"
+  local keep="$2"
+  local bundles=()
+  local bundle index
+  # Names start with the date and time, so name order is age order.
+  for bundle in "${directory}"/Caffold\ Server-[0-9]*.app; do
+    if [[ -d "${bundle}" ]]; then
+      bundles+=("${bundle}")
+    fi
+  done
+  for ((index = 0; index + keep < ${#bundles[@]}; index += 1)); do
+    unregister_app "${bundles[index]}"
+    if rm -rf -- "${bundles[index]}"; then
+      echo "removed:   ${bundles[index]}"
+    else
+      echo "Could not remove ${bundles[index]}." >&2
+    fi
+  done
+}
+
 rollback_on_error() {
   local status=$?
   trap - EXIT
@@ -202,17 +233,21 @@ rollback_on_error() {
   echo "Installation failed; restoring the previous app." >&2
   if ! stop_installed_app "The newly installed Caffold Server"; then
     echo "Rollback was not attempted because the new runtime still owns resources." >&2
-    echo "The previous app remains at: ${BACKUP_APP}" >&2
+    if [[ "${backup_created}" == true ]]; then
+      echo "The previous app remains at: ${backup_app}" >&2
+    fi
     return
   fi
 
   if [[ -d "${TARGET_APP}" ]]; then
-    mv -- "${TARGET_APP}" "${FAILED_APP}"
-    unregister_app "${FAILED_APP}"
-    echo "failed app: ${FAILED_APP}" >&2
+    local failed_app
+    failed_app="$(retired_app_path "${FAILURE_ROOT}")"
+    mv -- "${TARGET_APP}" "${failed_app}"
+    unregister_app "${failed_app}"
+    echo "failed app: ${failed_app}" >&2
   fi
-  if [[ "${backup_created}" == true && -d "${BACKUP_APP}" ]]; then
-    mv -- "${BACKUP_APP}" "${TARGET_APP}"
+  if [[ "${backup_created}" == true && -d "${backup_app}" ]]; then
+    mv -- "${backup_app}" "${TARGET_APP}"
     if start_and_verify "" "The restored Caffold Server"; then
       echo "The previous app was restored and is healthy." >&2
     else
@@ -222,6 +257,7 @@ rollback_on_error() {
   if [[ -d "${STAGING_APP}" ]]; then
     rm -rf -- "${STAGING_APP}"
   fi
+  prune_bundles "${FAILURE_ROOT}" "${FAILURE_KEEP}"
 }
 
 case "${TARGET_APP}" in
@@ -286,7 +322,7 @@ if [[ "${SKIP_BUILD}" == false ]]; then
 fi
 validate_app "${SOURCE_APP}"
 
-mkdir -p "${TARGET_DIR}" "${BACKUP_ROOT}"
+mkdir -p "${TARGET_DIR}" "${BACKUP_ROOT}" "${FAILURE_ROOT}"
 ditto "${SOURCE_APP}" "${STAGING_APP}"
 validate_app "${STAGING_APP}"
 
@@ -297,7 +333,8 @@ fi
 
 replacement_started=true
 if [[ -d "${TARGET_APP}" ]]; then
-  mv -- "${TARGET_APP}" "${BACKUP_APP}"
+  backup_app="$(retired_app_path "${BACKUP_ROOT}")"
+  mv -- "${TARGET_APP}" "${backup_app}"
   backup_created=true
 fi
 mv -- "${STAGING_APP}" "${TARGET_APP}"
@@ -308,10 +345,11 @@ install_finished=true
 # The installed app is the only copy LaunchServices may know for this bundle id.
 unregister_app "${SOURCE_APP}"
 if [[ "${backup_created}" == true ]]; then
-  unregister_app "${BACKUP_APP}"
+  unregister_app "${backup_app}"
 fi
 
 echo "installed: ${TARGET_APP}"
 if [[ "${backup_created}" == true ]]; then
-  echo "backup:    ${BACKUP_APP}"
+  echo "backup:    ${backup_app}"
 fi
+prune_bundles "${BACKUP_ROOT}" "${BACKUP_KEEP}"
