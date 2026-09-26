@@ -144,6 +144,7 @@ of these paths deletes a Git branch.
 | Working directory | Reported and owned by the Codex thread | Persisted with the Caffold Task and supplied whenever the Claude session starts or resumes | Persisted with the Task; the driver's binding names the native session that runs there, and a worktree move forks the session |
 | Caffold-served tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized | Caffold-owned HTTP MCP server declared on session start and load, bound to the Task before its session exists |
 | Current-plan instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions | `_meta.rules` on a new session and the MCP `initialize` instructions on every load |
+| Prompt pictures | A `localImage` input naming the uploaded file, which Codex opens | A base64 image block the driver reads from the uploaded file | An ACP image block the driver reads from the uploaded file |
 | Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure | Diagnostic status; an attempted operation reports its own failure |
 | Idle release | A thread subscription may be dropped when no viewer, request, or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation | The session stays loaded on the bridge; the leader is not asked to unload |
 
@@ -219,11 +220,12 @@ survived from before activity events were enabled.
 
 Claude's turn ledger is written by Caffold's prompt and steering submissions,
 Claude's result frames, the child's exit, and the transcript: when a
-replacement takes up a working session, and when Claude begins a turn on its
-own. Claude says `init` as each turn begins, and a turn that begins while
-Claude reports working, with no Caffold turn or depth change open, is Claude's
-own. Claude files what such a turn answers as its prompt before its first
-output in the turn, and Caffold takes the turn up under that prompt once the
+replacement takes up a session that is working or requiring action, and when
+Claude begins a turn on its own. Claude says `init` as each turn begins, and a
+turn that begins while Claude reports working, with no Caffold turn or depth
+change open, is Claude's own. Claude files what such a turn answers as its
+prompt before its first output in the turn, and Caffold takes the turn up
+under that prompt once the
 transcript shows it. A background task's report is filed carrying the id of
 the task its `task_notification` frame named. A subagent can hand its result
 back before that report arrives, as a message filed with the subagent's task
@@ -269,10 +271,11 @@ fresh or recreate the conversation from its empty content; it reports the
 provider conversation unavailable. The durable Task remains an honest
 zero-turn record, but a runner restart before its first prompt is therefore an
 accepted no-transcript recovery limit rather than a hidden state or inferred
-replay rule. A replacement that greets a working session takes up the newest
-transcript turn. On Claude's next message or result frame it reads the
-transcript once more; if the newest turn differs, it ends the turn it took up as
-completed and takes up the newer one.
+replay rule. A replacement that greets a session working or requiring action
+takes up the newest transcript turn before it asks the redelivered questions
+again, so they come back in that turn. On Claude's next message or result frame
+it reads the transcript once more; if the newest turn differs, it ends the turn
+it took up as completed and takes up the newer one.
 
 New authenticating Claude starts pass through one backend-owned gate. Direct
 measurement showed that two young CLI processes can refresh the same account
@@ -330,7 +333,7 @@ can show the current mode as uneditable; a later turn that asks for another
 mode is still refused. Choosing **Ask Jev first** on a session already created
 with neither flag asks Grok for nothing new, because that is the flagless
 session it is already running. The Task's composer settings keep the mode a
-person chose, because the leader does not report autoMode again after load. Images are sent as prompt blocks. The
+person chose, because the leader does not report autoMode again after load. The
 Settings report reads the installation without touching any of this: the
 executable by running it, the leader through `grok leader info`, the connection
 as the bridge stands, and the account through a leader that is already

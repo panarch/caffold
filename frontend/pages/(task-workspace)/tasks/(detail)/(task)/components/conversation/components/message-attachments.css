@@ -1,0 +1,101 @@
+caffold-task-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  min-width: 0;
+
+  &[align-end] {
+    justify-content: flex-end;
+  }
+
+  & > .task-message-attachment {
+    display: grid;
+    gap: 0.375rem;
+    width: min(360px, 100%);
+    min-width: 0;
+    margin: 0;
+  }
+
+  & > .task-message-attachment > .task-message-attachment-preview {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: 96px;
+    max-height: 280px;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-subtle);
+    color: inherit;
+  }
+
+  & > .task-message-attachment > button.task-message-attachment-preview {
+    cursor: zoom-in;
+  }
+
+  & > .task-message-attachment > button.task-message-attachment-preview:hover,
+  & > .task-message-attachment > button.task-message-attachment-preview:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+  }
+
+  & > .task-message-attachment > button.task-message-attachment-preview:focus-visible {
+    box-shadow: inset 0 0 0 1px var(--focus-ring);
+  }
+
+  & .task-message-attachment-preview > img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 280px;
+    object-fit: contain;
+  }
+
+  & > .task-message-attachment > .task-message-attachment-unavailable {
+    align-content: center;
+    gap: 0.4375rem;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+  }
+
+  /* An icon and its screen-reader label lay out as if drawn straight into
+     the row, so the slot that lets them be filled in later takes no room. */
+  & .task-message-attachment-icon-slot {
+    display: contents;
+  }
+
+  & .task-message-attachment-placeholder-icon {
+    display: block;
+    width: var(--interface-icon-slot-size);
+    height: var(--interface-icon-slot-size);
+  }
+
+  & > .task-message-attachment > figcaption {
+    display: flex;
+    align-items: center;
+    gap: 0.4375rem;
+    min-width: 0;
+    min-height: var(--interface-compact-control-size);
+    padding: 0.25rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-message-attachment-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-message-attachment-icon {
+    display: block;
+    flex: 0 0 auto;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    color: var(--muted);
+  }
+}

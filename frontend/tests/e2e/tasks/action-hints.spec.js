@@ -1280,6 +1280,8 @@ test("retires only a changed Conversation owner while preserving codes and the r
   ), { outsideCode, survivorCode })).toBe(true);
 
   await conversation.evaluate((element) => {
+    // A new picture replaces Owner A's preview button; new words alone would
+    // leave the same button in place.
     const events = element.snapshot.events.map((event) =>
       event.id === "conversation_hint_owner_a"
         ? {
@@ -1290,6 +1292,10 @@ test("retires only a changed Conversation owner while preserving codes and the r
                 "Owner A after update.",
                 "The surviving owner below must move without a new code.",
               ].join("\n"),
+              content: [{
+                ...event.payload.content[0],
+                url: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+              }],
             },
           }
         : event
@@ -1862,7 +1868,7 @@ async function captureActionHintVisualState(page) {
       );
     }
     for (const control of taskNew?.querySelectorAll(
-      'button[data-composer-action="browse-cwd"], button[data-composer-action="voice"]',
+      'button[data-composer-action="attach"], button[data-composer-action="browse-cwd"], button[data-composer-action="voice"]',
     ) ?? []) {
       if (control.disabled) {
         continue;

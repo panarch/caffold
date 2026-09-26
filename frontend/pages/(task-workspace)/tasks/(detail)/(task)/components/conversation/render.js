@@ -1,7 +1,5 @@
 import { escapeHtml } from "../../../../../../../components/dom.js";
-import { renderInlineIcon } from "../../../../../../../components/icons.js";
 import {
-  PROMPT_SUBMISSION_STATE,
   isTaskActivelyWorking,
   promptSubmissionState,
 } from "../../../../runtime-state.js";
@@ -251,6 +249,7 @@ function renderCompletedTurnGroupEntries(
         [event],
         renderConversationEvent(event, task, {
           active: false,
+          messages,
           filePathPresentationBase,
         }),
         eventOrder,
@@ -280,6 +279,7 @@ function renderCompletedTurnGroupEntries(
         [event],
         renderConversationEvent(event, task, {
           active: false,
+          messages,
           filePathPresentationBase,
         }),
         eventOrder,
@@ -415,14 +415,11 @@ function shouldRenderStandaloneEvent(event, userPrompts) {
 
 export function renderConversationEvent(event, task, eventState) {
   const payload = event.payload ?? {};
-  if (event.type === "prompt_sent" || event.type === "user_message") {
-    if (event.type === "prompt_sent") {
-      return renderStatusEvent(event);
-    }
-    const message = userMessagePresentation(payload);
-    return renderMessageEvent(event, "user", message.text, {
-      attachments: message.attachments,
-    });
+  if (event.type === "prompt_sent") {
+    return renderStatusEvent(event);
+  }
+  if (event.type === "user_message") {
+    return renderUserMessageEvent(event, eventState?.messages);
   }
   if (event.type === "assistant_message") {
     return renderAssistantMessageEvent(
@@ -433,9 +430,7 @@ export function renderConversationEvent(event, task, eventState) {
     );
   }
   if (event.type === "generated_image") {
-    return renderMessageEvent(event, "assistant", "", {
-      attachments: payload.available ? [generatedImagePresentation(event)] : [],
-    });
+    return renderGeneratedImageEvent(event, eventState?.messages);
   }
   if (event.type === "reasoning") {
     const summary = Array.isArray(payload.summary)
@@ -487,38 +482,47 @@ function renderStatusEvent(event) {
   `;
 }
 
-// A prompt or a generated image. The Composer is a plain textarea, so a prompt
-// is shown as the characters it was typed with; markdown is the agent's own
-// formatting and belongs to the message component.
-function renderMessageEvent(event, role, text, options = {}) {
-  const value = `${text ?? ""}`.trim();
-  const attachments = Array.isArray(options.attachments) ? options.attachments : [];
-  if (!value && !attachments.length) {
+// A prompt, drawn by `caffold-task-user-message` from what it said and how far
+// its delivery has got. The entry stays by identity while that changes, so an
+// upload's progress and a picture's preview button survive each update.
+function renderUserMessageEvent(event, messages = new Map()) {
+  const message = userMessagePresentation(event.payload ?? {});
+  const text = message.text.trim();
+  if (!text && !message.attachments.length) {
     return renderStatusEvent(event);
   }
-  const attachmentsAttribute = attachments.length ? " data-has-attachments" : "";
-  const submissionState = promptSubmissionState(event);
-  const deliveryAttribute = submissionState
-    ? ` data-delivery-state="${escapeHtml(submissionState)}"`
-    : "";
-  const deliveryLabel = {
-    [PROMPT_SUBMISSION_STATE.SENDING]: "Sending...",
-    [PROMPT_SUBMISSION_STATE.ACCEPTED]: "Accepted - syncing...",
-    [PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN]: "Delivery unconfirmed",
-  }[submissionState] ?? "";
-
+  const identity = eventIdentityKey(event) || `${event?.id ?? ""}`;
+  if (identity) {
+    messages.set(identity, {
+      text,
+      attachments: message.attachments,
+      deliveryState: promptSubmissionState(event),
+      time: observedTimeLabel(event),
+      uploadLines: event.payload?.upload?.lines ?? [],
+    });
+  }
   return `
-    <li class="task-event task-message"${eventIdentityAttribute(event)}${conversationEntryAttributes(event, `${role}:${submissionState}`)} data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${attachmentsAttribute}${deliveryAttribute}>
+    <li class="task-event task-message"${eventIdentityAttribute(event)} data-conversation-entry-key="${escapeHtml(identity)}" data-event-type="${escapeHtml(event.type)}" data-message-role="user">
+      <caffold-task-user-message></caffold-task-user-message>
+    </li>
+  `;
+}
+
+// A picture the agent made, shown by the same list as a prompt's pictures.
+function renderGeneratedImageEvent(event, messages = new Map()) {
+  if (!event.payload?.available) {
+    return renderStatusEvent(event);
+  }
+  const identity = eventIdentityKey(event) || `${event?.id ?? ""}`;
+  if (identity) {
+    messages.set(identity, { attachments: [generatedImagePresentation(event)] });
+  }
+  return `
+    <li class="task-event task-message"${eventIdentityAttribute(event)}${conversationEntryAttributes(event)} data-event-type="${escapeHtml(event.type)}" data-message-role="assistant">
       <div class="task-message-header">
-        ${deliveryLabel ? `<span class="task-message-delivery">${escapeHtml(deliveryLabel)}</span>` : ""}
         ${renderObservedTime(event)}
       </div>
-      ${renderMessageAttachments(attachments)}
-      ${value ? `
-        <div class="task-message-content">
-          <div class="task-message-text">${escapeHtml(value)}</div>
-        </div>
-      ` : ""}
+      <caffold-task-message-attachments></caffold-task-message-attachments>
     </li>
   `;
 }
@@ -717,46 +721,6 @@ function parseCodexAttachmentPrompt(text) {
   return { fileNames, request };
 }
 
-function renderMessageAttachments(attachments) {
-  if (!attachments.length) {
-    return "";
-  }
-
-  return `
-    <div class="task-message-attachments" aria-label="Attached images">
-      ${attachments
-        .map(
-          (attachment) => `
-            <figure class="task-message-attachment">
-              ${attachment.src ? `
-                <button
-                  type="button"
-                  class="task-message-attachment-preview"
-                  data-conversation-action="preview-image"
-                  data-image-name="${escapeHtml(attachment.name)}"
-                  aria-label="Preview ${escapeHtml(attachment.name)}"
-                  title="Preview image"
-                >
-                  <img src="${escapeHtml(attachment.src)}" alt="" loading="lazy">
-                </button>
-              ` : `
-                <div class="task-message-attachment-preview task-message-attachment-unavailable">
-                  ${renderInlineIcon("ImageOff", "Image preview unavailable", "task-message-attachment-placeholder-icon")}
-                  <span>Preview unavailable</span>
-                </div>
-              `}
-              <figcaption title="${escapeHtml(attachment.name)}">
-                ${renderInlineIcon("FileImage", "Attached image", "task-message-attachment-icon")}
-                <span>${escapeHtml(attachment.name)}</span>
-              </figcaption>
-            </figure>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
-}
-
 function renderThinkingEvent(event, text, task, eventState) {
   const value = `${text ?? ""}`.trim();
   if (!value) {
@@ -907,6 +871,11 @@ function renderObservedTime(event) {
   return observedMs === null
     ? ""
     : `<time>${escapeHtml(formatDate(observedMs))}</time>`;
+}
+
+function observedTimeLabel(event) {
+  const observedMs = taskEventObservedMs(event);
+  return observedMs === null ? "" : formatDate(observedMs);
 }
 
 function fileChangeEventIdentity(event) {

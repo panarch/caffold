@@ -224,13 +224,31 @@ open and restores its text, attachments, and selected options for retry; an
 outcome-unknown transport failure keeps the unconfirmed entry visible without
 automatic replay.
 
-The Composer owns its draft, attachments, selection, and voice capture. A stop
-that cancels messages sent into the turn before the agent took them in returns
-them to the Composer with their attachments, in the order they were sent and
-ahead of the current draft; the conversation no longer shows them. When
+The Composer owns its draft, attachments, selection, and voice capture. A
+message that does not reach the agent returns to the Composer in the order it
+was sent and ahead of anything written since, and the conversation no longer
+shows it. A rejected message, and one whose upload failed or was stopped,
+returns with its attachments. A stop that cancels messages sent into the turn
+before the agent took them in returns their words, whose file lists still name
+the uploaded files; their pictures are not attached again. When
 the selected voice provider is not ready, its voice action opens
 **Settings → Voice Input** instead of recording. Task child switching does
 not interrupt the selected Task's stream.
+
+The Composer takes files from **Attach files**, from pasted files, and from
+files dropped on its panel, up to ten per message and 100 MB each; it refuses
+folders. A picture an agent is shown as an image
+([Send files with a prompt](workflows.md#send-files-with-a-prompt)) appears as
+a thumbnail that opens a preview. Every other file appears as a one-line chip
+that is only as wide as its name and, when the name is too long for the
+Composer, shortens it before its extension. While a sent message's files
+upload, its header reads `Uploading N%` and each path in its file list carries
+its own progress bar, which goes when that file is up. The bars take no room
+of their own, so the lines do not move as they go, and they wrap the same way
+once the message is confirmed. During the
+upload the Composer's primary action is **Cancel upload**, or **Stop current
+turn** while a turn is running, which also stops that turn. A failed upload is
+reported with the name of the file.
 
 When the selected Task's effective working directory contains the valid
 [current plan document pair](workflows.md#current-plan-documents), a compact

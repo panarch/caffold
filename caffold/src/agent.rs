@@ -72,5 +72,5 @@ pub(crate) use conversation::{
     TurnStatus,
 };
 pub(crate) use driver::{
-    AgentError, Driver, OpenedConversation, PermissionModes, TurnOptions, TurnRejected,
+    AgentError, Driver, OpenedConversation, PermissionModes, PromptImage, TurnOptions, TurnRejected,
 };

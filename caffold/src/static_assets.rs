@@ -637,6 +637,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js"
         ))),
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/session.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/session.js"
         ))),
@@ -764,6 +774,26 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.js" => {
             Some(js(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css" => {
@@ -1872,6 +1902,8 @@ mod tests {
         for path in [
             "pages/(task-workspace)/tasks/(detail)/(task)/layout/conversation.js",
             "pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.js",
         ] {
             let asset = get(path).expect("task conversation owner asset");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
@@ -1945,6 +1977,14 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.js",
                 b"caffold-task-assistant-message-copy-button".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.js",
+                b"caffold-task-message-attachments".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.js",
+                b"caffold-task-user-message".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js",
@@ -2134,6 +2174,14 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.css",
                 b"caffold-task-assistant-message-copy-button".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.css",
+                b"caffold-task-message-attachments".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.css",
+                b"caffold-task-user-message".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",

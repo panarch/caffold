@@ -26,8 +26,8 @@ boundaries.
   itself that holds sessions and running turns across backend replacement,
   with worktree moves carried out by forking the session;
 - shared prompts, active-turn steering, interruption, command and permission
-  approvals, images, model/effort/permission choices, and voice input in the
-  Conversation surface;
+  approvals, file and image attachments, model/effort/permission choices, and
+  voice input in the Conversation surface;
 - an optional provider-neutral Markdown current plan in each Task working
   directory, with live checklist progress and read-only Plan/Checklist viewing
   above the follow-up Composer;

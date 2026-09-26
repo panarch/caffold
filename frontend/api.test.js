@@ -3,6 +3,7 @@ import test, { afterEach } from "node:test";
 
 import {
   createTaskFork,
+  discardTaskUploads,
   forkTask,
   getCurrentPlan,
   getHealth,
@@ -12,13 +13,16 @@ import {
   liveUpdatesUrl,
   previewTaskForkSource,
   reorderSection,
+  sendTaskPrompt,
   updateLiveSubscriptions,
+  uploadTaskFile,
 } from "./api.js";
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "./origin-reachability.js";
 
 const originalBrowserGlobals = {
   fetch: globalThis.fetch,
   window: globalThis.window,
+  XMLHttpRequest: globalThis.XMLHttpRequest,
 };
 
 afterEach(() => {
@@ -298,4 +302,139 @@ test("keeps external fork preview and creation on their dedicated API boundary",
       },
     },
   ]);
+});
+
+class FakeUploadRequest extends EventTarget {
+  static sent = [];
+
+  constructor() {
+    super();
+    this.upload = new EventTarget();
+    this.headers = {};
+    FakeUploadRequest.sent.push(this);
+  }
+
+  open(method, url) {
+    this.method = method;
+    this.url = url;
+  }
+
+  setRequestHeader(name, value) {
+    this.headers[name] = value;
+  }
+
+  send(body) {
+    this.body = body;
+  }
+
+  abort() {
+    this.dispatchEvent(new Event("abort"));
+  }
+
+  progress(loaded) {
+    this.upload.dispatchEvent(Object.assign(new Event("progress"), { loaded }));
+  }
+
+  respond(status, payload) {
+    this.status = status;
+    this.responseText = JSON.stringify(payload);
+    this.dispatchEvent(new Event("load"));
+  }
+}
+
+function installUploadHarness() {
+  FakeUploadRequest.sent = [];
+  globalThis.XMLHttpRequest = FakeUploadRequest;
+  return installBrowserHarness(() => Promise.reject(new Error("fetch is not used")));
+}
+
+test("an upload puts the file's own bytes at its send folder and reports progress", async () => {
+  const windowTarget = installUploadHarness();
+  let reachable = 0;
+  windowTarget.addEventListener(CAFFOLD_ORIGIN_REACHABLE_EVENT, () => {
+    reachable += 1;
+  });
+  const file = { size: 10 };
+  const progress = [];
+
+  const pending = uploadTaskFile("task 1", "20260926-153012-a1b2", "server log.txt", file, {
+    onProgress: (loaded) => progress.push(loaded),
+  });
+  const [request] = FakeUploadRequest.sent;
+  request.progress(4);
+  request.progress(10);
+  request.respond(201, { path: ".caffold/uploads/20260926-153012-a1b2/server log.txt" });
+
+  assert.deepEqual(await pending, {
+    path: ".caffold/uploads/20260926-153012-a1b2/server log.txt",
+  });
+  assert.equal(request.method, "PUT");
+  assert.equal(
+    request.url,
+    "/api/tasks/task%201/uploads/20260926-153012-a1b2/server%20log.txt",
+  );
+  assert.equal(request.headers["content-type"], "application/octet-stream");
+  assert.equal(request.body, file);
+  assert.deepEqual(progress, [4, 10]);
+  assert.equal(reachable, 1);
+});
+
+test("an upload the server refuses carries the server's reason", async () => {
+  installUploadHarness();
+  const pending = uploadTaskFile("task", "20260926-153012-a1b2", "log.txt", {});
+  FakeUploadRequest.sent[0].respond(409, {
+    error: { code: "upload_exists", message: "log.txt was already uploaded in this send" },
+  });
+
+  await assert.rejects(pending, {
+    code: "upload_exists",
+    status: 409,
+    message: "log.txt was already uploaded in this send",
+  });
+});
+
+test("an upload that cannot reach Caffold says so", async () => {
+  installUploadHarness();
+  const pending = uploadTaskFile("task", "20260926-153012-a1b2", "log.txt", {});
+  FakeUploadRequest.sent[0].dispatchEvent(new Event("error"));
+
+  await assert.rejects(pending, { code: "upload_unreachable", status: 0 });
+});
+
+test("an upload stops when its sender cancels, before or during the transfer", async () => {
+  installUploadHarness();
+  const controller = new AbortController();
+  const pending = uploadTaskFile("task", "20260926-153012-a1b2", "log.txt", {}, {
+    signal: controller.signal,
+  });
+  controller.abort();
+  await assert.rejects(pending, { name: "AbortError", code: "upload_cancelled" });
+
+  await assert.rejects(
+    uploadTaskFile("task", "20260926-153012-a1b2", "log.txt", {}, { signal: controller.signal }),
+    { name: "AbortError", code: "upload_cancelled" },
+  );
+  assert.equal(FakeUploadRequest.sent.length, 1, "an already cancelled upload opens no request");
+});
+
+test("a prompt names its uploaded pictures by path, and a discarded send removes its folder", async () => {
+  const received = [];
+  installBrowserHarness((url, options) => {
+    received.push({ url, method: options.method, body: options.body });
+    return Promise.resolve(jsonResponse({ threadId: "task" }));
+  });
+
+  await sendTaskPrompt("task", "Look", { model: "m" }, [".caffold/uploads/f/a.png"]);
+  await discardTaskUploads("task 1", "20260926-153012-a1b2");
+
+  assert.deepEqual(JSON.parse(received[0].body), {
+    prompt: "Look",
+    imagePaths: [".caffold/uploads/f/a.png"],
+    model: "m",
+  });
+  assert.equal(received[1].method, "DELETE");
+  assert.equal(
+    received[1].url.pathname,
+    "/api/tasks/task%201/uploads/20260926-153012-a1b2",
+  );
 });

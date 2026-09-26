@@ -1349,7 +1349,7 @@ impl CodexThreadClient {
         thread_id: &str,
         cwd: &str,
         prompt: &str,
-        image_urls: &[String],
+        image_paths: &[String],
         options: CodexTurnOptions,
     ) -> Result<CodexTurnStart, CodexThreadError> {
         let client_user_message_id = uuid::Uuid::new_v4().to_string();
@@ -1360,7 +1360,7 @@ impl CodexThreadClient {
                     thread_id,
                     cwd,
                     prompt,
-                    image_urls,
+                    image_paths,
                     &client_user_message_id,
                     &options,
                 ),
@@ -1379,7 +1379,7 @@ impl CodexThreadClient {
         thread_id: &str,
         expected_turn_id: &str,
         prompt: &str,
-        image_urls: &[String],
+        image_paths: &[String],
     ) -> Result<CodexTurnSteer, CodexThreadError> {
         let client_user_message_id = uuid::Uuid::new_v4().to_string();
         let response: TurnSteerResponse = self
@@ -1389,7 +1389,7 @@ impl CodexThreadClient {
                     thread_id,
                     expected_turn_id,
                     prompt,
-                    image_urls,
+                    image_paths,
                     &client_user_message_id,
                 ),
             )

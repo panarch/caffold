@@ -10,7 +10,6 @@ import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
 } from "../../../../../../scroll-scope.js";
-import { requestTaskImagePreview } from "../../../components/image-preview-dialog.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -25,7 +24,9 @@ import "./conversation/components/assistant-message.js";
 import "./conversation/components/changed-files.js";
 import "./conversation/components/command.js";
 import "./conversation/components/markdown.js";
+import "./conversation/components/message-attachments.js";
 import "./conversation/components/older-history.js";
+import "./conversation/components/user-message.js";
 import "./conversation/components/work-details.js";
 import { renderConversation } from "./conversation/render.js";
 
@@ -105,6 +106,7 @@ class CaffoldTaskConversation extends HTMLElement {
     this.disclosureByThread = new Map();
     this.pendingDisclosureAnchorByThread = new Map();
     this.pendingMarkdownScrollByThread = new Map();
+    this.uploadProgressByEvent = new Map();
     this.resizeObserver = null;
     this.boundClick = (event) => this.handleClick(event);
     this.boundApprovalIntent = (event) => this.handleApprovalIntent(event);
@@ -173,6 +175,25 @@ class CaffoldTaskConversation extends HTMLElement {
     return true;
   }
 
+  // How far a message's files have gone up. The message on screen paints it;
+  // it is kept here only to hand to a message a later render mounts anew, as
+  // when its Task is opened again mid-upload.
+  setPromptUploadProgress(eventId, progress) {
+    this.ensureState();
+    if (progress) {
+      this.uploadProgressByEvent.set(eventId, progress);
+    } else {
+      this.uploadProgressByEvent.delete(eventId);
+    }
+    this.userMessage(eventId)?.setUploadProgress(progress);
+  }
+
+  userMessage(eventId) {
+    const entry = Array.from(this.conversationList()?.children ?? [])
+      .find((candidate) => candidate.dataset.eventId === eventId);
+    return entry?.querySelector(":scope > caffold-task-user-message") ?? null;
+  }
+
   setApprovalError(approvalId, error) {
     const owner = this.approvalComponents().find((card) => card.approvalId === approvalId);
     if (!owner) return;
@@ -225,31 +246,6 @@ class CaffoldTaskConversation extends HTMLElement {
         });
       }
     }
-    const previews = Array.from(this.querySelectorAll(
-      'button[data-conversation-action="preview-image"]',
-    ));
-    const previewOrdinals = new Map();
-    previews.forEach((control) => {
-      const entry = control.closest?.(
-        ".task-event[data-conversation-entry-key], .task-event[data-event-id]",
-      );
-      const identity = entry?.dataset.conversationEntryKey ||
-        entry?.dataset.eventId;
-      if (!identity) {
-        return;
-      }
-      const ordinal = (previewOrdinals.get(identity) ?? 0) + 1;
-      previewOrdinals.set(identity, ordinal);
-      definitions.push({
-        id: `preview-image:${identity}:${ordinal}`,
-        invalidationOwner: entry,
-        control,
-        isCurrent: () => {
-          const current = conversationPreviewIdentity(this, control);
-          return current?.identity === identity && current.ordinal === ordinal;
-        },
-      });
-    });
     const ownTargets = definitions.flatMap(({
       id,
       invalidationOwner,
@@ -314,10 +310,18 @@ class CaffoldTaskConversation extends HTMLElement {
         childScopes.push(command.actionHintScope?.(childOptions("command")));
       }
       const message = entry.querySelector(
-        ":scope > caffold-task-assistant-message",
+        ":scope > caffold-task-assistant-message, :scope > caffold-task-user-message",
       );
       if (message) {
         childScopes.push(message.actionHintScope?.(childOptions("message")));
+      }
+      const attachments = entry.querySelector(
+        ":scope > caffold-task-message-attachments",
+      );
+      if (attachments) {
+        childScopes.push(
+          attachments.actionHintScope?.(childOptions("attachments")),
+        );
       }
       const workDetails = entry.querySelector(
         ":scope > caffold-task-work-details",
@@ -605,6 +609,9 @@ class CaffoldTaskConversation extends HTMLElement {
     }
     const scrollToRestore =
       this.pendingMarkdownScrollByThread.get(threadId) ?? previousScroll;
+    for (const [eventId, progress] of this.uploadProgressByEvent) {
+      this.userMessage(eventId)?.setUploadProgress(progress);
+    }
     this.restoreDisclosureState();
     this.restoreScroll(scrollToRestore);
     this.restorePendingDisclosureAnchor(
@@ -686,12 +693,6 @@ class CaffoldTaskConversation extends HTMLElement {
     event.stopPropagation();
     if (action.dataset.conversationAction === "retry-detail") {
       this.dispatchIntent("retry-detail");
-    } else if (action.dataset.conversationAction === "preview-image") {
-      const image = action.querySelector("img");
-      requestTaskImagePreview(this, {
-        src: image?.getAttribute("src"),
-        name: action.dataset.imageName,
-      });
     }
   }
 
@@ -1196,34 +1197,6 @@ function rawConversationScrollSurfaceScope({
   };
 }
 
-function conversationPreviewIdentity(owner, control) {
-  const previews = Array.from(owner.querySelectorAll(
-    'button[data-conversation-action="preview-image"]',
-  ));
-  const controlIndex = previews.indexOf(control);
-  if (controlIndex < 0) {
-    return null;
-  }
-  const entry = control.closest?.(
-    ".task-event[data-conversation-entry-key], .task-event[data-event-id]",
-  );
-  const identity = entry?.dataset.conversationEntryKey ||
-    entry?.dataset.eventId;
-  if (!identity) {
-    return null;
-  }
-  const ordinal = previews.slice(0, controlIndex + 1).filter((candidate) => {
-    const candidateEntry = candidate.closest?.(
-      ".task-event[data-conversation-entry-key], .task-event[data-event-id]",
-    );
-    return (
-      candidateEntry?.dataset.conversationEntryKey ||
-      candidateEntry?.dataset.eventId
-    ) === identity;
-  }).length;
-  return { identity, ordinal };
-}
-
 function reconcileConversationList(
   list,
   html,
@@ -1274,7 +1247,9 @@ function reconcileConversationList(
   const existingMessageEntries = new Map(
     [...list.children]
       .filter((entry) =>
-        entry.matches(".task-assistant-message[data-conversation-entry-key]"),
+        entry.matches(
+          ".task-assistant-message[data-conversation-entry-key], .task-message[data-message-role=\"user\"][data-conversation-entry-key]",
+        ),
       )
       .map((entry) => [entry.dataset.conversationEntryKey, entry]),
   );
@@ -1411,20 +1386,24 @@ function reconcileConversationList(
       commandOwner.setSnapshot(commandSnapshot);
     }
     const messageSnapshot = messages.get(key);
-    const messageOwner = entry.querySelector(
-      ":scope > caffold-task-assistant-message",
-    );
+    const messageOwner = entry.querySelector(MESSAGE_OWNERS);
     if (messageOwner && messageSnapshot) {
       messageOwner.setSnapshot(messageSnapshot);
     }
   }
 }
 
+// The component a message entry mounts, which draws it from the entry's
+// snapshot in `messages`.
+const MESSAGE_OWNERS = [
+  "caffold-task-assistant-message",
+  "caffold-task-user-message",
+  "caffold-task-message-attachments",
+].map((name) => `:scope > ${name}`).join(", ");
+
 function patchMessageEntry(current, desired) {
-  const owner = current.querySelector(
-    ":scope > caffold-task-assistant-message",
-  );
-  if (!owner) {
+  const owner = desired.querySelector(MESSAGE_OWNERS)?.localName;
+  if (!owner || !current.querySelector(`:scope > ${owner}`)) {
     return false;
   }
   syncElementAttributes(current, desired, [
@@ -1432,6 +1411,7 @@ function patchMessageEntry(current, desired) {
     "data-event-id",
     "data-conversation-entry-key",
     "data-event-type",
+    "data-message-role",
   ]);
   return true;
 }

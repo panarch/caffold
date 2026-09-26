@@ -445,6 +445,29 @@ Current rules:
 Caffold does not expose direct Git mutation controls. Git mutations happen
 through instructions to the Task's agent or manual terminal work.
 
+## Prompt Attachments
+
+The browser uploads a prompt's files into the Task's effective working
+directory; that directory and its layout are described in
+[Send files with a prompt](../product/workflows.md#send-files-with-a-prompt).
+
+- An upload is a `PUT` to `/api/tasks/{thread}/uploads/{folder}/{name}`, and
+  discarding a send is a `DELETE` of `/api/tasks/{thread}/uploads/{folder}`.
+  Neither is a request a browser sends to another site without a CORS
+  preflight, and Caffold grants no preflight.
+- Caffold writes only below `.caffold/uploads/` in the Task's working
+  directory, which must lie inside the server root. The folder must have the
+  send-folder form, and a name must be a single path segment: no separators or
+  control characters, not `.` or `..`, and at most 255 bytes.
+- Every directory on the way must be a real directory; a symbolic link is
+  refused rather than followed. A file is always created new and never
+  replaces one already there. A body over 100 MB, or one the browser abandons,
+  leaves no partial file. A discard removes only one send's folder.
+- A prompt names a picture for the agent to see only by its upload path.
+  Caffold refuses anything that is not a plain uploaded file, and reads its
+  first bytes to confirm a PNG, JPEG, GIF, WebP, or AVIF picture of at most
+  10 MB before an agent receives it.
+
 ## Worktree Deletion
 
 Caffold removes a worktree only as part of an explicit Archive action and only

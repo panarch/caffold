@@ -30,7 +30,9 @@ The installer:
    listener to disappear;
 6. backs up the previous application and moves the staged bundle into place;
 7. opens the new application and verifies `/api/health`, the expected commit in
-   `buildId`, and the exact bundled server that owns the port.
+   `buildId`, and the exact bundled server that owns the port;
+8. unregisters the source bundle and the backup from LaunchServices, so only the
+   installed application stays registered.
 
 Run the read-only shutdown preflight independently with:
 
@@ -73,8 +75,8 @@ application updates until that server stops.
 
 If the new application fails validation after replacement, the installer first
 stops the new wrapper and server completely. Only then does it move the failed
-bundle aside, restore the backup to the canonical path, reopen it, and verify
-health again.
+bundle aside and unregister it from LaunchServices, restore the backup to the
+canonical path, reopen it, and verify health again.
 
 Failed bundles are preserved as:
 

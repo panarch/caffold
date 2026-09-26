@@ -487,7 +487,7 @@ test("creates a task with responsive composer controls and canonical approval st
     "/tmp/planner-layout.png",
   );
   await expect(
-    tasksPage.locator('.task-message[data-message-role="user"] .task-message-content'),
+    tasksPage.locator('.task-message[data-message-role="user"] .task-user-message-content'),
   ).toHaveCSS("font-size", "14px");
   await expect(tasksPage).toContainText("Command approval requested");
   await expect(tasksPage).toContainText("cargo test");
@@ -575,7 +575,7 @@ test("creates a task with responsive composer controls and canonical approval st
     );
     const userMessage = await taskPresentation(
       tasksPage.locator(
-        '.task-message[data-message-role="user"] .task-message-content',
+        '.task-message[data-message-role="user"] .task-user-message-content',
       ),
     );
     expect(userMessage).toEqual(

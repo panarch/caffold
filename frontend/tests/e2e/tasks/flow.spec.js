@@ -767,7 +767,10 @@ test("shows the retained initial prompt until the ordinary prompt request is acc
   const userMessage = tasksPage.locator('.task-message[data-message-role="user"]');
   await expect(userMessage).toHaveCount(1);
   await expect(userMessage).toContainText("Inspect the planner changes");
-  await expect(userMessage).toHaveAttribute("data-delivery-state", "sending");
+  await expect(userMessage.locator("caffold-task-user-message")).toHaveAttribute(
+    "data-delivery-state",
+    "sending",
+  );
   await expect(userMessage.locator(".task-message-attachment img")).toHaveAttribute(
     "src",
     /^data:image\/png;base64,/,
@@ -776,7 +779,10 @@ test("shows the retained initial prompt until the ordinary prompt request is acc
   await scenario.releaseInitialPrompt();
 
   await expect(userMessage).toHaveCount(1);
-  await expect(userMessage).not.toHaveAttribute("data-delivery-state", /.+/);
+  await expect(userMessage.locator("caffold-task-user-message")).not.toHaveAttribute(
+    "data-delivery-state",
+    /.+/,
+  );
   await expect(tasksPage).toContainText("Command approval requested");
   expect(scenario.pageErrors).toEqual([]);
 });

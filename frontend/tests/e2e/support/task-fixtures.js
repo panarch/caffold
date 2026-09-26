@@ -149,6 +149,41 @@ export async function pasteImage(locator, name = "clipboard-image.png") {
   );
 }
 
+export const UPLOAD_FOLDER_PATTERN = "\\d{8}-\\d{6}-[0-9a-z]{4}";
+
+// Answers a Task's file uploads the way Caffold does, and keeps what arrived:
+// each file's upload path and bytes, and each send folder discarded.
+export async function routeTaskUploads(page, { respond } = {}) {
+  const record = { uploads: [], discarded: [] };
+  await page.route(/\/api\/tasks\/[^/]+\/uploads\//, async (route) => {
+    const request = route.request();
+    const [, , threadId, , folder, name] = new URL(request.url())
+      .pathname.split("/")
+      .filter(Boolean)
+      .map(decodeURIComponent);
+    if (request.method() === "DELETE") {
+      record.discarded.push(folder);
+      return route.fulfill({ status: 204 });
+    }
+    const path = `.caffold/uploads/${folder}/${name}`;
+    const upload = { threadId, folder, name, path, bytes: request.postDataBuffer() };
+    record.uploads.push(upload);
+    const answer = (await respond?.(upload)) ?? {
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ path }),
+    };
+    // A browser that cancelled the upload is no longer waiting for an answer.
+    return route.fulfill(answer).catch(() => {});
+  });
+  return record;
+}
+
+export function withAttachedFiles(prompt, paths) {
+  const list = ["Attached files:", ...paths.map((path) => `- ${path}`)].join("\n");
+  return prompt ? `${prompt}\n\n${list}` : list;
+}
+
 export async function captureReviewScreenshot(page, testInfo, name, { clip } = {}) {
   const path = testInfo.outputPath(`${name}-${testInfo.project.name}.png`);
   await page.screenshot({
