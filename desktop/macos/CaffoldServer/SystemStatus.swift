@@ -360,7 +360,9 @@ struct TailscaleStatus: Decodable, Equatable {
         case .ready:
             "Tailscale · Connected · Serve on"
         case .unavailable:
-            "Tailscale · Unavailable"
+            reasonCode == "serveTargetConflict"
+                ? "Tailscale · Connected · Serve port in use"
+                : "Tailscale · Unavailable"
         case .failed:
             "Tailscale · Failed"
         }

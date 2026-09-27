@@ -35,9 +35,10 @@ outage.
   `127.0.0.1`.
 - The device needs Tailscale, signed in to an account permitted on the same
   tailnet.
-- If **Settings → Remote Access** reports a conflict, something else already
-  uses Tailscale Serve's HTTPS port on the Mac. Caffold does not replace it;
-  remove that Serve entry in Tailscale first.
+- If the menu bar shows **Serve port in use**, or **Settings → Remote Access**
+  reports a conflict, something else already uses Tailscale Serve's HTTPS port
+  on the Mac. Caffold does not replace it; remove that Serve entry in Tailscale
+  first.
 
 ## Notifications do not arrive
 
