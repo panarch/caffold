@@ -152,3 +152,62 @@ test("remembers the chosen width under its storage key", () => {
     globalThis.window = previousWindow;
   }
 });
+
+test("remembers the collapsed choice under its own key, apart from the width", () => {
+  const previousWindow = globalThis.window;
+  const stored = new Map([["caffold:pane-width:test", "404"]]);
+  globalThis.window = {
+    localStorage: {
+      getItem: (key) => stored.get(key) ?? null,
+      setItem: (key, value) => stored.set(key, value),
+    },
+  };
+  const attributes = {
+    "storage-key": "caffold:pane-width:test",
+    "collapsed-storage-key": "caffold:pane-collapsed:test",
+  };
+  const connect = () => {
+    const pane = Object.assign(Object.create(resizer), {
+      currentValue: 320,
+      preferredValue: null,
+      collapsedPreference: false,
+      parentElement: { getBoundingClientRect: () => ({ width: 1280 }) },
+      getAttribute: (name) => attributes[name] ?? null,
+      getClientRects: () => [{}],
+      setAttribute() {},
+      dispatchEvent() {},
+    });
+    pane.restorePreferredValue();
+    pane.restoreCollapsed();
+    return pane;
+  };
+
+  try {
+    const first = connect();
+    assert.equal(first.collapsed, false);
+    first.setCollapsed(true);
+    assert.equal(stored.get("caffold:pane-collapsed:test"), "true");
+    assert.equal(stored.get("caffold:pane-width:test"), "404");
+
+    const second = connect();
+    assert.equal(second.collapsed, true);
+    assert.equal(second.value, 404);
+    second.setCollapsed(false);
+    assert.equal(connect().collapsed, false);
+
+    stored.set("caffold:pane-collapsed:test", "maybe");
+    assert.equal(connect().collapsed, false);
+
+    globalThis.window = {
+      get localStorage() {
+        throw new Error("Storage is unavailable");
+      },
+    };
+    second.setCollapsed(true);
+    assert.equal(second.collapsed, true);
+    second.restoreCollapsed();
+    assert.equal(second.collapsed, true);
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});

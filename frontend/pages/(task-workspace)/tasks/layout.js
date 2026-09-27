@@ -558,6 +558,15 @@ class CaffoldTasksPage extends HTMLElement {
     return this.connectedTaskNavigator ?? null;
   }
 
+  sidePane() {
+    this.ensureRendered();
+    if (this.taskStoreRecoveryVisible() || this.view !== "detail") {
+      return null;
+    }
+    const detail = this.taskDetail();
+    return detail && !detail.hidden ? detail.sidePane() : null;
+  }
+
   actionHintScope() {
     this.ensureRendered();
     const navigator = this.taskNavigator();

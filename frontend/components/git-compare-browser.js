@@ -40,6 +40,7 @@ class CaffoldGitCompareBrowser extends HTMLElement {
       <caffold-git-compare-tree></caffold-git-compare-tree>
       <caffold-pane-resizer
         storage-key="caffold:pane-width:git-compare"
+        collapsed-storage-key="caffold:pane-collapsed:git-compare"
         aria-label="Resize review side panel"
       ></caffold-pane-resizer>
       <caffold-review-file-viewer refresh-action="refresh-git-review"></caffold-review-file-viewer>
@@ -496,8 +497,10 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     if (!scopeId || this.hidden) {
       return emptyActionHintScope();
     }
-    const listActive = this.detailView === "list" ||
-      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
+    const listActive = !this.sidePaneCollapsed() && (
+      this.detailView === "list" ||
+      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches
+    );
     const viewerActive = this.detailView === "viewer";
     const resizer = this.panelResizer;
     const separatorScope = hasActionHintLayoutBox(resizer)
@@ -543,7 +546,8 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     const singlePane = window.matchMedia(
       REVIEW_SINGLE_PANE_MEDIA_QUERY,
     ).matches;
-    const listActive = this.detailView === "list" || !singlePane;
+    const listActive = !this.sidePaneCollapsed() &&
+      (this.detailView === "list" || !singlePane);
     const viewerActive = this.detailView === "viewer";
     return mergeScrollSurfaceScopes(
       listActive && hasScrollLayoutBox(this.compareTree)
@@ -593,9 +597,43 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     const changed = this.detailView !== nextView || this.dataset.detailView !== nextView;
     this.detailView = nextView;
     this.dataset.detailView = this.detailView;
+    this.applySidePane();
     if (changed) {
       this.emitStateChange();
     }
+  }
+
+  /**
+   * The compared-files tree the workspace's side pane toggle hides and shows.
+   *
+   * It collapses only while the viewer is showing a file, the same state in
+   * which the single-pane layout shows the viewer instead of the tree.
+   */
+  sidePane() {
+    this.ensureRendered();
+    return {
+      label: "review side panel",
+      beside: !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches,
+      collapsible: this.detailView === "viewer",
+      collapsed: this.sidePaneCollapsed(),
+      setCollapsed: (collapsed) => this.setSidePaneCollapsed(collapsed),
+    };
+  }
+
+  setSidePaneCollapsed(collapsed) {
+    this.panelResizer.setCollapsed(collapsed);
+    this.applySidePane();
+  }
+
+  applySidePane() {
+    this.toggleAttribute("data-side-pane-collapsed", this.sidePaneCollapsed());
+    this.dispatchEvent(
+      new CustomEvent("caffold:side-pane-change", { bubbles: true }),
+    );
+  }
+
+  sidePaneCollapsed() {
+    return this.detailView === "viewer" && this.panelResizer.collapsed;
   }
 
   diffPresentation(path, status = "", diff = {}) {

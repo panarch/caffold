@@ -624,6 +624,26 @@ class CaffoldDetailLayout extends HTMLElement {
     return domain || (this.taskRoute?.review ? "review" : "conversation");
   }
 
+  // The start pane of the code surface on screen: Integrated Review's
+  // navigator or the file tree of Git or GitHub.
+  sidePane() {
+    this.ensureRendered();
+    if (!detailIdentityKey(this.subjectIdentity()) || this.hidden) {
+      return null;
+    }
+    const surface = this.activeSurface();
+    if (surface === "review") {
+      return this.review()?.sidePane() ?? null;
+    }
+    if (surface === "git") {
+      return this.gitLayout()?.sidePane() ?? null;
+    }
+    if (surface === "github") {
+      return this.githubLayout()?.sidePane() ?? null;
+    }
+    return null;
+  }
+
   actionHintScope() {
     this.ensureRendered();
     const identityKey = detailIdentityKey(this.subjectIdentity());

@@ -33,6 +33,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
       <caffold-commit-changes-tree></caffold-commit-changes-tree>
       <caffold-pane-resizer
         storage-key="caffold:pane-width:git-log-commit"
+        collapsed-storage-key="caffold:pane-collapsed:git-log-commit"
         aria-label="Resize review side panel"
       ></caffold-pane-resizer>
       <caffold-review-file-viewer refresh-action="refresh-git-review"></caffold-review-file-viewer>
@@ -389,8 +390,10 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     if (!sha || this.hidden) {
       return emptyActionHintScope();
     }
-    const listActive = this.detailView === "list" ||
-      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
+    const listActive = !this.sidePaneCollapsed() && (
+      this.detailView === "list" ||
+      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches
+    );
     const viewerActive = this.detailView === "viewer";
     const prefix = `${scopeId}:${encodeURIComponent(sha)}`;
     const resizer = this.panelResizer;
@@ -435,8 +438,10 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     if (!sha || this.hidden) {
       return emptyScrollSurfaceScope();
     }
-    const listActive = this.detailView === "list" ||
-      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
+    const listActive = !this.sidePaneCollapsed() && (
+      this.detailView === "list" ||
+      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches
+    );
     const viewerActive = this.detailView === "viewer";
     const prefix = `${scopeId}:${encodeURIComponent(sha)}`;
     return mergeScrollSurfaceScopes(
@@ -474,6 +479,40 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     }
     this.detailView = nextView;
     this.dataset.detailView = this.detailView;
+    this.applySidePane();
+  }
+
+  /**
+   * The commit's file tree the workspace's side pane toggle hides and shows.
+   *
+   * It collapses only while the viewer is showing a file, the same state in
+   * which the single-pane layout shows the viewer instead of the tree.
+   */
+  sidePane() {
+    this.ensureRendered();
+    return {
+      label: "review side panel",
+      beside: !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches,
+      collapsible: this.detailView === "viewer",
+      collapsed: this.sidePaneCollapsed(),
+      setCollapsed: (collapsed) => this.setSidePaneCollapsed(collapsed),
+    };
+  }
+
+  setSidePaneCollapsed(collapsed) {
+    this.panelResizer.setCollapsed(collapsed);
+    this.applySidePane();
+  }
+
+  applySidePane() {
+    this.toggleAttribute("data-side-pane-collapsed", this.sidePaneCollapsed());
+    this.dispatchEvent(
+      new CustomEvent("caffold:side-pane-change", { bubbles: true }),
+    );
+  }
+
+  sidePaneCollapsed() {
+    return this.detailView === "viewer" && this.panelResizer.collapsed;
   }
 
   rememberScroller(key, host, selector) {

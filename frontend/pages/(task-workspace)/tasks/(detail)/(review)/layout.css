@@ -211,6 +211,15 @@ caffold-task-review {
     left: var(--task-review-panel-width, 320px);
   }
 
+  &[data-side-pane-collapsed] .task-review-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  &[data-side-pane-collapsed] .task-review-navigator-pane,
+  &[data-side-pane-collapsed] .task-review-layout > caffold-pane-resizer {
+    display: none;
+  }
+
   & .task-review-viewer-pane {
     display: grid;
     grid-template-rows: minmax(0, 1fr);

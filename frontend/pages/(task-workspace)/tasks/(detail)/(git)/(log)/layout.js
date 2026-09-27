@@ -279,6 +279,13 @@ class CaffoldGitLogLayout extends HTMLElement {
     return this.commitPage.currentCommitSha();
   }
 
+  sidePane() {
+    this.ensureRendered();
+    return !this.hidden && this.view === "detail"
+      ? this.commitPage.sidePane()
+      : null;
+  }
+
   actionHintScope({ scopeId = "git:log", clipRoots = [] } = {}) {
     this.ensureRendered();
     if (this.hidden) {

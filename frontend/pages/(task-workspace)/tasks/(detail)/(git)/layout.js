@@ -481,6 +481,16 @@ class CaffoldTaskGitLayout extends HTMLElement {
     return null;
   }
 
+  sidePane() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return null;
+    }
+    return this.mode === "compare"
+      ? this.comparePage.sidePane()
+      : this.logLayout.sidePane();
+  }
+
   actionHintScope() {
     this.ensureRendered();
     if (!this.active || this.hidden || !this.mode) {

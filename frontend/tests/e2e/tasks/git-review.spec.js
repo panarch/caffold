@@ -1093,6 +1093,69 @@ test("keeps the loaded Git route stable across unrelated Task stream updates", {
   expect(counts.log).toBe(1);
 });
 
+test("collapses the Compare and Commit trees from the corner toggle, each remembered on its own", { tag: ["@desktop", "@foldable"] }, async ({
+  page,
+}) => {
+  await installTaskGitFixture(page, [taskRecord()]);
+  const compareUrl =
+    `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`;
+  const toggle = page.locator("caffold-task-workspace .task-workspace-side-pane-toggle");
+  const compare = page.locator("caffold-git-compare-browser");
+  const compareTree = compare.locator("caffold-git-compare-tree");
+  const commit = page.locator("caffold-git-log-commit-page");
+  const commitTree = commit.locator("caffold-commit-changes-tree");
+  const stored = (kind) =>
+    page.evaluate(
+      (key) => window.localStorage.getItem(key),
+      `caffold:pane-collapsed:${kind}`,
+    );
+  const viewerFills = (host) =>
+    host.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const viewer = element
+        .querySelector(":scope > caffold-review-file-viewer")
+        .getBoundingClientRect();
+      return Math.abs(viewer.left - bounds.left) <= 1 &&
+        Math.abs(viewer.width - bounds.width) <= 1;
+    });
+
+  await page.goto(compareUrl);
+  await expect(compareTree).toBeVisible();
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toBeDisabled();
+  await expect(toggle).toHaveAccessibleName("Hide review side panel");
+
+  await page.goto(`${compareUrl}&file=example.rs`);
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new compare");
+  await expect(toggle).toBeEnabled();
+  await toggle.click();
+  await expect(compareTree).toBeHidden();
+  await expect(toggle).toHaveAccessibleName("Show review side panel");
+  expect(await viewerFills(compare)).toBe(true);
+  expect(await stored("git-compare")).toBe("true");
+
+  await page.goto(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}&file=example.rs`);
+  await expect(page.locator(".git-mode-log caffold-diff-viewer")).toContainText("new commit");
+  await expect(commitTree).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await toggle.click();
+  await expect(commitTree).toBeHidden();
+  expect(await viewerFills(commit)).toBe(true);
+  expect(await stored("git-log-commit")).toBe("true");
+
+  await page.goto(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}`);
+  await expect(commitTree).toBeVisible();
+  await expect(toggle).toBeDisabled();
+
+  await page.goto(`${compareUrl}&file=example.rs`);
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new compare");
+  await expect(compareTree).toBeHidden();
+  await toggle.click();
+  await expect(compareTree).toBeVisible();
+  expect(await stored("git-compare")).toBe("false");
+  expect(await stored("git-log-commit")).toBe("true");
+});
+
 test("navigates Compare files and Log commits with deterministic domain Back", { tag: "@all-viewports" }, async ({ page }) => {
   await installTaskGitFixture(page, [taskRecord()], { logTotalPages: 2 });
   await page.goto(

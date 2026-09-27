@@ -41,6 +41,9 @@ caffold-settings-workspace {
     min-height: var(--task-workspace-header-size);
     border-bottom: 1px solid var(--border);
     padding: var(--interface-space-5) var(--interface-space-7);
+    padding-left: calc(
+      var(--interface-space-7) + var(--task-header-leading-space, 0rem)
+    );
     box-shadow: var(--structural-shadow-block-end);
   }
 

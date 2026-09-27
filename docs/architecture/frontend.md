@@ -232,6 +232,7 @@ owns:
   assignment;
 - Task, Notes, and Settings navigators;
 - the user-resizable desktop navigation pane;
+- the side pane toggle in the top-left corner;
 - the compact top-level Back for a Task, Section, or New Task, and the Task
   switcher opener beside it;
 - the one physical live-update connection for this browser tab;
@@ -243,9 +244,28 @@ The workspace consumes the semantic presentation snapshot published by Tasks:
 `reading` or `code`, current Task target, and Task-detail child. It does not
 query nested Git/GitHub DOM or read their private state.
 
-Reading surfaces keep the Task navigator on desktop. Code surfaces use the full
-workspace width. Foldable and phone presentation is owned by the same
-master/detail layout system.
+Reading surfaces keep the Task navigator on desktop until the person collapses
+it. Code surfaces use the full workspace width. Foldable and phone presentation
+is owned by the same master/detail layout system. The workspace derives
+`data-workspace-detail-open` once from the published presentation; the
+single-pane layout reads it to choose the list or the detail, and the
+navigation pane collapses only while it is set.
+
+The side pane toggle serves the one start pane on screen: the navigation pane
+on reading surfaces, and on a code surface the tree of Integrated Review, Git
+Compare, Git Log commit, or GitHub Pull Files. The workspace reaches the active
+host's `sidePane()` through Tasks, Detail, and the Git and GitHub layouts, along
+the same parent-to-child path as its Action Hint scope. That snapshot carries
+the pane's name, whether the pane sits beside its detail at the current width,
+whether the detail has a file or page open, whether the pane is collapsed, and
+the function that changes the choice. Each code-surface host collapses its tree
+only while a file is open, which is also when its single-pane layout shows the
+viewer, and announces every change with a bubbling `caffold:side-pane-change`.
+The workspace re-reads the snapshot on route and presentation changes, on that
+event, and when its own size changes. It shows the toggle while the pane sits
+beside its detail and the compact Back is not using the corner, and keeps it in
+place but disabled while nothing is open, so the header beneath it keeps the
+same leading space.
 
 The App Shell keyboard-navigation coordinator is the only document-level key
 owner. It derives normal versus editing state from focus and composition, and
@@ -284,6 +304,7 @@ semantic identity, action meaning, accessible name, anchor, and clip
 dependencies. This includes Workspace and Settings navigation and page
 buttons; Notes tree entries, Back, Retry, the Note Info button, and the Task
 links in its popover; Task and Section selection; the Task switcher openers;
+the side pane toggle;
 archived-list, recovery, and Codex
 readiness buttons; Composer Model, Permission, Prompt, attachment, voice,
 cancel, submit, and interrupt actions; Conversation retry, image-preview, and
@@ -517,8 +538,8 @@ publishes its navigator plus the visible New, Recovery, Codex-readiness,
 Section, or Task Detail child. Detail delegates to the exact active
 Conversation, Integrated Review, Git, or GitHub domain. Integrated Review, Git
 Compare and Commit, and GitHub Pull Files merge their simultaneously visible
-tree and viewer leaves on desktop and omit the pane without a layout box on
-single-pane layouts. File tree, source, diff, Markdown preview, image stage,
+tree and viewer leaves on desktop and omit the tree on single-pane layouts and
+while it is collapsed. File tree, source, diff, Markdown preview, image stage,
 PDF preview, and scrollable notice owners publish their actual retained leaf
 rather than having a screen parent reach into their DOM. File tree, source,
 diff, Markdown preview hosts, GitHub Issue Markdown hosts, and image stages
@@ -1427,16 +1448,20 @@ semantics and visual separators, and emits value intent. Task Detail and
 Integrated Review retain route state, choice availability, and host placement.
 
 `caffold-pane-resizer` is the shared split separator and the only owner of the
-start pane width. It keeps the width last chosen by pointer or keyboard apart
-from the applied width: a narrower container clamps the applied width, and a
-wider one returns to the chosen width. Its host sets `start-default`,
-`start-min`, `start-max`, and `end-min` where it needs them, names a
-`storage-key`, applies the published width to its own grid variable, and keeps
-no copy. The resizer restores the chosen width from `localStorage` whenever it
-connects and stores it when a drag or key adjustment ends. Each kind of pane
-has its own `caffold:pane-width:*` key: `task-workspace`, `task-review` (shared
-by every Task and Section), `git-compare`, `git-log-commit`, and
-`github-pull-files`.
+start pane width and of the person's choice to collapse the start pane. It
+keeps the width last chosen by pointer or keyboard apart from the applied
+width: a narrower container clamps the applied width, and a wider one returns
+to the chosen width. Its host sets `start-default`, `start-min`, `start-max`,
+and `end-min` where it needs them, names a `storage-key` and a
+`collapsed-storage-key`, applies the published width to its own grid variable,
+and keeps no copy of either value. The resizer restores both from
+`localStorage` whenever it connects, stores the width when a drag or key
+adjustment ends, and stores the collapsed choice when its host sets it from the
+side pane toggle. The host decides when that choice applies and hides the
+start pane and separator itself. Each kind of pane has its own
+`caffold:pane-width:*` and `caffold:pane-collapsed:*` keys: `task-workspace`,
+`task-review` (shared by every Task and Section), `git-compare`,
+`git-log-commit`, and `github-pull-files`.
 
 Every production JavaScript/CSS asset must be registered consistently in:
 

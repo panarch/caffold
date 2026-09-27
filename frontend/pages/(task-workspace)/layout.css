@@ -17,6 +17,8 @@ caffold-task-workspace {
         var(--interface-compact-hit-outset)
     )
   );
+  /* Room a header leaves between the corner controls and its own content. */
+  --task-workspace-route-control-clearance: 0.625rem;
   --task-header-leading-space: 0rem;
   --task-header-block-space: 0rem;
   position: relative;
@@ -53,6 +55,7 @@ caffold-task-workspace {
     --task-navigator-top-header-size: var(--task-workspace-header-size);
     --task-navigator-scroll-padding-top: var(--interface-space-3);
 
+    container: task-workspace-navigation / inline-size;
     position: relative;
     z-index: 2;
     display: grid;
@@ -99,6 +102,27 @@ caffold-task-workspace {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  &[data-side-pane-collapsed] .task-workspace-master-pane,
+  &[data-side-pane-collapsed] .task-workspace-master-detail > caffold-pane-resizer {
+    display: none;
+  }
+
+  &[data-side-pane-collapsed] .task-workspace-master-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The side pane toggle sits over whichever header starts at the corner, and
+     only that header makes room for it. The room follows the toggle's visible
+     box, so the touch target's extra reach does not widen the gap on touch. */
+  &[data-side-pane-toggle="navigation"] .task-workspace-master-pane,
+  &[data-side-pane-toggle="detail"] .task-workspace-detail-pane {
+    --task-header-leading-space: calc(
+      var(--interface-compact-visual-size) +
+        var(--task-workspace-route-control-clearance)
+    );
+    --task-header-block-space: var(--task-workspace-header-size);
+  }
+
   & .task-workspace-detail-pane {
     overflow: hidden;
   }
@@ -108,7 +132,7 @@ caffold-task-workspace {
       var(--interface-compact-hit-size) +
         var(--task-workspace-route-control-gap) +
         var(--interface-compact-hit-size) +
-        0.625rem
+        var(--task-workspace-route-control-clearance)
     );
     --task-header-block-space: var(--task-workspace-header-size);
   }
@@ -155,6 +179,17 @@ caffold-task-workspace {
     border-color: var(--border-strong);
   }
 
+  & .task-workspace-route-control:disabled {
+    color: var(--disabled-text);
+    cursor: default;
+    opacity: 0.55;
+  }
+
+  & .task-workspace-route-control:disabled::before,
+  & .task-workspace-route-control:disabled:hover::before {
+    border-color: var(--border);
+  }
+
   & .task-workspace-route-control-icon {
     position: relative;
     display: block;
@@ -182,50 +217,8 @@ caffold-task-workspace {
       display: none;
     }
 
-    &[data-workspace-mode="tasks"] .task-workspace-detail-pane {
-      display: none;
-    }
-
-    &[data-workspace-mode="tasks"][data-tasks-view="home"][data-task-list-state="empty"]
-      .task-workspace-master-pane,
-    &[data-workspace-mode="tasks"][data-tasks-view="new"]
-      .task-workspace-master-pane,
-    &[data-workspace-mode="tasks"][data-tasks-view="detail"]
-      .task-workspace-master-pane,
-    &[data-workspace-mode="tasks"][data-tasks-view="recovery"]
-      .task-workspace-master-pane {
-      display: none;
-    }
-
-    &[data-workspace-mode="tasks"][data-tasks-view="home"][data-task-list-state="empty"]
-      .task-workspace-detail-pane,
-    &[data-workspace-mode="tasks"][data-tasks-view="new"]
-      .task-workspace-detail-pane,
-    &[data-workspace-mode="tasks"][data-tasks-view="detail"]
-      .task-workspace-detail-pane,
-    &[data-workspace-mode="tasks"][data-tasks-view="recovery"]
-      .task-workspace-detail-pane {
-      display: block;
-    }
-
-    &[data-workspace-mode="tasks"][data-codex-recovery-visible]
-      .task-workspace-master-pane {
-      display: none;
-    }
-
-    &[data-workspace-mode="tasks"][data-codex-recovery-visible]
-      .task-workspace-detail-pane {
-      display: block;
-    }
-
-    &[data-workspace-mode="notes"][data-notes-view="list"]
-      .task-workspace-detail-pane,
-    &[data-workspace-mode="notes"][data-notes-view="detail"]
-      .task-workspace-master-pane,
-    &[data-workspace-mode="settings"][data-settings-view="list"]
-      .task-workspace-detail-pane,
-    &[data-workspace-mode="settings"][data-settings-view="detail"]
-      .task-workspace-master-pane {
+    &:not([data-workspace-detail-open]) .task-workspace-detail-pane,
+    &[data-workspace-detail-open] .task-workspace-master-pane {
       display: none;
     }
   }
@@ -254,7 +247,8 @@ caffold-task-workspace {
     --task-header-leading-space: 0rem;
     --task-header-block-space: 0rem;
 
-    & .task-workspace-route-control {
+    & .task-workspace-back,
+    & .task-workspace-switcher {
       display: none;
     }
   }

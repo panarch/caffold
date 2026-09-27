@@ -362,6 +362,119 @@ test("remembers the review navigator width across reloads", { tag: "@desktop" },
     .toBe(368);
 });
 
+test("collapses the review navigator from the corner toggle only while a file is open", { tag: ["@desktop", "@foldable"] }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview, taskScenario } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+
+  const toggle = page.locator("caffold-task-workspace .task-workspace-side-pane-toggle");
+  const navigator = taskReview.locator(".task-review-navigator-pane");
+  const viewer = taskReview.locator(".task-review-viewer-pane");
+  const separator = taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  });
+  const title = page.locator("caffold-task-detail-summary .task-detail-heading h2");
+  const stored = (kind) =>
+    page.evaluate(
+      (key) => window.localStorage.getItem(key),
+      `caffold:pane-collapsed:${kind}`,
+    );
+
+  await expect(navigator).toBeVisible();
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toBeDisabled();
+  await expect(toggle).toHaveAccessibleName("Hide review navigator");
+  const toggleBox = await toggle.boundingBox();
+  const titleLeft = (await title.boundingBox()).x;
+  expect(titleLeft).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
+
+  await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+  await expect(taskReview).toHaveAttribute("data-file-selected", "");
+  await expect(toggle).toBeEnabled();
+  expect((await title.boundingBox()).x).toBe(titleLeft);
+  const chosenWidth = await separator.getAttribute("aria-valuenow");
+  const fileUrl = page.url();
+
+  await toggle.click();
+  await expect(navigator).toBeHidden();
+  await expect(separator).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(toggle).toHaveAccessibleName("Show review navigator");
+  const [reviewBox, viewerBox] = await Promise.all([
+    taskReview.locator(".task-review-layout").boundingBox(),
+    viewer.boundingBox(),
+  ]);
+  expect(Math.abs(viewerBox.x - reviewBox.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(viewerBox.width - reviewBox.width)).toBeLessThanOrEqual(1);
+  expect((await title.boundingBox()).x).toBe(titleLeft);
+  expect(await stored("task-review")).toBe("true");
+  expect(await stored("task-workspace")).toBeNull();
+  await expect(taskReview.evaluate((review) =>
+    review.actionHintScope().targets.map((target) => target.label)
+  )).resolves.not.toContain("Resize review navigator");
+
+  await page.reload();
+  await expect(taskReview).toHaveAttribute("data-file-selected", "");
+  await expect(navigator).toBeHidden();
+
+  await page.goto(`/tasks/${taskScenario.threadId}/review`);
+  await expect(navigator).toBeVisible();
+  await expect(toggle).toBeDisabled();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+  await page.goto(fileUrl);
+  await expect(taskReview).toHaveAttribute("data-file-selected", "");
+  await expect(navigator).toBeHidden();
+  await toggle.click();
+  await expect(navigator).toBeVisible();
+  await expect(separator).toHaveAttribute("aria-valuenow", chosenWidth);
+  expect(await stored("task-review")).toBe("false");
+});
+
+test("offers the corner toggle wherever the review navigator sits beside the viewer", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+
+  const workspace = page.locator("caffold-task-workspace");
+  const toggle = workspace.locator(".task-workspace-side-pane-toggle");
+  const back = workspace.locator(".task-workspace-back");
+  const navigator = taskReview.locator(".task-review-navigator-pane");
+  const viewer = taskReview.locator(".task-review-viewer-pane");
+
+  await page.setViewportSize({ width: 700, height: 800 });
+  await expect(navigator).toBeVisible();
+  await expect(viewer).toBeVisible();
+  await expect(back).toBeVisible();
+  await expect(toggle).toBeHidden();
+
+  await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+  await expect(taskReview).toHaveAttribute("data-file-selected", "");
+  await expect(back).toBeHidden();
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toBeEnabled();
+  await toggle.click();
+  await expect(navigator).toBeHidden();
+  await expect(viewer).toBeVisible();
+
+  await page.setViewportSize({ width: 560, height: 800 });
+  await expect(toggle).toBeHidden();
+  await expect(viewer).toBeVisible();
+
+  await page.setViewportSize({ width: 561, height: 800 });
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(navigator).toBeHidden();
+
+  await page.setViewportSize({ width: 900, height: 800 });
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAccessibleName("Show review navigator");
+  await toggle.click();
+  await expect(navigator).toBeVisible();
+});
+
 test("draws the shared separator as the pane line with a centered handle and a 3px highlight", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {

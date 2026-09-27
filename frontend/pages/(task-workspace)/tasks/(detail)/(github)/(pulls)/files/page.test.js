@@ -44,7 +44,8 @@ test("composes active PR tree/viewer actions and Scroll leaves", () => {
     scrollSurfaceScope: () => ({ surfaces: [viewerSurface] }),
   };
   const panelResizer = {
-    getClientRects: () => singlePane ? [] : [{}],
+    collapsed: false,
+    getClientRects: () => singlePane || panelResizer.collapsed ? [] : [{}],
     actionHintScope(options) {
       resizerOptions = options;
       return { targets: [{ id: "separator" }] };
@@ -56,6 +57,7 @@ test("composes active PR tree/viewer actions and Scroll leaves", () => {
     tree,
     fileViewer,
     panelResizer,
+    sidePaneCollapsed: page.sidePaneCollapsed,
     ensureRendered() {},
     currentPullNumber: () => 7,
   };
@@ -73,6 +75,11 @@ test("composes active PR tree/viewer actions and Scroll leaves", () => {
     page.scrollSurfaceScope.call(owner).surfaces,
     [treeSurface, viewerSurface],
   );
+
+  panelResizer.collapsed = true;
+  assert.deepEqual(page.actionHintScope.call(owner).targets, [viewerTarget]);
+  assert.deepEqual(page.scrollSurfaceScope.call(owner).surfaces, [viewerSurface]);
+  panelResizer.collapsed = false;
 
   singlePane = true;
   assert.deepEqual(page.actionHintScope.call(owner).targets, [viewerTarget]);

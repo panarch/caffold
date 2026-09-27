@@ -23,6 +23,19 @@ caffold-git-compare-browser {
   & > caffold-review-file-viewer {
     grid-column: 2;
   }
+
+  &[data-side-pane-collapsed] {
+    grid-template-columns: minmax(0, 1fr);
+
+    & > caffold-git-compare-tree,
+    & > caffold-pane-resizer {
+      display: none;
+    }
+
+    & > caffold-review-file-viewer {
+      grid-column: 1;
+    }
+  }
 }
 
 @media (max-width: 860px) {

@@ -33,6 +33,7 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
       <caffold-github-pull-files-tree></caffold-github-pull-files-tree>
       <caffold-pane-resizer
         storage-key="caffold:pane-width:github-pull-files"
+        collapsed-storage-key="caffold:pane-collapsed:github-pull-files"
         aria-label="Resize review side panel"
       ></caffold-pane-resizer>
       <caffold-review-file-viewer></caffold-review-file-viewer>
@@ -123,6 +124,41 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     }
     this.detailView = nextView;
     this.dataset.detailView = this.detailView;
+    this.applySidePane();
+  }
+
+  /**
+   * The pull request's file tree the workspace's side pane toggle hides and
+   * shows.
+   *
+   * It collapses only while the viewer is showing a file, the same state in
+   * which the single-pane layout shows the viewer instead of the tree.
+   */
+  sidePane() {
+    this.ensureRendered();
+    return {
+      label: "review side panel",
+      beside: !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches,
+      collapsible: this.detailView === "viewer",
+      collapsed: this.sidePaneCollapsed(),
+      setCollapsed: (collapsed) => this.setSidePaneCollapsed(collapsed),
+    };
+  }
+
+  setSidePaneCollapsed(collapsed) {
+    this.panelResizer.setCollapsed(collapsed);
+    this.applySidePane();
+  }
+
+  applySidePane() {
+    this.toggleAttribute("data-side-pane-collapsed", this.sidePaneCollapsed());
+    this.dispatchEvent(
+      new CustomEvent("caffold:side-pane-change", { bubbles: true }),
+    );
+  }
+
+  sidePaneCollapsed() {
+    return this.detailView === "viewer" && this.panelResizer.collapsed;
   }
 
   deactivate() {
@@ -359,8 +395,10 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     if (!number || this.hidden) {
       return emptyActionHintScope();
     }
-    const listActive = this.detailView === "list" ||
-      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
+    const listActive = !this.sidePaneCollapsed() && (
+      this.detailView === "list" ||
+      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches
+    );
     const viewerActive = this.detailView === "viewer";
     const prefix = `${scopeId}:${number}`;
     const resizer = this.panelResizer;
@@ -405,8 +443,10 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     if (!number || this.hidden) {
       return emptyScrollSurfaceScope();
     }
-    const listActive = this.detailView === "list" ||
-      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
+    const listActive = !this.sidePaneCollapsed() && (
+      this.detailView === "list" ||
+      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches
+    );
     const viewerActive = this.detailView === "viewer";
     const prefix = `${scopeId}:${number}`;
     return mergeScrollSurfaceScopes(

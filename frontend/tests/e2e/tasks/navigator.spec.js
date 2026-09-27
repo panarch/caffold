@@ -2634,7 +2634,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
   }
 });
 
-test("keeps the whole brand beside its header actions in the narrowest navigation pane", { tag: "@foldable" }, async ({
+test("keeps the brand beside the corner toggle and header actions in the narrowest navigation pane", { tag: "@foldable" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -2669,6 +2669,9 @@ test("keeps the whole brand beside its header actions in the narrowest navigatio
         .getBoundingClientRect().width,
       actionCount: actions.length,
       titleClipped: title.scrollWidth > title.clientWidth,
+      brandLeft: element
+        .querySelector("caffold-workspace-brand")
+        .getBoundingClientRect().left,
       brandRight: element
         .querySelector("caffold-workspace-brand")
         .getBoundingClientRect().right,
@@ -2683,7 +2686,54 @@ test("keeps the whole brand beside its header actions in the narrowest navigatio
   expect(layout.titleClipped).toBe(false);
   expect(layout.brandRight).toBeLessThanOrEqual(layout.firstActionLeft);
   expect(layout.lastActionRight).toBeLessThanOrEqual(layout.headerRight);
+  const toggle = page.locator("caffold-task-workspace .task-workspace-side-pane-toggle");
+  await expect(toggle).toBeVisible();
+  const toggleBox = await toggle.boundingBox();
+  expect(layout.brandLeft).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
   await captureReviewScreenshot(page, testInfo, "task-navigator-narrowest-header");
+
+  // At the largest interface size the name no longer fits beside the toggle and
+  // the actions, so only the mark stays and the name remains for assistive
+  // technology.
+  await page.evaluate(() => {
+    window.localStorage.setItem(
+      "caffold:settings",
+      JSON.stringify({ interfaceScalePercent: 120 }),
+    );
+  });
+  await page.reload();
+  await expect(header.getByRole("button", { name: "Switch task" }))
+    .toBeVisible();
+  const scaled = await header.evaluate((element) => {
+    const pane = element
+      .closest(".task-workspace-master-pane")
+      .getBoundingClientRect();
+    const title = element.querySelector(".workspace-brand-title");
+    const actions = [
+      ...element.querySelectorAll(".task-list-header-action"),
+    ].map((action) => action.getBoundingClientRect());
+    return {
+      titleText: title.textContent,
+      titleVisibleWidth: title.getBoundingClientRect().width,
+      iconWidth: element
+        .querySelector(".workspace-brand-icon")
+        .getBoundingClientRect().width,
+      brandRight: element
+        .querySelector("caffold-workspace-brand")
+        .getBoundingClientRect().right,
+      firstActionLeft: actions[0].left,
+      lastActionRight: actions.at(-1).right,
+      headerRight: element.getBoundingClientRect().right,
+      paneRight: pane.right,
+    };
+  });
+  expect(scaled.titleText).toBe("Caffold");
+  expect(scaled.titleVisibleWidth).toBeLessThanOrEqual(1);
+  expect(scaled.iconWidth).toBeGreaterThan(0);
+  expect(scaled.brandRight).toBeLessThanOrEqual(scaled.firstActionLeft);
+  expect(scaled.lastActionRight).toBeLessThanOrEqual(scaled.headerRight);
+  expect(scaled.headerRight).toBeLessThanOrEqual(scaled.paneRight);
+  await captureReviewScreenshot(page, testInfo, "task-navigator-narrowest-header-scaled");
 });
 
 test("switches Tasks to master-detail at the Fold8 landscape boundary", { tag: "@all-viewports" }, async ({

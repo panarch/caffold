@@ -71,6 +71,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.boundIconsReady ??= () => this.renderIcons();
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.ensureRendered();
+    this.sidePaneResizeObserver.observe(this);
     this.liveUpdates.connect();
     this.codexStatusLifecycle.connect();
     void warmIcons();
@@ -78,6 +79,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   disconnectedCallback() {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    this.sidePaneResizeObserver.disconnect();
     this.liveUpdates.disconnect();
     this.codexStatusLifecycle.disconnect();
   }
@@ -106,6 +108,12 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.codexStatusSnapshotValue = this.codexStatusLifecycle.snapshot();
     this.innerHTML = `
       <div class="task-workspace-route-controls">
+        <button
+          type="button"
+          class="task-workspace-route-control task-workspace-side-pane-toggle"
+          aria-expanded="true"
+          hidden
+        ></button>
         <button
           type="button"
           class="task-workspace-route-control task-workspace-back"
@@ -139,6 +147,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
             start-max="${NAVIGATION_PANE_MAX_WIDTH}"
             end-min="${WORKSPACE_DETAIL_MIN_WIDTH}"
             storage-key="caffold:pane-width:task-workspace"
+            collapsed-storage-key="caffold:pane-collapsed:task-workspace"
             aria-label="Resize navigation pane"
           ></caffold-pane-resizer>
           <div class="task-workspace-detail-pane">
@@ -155,6 +164,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
       <caffold-codex-reset-credit-dialog></caffold-codex-reset-credit-dialog>
       <caffold-claude-runtime-restart-dialog></caffold-claude-runtime-restart-dialog>
     `;
+    this.sidePaneToggle = this.querySelector(".task-workspace-side-pane-toggle");
+    this.sidePaneToggleLabel = "";
+    this.sidePaneResizeObserver = new ResizeObserver(() => {
+      this.syncSidePaneToggle();
+    });
     this.backButton = this.querySelector(".task-workspace-back");
     this.taskSwitcherButton = this.querySelector(".task-workspace-switcher");
     this.workspaceSurface = this.querySelector(":scope > .task-workspace-surface");
@@ -217,6 +231,13 @@ class CaffoldTaskWorkspace extends HTMLElement {
     });
     this.taskSwitcherButton.addEventListener("click", () => {
       this.openTaskSwitcher();
+    });
+    this.sidePaneToggle.addEventListener("click", () => {
+      this.toggleSidePane();
+    });
+    this.addEventListener("caffold:side-pane-change", (event) => {
+      event.stopPropagation();
+      this.syncSidePaneToggle();
     });
     this.taskNavigator.addEventListener(
       "caffold:task-navigator-intent",
@@ -361,6 +382,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   renderIcons() {
+    this.renderSidePaneToggleIcon();
     if (this.backButton) {
       this.backButton.innerHTML = renderInlineIcon(
         "ArrowLeft",
@@ -528,6 +550,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       "data-codex-recovery-visible",
       this.tasksPage.taskStoreRecoveryVisible(),
     );
+    this.syncNavigationPane();
   }
 
   setClaudeRestartState(state) {
@@ -647,6 +670,12 @@ class CaffoldTaskWorkspace extends HTMLElement {
         })
       : null;
     return mergeActionHintScopes(
+      routeControlActionHintScope(this, this.sidePaneToggle, {
+        id: "workspace:side-pane:toggle",
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        fallbackLabel: "Toggle side pane",
+        retained: () => this.sidePaneToggle,
+      }),
       routeControlActionHintScope(this, this.backButton, {
         id: "workspace:parent:tasks",
         actionId: ACTION_HINT_ACTION.PARENT,
@@ -866,6 +895,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.notesWorkspace?.dataset.notesView ?? "list";
     this.dataset.settingsView =
       this.settingsWorkspace.dataset.settingsView ?? "list";
+    this.syncNavigationPane();
   }
 
   handleNavigationPaneResize(event) {
@@ -887,6 +917,117 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.style.setProperty(
       "--task-workspace-master-width",
       `${this.masterResizer.value}px`,
+    );
+  }
+
+  /**
+   * Whether the detail pane has something open, which is also the side the
+   * single-pane layout shows. The navigation pane collapses only then.
+   */
+  detailOpen() {
+    if (this.mode === "notes") {
+      return this.dataset.notesView === "detail";
+    }
+    if (this.mode === "settings") {
+      return this.dataset.settingsView === "detail";
+    }
+    if (this.hasAttribute("data-codex-recovery-visible")) {
+      return true;
+    }
+    const view = this.dataset.tasksView;
+    return ["new", "detail", "recovery"].includes(view) ||
+      (view === "home" && this.dataset.taskListState === "empty");
+  }
+
+  syncNavigationPane() {
+    if (!this.masterResizer) {
+      return;
+    }
+    const detailOpen = this.detailOpen();
+    this.toggleAttribute("data-workspace-detail-open", detailOpen);
+    this.toggleAttribute(
+      "data-side-pane-collapsed",
+      detailOpen && this.masterResizer.collapsed,
+    );
+    this.syncSidePaneToggle();
+  }
+
+  navigationSidePane() {
+    const collapsible = this.hasAttribute("data-workspace-detail-open");
+    return {
+      label: "navigation pane",
+      beside: window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches,
+      collapsible,
+      collapsed: collapsible && this.masterResizer.collapsed,
+      setCollapsed: (collapsed) => {
+        this.masterResizer.setCollapsed(collapsed);
+        this.syncNavigationPane();
+      },
+    };
+  }
+
+  // A code surface replaces the navigation pane with its own file tree, so the
+  // toggle serves that tree while one is shown.
+  showsCodeSurface() {
+    return this.mode === "tasks" &&
+      this.dataset.taskDetailPresentation === "code";
+  }
+
+  currentSidePane() {
+    return this.showsCodeSurface()
+      ? this.tasksPage.sidePane()
+      : this.navigationSidePane();
+  }
+
+  toggleSidePane() {
+    const pane = this.currentSidePane();
+    if (!pane?.collapsible) {
+      return;
+    }
+    pane.setCollapsed(!pane.collapsed);
+    this.syncSidePaneToggle();
+  }
+
+  /**
+   * Show the toggle wherever its pane sits beside the detail, unless the
+   * compact Back is using the same corner. It stays in place while nothing is
+   * open to collapse for, so the header it sits over never shifts.
+   */
+  syncSidePaneToggle() {
+    if (!this.sidePaneToggle) {
+      return;
+    }
+    const pane = this.currentSidePane();
+    const compactRouteControlsShown =
+      this.hasAttribute("data-workspace-route-control-visible") &&
+      !window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches;
+    const visible = Boolean(pane?.beside) && !compactRouteControlsShown;
+    this.sidePaneToggle.hidden = !visible;
+    if (!visible) {
+      delete this.dataset.sidePaneToggle;
+      return;
+    }
+    this.sidePaneToggle.disabled = !pane.collapsible;
+    this.sidePaneToggle.setAttribute("aria-expanded", `${!pane.collapsed}`);
+    const label = `${pane.collapsed ? "Show" : "Hide"} ${pane.label}`;
+    if (label !== this.sidePaneToggleLabel) {
+      this.sidePaneToggleLabel = label;
+      this.sidePaneToggle.setAttribute("aria-label", label);
+      this.sidePaneToggle.title = label;
+      this.renderSidePaneToggleIcon();
+    }
+    this.dataset.sidePaneToggle =
+      !this.showsCodeSurface() && !pane.collapsed ? "navigation" : "detail";
+  }
+
+  renderSidePaneToggleIcon() {
+    if (!this.sidePaneToggle || !this.sidePaneToggleLabel) {
+      return;
+    }
+    this.sidePaneToggle.innerHTML = renderInlineIcon(
+      "PanelLeft",
+      this.sidePaneToggleLabel,
+      "task-workspace-route-control-icon",
     );
   }
 }

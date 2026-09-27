@@ -14,6 +14,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     super();
     this.currentValue = START_DEFAULT_WIDTH;
     this.preferredValue = null;
+    this.collapsedPreference = false;
     this.resizePointerId = null;
     this.boundPointerDown = (event) => this.startResize(event);
     this.boundPointerMove = (event) => this.moveResize(event);
@@ -51,6 +52,7 @@ export class CaffoldPaneResizer extends HTMLElement {
       this.resizeObserver.observe(this.parentElement);
     }
     this.restorePreferredValue();
+    this.restoreCollapsed();
   }
 
   disconnectedCallback() {
@@ -106,6 +108,20 @@ export class CaffoldPaneResizer extends HTMLElement {
 
   get value() {
     return this.currentValue;
+  }
+
+  // Whether the person chose to hide the start pane. The host decides when
+  // that choice applies, so this only remembers it.
+  get collapsed() {
+    return this.collapsedPreference;
+  }
+
+  setCollapsed(collapsed) {
+    this.collapsedPreference = Boolean(collapsed);
+    writeStoredValue(
+      this.getAttribute("collapsed-storage-key"),
+      `${this.collapsedPreference}`,
+    );
   }
 
   startResize(event) {
@@ -231,7 +247,16 @@ export class CaffoldPaneResizer extends HTMLElement {
   }
 
   storePreferredValue() {
-    writeStoredWidth(this.getAttribute("storage-key"), this.preferredValue);
+    if (Number.isFinite(this.preferredValue)) {
+      writeStoredValue(this.getAttribute("storage-key"), `${this.preferredValue}`);
+    }
+  }
+
+  restoreCollapsed() {
+    const stored = readStoredValue(this.getAttribute("collapsed-storage-key"));
+    if (stored === "true" || stored === "false") {
+      this.collapsedPreference = stored === "true";
+    }
   }
 
   syncRange() {
@@ -302,22 +327,26 @@ function numericAttribute(element, name, fallback) {
 }
 
 function readStoredWidth(key) {
+  return positiveWidth(readStoredValue(key));
+}
+
+function readStoredValue(key) {
   if (!key) {
     return null;
   }
   try {
-    return positiveWidth(window.localStorage.getItem(key));
+    return window.localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function writeStoredWidth(key, width) {
-  if (!key || !Number.isFinite(width)) {
+function writeStoredValue(key, value) {
+  if (!key) {
     return;
   }
   try {
-    window.localStorage.setItem(key, `${width}`);
+    window.localStorage.setItem(key, value);
   } catch {
     // localStorage can be unavailable in private or restricted contexts.
   }
