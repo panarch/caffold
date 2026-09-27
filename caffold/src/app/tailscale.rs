@@ -1,7 +1,12 @@
 mod cli;
 mod status;
 
-use std::{net::IpAddr, str::FromStr, sync::Arc};
+use std::{
+    net::IpAddr,
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::Arc,
+};
 
 use axum::{
     Json, Router,
@@ -17,14 +22,18 @@ use axum::{
 use qrcode::{EcLevel, QrCode, render::svg};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
+use tracing::warn;
 use url::Url;
 
 use super::error::ApiError;
-use cli::{ProcessTailscaleRunner, TailscaleRunner};
+use cli::{ProcessTailscaleRunner, TailscaleExecutables, TailscaleRunner, summarize_output};
 use status::{
     TailscaleNodeResponse, TailscaleReason, TailscaleState, TailscaleStatus,
     canonical_tailnet_url_value, classify_serve_status, command_failed_status,
 };
+
+const STATUS_COMMAND: &[&str] = &["status", "--json"];
+const SERVE_STATUS_COMMAND: &[&str] = &["serve", "status", "--json"];
 
 pub(super) fn router(port: u16) -> Router {
     router_with_service(TailscaleService::new(
@@ -133,6 +142,7 @@ struct TailscaleService {
     runner: Arc<dyn TailscaleRunner>,
     operation: Arc<Mutex<()>>,
     status: Arc<RwLock<TailscaleStatus>>,
+    logged_failure: Arc<Mutex<Option<Failure>>>,
 }
 
 impl TailscaleService {
@@ -146,6 +156,7 @@ impl TailscaleService {
                 TailscaleReason::StatusNotChecked,
                 "Tailscale status has not been checked yet.",
             ))),
+            logged_failure: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -153,9 +164,8 @@ impl TailscaleService {
         let Ok(_operation) = self.operation.try_lock() else {
             return self.snapshot().await;
         };
-        let status = self.inspect().await;
-        self.publish(status.clone()).await;
-        status
+        let inspection = self.inspect().await;
+        self.publish(inspection.status, inspection.failure).await
     }
 
     async fn set_serve(&self, enabled: bool) -> Result<TailscaleStatus, TailscaleControlError> {
@@ -164,14 +174,13 @@ impl TailscaleService {
         };
         let current = self.inspect().await;
         let should_run = if enabled {
-            current.state == TailscaleState::ServeOff
+            current.status.state == TailscaleState::ServeOff
         } else {
-            current.state == TailscaleState::Ready
+            current.status.state == TailscaleState::Ready
         };
-        if !should_run {
-            self.publish(current.clone()).await;
-            return Ok(current);
-        }
+        let Some(cli) = current.cli.filter(|_| should_run) else {
+            return Ok(self.publish(current.status, current.failure).await);
+        };
 
         let transition = if enabled {
             TailscaleStatus::new(
@@ -186,26 +195,14 @@ impl TailscaleService {
                 "Disabling Caffold's Tailscale Serve mapping.",
             )
         };
-        self.publish(transition).await;
+        self.publish(transition, None).await;
 
-        let arguments = if enabled {
-            vec![
-                "serve".to_string(),
-                "--bg".to_string(),
-                "--yes".to_string(),
-                "--https=443".to_string(),
-                self.target.to_string(),
-            ]
+        let arguments: &[&str] = if enabled {
+            &["serve", "--bg", "--yes", "--https=443", &self.target]
         } else {
-            vec![
-                "serve".to_string(),
-                "--yes".to_string(),
-                "--https=443".to_string(),
-                "off".to_string(),
-            ]
+            &["serve", "--yes", "--https=443", "off"]
         };
-        let command = self.runner.run(arguments).await;
-        if !matches!(command, Ok(output) if output.success) {
+        if let Err(error) = self.runner.run(&cli, arguments).await {
             let failed = TailscaleStatus::new(
                 TailscaleState::Failed,
                 if enabled {
@@ -219,110 +216,198 @@ impl TailscaleService {
                     "Caffold's Tailscale Serve mapping could not be disabled."
                 },
             );
-            self.publish(failed.clone()).await;
-            return Ok(failed);
+            let failure = Failure {
+                event: if enabled {
+                    "tailscale serve could not be enabled"
+                } else {
+                    "tailscale serve could not be disabled"
+                },
+                detail: format!("{} {error}", command_line(&cli, arguments)),
+            };
+            return Ok(self.publish(failed, Some(failure)).await);
         }
 
         let inspected = self.inspect().await;
         let converged = if enabled {
-            inspected.state == TailscaleState::Ready
+            inspected.status.state == TailscaleState::Ready
         } else {
-            inspected.state == TailscaleState::ServeOff
+            inspected.status.state == TailscaleState::ServeOff
         };
-        let status = if converged
+        if converged
             || matches!(
-                inspected.state,
+                inspected.status.state,
                 TailscaleState::Failed | TailscaleState::Unavailable
-            ) {
-            inspected
-        } else {
-            TailscaleStatus::new(
-                TailscaleState::Failed,
-                if enabled {
-                    TailscaleReason::ServeEnableIncomplete
-                } else {
-                    TailscaleReason::ServeDisableIncomplete
-                },
-                if enabled {
-                    "Tailscale completed the command, but Caffold's Serve mapping is not ready."
-                } else {
-                    "Tailscale completed the command, but Caffold's Serve mapping is still enabled."
-                },
             )
+        {
+            return Ok(self.publish(inspected.status, inspected.failure).await);
+        }
+        let incomplete = TailscaleStatus::new(
+            TailscaleState::Failed,
+            if enabled {
+                TailscaleReason::ServeEnableIncomplete
+            } else {
+                TailscaleReason::ServeDisableIncomplete
+            },
+            if enabled {
+                "Tailscale completed the command, but Caffold's Serve mapping is not ready."
+            } else {
+                "Tailscale completed the command, but Caffold's Serve mapping is still enabled."
+            },
+        );
+        let failure = Failure {
+            event: "tailscale serve did not reach the requested state",
+            detail: format!(
+                "{} succeeded, but Tailscale then reported: {}",
+                command_line(&cli, arguments),
+                inspected.status.diagnostic_message
+            ),
         };
-        self.publish(status.clone()).await;
-        Ok(status)
+        Ok(self.publish(incomplete, Some(failure)).await)
     }
 
-    async fn inspect(&self) -> TailscaleStatus {
-        if !self.runner.is_available() {
-            return TailscaleStatus::new(
-                TailscaleState::NotInstalled,
-                TailscaleReason::CliNotFound,
-                "Tailscale is not installed on this host.",
-            );
-        }
+    async fn inspect(&self) -> Inspection {
+        let candidates = match self.runner.find_executables() {
+            TailscaleExecutables::Found(candidates) => candidates,
+            TailscaleExecutables::Missing { searched } => {
+                let searched = searched
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect::<Vec<_>>();
+                return Inspection {
+                    status: TailscaleStatus::new(
+                        TailscaleState::NotInstalled,
+                        TailscaleReason::CliNotFound,
+                        "Tailscale is not installed on this host.",
+                    ),
+                    failure: Some(Failure {
+                        event: "tailscale CLI was not found",
+                        detail: format!("searched {}", searched.join(", ")),
+                    }),
+                    cli: None,
+                };
+            }
+        };
 
-        let status_command = self
-            .runner
-            .run(vec!["status".to_string(), "--json".to_string()])
-            .await;
-        let Ok(status_command) = status_command else {
-            return command_failed_status(
+        let command_failed = || {
+            command_failed_status(
                 TailscaleReason::StatusCommandFailed,
                 "Tailscale status could not be checked.",
-            );
+            )
         };
-        if !status_command.success {
-            return command_failed_status(
-                TailscaleReason::StatusCommandFailed,
-                "Tailscale status could not be checked.",
-            );
+        let mut reported = None;
+        let mut attempts = Vec::new();
+        for cli in candidates {
+            let stdout = match self.runner.run(&cli, STATUS_COMMAND).await {
+                Ok(stdout) => stdout,
+                Err(error) => {
+                    reported.get_or_insert_with(command_failed);
+                    attempts.push(format!("{} {error}", command_line(&cli, STATUS_COMMAND)));
+                    continue;
+                }
+            };
+            let Ok(node) = serde_json::from_str::<TailscaleNodeResponse>(&stdout) else {
+                reported.get_or_insert_with(|| {
+                    command_failed_status(
+                        TailscaleReason::StatusResponseInvalid,
+                        "Tailscale returned an invalid status response.",
+                    )
+                });
+                attempts.push(format!(
+                    "{} returned an invalid response: {}",
+                    command_line(&cli, STATUS_COMMAND),
+                    summarize_output(&stdout)
+                ));
+                continue;
+            };
+            return self.inspect_connection(cli, node).await;
         }
-        let Ok(node) = serde_json::from_str::<TailscaleNodeResponse>(&status_command.stdout) else {
-            return command_failed_status(
-                TailscaleReason::StatusResponseInvalid,
-                "Tailscale returned an invalid status response.",
-            );
-        };
+        Inspection {
+            status: reported.unwrap_or_else(command_failed),
+            failure: Some(Failure {
+                event: "tailscale status could not be read",
+                detail: attempts.join("; "),
+            }),
+            cli: None,
+        }
+    }
+
+    async fn inspect_connection(&self, cli: PathBuf, node: TailscaleNodeResponse) -> Inspection {
         if node.backend_state != "Running" {
-            return TailscaleStatus::new(
-                TailscaleState::Disconnected,
-                TailscaleReason::BackendNotRunning,
-                "Tailscale is installed but disconnected.",
-            );
+            return Inspection {
+                status: TailscaleStatus::new(
+                    TailscaleState::Disconnected,
+                    TailscaleReason::BackendNotRunning,
+                    "Tailscale is installed but disconnected.",
+                ),
+                failure: None,
+                cli: Some(cli),
+            };
         }
 
-        let serve_command = self
-            .runner
-            .run(vec![
-                "serve".to_string(),
-                "status".to_string(),
-                "--json".to_string(),
-            ])
-            .await;
-        let Ok(serve_command) = serve_command else {
-            return command_failed_status(
-                TailscaleReason::ServeStatusCommandFailed,
-                "Tailscale Serve status could not be checked.",
-            );
+        let stdout = match self.runner.run(&cli, SERVE_STATUS_COMMAND).await {
+            Ok(stdout) => stdout,
+            Err(error) => {
+                return Inspection {
+                    status: command_failed_status(
+                        TailscaleReason::ServeStatusCommandFailed,
+                        "Tailscale Serve status could not be checked.",
+                    ),
+                    failure: Some(Failure {
+                        event: "tailscale serve status could not be read",
+                        detail: format!("{} {error}", command_line(&cli, SERVE_STATUS_COMMAND)),
+                    }),
+                    cli: Some(cli),
+                };
+            }
         };
-        if !serve_command.success {
-            return command_failed_status(
-                TailscaleReason::ServeStatusCommandFailed,
-                "Tailscale Serve status could not be checked.",
-            );
+        let status = classify_serve_status(&stdout, &self.target);
+        let failure = (status.state == TailscaleState::Failed).then(|| Failure {
+            event: "tailscale serve status could not be read",
+            detail: format!(
+                "{}: {} Output: {}",
+                command_line(&cli, SERVE_STATUS_COMMAND),
+                status.diagnostic_message,
+                summarize_output(&stdout)
+            ),
+        });
+        Inspection {
+            status,
+            failure,
+            cli: Some(cli),
         }
-        classify_serve_status(&serve_command.stdout, &self.target)
     }
 
     async fn snapshot(&self) -> TailscaleStatus {
         self.status.read().await.clone()
     }
 
-    async fn publish(&self, status: TailscaleStatus) {
-        *self.status.write().await = status;
+    async fn publish(&self, status: TailscaleStatus, failure: Option<Failure>) -> TailscaleStatus {
+        let mut logged_failure = self.logged_failure.lock().await;
+        if let Some(failure) = &failure
+            && logged_failure.as_ref() != Some(failure)
+        {
+            warn!(detail = %failure.detail, "{}", failure.event);
+        }
+        *logged_failure = failure;
+        *self.status.write().await = status.clone();
+        status
     }
+}
+
+struct Inspection {
+    status: TailscaleStatus,
+    failure: Option<Failure>,
+    cli: Option<PathBuf>,
+}
+
+#[derive(PartialEq)]
+struct Failure {
+    event: &'static str,
+    detail: String,
+}
+
+fn command_line(cli: &Path, arguments: &[&str]) -> String {
+    format!("{} {}", cli.display(), arguments.join(" "))
 }
 
 #[derive(Debug)]
@@ -397,6 +482,7 @@ fn is_loopback_host(host: &str) -> bool {
 mod tests {
     use std::{
         collections::VecDeque,
+        io,
         sync::{Arc, Mutex as StdMutex},
     };
 
@@ -409,9 +495,13 @@ mod tests {
     use tower::ServiceExt;
 
     use super::{
-        cli::{TailscaleCommandError, TailscaleCommandFuture, TailscaleCommandOutput},
+        cli::{TailscaleCommandError, TailscaleCommandFuture},
         *,
     };
+
+    const CLI: &str = "/usr/local/bin/tailscale";
+    const HOMEBREW_CLI: &str = "/opt/homebrew/bin/tailscale";
+    const APP_CLI: &str = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
 
     #[tokio::test]
     async fn classifies_installation_connection_serve_and_failure_states() {
@@ -495,7 +585,7 @@ mod tests {
             MockResponse::Gated {
                 started: started.clone(),
                 release: release.clone(),
-                output: output(true, ""),
+                output: String::new(),
             },
             immediate(true, node_status("Running")),
             immediate(true, serve_status("http://127.0.0.1:5178")),
@@ -535,7 +625,7 @@ mod tests {
             MockResponse::Gated {
                 started: started.clone(),
                 release: release.clone(),
-                output: output(true, ""),
+                output: String::new(),
             },
             immediate(true, node_status("Running")),
             immediate(true, r#"{"Web":{}}"#),
@@ -587,6 +677,133 @@ mod tests {
             TailscaleReason::ServeDisableIncomplete
         );
         assert_eq!(disable_runner.calls().len(), 5);
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_the_next_cli_and_runs_serve_with_the_one_that_answered() {
+        let runner = MockTailscaleRunner::with_executables(
+            [HOMEBREW_CLI, APP_CLI],
+            [
+                response(false, "failed to connect to local Tailscale service"),
+                response(true, node_status("Running")),
+                response(true, r#"{"Web":{}}"#),
+                response(true, ""),
+                response(false, "failed to connect to local Tailscale service"),
+                response(true, node_status("Running")),
+                response(true, serve_status("http://127.0.0.1:5178")),
+            ],
+        );
+        let ready = service(runner.clone()).set_serve(true).await.unwrap();
+        assert_eq!(ready.state, TailscaleState::Ready);
+        assert_eq!(
+            runner.programs(),
+            [
+                HOMEBREW_CLI,
+                APP_CLI,
+                APP_CLI,
+                APP_CLI,
+                HOMEBREW_CLI,
+                APP_CLI,
+                APP_CLI
+            ]
+            .map(PathBuf::from)
+        );
+        assert_eq!(runner.calls()[3][..2], ["serve", "--bg"]);
+    }
+
+    #[tokio::test]
+    async fn logs_each_new_final_failure_once_with_every_attempt() {
+        let (logs, _subscriber) = capture_logs();
+
+        let missing = service(MockTailscaleRunner::missing());
+        missing.refresh().await;
+        missing.refresh().await;
+        let not_found = logs.lines_containing("tailscale CLI was not found");
+        assert_eq!(not_found.len(), 1);
+        assert!(not_found[0].contains(&format!("searched {CLI}")));
+
+        let runner = MockTailscaleRunner::with_executables(
+            [HOMEBREW_CLI, APP_CLI],
+            [
+                response(false, "failed to connect"),
+                timed_out(),
+                response(false, "failed to connect"),
+                timed_out(),
+                response(true, node_status("Stopped")),
+                response(false, "failed to connect"),
+                timed_out(),
+            ],
+        );
+        let service = service(runner);
+        let failed = service.refresh().await;
+        assert_eq!(failed.state, TailscaleState::Failed);
+        assert_eq!(failed.reason_code, TailscaleReason::StatusCommandFailed);
+        service.refresh().await;
+        assert_eq!(service.refresh().await.state, TailscaleState::Disconnected);
+        service.refresh().await;
+
+        let unreadable = logs.lines_containing("tailscale status could not be read");
+        assert_eq!(unreadable.len(), 2);
+        assert!(unreadable[0].contains(&format!(
+            "{HOMEBREW_CLI} status --json exited with code 1: failed to connect; \
+             {APP_CLI} status --json did not finish within 10 seconds"
+        )));
+    }
+
+    #[tokio::test]
+    async fn logs_failed_serve_commands_and_unreadable_serve_status() {
+        let (logs, _subscriber) = capture_logs();
+
+        let failed = service(MockTailscaleRunner::with_responses([
+            response(true, node_status("Running")),
+            response(true, r#"{"Web":{}}"#),
+            response(false, "Serve is not enabled on your tailnet."),
+        ]))
+        .set_serve(true)
+        .await
+        .unwrap();
+        assert_eq!(
+            failed.diagnostic_message,
+            "Caffold's Tailscale Serve mapping could not be enabled."
+        );
+
+        let lines = logs.lines_containing("tailscale serve could not be enabled");
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains(&format!(
+            "{CLI} serve --bg --yes --https=443 http://127.0.0.1:5178 exited with code 1: \
+             Serve is not enabled on your tailnet."
+        )));
+
+        service(MockTailscaleRunner::with_responses([
+            response(true, node_status("Running")),
+            response(true, serve_status("http://127.0.0.1:5178")),
+            response(false, "permission denied"),
+        ]))
+        .set_serve(false)
+        .await
+        .unwrap();
+        let lines = logs.lines_containing("tailscale serve could not be disabled");
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains(&format!(
+            "{CLI} serve --yes --https=443 off exited with code 1: permission denied"
+        )));
+
+        let unreadable = service(MockTailscaleRunner::with_responses([
+            response(true, node_status("Running")),
+            response(true, "not json"),
+        ]))
+        .refresh()
+        .await;
+        assert_eq!(
+            unreadable.reason_code,
+            TailscaleReason::ServeStatusResponseInvalid
+        );
+        let lines = logs.lines_containing("tailscale serve status could not be read");
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains(&format!(
+            "{CLI} serve status --json: Tailscale returned an invalid Serve status response. \
+             Output: not json"
+        )));
     }
 
     #[tokio::test]
@@ -731,35 +948,78 @@ mod tests {
         )
     }
 
-    fn response(success: bool, stdout: impl Into<String>) -> MockResponse {
-        immediate(success, stdout)
+    fn response(success: bool, output: impl Into<String>) -> MockResponse {
+        immediate(success, output)
     }
 
-    fn immediate(success: bool, stdout: impl Into<String>) -> MockResponse {
-        MockResponse::Immediate(Ok(output(success, stdout)))
+    fn immediate(success: bool, output: impl Into<String>) -> MockResponse {
+        let output = output.into();
+        MockResponse::Immediate(if success {
+            Ok(output)
+        } else {
+            Err(TailscaleCommandError::Exited {
+                code: Some(1),
+                output,
+            })
+        })
     }
 
-    fn output(success: bool, stdout: impl Into<String>) -> TailscaleCommandOutput {
-        TailscaleCommandOutput {
-            success,
-            stdout: stdout.into(),
+    fn timed_out() -> MockResponse {
+        MockResponse::Immediate(Err(TailscaleCommandError::TimedOut))
+    }
+
+    fn capture_logs() -> (CapturedLogs, tracing::subscriber::DefaultGuard) {
+        let logs = CapturedLogs::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer({
+                let logs = logs.clone();
+                move || logs.clone()
+            })
+            .with_ansi(false)
+            .finish();
+        (logs, tracing::subscriber::set_default(subscriber))
+    }
+
+    #[derive(Clone, Default)]
+    struct CapturedLogs(Arc<StdMutex<Vec<u8>>>);
+
+    impl CapturedLogs {
+        fn lines_containing(&self, text: &str) -> Vec<String> {
+            String::from_utf8(self.0.lock().unwrap().clone())
+                .unwrap()
+                .lines()
+                .filter(|line| line.contains(text))
+                .map(str::to_string)
+                .collect()
+        }
+    }
+
+    impl io::Write for CapturedLogs {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
         }
     }
 
     #[derive(Clone)]
     struct MockTailscaleRunner {
-        available: bool,
+        executables: Vec<PathBuf>,
         responses: Arc<StdMutex<VecDeque<MockResponse>>>,
-        calls: Arc<StdMutex<Vec<Vec<String>>>>,
+        calls: Arc<StdMutex<Vec<MockCall>>>,
+    }
+
+    struct MockCall {
+        program: PathBuf,
+        arguments: Vec<String>,
     }
 
     impl MockTailscaleRunner {
         fn missing() -> Self {
-            Self {
-                available: false,
-                responses: Arc::new(StdMutex::new(VecDeque::new())),
-                calls: Arc::new(StdMutex::new(Vec::new())),
-            }
+            Self::with_executables([], [])
         }
 
         fn with_responses<const N: usize>(responses: [MockResponse; N]) -> Self {
@@ -767,25 +1027,47 @@ mod tests {
         }
 
         fn with_mock_responses<const N: usize>(responses: [MockResponse; N]) -> Self {
+            Self::with_executables([CLI], responses)
+        }
+
+        fn with_executables<const E: usize, const N: usize>(
+            executables: [&str; E],
+            responses: [MockResponse; N],
+        ) -> Self {
             Self {
-                available: true,
+                executables: executables.map(PathBuf::from).into(),
                 responses: Arc::new(StdMutex::new(responses.into())),
                 calls: Arc::new(StdMutex::new(Vec::new())),
             }
         }
 
         fn calls(&self) -> Vec<Vec<String>> {
-            self.calls.lock().unwrap().clone()
+            let calls = self.calls.lock().unwrap();
+            calls.iter().map(|call| call.arguments.clone()).collect()
+        }
+
+        fn programs(&self) -> Vec<PathBuf> {
+            let calls = self.calls.lock().unwrap();
+            calls.iter().map(|call| call.program.clone()).collect()
         }
     }
 
     impl TailscaleRunner for MockTailscaleRunner {
-        fn is_available(&self) -> bool {
-            self.available
+        fn find_executables(&self) -> TailscaleExecutables {
+            if self.executables.is_empty() {
+                TailscaleExecutables::Missing {
+                    searched: vec![PathBuf::from(CLI)],
+                }
+            } else {
+                TailscaleExecutables::Found(self.executables.clone())
+            }
         }
 
-        fn run(&self, arguments: Vec<String>) -> TailscaleCommandFuture {
-            self.calls.lock().unwrap().push(arguments);
+        fn run(&self, executable: &Path, arguments: &[&str]) -> TailscaleCommandFuture {
+            self.calls.lock().unwrap().push(MockCall {
+                program: executable.to_path_buf(),
+                arguments: arguments.iter().map(ToString::to_string).collect(),
+            });
             let response = self.responses.lock().unwrap().pop_front().unwrap();
             Box::pin(async move {
                 match response {
@@ -805,11 +1087,11 @@ mod tests {
     }
 
     enum MockResponse {
-        Immediate(Result<TailscaleCommandOutput, TailscaleCommandError>),
+        Immediate(Result<String, TailscaleCommandError>),
         Gated {
             started: Arc<Notify>,
             release: Arc<Notify>,
-            output: TailscaleCommandOutput,
+            output: String,
         },
     }
 }
