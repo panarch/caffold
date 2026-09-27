@@ -114,6 +114,7 @@ private func awaitTailscaleUpdate(
 
 private func tailscaleFixture(
     state: String,
+    reasonCode: String = "fixtureReason",
     canManage: Bool = true,
     tailnetURL: String? = nil
 ) -> Data {
@@ -122,7 +123,7 @@ private func tailscaleFixture(
         """
         {
           "state": "\(state)",
-          "reasonCode": "fixtureReason",
+          "reasonCode": "\(reasonCode)",
           "diagnosticMessage": "Fixture diagnostic.",
           "tailnetUrl": \(url),
           "canManage": \(canManage)
@@ -230,6 +231,26 @@ private func runTests() throws {
             "\(state) must keep its canonical menu action availability"
         )
     }
+
+    MockURLProtocol.handler = { request in
+        let response = HTTPURLResponse(
+            url: tailscaleStatusURL,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        return (
+            response,
+            tailscaleFixture(state: "unavailable", reasonCode: "serveTargetConflict")
+        )
+    }
+    let conflictingTailscale = try awaitTailscaleStatus { completion in
+        probeTailscaleStatus(url: tailscaleStatusURL, session: session, completion: completion)
+    }
+    try require(
+        conflictingTailscale.title == "Tailscale · Connected · Serve port in use",
+        "a Serve port conflict must not read like an unreachable server"
+    )
 
     let tailnetURL = "https://caffold.example.ts.net/"
     MockURLProtocol.handler = { request in
