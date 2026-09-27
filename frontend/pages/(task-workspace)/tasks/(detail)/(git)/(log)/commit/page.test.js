@@ -42,7 +42,8 @@ test("composes only active Commit tree/viewer leaves", () => {
     scrollSurfaceScope: () => ({ surfaces: [viewerSurface] }),
   };
   const panelResizer = {
-    getClientRects: () => singlePane ? [] : [{}],
+    collapsed: false,
+    getClientRects: () => singlePane || panelResizer.collapsed ? [] : [{}],
     actionHintScope(options) {
       resizerOptions = options;
       return { targets: [{ id: "separator" }] };
@@ -54,6 +55,7 @@ test("composes only active Commit tree/viewer leaves", () => {
     commitTree,
     fileViewer,
     panelResizer,
+    sidePaneCollapsed: page.sidePaneCollapsed,
     ensureRendered() {},
     currentCommitSha: () => "abcdef123456",
   };
@@ -70,6 +72,10 @@ test("composes only active Commit tree/viewer leaves", () => {
     treeSurface,
     viewerSurface,
   ]);
+  panelResizer.collapsed = true;
+  assert.deepEqual(page.actionHintScope.call(owner).targets, [viewerTarget]);
+  assert.deepEqual(page.scrollSurfaceScope.call(owner).surfaces, [viewerSurface]);
+  panelResizer.collapsed = false;
   singlePane = true;
   assert.deepEqual(page.actionHintScope.call(owner).targets, [viewerTarget]);
   assert.deepEqual(page.scrollSurfaceScope.call(owner).surfaces, [viewerSurface]);

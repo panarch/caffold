@@ -45,6 +45,8 @@ test("composes only active Compare tree/viewer leaves", () => {
     detailView: "viewer",
     compareTree,
     viewer,
+    panelResizer: { collapsed: false },
+    sidePaneCollapsed: browser.sidePaneCollapsed,
     ensureRendered() {},
   };
   const actionOptions = {
@@ -70,6 +72,11 @@ test("composes only active Compare tree/viewer leaves", () => {
     viewerSurface,
   ]);
 
+  owner.panelResizer.collapsed = true;
+  assert.deepEqual(browser.actionHintScope.call(owner, actionOptions).targets, [viewerTarget]);
+  assert.deepEqual(browser.scrollSurfaceScope.call(owner, actionOptions).surfaces, [viewerSurface]);
+  owner.panelResizer.collapsed = false;
+
   singlePane = true;
   assert.deepEqual(browser.actionHintScope.call(owner, actionOptions).targets, [viewerTarget]);
   assert.deepEqual(browser.scrollSurfaceScope.call(owner, actionOptions).surfaces, [viewerSurface]);
@@ -90,6 +97,7 @@ test("composes the shared panel resizer through its public scope", () => {
     isConnected: true,
     detailView: "list",
     panelResizer,
+    sidePaneCollapsed: browser.sidePaneCollapsed,
     compareTree: { actionHintScope: () => ({ targets: [] }) },
     viewer: { actionHintScope: () => ({ targets: [] }) },
     ensureRendered() {},

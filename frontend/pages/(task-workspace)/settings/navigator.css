@@ -15,6 +15,9 @@ caffold-settings-navigator {
     height: var(--task-workspace-header-size);
     border-bottom: 1px solid var(--border);
     padding: 0 var(--interface-space-6);
+    padding-left: calc(
+      var(--interface-space-6) + var(--task-header-leading-space, 0rem)
+    );
     box-shadow: var(--structural-shadow-block-end);
   }
 

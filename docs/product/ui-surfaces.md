@@ -24,6 +24,15 @@ Integrated Review for every Task and Section, Git Compare, Git Log commits, and
 GitHub Pull Request files. A window too narrow for that width narrows the pane,
 and the chosen width returns when the window widens again.
 
+Wherever a split pane's list sits beside its detail, a button in the
+workspace's top-left corner hides the list so the detail takes the full width,
+and shows it again at the width it had. The list hides only while the detail
+has something open: a Task, New Task, a Note, a Settings page, or a file.
+Otherwise the button stays in its place but is unavailable. Each kind of pane
+remembers whether it was hidden, the same way it remembers its width. When the
+navigation pane is too narrow for the header's controls and the full Caffold
+name, the header keeps only the Caffold mark.
+
 ## Task Navigator
 
 The Task navigator provides:

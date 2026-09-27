@@ -676,6 +676,14 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     return null;
   }
 
+  sidePane() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || this.mode !== "pulls") {
+      return null;
+    }
+    return this.pullsLayout.sidePane();
+  }
+
   actionHintScope() {
     this.ensureRendered();
     if (!this.active || this.hidden || !this.mode) {

@@ -140,6 +140,11 @@ class CaffoldGitComparePage extends HTMLElement {
     return this.browser.setView(view);
   }
 
+  sidePane() {
+    this.ensureRendered();
+    return this.browser.sidePane();
+  }
+
   actionHintScope({ scopeId = "git", clipRoots = [] } = {}) {
     this.ensureRendered();
     return this.browser.actionHintScope({

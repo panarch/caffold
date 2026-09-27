@@ -23,3 +23,18 @@ caffold-workspace-brand {
     white-space: nowrap;
   }
 }
+
+/* The navigation pane's header also holds the side pane toggle and the Task
+   actions, which need about 15.6rem beside the full name in the widest
+   bundled face. The pane gets that narrow only at larger interface sizes, and
+   there the mark stands alone. */
+@container task-workspace-navigation (max-width: 15.75rem) {
+  caffold-workspace-brand .workspace-brand-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}

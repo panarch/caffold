@@ -571,6 +571,267 @@ test("remembers the shared navigation pane width across reloads", { tag: "@deskt
   await expect(separator).toHaveAttribute("aria-valuenow", "444");
 });
 
+test("collapses the navigation pane from the corner toggle only while a Task is open", { tag: ["@desktop", "@foldable"] }, async ({
+  page,
+}) => {
+  const task = workspaceTask();
+  await installEventSourceMock(page);
+  await installTaskRoutes(page, task);
+  await page.goto("/");
+
+  const taskWorkspace = page.locator("caffold-task-workspace");
+  const navigationPane = taskWorkspace.locator(".task-workspace-master-pane");
+  const detailPane = taskWorkspace.locator(".task-workspace-detail-pane");
+  const separator = taskWorkspace.locator(".task-workspace-master-detail > caffold-pane-resizer");
+  const toggle = taskWorkspace.locator(".task-workspace-side-pane-toggle");
+  const brand = taskWorkspace.locator("caffold-task-navigator caffold-workspace-brand");
+  const title = page.locator("caffold-task-detail-summary .task-detail-heading h2");
+  const left = (locator) =>
+    locator.evaluate((element) => Math.round(element.getBoundingClientRect().left));
+  const collapsedStored = () =>
+    page.evaluate(() => window.localStorage.getItem("caffold:pane-collapsed:task-workspace"));
+  // The header leaves room for the toggle's visible box, not its touch target,
+  // so the gap after the toggle is the same with a mouse and on touch.
+  const gapAfterToggle = (content) =>
+    content.evaluate((element) => {
+      const toggle = document.querySelector(".task-workspace-side-pane-toggle");
+      const visibleRight = toggle.getBoundingClientRect().right -
+        Number.parseFloat(getComputedStyle(toggle, "::before").right);
+      return element.getBoundingClientRect().left - visibleRight;
+    });
+  const lengths = (content, names) =>
+    content.evaluate((element, properties) => {
+      const rem = Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      );
+      return Object.fromEntries(properties.map((name) => [
+        name,
+        Number.parseFloat(getComputedStyle(element).getPropertyValue(name)) * rem,
+      ]));
+    }, names);
+
+  await expect(navigationPane).toBeVisible();
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toBeDisabled();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(toggle).toHaveAccessibleName("Hide navigation pane");
+  const toggleBox = await toggle.boundingBox();
+  const homeBrandLeft = await left(brand);
+  expect(homeBrandLeft).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
+  const listSpacing = await lengths(brand, [
+    "--task-workspace-route-control-clearance",
+  ]);
+  expect(await gapAfterToggle(brand)).toBeCloseTo(
+    listSpacing["--task-workspace-route-control-clearance"],
+    0,
+  );
+
+  await page.goto(`/tasks/${task.threadId}`);
+  await expect(title).toHaveText("Workspace state");
+  await expect(toggle).toBeEnabled();
+  expect(await toggle.boundingBox()).toEqual(toggleBox);
+  expect(await left(brand)).toBe(homeBrandLeft);
+  const chosenWidth = await separator.getAttribute("aria-valuenow");
+
+  await toggle.click();
+  await expect(navigationPane).toBeHidden();
+  await expect(separator).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(toggle).toHaveAccessibleName("Show navigation pane");
+  expect(await toggle.boundingBox()).toEqual(toggleBox);
+  const layout = await taskWorkspace.evaluate((element) => {
+    const workspace = element.getBoundingClientRect();
+    const detail = element
+      .querySelector(".task-workspace-detail-pane")
+      .getBoundingClientRect();
+    return {
+      detailStartsAtEdge: Math.abs(detail.left - workspace.left) <= 1,
+      detailFillsWidth: Math.abs(detail.width - workspace.width) <= 1,
+    };
+  });
+  expect(layout).toEqual({ detailStartsAtEdge: true, detailFillsWidth: true });
+  expect(await left(title)).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
+  const detailSpacing = await lengths(title, [
+    "--task-detail-header-padding-inline",
+    "--interface-space-6",
+    "--task-workspace-route-control-clearance",
+  ]);
+  expect(await gapAfterToggle(title)).toBeCloseTo(
+    detailSpacing["--task-detail-header-padding-inline"] -
+      detailSpacing["--interface-space-6"] +
+      detailSpacing["--task-workspace-route-control-clearance"],
+    0,
+  );
+  expect(await collapsedStored()).toBe("true");
+
+  await page.reload();
+  await expect(title).toHaveText("Workspace state");
+  await expect(navigationPane).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+  await page.goto("/");
+  await expect(navigationPane).toBeVisible();
+  await expect(detailPane).toBeVisible();
+  await expect(toggle).toBeDisabled();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(await left(brand)).toBe(homeBrandLeft);
+
+  await page.goto(`/tasks/${task.threadId}`);
+  await expect(title).toHaveText("Workspace state");
+  await expect(navigationPane).toBeHidden();
+  await toggle.click();
+  await expect(navigationPane).toBeVisible();
+  await expect(separator).toHaveAttribute("aria-valuenow", chosenWidth);
+  expect(await collapsedStored()).toBe("false");
+});
+
+test("offers the corner toggle as an Action Hint only while it can act", { tag: ["@desktop", "@foldable"] }, async ({
+  page,
+}) => {
+  await openCompletedTaskForReview(page);
+
+  const taskWorkspace = page.locator("caffold-task-workspace");
+  const navigationPane = taskWorkspace.locator(".task-workspace-master-pane");
+  const toggle = taskWorkspace.locator(".task-workspace-side-pane-toggle");
+  const toggleTargets = () =>
+    page.locator("caffold-app-shell").evaluate((shell) =>
+      shell.actionHintScope().targets
+        .filter((target) => target.id === "workspace:side-pane:toggle")
+        .map((target) => ({ label: target.label, actionable: target.isActionable() })),
+    );
+
+  await expect(page.locator("caffold-task-detail")).toBeVisible();
+  await activateActionHint(page, "Hide navigation pane");
+  await expect(navigationPane).toBeHidden();
+  await expect(toggle).toBeFocused();
+  await activateActionHint(page, "Show navigation pane");
+  await expect(navigationPane).toBeVisible();
+
+  await page.goto("/");
+  await expect(toggle).toBeDisabled();
+  expect(await toggleTargets()).toEqual([
+    { label: "Hide navigation pane", actionable: false },
+  ]);
+});
+
+test("keeps the corner toggle out of single-pane Task layouts", { tag: "@phone" }, async ({
+  page,
+}) => {
+  const task = workspaceTask();
+  await installEventSourceMock(page);
+  await installTaskRoutes(page, task);
+  await page.addInitScript(() => {
+    window.localStorage.setItem("caffold:pane-collapsed:task-workspace", "true");
+  });
+  await page.goto("/");
+
+  const taskWorkspace = page.locator("caffold-task-workspace");
+  const toggle = taskWorkspace.locator(".task-workspace-side-pane-toggle");
+  await expect(taskWorkspace.locator("caffold-task-navigator")).toBeVisible();
+  await expect(toggle).toBeHidden();
+
+  await page.goto(`/tasks/${task.threadId}`);
+  await expect(taskWorkspace.locator(".task-workspace-back")).toBeVisible();
+  await expect(taskWorkspace.locator(".task-workspace-switcher")).toBeVisible();
+  await expect(toggle).toBeHidden();
+});
+
+test("places the corner toggle exactly where the compact Back sits", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const task = workspaceTask();
+  await installEventSourceMock(page);
+  await installTaskRoutes(page, task);
+  await page.addInitScript(() => {
+    window.localStorage.setItem("caffold:pane-collapsed:task-workspace", "true");
+  });
+  await page.goto(`/tasks/${task.threadId}`);
+
+  const taskWorkspace = page.locator("caffold-task-workspace");
+  const toggle = taskWorkspace.locator(".task-workspace-side-pane-toggle");
+  const back = taskWorkspace.locator(".task-workspace-back");
+  const switcher = taskWorkspace.locator(".task-workspace-switcher");
+  const title = page.locator("caffold-task-detail-summary .task-detail-heading h2");
+  const geometry = async (lastControl) => {
+    const control = await lastControl.boundingBox();
+    const heading = await title.boundingBox();
+    return {
+      control,
+      contentGap: Math.round(heading.x - (control.x + control.width)),
+      centerOffset: Math.round(
+        heading.y + heading.height / 2 - (control.y + control.height / 2),
+      ),
+    };
+  };
+
+  await expect(toggle).toBeVisible();
+  await expect(back).toBeHidden();
+  const wide = await geometry(toggle);
+
+  await page.setViewportSize({ width: 860, height: 800 });
+  await expect(toggle).toBeHidden();
+  await expect(back).toBeVisible();
+  await expect(switcher).toBeVisible();
+  const compactBack = await back.boundingBox();
+  const compact = await geometry(switcher);
+
+  expect(wide.control).toEqual(compactBack);
+  expect(wide.contentGap).toBe(compact.contentGap);
+  expect(wide.centerOffset).toBe(compact.centerOffset);
+});
+
+test("shares the collapsed navigation pane with Notes and Settings while they show a page", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.goto("/notes");
+
+  const taskWorkspace = page.locator("caffold-task-workspace");
+  const notesNavigator = taskWorkspace.locator("caffold-notes-navigator");
+  const settingsNavigator = taskWorkspace.locator("caffold-settings-navigator");
+  const toggle = taskWorkspace.locator(".task-workspace-side-pane-toggle");
+  const heading = page.locator("caffold-settings-workspace .settings-workspace-detail-header h1");
+
+  await expect(notesNavigator).toBeVisible();
+  await expect(toggle).toBeDisabled();
+  const toggleBox = await toggle.boundingBox();
+  expect(
+    await notesNavigator
+      .locator("caffold-workspace-brand")
+      .evaluate((element) => element.getBoundingClientRect().left),
+  ).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
+
+  await page.goto("/settings/about");
+  await expect(heading).toHaveText("About Caffold");
+  await expect(toggle).toBeEnabled();
+  expect(
+    await settingsNavigator
+      .locator("caffold-workspace-brand")
+      .evaluate((element) => element.getBoundingClientRect().left),
+  ).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
+  await toggle.click();
+  await expect(settingsNavigator).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(await toggle.boundingBox()).toEqual(toggleBox);
+  const headingBox = await heading.boundingBox();
+  expect(headingBox.x).toBeGreaterThanOrEqual(toggleBox.x + toggleBox.width);
+  expect(
+    Math.abs(
+      headingBox.y + headingBox.height / 2 - (toggleBox.y + toggleBox.height / 2),
+    ),
+  ).toBeLessThanOrEqual(1);
+
+  // Wide Settings always presents a page, so the collapsed pane stays
+  // collapsed at its root.
+  await page.goto("/settings");
+  await expect(heading).toHaveText("Appearance");
+  await expect(settingsNavigator).toBeHidden();
+
+  await page.goto("/notes");
+  await expect(notesNavigator).toBeVisible();
+  await expect(toggle).toBeDisabled();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+});
+
 test("preserves Tasks and Settings DOM while hidden task updates arrive", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {

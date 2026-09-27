@@ -420,6 +420,13 @@ class CaffoldGithubPullsLayout extends HTMLElement {
     return this.selectedPullSummary?.number ?? this.filesPage.currentPullNumber();
   }
 
+  sidePane() {
+    this.ensureRendered();
+    return !this.hidden && this.view === "files"
+      ? this.filesPage.sidePane()
+      : null;
+  }
+
   actionHintScope({ scopeId = "github:pulls", clipRoots = [] } = {}) {
     this.ensureRendered();
     if (this.hidden) {

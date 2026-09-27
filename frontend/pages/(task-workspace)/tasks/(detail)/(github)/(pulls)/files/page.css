@@ -24,6 +24,19 @@ caffold-github-pull-files-page {
   & > caffold-review-file-viewer {
     grid-column: 2;
   }
+
+  &[data-side-pane-collapsed] {
+    grid-template-columns: minmax(0, 1fr);
+
+    & > caffold-github-pull-files-tree,
+    & > caffold-pane-resizer {
+      display: none;
+    }
+
+    & > caffold-review-file-viewer {
+      grid-column: 1;
+    }
+  }
 }
 
 @media (max-width: 860px) {

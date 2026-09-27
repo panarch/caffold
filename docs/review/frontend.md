@@ -83,14 +83,16 @@ change-tree, file-tree, source, and diff presentation components is preferred.
 The active review surface owns their selection, watcher, and request lifetime.
 
 The route owns reloadable semantic review state. Tree disclosure and
-navigator/viewer scroll belong to the component instance, while panel width
-belongs to the shared pane resizer, which remembers it for each kind of pane.
+navigator/viewer scroll belong to the component instance, while panel width and
+the choice to collapse the navigator belong to the shared pane resizer, which
+remembers both for each kind of pane.
 A cached inactive review may retain those DOM-local values, but it must release
 filesystem watches, pending requests, and other active lifecycle work.
 
 Responsive review tests must cover both list and viewer roles. Desktop and
-foldable layouts preserve a usable navigator and viewer simultaneously; phone
-layouts show one at a time and expose a semantic file-to-navigator Back action.
+foldable layouts preserve a usable navigator and viewer simultaneously unless
+the person collapses the navigator while a file is open; phone layouts show one
+at a time and expose a semantic file-to-navigator Back action.
 Test deep paths, unchanged and deleted files, clean scopes, long refs, large
 change sets, appearance extremes, and browser zoom rather than validating only
 the default happy path.

@@ -42,6 +42,9 @@ import {
   mergeScrollSurfaceScopes,
 } from "../../../../../scroll-scope.js";
 
+// Matches the width where layout.css stops showing one pane at a time.
+const REVIEW_SPLIT_MEDIA_QUERY = "(min-width: 561px)";
+
 class CaffoldTaskReview extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
@@ -113,6 +116,7 @@ class CaffoldTaskReview extends HTMLElement {
             start-min="220"
             end-min="360"
             storage-key="caffold:pane-width:task-review"
+            collapsed-storage-key="caffold:pane-collapsed:task-review"
             aria-label="Resize review navigator"
           ></caffold-pane-resizer>
           <section class="task-review-viewer-pane" aria-label="Review file">
@@ -954,6 +958,7 @@ class CaffoldTaskReview extends HTMLElement {
     this.dataset.reviewNavigator = this.route.navigator;
     this.dataset.reviewViewer = this.route.viewer;
     this.applyPanelWidth();
+    this.applySidePane();
     this.patchEmptyStates();
   }
 
@@ -1138,6 +1143,39 @@ class CaffoldTaskReview extends HTMLElement {
       "--task-review-panel-width",
       `${this.resizer().value}px`,
     );
+  }
+
+  /**
+   * The navigator the workspace's side pane toggle hides and shows.
+   *
+   * It collapses only while a file is open, the same state in which the
+   * phone layout shows the viewer instead of the navigator.
+   */
+  sidePane() {
+    this.ensureRendered();
+    return {
+      label: "review navigator",
+      beside: window.matchMedia(REVIEW_SPLIT_MEDIA_QUERY).matches,
+      collapsible: Boolean(this.route.path),
+      collapsed: this.sidePaneCollapsed(),
+      setCollapsed: (collapsed) => this.setSidePaneCollapsed(collapsed),
+    };
+  }
+
+  setSidePaneCollapsed(collapsed) {
+    this.resizer().setCollapsed(collapsed);
+    this.applySidePane();
+  }
+
+  applySidePane() {
+    this.toggleAttribute("data-side-pane-collapsed", this.sidePaneCollapsed());
+    this.dispatchEvent(
+      new CustomEvent("caffold:side-pane-change", { bubbles: true }),
+    );
+  }
+
+  sidePaneCollapsed() {
+    return Boolean(this.route.path) && this.resizer().collapsed;
   }
 
   logicalSelectedPath() {

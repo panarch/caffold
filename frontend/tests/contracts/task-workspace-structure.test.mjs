@@ -1108,7 +1108,7 @@ test("Codex status and Task recovery keep explicit lifecycle and UI owners", () 
   }
 });
 
-test("split panes remember their widths under one key per kind of pane", () => {
+test("split panes remember their widths and collapse under one key pair per kind of pane", () => {
   const storageKeys = [
     "pages/(task-workspace)/layout.js",
     "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",
@@ -1116,18 +1116,24 @@ test("split panes remember their widths under one key per kind of pane", () => {
     "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js",
     "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js",
   ].map((path) => {
-    const keys = [...readFrontend(path).matchAll(
-      /<caffold-pane-resizer[^>]*\sstorage-key="([^"]+)"/g,
-    )].map((match) => match[1]);
-    assert.equal(keys.length, 1, `${path} mounts one remembered pane resizer`);
-    return keys[0];
+    const resizers = [...readFrontend(path).matchAll(
+      /<caffold-pane-resizer\b[^>]*>/g,
+    )].map((match) => match[0]);
+    assert.equal(resizers.length, 1, `${path} mounts one remembered pane resizer`);
+    return {
+      width: resizers[0].match(/\sstorage-key="([^"]+)"/)?.[1],
+      collapsed: resizers[0].match(/\scollapsed-storage-key="([^"]+)"/)?.[1],
+    };
   });
 
   assert.deepEqual(storageKeys, [
-    "caffold:pane-width:task-workspace",
-    "caffold:pane-width:task-review",
-    "caffold:pane-width:git-compare",
-    "caffold:pane-width:git-log-commit",
-    "caffold:pane-width:github-pull-files",
-  ]);
+    "task-workspace",
+    "task-review",
+    "git-compare",
+    "git-log-commit",
+    "github-pull-files",
+  ].map((kind) => ({
+    width: `caffold:pane-width:${kind}`,
+    collapsed: `caffold:pane-collapsed:${kind}`,
+  })));
 });

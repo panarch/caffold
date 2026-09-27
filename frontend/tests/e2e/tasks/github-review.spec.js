@@ -2341,6 +2341,55 @@ test("reloads a Task-scoped GitHub route from canonical Task context", { tag: "@
   await expect.poll(() => fixture.counts.pulls).toBe(2);
 });
 
+test("collapses the PR file tree from the corner toggle only while a diff is open", { tag: ["@desktop", "@foldable"] }, async ({
+  page,
+}) => {
+  await installLinkedWorktreeGithubFixture(page);
+  const filesUrl = `/tasks/${THREAD_ID}/github/pulls/1983/files`;
+  const toggle = page.locator("caffold-task-workspace .task-workspace-side-pane-toggle");
+  const files = page.locator("caffold-github-pull-files-page");
+  const tree = files.locator("caffold-github-pull-files-tree");
+
+  await page.goto(filesUrl);
+  await expect(files.locator(`button[data-file-tree-path="${PULL_FILE_PATH}"]`))
+    .toBeVisible();
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toBeDisabled();
+  await expect(toggle).toHaveAccessibleName("Hide review side panel");
+
+  await page.goto(`${filesUrl}?file=src%2Freview.rs`);
+  await expect(page.locator("caffold-diff-viewer")).toContainText(
+    "new Task-owned review",
+  );
+  await expect(toggle).toBeEnabled();
+  await toggle.click();
+  await expect(tree).toBeHidden();
+  const fills = await files.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const viewer = element
+      .querySelector(":scope > caffold-review-file-viewer")
+      .getBoundingClientRect();
+    return Math.abs(viewer.left - bounds.left) <= 1 &&
+      Math.abs(viewer.width - bounds.width) <= 1;
+  });
+  expect(fills).toBe(true);
+
+  await page.reload();
+  await expect(page.locator("caffold-diff-viewer")).toContainText(
+    "new Task-owned review",
+  );
+  await expect(tree).toBeHidden();
+
+  await page.goto(filesUrl);
+  await expect(tree).toBeVisible();
+  await expect(toggle).toBeDisabled();
+  expect(
+    await page.evaluate(() =>
+      window.localStorage.getItem("caffold:pane-collapsed:github-pull-files"),
+    ),
+  ).toBe("true");
+});
+
 test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "@all-viewports" }, async ({
   page,
 }) => {
