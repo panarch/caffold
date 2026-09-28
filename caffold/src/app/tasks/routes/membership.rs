@@ -1068,7 +1068,7 @@ mod tests {
         let (state, terminals) =
             task_state_with_terminals(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, &source).await;
-        terminals.open_for_test(thread_id, &source);
+        terminals.open_for_test(thread_id, &source).await;
         state
             .lifecycle
             .isolate_current_task(
@@ -1091,7 +1091,9 @@ mod tests {
             !terminals.is_open(thread_id),
             "the terminal started before the move closes with it"
         );
-        terminals.open_for_test(thread_id, std::path::Path::new(&worktree.worktree_path));
+        terminals
+            .open_for_test(thread_id, std::path::Path::new(&worktree.worktree_path))
+            .await;
 
         let _ = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
@@ -1155,13 +1157,13 @@ mod tests {
 
         // Outside a repository isolation fails, and the Task stays where it was.
         manage_test_thread(&state, "thread-plain", &plain).await;
-        terminals.open_for_test("thread-plain", &plain);
+        terminals.open_for_test("thread-plain", &plain).await;
         assert!(isolate("thread-plain", &plain).await.is_err());
         assert!(terminals.is_open("thread-plain"));
         terminals.close("thread-plain");
 
         manage_test_thread(&state, "thread-repository", &source).await;
-        terminals.open_for_test("thread-repository", &source);
+        terminals.open_for_test("thread-repository", &source).await;
         let moved = isolate("thread-repository", &source).await.unwrap();
         assert!(matches!(moved, IsolateOutcome::Isolated { .. }));
         assert!(!terminals.is_open("thread-repository"));
@@ -1171,7 +1173,9 @@ mod tests {
             unreachable!();
         };
         let worktree_path = std::path::PathBuf::from(&worktree.worktree_path);
-        terminals.open_for_test("thread-repository", &worktree_path);
+        terminals
+            .open_for_test("thread-repository", &worktree_path)
+            .await;
         let again = isolate("thread-repository", &worktree_path).await.unwrap();
         let terminal_kept = terminals.is_open("thread-repository");
         terminals.close("thread-repository");
@@ -1362,7 +1366,9 @@ mod tests {
             "keep me\n",
         )
         .unwrap();
-        terminals.open_for_test(thread_id, std::path::Path::new(&worktree.worktree_path));
+        terminals
+            .open_for_test(thread_id, std::path::Path::new(&worktree.worktree_path))
+            .await;
 
         let result = task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
         let terminal_kept = terminals.is_open(thread_id);
@@ -2095,7 +2101,7 @@ mod tests {
         let (state, terminals) =
             task_state_with_terminals(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        terminals.open_for_test(thread_id, root.path());
+        terminals.open_for_test(thread_id, root.path()).await;
 
         let archived = task_recovery_archive(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
@@ -2129,7 +2135,7 @@ mod tests {
         let (state, terminals) =
             task_state_with_terminals(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        terminals.open_for_test(thread_id, root.path());
+        terminals.open_for_test(thread_id, root.path()).await;
 
         let removed = task_recovery_remove(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
@@ -2186,7 +2192,7 @@ mod tests {
         };
         let worktree_path = std::path::PathBuf::from(&worktree.worktree_path);
         std::fs::write(worktree_path.join("uncommitted.txt"), "keep me\n").unwrap();
-        terminals.open_for_test(thread_id, &worktree_path);
+        terminals.open_for_test(thread_id, &worktree_path).await;
 
         let archived =
             task_recovery_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
@@ -2239,7 +2245,7 @@ mod tests {
         let (state, terminals) =
             task_state_with_terminals(RootedFs::new(root.path()).unwrap(), client).await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        terminals.open_for_test(thread_id, root.path());
+        terminals.open_for_test(thread_id, root.path()).await;
 
         let result =
             task_recovery_remove(State(state.clone()), AxumPath(thread_id.to_string())).await;
@@ -2270,7 +2276,7 @@ mod tests {
         let (state, terminals) =
             task_state_with_terminals(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        terminals.open_for_test(thread_id, root.path());
+        terminals.open_for_test(thread_id, root.path()).await;
 
         let result = task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
         let terminal_kept = terminals.is_open(thread_id);

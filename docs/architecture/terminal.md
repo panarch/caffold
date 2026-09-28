@@ -8,11 +8,17 @@ device or another one. The browser draws the terminal in the Detail body.
 ## Ownership
 
 - `caffold/src/app/terminal.rs` owns the HTTP and WebSocket routes. Its private
-  registry, shell, and screen-restore modules live in
+  registry, terminal session, shell, and screen-restore modules live in
   `caffold/src/app/terminal/`.
 - The registry keeps terminals in backend memory only, keyed by a Task thread ID
   or a Managed Section ID. Nothing about a terminal is stored in the Task store,
   and every terminal ends when the backend exits or restarts.
+- Each terminal runs on its own thread, which starts the shell and alone owns
+  the terminal's screen and attached viewer. The server's request threads never
+  wait for that thread: they send it requests that return at once and await
+  any answer, and the registry's lock covers only the list of terminals. A busy
+  or stuck terminal therefore holds up only its own screens, never the rest of
+  the server or another terminal.
 - A terminal is one shell process. Caffold runs no multiplexer; a person who
   wants several shells in one Task runs one, such as tmux, inside the terminal.
 - The shell is `$SHELL -l`, or `/bin/sh -l` when `SHELL` is unset, started
@@ -21,15 +27,15 @@ device or another one. The browser draws the terminal in the Detail body.
   directory, and it receives `TERM=xterm-256color`, `COLORTERM=truecolor`, and,
   when none of `LANG`, `LC_ALL`, and `LC_CTYPE` is set, a UTF-8 `LC_CTYPE`.
 - The backend's screen state for a terminal is an `alacritty_terminal` screen
-  with 5,000 lines of scrollback, fed by a reader thread per terminal. The
-  browser's xterm.js buffer is only a view of the output it was sent.
+  with 5,000 lines of scrollback, fed by the terminal's thread. The browser's
+  xterm.js buffer is only a view of the output it was sent.
 
 | State | Owner | Writers | Persisted |
 | --- | --- | --- | --- |
-| Which subjects have a terminal | Registry | Open and Kill requests, shell exit, Task isolation and Archive, eviction, backend shutdown | No |
-| Shell process and PTY | Operating system; the registry holds the PTY | The shell; the registry for size and stopping | No |
-| Screen and scrollback | The terminal's `alacritty_terminal` screen | The reader thread, resizes | No |
-| Attached viewer | Registry, one per terminal | WebSocket attach and detach, terminal end | No |
+| Which subjects have a terminal | Registry | Open and Kill requests, a shell that fails to start or exits, Task isolation and Archive, eviction, backend shutdown | No |
+| Shell process and PTY | Operating system; the terminal's thread holds the PTY | The shell; the terminal's thread for size and stopping | No |
+| Screen and scrollback | The terminal's `alacritty_terminal` screen, owned by its thread | The terminal's thread: output and resizes | No |
+| Attached viewer | The terminal's thread, one per terminal | WebSocket attach and detach, terminal end | No |
 | Last viewed order | Registry | Open, attach, detach | No |
 | Whether a command is running | The PTY's foreground process group | Read when needed, never stored | No |
 
@@ -51,30 +57,33 @@ A terminal ends only when:
 5. the backend exits; or
 6. the cap below evicts it.
 
-Closing a terminal tells its viewer the terminal ended and sends the shell a
-hangup. A shell still running after three seconds is killed. The reader thread
-keeps draining output while it waits, because an exiting shell on macOS waits
-until its terminal output has been read. A shell that exits on its own may
-leave output unread on Linux, so the reader reads what is waiting before it
-reports the end. The shell's exit is observed without
-reaping it (`waitid` with `WNOWAIT`), so its pid cannot be reused while Caffold
-may still signal it.
+Closing a terminal takes it off the list at once; its thread then tells its
+viewer the terminal ended and sends the shell a hangup. A shell still running
+after three seconds is killed. The thread keeps draining output while it
+waits, because an exiting shell on macOS waits until its terminal output has
+been read. A shell that exits on its own may leave output unread on Linux, so
+the thread reads what is waiting before it reports the end. The shell's exit
+is observed without reaping it (`waitid` with `WNOWAIT`), so its pid cannot be
+reused while Caffold may still signal it.
 
 Nothing announces why a terminal ended. A screen that was using it goes back to
 the surface the subject showed before the terminal, as the toggle does.
 
 ## Cap
 
-The backend keeps at most 10 terminals. Opening another one first closes one:
+The backend keeps at most 10 terminals. Once the shell of an 11th has started,
+the new terminal asks one other to close:
 
 1. a terminal a viewer is attached to is never chosen;
 2. a terminal whose shell holds the PTY's foreground — no command running — is
    chosen before a busy one;
 3. among those, the least recently opened, attached, or detached goes first.
 
-If every terminal is attached, the new one opens anyway and the backend holds
-more than 10 until some end. A job started with `&` does not hold the
-foreground, so its terminal counts as idle.
+The chosen terminal closes only if no viewer is attached when it takes up the
+request. If every terminal is attached, or the chosen one gained a viewer
+meanwhile, the new one stays open anyway and the backend holds more than 10
+until some end. A job started with `&` does not hold the foreground, so its
+terminal counts as idle.
 
 ## Viewing
 
