@@ -256,6 +256,13 @@ identity and interact with them only through their public component boundary.
 
 ### Keyboard Action Ownership
 
+Every control a surface presents must be reachable from the keyboard in each
+context it appears in, including dialogs, popovers, rendered content, and the
+terminal. A change that adds or moves a control is not complete until the
+keyboard reaches it; an unreachable control is a defect to fix, not an
+exception to document. Browser-owned behavior such as text selection and page
+zoom is outside this requirement.
+
 When a document- or workspace-level keyboard mode exposes actions owned by
 multiple components, the component that owns the existing control and
 activation path must provide its keyboard action through an explicit public

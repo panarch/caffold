@@ -90,6 +90,11 @@ unloaded rather than as empty.
 
 ## Keyboard navigation
 
+Every action in Caffold works from the keyboard, and a control the keyboard
+cannot reach is a bug. This covers every control Caffold draws. Selecting and
+copying text and zooming the page belong to the browser, and the terminal's
+special key row repeats keys a hardware keyboard already has.
+
 While keyboard navigation is on, single keys typed outside an editing field
 drive the workspace, an open dialog, or an open popover, whichever holds the
 current context:

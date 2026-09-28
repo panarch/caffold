@@ -348,6 +348,15 @@ html:not(.cf-development) [data-md-component="announce"] {
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
 }
 
+/* Beside a screenshot, each sentence starts its own line; in the phone
+   layout they run on as prose. */
+@media (min-width: 45em) {
+  .cf-sentences > span {
+    display: block;
+    text-wrap: balance;
+  }
+}
+
 .cf-closing {
   margin-top: 4rem;
   padding: 2.5rem;

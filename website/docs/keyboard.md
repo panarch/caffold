@@ -1,7 +1,10 @@
 # Keyboard navigation
 
-With a keyboard, you can run the actions on the screen and scroll its areas
-without a pointer. The keys work whenever you are not typing in a field.
+Every action in Caffold works from the keyboard. If one doesn't, that's a bug.
+The keys below work whenever you are not typing in a field, and the
+[key combinations](#key-combinations) work everywhere, even in the terminal.
+Selecting text and zooming the page are left to the browser, as on any other
+page.
 
 ## Choose an action: <kbd>F</kbd>
 
