@@ -837,6 +837,7 @@ fn bad_push_request(message: &'static str) -> ApiError {
 mod tests {
     use crate::agent;
     use crate::app::tasks::AgentRuntimeDependencies;
+    use crate::app::terminal::TaskTerminals;
     use std::collections::HashMap;
 
     use axum::{body::Body, http::Request};
@@ -1267,6 +1268,7 @@ mod tests {
                 codex_mcp: None,
             },
             None,
+            TaskTerminals::for_tests(),
         )
         .unwrap();
         let app = router().with_state(state);

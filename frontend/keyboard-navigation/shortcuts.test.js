@@ -5,6 +5,8 @@ import { SCROLL_COMMAND } from "./model.js";
 import {
   KEYBOARD_NAVIGATION_KEY,
   KEYBOARD_SHORTCUT_HELP_SECTIONS,
+  KEY_COMBINATION_ACTION,
+  keyCombinationAction,
   matchesKeyboardNavigationKey,
 } from "./shortcuts.js";
 
@@ -58,5 +60,60 @@ test("accepts the exact help character outside repeat and composition", () => {
       { compositionActive: true },
     ),
     false,
+  );
+});
+
+test("each key combination is read from its physical key and listed in help", () => {
+  const press = (code, modifiers) => ({
+    key: "",
+    code,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    metaKey: false,
+    repeat: false,
+    isComposing: false,
+    ...modifiers,
+  });
+  // The Korean characters are what a Korean input source types on each key.
+  for (const [event, action] of [
+    [press("Backquote", { key: "₩", ctrlKey: true }), KEY_COMBINATION_ACTION.TERMINAL],
+    [press("KeyJ", { key: "ㅓ", metaKey: true }), KEY_COMBINATION_ACTION.TERMINAL],
+    [press("KeyB", { key: "ㅠ", metaKey: true }), KEY_COMBINATION_ACTION.SIDE_PANE],
+    [press("KeyB", { key: "B", ctrlKey: true, shiftKey: true }), KEY_COMBINATION_ACTION.SIDE_PANE],
+  ]) {
+    assert.equal(keyCombinationAction(event), action, event.code);
+    assert.equal(keyCombinationAction(event, { compositionActive: true }), "");
+    for (const variant of [
+      { repeat: true },
+      { isComposing: true },
+      { altKey: true },
+      { ctrlKey: !event.ctrlKey },
+      { metaKey: !event.metaKey },
+      { shiftKey: !event.shiftKey },
+    ]) {
+      assert.equal(
+        keyCombinationAction({ ...event, ...variant }),
+        "",
+        `${event.code} ${JSON.stringify(variant)}`,
+      );
+    }
+  }
+  // A shell's own Ctrl+B stays with the shell.
+  assert.equal(keyCombinationAction(press("KeyB", { ctrlKey: true })), "");
+
+  const combinations = KEYBOARD_SHORTCUT_HELP_SECTIONS.at(-1);
+  assert.equal(combinations.title, "Key combinations");
+  assert.deepEqual(
+    combinations.rows.map(({ keys, alternatives }) => ({ keys, alternatives })),
+    [
+      { keys: ["⌘J", "Ctrl+`"], alternatives: true },
+      { keys: ["⌘B", "Ctrl+Shift+B"], alternatives: true },
+    ],
+  );
+  assert.ok(
+    KEYBOARD_SHORTCUT_HELP_SECTIONS.slice(0, -1).every(({ rows }) =>
+      rows.every(({ alternatives }) => !alternatives)
+    ),
   );
 });

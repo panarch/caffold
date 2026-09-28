@@ -1,0 +1,132 @@
+caffold-terminal-page {
+  /* Room above and below the bar's buttons, as the review file viewer's header
+     keeps. */
+  --terminal-page-bar-padding-block: var(--interface-space-4);
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  /* The height an on-screen keyboard covers, which the page measures because
+     CSS cannot see it. */
+  padding-bottom: var(--terminal-page-keyboard-inset, 0);
+  background: var(--surface);
+
+  &[hidden] {
+    display: none;
+  }
+
+  /* As tall as the review file viewer's header. The Detail layout sets the gap
+     and inline padding that stand the buttons under its header's own. */
+  & > .terminal-page-bar {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--terminal-page-bar-gap);
+    height: calc(
+      var(--interface-compact-hit-size) + var(--terminal-page-bar-padding-block) +
+        var(--terminal-page-bar-padding-block)
+    );
+    padding-inline: var(--terminal-page-bar-padding-inline);
+    border-bottom: 1px solid var(--border);
+  }
+
+  & .terminal-page-button {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    cursor: pointer;
+  }
+
+  & .terminal-page-button::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .terminal-page-button > svg {
+    position: relative;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 2;
+  }
+
+  & .terminal-page-button:hover,
+  & .terminal-page-button:focus-visible {
+    outline: none;
+  }
+
+  & .terminal-page-button:hover::before,
+  & .terminal-page-button:focus-visible::before,
+  & .terminal-page-button[aria-pressed="true"]::before {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+  }
+
+  & .terminal-page-button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  & > .terminal-page-body {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  & > .terminal-page-body > * {
+    grid-area: 1 / 1;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  & > .terminal-page-body > caffold-terminal-view[hidden],
+  & > .terminal-page-body > .terminal-page-notice[hidden] {
+    display: none;
+  }
+
+  & > .terminal-page-body > .terminal-page-notice {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: var(--interface-space-5);
+    padding: var(--interface-panel-padding);
+    color: var(--muted);
+    text-align: center;
+  }
+
+  & .terminal-page-notice > p {
+    margin: 0;
+  }
+
+  & .terminal-page-notice > .terminal-page-error {
+    max-width: 36rem;
+    color: var(--danger);
+    overflow-wrap: anywhere;
+  }
+
+  & .terminal-page-notice > button[hidden] {
+    display: none;
+  }
+}
+
+/* The touch target alone gives the buttons room, as in the review file header. */
+@media (pointer: coarse), (max-width: 520px) {
+  caffold-terminal-page {
+    --terminal-page-bar-padding-block: 0px;
+  }
+}

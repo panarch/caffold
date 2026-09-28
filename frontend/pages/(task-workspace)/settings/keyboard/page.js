@@ -161,7 +161,7 @@ class CaffoldSettingsKeyboardPage extends HTMLElement {
               <h2 id="settings-keyboard-shortcuts-title">
                 Keyboard shortcuts
               </h2>
-              <p>Available when Keyboard navigation is on.</p>
+              <p>Single keys need Keyboard navigation on; key combinations always work.</p>
             </header>
             <caffold-keyboard-shortcut-list></caffold-keyboard-shortcut-list>
           </section>

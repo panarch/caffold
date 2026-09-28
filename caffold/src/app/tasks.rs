@@ -27,7 +27,7 @@ use tokio::sync::broadcast;
 
 use crate::{
     agent::{claude::ClaudeClient, codex::CodexMcpBindings, grok::GrokClient},
-    app::jev::PermissionReviewer,
+    app::{jev::PermissionReviewer, terminal::TaskTerminals},
     fs::RootedFs,
     task_store::TaskStore,
     watch::WatchHub,
@@ -93,6 +93,7 @@ impl TaskState {
                 codex_mcp: None,
             },
             None,
+            TaskTerminals::for_tests(),
         )
     }
 
@@ -106,6 +107,7 @@ impl TaskState {
         push: PushService,
         agents: AgentRuntimeDependencies,
         permission_reviewer: Option<PermissionReviewer>,
+        terminals: TaskTerminals,
     ) -> anyhow::Result<Self> {
         let AgentRuntimeDependencies {
             claude,
@@ -125,6 +127,7 @@ impl TaskState {
             managed_worktrees,
             claude.clone(),
             grok.clone(),
+            terminals,
         );
         let task_runtime = TaskRuntime::new(
             claude,
@@ -195,6 +198,7 @@ impl TasksApp {
         grok_mcp: GrokMcpHost,
         watch_hub: WatchHub,
         permission_reviewer: PermissionReviewer,
+        terminals: TaskTerminals,
     ) -> anyhow::Result<Self> {
         let push = PushRuntime::new(task_store.clone())?;
         let notes_router = super::notes::router(task_store.clone());
@@ -212,6 +216,7 @@ impl TasksApp {
                 codex_mcp: Some(codex_mcp.bindings()),
             },
             Some(permission_reviewer),
+            terminals,
         )?;
         let runtime = state.task_runtime.clone();
         let live_source = TaskLiveSource::new(&state);
@@ -241,6 +246,7 @@ impl TasksApp {
         grok_mcp: GrokMcpHost,
         watch_hub: WatchHub,
         permission_reviewer: PermissionReviewer,
+        terminals: TaskTerminals,
     ) -> anyhow::Result<Self> {
         // The runner's socket lives beside the database, so an installed
         // application and a development server each drive their own.
@@ -260,6 +266,7 @@ impl TasksApp {
             grok_mcp,
             watch_hub,
             permission_reviewer,
+            terminals,
         )?;
         app.runtime.startup();
         Ok(app)
@@ -275,6 +282,7 @@ impl TasksApp {
         grok_mcp: GrokMcpHost,
         watch_hub: WatchHub,
         permission_reviewer: PermissionReviewer,
+        terminals: TaskTerminals,
     ) -> anyhow::Result<Self> {
         let data_dir = worktree_root.clone();
         Self::new(
@@ -289,6 +297,7 @@ impl TasksApp {
             grok_mcp,
             watch_hub,
             permission_reviewer,
+            terminals,
         )
     }
 
@@ -322,7 +331,7 @@ pub(in crate::app::tasks) mod test_support {
 
     use super::{
         AgentRuntimeDependencies, GrokMcpHost, PermissionReviewer, PushService, TaskState,
-        projection::*, routes::test_claim_task,
+        TaskTerminals, projection::*, routes::test_claim_task,
     };
     use crate::{
         agent::{
@@ -366,6 +375,26 @@ pub(in crate::app::tasks) mod test_support {
         client: CodexThreadClient,
         permission_reviewer: Option<PermissionReviewer>,
     ) -> (TaskState, agent::claude::MockRunnerHandle) {
+        task_state_with(fs, client, permission_reviewer, TaskTerminals::for_tests()).await
+    }
+
+    /// The same state, keeping the Task terminals so a test can open one and
+    /// see what closes it.
+    pub(in crate::app::tasks) async fn task_state_with_terminals(
+        fs: RootedFs,
+        client: CodexThreadClient,
+    ) -> (TaskState, TaskTerminals) {
+        let terminals = TaskTerminals::for_tests();
+        let (state, _runner) = task_state_with(fs, client, None, terminals.clone()).await;
+        (state, terminals)
+    }
+
+    async fn task_state_with(
+        fs: RootedFs,
+        client: CodexThreadClient,
+        permission_reviewer: Option<PermissionReviewer>,
+        terminals: TaskTerminals,
+    ) -> (TaskState, agent::claude::MockRunnerHandle) {
         let (shutdown, _) = broadcast::channel(16);
         let worktree_root = fs.root().join(".caffold-test/worktrees");
         // Conversations are kept under the test's own root rather than the
@@ -386,6 +415,7 @@ pub(in crate::app::tasks) mod test_support {
                 codex_mcp: None,
             },
             permission_reviewer,
+            terminals,
         )
         .expect("task state");
         state.task_runtime.install_test_client(1, client).await;
@@ -426,6 +456,7 @@ pub(in crate::app::tasks) mod test_support {
                 codex_mcp: None,
             },
             None,
+            TaskTerminals::for_tests(),
         )
         .expect("task state");
         state.task_runtime.install_test_client(1, client).await;

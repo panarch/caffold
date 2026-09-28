@@ -33,6 +33,8 @@ import "./keyboard-navigation/components/hud.js";
 import {
   KEYBOARD_NAVIGATION_KEY,
   KEYBOARD_SHORTCUT_CLOSE_EVENT,
+  KEY_COMBINATION_ACTION,
+  keyCombinationAction,
   matchesKeyboardNavigationKey,
 } from "./keyboard-navigation/shortcuts.js";
 
@@ -57,12 +59,18 @@ export class KeyboardNavigationController {
     shortcutDialog = null,
     afterActionHintActivation = () => {},
     openTaskSwitcher = () => false,
+    toggleTerminal = () => false,
+    toggleSidePane = () => false,
     readSettings = () => ({ actionHintsEnabled: true }),
   }) {
     this.workspace = workspace;
     this.collectKeyboardNavigationContexts = collectKeyboardNavigationContexts;
     this.shortcutDialog = shortcutDialog;
     this.openTaskSwitcher = openTaskSwitcher;
+    this.keyCombinations = {
+      [KEY_COMBINATION_ACTION.TERMINAL]: toggleTerminal,
+      [KEY_COMBINATION_ACTION.SIDE_PANE]: toggleSidePane,
+    };
     this.readSettings = readSettings;
     this.connected = false;
     this.compositionActive = false;
@@ -105,6 +113,7 @@ export class KeyboardNavigationController {
     this.boundSettingsChange = (event) => {
       if (event.detail?.settings?.actionHintsEnabled === false) {
         this.cancelStoredMode("setting-disabled");
+        this.closeShortcutHelp("setting-disabled");
       }
     };
     this.boundSurfaceSelect = (event) => {
@@ -174,6 +183,7 @@ export class KeyboardNavigationController {
       return;
     }
     this.cancelStoredMode("disconnect", { restoreFocus: false });
+    this.closeShortcutHelp("disconnect", { restoreFocus: false });
     this.connected = false;
     this.clearComposition();
     document.removeEventListener("keydown", this.boundKeydown, true);
@@ -210,13 +220,10 @@ export class KeyboardNavigationController {
   routeWillChange() {
     this.clearComposition();
     this.cancelStoredMode("route", { restoreFocus: false });
+    this.closeShortcutHelp("route", { restoreFocus: false });
   }
 
   handleKeydown(event) {
-    if (this.storedNode === KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP) {
-      this.handleShortcutHelpKeydown(event);
-      return;
-    }
     if (this.storedNode === KEYBOARD_NAVIGATION_NODE.HINT) {
       if (
         this.handleShortcutHelpEntry(event) ||
@@ -235,6 +242,22 @@ export class KeyboardNavigationController {
     }
     if (this.storedNode === KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE) {
       this.handleActiveKeydown(event);
+      return;
+    }
+    const combination = keyCombinationAction(event, {
+      compositionActive: this.compositionActive,
+    });
+    if (combination) {
+      // An open dialog or popover owns the keyboard until it closes, and an
+      // action that did nothing leaves the key to the page.
+      if (
+        !openPopovers().length &&
+        !openModalDialogs().length &&
+        this.keyCombinations[combination]()
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       return;
     }
     if (this.readSettings().actionHintsEnabled === false) {
@@ -268,15 +291,7 @@ export class KeyboardNavigationController {
     const key = normalizeActionHintKey(event, {
       compositionActive: this.compositionActive,
     });
-    if (matchesKeyboardNavigationKey(
-      event,
-      KEYBOARD_NAVIGATION_KEY.SHORTCUT_HELP,
-      { compositionActive: this.compositionActive },
-    )) {
-      if (this.startShortcutHelp()) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
+    if (this.handleShortcutHelpEntry(event)) {
       return;
     }
     if (key === KEYBOARD_NAVIGATION_KEY.ACTION_HINTS) {
@@ -451,7 +466,10 @@ export class KeyboardNavigationController {
     )) {
       return false;
     }
-    if (!this.startShortcutHelp()) {
+    const toggled = this.shortcutSession
+      ? this.closeShortcutHelp("keyboard")
+      : this.startShortcutHelp();
+    if (!toggled) {
       return false;
     }
     event.preventDefault();
@@ -459,34 +477,18 @@ export class KeyboardNavigationController {
     return true;
   }
 
-  handleShortcutHelpKeydown(event) {
-    if (this.shortcutDialog?.allowsNativeActivation?.(event)) {
-      return;
-    }
-    const closes = matchesKeyboardNavigationKey(
-      event,
-      KEYBOARD_NAVIGATION_KEY.SHORTCUT_HELP,
-      { compositionActive: this.compositionActive },
-    ) || matchesKeyboardNavigationKey(
-      event,
-      KEYBOARD_NAVIGATION_KEY.ESCAPE,
-      { compositionActive: this.compositionActive },
-    );
-    if (!closes || !this.closeShortcutHelp("keyboard")) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
+  /**
+   * Open keyboard shortcut help over whatever the person was doing.
+   *
+   * The help is an ordinary modal context rather than a mode of its own, so
+   * Action Hint and Scroll work inside it. The modal dialogs it covers stay
+   * open but out of reach until it closes.
+   */
   startShortcutHelp() {
-    if (!this.shortcutDialog || this.shortcutSession) {
-      return false;
-    }
-    const current = this.controlNode();
     if (
-      current === KEYBOARD_NAVIGATION_NODE.EDITING ||
-      current === KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP
+      !this.shortcutDialog ||
+      this.shortcutSession ||
+      this.controlNode() === KEYBOARD_NAVIGATION_NODE.EDITING
     ) {
       return false;
     }
@@ -496,12 +498,10 @@ export class KeyboardNavigationController {
     })) {
       return false;
     }
-    if (!this.applyTransition(
-      KEYBOARD_NAVIGATION_EVENT.SHORTCUT_HELP_STARTED,
-    )) {
-      return false;
-    }
-    const session = { opener: restoreTarget };
+    const session = {
+      opener: restoreTarget,
+      coveredModals: openModalDialogs(),
+    };
     this.shortcutSession = session;
     try {
       if (!this.shortcutDialog.open()) {
@@ -509,7 +509,6 @@ export class KeyboardNavigationController {
       }
     } catch {
       this.shortcutSession = null;
-      this.applyTransition(KEYBOARD_NAVIGATION_EVENT.SHORTCUT_HELP_CLOSED);
       this.restoreFocus(restoreTarget);
       return false;
     }
@@ -522,9 +521,12 @@ export class KeyboardNavigationController {
     if (!session) {
       return false;
     }
+    // A mode started inside the help ends with it.
+    if (this.storedNode) {
+      this.cancelStoredMode(reason, { restoreFocus: false });
+    }
     this.shortcutSession = null;
     this.shortcutDialog.close();
-    this.applyTransition(KEYBOARD_NAVIGATION_EVENT.SHORTCUT_HELP_CLOSED);
     delete this.workspace.dataset.keyboardShortcutHelp;
     this.workspace.dataset.keyboardShortcutHelpLastExit = reason;
     if (restoreFocus) {
@@ -566,7 +568,10 @@ export class KeyboardNavigationController {
    * the same way the Action Hints key does.
    */
   startTaskSwitcher() {
-    if (this.controlNode() !== KEYBOARD_NAVIGATION_NODE.NORMAL) {
+    if (
+      this.controlNode() !== KEYBOARD_NAVIGATION_NODE.NORMAL ||
+      this.shortcutSession
+    ) {
       return false;
     }
     if (!this.openTaskSwitcher()) {
@@ -837,9 +842,6 @@ export class KeyboardNavigationController {
     if (this.storedNode === KEYBOARD_NAVIGATION_NODE.HINT) {
       return this.actionHints.cancel(reason, options);
     }
-    if (this.storedNode === KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP) {
-      return this.closeShortcutHelp(reason, options);
-    }
     return this.cancelScroll(reason, options);
   }
 
@@ -884,7 +886,6 @@ export class KeyboardNavigationController {
       KEYBOARD_NAVIGATION_NODE.HINT,
       KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING,
       KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE,
-      KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP,
     ].includes(next)
       ? next
       : null;
@@ -913,8 +914,10 @@ export class KeyboardNavigationController {
     if (!contexts) {
       return null;
     }
+    const covered = this.shortcutSession?.coveredModals ?? [];
     const modals = openModalDialogs().filter(
       (modal) =>
+        !covered.includes(modal) &&
         !(
           ignoreOwnedSelector &&
           this.selectionSession?.selector?.ownsModal(modal)

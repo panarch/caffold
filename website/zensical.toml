@@ -23,6 +23,7 @@ nav = [
       "tasks/approvals.md",
       "tasks/ask-jev-first.md",
       "tasks/current-plan.md",
+      "tasks/terminal.md",
     ] },
     { "Organize Tasks" = [
       "tasks/sections.md",

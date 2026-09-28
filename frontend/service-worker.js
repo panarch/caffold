@@ -223,6 +223,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/(detail)/components/git-menu.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/components/github-menu.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/components/terminal-button.css",
+  "/assets/pages/(task-workspace)/tasks/(detail)/components/terminal-button.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css",
@@ -305,6 +307,14 @@ const APP_SHELL_ASSETS = [
   "/assets/components/git-compare-browser/compare-tree.css",
   "/assets/components/git-compare-browser/compare-tree.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(github)/layout.css",
+  "/assets/pages/(task-workspace)/tasks/(detail)/terminal/page.css",
+  "/assets/pages/(task-workspace)/tasks/(detail)/terminal/page.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/terminal/page/connection.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/terminal/page/keyboard-inset.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/terminal/page/keys.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/terminal/page/model.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.css",
+  "/assets/pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(github)/layout.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css",
@@ -346,6 +356,8 @@ const APP_SHELL_ASSETS = [
   "/assets/components/pagination.js",
   "/assets/components/segmented-control.css",
   "/assets/components/segmented-control.js",
+  "/assets/components/terminal-view.css",
+  "/assets/components/terminal-view.js",
 ];
 
 const APP_SHELL_ASSET_PATHS = new Set(APP_SHELL_ASSETS);

@@ -31,8 +31,10 @@ canonical query route; Task URLs use path routes:
 /?section=<managed-section-id>&surface=git&tool=log&page=...&sha=...&file=...
 /?section=<managed-section-id>&surface=github&tool=issues&page=...&number=...
 /?section=<managed-section-id>&surface=github&tool=pulls&page=...&number=...&files=true&file=...
+/?section=<managed-section-id>&surface=terminal
 /tasks/new?cwd=...
 /tasks/:threadId
+/tasks/:threadId/terminal
 /tasks/:threadId/review?scope=...&nav=...&view=...&file=...&base=...
 /tasks/:threadId/git/compare?base=...&head=...&file=...
 /tasks/:threadId/git/log?page=...&sha=...&file=...
@@ -115,11 +117,12 @@ determines whether Working Tree, Branch, Git, and GitHub controls are available.
 
 ## Section Detail routes
 
-`/?section=<id>` selects fixed-context New Task. Repository Sections also expose
-the same shared Integrated Review, Git, and GitHub implementations used by Task
-Detail. `surface` selects `review`, `git`, or `github`; `tool` selects the Git or
-GitHub domain mode. Review and domain query fields retain the same meaning and
-normalization as their Task counterparts.
+`/?section=<id>` selects fixed-context New Task. Every Section also exposes its
+terminal, and repository Sections expose the same shared Integrated Review, Git,
+and GitHub implementations used by Task Detail. `surface` selects `terminal`,
+`review`, `git`, or `github`; `tool` selects the Git or GitHub domain mode.
+Review and domain query fields retain the same meaning and normalization as
+their Task counterparts. The terminal surface carries no further fields.
 
 After the local projection resolves, a repository surface for a Section without
 repository capability replaces the route with that Section's fixed-context New
@@ -133,12 +136,15 @@ common Detail layout.
 
 ## Task Detail routes
 
-`/tasks/:threadId` selects Conversation. Task Detail exposes four stable
+`/tasks/:threadId` selects Conversation. Task Detail exposes five stable
 sibling surfaces:
 
 - Integrated Review owns Working Tree and current Task Branch review.
 - Git owns arbitrary-ref Compare and bounded Log/commit inspection.
 - GitHub owns Issues and Pull Requests.
+- Terminal (`/tasks/:threadId/terminal`) shows the Task's shell
+  ([Terminals](terminal.md)). The route names only the screen; the backend owns
+  which terminal it shows.
 
 Integrated Review carries independent semantic axes:
 
@@ -238,9 +244,10 @@ layouts exactly one contextual Back is shown, with deepest-visible priority:
 file, domain detail, then the active Task, Section, or New Task. Desktop does
 not add a file Back when the corresponding navigator is simultaneously visible.
 
-Conversation, fixed-context New Task, Integrated Review, Git, and GitHub share
-the same parent for their active subject. A root child Back therefore targets
-Tasks home; switching siblings uses the common Detail controls.
+Conversation, fixed-context New Task, Terminal, Integrated Review, Git, and
+GitHub share the same parent for their active subject. A root child Back
+therefore targets Tasks home; switching siblings uses the common Detail
+controls.
 
 ## Workspace tabs
 
@@ -270,7 +277,8 @@ route and do not choose whether it is worth a history entry.
 - A route at the same place replaces the current entry. Selecting another
   Task, Note, Settings section, Issue, or file, changing Log and GitHub pages,
   changing Compare or Review refs, changing Review axes, and switching between
-  Conversation, Integrated Review, Git, and GitHub all stay at one entry.
+  Conversation or New Task, Terminal, Integrated Review, Git, and GitHub all
+  stay at one entry.
 - A route the current one sits under rewinds. Visible Back and file-close
   actions therefore consume the entry they leave instead of adding another.
 - A route in another tab is an arrival there: that tab's own screens go in

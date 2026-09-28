@@ -376,6 +376,18 @@ const ROUTE_DEFINITIONS = [
           }),
   }),
   routeDefinition({
+    id: "global-tasks-terminal",
+    kind: "tasks",
+    pattern: "/tasks/[threadId]/terminal",
+    surface: "task-workspace",
+    target: "terminal",
+    params: { threadId: "string" },
+    toRoute: ({ threadId }) => tasksRoute({ threadId, terminal: true }),
+    matchesRoute: (route) =>
+      route?.kind === "tasks" && Boolean(route.threadId) && Boolean(route.terminal),
+    parent: () => tasksRoute(),
+  }),
+  routeDefinition({
     id: "global-tasks-recovery",
     kind: "tasks",
     pattern: "/tasks/[threadId]/recovery",
@@ -395,7 +407,11 @@ const ROUTE_DEFINITIONS = [
     target: "detail",
     toRoute: ({ threadId }, query) => tasksRoute({ ...query, threadId }),
     matchesRoute: (route) =>
-      route?.kind === "tasks" && Boolean(route.threadId) && !route.review && !route.recovery,
+      route?.kind === "tasks" &&
+      Boolean(route.threadId) &&
+      !route.review &&
+      !route.recovery &&
+      !route.terminal,
     parent: () => tasksRoute(),
   }),
 ];
@@ -708,6 +724,9 @@ function tasksRoute(options = {}) {
     threadId: options.threadId ?? "",
     cwd: options.new ? taskCwd(options.cwd) : "",
     ...(options.recovery && options.threadId && !review ? { recovery: true } : {}),
+    ...(options.terminal && options.threadId && !review && !options.recovery
+      ? { terminal: true }
+      : {}),
     ...(review
       ? {
           review: true,
@@ -733,7 +752,7 @@ export function sectionDetailRoute(options = {}) {
   }
   const sectionSurface = enumValue(
     options.sectionSurface,
-    ["new", "review", "git", "github"],
+    ["new", "review", "git", "github", "terminal"],
     "new",
   );
   const sectionTool = sectionSurface === "git"
@@ -797,6 +816,9 @@ function sectionRouteMode(route) {
 function sectionRouteTarget(route) {
   if (route?.sectionSurface === "new") {
     return "section";
+  }
+  if (route?.sectionSurface === "terminal") {
+    return "terminal";
   }
   if (route?.sectionSurface === "review") {
     return route.path ? "review-file" : "review";

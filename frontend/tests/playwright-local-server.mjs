@@ -53,6 +53,9 @@ export async function createRegularPlaywrightServer(
         ...environment,
         CAFFOLD_CODEX_BIN: fakeCodexBin,
         CODEX_HOME: fixtureCodexHome,
+        // Terminals start `$SHELL -l`; a plain shell keeps them independent of
+        // the developer's own shell profile.
+        SHELL: "/bin/sh",
       },
       reuseExistingServer: false,
       timeout: 120_000,

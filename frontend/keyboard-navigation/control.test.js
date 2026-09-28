@@ -16,7 +16,6 @@ test("declares every keyboard navigation edge and reaches every node", () => {
       "hint-started": "hint",
       "scroll-selection-started": "scroll-selecting",
       "scroll-started": "scroll-active",
-      "shortcut-help-started": "shortcut-help",
     },
     editing: {
       "editing-continued": "editing",
@@ -35,9 +34,6 @@ test("declares every keyboard navigation edge and reaches every node", () => {
     "scroll-active": {
       "scroll-command": "scroll-active",
       "scroll-cancelled": "normal",
-    },
-    "shortcut-help": {
-      "shortcut-help-closed": "normal",
     },
   });
   const reached = new Set(Object.values(KEYBOARD_NAVIGATION_GRAPH).flatMap(

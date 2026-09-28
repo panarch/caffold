@@ -1,0 +1,31 @@
+caffold-terminal-special-keys {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--interface-space-2);
+  padding: var(--interface-space-2) var(--interface-space-3);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+
+  &[hidden] {
+    display: none;
+  }
+
+  & > .terminal-special-key {
+    min-width: 0;
+    height: var(--interface-compact-control-size);
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  & > .terminal-special-key[aria-pressed="true"] {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+  }
+}

@@ -17,8 +17,8 @@ Expected deployment:
 - personal host machines
 - private network access such as Tailscale
 - no public unauthenticated exposure
-- browser access to the local filesystem and agent command execution only
-  through the Caffold backend
+- browser access to the local filesystem, agent command execution, and shells
+  only through the Caffold backend
 
 Caffold should still assume that remote command execution is sensitive.
 
@@ -444,6 +444,21 @@ Current rules:
 
 Caffold does not expose direct Git mutation controls. Git mutations happen
 through instructions to the Task's agent or manual terminal work.
+
+## Terminals
+
+A Task or Section terminal is a login shell running as the user who runs the
+Caffold backend, with no approval step for what is typed into it. Anyone who
+can reach Caffold can already direct an agent to run commands and approve them,
+so a terminal adds no new trust and has no separate setting: a device on the
+private network can use it like a local browser can. It inherits the same
+boundary and is unfit for public-internet exposure.
+
+Opening, killing, and attaching to a terminal require an `Origin` that matches
+the request's `Host`. Browsers let any page open a WebSocket to any address
+without CORS, so the backend checks the origin itself; the same check keeps
+another site from starting or killing a shell. [Terminals](terminal.md) owns the
+routes and lifetime.
 
 ## Prompt Attachments
 

@@ -11,8 +11,10 @@ lists what is planned.
 - **Three built-in agents.** Caffold works with Codex, Claude Code, and Grok and
   cannot load other agents. A Task cannot switch agents, and a feature one
   agent offers may not exist in another; forking, for example, is Codex only.
-- **No terminal or code editor.** Ask the agent to run commands or change
-  files; command output appears in the conversation.
+- **No code editor, and one terminal per Task.** Ask the agent to change
+  files, or edit them in the [terminal](../tasks/terminal.md). A terminal
+  appears in place of the conversation, not beside it, and closes when Caffold
+  Server stops.
 - **Read-only Git and GitHub.** Ask the agent to commit or push; see
   [Git](../review/git.md#what-git-does-not-do).
 - **No editing of plans or Notes in Caffold.** Ask the agent to change them.

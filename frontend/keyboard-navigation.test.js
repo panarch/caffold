@@ -77,10 +77,7 @@ test("question mark opens one global shortcut dialog and restores its opener", (
     assert.equal(open.prevented, true);
     assert.equal(open.stopped, true);
     assert.equal(dialog.openCalls, 1);
-    assert.equal(
-      controller.storedNode,
-      KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP,
-    );
+    assert.equal(controller.controlNode(), KEYBOARD_NAVIGATION_NODE.NORMAL);
     assert.equal(controller.workspace.dataset.keyboardShortcutHelp, "open");
 
     document.activeElement = dialog;
@@ -89,7 +86,7 @@ test("question mark opens one global shortcut dialog and restores its opener", (
     controller.handleKeydown(close);
     assert.equal(close.prevented, true);
     assert.equal(dialog.closeCalls, 1);
-    assert.equal(controller.storedNode, null);
+    assert.equal(controller.shortcutSession, null);
     assert.equal(document.activeElement, opener);
     assert.equal(
       controller.workspace.dataset.keyboardShortcutHelpLastExit,
@@ -159,11 +156,41 @@ test("shortcut help replaces every active keyboard mode before it opens", () => 
       const event = keyEvent("?");
       controller.handleKeydown(event);
       assert.deepEqual(order, [`close-${node}`, "open-help"]);
-      assert.equal(
-        controller.storedNode,
-        KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP,
-      );
-      controller.closeShortcutHelp("test", { restoreFocus: false });
+      assert.equal(controller.storedNode, null);
+      assert.equal(controller.closeShortcutHelp("test", { restoreFocus: false }), true);
+    }
+  } finally {
+    restoreDom();
+  }
+});
+
+test("question mark closes shortcut help from a mode started inside it", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    for (const node of [
+      KEYBOARD_NAVIGATION_NODE.HINT,
+      KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING,
+      KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE,
+    ]) {
+      const dialog = keyboardShortcutDialog();
+      const controller = createController({ shortcutDialog: dialog });
+      assert.equal(controller.startShortcutHelp(), true);
+      controller.storedNode = node;
+      const cancelled = [];
+      controller.cancelStoredMode = (reason, options) => {
+        cancelled.push([reason, options]);
+        controller.storedNode = null;
+        return true;
+      };
+
+      const event = keyEvent("?");
+      controller.handleKeydown(event);
+
+      assert.equal(event.prevented, true, node);
+      assert.deepEqual(cancelled, [["keyboard", { restoreFocus: false }]]);
+      assert.equal(controller.shortcutSession, null);
+      assert.equal(dialog.closeCalls, 1);
+      assert.equal(dialog.openCalls, 1);
     }
   } finally {
     restoreDom();
@@ -178,18 +205,18 @@ test("route, setting, and disconnect cleanup close shortcut help", () => {
 
     assert.equal(controller.startShortcutHelp(), true);
     controller.routeWillChange();
-    assert.equal(controller.storedNode, null);
+    assert.equal(controller.shortcutSession, null);
 
     assert.equal(controller.startShortcutHelp(), true);
     controller.boundSettingsChange({
       detail: { settings: { actionHintsEnabled: false } },
     });
-    assert.equal(controller.storedNode, null);
+    assert.equal(controller.shortcutSession, null);
 
     controller.connect();
     assert.equal(controller.startShortcutHelp(), true);
     controller.disconnect();
-    assert.equal(controller.storedNode, null);
+    assert.equal(controller.shortcutSession, null);
     assert.equal(dialog.closeCalls, 3);
   } finally {
     restoreDom();
@@ -293,7 +320,6 @@ test("the Task switcher key belongs to whichever keyboard mode already owns inpu
       KEYBOARD_NAVIGATION_NODE.HINT,
       KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING,
       KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE,
-      KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP,
     ]) {
       let opened = 0;
       const controller = createController({
@@ -312,6 +338,122 @@ test("the Task switcher key belongs to whichever keyboard mode already owns inpu
       assert.equal(opened, 0, node);
       assert.equal(controller.storedNode, node);
     }
+  } finally {
+    restoreDom();
+  }
+});
+
+test("the Task switcher key waits while shortcut help is open", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    let opened = 0;
+    const controller = createController({
+      shortcutDialog: keyboardShortcutDialog(),
+      openTaskSwitcher: () => {
+        opened += 1;
+        return true;
+      },
+    });
+    assert.equal(controller.startShortcutHelp(), true);
+
+    const event = keyEvent("T");
+    controller.handleKeydown(event);
+
+    assert.equal(opened, 0);
+    assert.equal(event.prevented, false);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("key combinations act while typing and with keyboard navigation off", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const acted = [];
+    const controller = createController({
+      toggleTerminal: () => acted.push("terminal") > 0,
+      toggleSidePane: () => acted.push("side pane") > 0,
+      readSettings: () => ({ actionHintsEnabled: false }),
+    });
+    const input = element({
+      isConnected: true,
+      matches: (selector) => selector.includes("input:not"),
+    });
+    document.activeElement = input;
+
+    for (const event of [
+      keyEvent("`", { code: "Backquote", ctrlKey: true }),
+      // A Korean input source types ₩ on the same physical key.
+      keyEvent("₩", { code: "Backquote", ctrlKey: true }),
+      keyEvent("j", { code: "KeyJ", metaKey: true }),
+      keyEvent("b", { code: "KeyB", metaKey: true }),
+      { ...keyEvent("B", { code: "KeyB", ctrlKey: true }), shiftKey: true },
+    ]) {
+      event.target = input;
+      controller.handleKeydown(event);
+      assert.equal(event.prevented, true, event.code);
+      assert.equal(event.stopped, true, event.code);
+    }
+    assert.deepEqual(acted, [
+      "terminal",
+      "terminal",
+      "terminal",
+      "side pane",
+      "side pane",
+    ]);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("key combinations are left alone for variants, composition, open overlays, and refusals", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    let acted = 0;
+    let accept = true;
+    const act = () => {
+      acted += 1;
+      return accept;
+    };
+    const controller = createController({ toggleTerminal: act, toggleSidePane: act });
+    const variants = [
+      keyEvent("`", { code: "Backquote" }),
+      keyEvent("`", { code: "Backquote", ctrlKey: true, repeat: true }),
+      keyEvent("`", { code: "Backquote", ctrlKey: true, metaKey: true }),
+      keyEvent("`", { code: "Backquote", ctrlKey: true, altKey: true }),
+      { ...keyEvent("~", { code: "Backquote", ctrlKey: true }), shiftKey: true },
+      { ...keyEvent("`", { code: "Backquote", ctrlKey: true }), isComposing: true },
+      keyEvent("`", { code: "Quote", ctrlKey: true }),
+      // The shell's own Ctrl+B and Ctrl+J stay with the shell.
+      keyEvent("b", { code: "KeyB", ctrlKey: true }),
+      keyEvent("j", { code: "KeyJ", ctrlKey: true }),
+      { ...keyEvent("J", { code: "KeyJ", metaKey: true }), shiftKey: true },
+    ];
+    for (const event of variants) {
+      controller.handleKeydown(event);
+      assert.equal(event.prevented, false, event.code);
+    }
+    assert.equal(acted, 0);
+
+    controller.compositionActive = true;
+    controller.handleKeydown(keyEvent("b", { code: "KeyB", metaKey: true }));
+    controller.compositionActive = false;
+    assert.equal(acted, 0);
+
+    for (const overlay of ["popover", "modal"]) {
+      document[overlay] = element();
+      const event = keyEvent("j", { code: "KeyJ", metaKey: true });
+      controller.handleKeydown(event);
+      assert.equal(event.prevented, false, overlay);
+      document[overlay] = null;
+    }
+    assert.equal(acted, 0);
+
+    accept = false;
+    const refused = keyEvent("b", { code: "KeyB", metaKey: true });
+    controller.handleKeydown(refused);
+    assert.equal(acted, 1);
+    assert.equal(refused.prevented, false);
   } finally {
     restoreDom();
   }
@@ -1101,6 +1243,38 @@ test("resolves workspace, exact modal, and registered popover ownership", () => 
   }
 });
 
+test("shortcut help owns the keyboard over the dialogs it covers", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const covered = context("task-switcher", "modal");
+    const help = context("app:keyboard-shortcuts", "modal");
+    const dialog = keyboardShortcutDialog({
+      onOpen: () => {
+        document.modals = [covered.root, help.root];
+      },
+    });
+    const controller = createController({ shortcutDialog: dialog });
+    controller.collectKeyboardNavigationContexts = () => [covered, help];
+    document.modal = covered.root;
+    assert.equal(controller.resolveInteractionContext()?.root, covered.root);
+
+    assert.equal(controller.startShortcutHelp(), true);
+    assert.equal(controller.resolveInteractionContext()?.root, help.root);
+    assert.equal(controller.hasUnregisteredInteractionOwner(), false);
+
+    // A dialog that opens over the help competes with it.
+    document.modals = [covered.root, help.root, element()];
+    assert.equal(controller.resolveInteractionContext(), null);
+
+    document.modals = [covered.root, help.root];
+    controller.closeShortcutHelp("test", { restoreFocus: false });
+    document.modals = null;
+    assert.equal(controller.resolveInteractionContext()?.root, covered.root);
+  } finally {
+    restoreDom();
+  }
+});
+
 test("registered modal consumes only the first non-composing Editing Escape", () => {
   const restoreDom = installEventGlobals();
   try {
@@ -1576,6 +1750,9 @@ function createController({
   shortcutDialog = null,
   afterActionHintActivation = () => {},
   openTaskSwitcher = () => false,
+  toggleTerminal = () => false,
+  toggleSidePane = () => false,
+  readSettings = () => ({ actionHintsEnabled: true }),
 } = {}) {
   const workspace = Object.assign(new FakeEventTarget(), { dataset: {} });
   return new KeyboardNavigationController({
@@ -1584,6 +1761,9 @@ function createController({
     shortcutDialog,
     afterActionHintActivation,
     openTaskSwitcher,
+    toggleTerminal,
+    toggleSidePane,
+    readSettings,
   });
 }
 
@@ -1777,7 +1957,6 @@ function keyboardShortcutDialog({ onOpen = () => {} } = {}) {
       this.closeCalls += 1;
       return true;
     },
-    allowsNativeActivation: () => false,
   });
 }
 

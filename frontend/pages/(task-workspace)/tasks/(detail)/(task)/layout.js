@@ -2169,5 +2169,8 @@ function taskDetailSurface(route) {
   if (domain === "git" || domain === "github") {
     return domain;
   }
+  if (route?.kind === "tasks" && route.terminal) {
+    return "terminal";
+  }
   return route?.kind === "tasks" && route.review ? "review" : "conversation";
 }

@@ -35,24 +35,21 @@ caffold-keyboard-shortcut-dialog {
     border-bottom: 1px solid var(--border);
   }
 
-  & .keyboard-shortcut-card h2,
-  & .keyboard-shortcut-card p {
+  & .keyboard-shortcut-card > header h2,
+  & .keyboard-shortcut-card > header p {
     margin: 0;
   }
 
-  & .keyboard-shortcut-card h2 {
+  & .keyboard-shortcut-card > header h2 {
     font-size: var(--interface-heading-font-size);
     line-height: 1.25;
   }
 
-  & .keyboard-shortcut-card p {
+  & .keyboard-shortcut-card > header p {
+    margin-top: var(--interface-space-2);
     color: var(--muted);
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
-  }
-
-  & .keyboard-shortcut-card header p {
-    margin-top: var(--interface-space-2);
   }
 
   & .keyboard-shortcut-close {

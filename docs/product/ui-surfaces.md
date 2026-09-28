@@ -101,14 +101,27 @@ current context:
   `H` and `L` left and right. `S` chooses another area, `F` switches to
   actions, and `Escape` leaves.
 - `T` opens the [Task Switcher](#task-switcher) on the Tasks surface.
-- `?` opens the keyboard shortcut help, which lists these keys.
+- `?` opens the keyboard shortcut help, which lists these keys, and closes it
+  again. `F` and `S` work inside it too.
 - `Escape` in an editor leaves it where its surface supports that, so the keys
-  work again.
+  work again. In a [terminal](#terminal) `Escape` goes to the program running
+  there.
 
 A key held with Ctrl, Alt, or Meta, a repeated key, and a key typed during
-input composition are left to the browser. **Settings → Keyboard** turns
-keyboard navigation off for the browser. The App Shell ownership and mode
-contract belongs to [Frontend Architecture](../architecture/frontend.md#task-workspace).
+input composition are left to the browser, except the key combinations below.
+They work even while typing, in the terminal, and with keyboard navigation off:
+
+- `⌘J` or `` Ctrl+` `` on a Task or Section enters its terminal, or returns
+  from it.
+- `⌘B` or `Ctrl+Shift+B` shows or hides the side panel wherever its corner
+  button can.
+
+Each action has a combination for Apple keyboards and one without ⌘. They are
+read from the physical key, so a Korean input source still works.
+**Settings → Keyboard** turns keyboard navigation off for the browser and
+leaves the key combinations on, because they are the only way out of a
+terminal from the keyboard. The App Shell ownership and mode contract belongs
+to [Frontend Architecture](../architecture/frontend.md#task-workspace).
 
 ## New Task
 
@@ -178,11 +191,11 @@ the reason; Claude and Grok are not offered by this surface.
 
 ## Detail
 
-Detail provides Summary actions, the subject-aware view switch, Integrated
-Review, Git, and GitHub. A Task adds Conversation; a Section adds fixed-context
-New Task. Switching Task or Section context reloads repository data, while safe
-local state may survive surface switches within one context. If a Section loses
-repository capability, it returns to New Task.
+Detail provides Summary actions, the subject-aware view switch, a terminal,
+Integrated Review, Git, and GitHub. A Task adds Conversation; a Section adds
+fixed-context New Task. Switching Task or Section context reloads repository
+data, while safe local state may survive surface switches within one context.
+If a Section loses repository capability, it returns to New Task.
 
 ## Task Detail
 
@@ -330,6 +343,32 @@ the user chooses a base ref. For a Pull Request, the canonical base/head is
 read-only and an arbitrary base cannot be selected. Both create a setup-only
 Task. The complete sequence and safety boundary are defined in
 [Product Workflows](workflows.md).
+
+### Terminal
+
+Every Task and Section has a terminal button in the Detail header: left of the
+Task details button on a Task, and last on a Section. It stays pressed while the
+terminal is shown and is unavailable until a Task's working directory is known.
+The button, `⌘J`, and `` Ctrl+` `` share one toggle: a screen using the
+running terminal returns to the surface it came from, and any other screen
+opens the terminal, starting a shell when there is none and taking it from
+another screen that shows it.
+
+The terminal fills the Detail body. Like the code surfaces it leaves out the
+Task navigator on wide layouts, whichever surface opened it, and the side panel
+button stays in its corner but cannot open anything. While a phone's or
+tablet's on-screen keyboard is open it ends above the keyboard, so the prompt
+and the special key row stay in sight. Its bar holds the special key toggle and **Kill terminal**.
+The special key row — Esc, Tab, a one-shot Ctrl, and the four arrows — starts
+shown on touch screens and remembers the choice per browser.
+A terminal shown on another screen offers **Open here**; a Task or Section
+without a running terminal offers **Open terminal**. A screen that reappears on
+its own, by reload, link, Back or Forward, or a returning browser tab, attaches
+only when no other browser tab shows the terminal; a connection its own tab lost
+does not count. When the terminal a screen is using ends, by **Kill terminal**,
+`exit`, or anything else, the screen goes back to where it was before the
+terminal without saying why. The shell's lifetime is defined in
+[Terminals](../architecture/terminal.md#lifetime).
 
 ### Surface state
 
@@ -485,7 +524,8 @@ credit for it; the other reset actions stay unavailable until then.
 
 The browser UI does not provide:
 
-- a full terminal or PTY workspace;
+- more than one terminal per Task or Section, a terminal beside the
+  Conversation, or a terminal size the person drags;
 - automatic Task creation from Issue/PR context without an explicit user
   action;
 - automatic continuation after the setup turn;

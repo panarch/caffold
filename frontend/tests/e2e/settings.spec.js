@@ -2506,6 +2506,11 @@ test("turns keyboard navigation off through its declared switch", { tag: "@all-v
   await expect(shortcutList.getByText("Scroll left or right", {
     exact: true,
   })).toBeVisible();
+  // The key combinations sit last and say they do not need the switch.
+  await expect(shortcutList.getByRole("heading", { name: "Key combinations" })).toBeVisible();
+  await expect(page.locator("caffold-settings-keyboard-page")).toContainText(
+    "Single keys need Keyboard navigation on; key combinations always work.",
+  );
   await captureReviewScreenshot(
     page,
     testInfo,

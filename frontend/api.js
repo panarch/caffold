@@ -409,6 +409,43 @@ export async function updateLiveSubscriptions(connectionId, subscriptions) {
   );
 }
 
+// A terminal belongs to one Task or one Section.
+export async function openTerminal({ subject, cwd, cols, rows }) {
+  return requestJson("/api/terminal", {}, {
+    method: "POST",
+    body: { ...terminalSubjectFields(subject), cwd, cols, rows },
+    expectJson: false,
+  });
+}
+
+export async function killTerminal(subject) {
+  return requestJson("/api/terminal", terminalSubjectFields(subject), {
+    method: "DELETE",
+    expectJson: false,
+  });
+}
+
+export function terminalSocketUrl(subject, { mode, tab, cols, rows }) {
+  const url = new URL("/api/terminal/socket", window.location.origin);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  for (const [key, value] of Object.entries({
+    ...terminalSubjectFields(subject),
+    mode,
+    tab,
+    cols,
+    rows,
+  })) {
+    url.searchParams.set(key, `${value}`);
+  }
+  return url.href;
+}
+
+function terminalSubjectFields(subject) {
+  return subject?.kind === "section"
+    ? { section: `${subject.id ?? ""}` }
+    : { task: `${subject?.id ?? ""}` };
+}
+
 export async function listDirectory(path = "") {
   return requestJson("/api/list", { path }, { timeoutMs: 7000 });
 }

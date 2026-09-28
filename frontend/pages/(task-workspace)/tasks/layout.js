@@ -20,6 +20,7 @@ import {
 } from "../codex-status.js";
 import "./components/codex-readiness-recovery.js";
 import "./(detail)/layout.js";
+import { TERMINAL_PAGE_FOCUS_RELEASE_EVENT } from "./(detail)/terminal/page.js";
 import "./recovery/page.js";
 import {
   TASK_IMAGE_PREVIEW_EVENT,
@@ -156,6 +157,13 @@ class CaffoldTasksPage extends HTMLElement {
       "caffold:task-detail-transport-change",
       this.boundTaskDetailTransportChange,
     );
+    // A terminal that ended under the keyboard hands focus to the pane that
+    // Escape leaves an editor for.
+    this.addEventListener(TERMINAL_PAGE_FOCUS_RELEASE_EVENT, (event) => {
+      event.stopPropagation();
+      this.querySelector(":scope > .tasks-surface > .tasks-detail-pane")
+        ?.focus({ preventScroll: true });
+    });
     this.addEventListener(TASK_IMAGE_PREVIEW_EVENT, (event) => {
       event.stopPropagation();
       this.imagePreviewDialog()?.openImage(event.detail);
@@ -226,6 +234,16 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskDetail()?.suspendForeground();
   }
 
+  /** Enters or leaves the open Task's or Section's terminal. */
+  toggleTerminal() {
+    return this.view === "detail" && Boolean(this.taskDetail()?.toggleTerminal());
+  }
+
+  ownsTerminalInput(element) {
+    return this.view === "detail" &&
+      Boolean(this.taskDetail()?.ownsTerminalInput(element));
+  }
+
   async recoverForeground({
     initialActivation = false,
     isCurrent = () => true,
@@ -284,7 +302,11 @@ class CaffoldTasksPage extends HTMLElement {
     const nextDetailView = route?.sectionId
       ? route.sectionSurface ?? "new"
       : domain ||
-        (["review", "review-file"].includes(target) ? "review" : "conversation");
+        (target === "terminal"
+          ? "terminal"
+          : ["review", "review-file"].includes(target)
+            ? "review"
+            : "conversation");
     const nextThreadId = `${route?.threadId ?? ""}`;
     const nextSectionId = `${route?.sectionId ?? ""}`;
     if (
@@ -870,7 +892,9 @@ function taskRoutePresentation(route) {
   if (domain === "github") {
     return target === "files" || target === "file" ? "code" : "reading";
   }
-  return target === "review" || target === "review-file" ? "code" : "reading";
+  return ["review", "review-file", "terminal"].includes(target)
+    ? "code"
+    : "reading";
 }
 
 function sameRecoveryPresentation(left, right) {

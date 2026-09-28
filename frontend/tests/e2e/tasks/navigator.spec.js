@@ -1702,7 +1702,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   await page.getByRole("button", { name: /Task details/ }).click();
   await expect(
     page.getByText(
-      "Archive removes this task from the active list. If Caffold prepared its worktree, the worktree is removed and its branch is kept.",
+      "Archive removes this task from the active list. If Caffold prepared its worktree, the worktree is removed and its branch is kept. Its open terminal is closed.",
     ),
   ).toBeVisible();
   await page.getByRole("button", { name: "Archive task" }).click();

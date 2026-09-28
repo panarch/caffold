@@ -18,6 +18,11 @@ import "./(review)/layout.js";
 import "../../../../components/segmented-control.js";
 import "./components/git-menu.js";
 import "./components/github-menu.js";
+import { TERMINAL_BUTTON_INTENT_EVENT } from "./components/terminal-button.js";
+import {
+  TERMINAL_PAGE_LEAVE_EVENT,
+  TERMINAL_PAGE_STATE_EVENT,
+} from "./terminal/page.js";
 import "./(task)/components/summary.js";
 import "./(section)/components/summary.js";
 import "./(section)/layout.js";
@@ -50,6 +55,10 @@ class CaffoldDetailLayout extends HTMLElement {
     this.transportAvailable = true;
     this.codexStatusSnapshot = null;
     this.liveUpdates = null;
+    // Where the terminal toggle returns to, per subject, and the subject whose
+    // terminal screen the person asked for and is about to open.
+    this.terminalReturnRoutes = new Map();
+    this.pendingTerminalTake = "";
     this.innerHTML = `
       <div class="common-detail-shell">
         <header class="detail-layout-summary task-detail-summary">
@@ -60,6 +69,7 @@ class CaffoldDetailLayout extends HTMLElement {
             <caffold-task-detail-git></caffold-task-detail-git>
             <caffold-task-detail-github></caffold-task-detail-github>
           </div>
+          <caffold-task-detail-terminal></caffold-task-detail-terminal>
         </header>
         <div class="detail-layout-body">
           <div class="detail-subject-slot">
@@ -69,6 +79,9 @@ class CaffoldDetailLayout extends HTMLElement {
           <div class="detail-review-slot" hidden></div>
           <div class="detail-git-slot" hidden></div>
           <div class="detail-github-slot" hidden></div>
+          <div class="detail-terminal-slot" hidden>
+            <caffold-terminal-page></caffold-terminal-page>
+          </div>
         </div>
       </div>
     `;
@@ -159,6 +172,34 @@ class CaffoldDetailLayout extends HTMLElement {
       event.stopPropagation();
       void this.gitLayout()?.refresh();
     });
+    this.addEventListener(TERMINAL_BUTTON_INTENT_EVENT, (event) => {
+      if (event.target !== this.terminalButton()) {
+        return;
+      }
+      event.stopPropagation();
+      this.toggleTerminal();
+    });
+    this.addEventListener(TERMINAL_PAGE_LEAVE_EVENT, (event) => {
+      if (event.target !== this.terminalPage()) {
+        return;
+      }
+      event.stopPropagation();
+      this.leaveTerminal();
+    });
+    this.addEventListener(TERMINAL_PAGE_STATE_EVENT, (event) => {
+      if (event.target !== this.terminalPage()) {
+        return;
+      }
+      event.stopPropagation();
+      // A lost terminal socket is recovered like a lost Task stream.
+      this.dispatchEvent(
+        new CustomEvent("caffold:task-detail-transport-change", {
+          bubbles: true,
+          composed: true,
+          detail: {},
+        }),
+      );
+    });
     this.addEventListener("caffold:task-detail-transport-change", (event) => {
       if (event.target !== this.taskDetail()) {
         return;
@@ -198,6 +239,7 @@ class CaffoldDetailLayout extends HTMLElement {
       this.managedTask = null;
     }
     this.taskRoute = { ...(options.route ?? { kind: "tasks", threadId }) };
+    this.keepTerminalTakeFor(this.taskRoute.terminal ? `task:${threadId}` : "");
     this.activateSubject("task");
     const prepared = this.taskDetail()?.prepare(threadId, options);
     this.captureTaskSnapshot();
@@ -245,6 +287,9 @@ class CaffoldDetailLayout extends HTMLElement {
       ...route,
       sectionId: section.id,
     });
+    this.keepTerminalTakeFor(
+      this.sectionRoute?.sectionSurface === "terminal" ? `section:${section.id}` : "",
+    );
     this.activateSubject("section");
     this.sectionDetail()?.setSection(this.section);
     this.sectionDetail()?.setTransportAvailable(this.transportAvailable);
@@ -259,7 +304,7 @@ class CaffoldDetailLayout extends HTMLElement {
     }
     if (
       !this.section.repository &&
-      this.sectionRoute?.sectionSurface !== "new"
+      !["new", "terminal"].includes(this.sectionRoute?.sectionSurface)
     ) {
       this.requestSectionRoute({ sectionId: this.section.id });
       return this.section;
@@ -330,6 +375,7 @@ class CaffoldDetailLayout extends HTMLElement {
     if (!this.rendered) {
       return;
     }
+    this.terminalPage()?.deactivate();
     if (this.subjectKind === "task") {
       this.taskDetail()?.deactivate(options);
       this.deactivateSharedChildren();
@@ -345,12 +391,20 @@ class CaffoldDetailLayout extends HTMLElement {
     if (this.subjectKind === "task") {
       this.taskDetail()?.suspendForeground();
     }
+    this.terminalPage()?.suspendForeground();
   }
 
   recoverForeground() {
-    return this.subjectKind === "task"
+    const task = this.subjectKind === "task"
       ? this.taskDetail()?.recoverForeground()
       : null;
+    const terminal = this.activeSurface() === "terminal"
+      ? this.terminalPage()?.recoverForeground()
+      : null;
+    if (!terminal) {
+      return task;
+    }
+    return Promise.all([task, terminal]).then(([result]) => result ?? { ok: true });
   }
 
   currentDetail() {
@@ -387,9 +441,13 @@ class CaffoldDetailLayout extends HTMLElement {
   }
 
   get streamState() {
-    return this.subjectKind === "task"
-      ? this.taskDetail()?.streamState
-      : "inactive";
+    const terminal = this.activeSurface() === "terminal"
+      ? this.terminalPage()?.transportState
+      : null;
+    if (terminal === "unavailable" || this.subjectKind !== "task") {
+      return terminal ?? "inactive";
+    }
+    return this.taskDetail()?.streamState;
   }
 
   setTransportAvailable(available) {
@@ -469,6 +527,10 @@ class CaffoldDetailLayout extends HTMLElement {
     this.viewSwitch()?.toggleAttribute("hidden", !canonicalTask);
     this.gitMenu()?.setSnapshot({ available: repository });
     this.githubMenu()?.setSnapshot({ available: repository });
+    this.terminalButton()?.setSnapshot({
+      available: Boolean(canonicalTask?.cwdPath),
+      pressed: surface === "terminal",
+    });
     this.applySurfaceVisibility(surface);
     this.taskDetail()?.reconcileVisibleSurface?.();
   }
@@ -502,6 +564,10 @@ class CaffoldDetailLayout extends HTMLElement {
     this.viewSwitch()?.toggleAttribute("hidden", !repository);
     this.gitMenu()?.setSnapshot({ available: repository });
     this.githubMenu()?.setSnapshot({ available: repository });
+    this.terminalButton()?.setSnapshot({
+      available: true,
+      pressed: surface === "terminal",
+    });
     const subjectActive = surface === "new";
     this.applySurfaceVisibility(surface);
     if (subjectActive) {
@@ -527,8 +593,14 @@ class CaffoldDetailLayout extends HTMLElement {
     if (surface !== "github") {
       this.githubLayout()?.deactivate();
     }
+    if (surface !== "terminal") {
+      this.terminalPage()?.deactivate();
+    }
     if (this.subjectKind === "task" && !this.taskSnapshot?.task) {
       return null;
+    }
+    if (surface === "terminal") {
+      return this.activateTerminal();
     }
     if (surface === "review") {
       const review = this.ensureReview();
@@ -611,6 +683,7 @@ class CaffoldDetailLayout extends HTMLElement {
     this.reviewSlot()?.toggleAttribute("hidden", surface !== "review");
     this.gitSlot()?.toggleAttribute("hidden", surface !== "git");
     this.githubSlot()?.toggleAttribute("hidden", surface !== "github");
+    this.terminalSlot()?.toggleAttribute("hidden", surface !== "terminal");
     if (!subjectActive && this.subjectKind === "task") {
       this.taskDetail()?.deactivateVisibleSurface?.();
     }
@@ -620,18 +693,31 @@ class CaffoldDetailLayout extends HTMLElement {
     if (this.subjectKind === "section") {
       return this.sectionRoute?.sectionSurface ?? "new";
     }
+    if (this.taskRoute?.terminal) {
+      return "terminal";
+    }
     const domain = routeDomain(this.taskRoute);
     return domain || (this.taskRoute?.review ? "review" : "conversation");
   }
 
   // The start pane of the code surface on screen: Integrated Review's
-  // navigator or the file tree of Git or GitHub.
+  // navigator or the file tree of Git or GitHub. The terminal has none, so the
+  // corner toggle keeps its place there but cannot open anything.
   sidePane() {
     this.ensureRendered();
     if (!detailIdentityKey(this.subjectIdentity()) || this.hidden) {
       return null;
     }
     const surface = this.activeSurface();
+    if (surface === "terminal") {
+      return {
+        label: "side panel",
+        beside: true,
+        collapsible: false,
+        collapsed: true,
+        setCollapsed: () => {},
+      };
+    }
     if (surface === "review") {
       return this.review()?.sidePane() ?? null;
     }
@@ -676,6 +762,11 @@ class CaffoldDetailLayout extends HTMLElement {
       activeChildScope = this.gitLayout()?.actionHintScope?.();
     } else if (surface === "github") {
       activeChildScope = this.githubLayout()?.actionHintScope?.();
+    } else if (surface === "terminal") {
+      activeChildScope = this.terminalPage()?.actionHintScope({
+        scopeId: `detail:${identityKey}`,
+        clipRoots: [this],
+      });
     }
     return mergeActionHintScopes(
       { blocked },
@@ -685,6 +776,10 @@ class CaffoldDetailLayout extends HTMLElement {
         clipRoots: [this, this.summaryHeader()].filter(Boolean),
       }),
       this.githubMenu()?.actionHintScope({
+        scopeId: `detail:${identityKey}`,
+        clipRoots: [this, this.summaryHeader()].filter(Boolean),
+      }),
+      this.terminalButton()?.actionHintScope({
         scopeId: `detail:${identityKey}`,
         clipRoots: [this, this.summaryHeader()].filter(Boolean),
       }),
@@ -848,6 +943,7 @@ class CaffoldDetailLayout extends HTMLElement {
 
   deactivateSectionSurfaces() {
     this.sectionDetail()?.deactivate();
+    this.terminalPage()?.deactivate();
     this.deactivateReview();
     this.gitLayout()?.deactivate();
     this.githubLayout()?.deactivate();
@@ -859,6 +955,7 @@ class CaffoldDetailLayout extends HTMLElement {
 
   deactivateSharedChildren() {
     this.taskSummary()?.deactivate();
+    this.terminalPage()?.deactivate();
     this.deactivateReview();
     this.gitLayout()?.deactivate();
     this.githubLayout()?.deactivate();
@@ -1021,6 +1118,101 @@ class CaffoldDetailLayout extends HTMLElement {
       sectionSurface: "github",
       sectionTool: event.detail.kind,
     });
+  }
+
+  /**
+   * The terminal toggle behind the header button and Ctrl+`. A screen using
+   * the subject's live terminal returns to where it was before; any other
+   * screen enters the terminal, taking it from wherever it is shown.
+   */
+  toggleTerminal() {
+    this.ensureRendered();
+    const identity = this.subjectIdentity();
+    const key = detailIdentityKey(identity);
+    if (!key || this.hidden || !this.terminalDirectory()) {
+      return false;
+    }
+    if (this.activeSurface() === "terminal") {
+      if (this.terminalPage()?.isLive()) {
+        this.leaveTerminal();
+      } else {
+        this.terminalPage()?.activate({
+          subject: identity,
+          cwd: this.terminalDirectory(),
+          mode: "take",
+        });
+      }
+      return true;
+    }
+    this.terminalReturnRoutes.set(
+      key,
+      this.subjectKind === "section" ? { ...this.sectionRoute } : { ...this.taskRoute },
+    );
+    this.pendingTerminalTake = key;
+    this.requestSubjectRoute(
+      this.subjectKind === "section"
+        ? { sectionId: identity.id, sectionSurface: "terminal" }
+        : { kind: "tasks", threadId: identity.id, terminal: true },
+    );
+    return true;
+  }
+
+  /** Returns from the terminal to the surface the subject showed before it. */
+  leaveTerminal() {
+    const key = detailIdentityKey(this.subjectIdentity());
+    if (!key || this.activeSurface() !== "terminal") {
+      return;
+    }
+    this.requestSubjectRoute(
+      this.terminalReturnRoutes.get(key) ?? this.subjectHomeRoute(),
+    );
+    this.terminalReturnRoutes.delete(key);
+  }
+
+  /** Whether `element` takes keystrokes for the terminal on screen. */
+  ownsTerminalInput(element) {
+    return this.activeSurface() === "terminal" &&
+      Boolean(this.terminalPage()?.ownsInput(element));
+  }
+
+  activateTerminal() {
+    const identity = this.subjectIdentity();
+    const mode = this.pendingTerminalTake === detailIdentityKey(identity)
+      ? "take"
+      : "resume";
+    this.pendingTerminalTake = "";
+    const page = this.terminalPage();
+    page?.activate({ subject: identity, cwd: this.terminalDirectory(), mode });
+    return page;
+  }
+
+  // A take asked for by the toggle lasts only until a route other than that
+  // subject's terminal is shown.
+  keepTerminalTakeFor(key) {
+    if (this.pendingTerminalTake !== key) {
+      this.pendingTerminalTake = "";
+    }
+  }
+
+  terminalDirectory() {
+    return this.subjectKind === "section"
+      ? `${this.section?.name ?? ""}`
+      : `${this.taskSnapshot?.task?.cwdPath ?? ""}`;
+  }
+
+  subjectHomeRoute() {
+    const { id } = this.subjectIdentity();
+    return this.subjectKind === "section"
+      ? { sectionId: id }
+      : { kind: "tasks", threadId: id };
+  }
+
+  requestSubjectRoute(route) {
+    if (this.subjectKind === "section") {
+      this.requestSectionRoute(route);
+    } else {
+      this.requestTaskRoute(route);
+    }
   }
 
   requestTaskDomainRoute(route) {
@@ -1190,6 +1382,9 @@ class CaffoldDetailLayout extends HTMLElement {
   reviewSlot() { return this.querySelector(".detail-review-slot"); }
   gitSlot() { return this.querySelector(".detail-git-slot"); }
   githubSlot() { return this.querySelector(".detail-github-slot"); }
+  terminalSlot() { return this.querySelector(".detail-terminal-slot"); }
+  terminalPage() { return this.terminalSlot()?.querySelector(":scope > caffold-terminal-page"); }
+  terminalButton() { return this.summaryHeader()?.querySelector(":scope > caffold-task-detail-terminal"); }
   review() {
     return this.activeReviewKey
       ? this.reviewComponents.get(this.activeReviewKey) ?? null

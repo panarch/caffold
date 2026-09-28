@@ -12,9 +12,8 @@ contains one agent conversation and the repository context needed to judge its
 work. Start on one device, leave the turn running on the Mac, and return from
 another to decide what happens next by text or voice.
 
-Caffold is not a hosted agent, remote terminal, or replacement harness. The
-agent CLIs, repositories, credentials, conversations, and execution remain on
-your Mac.
+Caffold is not a hosted agent or a replacement harness. The agent CLIs,
+repositories, credentials, conversations, and execution remain on your Mac.
 
 ## What it looks like
 
@@ -102,7 +101,10 @@ For longer turns, each browser can opt in to system notifications under
 approval.
 
 Caffold also keeps the Task connected to its repository, optional managed
-worktree, Git history, and read-only GitHub Issue or Pull Request context.
+worktree, Git history, and read-only GitHub Issue or Pull Request context. When
+you want to check something yourself, each Task and Section has a terminal in
+its working directory that keeps running on the Mac while you move between
+devices.
 
 ## Install on macOS
 
@@ -151,10 +153,11 @@ currently drives Codex, Claude Code, and Grok; it does not provide an ACP
 driver or let an existing Task switch agents.
 
 Its Git and GitHub views are deliberately review-oriented. Caffold does not
-provide a full editor or terminal, and it does not expose stage, commit,
-checkout, merge, rebase, reset, stash, publication, or review mutation
-controls. Those operations can still be requested through the Task's agent or
-performed with the developer tools you already use.
+provide a full editor, and it does not expose stage, commit, checkout, merge,
+rebase, reset, stash, publication, or review mutation controls. Those
+operations can still be requested through the Task's agent, typed into the
+Task's terminal, or performed with the developer tools you already use. Each
+Task keeps one terminal, which ends when the Caffold backend stops.
 
 Managed-worktree preparation is explicit, and Caffold only cleans up worktrees
 that it created and recorded. The complete implemented scope and limitations

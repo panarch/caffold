@@ -561,6 +561,40 @@ test("draws its header the way the Markdown preview draws its header", { tag: "@
   await captureReviewScreenshot(page, testInfo, "task-switcher-header");
 });
 
+test("shortcut help opened over the switcher takes Action Hints until it closes", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installSwitcherFixture(page, switcherTasks());
+  await page.goto("/tasks");
+  const dialog = await openSwitcher(page);
+  const help = page.locator(
+    "caffold-keyboard-shortcut-dialog > dialog:modal",
+  );
+  const helpHints = help.locator("caffold-action-hint-dialog > dialog:modal");
+
+  await page.keyboard.press("?");
+  await expect(help).toBeVisible();
+  await expect(hintDialog(page)).toBeHidden();
+  await expect(dialog).toBeVisible();
+
+  await page.keyboard.press("f");
+  await expect(helpHints.locator("button[data-action-hint-code]"))
+    .toHaveCount(1);
+  await expect(helpHints.getByLabel(/ — Close keyboard shortcuts$/))
+    .toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(helpHints).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(help).toBeHidden();
+
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("f");
+  await expect(hintDialog(page)).toBeVisible();
+  await expect(hintDialog(page).getByLabel(
+    "Open task: Middle task in a-deliberately-long-section-name-for-clipping",
+  )).toBeVisible();
+});
+
 async function openSwitcher(page, { hints = true } = {}) {
   const surface = page.locator(".task-workspace-surface");
   await surface.evaluate((element) => element.focus({ preventScroll: true }));

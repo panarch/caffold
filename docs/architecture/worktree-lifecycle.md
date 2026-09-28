@@ -38,6 +38,8 @@ does not automatically continue the review or other work.
 The tool must be the final file-affecting action of its turn. After it succeeds,
 that turn ends. The user's next request starts a new turn in the same agent
 conversation with the managed worktree as `cwd` and runtime workspace root.
+Creating the worktree also closes the Task's [terminal](terminal.md#lifetime),
+whose shell was started in the old directory.
 
 For Codex, either compatible delivery path moves the thread's workspace for the
 next turn. Supplying MCP config while resuming a managed thread does not adopt
@@ -127,6 +129,8 @@ managed worktree:
 - a dirty managed worktree blocks archive with
   `managed_worktree_dirty`;
 - managed-worktree preflight completes before any provider archive attempt;
+- once the checks pass, the Task's [terminal](terminal.md#lifetime) closes
+  before the worktree is removed, and a refused Archive leaves it running;
 - provider acquisition, description, and archive are best effort, so an
   unavailable provider does not bypass local safety and does not strand the
   Caffold-owned Task in Active;

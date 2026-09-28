@@ -908,8 +908,11 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
   if (await page.evaluate(() => window.innerWidth > 520)) {
     const rightAlignment = await detail.evaluate((element) => {
       const header = element.querySelector(".detail-layout-summary");
+      // The terminal button closes the Section header's controls.
       const visibleActionButtons = [
-        ...element.querySelectorAll(".detail-layout-actions button"),
+        ...element.querySelectorAll(
+          ".detail-layout-actions button, caffold-task-detail-terminal > button",
+        ),
       ].filter((button) => button.getBoundingClientRect().width > 0);
       const rightmostButton = visibleActionButtons.reduce((rightmost, button) =>
         button.getBoundingClientRect().right > rightmost.getBoundingClientRect().right

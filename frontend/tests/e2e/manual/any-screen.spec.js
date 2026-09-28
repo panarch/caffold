@@ -68,6 +68,11 @@ test("? lists the keyboard shortcuts", { tag: "@desktop" }, async ({ page }, tes
   await expect(help.getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
   await expect(help).toContainText("Select a scroll area");
   await expect(help).toContainText("Switch to a recently active task");
+  await expect(help.locator("h3").last()).toHaveText("Key combinations");
+  const terminalRow = help.locator("dl > div").filter({
+    hasText: "Open the terminal, or return from it",
+  });
+  await expect(terminalRow.locator("dt kbd")).toHaveText(["⌘J", "Ctrl+`"]);
   await captureReviewScreenshot(page, testInfo, "keyboard-shortcuts");
 });
 
