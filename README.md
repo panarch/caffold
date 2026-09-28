@@ -129,18 +129,23 @@ brew install --cask panarch/tap/caffold
 Launch `Caffold Server` from Applications, then choose `Open Caffold` from its
 menu-bar menu.
 
-## Work without a keyboard
+## With or without a keyboard
 
-The Task composer supports multilingual voice input. Under
-**Settings → Voice Input**, choose Whisper to transcribe on the Mac after a
-one-time model download (about 1.5 GiB), or OpenAI, Gemini, or Grok to
-transcribe with your own API key. Audio goes from the browser to your Mac, which
-transcribes it or forwards it to the chosen provider; Caffold never stores the
-recordings.
+Every action in Caffold works from the keyboard. If one doesn't, that's a bug.
+Press `F` and a short code appears on each action in view; `S` does the same
+for areas that scroll, and key combinations reach the terminal, the side panel,
+and those codes even while you type. See
+[Keyboard navigation](website/docs/keyboard.md).
+
+You can also work without one. The Task composer supports multilingual voice
+input. Under **Settings → Voice Input**, choose Whisper to transcribe on the
+Mac after a one-time model download (about 1.5 GiB), or OpenAI, Gemini, or
+Grok to transcribe with your own API key. Audio goes from the browser to your
+Mac, which transcribes it or forwards it to the chosen provider; Caffold never
+stores the recordings.
 
 Voice is useful here for the same reason the browser interface is useful: much
-of the work is giving direction, reading what happened, and following up. A
-keyboard is welcome, but it should not be required for every step.
+of the work is giving direction, reading what happened, and following up.
 
 ## Current limits
 

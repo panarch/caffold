@@ -105,6 +105,11 @@ app. Direct controls belong in Caffold when they make a repeated review step
 clearer or safer. Everything else can stay with the selected agent and the
 existing developer tools.
 
+Every action Caffold offers works from the keyboard. A control only a pointer
+can reach is a defect to fix, not an exception to document. The keyboard is one
+complete way to work rather than a required one: touch and voice reach the
+same Task on screens without a keyboard.
+
 Today Caffold assumes one trusted user, one trusted host, and local or
 tailnet-only access. The roadmap includes fully supported, authenticated
 internet-facing self-hosting. That requires a different security model, but it

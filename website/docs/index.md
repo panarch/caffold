@@ -168,11 +168,35 @@ layout changes with the screen, the work does not.
   waits.
 - Attach files and screenshots to any prompt.
 - Dictate prompts, on the Mac or with your own speech-to-text key.
-- Run actions and scroll from the keyboard on a desktop.
 
 [Use other devices](get-started/other-devices.md){ .cf-more }
 
 </div>
+
+</section>
+
+<section class="cf-section cf-split" markdown>
+
+<div markdown>
+
+## Every action from the keyboard
+
+<p class="cf-sentences"><span>Every action in Caffold works from the
+keyboard.</span> <span>If one doesn't, that's a bug.</span></p>
+
+- Press <kbd>F</kbd>, and a short code appears on every action in view. Type
+  it to run the action.
+- Press <kbd>S</kbd> to scroll any area, and <kbd>T</kbd> to switch Tasks.
+- Key combinations open the terminal, show or hide the side panel, and bring
+  up action codes, even while you type.
+
+[Keyboard navigation](keyboard.md){ .cf-more }
+
+</div>
+
+<figure class="cf-shot" markdown>
+![Short action codes over the buttons of a Task conversation](assets/screenshots/action-hints-desktop.png)
+</figure>
 
 </section>
 
