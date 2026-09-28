@@ -41,7 +41,7 @@ such as editors get it. Leave the terminal with <kbd>⌘</kbd>+<kbd>J</kbd> or
 <kbd>Ctrl</kbd>+<kbd>&#96;</kbd>. To reach the buttons above the terminal from
 the keyboard, press <kbd>⇧</kbd>+<kbd>⌘</kbd>+<kbd>F</kbd> or
 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> and type a code. To scroll back,
-use the mouse wheel or <kbd>Shift</kbd>+<kbd>PageUp</kbd> and
+use the mouse wheel, touch, or <kbd>Shift</kbd>+<kbd>PageUp</kbd> and
 <kbd>Shift</kbd>+<kbd>PageDown</kbd>; a terminal keeps its last 5,000 lines.
 
 On a phone or tablet, a row of special keys sits under the terminal:
