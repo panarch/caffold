@@ -142,7 +142,7 @@ struct TailscaleService {
     runner: Arc<dyn TailscaleRunner>,
     operation: Arc<Mutex<()>>,
     status: Arc<RwLock<TailscaleStatus>>,
-    logged_failure: Arc<Mutex<Option<Failure>>>,
+    failure_log: Arc<Mutex<FailureLog>>,
 }
 
 impl TailscaleService {
@@ -156,7 +156,7 @@ impl TailscaleService {
                 TailscaleReason::StatusNotChecked,
                 "Tailscale status has not been checked yet.",
             ))),
-            logged_failure: Arc::new(Mutex::new(None)),
+            failure_log: Arc::new(Mutex::new(FailureLog::default())),
         }
     }
 
@@ -382,13 +382,10 @@ impl TailscaleService {
     }
 
     async fn publish(&self, status: TailscaleStatus, failure: Option<Failure>) -> TailscaleStatus {
-        let mut logged_failure = self.logged_failure.lock().await;
-        if let Some(failure) = &failure
-            && logged_failure.as_ref() != Some(failure)
-        {
+        let mut failure_log = self.failure_log.lock().await;
+        if let Some(failure) = failure_log.record(failure) {
             warn!(detail = %failure.detail, "{}", failure.event);
         }
-        *logged_failure = failure;
         *self.status.write().await = status.clone();
         status
     }
@@ -404,6 +401,19 @@ struct Inspection {
 struct Failure {
     event: &'static str,
     detail: String,
+}
+
+#[derive(Default)]
+struct FailureLog {
+    last: Option<Failure>,
+}
+
+impl FailureLog {
+    fn record(&mut self, failure: Option<Failure>) -> Option<&Failure> {
+        let is_new = failure.is_some() && self.last != failure;
+        self.last = failure;
+        self.last.as_ref().filter(|_| is_new)
+    }
 }
 
 fn command_line(cli: &Path, arguments: &[&str]) -> String {
@@ -482,7 +492,6 @@ fn is_loopback_host(host: &str) -> bool {
 mod tests {
     use std::{
         collections::VecDeque,
-        io,
         sync::{Arc, Mutex as StdMutex},
     };
 
@@ -711,99 +720,110 @@ mod tests {
         assert_eq!(runner.calls()[3][..2], ["serve", "--bg"]);
     }
 
-    #[tokio::test]
-    async fn logs_each_new_final_failure_once_with_every_attempt() {
-        let (logs, _subscriber) = capture_logs();
+    #[test]
+    fn logs_a_repeated_failure_once_until_it_changes_or_clears() {
+        let mut log = FailureLog::default();
+        let mut logged = |detail: Option<&str>| {
+            log.record(detail.map(|detail| Failure {
+                event: "tailscale status could not be read",
+                detail: detail.to_string(),
+            }))
+            .map(|failure| failure.detail.clone())
+        };
 
+        assert_eq!(
+            logged(Some("failed to connect")).as_deref(),
+            Some("failed to connect")
+        );
+        assert_eq!(logged(Some("failed to connect")), None);
+        assert_eq!(logged(Some("timed out")).as_deref(), Some("timed out"));
+        assert_eq!(logged(None), None);
+        assert_eq!(logged(Some("timed out")).as_deref(), Some("timed out"));
+    }
+
+    #[tokio::test]
+    async fn logs_the_searched_paths_and_every_status_attempt() {
         let missing = service(MockTailscaleRunner::missing());
         missing.refresh().await;
-        missing.refresh().await;
-        let not_found = logs.lines_containing("tailscale CLI was not found");
-        assert_eq!(not_found.len(), 1);
-        assert!(not_found[0].contains(&format!("searched {CLI}")));
-
-        let runner = MockTailscaleRunner::with_executables(
-            [HOMEBREW_CLI, APP_CLI],
-            [
-                response(false, "failed to connect"),
-                timed_out(),
-                response(false, "failed to connect"),
-                timed_out(),
-                response(true, node_status("Stopped")),
-                response(false, "failed to connect"),
-                timed_out(),
-            ],
+        assert_eq!(
+            logged_failure(&missing).await,
+            Some(("tailscale CLI was not found", format!("searched {CLI}")))
         );
-        let service = service(runner);
-        let failed = service.refresh().await;
+
+        let unreachable = service(MockTailscaleRunner::with_executables(
+            [HOMEBREW_CLI, APP_CLI],
+            [response(false, "failed to connect"), timed_out()],
+        ));
+        let failed = unreachable.refresh().await;
         assert_eq!(failed.state, TailscaleState::Failed);
         assert_eq!(failed.reason_code, TailscaleReason::StatusCommandFailed);
-        service.refresh().await;
-        assert_eq!(service.refresh().await.state, TailscaleState::Disconnected);
-        service.refresh().await;
-
-        let unreadable = logs.lines_containing("tailscale status could not be read");
-        assert_eq!(unreadable.len(), 2);
-        assert!(unreadable[0].contains(&format!(
-            "{HOMEBREW_CLI} status --json exited with code 1: failed to connect; \
-             {APP_CLI} status --json did not finish within 10 seconds"
-        )));
+        assert_eq!(
+            logged_failure(&unreachable).await,
+            Some((
+                "tailscale status could not be read",
+                format!(
+                    "{HOMEBREW_CLI} status --json exited with code 1: failed to connect; \
+                     {APP_CLI} status --json did not finish within 10 seconds"
+                )
+            ))
+        );
     }
 
     #[tokio::test]
     async fn logs_failed_serve_commands_and_unreadable_serve_status() {
-        let (logs, _subscriber) = capture_logs();
-
-        let failed = service(MockTailscaleRunner::with_responses([
+        let enable = service(MockTailscaleRunner::with_responses([
             response(true, node_status("Running")),
             response(true, r#"{"Web":{}}"#),
             response(false, "Serve is not enabled on your tailnet."),
-        ]))
-        .set_serve(true)
-        .await
-        .unwrap();
+        ]));
+        let failed = enable.set_serve(true).await.unwrap();
         assert_eq!(
             failed.diagnostic_message,
             "Caffold's Tailscale Serve mapping could not be enabled."
         );
+        assert_eq!(
+            logged_failure(&enable).await,
+            Some((
+                "tailscale serve could not be enabled",
+                format!(
+                    "{CLI} serve --bg --yes --https=443 http://127.0.0.1:5178 exited with code 1: \
+                     Serve is not enabled on your tailnet."
+                )
+            ))
+        );
 
-        let lines = logs.lines_containing("tailscale serve could not be enabled");
-        assert_eq!(lines.len(), 1);
-        assert!(lines[0].contains(&format!(
-            "{CLI} serve --bg --yes --https=443 http://127.0.0.1:5178 exited with code 1: \
-             Serve is not enabled on your tailnet."
-        )));
-
-        service(MockTailscaleRunner::with_responses([
+        let disable = service(MockTailscaleRunner::with_responses([
             response(true, node_status("Running")),
             response(true, serve_status("http://127.0.0.1:5178")),
             response(false, "permission denied"),
-        ]))
-        .set_serve(false)
-        .await
-        .unwrap();
-        let lines = logs.lines_containing("tailscale serve could not be disabled");
-        assert_eq!(lines.len(), 1);
-        assert!(lines[0].contains(&format!(
-            "{CLI} serve --yes --https=443 off exited with code 1: permission denied"
-        )));
+        ]));
+        disable.set_serve(false).await.unwrap();
+        assert_eq!(
+            logged_failure(&disable).await,
+            Some((
+                "tailscale serve could not be disabled",
+                format!("{CLI} serve --yes --https=443 off exited with code 1: permission denied")
+            ))
+        );
 
         let unreadable = service(MockTailscaleRunner::with_responses([
             response(true, node_status("Running")),
             response(true, "not json"),
-        ]))
-        .refresh()
-        .await;
+        ]));
         assert_eq!(
-            unreadable.reason_code,
+            unreadable.refresh().await.reason_code,
             TailscaleReason::ServeStatusResponseInvalid
         );
-        let lines = logs.lines_containing("tailscale serve status could not be read");
-        assert_eq!(lines.len(), 1);
-        assert!(lines[0].contains(&format!(
-            "{CLI} serve status --json: Tailscale returned an invalid Serve status response. \
-             Output: not json"
-        )));
+        assert_eq!(
+            logged_failure(&unreadable).await,
+            Some((
+                "tailscale serve status could not be read",
+                format!(
+                    "{CLI} serve status --json: Tailscale returned an invalid Serve status response. \
+                     Output: not json"
+                )
+            ))
+        );
     }
 
     #[tokio::test]
@@ -968,41 +988,11 @@ mod tests {
         MockResponse::Immediate(Err(TailscaleCommandError::TimedOut))
     }
 
-    fn capture_logs() -> (CapturedLogs, tracing::subscriber::DefaultGuard) {
-        let logs = CapturedLogs::default();
-        let subscriber = tracing_subscriber::fmt()
-            .with_writer({
-                let logs = logs.clone();
-                move || logs.clone()
-            })
-            .with_ansi(false)
-            .finish();
-        (logs, tracing::subscriber::set_default(subscriber))
-    }
-
-    #[derive(Clone, Default)]
-    struct CapturedLogs(Arc<StdMutex<Vec<u8>>>);
-
-    impl CapturedLogs {
-        fn lines_containing(&self, text: &str) -> Vec<String> {
-            String::from_utf8(self.0.lock().unwrap().clone())
-                .unwrap()
-                .lines()
-                .filter(|line| line.contains(text))
-                .map(str::to_string)
-                .collect()
-        }
-    }
-
-    impl io::Write for CapturedLogs {
-        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
+    async fn logged_failure(service: &TailscaleService) -> Option<(&'static str, String)> {
+        let log = service.failure_log.lock().await;
+        log.last
+            .as_ref()
+            .map(|failure| (failure.event, failure.detail.clone()))
     }
 
     #[derive(Clone)]
