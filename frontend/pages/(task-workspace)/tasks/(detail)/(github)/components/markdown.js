@@ -1,6 +1,7 @@
 import {
   ACTION_HINT_ACTION,
   captureLinkActionHintBinding,
+  disclosureActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   linkActionHintLabel,
@@ -215,6 +216,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
     const body = this.shadowRoot.querySelector(".markdown-body");
     body.replaceChildren(template.content.cloneNode(true));
     this.actionHintLinks = collectActionHintLinks(body);
+    this.actionHintDisclosures = collectActionHintDisclosures(body);
     this.scrollSurfaceRecords = collectScrollSurfaceRecords(body);
   }
 
@@ -235,6 +237,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
         !label ||
         !matchesLinkActionHintBinding(control, binding) ||
         !body.contains(control) ||
+        isFoldedAway(control) ||
         !hasActionHintLayoutBox(control)
       ) {
         return [];
@@ -264,9 +267,41 @@ class CaffoldGithubMarkdown extends HTMLElement {
           body.contains(control) &&
           matchesLinkActionHintBinding(control, binding) &&
           Boolean(linkActionHintLabel(control)) &&
+          !isFoldedAway(control) &&
           hasActionHintLayoutBox(control),
       })];
     });
+    // GitHub content can fold parts of itself away; opening one is how its
+    // links come into reach.
+    for (const record of this.actionHintDisclosures ?? []) {
+      const { details, summary, ordinal } = record;
+      if (
+        !isDisclosureCurrent(body, record) ||
+        isFoldedAway(summary) ||
+        !hasActionHintLayoutBox(summary)
+      ) {
+        continue;
+      }
+      targets.push(disclosureActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:disclosure:${ordinal}`,
+        actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+        label: `${details.open ? "Collapse" : "Expand"} ${
+          disclosureName(summary)
+        }`,
+        control: summary,
+        clipRoots: [this, body, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.shadowRoot.querySelector(".markdown-body") === body &&
+          this.actionHintDisclosures?.includes(record) &&
+          isDisclosureCurrent(body, record) &&
+          !isFoldedAway(summary) &&
+          hasActionHintLayoutBox(summary),
+      }));
+    }
     return {
       blocked: false,
       targets,
@@ -330,17 +365,56 @@ class CaffoldGithubMarkdown extends HTMLElement {
   }
 }
 
+// A link's name is read when a session starts rather than here: a link inside
+// a closed disclosure has no rendered text until the disclosure opens.
 function collectActionHintLinks(root) {
   return Array.from(root.querySelectorAll("a[href]")).flatMap(
     (control, index) => {
       const binding = captureLinkActionHintBinding(control);
-      return binding.href &&
-          !binding.href.startsWith("#") &&
-          linkActionHintLabel(control)
+      return binding.href && !binding.href.startsWith("#")
         ? [{ control, ordinal: index + 1, binding }]
         : [];
     },
   );
+}
+
+function collectActionHintDisclosures(root) {
+  return Array.from(root.querySelectorAll("details")).flatMap(
+    (details, index) => {
+      const summary = details.querySelector(":scope > summary");
+      return summary ? [{ details, summary, ordinal: index + 1 }] : [];
+    },
+  );
+}
+
+function isDisclosureCurrent(body, { details, summary }) {
+  return body.contains(details) &&
+    details.querySelector(":scope > summary") === summary;
+}
+
+// Chromium still gives what a closed details folds away a layout box, placed
+// over the content that follows it.
+function isFoldedAway(control) {
+  for (
+    let details = control.closest("details");
+    details;
+    details = details.parentElement?.closest("details")
+  ) {
+    if (
+      !details.open &&
+      !details.querySelector(":scope > summary")?.contains(control)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function disclosureName(summary) {
+  const text = `${summary.innerText ?? summary.textContent ?? ""}`
+    .replace(/\s+/g, " ")
+    .trim();
+  return text || "section";
 }
 
 function collectScrollSurfaceRecords(root) {

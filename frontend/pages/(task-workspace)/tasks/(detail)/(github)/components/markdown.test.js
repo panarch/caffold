@@ -108,7 +108,8 @@ test("provides retained sanitized Shadow DOM links and table scroll roots", () =
     getAttribute: (name) => attributes.get(name) ?? null,
     getClientRects: () => [{}],
     querySelectorAll: () => [],
-    closest: () => tableScrollRoot,
+    closest: (selector) =>
+      selector === ".markdown-table-scroll" ? tableScrollRoot : null,
     focus() {},
     click() {},
   };
@@ -146,6 +147,145 @@ test("provides retained sanitized Shadow DOM links and table scroll roots", () =
   assert.equal(scope.targets[0].isActionable(), false);
 });
 
+test("declares each folded section's summary and names it by its open state", () => {
+  const calls = [];
+  const body = treeElement("article");
+  const details = treeElement("details", body, { open: false });
+  const summary = treeElement("summary", details, {
+    innerText: " Test\n output ",
+    focus: () => calls.push("focus"),
+    click: () => calls.push("click"),
+  });
+  const owner = {
+    actionHintLinks: [],
+    actionHintDisclosures: [{ details, summary, ordinal: 2 }],
+    hidden: false,
+    isConnected: true,
+    shadowRoot: { querySelector: () => body },
+  };
+  const scope = () => markdown.actionHintScope.call(owner, {
+    scopeId: "github:pull:7:body",
+  });
+
+  const closed = scope();
+  assert.deepEqual(
+    closed.targets.map(({ id, actionId, label }) => [id, actionId, label]),
+    [["github:pull:7:body:disclosure:2", "disclosure.toggle", "Expand Test output"]],
+  );
+  assert.equal(closed.targets[0].isActionable(), true);
+  closed.targets[0].activate();
+  assert.deepEqual(calls, ["focus", "click"]);
+
+  details.open = true;
+  assert.equal(scope().targets[0].label, "Collapse Test output");
+
+  summary.getClientRects = () => [];
+  assert.deepEqual(scope().targets, []);
+});
+
+test("leaves out what a closed section folds away, though it has a layout box", () => {
+  const body = treeElement("article");
+  const outer = treeElement("details", body, { open: false });
+  const outerSummary = treeElement("summary", outer, {
+    innerText: "Review info",
+  });
+  const summaryLink = linkElement(outerSummary, "Review guide");
+  const inner = treeElement("details", outer, { open: false });
+  const innerSummary = treeElement("summary", inner, {
+    innerText: "Commits",
+  });
+  const foldedLink = linkElement(inner, "Commit badge");
+  const owner = {
+    actionHintLinks: [summaryLink, foldedLink].map((control, index) => ({
+      control,
+      ordinal: index + 1,
+      binding: {
+        href: control.getAttribute("href"),
+        target: null,
+        rel: null,
+      },
+    })),
+    actionHintDisclosures: [
+      { details: outer, summary: outerSummary, ordinal: 1 },
+      { details: inner, summary: innerSummary, ordinal: 2 },
+    ],
+    hidden: false,
+    isConnected: true,
+    shadowRoot: { querySelector: () => body },
+  };
+  const labels = () => markdown.actionHintScope.call(owner, {
+    scopeId: "github:pull:7:body",
+  }).targets.map(({ label }) => label);
+
+  assert.deepEqual(labels(), [
+    "Open Review guide",
+    "Expand Review info",
+  ]);
+
+  outer.open = true;
+  const outerOpen = markdown.actionHintScope.call(owner, {
+    scopeId: "github:pull:7:body",
+  });
+  assert.deepEqual(outerOpen.targets.map(({ label }) => label), [
+    "Open Review guide",
+    "Collapse Review info",
+    "Expand Commits",
+  ]);
+
+  inner.open = true;
+  assert.deepEqual(labels(), [
+    "Open Review guide",
+    "Open Commit badge",
+    "Collapse Review info",
+    "Collapse Commits",
+  ]);
+
+  outer.open = false;
+  assert.equal(outerOpen.targets[2].isActionable(), false);
+});
+
 function layoutElement(properties = {}) {
   return { getClientRects: () => [{}], ...properties };
+}
+
+function treeElement(localName, parentElement = null, properties = {}) {
+  const element = {
+    localName,
+    parentElement,
+    children: [],
+    getClientRects: () => [{}],
+    querySelectorAll: () => [],
+    querySelector(selector) {
+      assert.equal(selector, ":scope > summary");
+      return this.children.find((child) => child.localName === "summary") ??
+        null;
+    },
+    closest(selector) {
+      for (let node = this; node; node = node.parentElement) {
+        if (node.localName === selector) {
+          return node;
+        }
+      }
+      return null;
+    },
+    contains(other) {
+      for (let node = other; node; node = node.parentElement) {
+        if (node === this) {
+          return true;
+        }
+      }
+      return false;
+    },
+    ...properties,
+  };
+  parentElement?.children.push(element);
+  return element;
+}
+
+function linkElement(parentElement, innerText) {
+  const href = `https://github.com/example/repo#${innerText.replace(/ /g, "-")}`;
+  return treeElement("a", parentElement, {
+    innerText,
+    getAttribute: (name) => (name === "href" ? href : null),
+  });
 }

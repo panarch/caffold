@@ -741,6 +741,57 @@ test("opens direct and rendered Issue links through the Issue owner", { tag: "@a
   );
 });
 
+test("a folded section of GitHub content opens with F, and its links then get codes", { tag: "@desktop" }, async ({
+  context,
+  page,
+}) => {
+  await context.route("https://github.com/gluesql/gluesql/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>GitHub link target</title>",
+    }),
+  );
+  const foldedUrl =
+    "https://github.com/gluesql/gluesql/pull/1983#folded-reference";
+  await installLinkedWorktreeGithubFixture(page, {
+    pullBodyHtml:
+      `<p>Summary first.</p><details><summary>Test output</summary><p><a href="${foldedUrl}" target="_blank" rel="noreferrer">Folded reference</a></p><details><summary>Raw log</summary><p>Log lines.</p></details></details>`,
+  });
+  await page.goto(`/tasks/${THREAD_ID}/github/pulls/1983`);
+  const pullDetail = page.locator("caffold-github-pull-detail-page");
+  const details = pullDetail.locator("caffold-github-markdown details").first();
+  const folded = pullDetail.getByRole("link", {
+    name: "Folded reference",
+    exact: true,
+  });
+  const disclosureLabels = () => page.locator("caffold-app-shell").evaluate(
+    (shell) => shell.actionHintScope().targets
+      .map((target) => target.label)
+      .filter((label) => /^(Expand|Collapse) /.test(label)),
+  );
+  await expect(details).not.toHaveAttribute("open", "");
+
+  // Chromium still gives a section folded inside a closed one a layout box.
+  await waitForActionHintTarget(page, "Expand Test output");
+  expect(await disclosureLabels()).toEqual(["Expand Test output"]);
+  await activateActionHint(page, /Expand Test output$/);
+  await expect(details).toHaveAttribute("open", "");
+  await expect(folded).toBeVisible();
+  await waitForActionHintTarget(page, "Expand Raw log");
+
+  // The link had no name to show while it was folded; a new session has one.
+  await activatePopupActionHint(
+    page,
+    folded,
+    /Open Folded reference in a new tab$/,
+    foldedUrl,
+  );
+
+  await waitForActionHintTarget(page, "Collapse Test output");
+  await activateActionHint(page, /Collapse Test output$/);
+  await expect(details).not.toHaveAttribute("open", "");
+});
+
 test("opens direct and rendered Pull links through the Pull owner", { tag: "@all-viewports" }, async ({
   context,
   page,
