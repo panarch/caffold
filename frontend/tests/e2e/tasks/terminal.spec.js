@@ -694,6 +694,34 @@ test("the special key row starts on touch screens and keeps the choice", { tag: 
   await expect(keys).toBeHidden();
 });
 
+test("one finger dragged over the terminal scrolls its history, and two are left to the browser", { tag: "@foldable" }, async ({
+  page,
+}) => {
+  const threadId = terminalTaskId("touch-scroll");
+  await openTask(page, threadId);
+  await terminalButton(page).click();
+  await expectLive(page);
+  await expectPrompt(page);
+  // Every row shows a three-digit number, and the last is not on the command line.
+  await page.keyboard.type("seq $((100 + 1)) $((200 * 2))");
+  await page.keyboard.press("Enter");
+  await expect(terminalRows(page)).toContainText("400");
+  await expectPrompt(page);
+  const topRow = async () =>
+    Number(await terminalRows(page).locator(":scope > div").first().textContent());
+  const bottom = await topRow();
+
+  expect(await dragTerminal(page, 2, 2)).not.toContain(true);
+  expect(await dragTerminal(page, 5)).not.toContain(false);
+
+  // Only the one-finger drag moved the history.
+  await expect.poll(topRow).toBe(bottom - 5);
+
+  expect(await dragTerminal(page, -3)).not.toContain(false);
+
+  await expect.poll(topRow).toBe(bottom - 2);
+});
+
 // Prints the last two parts of the shell's directory, in a form its own
 // command line does not contain.
 const PRINT_DIRECTORY = 'echo "in-$(basename "$(dirname "$PWD")")-$(basename "$PWD")"';
@@ -745,4 +773,40 @@ async function expectLive(page) {
 // types only once the prompt is on screen.
 async function expectPrompt(page) {
   await expect(terminalRows(page)).toContainText(/[$#]\s*$/);
+}
+
+// Drags `fingers` from the middle of the terminal screen `rows` rows down, or
+// up when negative, and answers for each move whether the page kept it from the
+// browser. The drag goes half a row further so the last row always counts.
+async function dragTerminal(page, rows, fingers = 1) {
+  return page.locator("caffold-terminal-page .xterm-screen").evaluate(
+    (screen, { rows, fingers }) => {
+      const box = screen.getBoundingClientRect();
+      const rowHeight = box.height / screen.querySelectorAll(".xterm-rows > div").length;
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      const target = document.elementFromPoint(x, y);
+      const distance = (rows + Math.sign(rows) / 2) * rowHeight;
+      const at = (offset) =>
+        Array.from({ length: fingers }, (_, identifier) =>
+          new Touch({ identifier, target, clientX: x + identifier * rowHeight, clientY: y + offset })
+        );
+      const send = (type, touches, changedTouches = touches) =>
+        target.dispatchEvent(new TouchEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          touches,
+          targetTouches: touches,
+          changedTouches,
+        }));
+      const steps = 10;
+      send("touchstart", at(0));
+      const kept = Array.from({ length: steps }, (_, step) =>
+        !send("touchmove", at((distance * (step + 1)) / steps))
+      );
+      send("touchend", [], at(distance));
+      return kept;
+    },
+    { rows, fingers },
+  );
 }

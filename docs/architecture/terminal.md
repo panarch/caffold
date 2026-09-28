@@ -195,3 +195,10 @@ changes, draws in the Code typeface and size, and takes its background,
 foreground, cursor, and selection colors from the theme. While a phone's or
 tablet's on-screen keyboard is open, the terminal screen ends above it, so the
 shell has fewer rows until the keyboard closes.
+
+xterm.js 6.0.0 scrolls its history for the mouse wheel but not for touch, so
+the terminal view scrolls it one row for each row a single finger drags over
+the screen, and the browser does not pan the page for that drag. The alternate
+screen has no history, so a program drawn there, such as an editor, does not
+move under a finger. A second finger ends the drag and leaves the gesture, such
+as a pinch zoom, to the browser.

@@ -1,7 +1,8 @@
 // The xterm.js terminal a terminal screen draws with. It fills the box CSS
-// gives it, draws in the Code font and size, follows the theme, and reports
-// typed input and its row and column count. xterm.js and its fit addon load
-// from a pinned jsDelivr release the first time a terminal opens.
+// gives it, draws in the Code font and size, follows the theme, scrolls its
+// history under a dragged finger, and reports typed input and its row and
+// column count. xterm.js and its fit addon load from a pinned jsDelivr release
+// the first time a terminal opens.
 
 const XTERM_VERSION = "6.0.0";
 const FIT_ADDON_VERSION = "0.11.0";
@@ -122,6 +123,7 @@ class CaffoldTerminalView extends HTMLElement {
     terminal.open(this.querySelector(":scope > .terminal-view-screen"));
     terminal.onData((data) => this.emitInput(data, false));
     terminal.onBinary((data) => this.emitInput(data, true));
+    scrollOnTouch(terminal);
     this.terminal = terminal;
     this.fitAddon = fitAddon;
   }
@@ -238,4 +240,38 @@ function terminalAppearance(element) {
       selectionBackground: read("--terminal-selection"),
     },
   };
+}
+
+/**
+ * Scrolls the history a row for each row one finger drags over the screen,
+ * which xterm.js 6.0.0 does only for the mouse wheel. A second finger leaves
+ * the gesture to the browser.
+ */
+function scrollOnTouch(terminal) {
+  const screen = terminal.element.querySelector(".xterm-screen");
+  let dragging = false;
+  let lastY = 0;
+  let rowHeight = 0;
+  let pixels = 0;
+  screen.addEventListener("touchstart", (event) => {
+    dragging = event.touches.length === 1;
+    lastY = event.touches[0].clientY;
+    rowHeight = screen.getBoundingClientRect().height / terminal.rows;
+    pixels = 0;
+  });
+  screen.addEventListener("touchmove", (event) => {
+    dragging &&= event.touches.length === 1;
+    if (!dragging) {
+      return;
+    }
+    event.preventDefault();
+    const y = event.touches[0].clientY;
+    pixels += lastY - y;
+    lastY = y;
+    const rows = Math.trunc(pixels / rowHeight);
+    if (rows) {
+      pixels -= rows * rowHeight;
+      terminal.scrollLines(rows);
+    }
+  }, { passive: false });
 }
