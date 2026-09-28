@@ -19,6 +19,7 @@ export const KEYBOARD_SHORTCUT_CLOSE_EVENT =
 export const KEY_COMBINATION_ACTION = Object.freeze({
   TERMINAL: "terminal",
   SIDE_PANE: "side-pane",
+  ACTION_HINTS: "action-hints",
 });
 
 // Key combinations work while typing, in the terminal, and with keyboard
@@ -42,6 +43,14 @@ export const KEY_COMBINATIONS = Object.freeze([
     [
       chord("⌘B", { code: "KeyB", meta: true }),
       chord("Ctrl+Shift+B", { code: "KeyB", ctrl: true, shift: true }),
+    ],
+  ),
+  combination(
+    KEY_COMBINATION_ACTION.ACTION_HINTS,
+    "Show available actions",
+    [
+      chord("⇧⌘F", { code: "KeyF", meta: true, shift: true }),
+      chord("Ctrl+Shift+F", { code: "KeyF", ctrl: true, shift: true }),
     ],
   ),
 ]);

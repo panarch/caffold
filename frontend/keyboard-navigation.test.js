@@ -459,6 +459,56 @@ test("key combinations are left alone for variants, composition, open overlays, 
   }
 });
 
+test("the Action Hint combination shows actions wherever F would, even while typing", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    let started = 0;
+    const controller = createController({
+      readSettings: () => ({ actionHintsEnabled: false }),
+    });
+    controller.actionHints.prepareSnapshot = () => ({
+      targets: [{ id: "terminal:kill" }],
+    });
+    controller.actionHints.startSession = () => {
+      started += 1;
+      return true;
+    };
+    const input = element({
+      isConnected: true,
+      matches: (selector) => selector.includes("input:not"),
+    });
+    document.activeElement = input;
+    assert.equal(controller.controlNode(), KEYBOARD_NAVIGATION_NODE.EDITING);
+
+    const typing = { ...keyEvent("F", { code: "KeyF", ctrlKey: true }), shiftKey: true };
+    typing.target = input;
+    controller.handleKeydown(typing);
+    assert.equal(typing.prevented, true);
+    assert.equal(controller.controlNode(), KEYBOARD_NAVIGATION_NODE.HINT);
+    controller.applyTransition(KEYBOARD_NAVIGATION_EVENT.HINT_CANCELLED);
+
+    // An open dialog keeps its own actions within reach.
+    document.activeElement = null;
+    document.modal = element();
+    const inDialog = { ...keyEvent("ㄹ", { code: "KeyF", metaKey: true }), shiftKey: true };
+    controller.handleKeydown(inDialog);
+    assert.equal(inDialog.prevented, true);
+    assert.equal(started, 2);
+    controller.applyTransition(KEYBOARD_NAVIGATION_EVENT.HINT_CANCELLED);
+    document.modal = null;
+
+    // With no action to show, the key stays with the page.
+    controller.actionHints.prepareSnapshot = () => null;
+    const nothing = { ...keyEvent("F", { code: "KeyF", ctrlKey: true }), shiftKey: true };
+    controller.handleKeydown(nothing);
+    assert.equal(nothing.prevented, false);
+    assert.equal(started, 2);
+    assert.equal(controller.controlNode(), KEYBOARD_NAVIGATION_NODE.NORMAL);
+  } finally {
+    restoreDom();
+  }
+});
+
 test("coordinator alone owns the document key listener and releases all inputs", () => {
   const restoreDom = installEventGlobals();
   try {

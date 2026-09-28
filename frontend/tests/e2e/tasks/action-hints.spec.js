@@ -144,7 +144,8 @@ test("opens global shortcut help from Normal and replaces Action Hints", { tag: 
   await expect(help).toBeVisible();
   await expect(help.getByRole("heading", { name: "Keyboard shortcuts" }))
     .toBeVisible();
-  await expect(help.getByText("Show available actions", { exact: true }))
+  // The first is F's row; its key combination's row shares the description.
+  await expect(help.getByText("Show available actions", { exact: true }).first())
     .toBeVisible();
   await expect(help.getByText("Scroll left or right", { exact: true }))
     .toBeVisible();
@@ -173,6 +174,33 @@ test("opens global shortcut help from Normal and replaces Action Hints", { tag: 
   await expect(help).toBeHidden();
   await expect(hints).toBeHidden();
   await expect(opener).toBeFocused();
+});
+
+test("⇧⌘F and Ctrl+Shift+F show actions from the prompt, even with keyboard navigation off", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installActionHintFixture(page, actionHintTasks(2));
+  await page.goto("/tasks");
+  const prompt = page.locator('caffold-task-new textarea[name="prompt"]');
+  const hints = actionHintDialog(page);
+
+  await prompt.fill("draft");
+  await page.keyboard.press("Meta+Shift+KeyF");
+  await expect(hints).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hints).toBeHidden();
+  await expect(prompt).toBeFocused();
+  await expect(prompt).toHaveValue("draft");
+
+  await page.goto("/settings/keyboard");
+  await page.getByRole("switch", { name: "Keyboard navigation" }).uncheck();
+  await page.goto("/tasks");
+  await prompt.focus();
+  await page.keyboard.press("Control+Shift+KeyF");
+  await expect(hints).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hints).toBeHidden();
+  await expect(prompt).toBeFocused();
 });
 
 test("Action Hints inside shortcut help reach its Close button", { tag: "@desktop" }, async ({

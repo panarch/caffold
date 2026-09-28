@@ -20,6 +20,7 @@ test("declares every keyboard navigation edge and reaches every node", () => {
     editing: {
       "editing-continued": "editing",
       "editing-ended": "normal",
+      "hint-started": "hint",
     },
     hint: {
       "hint-input-changed": "hint",
