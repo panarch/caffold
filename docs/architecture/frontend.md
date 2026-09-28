@@ -379,15 +379,16 @@ not become targets. Arrow, Shift+Arrow, Home, and End remain component-owned.
 
 Product-owned disclosure uses the same one-shot flow through a distinct
 `disclosure.toggle` action and `disclosure` control kind. The shared File Tree
-declares only expandable directory buttons; non-expandable Directory Picker
-rows keep their existing navigation meaning. Work Details declares its root
-summary, active Command declares its summary while terminal Command keeps View
-output, Conversation declares only the exact Thinking summaries it rendered,
-and Git Log declares its commit-body toggle. Target identity stays stable
+declares only expandable directory buttons; non-expandable Directory Picker rows
+keep their existing navigation meaning. Work Details declares its root summary,
+active Command declares its summary while terminal Command keeps View output,
+Conversation declares only the exact Thinking summaries it rendered, Git Log
+declares its commit-body toggle, and GitHub Markdown declares the `summary` of
+each `details` in the GitHub content it renders. Target identity stays stable
 across open state while the accessible Hint label changes between Expand and
-Collapse. The Hint overlay closes before the retained summary or button
-receives focus and its existing click path. Opening or closing never starts a
-second Hint session; the user presses `F` again against the new visible state.
+Collapse. The Hint overlay closes before the retained summary or button receives
+focus and its existing click path. Opening or closing never starts a second Hint
+session; the user presses `F` again against the new visible state.
 
 Links use the distinct `link.open` action and `link` control kind. A component
 that renders a direct product link declares that exact retained anchor: Remote
@@ -409,12 +410,15 @@ and the frozen native binding. Generated IDs combine the stable parent scope
 with that ordinal and never contain the URL, so duplicate hrefs or labels remain
 distinct. A raw href beginning with `#`, an absent href, or an anchor without an
 accessible name is omitted; a normal internal or external URL that contains a
-fragment later is retained. Loading, fallback, rerender, representation change,
-and content replacement replace or clear the registry. A disconnected owner
-publishes no scope and may reuse only its still-current mounted registry after
-reconnection. Markdown table-scroll wrappers are explicit per-link clip and
-scroll dependencies, and GitHub Markdown publishes both its host and Shadow
-root as mutation dependencies.
+fragment later is retained. GitHub Markdown reads the accessible name when a
+session is captured rather than at mount, because a link inside GitHub content
+that is folded in a closed `details` has no rendered name until it opens.
+Loading, fallback, rerender, representation change, and content replacement
+replace or clear the registry. A disconnected owner publishes no scope and may
+reuse only its still-current mounted registry after reconnection. Markdown
+table-scroll wrappers are explicit per-link clip and scroll dependencies, and
+GitHub Markdown publishes both its host and Shadow root as mutation
+dependencies.
 
 Custom children retain their own action knowledge. Work Details merges its own
 summary with its direct retained children. Command declares active disclosure
@@ -433,9 +437,10 @@ Parent layouts merge these renderer-owned link scopes through the same public
 child interface as other retained controls; they do not rediscover anchors.
 App Shell bootstrap and unavailable-foreground Retry controls participate as
 direct shell-owned targets, and Build Mismatch Reload participates through its
-component-owned public scope. Arbitrary third-party `summary` disclosures
-remain outside Action Hint. A native summary participates only when its product
-component explicitly owns and declares that disclosure. Registered dialog
+component-owned public scope. A native summary participates only when its
+product component explicitly owns and declares that disclosure: GitHub Markdown
+declares the summaries of the GitHub content it renders, and Task Markdown and
+the Markdown Preview unwrap `details` in their sanitizers. Registered dialog
 textboxes keep their owner-specific focus behavior, while dialog selects use
 the same general native select contract as workspace controls. Popover and
 dialog openers are ordinary workspace actions. A context that declares itself

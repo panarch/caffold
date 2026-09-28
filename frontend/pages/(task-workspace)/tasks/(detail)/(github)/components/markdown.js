@@ -1,6 +1,7 @@
 import {
   ACTION_HINT_ACTION,
   captureLinkActionHintBinding,
+  disclosureActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   linkActionHintLabel,
@@ -215,6 +216,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
     const body = this.shadowRoot.querySelector(".markdown-body");
     body.replaceChildren(template.content.cloneNode(true));
     this.actionHintLinks = collectActionHintLinks(body);
+    this.actionHintDisclosures = collectActionHintDisclosures(body);
     this.scrollSurfaceRecords = collectScrollSurfaceRecords(body);
   }
 
@@ -267,6 +269,32 @@ class CaffoldGithubMarkdown extends HTMLElement {
           hasActionHintLayoutBox(control),
       })];
     });
+    // GitHub content can fold parts of itself away; opening one is how its
+    // links come into reach.
+    for (const record of this.actionHintDisclosures ?? []) {
+      const { details, summary, ordinal } = record;
+      if (!isDisclosureCurrent(body, record) || !hasActionHintLayoutBox(summary)) {
+        continue;
+      }
+      targets.push(disclosureActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:disclosure:${ordinal}`,
+        actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+        label: `${details.open ? "Collapse" : "Expand"} ${
+          disclosureName(summary)
+        }`,
+        control: summary,
+        clipRoots: [this, body, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.shadowRoot.querySelector(".markdown-body") === body &&
+          this.actionHintDisclosures?.includes(record) &&
+          isDisclosureCurrent(body, record) &&
+          hasActionHintLayoutBox(summary),
+      }));
+    }
     return {
       blocked: false,
       targets,
@@ -330,17 +358,38 @@ class CaffoldGithubMarkdown extends HTMLElement {
   }
 }
 
+// A link's name is read when a session starts rather than here: a link inside
+// a closed disclosure has no rendered text until the disclosure opens.
 function collectActionHintLinks(root) {
   return Array.from(root.querySelectorAll("a[href]")).flatMap(
     (control, index) => {
       const binding = captureLinkActionHintBinding(control);
-      return binding.href &&
-          !binding.href.startsWith("#") &&
-          linkActionHintLabel(control)
+      return binding.href && !binding.href.startsWith("#")
         ? [{ control, ordinal: index + 1, binding }]
         : [];
     },
   );
+}
+
+function collectActionHintDisclosures(root) {
+  return Array.from(root.querySelectorAll("details")).flatMap(
+    (details, index) => {
+      const summary = details.querySelector(":scope > summary");
+      return summary ? [{ details, summary, ordinal: index + 1 }] : [];
+    },
+  );
+}
+
+function isDisclosureCurrent(body, { details, summary }) {
+  return body.contains(details) &&
+    details.querySelector(":scope > summary") === summary;
+}
+
+function disclosureName(summary) {
+  const text = `${summary.innerText ?? summary.textContent ?? ""}`
+    .replace(/\s+/g, " ")
+    .trim();
+  return text || "section";
 }
 
 function collectScrollSurfaceRecords(root) {

@@ -146,6 +146,45 @@ test("provides retained sanitized Shadow DOM links and table scroll roots", () =
   assert.equal(scope.targets[0].isActionable(), false);
 });
 
+test("declares each folded section's summary and names it by its open state", () => {
+  const calls = [];
+  const summary = {
+    innerText: " Test\n output ",
+    getClientRects: () => [{}],
+    querySelectorAll: () => [],
+    focus: () => calls.push("focus"),
+    click: () => calls.push("click"),
+  };
+  const details = { open: false, querySelector: () => summary };
+  const body = { contains: (element) => element === details };
+  const owner = {
+    actionHintLinks: [],
+    actionHintDisclosures: [{ details, summary, ordinal: 2 }],
+    hidden: false,
+    isConnected: true,
+    shadowRoot: { querySelector: () => body },
+  };
+  const scope = () => markdown.actionHintScope.call(owner, {
+    scopeId: "github:pull:7:body",
+  });
+
+  const closed = scope();
+  assert.deepEqual(
+    closed.targets.map(({ id, actionId, label }) => [id, actionId, label]),
+    [["github:pull:7:body:disclosure:2", "disclosure.toggle", "Expand Test output"]],
+  );
+  assert.equal(closed.targets[0].isActionable(), true);
+  closed.targets[0].activate();
+  assert.deepEqual(calls, ["focus", "click"]);
+
+  details.open = true;
+  assert.equal(scope().targets[0].label, "Collapse Test output");
+
+  // A section inside another folded one is not on screen.
+  summary.getClientRects = () => [];
+  assert.deepEqual(scope().targets, []);
+});
+
 function layoutElement(properties = {}) {
   return { getClientRects: () => [{}], ...properties };
 }
