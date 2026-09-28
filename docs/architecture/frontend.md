@@ -412,7 +412,9 @@ distinct. A raw href beginning with `#`, an absent href, or an anchor without an
 accessible name is omitted; a normal internal or external URL that contains a
 fragment later is retained. GitHub Markdown reads the accessible name when a
 session is captured rather than at mount, because a link inside GitHub content
-that is folded in a closed `details` has no rendered name until it opens.
+that is folded in a closed `details` has no rendered name until it opens. At
+capture and activation it also leaves out every summary and link that a closed
+`details` folds away, since Chromium still gives them a layout box.
 Loading, fallback, rerender, representation change, and content replacement
 replace or clear the registry. A disconnected owner publishes no scope and may
 reuse only its still-current mounted registry after reconnection. Markdown

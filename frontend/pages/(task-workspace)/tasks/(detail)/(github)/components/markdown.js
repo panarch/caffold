@@ -237,6 +237,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
         !label ||
         !matchesLinkActionHintBinding(control, binding) ||
         !body.contains(control) ||
+        isFoldedAway(control) ||
         !hasActionHintLayoutBox(control)
       ) {
         return [];
@@ -266,6 +267,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
           body.contains(control) &&
           matchesLinkActionHintBinding(control, binding) &&
           Boolean(linkActionHintLabel(control)) &&
+          !isFoldedAway(control) &&
           hasActionHintLayoutBox(control),
       })];
     });
@@ -273,7 +275,11 @@ class CaffoldGithubMarkdown extends HTMLElement {
     // links come into reach.
     for (const record of this.actionHintDisclosures ?? []) {
       const { details, summary, ordinal } = record;
-      if (!isDisclosureCurrent(body, record) || !hasActionHintLayoutBox(summary)) {
+      if (
+        !isDisclosureCurrent(body, record) ||
+        isFoldedAway(summary) ||
+        !hasActionHintLayoutBox(summary)
+      ) {
         continue;
       }
       targets.push(disclosureActionHintTarget({
@@ -292,6 +298,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
           this.shadowRoot.querySelector(".markdown-body") === body &&
           this.actionHintDisclosures?.includes(record) &&
           isDisclosureCurrent(body, record) &&
+          !isFoldedAway(summary) &&
           hasActionHintLayoutBox(summary),
       }));
     }
@@ -383,6 +390,24 @@ function collectActionHintDisclosures(root) {
 function isDisclosureCurrent(body, { details, summary }) {
   return body.contains(details) &&
     details.querySelector(":scope > summary") === summary;
+}
+
+// Chromium still gives what a closed details folds away a layout box, placed
+// over the content that follows it.
+function isFoldedAway(control) {
+  for (
+    let details = control.closest("details");
+    details;
+    details = details.parentElement?.closest("details")
+  ) {
+    if (
+      !details.open &&
+      !details.querySelector(":scope > summary")?.contains(control)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function disclosureName(summary) {
