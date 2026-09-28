@@ -115,6 +115,8 @@ They work even while typing, in the terminal, and with keyboard navigation off:
   from it.
 - `⌘B` or `Ctrl+Shift+B` shows or hides the side panel wherever its corner
   button can.
+- `⇧⌘F` or `Ctrl+Shift+F` puts codes on the actions there, as `F` does, so the
+  buttons above a terminal are within reach from inside it.
 
 Each action has a combination for Apple keyboards and one without ⌘. They are
 read from the physical key, so a Korean input source still works.

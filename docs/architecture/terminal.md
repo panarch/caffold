@@ -54,7 +54,9 @@ A terminal ends only when:
 Closing a terminal tells its viewer the terminal ended and sends the shell a
 hangup. A shell still running after three seconds is killed. The reader thread
 keeps draining output while it waits, because an exiting shell on macOS waits
-until its terminal output has been read. The shell's exit is observed without
+until its terminal output has been read. A shell that exits on its own may
+leave output unread on Linux, so the reader reads what is waiting before it
+reports the end. The shell's exit is observed without
 reaping it (`waitid` with `WNOWAIT`), so its pid cannot be reused while Caffold
 may still signal it.
 

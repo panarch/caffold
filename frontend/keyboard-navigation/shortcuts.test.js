@@ -81,6 +81,8 @@ test("each key combination is read from its physical key and listed in help", ()
     [press("KeyJ", { key: "ㅓ", metaKey: true }), KEY_COMBINATION_ACTION.TERMINAL],
     [press("KeyB", { key: "ㅠ", metaKey: true }), KEY_COMBINATION_ACTION.SIDE_PANE],
     [press("KeyB", { key: "B", ctrlKey: true, shiftKey: true }), KEY_COMBINATION_ACTION.SIDE_PANE],
+    [press("KeyF", { key: "ㄹ", metaKey: true, shiftKey: true }), KEY_COMBINATION_ACTION.ACTION_HINTS],
+    [press("KeyF", { key: "F", ctrlKey: true, shiftKey: true }), KEY_COMBINATION_ACTION.ACTION_HINTS],
   ]) {
     assert.equal(keyCombinationAction(event), action, event.code);
     assert.equal(keyCombinationAction(event, { compositionActive: true }), "");
@@ -99,8 +101,10 @@ test("each key combination is read from its physical key and listed in help", ()
       );
     }
   }
-  // A shell's own Ctrl+B stays with the shell.
+  // A shell's own Ctrl+B stays with the shell, and a plain F is not a
+  // combination.
   assert.equal(keyCombinationAction(press("KeyB", { ctrlKey: true })), "");
+  assert.equal(keyCombinationAction(press("KeyF", { key: "f" })), "");
 
   const combinations = KEYBOARD_SHORTCUT_HELP_SECTIONS.at(-1);
   assert.equal(combinations.title, "Key combinations");
@@ -109,6 +113,7 @@ test("each key combination is read from its physical key and listed in help", ()
     [
       { keys: ["⌘J", "Ctrl+`"], alternatives: true },
       { keys: ["⌘B", "Ctrl+Shift+B"], alternatives: true },
+      { keys: ["⇧⌘F", "Ctrl+Shift+F"], alternatives: true },
     ],
   );
   assert.ok(

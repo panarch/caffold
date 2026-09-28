@@ -7,7 +7,8 @@ without a pointer. The keys work whenever you are not typing in a field.
 
 Press <kbd>F</kbd> and short codes appear on the actions you can take in the
 current place: the workspace, or the dialog or popover that is open. Type a
-code to run its action.
+code to run its action. While you are typing, or in the terminal, use its
+[key combination](#key-combinations) instead.
 
 ![Action codes over a Task conversation](assets/screenshots/action-hints-desktop.png)
 
@@ -57,13 +58,15 @@ the middle of choosing an action or scrolling. Inside the list,
 ## Key combinations
 
 These keys work while you are typing, in the terminal, and when keyboard
-navigation is off. Each has one for keyboards with <kbd>⌘</kbd> and one for
-keyboards without it, such as on Windows or Android.
+navigation is off. Each action has two: the first line for keyboards with
+<kbd>⌘</kbd>, the second for keyboards without it, such as on Windows or
+Android.
 
 | Keys | Does |
 | --- | --- |
-| <kbd>⌘</kbd>+<kbd>J</kbd> or <kbd>Ctrl</kbd>+<kbd>&#96;</kbd> | opens the [terminal](tasks/terminal.md) of a Task or Section, or goes back from it |
-| <kbd>⌘</kbd>+<kbd>B</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> | shows or hides the side panel, wherever the button in the top-left corner can |
+| <span class="cf-keys"><kbd>⌘</kbd>+<kbd>J</kbd></span><br><span class="cf-keys"><kbd>Ctrl</kbd>+<kbd>&#96;</kbd></span> | opens the [terminal](tasks/terminal.md) of a Task or Section, or goes back from it |
+| <span class="cf-keys"><kbd>⌘</kbd>+<kbd>B</kbd></span><br><span class="cf-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></span> | shows or hides the side panel, wherever the button in the top-left corner can |
+| <span class="cf-keys"><kbd>⇧</kbd>+<kbd>⌘</kbd>+<kbd>F</kbd></span><br><span class="cf-keys"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></span> | puts codes on the actions, as <kbd>F</kbd> does |
 
 ## Turn it off
 

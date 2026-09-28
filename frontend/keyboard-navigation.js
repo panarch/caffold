@@ -70,6 +70,7 @@ export class KeyboardNavigationController {
     this.keyCombinations = {
       [KEY_COMBINATION_ACTION.TERMINAL]: toggleTerminal,
       [KEY_COMBINATION_ACTION.SIDE_PANE]: toggleSidePane,
+      [KEY_COMBINATION_ACTION.ACTION_HINTS]: () => this.startActionHints(),
     };
     this.readSettings = readSettings;
     this.connected = false;
@@ -248,11 +249,12 @@ export class KeyboardNavigationController {
       compositionActive: this.compositionActive,
     });
     if (combination) {
-      // An open dialog or popover owns the keyboard until it closes, and an
-      // action that did nothing leaves the key to the page.
+      // An open dialog or popover owns the keyboard until it closes; only the
+      // Action Hint combination, which shows that overlay's own actions, works
+      // there. An action that did nothing leaves the key to the page.
+      const overlayOpen = openPopovers().length || openModalDialogs().length;
       if (
-        !openPopovers().length &&
-        !openModalDialogs().length &&
+        (!overlayOpen || combination === KEY_COMBINATION_ACTION.ACTION_HINTS) &&
         this.keyCombinations[combination]()
       ) {
         event.preventDefault();

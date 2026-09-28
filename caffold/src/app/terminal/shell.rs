@@ -189,15 +189,18 @@ pub(super) enum ReadEvent {
 
 impl ShellReader {
     /// Waits until the PTY has output, the shell ends, or `deadline` passes.
+    /// Output the shell wrote before it exited comes first: on Linux a command
+    /// can exit before anything reads what it printed.
     pub(super) fn read(&mut self, buffer: &mut [u8], deadline: Option<Instant>) -> ReadEvent {
         loop {
-            if self.signals.stop.load(Ordering::SeqCst)
-                || self.signals.exited.load(Ordering::SeqCst)
-            {
+            if self.signals.stop.load(Ordering::SeqCst) {
                 return ReadEvent::Ended;
             }
             if let Some(length) = self.read_output(buffer) {
                 return ReadEvent::Output(length);
+            }
+            if self.signals.exited.load(Ordering::SeqCst) {
+                return ReadEvent::Ended;
             }
             match self.wait(deadline) {
                 Ok(true) => {}
@@ -399,6 +402,36 @@ mod tests {
             inherited("LC_ALL"),
         ));
         shell.wait_for_end();
+    }
+
+    #[test]
+    fn output_waiting_when_the_exit_is_noticed_is_read_before_the_end() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _entered = runtime.enter();
+        let (control, mut reader) = spawn(
+            &ShellCommand::new("/bin/sh", &["-c", "printf done; exec sleep 30"]),
+            &env::temp_dir(),
+            size(80, 24),
+        )
+        .unwrap();
+        // On Linux a command can exit before its output is read, so the exit
+        // can be noticed while output still waits on the PTY.
+        let mut ready = [PollFd::new(reader.pty.file(), PollFlags::IN)];
+        poll(&mut ready, Some(&Timespec::try_from(WAIT).unwrap())).unwrap();
+        reader.signals.exited.store(true, Ordering::SeqCst);
+
+        let mut buffer = [0; 64];
+        let event = reader.read(&mut buffer, None);
+        // Stopping reads what is left first; on macOS a shell cannot exit
+        // while its output is unread.
+        reader.signals.exited.store(false, Ordering::SeqCst);
+        control.stop();
+        reader.finish();
+
+        let ReadEvent::Output(length) = event else {
+            panic!("the waiting output was dropped");
+        };
+        assert_eq!(&buffer[..length], b"done");
     }
 
     #[tokio::test(flavor = "multi_thread")]

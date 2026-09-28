@@ -393,6 +393,11 @@ html:not(.cf-development) [data-md-component="announce"] {
   }
 }
 
+/* A key combination stays on one line; a table cell lists each on its own. */
+.md-typeset .cf-keys {
+  white-space: nowrap;
+}
+
 .md-typeset img[src*="assets/screenshots/"] {
   border: 1px solid var(--caffold-border-strong);
   border-radius: 0.4rem;

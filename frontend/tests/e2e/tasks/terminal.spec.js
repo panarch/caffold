@@ -378,6 +378,33 @@ test("a terminal whose library failed to load can open after recovery", { tag: "
   await expectPrompt(page);
 });
 
+test("⇧⌘F and Ctrl+Shift+F reach the terminal's own buttons from inside it", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const threadId = terminalTaskId("hint-keys");
+  await openTask(page, threadId);
+  await terminalButton(page).click();
+  await expectLive(page);
+  await expectPrompt(page);
+  const hints = page.locator("caffold-action-hint-dialog > dialog:modal");
+
+  await page.keyboard.press("Meta+Shift+KeyF");
+  await expect(hints).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hints).toBeHidden();
+  await expect(terminalInput(page)).toBeFocused();
+
+  await page.keyboard.press("Control+Shift+KeyF");
+  const kill = hints.getByLabel(/ — Kill terminal$/);
+  await expect(kill).toBeVisible();
+  await expect(hints.getByLabel(/ — Special keys$/)).toBeVisible();
+  const code = await kill.getAttribute("data-action-hint-code");
+  await page.keyboard.type(code.toLowerCase());
+
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
+  await expect(page.locator("caffold-terminal-page")).toBeHidden();
+});
+
 test("F offers the terminal button and the terminal itself", { tag: "@desktop" }, async ({
   page,
 }) => {

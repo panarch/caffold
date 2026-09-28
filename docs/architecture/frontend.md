@@ -294,10 +294,11 @@ coordinator reads native
 `:popover-open` and `dialog:modal` state only to validate ownership. It does not
 infer actions or scrollports from overlay descendants.
 
-The coordinator enters Action Hint mode from a non-editing `F` key and
-pulls one-shot semantic descriptors from explicitly participating owners. A
-non-editing `T` key first asks Task Workspace to open the Task switcher and
-then enters the same mode, so the session it collects is scoped to that modal.
+The coordinator enters Action Hint mode from a non-editing `F` key, or from
+its key combination below, and pulls one-shot semantic descriptors from
+explicitly participating owners. A non-editing `T` key first asks Task
+Workspace to open the Task switcher and then enters the same mode, so the
+session it collects is scoped to that modal.
 Task Workspace opens it only on its Tasks surface, because the Notes and
 Settings surfaces do not load the Task list the switcher shows; a refusal
 leaves the key unhandled. Its two pointer openers reach the same Task
@@ -316,16 +317,22 @@ first, and one without ⌘:
   while Tasks shows a Task or Section.
 - `⌘B` or `Ctrl+Shift+B` asks Task Workspace to toggle the side pane, which it
   does only while the corner toggle is shown and enabled.
+- `⇧⌘F` or `Ctrl+Shift+F` enters Action Hint mode as `F` does, in the same
+  interaction context, so the terminal screen's own buttons are within reach
+  from inside the terminal. While typing it takes the control graph's
+  `editing -> hint` edge below.
 
 Each combination holds Ctrl or ⌘, which typing leaves alone. A shell never
-receives ⌘ and cannot tell `Ctrl+Shift+B` from `Ctrl+B`, so the only key a
-terminal gives up is `` Ctrl+` ``. The coordinator reads the physical key,
-because a Korean input source types `₩` on Backquote, and matches the exact
-modifiers. A repeated key, composition, a stored mode, or an open popover or
-modal dialog leaves a combination unhandled, and so does an action that did
-nothing, which leaves the key to the page. They matter most in a terminal,
-which owns every other key. Keyboard shortcut help and **Settings → Keyboard**
-list them last, under "Key combinations", from the same table.
+receives ⌘ and cannot tell `Ctrl+Shift+B` or `Ctrl+Shift+F` from the same key
+without Shift, so the only key a terminal gives up is `` Ctrl+` ``. The
+coordinator reads the physical key, because a Korean input source types `₩` on
+Backquote, and matches the exact modifiers. A repeated key, composition, or a
+stored mode leaves a combination unhandled. An open popover or modal dialog
+does too, except for the Action Hint combination, which shows that overlay's
+actions. An action that did nothing leaves the key to the page. They matter
+most in a terminal, which owns every other key. Keyboard shortcut help and
+**Settings → Keyboard** list them last, under "Key combinations", from the same
+table.
 
 Each participating component provides its retained native control, stable
 semantic identity, action meaning, accessible name, anchor, and clip
@@ -534,7 +541,7 @@ identities unless a real topology change requires a fresh session.
 `scroll-selecting`, and `scroll-active` are the stored keyboard-navigation
 nodes. The complete node edges are
 `normal -> normal | editing | hint | scroll-selecting | scroll-active`,
-`editing -> editing | normal`, `hint -> hint | normal`,
+`editing -> editing | normal | hint`, `hint -> hint | normal`,
 `scroll-selecting -> scroll-selecting | scroll-active | normal`, and
 `scroll-active -> scroll-active | normal`. One transition table gates session
 creation, input, cancel, selection, commands, and activation close. Closing a

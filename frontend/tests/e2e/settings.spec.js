@@ -2500,9 +2500,12 @@ test("turns keyboard navigation off through its declared switch", { tag: "@all-v
   await expect(setting).toHaveAccessibleDescription(
     "Enable keyboard shortcuts outside editing fields.",
   );
-  await expect(shortcutList.getByText("Show available actions", {
+  // F and its key combination both show the available actions.
+  const showActions = shortcutList.getByText("Show available actions", {
     exact: true,
-  })).toBeVisible();
+  });
+  await expect(showActions).toHaveCount(2);
+  await expect(showActions.first()).toBeVisible();
   await expect(shortcutList.getByText("Scroll left or right", {
     exact: true,
   })).toBeVisible();
