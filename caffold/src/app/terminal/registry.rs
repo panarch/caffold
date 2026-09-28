@@ -1,43 +1,29 @@
 //! The backend's open terminals, at most one per Task or Section.
 //!
-//! A terminal is a shell on a PTY plus the screen `alacritty_terminal` keeps
-//! from the shell's output, so a viewer that attaches later first receives
-//! the current screen and then the live output. A reader thread per terminal
-//! feeds both. At most one viewer is attached to a terminal at a time.
-//!
-//! Locks are taken in one order: the registry's state, a terminal's screen,
-//! a viewer's outbox.
+//! Each terminal runs on its own thread, which starts its shell and owns its
+//! screen and viewer (see [`session`](super::session)). The registry keeps
+//! only which subject has which terminal and when each was last viewed. Its
+//! lock covers finding and changing that list and nothing else, so no request
+//! waits here for a terminal's work.
 
 use std::{
-    collections::{HashMap, hash_map::Entry},
+    collections::HashMap,
     io,
-    path::Path,
-    sync::{Arc, Mutex},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, Weak},
     thread::{self, JoinHandle},
-    time::Instant,
 };
 
-use alacritty_terminal::{
-    event::VoidListener,
-    grid::Dimensions,
-    term::{Config, Term},
-    vte::ansi::Processor,
-};
-use tokio::sync::Notify;
+use tokio::{runtime::Handle, sync::watch};
 
 use super::{
     AttachMode, Subject, TerminalSize,
-    shell::{self, ReadEvent, ShellCommand, ShellControl, ShellReader},
-    snapshot,
+    session::{self, Answer, Deliveries, Delivery, Input, Session},
+    shell::ShellCommand,
 };
 
 /// Terminals the backend keeps before opening one closes another.
 const MAX_TERMINALS: usize = 10;
-const SCROLLBACK_LINES: usize = 5_000;
-/// Output waiting for a slow viewer beyond this is dropped; the viewer then
-/// catches up from a new snapshot.
-const OUTBOX_LIMIT: usize = 1 << 20;
-const READ_BUFFER: usize = 1 << 16;
 
 pub(super) struct Registry {
     command: ShellCommand,
@@ -48,20 +34,31 @@ pub(super) struct Registry {
 struct State {
     terminals: HashMap<Subject, Slot>,
     next_session: u64,
-    next_viewer: u64,
     /// Orders opens, attaches, and detaches for "least recently viewed".
     clock: u64,
 }
 
 struct Slot {
-    session: Arc<Session>,
+    session: u64,
+    phase: Phase,
     last_viewed: u64,
-    reader: JoinHandle<()>,
+    thread: Option<JoinHandle<()>>,
 }
+
+enum Phase {
+    /// The terminal's thread is starting its shell; the value says how that
+    /// went once it is known.
+    Starting(watch::Receiver<Option<Started>>),
+    Running(Arc<Session>),
+}
+
+/// Whether a terminal's shell started, with the error's message if not.
+type Started = Result<(), String>;
 
 pub(super) enum Attach {
     Attached {
         attachment: Attachment,
+        input: Input,
         snapshot: Vec<u8>,
     },
     /// Another viewer is attached and the request did not take it over.
@@ -77,62 +74,50 @@ impl Registry {
         })
     }
 
-    /// Opens a terminal for `subject` in `cwd` unless it already has one. At
-    /// the cap, the new terminal replaces the one [`least_needed`] picks.
-    pub(super) fn open(
+    /// Opens a terminal for `subject` in `cwd` unless it has one, and returns
+    /// once its shell has started. Opens of a subject whose terminal is still
+    /// starting wait for that same terminal.
+    pub(super) async fn open(
         self: &Arc<Self>,
         subject: Subject,
         cwd: &Path,
         size: TerminalSize,
     ) -> io::Result<()> {
-        let mut state = self.state.lock().unwrap();
-        if state.terminals.contains_key(&subject) {
-            return Ok(());
-        }
-        let (shell, reader) = shell::spawn(&self.command, cwd, size)?;
-        state.next_session += 1;
-        let session = Arc::new(Session {
-            id: state.next_session,
-            shell,
-            screen: Mutex::new(Screen::new(size)),
-        });
-        let reader = thread::Builder::new()
-            .name("caffold-terminal".to_string())
-            .spawn({
-                let session = session.clone();
-                let registry = Arc::downgrade(self);
-                let subject = subject.clone();
-                move || {
-                    session.pump(reader, || {
-                        if let Some(registry) = registry.upgrade() {
-                            registry.shell_ended(&subject, session.id);
-                        }
-                    });
+        let mut started = {
+            let mut state = self.state.lock().unwrap();
+            match state.terminals.get(&subject).map(|slot| &slot.phase) {
+                Some(Phase::Running(_)) => return Ok(()),
+                Some(Phase::Starting(started)) => started.clone(),
+                None => {
+                    let (report, started) = watch::channel(None);
+                    let session = state.add(subject.clone(), Phase::Starting(started.clone()));
+                    drop(state);
+                    self.start(subject, session, cwd.to_path_buf(), size, report);
+                    started
                 }
-            })?;
-        if state.terminals.len() >= MAX_TERMINALS
-            && let Some(victim) = least_needed(&state.terminals)
-            && let Some(slot) = state.terminals.remove(&victim)
-        {
-            slot.session.end();
+            }
+        };
+        match started.wait_for(Option::is_some).await {
+            Ok(started) => started
+                .clone()
+                .expect("a started terminal reports how")
+                .map_err(io::Error::other),
+            Err(_) => Err(io::Error::other(
+                "the terminal ended before its shell started",
+            )),
         }
-        state.clock += 1;
-        let last_viewed = state.clock;
-        state.terminals.insert(
-            subject,
-            Slot {
-                session,
-                last_viewed,
-                reader,
-            },
-        );
-        Ok(())
     }
 
+    /// Ends the subject's terminal, if it has one. Returns at once.
     pub(super) fn close(&self, subject: &Subject) {
         let slot = self.state.lock().unwrap().terminals.remove(subject);
-        if let Some(slot) = slot {
-            slot.session.end();
+        // A starting terminal ends itself once it finds it was closed.
+        if let Some(Slot {
+            phase: Phase::Running(session),
+            ..
+        }) = slot
+        {
+            session.stop();
         }
     }
 
@@ -147,267 +132,145 @@ impl Registry {
             .map(|(_, slot)| slot)
             .collect();
         for slot in &slots {
-            slot.session.end();
+            if let Phase::Running(session) = &slot.phase {
+                session.stop();
+            }
         }
-        for slot in slots {
-            let _ = slot.reader.join();
+        for thread in slots.into_iter().filter_map(|slot| slot.thread) {
+            let _ = thread.join();
         }
     }
 
     /// Attaches a viewer of `size` from browser tab `tab` to `subject`'s
-    /// terminal. `Take` detaches a viewer already attached. `Resume` leaves a
-    /// viewer from another tab attached and is refused, but replaces one from
-    /// the same tab: that is the tab's own dropped connection.
-    pub(super) fn attach(
+    /// terminal, waiting for a terminal that is still starting.
+    pub(super) async fn attach(
         self: &Arc<Self>,
         subject: &Subject,
         mode: AttachMode,
         tab: &str,
         size: TerminalSize,
     ) -> Attach {
-        let mut state = self.state.lock().unwrap();
-        let State {
-            terminals,
-            next_viewer,
-            clock,
-            ..
-        } = &mut *state;
-        let Some(slot) = terminals.get_mut(subject) else {
-            return Attach::Absent;
+        let session = loop {
+            let mut started = {
+                let state = self.state.lock().unwrap();
+                match state.terminals.get(subject).map(|slot| &slot.phase) {
+                    None => return Attach::Absent,
+                    Some(Phase::Running(session)) => break session.clone(),
+                    Some(Phase::Starting(started)) => started.clone(),
+                }
+            };
+            let _ = started.wait_for(Option::is_some).await;
         };
-        let session = slot.session.clone();
-        let mut screen = session.screen.lock().unwrap();
-        match (&screen.viewer, mode) {
-            (Some(viewer), AttachMode::Resume) if viewer.tab != tab => return Attach::Elsewhere,
-            (Some(viewer), _) => viewer.outbox.close(Closed::Taken),
-            (None, _) => {}
-        }
-        // A changed size makes the PTY signal the program to redraw.
-        let resized = screen.resize(size, &session.shell);
-        let snapshot = screen.snapshot();
-        *next_viewer += 1;
-        let outbox = Arc::new(Outbox::default());
-        screen.viewer = Some(Viewer {
-            id: *next_viewer,
-            tab: tab.to_string(),
-            outbox: outbox.clone(),
-        });
-        drop(screen);
-        *clock += 1;
-        slot.last_viewed = *clock;
-        // A full-screen program draws again what the snapshot cannot carry.
-        // A shell at its prompt is left alone: the snapshot already shows the
-        // prompt, and a redraw there can repeat the line being typed.
-        if !resized && !session.shell.is_idle() {
-            session.shell.redraw();
-        }
-        Attach::Attached {
-            attachment: Attachment {
-                registry: self.clone(),
-                subject: subject.clone(),
-                session,
-                viewer: *next_viewer,
-                outbox,
-            },
-            snapshot,
+        let viewer = session.next_viewer();
+        match session.attach(viewer, mode, tab, size).await {
+            Answer::Attached {
+                deliveries,
+                input,
+                snapshot,
+            } => {
+                self.viewed(subject, session.id());
+                Attach::Attached {
+                    attachment: Attachment {
+                        registry: self.clone(),
+                        subject: subject.clone(),
+                        session,
+                        viewer,
+                        deliveries,
+                    },
+                    input,
+                    snapshot,
+                }
+            }
+            Answer::Elsewhere => Attach::Elsewhere,
+            Answer::Ended => Attach::Absent,
         }
     }
 
-    #[cfg(test)]
-    pub(super) fn contains(&self, subject: &Subject) -> bool {
-        self.state.lock().unwrap().terminals.contains_key(subject)
-    }
-
-    /// The characters on the subject's screen and scrollback, one line each.
-    #[cfg(test)]
-    pub(super) fn screen_text(&self, subject: &Subject) -> String {
-        use alacritty_terminal::index::{Column, Line};
-
-        let state = self.state.lock().unwrap();
-        let Some(slot) = state.terminals.get(subject) else {
-            return String::new();
+    /// Starts the terminal's own thread, which starts the shell and then runs
+    /// the terminal until it ends.
+    fn start(
+        self: &Arc<Self>,
+        subject: Subject,
+        session: u64,
+        cwd: PathBuf,
+        size: TerminalSize,
+        report: watch::Sender<Option<Started>>,
+    ) {
+        let launch = Launch {
+            registry: Arc::downgrade(self),
+            subject: subject.clone(),
+            session,
+            command: self.command.clone(),
+            cwd,
+            size,
+            runtime: Handle::current(),
+            report,
         };
-        let screen = slot.session.screen.lock().unwrap();
-        let grid = screen.term.grid();
-        (grid.topmost_line().0..=grid.bottommost_line().0)
-            .map(|line| {
-                let row = &grid[Line(line)];
-                (0..grid.columns())
-                    .map(|column| row[Column(column)].c)
-                    .collect::<String>()
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
+        let spawned = thread::Builder::new()
+            .name("caffold-terminal".to_string())
+            .spawn(move || launch.run());
+        match spawned {
+            Ok(thread) => {
+                let mut state = self.state.lock().unwrap();
+                if let Some(slot) = state.slot_mut(&subject, session) {
+                    slot.thread = Some(thread);
+                }
+            }
+            // The report's sender went with the thread, so waiting opens
+            // learn that the terminal ended before its shell started.
+            Err(_) => self.remove(&subject, session),
+        }
     }
 
-    fn detach(&self, subject: &Subject, session: &Session, viewer: u64) {
-        let mut state = self.state.lock().unwrap();
-        let mut screen = session.screen.lock().unwrap();
-        if !screen.is_viewed_by(viewer) {
-            return;
+    /// Marks the subject's starting terminal running, unless it was closed
+    /// meanwhile, and asks one other terminal to close if the new one is past
+    /// the cap. Returns whether the terminal is still wanted.
+    fn started(&self, subject: &Subject, session: &Arc<Session>) -> bool {
+        let candidates = {
+            let mut state = self.state.lock().unwrap();
+            let Some(slot) = state.slot_mut(subject, session.id()) else {
+                return false;
+            };
+            slot.phase = Phase::Running(session.clone());
+            if state.terminals.len() <= MAX_TERMINALS {
+                return true;
+            }
+            state
+                .terminals
+                .iter()
+                .filter(|(other, _)| *other != subject)
+                .filter_map(|(_, slot)| match &slot.phase {
+                    Phase::Running(session) => Some((session.clone(), slot.last_viewed)),
+                    Phase::Starting(_) => None,
+                })
+                .collect()
+        };
+        // A terminal a viewer attaches to meanwhile refuses, and the backend
+        // holds more than the cap until some terminal ends.
+        if let Some(victim) = least_needed(candidates) {
+            victim.evict();
         }
-        screen.viewer = None;
-        drop(screen);
+        true
+    }
+
+    /// Removes the subject's terminal if it is still this session.
+    fn remove(&self, subject: &Subject, session: u64) {
+        let mut state = self.state.lock().unwrap();
+        if state.slot_mut(subject, session).is_some() {
+            state.terminals.remove(subject);
+        }
+    }
+
+    /// Records that the subject's terminal was just attached to or detached
+    /// from.
+    fn viewed(&self, subject: &Subject, session: u64) {
+        let mut state = self.state.lock().unwrap();
         state.clock += 1;
         let clock = state.clock;
-        if let Some(slot) = state.terminals.get_mut(subject)
-            && slot.session.id == session.id
-        {
+        if let Some(slot) = state.slot_mut(subject, session) {
             slot.last_viewed = clock;
         }
     }
-
-    /// Removes the terminal whose shell ended, unless a newer terminal for the
-    /// same subject has replaced it since.
-    fn shell_ended(&self, subject: &Subject, session: u64) {
-        let mut state = self.state.lock().unwrap();
-        if let Entry::Occupied(slot) = state.terminals.entry(subject.clone())
-            && slot.get().session.id == session
-        {
-            slot.remove().session.end();
-        }
-    }
-}
-
-/// The terminal to close for a new one: never one a viewer is attached to,
-/// an idle shell before a busy one, and the least recently viewed first.
-fn least_needed(terminals: &HashMap<Subject, Slot>) -> Option<Subject> {
-    terminals
-        .iter()
-        .filter(|(_, slot)| slot.session.screen.lock().unwrap().viewer.is_none())
-        .min_by_key(|(_, slot)| (!slot.session.shell.is_idle(), slot.last_viewed))
-        .map(|(subject, _)| subject.clone())
-}
-
-struct Session {
-    id: u64,
-    shell: ShellControl,
-    screen: Mutex<Screen>,
-}
-
-impl Session {
-    /// Runs on the terminal's reader thread until the shell ends.
-    fn pump(&self, mut reader: ShellReader, ended: impl FnOnce()) {
-        let mut buffer = vec![0; READ_BUFFER];
-        let mut deadline = None;
-        loop {
-            deadline = match reader.read(&mut buffer, deadline) {
-                ReadEvent::Output(length) => {
-                    let mut screen = self.screen.lock().unwrap();
-                    // A program can change the PTY's size; a readline shell
-                    // such as bash writes back the size it read whenever it
-                    // starts a line, undoing a resize that came meanwhile.
-                    // The screen's size is put back before its output shows.
-                    let _ = self.shell.resize(screen.size);
-                    screen.output(&buffer[..length])
-                }
-                ReadEvent::Deadline => self.screen.lock().unwrap().settle(),
-                ReadEvent::Ended => break,
-            };
-        }
-        ended();
-        reader.finish();
-    }
-
-    /// Tells the attached viewer the terminal ended and stops the shell.
-    fn end(&self) {
-        if let Some(viewer) = self.screen.lock().unwrap().viewer.take() {
-            viewer.outbox.close(Closed::Ended);
-        }
-        self.shell.stop();
-    }
-}
-
-struct Screen {
-    term: Term<VoidListener>,
-    parser: Processor,
-    viewer: Option<Viewer>,
-    /// The last viewer's size, which the PTY keeps.
-    size: TerminalSize,
-}
-
-impl Screen {
-    /// The screen answers no program queries: `VoidListener` drops the replies
-    /// `Term` produces, and the attached viewer's terminal answers instead.
-    fn new(size: TerminalSize) -> Self {
-        let config = Config {
-            scrolling_history: SCROLLBACK_LINES,
-            ..Config::default()
-        };
-        Self {
-            term: Term::new(config, &size, VoidListener),
-            parser: Processor::new(),
-            viewer: None,
-            size,
-        }
-    }
-
-    /// Applies shell output and passes it to the viewer. Returns when an
-    /// unfinished synchronized update must be applied regardless.
-    fn output(&mut self, bytes: &[u8]) -> Option<Instant> {
-        self.parser.advance(&mut self.term, bytes);
-        if let Some(viewer) = &self.viewer {
-            viewer.outbox.push(bytes);
-        }
-        self.settle()
-    }
-
-    /// Applies a synchronized update whose time is up.
-    fn settle(&mut self) -> Option<Instant> {
-        let deadline = self.parser.sync_timeout().sync_timeout();
-        if deadline.is_some_and(|deadline| deadline <= Instant::now()) {
-            self.parser.stop_sync(&mut self.term);
-            return None;
-        }
-        deadline
-    }
-
-    fn snapshot(&mut self) -> Vec<u8> {
-        // Output held back by an unfinished synchronized update is already
-        // with any earlier viewer, so the screen must include it too.
-        if self.parser.sync_timeout().sync_timeout().is_some() {
-            self.parser.stop_sync(&mut self.term);
-        }
-        snapshot::serialize(&self.term)
-    }
-
-    fn is_viewed_by(&self, viewer: u64) -> bool {
-        self.viewer
-            .as_ref()
-            .is_some_and(|current| current.id == viewer)
-    }
-
-    /// Returns whether the size changed.
-    fn resize(&mut self, size: TerminalSize, shell: &ShellControl) -> bool {
-        if self.size == size {
-            return false;
-        }
-        self.size = size;
-        self.term.resize(size);
-        let _ = shell.resize(size);
-        true
-    }
-}
-
-impl Dimensions for TerminalSize {
-    fn total_lines(&self) -> usize {
-        self.screen_lines()
-    }
-
-    fn screen_lines(&self) -> usize {
-        usize::from(self.rows)
-    }
-
-    fn columns(&self) -> usize {
-        usize::from(self.columns)
-    }
-}
-
-struct Viewer {
-    id: u64,
-    /// The browser tab the viewer attached from.
-    tab: String,
-    outbox: Arc<Outbox>,
 }
 
 /// One attached viewer's hold on a terminal. Dropping it detaches the viewer.
@@ -416,154 +279,154 @@ pub(super) struct Attachment {
     subject: Subject,
     session: Arc<Session>,
     viewer: u64,
-    outbox: Arc<Outbox>,
-}
-
-#[derive(Debug)]
-pub(super) enum Delivery {
-    Output(Vec<u8>),
-    /// Output was dropped for this slow viewer; the snapshot replaces its screen.
-    Resync(Vec<u8>),
-    Taken,
-    Ended,
+    deliveries: Deliveries,
 }
 
 impl Attachment {
     /// Waits for the viewer's next delivery. Dropping the future loses nothing.
-    pub(super) async fn next(&self) -> Delivery {
-        loop {
-            let ready = self.outbox.ready.notified();
-            match self.outbox.take() {
-                Queued::Closed(Closed::Taken) => return Delivery::Taken,
-                Queued::Closed(Closed::Ended) => return Delivery::Ended,
-                Queued::Output(bytes) => return Delivery::Output(bytes),
-                Queued::Overflowed => {
-                    // Without a snapshot the viewer is gone, which its outbox shows next.
-                    if let Some(snapshot) = self.resync() {
-                        return Delivery::Resync(snapshot);
-                    }
-                }
-                Queued::Nothing => ready.await,
-            }
-        }
+    pub(super) async fn next(&mut self) -> Delivery {
+        self.deliveries.next(&self.session, self.viewer).await
     }
 
-    /// Writes some of `bytes` to the shell and returns how many were taken.
-    /// Input is refused once this viewer is no longer attached.
-    pub(super) async fn write(&self, bytes: &[u8]) -> io::Result<usize> {
-        if self.outbox.is_closed() {
-            return Err(io::ErrorKind::BrokenPipe.into());
-        }
-        self.session.shell.write(bytes).await
-    }
-
-    pub(super) fn resize(&self, size: TerminalSize) {
-        let mut screen = self.session.screen.lock().unwrap();
-        if screen.is_viewed_by(self.viewer) {
-            screen.resize(size, &self.session.shell);
-        }
-    }
-
-    fn resync(&self) -> Option<Vec<u8>> {
-        let mut screen = self.session.screen.lock().unwrap();
-        if !screen.is_viewed_by(self.viewer) {
-            return None;
-        }
-        let snapshot = screen.snapshot();
-        self.outbox.restart();
-        Some(snapshot)
+    /// Returns once the terminal has the new size.
+    pub(super) async fn resize(&self, size: TerminalSize) {
+        self.session.resize(self.viewer, size).await;
     }
 }
 
 impl Drop for Attachment {
     fn drop(&mut self) {
-        self.registry
-            .detach(&self.subject, &self.session, self.viewer);
+        self.session.detach(self.viewer);
+        self.registry.viewed(&self.subject, self.session.id());
     }
 }
 
-/// Output and events waiting for one viewer.
-#[derive(Default)]
-struct Outbox {
-    queue: Mutex<Queue>,
-    ready: Notify,
-}
-
-#[derive(Default)]
-struct Queue {
-    bytes: Vec<u8>,
-    overflowed: bool,
-    closed: Option<Closed>,
-}
-
-#[derive(Clone, Copy)]
-enum Closed {
-    Taken,
-    Ended,
-}
-
-enum Queued {
-    Closed(Closed),
-    Overflowed,
-    Output(Vec<u8>),
-    Nothing,
-}
-
-impl Outbox {
-    fn push(&self, bytes: &[u8]) {
-        let mut queue = self.queue.lock().unwrap();
-        if queue.closed.is_some() || queue.overflowed {
-            return;
-        }
-        if queue.bytes.len() + bytes.len() > OUTBOX_LIMIT {
-            queue.overflowed = true;
-            queue.bytes = Vec::new();
-        } else {
-            queue.bytes.extend_from_slice(bytes);
-        }
-        drop(queue);
-        self.ready.notify_one();
+/// Test hooks into the registry's terminals.
+#[cfg(test)]
+impl Registry {
+    pub(super) fn contains(&self, subject: &Subject) -> bool {
+        self.state.lock().unwrap().terminals.contains_key(subject)
     }
 
-    fn close(&self, closed: Closed) {
-        self.queue.lock().unwrap().closed.get_or_insert(closed);
-        self.ready.notify_one();
-    }
-
-    fn is_closed(&self) -> bool {
-        self.queue.lock().unwrap().closed.is_some()
-    }
-
-    fn take(&self) -> Queued {
-        let mut queue = self.queue.lock().unwrap();
-        if let Some(closed) = queue.closed {
-            Queued::Closed(closed)
-        } else if queue.overflowed {
-            Queued::Overflowed
-        } else if !queue.bytes.is_empty() {
-            Queued::Output(std::mem::take(&mut queue.bytes))
-        } else {
-            Queued::Nothing
+    /// The characters on the subject's screen and scrollback, one line each.
+    pub(super) async fn screen_text(&self, subject: &Subject) -> String {
+        match self.running(subject) {
+            Some(session) => session.text().await,
+            None => String::new(),
         }
     }
 
-    /// Starts over after a snapshot, taken under the screen lock, covered
-    /// everything dropped.
-    fn restart(&self) {
-        let mut queue = self.queue.lock().unwrap();
-        queue.overflowed = false;
-        queue.bytes = Vec::new();
+    /// Holds the subject's terminal up until the returned sender is used or
+    /// dropped.
+    pub(super) fn hold(&self, subject: &Subject) -> std::sync::mpsc::Sender<()> {
+        self.running(subject).expect("the terminal runs").hold()
     }
+
+    /// Whether an attach to the subject has started.
+    pub(super) fn attach_requested(&self, subject: &Subject) -> bool {
+        self.running(subject)
+            .is_some_and(|session| session.attach_requested())
+    }
+
+    fn running(&self, subject: &Subject) -> Option<Arc<Session>> {
+        match &self.state.lock().unwrap().terminals.get(subject)?.phase {
+            Phase::Running(session) => Some(session.clone()),
+            Phase::Starting(_) => None,
+        }
+    }
+}
+
+impl State {
+    /// Adds a slot for a new terminal and returns its session.
+    fn add(&mut self, subject: Subject, phase: Phase) -> u64 {
+        self.next_session += 1;
+        self.clock += 1;
+        self.terminals.insert(
+            subject,
+            Slot {
+                session: self.next_session,
+                phase,
+                last_viewed: self.clock,
+                thread: None,
+            },
+        );
+        self.next_session
+    }
+
+    fn slot_mut(&mut self, subject: &Subject, session: u64) -> Option<&mut Slot> {
+        self.terminals
+            .get_mut(subject)
+            .filter(|slot| slot.session == session)
+    }
+}
+
+/// What a terminal's own thread needs to start and run the terminal.
+struct Launch {
+    registry: Weak<Registry>,
+    subject: Subject,
+    session: u64,
+    command: ShellCommand,
+    cwd: PathBuf,
+    size: TerminalSize,
+    runtime: Handle,
+    report: watch::Sender<Option<Started>>,
+}
+
+impl Launch {
+    /// The body of the terminal's own thread.
+    fn run(self) {
+        let started = {
+            // The shell's input registers with the runtime.
+            let _runtime = self.runtime.enter();
+            session::start(self.session, &self.command, &self.cwd, self.size)
+        };
+        let (session, runner) = match started {
+            Ok(started) => started,
+            Err(error) => {
+                self.remove();
+                let _ = self.report.send(Some(Err(error.to_string())));
+                return;
+            }
+        };
+        let wanted = self
+            .registry
+            .upgrade()
+            .is_some_and(|registry| registry.started(&self.subject, &session));
+        let _ = self.report.send(Some(Ok(())));
+        if !wanted {
+            session.stop();
+        }
+        runner.run(|| self.remove());
+    }
+
+    fn remove(&self) {
+        if let Some(registry) = self.registry.upgrade() {
+            registry.remove(&self.subject, self.session);
+        }
+    }
+}
+
+/// The terminal to close for a new one: never one a viewer is attached to,
+/// an idle shell before a busy one, and the least recently viewed first.
+fn least_needed(candidates: Vec<(Arc<Session>, u64)>) -> Option<Arc<Session>> {
+    candidates
+        .into_iter()
+        .filter(|(session, _)| !session.is_viewed())
+        .map(|(session, last_viewed)| (!session.is_idle(), last_viewed, session))
+        .min_by_key(|(busy, last_viewed, _)| (*busy, *last_viewed))
+        .map(|(_, _, session)| session)
 }
 
 #[cfg(test)]
 mod tests {
     use std::{
         env,
+        pin::pin,
         sync::atomic::{AtomicUsize, Ordering},
         time::Duration,
     };
 
+    use futures_util::poll;
     use tokio::time::{sleep, timeout};
 
     use super::*;
@@ -587,18 +450,90 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn opens_of_a_starting_terminal_wait_for_the_same_shell() {
+        let terminals = Terminals::new();
+        let registry = &terminals.registry;
+
+        let cwd = env::temp_dir();
+        let (first, second) = tokio::join!(
+            registry.open(task(0), &cwd, SIZE),
+            registry.open(task(0), &cwd, SIZE),
+        );
+
+        first.unwrap();
+        second.unwrap();
+        assert_eq!(terminals.count(), 1);
+        assert_eq!(terminals.session_id(&task(0)), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn every_open_waiting_for_a_shell_that_cannot_start_is_refused() {
+        let registry = Registry::new(ShellCommand::new("/nonexistent/shell", &[]));
+
+        let cwd = env::temp_dir();
+        let (first, second) = tokio::join!(
+            registry.open(task(0), &cwd, SIZE),
+            registry.open(task(0), &cwd, SIZE),
+        );
+
+        for refused in [first, second] {
+            let error = refused.unwrap_err().to_string();
+            assert!(error.contains("/nonexistent/shell"), "{error}");
+        }
+        assert!(!registry.contains(&task(0)));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_terminal_closed_while_it_starts_ends_once_its_shell_starts() {
+        let terminals = Terminals::new();
+        let registry = &terminals.registry;
+        let cwd = env::temp_dir();
+        let mut opening = pin!(registry.open(task(0), &cwd, SIZE));
+        assert!(poll!(&mut opening).is_pending());
+
+        registry.close(&task(0));
+
+        opening.await.unwrap();
+        assert!(!registry.contains(&task(0)));
+        assert!(matches!(
+            registry
+                .attach(&task(0), AttachMode::Take, "tab", SIZE)
+                .await,
+            Attach::Absent
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_attach_to_a_starting_terminal_waits_for_its_shell() {
+        let terminals = Terminals::new();
+        let registry = &terminals.registry;
+        let cwd = env::temp_dir();
+        let mut opening = pin!(registry.open(task(0), &cwd, SIZE));
+        assert!(poll!(&mut opening).is_pending());
+
+        let subject = task(0);
+        let (opened, attached) = tokio::join!(
+            opening,
+            registry.attach(&subject, AttachMode::Take, "tab", SIZE),
+        );
+
+        opened.unwrap();
+        assert!(matches!(attached, Attach::Attached { .. }));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn attaching_shows_earlier_output_then_live_output() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let (viewer, _) = terminals.attach(&task(0), AttachMode::Take);
-        send(&viewer, "echo earlier-$((1 + 1))\n").await;
-        read_until(&viewer, "earlier-2").await;
+        let mut viewer = terminals.attach(&task(0), AttachMode::Take).await.0;
+        viewer.send("echo earlier-$((1 + 1))\n").await;
+        viewer.read_until("earlier-2").await;
         drop(viewer);
 
-        let (viewer, snapshot) = terminals.attach(&task(0), AttachMode::Resume);
+        let (mut viewer, snapshot) = terminals.attach(&task(0), AttachMode::Resume).await;
         assert!(String::from_utf8_lossy(&snapshot).contains("earlier-2"));
-        send(&viewer, "echo live-$((2 + 2))\n").await;
-        read_until(&viewer, "live-4").await;
+        viewer.send("echo live-$((2 + 2))\n").await;
+        viewer.read_until("live-4").await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -606,80 +541,81 @@ mod tests {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
 
-        let Attach::Attached {
-            attachment: viewer, ..
-        } = terminals.registry.attach(
-            &task(0),
-            AttachMode::Take,
-            "tab",
-            TerminalSize {
-                columns: 100,
-                rows: 40,
-            },
-        )
-        else {
-            panic!("the terminal is open");
-        };
-        send(&viewer, "stty size\n").await;
-        read_until(&viewer, "40 100").await;
+        let mut viewer = terminals
+            .attach_sized(
+                &task(0),
+                AttachMode::Take,
+                "tab",
+                TerminalSize {
+                    columns: 100,
+                    rows: 40,
+                },
+            )
+            .await
+            .0;
+        viewer.send("stty size\n").await;
+        viewer.read_until("40 100").await;
         terminals.wait_for_prompt(&task(0)).await;
 
-        viewer.resize(TerminalSize {
-            columns: 90,
-            rows: 30,
-        });
-        send(&viewer, "stty size\n").await;
-        read_until(&viewer, "30 90").await;
+        viewer
+            .attachment
+            .resize(TerminalSize {
+                columns: 90,
+                rows: 30,
+            })
+            .await;
+        viewer.send("stty size\n").await;
+        viewer.read_until("30 90").await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_program_that_changes_the_window_size_gets_the_viewer_s_size_back() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let (viewer, _) = terminals.attach(&task(0), AttachMode::Take);
+        let mut viewer = terminals.attach(&task(0), AttachMode::Take).await.0;
 
-        send(&viewer, "stty rows 10 cols 50; echo changed-$((1 + 1))\n").await;
-        read_until(&viewer, "changed-2").await;
+        viewer
+            .send("stty rows 10 cols 50; echo changed-$((1 + 1))\n")
+            .await;
+        viewer.read_until("changed-2").await;
         terminals.wait_for_prompt(&task(0)).await;
-        send(&viewer, "stty size\n").await;
+        viewer.send("stty size\n").await;
 
-        read_until(&viewer, "24 80").await;
+        viewer.read_until("24 80").await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn attaching_at_the_same_size_asks_a_running_program_to_redraw() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let (viewer, _) = terminals.attach(&task(0), AttachMode::Take);
-        send(
-            &viewer,
-            "/bin/sh -c 'trap \"echo redrawn\" WINCH; echo waiting; while :; do sleep 1; done'\n",
-        )
-        .await;
-        read_until(&viewer, "waiting\r\n").await;
+        let mut viewer = terminals.attach(&task(0), AttachMode::Take).await.0;
+        viewer
+            .send(
+                "/bin/sh -c 'trap \"echo redrawn\" WINCH; echo waiting; while :; do sleep 1; done'\n",
+            )
+            .await;
+        viewer.read_until("waiting\r\n").await;
         drop(viewer);
 
-        let (viewer, _) = terminals.attach(&task(0), AttachMode::Resume);
+        let mut viewer = terminals.attach(&task(0), AttachMode::Resume).await.0;
 
-        read_until(&viewer, "redrawn").await;
+        viewer.read_until("redrawn").await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn attaching_leaves_a_shell_at_its_prompt_alone() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let (viewer, _) = terminals.attach(&task(0), AttachMode::Take);
-        send(
-            &viewer,
-            "trap 'echo redrawn' WINCH; echo armed-$((1 + 1))\n",
-        )
-        .await;
-        read_until(&viewer, "armed-2").await;
+        let mut viewer = terminals.attach(&task(0), AttachMode::Take).await.0;
+        viewer
+            .send("trap 'echo redrawn' WINCH; echo armed-$((1 + 1))\n")
+            .await;
+        viewer.read_until("armed-2").await;
         drop(viewer);
 
-        let (viewer, _) = terminals.attach(&task(0), AttachMode::Resume);
-        send(&viewer, "echo after-$((2 + 2))\n").await;
-        let seen = read_until(&viewer, "after-4").await;
+        let mut viewer = terminals.attach(&task(0), AttachMode::Resume).await.0;
+        viewer.send("echo after-$((2 + 2))\n").await;
+        let seen = viewer.read_until("after-4").await;
 
         assert!(!seen.contains("redrawn"), "{seen:?}");
     }
@@ -688,63 +624,71 @@ mod tests {
     async fn taking_moves_the_terminal_to_the_new_viewer() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let (first, _) = terminals.attach(&task(0), AttachMode::Take);
+        let mut first = terminals.attach(&task(0), AttachMode::Take).await.0;
 
-        let (second, _) = terminals.attach(&task(0), AttachMode::Take);
+        let mut second = terminals.attach(&task(0), AttachMode::Take).await.0;
 
-        assert!(matches!(first.next().await, Delivery::Taken));
-        assert!(first.write(b"echo refused\n").await.is_err());
-        send(&second, "echo taken-$((3 + 3))\n").await;
-        read_until(&second, "taken-6").await;
+        assert!(matches!(first.attachment.next().await, Delivery::Taken));
+        assert!(first.input.write(b"echo refused\n").await.is_err());
+        second.send("echo taken-$((3 + 3))\n").await;
+        second.read_until("taken-6").await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn resuming_leaves_another_viewer_attached() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let (first, _) = terminals.attach(&task(0), AttachMode::Take);
+        let mut first = terminals.attach(&task(0), AttachMode::Take).await.0;
 
         assert!(matches!(
             terminals
                 .registry
-                .attach(&task(0), AttachMode::Resume, "another-tab", SIZE),
+                .attach(&task(0), AttachMode::Resume, "another-tab", SIZE)
+                .await,
             Attach::Elsewhere
         ));
 
-        send(&first, "echo still-$((4 + 4))\n").await;
-        read_until(&first, "still-8").await;
+        first.send("echo still-$((4 + 4))\n").await;
+        first.read_until("still-8").await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn resuming_from_the_attached_viewer_s_tab_replaces_it() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let (dropped, _) = terminals.attach_from(&task(0), AttachMode::Take, "tab");
+        let mut dropped = terminals
+            .attach_from(&task(0), AttachMode::Take, "tab")
+            .await
+            .0;
 
-        let (back, _) = terminals.attach_from(&task(0), AttachMode::Resume, "tab");
+        let mut back = terminals
+            .attach_from(&task(0), AttachMode::Resume, "tab")
+            .await
+            .0;
 
-        assert!(matches!(dropped.next().await, Delivery::Taken));
-        send(&back, "echo back-$((5 + 5))\n").await;
-        read_until(&back, "back-10").await;
+        assert!(matches!(dropped.attachment.next().await, Delivery::Taken));
+        back.send("echo back-$((5 + 5))\n").await;
+        back.read_until("back-10").await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn only_the_attached_viewer_detaches_the_terminal() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let (first, _) = terminals.attach(&task(0), AttachMode::Take);
-        let (second, _) = terminals.attach(&task(0), AttachMode::Take);
+        let first = terminals.attach(&task(0), AttachMode::Take).await.0;
+        let second = terminals.attach(&task(0), AttachMode::Take).await.0;
 
         drop(first);
         assert!(matches!(
             terminals
                 .registry
-                .attach(&task(0), AttachMode::Resume, "another-tab", SIZE),
+                .attach(&task(0), AttachMode::Resume, "another-tab", SIZE)
+                .await,
             Attach::Elsewhere
         ));
 
         drop(second);
-        let (_third, _) = terminals.attach(&task(0), AttachMode::Resume);
+        let (_third, _) = terminals.attach(&task(0), AttachMode::Resume).await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -753,7 +697,7 @@ mod tests {
 
         for mode in [AttachMode::Take, AttachMode::Resume] {
             assert!(matches!(
-                terminals.registry.attach(&task(0), mode, "tab", SIZE),
+                terminals.registry.attach(&task(0), mode, "tab", SIZE).await,
                 Attach::Absent
             ));
         }
@@ -763,11 +707,11 @@ mod tests {
     async fn closing_ends_the_attached_viewer() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let (viewer, _) = terminals.attach(&task(0), AttachMode::Take);
+        let mut viewer = terminals.attach(&task(0), AttachMode::Take).await.0;
 
         terminals.registry.close(&task(0));
 
-        assert!(matches!(viewer.next().await, Delivery::Ended));
+        assert!(matches!(viewer.attachment.next().await, Delivery::Ended));
         assert_eq!(terminals.count(), 0);
         terminals.registry.close(&task(0));
     }
@@ -776,13 +720,13 @@ mod tests {
     async fn a_shell_that_exits_ends_its_terminal() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let (viewer, _) = terminals.attach(&task(0), AttachMode::Take);
+        let mut viewer = terminals.attach(&task(0), AttachMode::Take).await.0;
 
-        send(&viewer, "exit\n").await;
+        viewer.send("exit\n").await;
 
         let ended = timeout(WAIT, async {
             loop {
-                match viewer.next().await {
+                match viewer.attachment.next().await {
                     Delivery::Ended => return,
                     Delivery::Output(_) => {}
                     other => panic!("unexpected {other:?}"),
@@ -794,7 +738,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn the_late_exit_of_a_replaced_shell_is_ignored() {
+    async fn the_late_end_of_a_replaced_terminal_is_ignored() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
         let replaced = terminals.session_id(&task(0));
@@ -802,10 +746,26 @@ mod tests {
         terminals.open(task(0)).await;
         let current = terminals.session_id(&task(0));
 
-        terminals.registry.shell_ended(&task(0), replaced);
-        terminals.registry.shell_ended(&task(1), current);
+        terminals.registry.remove(&task(0), replaced);
+        terminals.registry.remove(&task(1), current);
 
         assert_eq!(terminals.session_id(&task(0)), current);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_terminal_refuses_to_be_evicted_while_a_viewer_is_attached() {
+        let terminals = Terminals::new();
+        terminals.open(task(0)).await;
+        terminals.open(task(1)).await;
+        let _viewer = terminals.attach(&task(0), AttachMode::Take).await.0;
+
+        terminals.session(&task(0)).evict();
+        terminals.session(&task(1)).evict();
+
+        // The screen answers after the request before it.
+        terminals.registry.screen_text(&task(0)).await;
+        assert!(terminals.contains(&task(0)));
+        terminals.wait_until_closed(&task(1)).await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -816,12 +776,12 @@ mod tests {
         }
         // The oldest is busy, and the next oldest is attached.
         terminals.run_foreground(&task(0)).await;
-        let (_attached, _) = terminals.attach(&task(1), AttachMode::Take);
+        let _attached = terminals.attach(&task(1), AttachMode::Take).await.0;
 
         terminals.open(task(MAX_TERMINALS)).await;
 
+        terminals.wait_until_closed(&task(2)).await;
         assert_eq!(terminals.count(), MAX_TERMINALS);
-        assert!(!terminals.contains(&task(2)));
         for kept in [0, 1, 3, MAX_TERMINALS] {
             assert!(terminals.contains(&task(kept)), "task {kept} is kept");
         }
@@ -836,13 +796,13 @@ mod tests {
         terminals.run_foreground(&task(0)).await;
         let mut attached = Vec::new();
         for index in 1..MAX_TERMINALS {
-            attached.push(terminals.attach(&task(index), AttachMode::Take).0);
+            attached.push(terminals.attach(&task(index), AttachMode::Take).await.0);
         }
 
         terminals.open(task(MAX_TERMINALS)).await;
 
+        terminals.wait_until_closed(&task(0)).await;
         assert_eq!(terminals.count(), MAX_TERMINALS);
-        assert!(!terminals.contains(&task(0)));
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -851,7 +811,7 @@ mod tests {
         let mut attached = Vec::new();
         for index in 0..MAX_TERMINALS {
             terminals.open(task(index)).await;
-            attached.push(terminals.attach(&task(index), AttachMode::Take).0);
+            attached.push(terminals.attach(&task(index), AttachMode::Take).await.0);
         }
 
         terminals
@@ -865,27 +825,27 @@ mod tests {
     async fn a_slow_viewer_catches_up_from_a_snapshot() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let (viewer, _) = terminals.attach(&task(0), AttachMode::Take);
-        send(
-            &viewer,
-            "awk 'BEGIN { for (i = 0; i < 40000; i++) print \"0123456789012345678901234567890123456789\" }'; echo flood-$((5 + 5))\n",
-        )
-        .await;
+        let mut viewer = terminals.attach(&task(0), AttachMode::Take).await.0;
+        viewer
+            .send(
+                "awk 'BEGIN { for (i = 0; i < 40000; i++) print \"0123456789012345678901234567890123456789\" }'; echo flood-$((5 + 5))\n",
+            )
+            .await;
         let overflowed = async {
-            while !viewer.outbox.queue.lock().unwrap().overflowed {
+            while !viewer.attachment.deliveries.has_overflowed() {
                 sleep(Duration::from_millis(10)).await;
             }
         };
         timeout(WAIT, overflowed)
             .await
-            .expect("the outbox overflowed");
+            .expect("the output overflowed");
 
-        let Delivery::Resync(snapshot) = viewer.next().await else {
+        let Delivery::Resync(snapshot) = viewer.attachment.next().await else {
             panic!("the viewer resyncs first");
         };
         let mut seen = String::from_utf8_lossy(&snapshot).into_owned();
         if !seen.contains("flood-10") {
-            seen = read_until(&viewer, "flood-10").await;
+            seen = viewer.read_until("flood-10").await;
         }
         assert!(seen.contains("flood-10"));
     }
@@ -894,21 +854,18 @@ mod tests {
     async fn an_unfinished_synchronized_update_reaches_the_screen_when_its_time_is_up() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let session = terminals.registry.state.lock().unwrap().terminals[&task(0)]
-            .session
-            .clone();
-        let mut input: &[u8] = b"printf '\\033[?2026hheld-%s' back\n";
-        while !input.is_empty() {
-            let written = session.shell.write(input).await.unwrap();
-            input = &input[written..];
-        }
+        let viewer = terminals.attach(&task(0), AttachMode::Take).await.0;
+        viewer.send("printf '\\033[?2026hheld-%s' back\n").await;
+        drop(viewer);
 
-        // The program never ends the update; the reader thread applies it once
-        // the parser's deadline passes, without a viewer asking for a snapshot.
+        // The program never ends the update; the terminal's thread applies it
+        // once the parser's deadline passes, without a viewer asking for a
+        // snapshot.
         let applied = async {
             while !terminals
                 .registry
                 .screen_text(&task(0))
+                .await
                 .contains("held-back")
             {
                 sleep(Duration::from_millis(20)).await;
@@ -923,15 +880,15 @@ mod tests {
     async fn the_backend_leaves_terminal_queries_to_the_viewer() {
         let terminals = Terminals::new();
         terminals.open(task(0)).await;
-        let (viewer, _) = terminals.attach(&task(0), AttachMode::Take);
+        let mut viewer = terminals.attach(&task(0), AttachMode::Take).await.0;
 
         // Reads for a second whatever arrives after asking for the cursor position.
-        send(
-            &viewer,
-            "stty -echo -icanon min 0 time 10; printf '\\033[6n'; dd bs=1 count=16 2>/dev/null | od -An -c; stty echo icanon; echo asked-$((6 + 6))\n",
-        )
-        .await;
-        let seen = read_until(&viewer, "asked-12").await;
+        viewer
+            .send(
+                "stty -echo -icanon min 0 time 10; printf '\\033[6n'; dd bs=1 count=16 2>/dev/null | od -An -c; stty echo icanon; echo asked-$((6 + 6))\n",
+            )
+            .await;
+        let seen = viewer.read_until("asked-12").await;
 
         assert!(!seen.contains("033   ["), "an answer arrived: {seen:?}");
     }
@@ -943,14 +900,14 @@ mod tests {
         terminals
             .open(Subject::Section("section".to_string()))
             .await;
-        let (viewer, _) = terminals.attach(&task(0), AttachMode::Take);
+        let mut viewer = terminals.attach(&task(0), AttachMode::Take).await.0;
 
         let registry = terminals.registry.clone();
         tokio::task::spawn_blocking(move || registry.close_all())
             .await
             .unwrap();
 
-        assert!(matches!(viewer.next().await, Delivery::Ended));
+        assert!(matches!(viewer.attachment.next().await, Delivery::Ended));
         assert_eq!(terminals.count(), 0);
     }
 
@@ -958,6 +915,12 @@ mod tests {
     struct Terminals {
         registry: Arc<Registry>,
         tabs: AtomicUsize,
+    }
+
+    /// An attached viewer and its input.
+    struct Viewer {
+        attachment: Attachment,
+        input: Input,
     }
 
     impl Terminals {
@@ -973,6 +936,7 @@ mod tests {
         async fn open(&self, subject: Subject) {
             self.registry
                 .open(subject.clone(), &env::temp_dir(), SIZE)
+                .await
                 .unwrap();
             self.wait_for_prompt(&subject).await;
         }
@@ -982,7 +946,7 @@ mod tests {
         /// can undo a resize made before the prompt shows.
         async fn wait_for_prompt(&self, subject: &Subject) {
             let prompted = async {
-                while !shows_prompt(&self.registry.screen_text(subject)) {
+                while !shows_prompt(&self.registry.screen_text(subject).await) {
                     sleep(Duration::from_millis(10)).await;
                 }
             };
@@ -992,49 +956,67 @@ mod tests {
         }
 
         /// Attaches a viewer from a browser tab no other viewer came from.
-        fn attach(&self, subject: &Subject, mode: AttachMode) -> (Attachment, Vec<u8>) {
+        async fn attach(&self, subject: &Subject, mode: AttachMode) -> (Viewer, Vec<u8>) {
             let tab = format!("tab-{}", self.tabs.fetch_add(1, Ordering::Relaxed));
-            self.attach_from(subject, mode, &tab)
+            self.attach_from(subject, mode, &tab).await
         }
 
-        fn attach_from(
+        async fn attach_from(
             &self,
             subject: &Subject,
             mode: AttachMode,
             tab: &str,
-        ) -> (Attachment, Vec<u8>) {
-            match self.registry.attach(subject, mode, tab, SIZE) {
+        ) -> (Viewer, Vec<u8>) {
+            self.attach_sized(subject, mode, tab, SIZE).await
+        }
+
+        async fn attach_sized(
+            &self,
+            subject: &Subject,
+            mode: AttachMode,
+            tab: &str,
+            size: TerminalSize,
+        ) -> (Viewer, Vec<u8>) {
+            match self.registry.attach(subject, mode, tab, size).await {
                 Attach::Attached {
                     attachment,
+                    input,
                     snapshot,
-                } => (attachment, snapshot),
+                } => (Viewer { attachment, input }, snapshot),
                 Attach::Elsewhere => panic!("another viewer is attached"),
                 Attach::Absent => panic!("no terminal is open"),
             }
         }
 
-        /// Starts a long command in the terminal without attaching to it.
+        /// Starts a long command in the terminal and leaves it unattached.
         async fn run_foreground(&self, subject: &Subject) {
-            let session = self.registry.state.lock().unwrap().terminals[subject]
-                .session
-                .clone();
-            let mut input: &[u8] = b"sleep 30\n";
-            while !input.is_empty() {
-                let written = session.shell.write(input).await.unwrap();
-                input = &input[written..];
-            }
+            let viewer = self.attach(subject, AttachMode::Take).await.0;
+            viewer.send("sleep 30\n").await;
+            drop(viewer);
+            let session = self.session(subject);
             let busy = async {
-                while session.shell.is_idle() {
+                while session.is_idle() || session.is_viewed() {
                     sleep(Duration::from_millis(10)).await;
                 }
             };
             timeout(WAIT, busy).await.expect("the command started");
         }
 
+        async fn wait_until_closed(&self, subject: &Subject) {
+            let closed = async {
+                while self.contains(subject) {
+                    sleep(Duration::from_millis(10)).await;
+                }
+            };
+            timeout(WAIT, closed).await.expect("the terminal closed");
+        }
+
+        fn session(&self, subject: &Subject) -> Arc<Session> {
+            self.registry.running(subject).expect("the terminal runs")
+        }
+
         fn session_id(&self, subject: &Subject) -> u64 {
-            self.registry.state.lock().unwrap().terminals[subject]
-                .session
-                .id
+            self.registry.state.lock().unwrap().terminals[subject].session
         }
 
         fn contains(&self, subject: &Subject) -> bool {
@@ -1052,6 +1034,36 @@ mod tests {
         }
     }
 
+    impl Viewer {
+        async fn send(&self, text: &str) {
+            let mut input = text.as_bytes();
+            while !input.is_empty() {
+                let written = self.input.write(input).await.unwrap();
+                input = &input[written..];
+            }
+        }
+
+        /// Reads deliveries until the output so far contains `text`.
+        async fn read_until(&mut self, text: &str) -> String {
+            let mut seen = Vec::new();
+            let reading = async {
+                loop {
+                    match self.attachment.next().await {
+                        Delivery::Output(bytes) | Delivery::Resync(bytes) => seen.extend(bytes),
+                        other => panic!("unexpected {other:?}"),
+                    }
+                    if String::from_utf8_lossy(&seen).contains(text) {
+                        return;
+                    }
+                }
+            };
+            if timeout(WAIT, reading).await.is_err() {
+                panic!("no {text:?} in {:?}", String::from_utf8_lossy(&seen));
+            }
+            String::from_utf8_lossy(&seen).into_owned()
+        }
+    }
+
     fn task(index: usize) -> Subject {
         Subject::Task(format!("task-{index}"))
     }
@@ -1060,33 +1072,5 @@ mod tests {
     /// for root.
     fn shows_prompt(screen: &str) -> bool {
         screen.trim_end().ends_with(['$', '#'])
-    }
-
-    async fn send(viewer: &Attachment, text: &str) {
-        let mut input = text.as_bytes();
-        while !input.is_empty() {
-            let written = viewer.write(input).await.unwrap();
-            input = &input[written..];
-        }
-    }
-
-    /// Reads deliveries until the output so far contains `text`.
-    async fn read_until(viewer: &Attachment, text: &str) -> String {
-        let mut seen = Vec::new();
-        let reading = async {
-            loop {
-                match viewer.next().await {
-                    Delivery::Output(bytes) | Delivery::Resync(bytes) => seen.extend(bytes),
-                    other => panic!("unexpected {other:?}"),
-                }
-                if String::from_utf8_lossy(&seen).contains(text) {
-                    return;
-                }
-            }
-        };
-        if timeout(WAIT, reading).await.is_err() {
-            panic!("no {text:?} in {:?}", String::from_utf8_lossy(&seen));
-        }
-        String::from_utf8_lossy(&seen).into_owned()
     }
 }

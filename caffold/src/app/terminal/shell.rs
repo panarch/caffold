@@ -1,9 +1,10 @@
 //! One shell process on its own pseudo-terminal.
 //!
-//! [`spawn`] splits a shell into two halves. The registry's reader thread owns
+//! [`spawn`] splits a shell into two halves. The terminal's own thread owns
 //! the [`ShellReader`], which pumps the PTY's output and finally reaps the
 //! shell. Everything else steers the shell through its [`ShellControl`]:
-//! input, window size, the idle check, and the request to stop.
+//! input, window size, the idle check, waking the reader, and the request to
+//! stop.
 
 use std::{
     collections::HashMap,
@@ -162,6 +163,12 @@ impl ShellControl {
         }
     }
 
+    /// Makes the reader's current or next [`ShellReader::read`] return.
+    /// Returns at once.
+    pub(super) fn wake(&self) {
+        self.signals.wake();
+    }
+
     /// Asks the reader thread to end the shell. Returns at once.
     pub(super) fn stop(&self) {
         self.signals.raise(&self.signals.stop);
@@ -183,14 +190,16 @@ pub(super) enum ReadEvent {
     Output(usize),
     /// The deadline passed with no output.
     Deadline,
+    /// [`ShellControl::wake`] was called and no output is waiting.
+    Woken,
     /// The shell exited or was asked to stop; call [`ShellReader::finish`].
     Ended,
 }
 
 impl ShellReader {
-    /// Waits until the PTY has output, the shell ends, or `deadline` passes.
-    /// Output the shell wrote before it exited comes first: on Linux a command
-    /// can exit before anything reads what it printed.
+    /// Waits until the PTY has output, the shell ends, the reader is woken, or
+    /// `deadline` passes. Output the shell wrote before it exited comes first:
+    /// on Linux a command can exit before anything reads what it printed.
     pub(super) fn read(&mut self, buffer: &mut [u8], deadline: Option<Instant>) -> ReadEvent {
         loop {
             if self.signals.stop.load(Ordering::SeqCst) {
@@ -203,8 +212,9 @@ impl ShellReader {
                 return ReadEvent::Ended;
             }
             match self.wait(deadline) {
-                Ok(true) => {}
-                Ok(false) => return ReadEvent::Deadline,
+                Ok(Wait::Again) => {}
+                Ok(Wait::Woken) => return ReadEvent::Woken,
+                Ok(Wait::TimedOut) => return ReadEvent::Deadline,
                 Err(_) => return ReadEvent::Ended,
             }
         }
@@ -237,8 +247,8 @@ impl ShellReader {
             }
             while self.read_output(&mut discarded).is_some() {}
             match self.wait(deadline) {
-                Ok(true) => {}
-                Ok(false) => return false,
+                Ok(Wait::Again | Wait::Woken) => {}
+                Ok(Wait::TimedOut) => return false,
                 // The wake stream failing leaves nothing to wait on.
                 Err(_) => return self.signals.exited.load(Ordering::SeqCst),
             }
@@ -260,31 +270,40 @@ impl ShellReader {
         None
     }
 
-    /// Polls the PTY (while it can still have output) and the wake stream.
-    /// Returns `false` once `deadline` passes.
-    fn wait(&mut self, deadline: Option<Instant>) -> io::Result<bool> {
+    /// Polls the PTY (while it can still have output) and the wake stream
+    /// until one is ready or `deadline` passes.
+    fn wait(&mut self, deadline: Option<Instant>) -> io::Result<Wait> {
         let timeout = deadline
             .map(|deadline| Timespec::try_from(deadline.saturating_duration_since(Instant::now())))
             .transpose()
             .map_err(|_| io::Error::from(ErrorKind::InvalidInput))?;
-        let ready = {
+        let woken = {
             let mut fds = vec![PollFd::new(&self.wake, PollFlags::IN)];
             if !self.output_closed {
                 fds.push(PollFd::new(self.pty.file(), PollFlags::IN));
             }
             match poll(&mut fds, timeout.as_ref()) {
-                Ok(ready) => ready,
-                Err(Errno::INTR) => return Ok(true),
+                Ok(0) => return Ok(Wait::TimedOut),
+                Ok(_) => !fds[0].revents().is_empty(),
+                Err(Errno::INTR) => return Ok(Wait::Again),
                 Err(error) => return Err(error.into()),
             }
         };
-        if ready == 0 {
-            return Ok(false);
+        if !woken {
+            return Ok(Wait::Again);
         }
         let mut drained = [0; 64];
         while matches!((&self.wake).read(&mut drained), Ok(length) if length > 0) {}
-        Ok(true)
+        Ok(Wait::Woken)
     }
+}
+
+enum Wait {
+    /// The wake stream was written to.
+    Woken,
+    /// The PTY may have output, or the wait was interrupted; look again.
+    Again,
+    TimedOut,
 }
 
 struct Signals {
@@ -296,6 +315,10 @@ struct Signals {
 impl Signals {
     fn raise(&self, flag: &AtomicBool) {
         flag.store(true, Ordering::SeqCst);
+        self.wake();
+    }
+
+    fn wake(&self) {
         let _ = (&self.waker).write(&[0]);
     }
 }
@@ -513,8 +536,14 @@ mod tests {
             let (sender, output) = mpsc::channel();
             thread::spawn(move || {
                 let mut buffer = [0; 4096];
-                while let ReadEvent::Output(length) = reader.read(&mut buffer, None) {
-                    let _ = sender.send(buffer[..length].to_vec());
+                loop {
+                    match reader.read(&mut buffer, None) {
+                        ReadEvent::Output(length) => {
+                            let _ = sender.send(buffer[..length].to_vec());
+                        }
+                        ReadEvent::Deadline | ReadEvent::Woken => {}
+                        ReadEvent::Ended => break,
+                    }
                 }
                 reader.finish();
             });

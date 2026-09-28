@@ -6,8 +6,13 @@
 //! exchanges its input and output over a WebSocket while a terminal screen is
 //! showing. Task lifecycle code closes a Task's terminal through
 //! [`TaskTerminals`].
+//!
+//! Each terminal runs on its own thread. Nothing here waits for that thread
+//! on a request thread of the server: requests to a terminal return at once or
+//! are awaited, so a busy or stuck terminal holds up only its own screens.
 
 mod registry;
+mod session;
 mod shell;
 mod snapshot;
 
@@ -28,7 +33,8 @@ use url::Url;
 
 use super::error::ApiError;
 use crate::fs::RootedFs;
-use registry::{Attach, Delivery, Registry};
+use registry::{Attach, Registry};
+use session::Delivery;
 use shell::ShellCommand;
 
 const MIN_COLUMNS: u16 = 2;
@@ -99,13 +105,14 @@ impl TaskTerminals {
         }
     }
 
-    pub(super) fn open_for_test(&self, thread_id: &str, cwd: &std::path::Path) {
+    pub(super) async fn open_for_test(&self, thread_id: &str, cwd: &std::path::Path) {
         let size = TerminalSize {
             columns: 80,
             rows: 24,
         };
         self.registry
             .open(Subject::Task(thread_id.to_string()), cwd, size)
+            .await
             .unwrap();
     }
 
@@ -131,10 +138,10 @@ async fn open_terminal(
     let subject = Subject::from_request(request.task, request.section)?;
     let size = TerminalSize::from_request(request.cols, request.rows)?;
     let cwd = state.fs.absolute_directory_path(&request.cwd)?;
-    // Starting a shell forks the backend, which is too slow for a runtime thread.
-    tokio::task::spawn_blocking(move || state.registry.open(subject, &cwd, size))
+    state
+        .registry
+        .open(subject, &cwd, size)
         .await
-        .map_err(|error| ApiError::Internal(error.to_string()))?
         .map_err(|error| ApiError::Unavailable {
             code: "terminal_start_failed",
             message: format!("The terminal's shell could not start: {error}"),
@@ -180,9 +187,10 @@ async fn relay(
     tab: String,
     size: TerminalSize,
 ) {
-    let attachment = match registry.attach(&subject, mode, &tab, size) {
+    let (mut attachment, input) = match registry.attach(&subject, mode, &tab, size).await {
         Attach::Attached {
             attachment,
+            input,
             snapshot,
         } => {
             if announce(&mut socket, ServerMessage::Attached, snapshot)
@@ -191,13 +199,13 @@ async fn relay(
             {
                 return;
             }
-            attachment
+            (attachment, input)
         }
         Attach::Elsewhere => return finish(socket, ServerMessage::Elsewhere).await,
         Attach::Absent => return finish(socket, ServerMessage::Absent).await,
     };
     // Input read from the socket but not yet taken by the PTY.
-    let mut input = Vec::new();
+    let mut typed = Vec::new();
     loop {
         tokio::select! {
             biased;
@@ -214,20 +222,21 @@ async fn relay(
                     return;
                 }
             }
-            written = attachment.write(&input), if !input.is_empty() => match written {
+            written = input.write(&typed), if !typed.is_empty() => match written {
                 Ok(length) => {
-                    input.drain(..length);
+                    typed.drain(..length);
                 }
                 // The viewer lost the terminal; the reason arrives as a delivery.
-                Err(_) => input.clear(),
+                Err(_) => typed.clear(),
             },
-            message = socket.recv(), if input.is_empty() => match message {
-                Some(Ok(Message::Binary(bytes))) => input.extend_from_slice(&bytes),
+            message = socket.recv(), if typed.is_empty() => match message {
+                Some(Ok(Message::Binary(bytes))) => typed.extend_from_slice(&bytes),
                 Some(Ok(Message::Text(text))) => {
                     if let Ok(ClientMessage::Resize { cols, rows }) = serde_json::from_str(&text)
                         && let Ok(size) = TerminalSize::from_request(cols, rows)
                     {
-                        attachment.resize(size);
+                        // Input read after a resize must meet the new size.
+                        attachment.resize(size).await;
                     }
                 }
                 Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
@@ -431,7 +440,10 @@ fn same_origin_required() -> ApiError {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::SocketAddr, time::Duration};
+    use std::{
+        net::SocketAddr,
+        time::{Duration, Instant},
+    };
 
     use futures_util::{SinkExt, StreamExt};
     use serde_json::{Value, json};
@@ -648,6 +660,90 @@ mod tests {
         server.expect_no_terminal("task=thread-1").await;
     }
 
+    /// A terminal that is held up delays only its own screens. With a single
+    /// request thread, the server keeps answering, other terminals open and
+    /// attach, and the held one can be closed, while a screen waits to attach
+    /// to it.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn a_held_up_terminal_leaves_the_server_answering() {
+        let server = Server::start().await;
+        let origin = server.origin();
+        let held = Subject::Task("thread-1".to_string());
+        assert_eq!(
+            server
+                .post(&open_body(json!({ "task": "thread-1" })), Some(&origin))
+                .await
+                .0,
+            204
+        );
+
+        let release = server.registry.hold(&held);
+        let mut waiting =
+            server.connect_plain("task=thread-1&mode=take&tab=tab-1&cols=80&rows=24", &origin);
+        let deadline = Instant::now() + WAIT;
+        while !server.registry.attach_requested(&held) {
+            assert!(Instant::now() < deadline, "the attach never started");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        let answered = ping(server.address);
+        if !answered {
+            drop(release);
+            panic!("the server stopped answering while a terminal was held up");
+        }
+        assert_eq!(
+            server
+                .post(&open_body(json!({ "task": "thread-2" })), Some(&origin))
+                .await
+                .0,
+            204
+        );
+        let mut other = server
+            .connect(
+                "task=thread-2&mode=take&tab=tab-2&cols=80&rows=24",
+                Some(&origin),
+            )
+            .await
+            .unwrap();
+        expect_attached(&mut other).await;
+        TaskTerminals {
+            registry: server.registry.clone(),
+        }
+        .close("thread-1");
+        assert!(!server.registry.contains(&held));
+        assert_eq!(server.delete("task=thread-2", Some(&origin)).await.0, 204);
+        expect_last_message(&mut other, "ended").await;
+
+        drop(release);
+        assert_eq!(last_plain_message(&mut waiting), "ended");
+    }
+
+    /// Screens of different sizes, such as a desktop and a phone, keep taking a
+    /// terminal from each other while its program floods it with output.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn screens_of_different_sizes_keep_taking_a_flooding_terminal() {
+        let server = Server::start().await;
+        let origin = Some(server.origin());
+        let origin = origin.as_deref();
+        let body = open_body(json!({ "task": "thread-1" }));
+        assert_eq!(server.post(&body, origin).await.0, 204);
+        let desktop = "task=thread-1&mode=take&tab=desktop&cols=200&rows=50";
+        let phone = "task=thread-1&mode=take&tab=phone&cols=45&rows=30";
+        let mut screen = server.connect(desktop, origin).await.unwrap();
+        expect_attached(&mut screen).await;
+        send_input(&mut screen, "yes caffold-flood-output\n").await;
+
+        for round in 0..6 {
+            let query = if round % 2 == 0 { phone } else { desktop };
+            let mut taking = server.connect(query, origin).await.unwrap();
+            expect_attached(&mut taking).await;
+            expect_last_message(&mut screen, "taken").await;
+            screen = taking;
+        }
+
+        assert!(ping(server.address), "the server stopped answering");
+    }
+
     #[test]
     fn only_the_page_s_own_origin_counts_as_same_origin() {
         for (origin, host, same) in [
@@ -695,6 +791,7 @@ mod tests {
             terminals
                 .registry
                 .open(subject.clone(), &cwd, size)
+                .await
                 .unwrap();
         }
 
@@ -724,7 +821,9 @@ mod tests {
             let terminals = Terminals {
                 registry: Registry::new(command),
             };
-            let router = terminals.router(Arc::new(RootedFs::new(root.path()).unwrap()));
+            let router = terminals
+                .router(Arc::new(RootedFs::new(root.path()).unwrap()))
+                .route("/ping", get(|| async { "pong" }));
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
             let address = listener.local_addr().unwrap();
             let server = tokio::spawn(async move {
@@ -763,6 +862,7 @@ mod tests {
                 while !self
                     .registry
                     .screen_text(subject)
+                    .await
                     .trim_end()
                     .ends_with(['$', '#'])
                 {
@@ -803,6 +903,58 @@ mod tests {
             }
             connect_async(request).await.map(|(socket, _)| socket)
         }
+
+        /// Opens a socket from a plain thread, so the handshake does not
+        /// depend on the server's runtime to drive the client.
+        fn connect_plain(
+            &self,
+            query: &str,
+            origin: &str,
+        ) -> tungstenite::WebSocket<std::net::TcpStream> {
+            let mut request = format!("ws://{}/api/terminal/socket?{query}", self.address)
+                .into_client_request()
+                .unwrap();
+            request
+                .headers_mut()
+                .insert("origin", HeaderValue::from_str(origin).unwrap());
+            let stream = std::net::TcpStream::connect(self.address).unwrap();
+            tungstenite::client::client(request, stream).unwrap().0
+        }
+    }
+
+    /// Reads a plain socket's closing message, skipping everything before it.
+    fn last_plain_message(socket: &mut tungstenite::WebSocket<std::net::TcpStream>) -> String {
+        socket.get_ref().set_read_timeout(Some(WAIT)).unwrap();
+        loop {
+            match socket.read().expect("a closing message") {
+                tungstenite::Message::Text(text) => {
+                    let message: Value = serde_json::from_str(&text).unwrap();
+                    let kind = message["type"].as_str().unwrap_or_default().to_string();
+                    if ["elsewhere", "absent", "taken", "ended"].contains(&kind.as_str()) {
+                        return kind;
+                    }
+                }
+                tungstenite::Message::Close(_) => panic!("closed without a closing message"),
+                _ => {}
+            }
+        }
+    }
+
+    /// Asks for `/ping` over a plain socket, so the answer does not depend on
+    /// the server's runtime to drive the client.
+    fn ping(address: SocketAddr) -> bool {
+        use std::io::{Read, Write};
+
+        let Ok(mut stream) = std::net::TcpStream::connect(address) else {
+            return false;
+        };
+        stream.set_read_timeout(Some(WAIT)).unwrap();
+        stream
+            .write_all(b"GET /ping HTTP/1.1\r\nHost: caffold\r\nConnection: close\r\n\r\n")
+            .unwrap();
+        let mut response = String::new();
+        let _ = stream.read_to_string(&mut response);
+        response.starts_with("HTTP/1.1 200")
     }
 
     impl Drop for Server {
