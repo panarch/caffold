@@ -41,19 +41,35 @@ Task list, opens the same list.
 ## Leave a field: <kbd>Esc</kbd>
 
 While you are typing a prompt, the keys go into the prompt. Press <kbd>Esc</kbd>
-to leave the prompt, and the keys work again.
+to leave the prompt, and the keys work again. In the terminal, <kbd>Esc</kbd>
+goes to the program there; leave with <kbd>⌘</kbd>+<kbd>J</kbd> or
+<kbd>Ctrl</kbd>+<kbd>&#96;</kbd> instead.
 
 ## Shortcut help: <kbd>?</kbd>
 
 <kbd>?</kbd> opens the list of keyboard shortcuts from anywhere, including in
-the middle of choosing an action or scrolling. Press <kbd>?</kbd> or
-<kbd>Esc</kbd> to close it.
+the middle of choosing an action or scrolling. Inside the list,
+<kbd>F</kbd> reaches its close button and <kbd>S</kbd> scrolls it. Press
+<kbd>?</kbd> or <kbd>Esc</kbd> to close it.
 
 ![Keyboard shortcut help](assets/screenshots/keyboard-shortcuts-desktop.png)
+
+## Key combinations
+
+These keys work while you are typing, in the terminal, and when keyboard
+navigation is off. Each has one for keyboards with <kbd>⌘</kbd> and one for
+keyboards without it, such as on Windows or Android.
+
+| Keys | Does |
+| --- | --- |
+| <kbd>⌘</kbd>+<kbd>J</kbd> or <kbd>Ctrl</kbd>+<kbd>&#96;</kbd> | opens the [terminal](tasks/terminal.md) of a Task or Section, or goes back from it |
+| <kbd>⌘</kbd>+<kbd>B</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> | shows or hides the side panel, wherever the button in the top-left corner can |
 
 ## Turn it off
 
 Keys with <kbd>Ctrl</kbd>, <kbd>Alt</kbd>, or <kbd>⌘</kbd>, and keys typed
-while an input method is composing, always go to the browser. To give every
-single key back to the browser as well, turn off **Keyboard navigation** in
-**Settings → Keyboard**, which also lists all the shortcuts.
+while an input method is composing, always go to the browser, except the key
+combinations. To give every single key back to the browser as well, turn off
+**Keyboard navigation** in **Settings → Keyboard**, which also lists all the
+shortcuts. The key combinations keep working, since they are the only way out
+of the terminal from the keyboard.

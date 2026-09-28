@@ -98,10 +98,12 @@ Caffold is not an autonomous agent orchestrator. The developer is expected to
 read, judge, and redirect the work. A Task belongs to one agent rather than
 silently changing harnesses mid-conversation.
 
-It is also not trying to reproduce an IDE, terminal, agent harness, or full Git
-and GitHub client on every screen. Direct controls belong in Caffold when they
-make a repeated review step clearer or safer. Everything else can stay with the
-selected agent and the existing developer tools.
+It is also not trying to reproduce an IDE, terminal emulator, agent harness, or
+full Git and GitHub client on every screen; the one shell each Task or Section
+keeps is a place to check the agent's work, not a replacement for a terminal
+app. Direct controls belong in Caffold when they make a repeated review step
+clearer or safer. Everything else can stay with the selected agent and the
+existing developer tools.
 
 Today Caffold assumes one trusted user, one trusted host, and local or
 tailnet-only access. The roadmap includes fully supported, authenticated

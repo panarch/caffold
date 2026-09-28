@@ -14,7 +14,8 @@ Prepare this task in an isolated worktree. Leave my current checkout changes in 
 ```
 
 The agent prepares the worktree with a tool Caffold gives it, and the turn ends
-there. Your next prompt runs in the worktree:
+there. If the Task's [terminal](terminal.md) was open, it closes, and the next
+one starts in the worktree. Your next prompt runs in the worktree:
 
 ```text
 Now review PR #123.

@@ -3,7 +3,9 @@
 Caffold multiplexes backend-owned live observations through one physical SSE
 connection per visible Task Workspace tab. REST remains the canonical boundary
 for reads and mutations; live events invalidate or advance the projections
-owned by Task List, Task Detail, and filesystem Watch consumers.
+owned by Task List, Task Detail, and filesystem Watch consumers. Terminal input
+and output do not use this gateway: a shown terminal has its own WebSocket
+([Terminals](terminal.md#http-and-websocket)).
 
 ## Gateway contract
 

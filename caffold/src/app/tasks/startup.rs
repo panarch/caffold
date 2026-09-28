@@ -25,7 +25,7 @@ use crate::{
 };
 
 use super::{CodexMcpHost, GrokMcpHost};
-use crate::app::jev::PermissionReviewer;
+use crate::app::{jev::PermissionReviewer, terminal::TaskTerminals};
 
 #[derive(Clone)]
 struct TaskRouterGateway {
@@ -105,6 +105,7 @@ pub(in crate::app) struct PersistentTasksGateway {
     grok_mcp: GrokMcpHost,
     watch_hub: WatchHub,
     permission_reviewer: PermissionReviewer,
+    terminals: TaskTerminals,
 }
 
 impl PersistentTasksGateway {
@@ -119,6 +120,7 @@ impl PersistentTasksGateway {
         grok_mcp: GrokMcpHost,
         watch_hub: WatchHub,
         permission_reviewer: PermissionReviewer,
+        terminals: TaskTerminals,
     ) -> Self {
         let status = Arc::new(RwLock::new(StartupTaskStatus {
             codex: pending_codex_status(),
@@ -162,6 +164,7 @@ impl PersistentTasksGateway {
             grok_mcp,
             watch_hub,
             permission_reviewer,
+            terminals,
         }
     }
 
@@ -184,6 +187,7 @@ impl PersistentTasksGateway {
                     self.grok_mcp.clone(),
                     self.watch_hub.clone(),
                     self.permission_reviewer.clone(),
+                    self.terminals.clone(),
                 ) {
                     Ok(tasks) => {
                         self.gateway.replace(tasks.router()).await;

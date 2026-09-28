@@ -218,6 +218,43 @@ test("opens shortcut help from Scroll selection and active Scroll", { tag: "@all
   await expect(opener).toBeFocused();
 });
 
+test("Scroll mode moves through the shortcut help list", { tag: ["@foldable", "@phone"] }, async ({
+  page,
+}, testInfo) => {
+  const { detail } = await installScrollFixture(page);
+  await openScrollTask(page, detail);
+
+  const opener = page.locator(".task-workspace-surface");
+  const help = page.locator(
+    "caffold-keyboard-shortcut-dialog > dialog:modal",
+  );
+  const list = help.locator("caffold-keyboard-shortcut-list");
+  const hud = help.locator("caffold-scroll-mode-hud .scroll-mode-status");
+  await opener.focus();
+  await page.keyboard.press("?");
+  await expect(help).toBeVisible();
+  // The list is longer than the dialog, so there is something to scroll.
+  expect(await list.evaluate((element) =>
+    element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
+
+  await page.keyboard.press("s");
+  await expect(hud).toContainText("Scroll: Keyboard shortcuts");
+  await page.keyboard.press("j");
+  await expect.poll(() => list.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await captureReviewScreenshot(page, testInfo, "shortcut-help-scroll");
+  await page.keyboard.press("Escape");
+  await expect(hud).toBeHidden();
+  await expect(help).toBeVisible();
+
+  await page.keyboard.press("s");
+  await expect(hud).toBeVisible();
+  await page.keyboard.press("?");
+  await expect(help).toBeHidden();
+  await expect(hud).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
 test("selects nested Conversation code and table scrollports and cancels a lost axis", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {

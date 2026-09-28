@@ -108,6 +108,7 @@ test("composes one App Shell workspace context with public child contexts", () =
   };
   const taskChild = { id: "task-child" };
   const updateChild = { id: "update-child" };
+  const shortcutChild = { id: "shortcut-child" };
   const scrollScope = { surfaces: [{ id: "tasks" }] };
   const taskWorkspace = {
     actionHintEditingEscapeTarget: () => "escape-target",
@@ -122,10 +123,13 @@ test("composes one App Shell workspace context with public child contexts", () =
     updateDialog: {
       keyboardNavigationContexts: () => [updateChild],
     },
+    keyboardShortcutDialog: {
+      keyboardNavigationContexts: () => [shortcutChild],
+    },
   };
 
   const contexts = appShell.keyboardNavigationContexts.call(owner);
-  assert.equal(contexts.length, 3);
+  assert.equal(contexts.length, 4);
   assert.equal(contexts[0].id, "workspace");
   assert.equal(contexts[0].kind, "workspace");
   assert.equal(contexts[0].root, owner);
@@ -134,7 +138,7 @@ test("composes one App Shell workspace context with public child contexts", () =
   assert.equal(contexts[0].scroll.selector, selector);
   assert.deepEqual(contexts[0].scroll.scope.surfaces, scrollScope.surfaces);
   assert.equal(contexts[0].editing.escapeTarget({}), "escape-target");
-  assert.deepEqual(contexts.slice(1), [updateChild, taskChild]);
+  assert.deepEqual(contexts.slice(1), [updateChild, shortcutChild, taskChild]);
 });
 
 test("merges only owner-declared Action Hint dependencies", () => {

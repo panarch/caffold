@@ -54,6 +54,8 @@ export const ACTION_HINT_ACTION = Object.freeze({
   CONTROL_RANGE_FOCUS: "control.range.focus",
   CONTROL_SEPARATOR_FOCUS: "control.separator.focus",
   DIALOG_TEXTBOX_FOCUS: "dialog.textbox.focus",
+  TERMINAL_OPEN: "navigation.terminal.open",
+  TERMINAL_FOCUS: "terminal.focus",
 });
 
 const ACTION_HINT_ALLOCATION = Object.freeze({
@@ -96,6 +98,10 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
     code: "P",
   }),
   [ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS]: Object.freeze({
+    controlKind: "textbox",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  }),
+  [ACTION_HINT_ACTION.TERMINAL_FOCUS]: Object.freeze({
     controlKind: "textbox",
     allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
   }),
@@ -165,6 +171,7 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
     ACTION_HINT_ACTION.GIT_DESTINATION,
     ACTION_HINT_ACTION.GITHUB_OPEN,
     ACTION_HINT_ACTION.GITHUB_DESTINATION,
+    ACTION_HINT_ACTION.TERMINAL_OPEN,
     ACTION_HINT_ACTION.TASK_DETAILS_OPEN,
     ACTION_HINT_ACTION.TASK_FORK,
     ACTION_HINT_ACTION.TASK_ARCHIVE,

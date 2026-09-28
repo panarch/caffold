@@ -17,6 +17,8 @@ Select a Section's name to open it. An open Section offers, for its directory:
 - For a repository, **Working Tree**, **Branch**, **Git**, and **GitHub**, which
   show the repository itself without opening a Task. See
   [Review changes](../review/changes.md).
+- A [terminal](terminal.md) in the Section's directory, from the last button
+  in the header.
 - **Existing conversations**, which forks a Codex conversation into the
   Section. See [Fork a Codex conversation](fork.md).
 

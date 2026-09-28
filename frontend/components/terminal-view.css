@@ -1,0 +1,29 @@
+caffold-terminal-view {
+  --terminal-background: var(--code-bg);
+  --terminal-foreground: var(--text);
+  --terminal-cursor: var(--text);
+  --terminal-selection: var(--selection-bg);
+  box-sizing: border-box;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  padding: var(--interface-space-3) var(--interface-space-4);
+  background: var(--terminal-background);
+
+  /* The fit addon counts rows and columns in this box's content height and width. */
+  & > .terminal-view-screen {
+    height: 100%;
+    min-height: 0;
+  }
+
+  & > .terminal-view-screen > .xterm {
+    height: 100%;
+  }
+
+  /* xterm.js paints its scroll area black; the rows below the last full one show it. */
+  & .xterm .xterm-viewport {
+    background-color: var(--terminal-background);
+  }
+}

@@ -18,6 +18,8 @@ Open the Task, choose **Task details** at its top right, and choose
   removes the worktree and keeps its branch.
 - Caffold also asks the agent to archive or close its conversation. If the
   agent cannot be reached, the Task is archived anyway.
+- The Task's [terminal](terminal.md) closes. **Task details** says so above
+  **Archive task**.
 
 ## Restore
 

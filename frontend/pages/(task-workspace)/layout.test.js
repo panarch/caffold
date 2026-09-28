@@ -262,6 +262,86 @@ test("hands the Task switcher the navigator's own active Task snapshot", () => {
   }
 });
 
+test("offers the terminal toggle only where Tasks is shown", () => {
+  let toggles = 0;
+  const owner = {
+    hidden: false,
+    mode: "tasks",
+    ensureRendered() {},
+    tasksPage: {
+      toggleTerminal() {
+        toggles += 1;
+        return true;
+      },
+    },
+  };
+
+  assert.equal(workspace.toggleTerminal.call(owner), true);
+  for (const refusal of [
+    { hidden: true },
+    { mode: "notes" },
+    { mode: "settings" },
+  ]) {
+    Object.assign(owner, { hidden: false, mode: "tasks" }, refusal);
+    assert.equal(workspace.toggleTerminal.call(owner), false);
+  }
+  assert.equal(toggles, 1);
+});
+
+test("the side pane key combination acts only where the corner button would", () => {
+  let collapsed = false;
+  let shown = true;
+  const pane = {
+    collapsible: true,
+    get collapsed() {
+      return collapsed;
+    },
+    setCollapsed(value) {
+      collapsed = value;
+    },
+  };
+  const owner = {
+    hidden: false,
+    ensureRendered() {},
+    currentSidePane: () => pane,
+    sidePaneToggleShown: () => shown,
+    syncSidePaneToggle() {},
+    toggleSidePane: workspace.toggleSidePane,
+  };
+
+  assert.equal(workspace.toggleSidePaneFromKeyboard.call(owner), true);
+  assert.equal(collapsed, true);
+  assert.equal(workspace.toggleSidePaneFromKeyboard.call(owner), true);
+  assert.equal(collapsed, false);
+
+  for (const [name, refuse, restore] of [
+    ["hidden workspace", () => { owner.hidden = true; }, () => { owner.hidden = false; }],
+    ["button not shown", () => { shown = false; }, () => { shown = true; }],
+    ["nothing to collapse", () => { pane.collapsible = false; }, () => { pane.collapsible = true; }],
+  ]) {
+    refuse();
+    assert.equal(workspace.toggleSidePaneFromKeyboard.call(owner), false, name);
+    assert.equal(collapsed, false, name);
+    restore();
+  }
+});
+
+test("Escape in a terminal gets no editing destination", () => {
+  const pane = { id: "detail-pane" };
+  const terminalInput = { id: "terminal-input" };
+  const composer = { id: "composer" };
+  const owner = {
+    tasksPage: {
+      ownsTerminalInput: (element) => element === terminalInput,
+      contains: () => true,
+      querySelector: () => pane,
+    },
+  };
+
+  assert.equal(workspace.actionHintEditingEscapeTarget.call(owner, terminalInput), null);
+  assert.equal(workspace.actionHintEditingEscapeTarget.call(owner, composer), pane);
+});
+
 test("turns a switched Task into one route request and one focus handoff", () => {
   const requested = [];
   const focused = [];

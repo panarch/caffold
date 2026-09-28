@@ -39,6 +39,10 @@ boundaries.
 - keyboard navigation outside editing fields — action codes, scroll-area
   selection, the Task Switcher, and shortcut help — which each browser can turn
   off;
+- one shell terminal per Task and per Section in the Detail body, kept running
+  by the backend so a browser can leave it and return to the same shell and
+  screen from any device, with `⌘J` or `` Ctrl+` `` to enter and leave it and a
+  special key row for touch screens;
 - separate Codex, Claude, and Grok Settings diagnostics, including Claude
   account, plan usage, and runner state, and the Grok executable, leader,
   connection, account, and plan usage, as each CLI reports them;
@@ -79,8 +83,12 @@ boundaries.
   automatically continue review or implementation after preparation.
 - Caffold owns cleanup only for worktrees it created and recorded. It does not
   adopt external worktrees or force-delete dirty managed worktrees.
-- Conversation presents command and tool output but does not provide a full
-  terminal, tmux, or Zellij workspace.
+- A Task or Section has one terminal, shown in place of the Detail body rather
+  than beside the Conversation. Several shells in one Task need a multiplexer
+  such as tmux inside that terminal. Terminals end when the backend exits and
+  are not restored after a restart, and past 10 a new one closes one that no
+  screen shows; the [Terminals](../architecture/terminal.md) architecture owns
+  the exact rules.
 - Review uses unified diffs without durable hunk comments or annotations.
 - Caffold does not duplicate an agent's conversation or canonical lifecycle
   state as a local source of truth.
@@ -118,7 +126,9 @@ The current product supports these flows:
    branch, agent conversation, and review context.
 9. Return later and identify the Task, agent, branch, worktree, and current
    review state without remembering a terminal session.
-10. Ask an agent in any Task to save, organize, or reuse a Note, and read the
+10. Open a Task's or Section's shell in the browser, leave it running, and pick
+    it up again from another device with its screen restored.
+11. Ask an agent in any Task to save, organize, or reuse a Note, and read the
     result in Notes.
 
 The detailed ownership and lifecycle differences are documented in

@@ -17,6 +17,7 @@ test("merges the view switch with only the active direct-child surface", () => {
   const reviewTarget = { id: "review" };
   const gitTarget = { id: "git" };
   const githubTarget = { id: "github" };
+  const terminalTarget = { id: "terminal" };
   const viewRoot = {};
   const taskRoot = {};
   const sectionRoot = {};
@@ -95,6 +96,17 @@ test("merges the view switch with only the active direct-child surface", () => {
     githubLayout() {
       return { actionHintScope: () => ({ targets: [githubTarget] }) };
     },
+    terminalButton() {
+      return null;
+    },
+    terminalPage() {
+      return {
+        actionHintScope(options) {
+          assert.equal(options.scopeId, `detail:${owner.subjectKind}:subject-a`);
+          return { targets: [terminalTarget] };
+        },
+      };
+    },
   };
 
   assert.deepEqual(detailLayout.actionHintScope.call(owner), {
@@ -154,6 +166,11 @@ test("merges the view switch with only the active direct-child surface", () => {
     detailLayout.actionHintScope.call(owner).targets,
     [viewTarget, githubTarget],
   );
+  activeSurface = "terminal";
+  assert.deepEqual(
+    detailLayout.actionHintScope.call(owner).targets,
+    [viewTarget, terminalTarget],
+  );
 });
 
 test("delegates Scroll and keyboard contexts only to the active direct owner", () => {
@@ -196,6 +213,7 @@ test("deactivation closes the persistent Task summary interaction owner", () => 
   const calls = [];
   const owner = {
     taskSummary: () => ({ deactivate: () => calls.push("summary") }),
+    terminalPage: () => ({ deactivate: () => calls.push("terminal") }),
     deactivateReview: () => calls.push("review"),
     gitLayout: () => ({ deactivate: () => calls.push("git") }),
     githubLayout: () => ({ deactivate: () => calls.push("github") }),
@@ -209,6 +227,7 @@ test("deactivation closes the persistent Task summary interaction owner", () => 
 
   assert.deepEqual(calls, [
     "summary",
+    "terminal",
     "review",
     "git",
     "github",
@@ -253,9 +272,11 @@ test("uses managed identity only as a header fallback and prefers canonical Deta
   const canonical = {
     ...managed,
     title: "Canonical title",
+    cwdPath: "canonical-worktree",
     worktree: { rootPath: "canonical-worktree" },
   };
   const summaries = [];
+  const terminalButtons = [];
   const headers = [];
   const choices = [];
   const viewHidden = [];
@@ -290,6 +311,9 @@ test("uses managed identity only as a header fallback and prefers canonical Deta
     }),
     gitMenu: () => ({ setSnapshot() {} }),
     githubMenu: () => ({ setSnapshot() {} }),
+    terminalButton: () => ({
+      setSnapshot: (snapshot) => terminalButtons.push(snapshot),
+    }),
     applySurfaceVisibility(surface) {
       visibleSurfaces.push(surface);
     },
@@ -314,4 +338,166 @@ test("uses managed identity only as a header fallback and prefers canonical Deta
   assert.deepEqual(choices[1], ["conversation", "working", "branch"]);
   assert.equal(viewHidden[1], false);
   assert.equal(visibleSurfaces[1], "review");
+  // The terminal starts where the loaded Task works, so it waits for that.
+  assert.deepEqual(terminalButtons, [
+    { available: false, pressed: false },
+    { available: true, pressed: false },
+  ]);
 });
+
+test("the terminal toggle enters from any screen and returns to where it was", () => {
+  const requested = [];
+  const activations = [];
+  let surface = "review";
+  let live = false;
+  const reviewRoute = {
+    kind: "tasks",
+    threadId: "thread-a",
+    review: true,
+    reviewScope: "branch",
+  };
+  const owner = terminalOwner({
+    subjectKind: "task",
+    taskRoute: reviewRoute,
+    taskSnapshot: { task: { threadId: "thread-a", cwdPath: "projects/app" } },
+    activeSurface: () => surface,
+    terminalPage: () => ({
+      isLive: () => live,
+      activate: (options) => activations.push(options),
+    }),
+    requestSubjectRoute: (route) => requested.push(route),
+  });
+
+  assert.equal(detailLayout.toggleTerminal.call(owner), true);
+  assert.deepEqual(requested.at(-1), {
+    kind: "tasks",
+    threadId: "thread-a",
+    terminal: true,
+  });
+  assert.equal(owner.pendingTerminalTake, "task:thread-a");
+
+  // On the terminal screen without the live terminal, the toggle takes it here.
+  surface = "terminal";
+  assert.equal(detailLayout.toggleTerminal.call(owner), true);
+  assert.deepEqual(activations, [{
+    subject: { kind: "task", id: "thread-a" },
+    cwd: "projects/app",
+    mode: "take",
+  }]);
+  assert.equal(requested.length, 1);
+
+  live = true;
+  assert.equal(detailLayout.toggleTerminal.call(owner), true);
+  assert.deepEqual(requested.at(-1), reviewRoute);
+
+  // Entered directly by a link, it returns to the Task's conversation.
+  assert.equal(detailLayout.toggleTerminal.call(owner), true);
+  assert.deepEqual(requested.at(-1), { kind: "tasks", threadId: "thread-a" });
+
+  owner.taskSnapshot = { task: { threadId: "thread-a", cwdPath: "" } };
+  assert.equal(detailLayout.toggleTerminal.call(owner), false);
+});
+
+test("a terminal that ended takes Detail back to where it was, only from its screen", () => {
+  const requested = [];
+  let surface = "terminal";
+  const owner = terminalOwner({
+    subjectKind: "task",
+    taskSnapshot: { task: { threadId: "thread-a", cwdPath: "projects/app" } },
+    activeSurface: () => surface,
+    requestSubjectRoute: (route) => requested.push(route),
+  });
+  const reviewRoute = { kind: "tasks", threadId: "thread-a", review: true };
+  owner.terminalReturnRoutes.set("task:thread-a", reviewRoute);
+
+  detailLayout.leaveTerminal.call(owner);
+  detailLayout.leaveTerminal.call(owner);
+  surface = "review";
+  detailLayout.leaveTerminal.call(owner);
+
+  assert.deepEqual(requested, [
+    reviewRoute,
+    { kind: "tasks", threadId: "thread-a" },
+  ]);
+});
+
+test("a Section's terminal toggle returns to its New Task screen", () => {
+  const requested = [];
+  let surface = "new";
+  const owner = terminalOwner({
+    subjectKind: "section",
+    section: { id: "section-1", name: "notes" },
+    sectionRoute: { sectionId: "section-1", sectionSurface: "new" },
+    activeSurface: () => surface,
+    terminalPage: () => ({ isLive: () => true }),
+    requestSubjectRoute: (route) => requested.push(route),
+  });
+
+  detailLayout.toggleTerminal.call(owner);
+  surface = "terminal";
+  owner.terminalReturnRoutes.clear();
+  detailLayout.toggleTerminal.call(owner);
+
+  assert.deepEqual(requested, [
+    { sectionId: "section-1", sectionSurface: "terminal" },
+    { sectionId: "section-1" },
+  ]);
+});
+
+test("the terminal opens with take only right after the toggle asked for it", () => {
+  const activations = [];
+  const owner = terminalOwner({
+    subjectKind: "task",
+    taskSnapshot: { task: { threadId: "thread-a", cwdPath: "projects/app" } },
+    terminalPage: () => ({ activate: (options) => activations.push(options.mode) }),
+  });
+
+  owner.pendingTerminalTake = "task:thread-a";
+  detailLayout.activateTerminal.call(owner);
+  detailLayout.activateTerminal.call(owner);
+  owner.pendingTerminalTake = "task:thread-a";
+  detailLayout.keepTerminalTakeFor.call(owner, "task:thread-a");
+  detailLayout.activateTerminal.call(owner);
+  owner.pendingTerminalTake = "task:thread-a";
+  detailLayout.keepTerminalTakeFor.call(owner, "");
+  detailLayout.activateTerminal.call(owner);
+
+  assert.deepEqual(activations, ["take", "resume", "take", "resume"]);
+});
+
+test("a lost terminal socket reports the Detail transport as unavailable", () => {
+  let surface = "terminal";
+  let terminal = "ready";
+  const owner = {
+    subjectKind: "task",
+    activeSurface: () => surface,
+    terminalPage: () => ({ transportState: terminal }),
+    taskDetail: () => ({ streamState: "reconnecting" }),
+  };
+  const streamState = () =>
+    Object.getOwnPropertyDescriptor(detailLayout, "streamState").get.call(owner);
+
+  assert.equal(streamState(), "reconnecting");
+  terminal = "unavailable";
+  assert.equal(streamState(), "unavailable");
+  owner.subjectKind = "section";
+  terminal = "ready";
+  assert.equal(streamState(), "ready");
+  surface = "new";
+  assert.equal(streamState(), "inactive");
+});
+
+function terminalOwner(fields) {
+  const owner = {
+    hidden: false,
+    terminalReturnRoutes: new Map(),
+    pendingTerminalTake: "",
+    ensureRendered() {},
+    subjectIdentity: detailLayout.subjectIdentity,
+    terminalDirectory: detailLayout.terminalDirectory,
+    subjectHomeRoute: detailLayout.subjectHomeRoute,
+    leaveTerminal: detailLayout.leaveTerminal,
+    ...fields,
+  };
+  return owner;
+}

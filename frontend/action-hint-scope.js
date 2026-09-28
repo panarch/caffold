@@ -183,12 +183,15 @@ export function switchActionHintTarget({
   });
 }
 
+// `anchor` places the badge when the focused control itself is not what the
+// person sees, such as a terminal's off-screen input.
 export function textboxActionHintTarget({
   id,
   actionId,
   label,
   invalidationOwner,
   control,
+  anchor = control,
   clipRoots,
   isActionable,
 }) {
@@ -199,6 +202,7 @@ export function textboxActionHintTarget({
     invalidationOwner,
     controlKind: "textbox",
     control,
+    anchor,
     clipRoots,
     isActionable,
   });

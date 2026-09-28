@@ -6,25 +6,29 @@ class CaffoldKeyboardShortcutList extends HTMLElement {
       return;
     }
     this.rendered = true;
-    this.innerHTML = KEYBOARD_SHORTCUT_HELP_SECTIONS.map(({ title, rows }) => `
+    this.innerHTML = KEYBOARD_SHORTCUT_HELP_SECTIONS.map((section) => `
       <section>
-        <h3>${title}</h3>
+        <h3>${section.title}</h3>
+        ${section.description ? `<p>${section.description}</p>` : ""}
         <dl>
-          ${rows.map(({ keys, description }) => `
+          ${section.rows.map(({ keys, alternatives, description }) => `
             <div>
-              <dt>${renderKeys(keys)}</dt>
+              <dt>${renderKeys(keys, alternatives)}</dt>
               <dd>${description}</dd>
             </div>
           `).join("")}
         </dl>
+        ${section.note ? `<p>${section.note}</p>` : ""}
       </section>
     `).join("");
   }
 }
 
-function renderKeys(keys) {
+function renderKeys(keys, alternatives) {
   return keys.map((key) => `<kbd>${key}</kbd>`).join(
-    '<span aria-hidden="true">/</span>',
+    alternatives
+      ? '<span class="keyboard-shortcut-or">or</span>'
+      : '<span aria-hidden="true">/</span>',
   );
 }
 

@@ -295,3 +295,25 @@ test("restores managed identity before reopening Detail after a store takeover",
 
   assert.deepEqual(calls, ["managed", "open"]);
 });
+
+test("the terminal toggle and its input belong to an open Task or Section", () => {
+  const input = {};
+  let toggles = 0;
+  const detail = {
+    toggleTerminal() {
+      toggles += 1;
+      return true;
+    },
+    ownsTerminalInput: (element) => element === input,
+  };
+  const owner = { view: "detail", taskDetail: () => detail };
+
+  assert.equal(tasksPage.toggleTerminal.call(owner), true);
+  assert.equal(tasksPage.ownsTerminalInput.call(owner, input), true);
+  for (const view of ["home", "new", "recovery"]) {
+    owner.view = view;
+    assert.equal(tasksPage.toggleTerminal.call(owner), false, view);
+    assert.equal(tasksPage.ownsTerminalInput.call(owner, input), false, view);
+  }
+  assert.equal(toggles, 1);
+});

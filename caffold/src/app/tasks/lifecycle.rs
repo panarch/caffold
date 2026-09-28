@@ -9,6 +9,7 @@ use crate::{
     agent::{Conversation, TurnOptions, TurnPage},
     app::error::ApiError,
     app::tasks::sessions::{ConversationSettings, RequestLease, TaskSessions},
+    app::terminal::TaskTerminals,
     fs::RootedFs,
     task_store::{ManagedThread, RunBy, TaskStore, TaskStoreError},
 };
@@ -89,9 +90,11 @@ pub(in crate::app::tasks) struct TaskLifecycle {
     worktrees: ManagedWorktrees,
     claude: ClaudeClient,
     grok: GrokClient,
+    terminals: TaskTerminals,
 }
 
 impl TaskLifecycle {
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::app::tasks) fn new(
         fs: Arc<RootedFs>,
         sessions: TaskSessions,
@@ -100,6 +103,7 @@ impl TaskLifecycle {
         worktrees: ManagedWorktrees,
         claude: ClaudeClient,
         grok: GrokClient,
+        terminals: TaskTerminals,
     ) -> Self {
         Self {
             fs,
@@ -109,6 +113,7 @@ impl TaskLifecycle {
             worktrees,
             claude,
             grok,
+            terminals,
         }
     }
 
@@ -250,17 +255,30 @@ impl TaskLifecycle {
             ))
         })?;
         self.fs.logical_path_for_absolute(&source)?;
-        self.worktrees
+        let outcome = self
+            .worktrees
             .isolate_current(
                 source,
-                thread_id,
+                thread_id.clone(),
                 task_name,
                 branch_name,
                 base_ref,
                 include_changes,
             )
             .await
-            .map_err(worktree_api_error)
+            .map_err(worktree_api_error)?;
+        // The Task now works in the new worktree; its terminal was started
+        // where the Task used to be.
+        if matches!(outcome, IsolateOutcome::Isolated { .. }) {
+            self.terminals.close(&thread_id);
+        }
+        Ok(outcome)
+    }
+
+    /// Closes the Task's terminal. An Archive that passed its checks calls
+    /// this before the Task's worktree is removed.
+    pub(in crate::app::tasks) fn close_terminal(&self, thread_id: &str) {
+        self.terminals.close(thread_id);
     }
 
     pub(in crate::app::tasks) async fn archive_worktree(
@@ -592,6 +610,7 @@ mod tests {
                 worktrees,
                 claude,
                 GrokClient::unreachable(),
+                TaskTerminals::for_tests(),
             ),
         )
     }

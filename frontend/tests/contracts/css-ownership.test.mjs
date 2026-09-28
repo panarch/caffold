@@ -38,6 +38,7 @@ const ownership = new Map([
     ["caffold-pane-resizer"],
   ],
   ["components/segmented-control.css", ["caffold-segmented-control"]],
+  ["components/terminal-view.css", ["caffold-terminal-view"]],
   ["pages/(task-workspace)/layout.css", ["caffold-task-workspace"]],
   [
     "keyboard-navigation/components/hud.css",
@@ -183,6 +184,18 @@ const ownership = new Map([
   [
     "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
     ["caffold-task-detail-github"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/components/terminal-button.css",
+    ["caffold-task-detail-terminal"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/terminal/page.css",
+    ["caffold-terminal-page"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.css",
+    ["caffold-terminal-special-keys"],
   ],
   [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css",
@@ -497,11 +510,17 @@ const componentChildren = new Map([
       "caffold-segmented-control",
       "caffold-task-detail-git",
       "caffold-task-detail-github",
+      "caffold-task-detail-terminal",
       "caffold-section-detail",
       "caffold-task-review",
       "caffold-task-git-layout",
       "caffold-task-github-layout",
+      "caffold-terminal-page",
     ],
+  ],
+  [
+    "caffold-terminal-page",
+    ["caffold-terminal-view", "caffold-terminal-special-keys"],
   ],
   ["caffold-section-detail", ["caffold-task-create"]],
   [

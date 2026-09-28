@@ -19,7 +19,7 @@ caffold-task-detail-summary {
 
   & .task-detail-right {
     grid-row: 1;
-    grid-column: 3;
+    grid-column: 4;
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -29,6 +29,6 @@ caffold-task-detail-summary {
 
 @media (max-width: 520px) {
   caffold-task-detail-summary .task-detail-right {
-    grid-column: 2;
+    grid-column: 3;
   }
 }

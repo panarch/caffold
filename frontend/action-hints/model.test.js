@@ -105,6 +105,7 @@ test("accepts only the central semantic action and control-kind policy", () => {
   const nonButtonKinds = new Map([
     [ACTION_HINT_ACTION.PROMPT_FOCUS, "textbox"],
     [ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS, "textbox"],
+    [ACTION_HINT_ACTION.TERMINAL_FOCUS, "textbox"],
     [ACTION_HINT_ACTION.CONTROL_SELECT_OPEN, "select"],
     [ACTION_HINT_ACTION.CONTROL_RADIO_SELECT, "radio"],
     [ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE, "switch"],

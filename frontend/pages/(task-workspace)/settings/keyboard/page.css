@@ -86,17 +86,17 @@ caffold-settings-keyboard-page {
     gap: var(--interface-space-2);
   }
 
-  & .settings-keyboard-shortcuts h2,
-  & .settings-keyboard-shortcuts p {
+  & .settings-keyboard-shortcuts > header > h2,
+  & .settings-keyboard-shortcuts > header > p {
     margin: 0;
   }
 
-  & .settings-keyboard-shortcuts h2 {
+  & .settings-keyboard-shortcuts > header > h2 {
     font-size: var(--settings-field-label-size);
     line-height: var(--interface-line-height);
   }
 
-  & .settings-keyboard-shortcuts p {
+  & .settings-keyboard-shortcuts > header > p {
     color: var(--muted);
     font-size: var(--settings-field-description-size);
     line-height: var(--interface-line-height);

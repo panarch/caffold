@@ -763,6 +763,10 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   actionHintEditingEscapeTarget(editable) {
+    // Escape in a terminal belongs to the program running there.
+    if (this.tasksPage?.ownsTerminalInput(editable)) {
+      return null;
+    }
     if (this.tasksPage?.contains(editable)) {
       return this.tasksPage.querySelector(":scope .tasks-detail-pane");
     }
@@ -772,6 +776,12 @@ class CaffoldTaskWorkspace extends HTMLElement {
       );
     }
     return this.querySelector(":scope > .task-workspace-surface");
+  }
+
+  /** The terminal toggle of the open Task or Section; Tasks alone has one. */
+  toggleTerminal() {
+    this.ensureRendered();
+    return !this.hidden && this.mode === "tasks" && this.tasksPage.toggleTerminal();
   }
 
   /**
@@ -989,6 +999,21 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   /**
+   * The side pane toggle behind its key combinations. It does what the corner
+   * button does, only while that button is shown and enabled, and reports
+   * whether it acted so an unused key stays with the page.
+   */
+  toggleSidePaneFromKeyboard() {
+    this.ensureRendered();
+    const pane = this.currentSidePane();
+    if (this.hidden || !this.sidePaneToggleShown(pane) || !pane.collapsible) {
+      return false;
+    }
+    this.toggleSidePane();
+    return true;
+  }
+
+  /**
    * Show the toggle wherever its pane sits beside the detail, unless the
    * compact Back is using the same corner. It stays in place while nothing is
    * open to collapse for, so the header it sits over never shifts.
@@ -998,10 +1023,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       return;
     }
     const pane = this.currentSidePane();
-    const compactRouteControlsShown =
-      this.hasAttribute("data-workspace-route-control-visible") &&
-      !window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches;
-    const visible = Boolean(pane?.beside) && !compactRouteControlsShown;
+    const visible = this.sidePaneToggleShown(pane);
     this.sidePaneToggle.hidden = !visible;
     if (!visible) {
       delete this.dataset.sidePaneToggle;
@@ -1018,6 +1040,13 @@ class CaffoldTaskWorkspace extends HTMLElement {
     }
     this.dataset.sidePaneToggle =
       !this.showsCodeSurface() && !pane.collapsed ? "navigation" : "detail";
+  }
+
+  sidePaneToggleShown(pane) {
+    const compactRouteControlsShown =
+      this.hasAttribute("data-workspace-route-control-visible") &&
+      !window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches;
+    return Boolean(pane?.beside) && !compactRouteControlsShown;
   }
 
   renderSidePaneToggleIcon() {

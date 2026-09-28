@@ -148,12 +148,17 @@ test("scales visible Task controls without shrinking their touch targets", { tag
       metrics.headerActionGap,
       1,
     );
-    if (metrics.headerActionGaps.githubToInfo !== null) {
-      expect(metrics.headerActionGaps.githubToInfo).toBeCloseTo(
+    // The terminal button starts a group after GitHub and pairs with Task details.
+    if (metrics.headerActionGaps.githubToTerminal !== null) {
+      expect(metrics.headerActionGaps.githubToTerminal).toBeCloseTo(
         metrics.headerGroupGap,
         1,
       );
     }
+    expect(metrics.headerActionGaps.terminalToInfo).toBeCloseTo(
+      metrics.headerActionGap,
+      1,
+    );
     if (metrics.targetFloor >= 40) {
       for (const [name, covered] of Object.entries(metrics.hitTargets)) {
         expect(
@@ -275,6 +280,7 @@ function taskInterfaceMetrics(page) {
       ),
       git: detailLayout.querySelector(".task-git-button"),
       github: detailLayout.querySelector(".task-github-button"),
+      terminal: detailLayout.querySelector(".task-terminal-button"),
       archive: detailLayout.querySelector(
         ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
       ),
@@ -430,7 +436,8 @@ function taskInterfaceMetrics(page) {
       ),
       headerActionGaps: {
         gitToGithub: horizontalGap(controls.git, controls.github),
-        githubToInfo: horizontalGap(controls.github, controls.info),
+        githubToTerminal: horizontalGap(controls.github, controls.terminal),
+        terminalToInfo: horizontalGap(controls.terminal, controls.info),
       },
       hitTargets: {
         close: squareHitTarget(controls.close),
@@ -438,6 +445,7 @@ function taskInterfaceMetrics(page) {
         newTask: squareHitTarget(controls.newTask),
         git: squareHitTarget(controls.git),
         github: squareHitTarget(controls.github),
+        terminal: squareHitTarget(controls.terminal),
         archive: archiveHitTarget,
         model: verticalHitTarget(controls.model),
         permission: verticalHitTarget(controls.permission),

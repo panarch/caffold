@@ -96,6 +96,8 @@ class CaffoldAppShell extends HTMLElement {
       afterActionHintActivation: (target) =>
         this.taskWorkspace.afterActionHintActivation(target),
       openTaskSwitcher: () => this.taskWorkspace.openTaskSwitcher(),
+      toggleTerminal: () => this.taskWorkspace.toggleTerminal(),
+      toggleSidePane: () => this.taskWorkspace.toggleSidePaneFromKeyboard(),
       readSettings: () => getSettings(),
     });
     this.actionHints = this.keyboardNavigation.actionHints;
@@ -729,6 +731,7 @@ class CaffoldAppShell extends HTMLElement {
     return mergeKeyboardNavigationContexts(
       workspaceContexts,
       this.updateDialog?.keyboardNavigationContexts?.() ?? [],
+      this.keyboardShortcutDialog?.keyboardNavigationContexts?.() ?? [],
       this.taskWorkspace?.keyboardNavigationContexts?.() ?? [],
     );
   }

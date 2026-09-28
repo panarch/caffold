@@ -154,7 +154,8 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
     );
     const summary = document.querySelector(".detail-layout-summary");
     const github = summary.querySelector(".task-github-button");
-    const summaryInfo = summary.querySelector(".task-detail-info-button");
+    // The group after GitHub starts with the terminal button.
+    const nextGroup = summary.querySelector(".task-terminal-button");
     const visualBounds = (element, pseudo) => {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element, pseudo);
@@ -165,7 +166,7 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
     };
     const viewerInfoBounds = visualBounds(viewerInfo, "::after");
     const githubBounds = visualBounds(github, "::before");
-    const summaryInfoBounds = visualBounds(summaryInfo, "::before");
+    const nextGroupBounds = visualBounds(nextGroup, "::before");
     const rootStyle = getComputedStyle(document.documentElement);
     return {
       overflow: review.scrollWidth > review.clientWidth,
@@ -173,10 +174,10 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
       viewerVisible: getComputedStyle(viewer).display !== "none",
       lowerControlGap:
         viewerAxis.getBoundingClientRect().left - viewerInfoBounds.right,
-      upperControlGap: summaryInfoBounds.left - githubBounds.right,
+      upperControlGap: nextGroupBounds.left - githubBounds.right,
       upperControlsShareRow:
         Math.abs(
-          summaryInfo.getBoundingClientRect().top - github.getBoundingClientRect().top,
+          nextGroup.getBoundingClientRect().top - github.getBoundingClientRect().top,
         ) <= 1,
       expectedControlGap:
         Number.parseFloat(rootStyle.getPropertyValue("--interface-space-5")) *

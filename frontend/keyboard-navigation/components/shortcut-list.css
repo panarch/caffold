@@ -5,6 +5,7 @@ caffold-keyboard-shortcut-list {
   min-width: 0;
 
   & h3,
+  & section > p,
   & dl,
   & dd {
     margin: 0;
@@ -17,22 +18,45 @@ caffold-keyboard-shortcut-list {
     line-height: var(--interface-line-height);
   }
 
+  /* A section's description sits under its title, and its note under its keys. */
+  & section > p {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & h3 + p {
+    margin-bottom: var(--interface-space-4);
+  }
+
+  & dl + p {
+    margin-top: var(--interface-space-4);
+  }
+
+  /* The rows of a section share one key column, as wide as its widest keys. */
   & dl {
     display: grid;
-    gap: var(--interface-space-3);
+    grid-template-columns: minmax(7rem, max-content) minmax(0, 1fr);
+    gap: var(--interface-space-3) var(--interface-space-6);
   }
 
   & dl > div {
     display: grid;
-    grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     align-items: baseline;
-    gap: var(--interface-space-6);
   }
 
   & dt {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--interface-space-2);
+  }
+
+  & .keyboard-shortcut-or {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
   }
 
   & dd {
@@ -55,8 +79,8 @@ caffold-keyboard-shortcut-list {
 }
 
 @container (max-width: 28rem) {
-  caffold-keyboard-shortcut-list dl > div {
-    grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
-    gap: var(--interface-space-4);
+  caffold-keyboard-shortcut-list dl {
+    grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr);
+    column-gap: var(--interface-space-4);
   }
 }

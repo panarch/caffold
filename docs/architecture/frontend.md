@@ -2,8 +2,8 @@
 
 The frontend is a small Light-DOM Web Component application. Application
 navigation enters one Task workspace. Its Tasks Detail layout binds a Task or
-Section subject and owns the shared Integrated Review, Git, and GitHub
-surfaces; subject-specific work stays below the matching Task or Section
+Section subject and owns the shared terminal, Integrated Review, Git, and
+GitHub surfaces; subject-specific work stays below the matching Task or Section
 layout.
 
 ## Source organization
@@ -52,6 +52,7 @@ caffold-app-shell
 |   |       |-- Section subject
 |   |       |   |-- Fixed-context New Task
 |   |       |   `-- Existing-conversation shortcuts
+|   |       |-- Terminal
 |   |       |-- Integrated Review
 |   |       |-- Git
 |   |       |   |-- Compare
@@ -151,9 +152,11 @@ Every completion still has to match the active recovery generation.
 
 Foreground recovery refreshes the workspace's canonical backend status first,
 after which the Tasks page asks its navigator and selected detail to reconcile
-their separately owned transports. Parents call public child methods; the app
-shell does not inspect Task transport internals. Async completions must still
-match both the foreground generation and the active route.
+their separately owned transports. The selected detail's transports are the
+Task stream and, while the terminal is shown, the terminal socket. Parents call
+public child methods; the app shell does not inspect Task transport internals.
+Async completions must still match both the foreground generation and the
+active route.
 
 The app shell also owns the single viewport-level recovery notice. Task list
 and detail expose whether an active transport needs recovery; they do not render
@@ -245,11 +248,12 @@ The workspace consumes the semantic presentation snapshot published by Tasks:
 query nested Git/GitHub DOM or read their private state.
 
 Reading surfaces keep the Task navigator on desktop until the person collapses
-it. Code surfaces use the full workspace width. Foldable and phone presentation
-is owned by the same master/detail layout system. The workspace derives
-`data-workspace-detail-open` once from the published presentation; the
-single-pane layout reads it to choose the list or the detail, and the
-navigation pane collapses only while it is set.
+it. Code surfaces use the full workspace width: Integrated Review, Git Compare,
+Git Log commits and their files, GitHub Pull Files, and the terminal, whichever
+surface opened it. Foldable and phone presentation is owned by the same
+master/detail layout system. The workspace derives `data-workspace-detail-open`
+once from the published presentation; the single-pane layout reads it to choose
+the list or the detail, and the navigation pane collapses only while it is set.
 
 The side pane toggle serves the one start pane on screen: the navigation pane
 on reading surfaces, and on a code surface the tree of Integrated Review, Git
@@ -265,13 +269,15 @@ The workspace re-reads the snapshot on route and presentation changes, on that
 event, and when its own size changes. It shows the toggle while the pane sits
 beside its detail and the compact Back is not using the corner, and keeps it in
 place but disabled while nothing is open, so the header beneath it keeps the
-same leading space.
+same leading space. The terminal has no start pane, so Detail reports one that
+is closed and cannot open, and the toggle stays in place, disabled.
 
 The App Shell keyboard-navigation coordinator is the only document-level key
-owner. It derives normal versus editing state from focus and composition, and
-stores at most one mutually exclusive Action Hint, Scroll selection, active
-Scroll, or shortcut-help mode. Keyboard navigation being disabled closes the
-stored mode and leaves `F`, `S`, `T`, and `?` unhandled. App Shell route changes,
+owner. It derives normal versus editing state from focus and composition,
+stores at most one mutually exclusive Action Hint, Scroll selection, or active
+Scroll mode, and opens and closes keyboard shortcut help. Keyboard navigation
+being disabled closes the stored mode and the help and leaves `F`, `S`, `T`,
+and `?` unhandled. App Shell route changes,
 disconnect, competing native overlay ownership, and composition changes run
 through the same cleanup authority. Task Workspace does not install a second
 document listener or global presentation.
@@ -299,6 +305,28 @@ Workspace method without entering the mode. The Task navigator's header opener
 emits a navigator intent that Task Workspace answers, and the opener beside the
 compact Back belongs to Task Workspace, which shows it exactly when it shows
 that Back.
+
+Key combinations are a second set of keys the coordinator handles in editing
+and with keyboard navigation turned off. `keyboard-navigation/shortcuts.js`
+lists them, each action with one combination for Apple keyboards, listed
+first, and one without ⌘:
+
+- `⌘J` or `` Ctrl+` `` asks Task Workspace to toggle the open Task's or
+  Section's [terminal](terminal.md#browser). Task Workspace forwards it only
+  while Tasks shows a Task or Section.
+- `⌘B` or `Ctrl+Shift+B` asks Task Workspace to toggle the side pane, which it
+  does only while the corner toggle is shown and enabled.
+
+Each combination holds Ctrl or ⌘, which typing leaves alone. A shell never
+receives ⌘ and cannot tell `Ctrl+Shift+B` from `Ctrl+B`, so the only key a
+terminal gives up is `` Ctrl+` ``. The coordinator reads the physical key,
+because a Korean input source types `₩` on Backquote, and matches the exact
+modifiers. A repeated key, composition, a stored mode, or an open popover or
+modal dialog leaves a combination unhandled, and so does an action that did
+nothing, which leaves the key to the page. They matter most in a terminal,
+which owns every other key. Keyboard shortcut help and **Settings → Keyboard**
+list them last, under "Key combinations", from the same table.
+
 Each participating component provides its retained native control, stable
 semantic identity, action meaning, accessible name, anchor, and clip
 dependencies. This includes Workspace and Settings navigation and page
@@ -309,7 +337,8 @@ archived-list, recovery, and Codex
 readiness buttons; Composer Model, Permission, Prompt, attachment, voice,
 cancel, submit, and interrupt actions; Conversation retry, image-preview, and
 approval actions; Section Fork; Current Plan document openers, status opener,
-and status Refresh; and direct Integrated Review, Git, GitHub, file-navigation,
+and status Refresh; the terminal button and the terminal screen's input, bar,
+and state buttons; and direct Integrated Review, Git, GitHub, file-navigation,
 and file-viewer actions. Git
 declares Refresh, while GitHub detail declares Start Task and Pull Files.
 Activation reuses each owner's existing native button click, form, or
@@ -434,7 +463,9 @@ owners. These registrations do not create a generic dialog registry or DOM
 discovery path. The App Shell update dialog is outside this Task Workspace
 context set and publishes its own exact modal context. Later and Reload are
 declared by the dialog owner, while native form return values and PWA intent
-handling remain unchanged.
+handling remain unchanged. Keyboard shortcut help, also owned by the App Shell,
+publishes its own modal context the same way, with its Close button as its
+Action Hint target and its shortcut list as its one Scroll surface.
 
 The controller validates every action and control kind against a closed central
 policy. Task selection in the navigator retains generated `T*` codes and New
@@ -500,18 +531,22 @@ patches preserve the dialog, presentation, and declared control or scrollport
 identities unless a real topology change requires a fresh session.
 
 `normal` and `editing` are derived from current focus and composition; `hint`,
-`scroll-selecting`, `scroll-active`, and `shortcut-help` are the stored
-keyboard-navigation nodes. The complete node edges are
-`normal -> normal | editing | hint | scroll-selecting | scroll-active | shortcut-help`,
+`scroll-selecting`, and `scroll-active` are the stored keyboard-navigation
+nodes. The complete node edges are
+`normal -> normal | editing | hint | scroll-selecting | scroll-active`,
 `editing -> editing | normal`, `hint -> hint | normal`,
-`scroll-selecting -> scroll-selecting | scroll-active | normal`,
-`scroll-active -> scroll-active | normal`, and
-`shortcut-help -> normal`. One transition table gates session creation, input,
-cancel, selection, commands, and activation close. Closing a stored mode
-releases its scoped listeners and observers before an existing route, model
-popover, document dialog, or prompt-focus owner takes control.
+`scroll-selecting -> scroll-selecting | scroll-active | normal`, and
+`scroll-active -> scroll-active | normal`. One transition table gates session
+creation, input, cancel, selection, commands, and activation close. Closing a
+stored mode releases its scoped listeners and observers before an existing
+route, model popover, document dialog, or prompt-focus owner takes control.
 Composition and unregistered modal or popover owners keep their own key and
 Escape ownership.
+
+Task Workspace gives a Task or Settings editable the detail pane as its Editing
+escape destination, except a terminal's input: `Escape` there belongs to the
+program in the terminal. Tasks answers whether an element is that input
+through Detail and the terminal screen rather than by inspecting their DOM.
 
 An editable inside a registered modal may publish one exact same-modal Editing
 escape destination. A non-composing `Escape` received by the coordinator ends
@@ -613,10 +648,19 @@ to assistive technology without occupying product UI. The App Shell owns one
 global native shortcut-help dialog rather than duplicating it in every
 context-local presentation. Outside editing fields, a `?` keydown without
 Ctrl, Alt, or Meta that is neither repeated nor composing opens it from Normal,
-Action Hint, Scroll selection, or active Scroll state. Entering help first
-closes any active mode and its frozen snapshot; closing help with `?`, `Escape`,
-or its Close button returns to Normal and restores the original focus target.
-It never recreates a previous overlay session.
+Action Hint, Scroll selection, or active Scroll state, and closes it again from
+any of them. Entering help first closes any active mode and its frozen
+snapshot.
+
+The help is an ordinary modal context rather than a stored mode, so `F` and `S`
+work inside it and `T` waits until it closes. It covers any dialog that was
+already open: that dialog stays open, but context resolution passes over it
+until the help closes, while a dialog that opens over the help competes with it
+as usual. `Escape` in a mode started inside the help closes only that mode.
+Closing the help with `?`, `Escape`, or its Close button, or a close the browser
+makes on its own, such as after a back gesture, ends any mode started inside it,
+returns to Normal, and restores the original focus target. It never recreates a
+previous overlay session.
 
 Active revalidation preserves the exact context, surface ID, element binding,
 and axes. Scrolling the selected element itself keeps the session active;
@@ -687,7 +731,9 @@ home.
 
 - the active Task or Section subject identity;
 - shared Summary actions and the subject-aware view switch;
-- shared Integrated Review, Git, and GitHub child activation;
+- the header terminal button and the terminal toggle, including the surface
+  each subject returns to;
+- shared Integrated Review, Git, GitHub, and terminal child activation;
 - translation between shared child intents and Task or Section routes;
 - a bounded Integrated Review cache keyed by subject identity.
 
@@ -710,7 +756,8 @@ scope of the child it currently presents. `caffold-tasks-page` composes Task
 Navigator with the visible New, Recovery, readiness, or Detail owner;
 setup-beside is an independent sibling when it is actually visible. The common
 Detail layout delegates Action and Scroll scopes to Conversation, Section New,
-Integrated Review, Git, or GitHub without rebuilding child descriptors.
+Integrated Review, Git, GitHub, or the terminal without rebuilding child
+descriptors.
 
 One pending prompt per Task belongs to Detail, whether it originated in the
 Task Composer or was transferred from a New Task or GitHub creation surface.
@@ -1055,6 +1102,44 @@ meaningful re-entry, Retry, and explicit actions request current canonical
 state. Hidden DOM may remain visible when reactivated, but it is never treated
 as proof that remote data is current.
 
+### Terminal
+
+`caffold-terminal-page` is a direct shared Detail child under
+`tasks/(detail)/terminal`, mounted once in its slot and shown for the Task or
+Section the Detail layout activates it for. It owns the terminal screen's
+control model and WebSocket (private `page/model.js`, `page/connection.js`, and
+`page/keys.js`), the empty and "open on another screen" states, the bar with
+the special-key toggle and Kill terminal, and the special key row
+(`components/special-keys.js`). [Terminals](terminal.md#browser) owns the
+control model and the backend contract. The bar is as tall as the review file
+viewer's header. Detail passes the terminal page its header's inline padding and
+control gap, so the bar ends where the header does and, on a Task, its two
+buttons stand under the terminal and Task details buttons.
+
+`caffold-terminal-view` in `frontend/components/terminal-view.js` is the
+reusable leaf that loads xterm.js, sizes it to its box, applies the Code
+typeface, Code size, and theme colors, and reports typed input and size
+changes. It owns no connection or terminal state.
+
+An on-screen keyboard is the one layout value the terminal screen sets from
+JavaScript. Browsers keep the page laid out at full height when a phone's or
+tablet's keyboard opens and shrink only the visual viewport, so CSS cannot see
+how much the keyboard covers. While active, the screen measures that height
+from `window.visualViewport` (`terminal/page/keyboard-inset.js`) and leaves it
+as bottom padding, which puts the prompt and the special key row above the
+keyboard. The measurement counts nothing while the page is pinch-zoomed. Other
+screens keep the browser's default of panning to the focused input.
+
+The header button `caffold-task-detail-terminal` belongs to Detail, beside the
+Git and GitHub menus. It only reports a press; Detail decides whether that
+enters or leaves the terminal. On a Task it is unavailable until the canonical
+Task supplies its working directory.
+
+The terminal declares no Scroll surface; its history scrolls inside xterm.js
+with Shift+PageUp and Shift+PageDown. Its Action Hint scope offers the
+terminal's input as a focus-only target anchored to the terminal, and the bar
+and state buttons as buttons.
+
 ### Activation contract
 
 Connection and activation are separate concepts for shared Detail domain children.
@@ -1355,7 +1440,12 @@ frontend/
 |               |-- layout.js
 |               |-- components/
 |               |   |-- git-menu.js
-|               |   `-- github-menu.js
+|               |   |-- github-menu.js
+|               |   `-- terminal-button.js
+|               |-- terminal/
+|               |   |-- page.js
+|               |   |-- page/...
+|               |   `-- components/special-keys.js
 |               |-- (task)/
 |               |   |-- layout.js
 |               |   |-- session.js
@@ -1394,7 +1484,8 @@ frontend/
     |-- pagination.js
     |-- pdf-viewer.js
     |-- pane-resizer.js
-    `-- segmented-control.js
+    |-- segmented-control.js
+    `-- terminal-view.js
 ```
 
 Parenthesized directories are pathless ownership nodes. A directory with its
@@ -1428,9 +1519,9 @@ size or hide a child host, but descendant styling belongs to the child.
 
 `--font-ui` and `--font-code` are the two typeface roles. `--font-ui` covers
 interface chrome and conversation prose, including the Composer textarea;
-`--font-code` covers source, diffs, command and tool output, inline or fenced
-code, File Tree rows, and the codes on Action Hint and Scroll selection
-badges. A tree's section labels and its empty or error message stay on
+`--font-code` covers source, diffs, command and tool output, terminals, inline
+or fenced code, File Tree rows, and the codes on Action Hint and Scroll
+selection badges. A tree's section labels and its empty or error message stay on
 `--font-ui`.
 
 A typeface role and a size owner are chosen independently. Conversation prose
@@ -1472,7 +1563,10 @@ Every production JavaScript/CSS asset must be registered consistently in:
 - static asset and CSS ownership tests.
 
 The service-worker cache and Rust static-asset table are exact manifests of the
-assets imported by the active application hierarchy.
+assets imported by the active application hierarchy. pdf.js and xterm.js with
+its fit addon are the exceptions: their owners import pinned jsDelivr releases
+at first use, and the browser suite answers those URLs from the same versions
+in `node_modules`.
 
 ## Test ownership
 

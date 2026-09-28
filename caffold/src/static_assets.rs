@@ -691,6 +691,48 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/components/git-menu.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/components/git-menu.js"
         ))),
+        "pages/(task-workspace)/tasks/(detail)/components/terminal-button.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/components/terminal-button.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/components/terminal-button.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/components/terminal-button.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/terminal/page.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/terminal/page.css"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/terminal/page.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/terminal/page.js"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/terminal/page/connection.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/terminal/page/connection.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/terminal/page/keyboard-inset.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/terminal/page/keyboard-inset.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/terminal/page/keys.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/terminal/page/keys.js"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/terminal/page/model.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/terminal/page/model.js"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/components/github-menu.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/components/github-menu.css"
@@ -1216,6 +1258,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/pagination.js" => {
             Some(js(include_str!("../../frontend/components/pagination.js")))
         }
+        "components/terminal-view.css" => Some(css(include_str!(
+            "../../frontend/components/terminal-view.css"
+        ))),
+        "components/terminal-view.js" => Some(js(include_str!(
+            "../../frontend/components/terminal-view.js"
+        ))),
         "components/segmented-control.css" => Some(css(include_str!(
             "../../frontend/components/segmented-control.css"
         ))),
@@ -1356,6 +1404,8 @@ mod tests {
         for path in [
             "pages/(task-workspace)/tasks/(detail)/components/git-menu.js",
             "pages/(task-workspace)/tasks/(detail)/components/github-menu.js",
+            "pages/(task-workspace)/tasks/(detail)/components/terminal-button.js",
+            "pages/(task-workspace)/tasks/(detail)/terminal/page.js",
         ] {
             let task_button_js = get(path).expect("Task button js asset");
             assert_eq!(
@@ -1373,6 +1423,22 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
                 b"caffold-task-detail-github".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/components/terminal-button.css",
+                b"caffold-task-detail-terminal".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/terminal/page.css",
+                b"caffold-terminal-page".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.css",
+                b"caffold-terminal-special-keys".as_slice(),
+            ),
+            (
+                "components/terminal-view.css",
+                b"caffold-terminal-view".as_slice(),
             ),
         ] {
             let task_button_css = get(path).expect("Task button css asset");

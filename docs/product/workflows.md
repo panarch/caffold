@@ -252,14 +252,16 @@ decides the prepared Task's next bounded action.
 5. When the subject is a Task, return to Conversation and send the selected
    agent a follow-up prompt. From a Section, start a fixed-directory or
    GitHub-derived Task.
-6. Run and inspect tests through the Task's agent or a manual development tool.
+6. Run and inspect tests through the Task's agent, the subject's terminal, or
+   another development tool.
 
 ### Same-Task isolation preparation
 
 An eligible Task can ask its agent to prepare an isolated worktree through
 `isolate_current_task`. The operation moves the same Task and conversation; it
 does not create a child Task. It ends its setup turn after preparation and
-waits for the user's next request.
+waits for the user's next request. The Task's terminal, started in the old
+directory, closes when the worktree is created.
 
 By default, current staged, unstaged, and untracked changes remain in the
 source checkout. They move only when the user explicitly requests
@@ -275,6 +277,7 @@ cwd movement, ownership, archive, and restore follow the
   or archive failure does not strand the local Task in Active.
 - A clean Caffold-managed worktree is removed during archive; its branch and
   ownership record remain available for restore.
+- The Task's terminal closes once the archive checks pass.
 - Dirty managed worktrees and a successfully read current Active status block
   archive. An unavailable provider is not presented as idle; it leaves the
   provider state unknown while the explicit local Archive proceeds.

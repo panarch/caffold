@@ -10,10 +10,13 @@ import {
   getNote,
   getNotes,
   getTask,
+  killTerminal,
   liveUpdatesUrl,
+  openTerminal,
   previewTaskForkSource,
   reorderSection,
   sendTaskPrompt,
+  terminalSocketUrl,
   updateLiveSubscriptions,
   uploadTaskFile,
 } from "./api.js";
@@ -436,5 +439,59 @@ test("a prompt names its uploaded pictures by path, and a discarded send removes
   assert.equal(
     received[1].url.pathname,
     "/api/tasks/task%201/uploads/20260926-153012-a1b2",
+  );
+});
+
+test("a terminal names its Task or Section on every request", async () => {
+  const requests = [];
+  installBrowserHarness(async (url, options) => {
+    requests.push({ url: `${url}`, method: options.method, body: options.body });
+    return { ok: true, status: 204, json: async () => null };
+  });
+
+  await openTerminal({
+    subject: { kind: "task", id: "thread/1" },
+    cwd: "projects/app",
+    cols: 100,
+    rows: 40,
+  });
+  await killTerminal({ kind: "section", id: "section-1" });
+
+  assert.deepEqual(requests, [
+    {
+      url: "http://127.0.0.1/api/terminal",
+      method: "POST",
+      body: JSON.stringify({
+        task: "thread/1",
+        cwd: "projects/app",
+        cols: 100,
+        rows: 40,
+      }),
+    },
+    {
+      url: "http://127.0.0.1/api/terminal?section=section-1",
+      method: "DELETE",
+      body: undefined,
+    },
+  ]);
+});
+
+test("the terminal socket follows the page's scheme", () => {
+  installBrowserHarness(() => {});
+  assert.equal(
+    terminalSocketUrl(
+      { kind: "task", id: "thread 1" },
+      { mode: "take", tab: "tab-1", cols: 80, rows: 24 },
+    ),
+    "ws://127.0.0.1/api/terminal/socket?task=thread+1&mode=take&tab=tab-1&cols=80&rows=24",
+  );
+
+  window.location.origin = "https://caffold.example.ts.net";
+  assert.equal(
+    terminalSocketUrl(
+      { kind: "section", id: "s" },
+      { mode: "resume", tab: "tab-1", cols: 2, rows: 1 },
+    ),
+    "wss://caffold.example.ts.net/api/terminal/socket?section=s&mode=resume&tab=tab-1&cols=2&rows=1",
   );
 });

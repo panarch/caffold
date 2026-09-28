@@ -35,6 +35,7 @@ contracts.
 - [Web Push Notifications](architecture/web-push-notifications.md)
 - [Frontend Structure](architecture/frontend.md)
 - [Navigation Routing](architecture/navigation.md)
+- [Terminals](architecture/terminal.md)
 - [Security and Approvals](architecture/security-and-approvals.md)
 
 ## Development

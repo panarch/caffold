@@ -9,6 +9,7 @@
 @import "./components/pdf-viewer.css";
 @import "./components/pane-resizer.css";
 @import "./components/segmented-control.css";
+@import "./components/terminal-view.css";
 @import "./pages/(task-workspace)/layout.css";
 @import "./action-hints/components/dialog.css";
 @import "./keyboard-navigation/components/hud.css";
@@ -64,6 +65,7 @@
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css";
 @import "./pages/(task-workspace)/tasks/(detail)/components/git-menu.css";
 @import "./pages/(task-workspace)/tasks/(detail)/components/github-menu.css";
+@import "./pages/(task-workspace)/tasks/(detail)/components/terminal-button.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css";
@@ -101,6 +103,8 @@
 @import "./components/git-compare-browser.css";
 @import "./components/git-compare-browser/compare-tree.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(github)/layout.css";
+@import "./pages/(task-workspace)/tasks/(detail)/terminal/page.css";
+@import "./pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css";

@@ -15,6 +15,7 @@ mod notes;
 mod shell;
 mod tailscale;
 mod tasks;
+mod terminal;
 mod voice;
 mod workspace;
 
@@ -66,6 +67,8 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let codex_mcp = tasks::CodexMcpHost::new(&origin, mcp_signer.clone());
     let grok_mcp = tasks::GrokMcpHost::new(&origin, mcp_signer);
     let tailscale_router = tailscale::router(addr.port());
+    let terminals = terminal::Terminals::new();
+    let terminal_router = terminals.router(fs.clone());
     let tasks = tasks::PersistentTasksGateway::new(
         fs,
         initial_path.clone(),
@@ -76,6 +79,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         grok_mcp.clone(),
         watch_hub,
         permission_reviewer,
+        terminals.for_tasks(),
     );
     let app = router_with_states(
         shell_router,
@@ -84,6 +88,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         voice_router,
         jev_router,
         tailscale_router,
+        terminal_router,
         codex_mcp.router(),
         grok_mcp.router(),
     );
@@ -119,6 +124,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         }
     };
     tasks.shutdown().await;
+    terminals.shutdown().await;
     result?;
 
     Ok(())
@@ -138,6 +144,8 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let voice_router = voice::router(&fs.root().join(".caffold-test"));
     let (jev_router, permission_reviewer) = jev::open(&fs.root().join(".caffold-test"));
     let tailscale_router = tailscale::router(5_178);
+    let terminals = terminal::Terminals::new();
+    let terminal_router = terminals.router(fs.clone());
     let origin = mcp_origin(SocketAddr::from((Ipv4Addr::LOCALHOST, 5_178)));
     let mcp_signer = McpSessionSigner::memory();
     let codex_mcp = tasks::CodexMcpHost::new(&origin, mcp_signer.clone());
@@ -152,6 +160,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         grok_mcp.clone(),
         watch_hub,
         permission_reviewer,
+        terminals.for_tasks(),
     )?;
     Ok(router_with_states(
         shell_router,
@@ -160,6 +169,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         voice_router,
         jev_router,
         tailscale_router,
+        terminal_router,
         codex_mcp.router(),
         grok_mcp.router(),
     ))
@@ -173,6 +183,7 @@ fn router_with_states(
     voice_router: Router,
     jev_router: Router,
     tailscale_router: Router,
+    terminal_router: Router,
     codex_mcp_router: Router,
     grok_mcp_router: Router,
 ) -> Router {
@@ -182,6 +193,7 @@ fn router_with_states(
         .merge(voice_router)
         .merge(jev_router)
         .merge(tailscale_router)
+        .merge(terminal_router)
         .merge(codex_mcp_router)
         .merge(grok_mcp_router)
 }

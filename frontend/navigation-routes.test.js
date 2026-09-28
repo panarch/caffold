@@ -260,6 +260,8 @@ test("derives deterministic Task child parents", () => {
     ["/tasks/new?cwd=src", "/"],
     ["/tasks/thread", "/"],
     ["/tasks/thread/recovery", "/"],
+    ["/tasks/thread/terminal", "/"],
+    ["/?section=repo-1&surface=terminal", "/"],
     [
       "/tasks/thread/review?scope=branch&nav=files&view=source&file=src%2Flib.rs&line=17&base=origin%2Fmain",
       "/tasks/thread/review?scope=branch&nav=files&view=source&base=origin%2Fmain",
@@ -309,6 +311,8 @@ test("exposes Task workspace, domain, mode, and target metadata", () => {
     ["/tasks/new", null, "tasks", "new"],
     ["/tasks/thread", null, "tasks", "detail"],
     ["/tasks/thread/recovery", null, "tasks", "recovery"],
+    ["/tasks/thread/terminal", null, "tasks", "terminal"],
+    ["/?section=repo-1&surface=terminal", null, "tasks", "terminal"],
     ["/tasks/thread/review", null, "tasks", "review"],
     ["/tasks/thread/review?file=src%2Flib.rs", null, "tasks", "review-file"],
     ["/tasks/thread/git/compare", "git", "compare", "list"],
@@ -436,6 +440,9 @@ test("reads how one route stands to another from their declared parents", () => 
     // 바꾼다
     ["/tasks/thread", "/tasks/other", ROUTE_RELATION.SWAP],
     ["/tasks/thread", "/tasks/thread/review", ROUTE_RELATION.SWAP],
+    ["/tasks/thread", "/tasks/thread/terminal", ROUTE_RELATION.SWAP],
+    ["/tasks/thread/terminal", "/tasks/thread/git/log", ROUTE_RELATION.SWAP],
+    ["/?section=repo-1", "/?section=repo-1&surface=terminal", ROUTE_RELATION.SWAP],
     ["/tasks/thread/review", "/tasks/thread/git/log", ROUTE_RELATION.SWAP],
     ["/tasks/thread/github/issues/42", "/tasks/thread/github/issues/43", ROUTE_RELATION.SWAP],
     ["/tasks/thread/git/log?page=1", "/tasks/thread/git/log?page=2", ROUTE_RELATION.SWAP],
@@ -457,4 +464,24 @@ test("reads how one route stands to another from their declared parents", () => 
 
   assert.equal(routeRelation(null, parseRoute("/")), null);
   assert.equal(routeRelation(parseRoute("/"), null), null);
+});
+
+test("a Task or Section terminal is a route of its own", () => {
+  const task = parseRoute("/tasks/thread%201/terminal");
+  assert.deepEqual(task, {
+    kind: "tasks",
+    new: false,
+    threadId: "thread 1",
+    cwd: "",
+    terminal: true,
+  });
+  assert.equal(routeUrl(task), "/tasks/thread%201/terminal");
+  assert.equal(routeTab(task), "tasks");
+  assert.equal(routeUrl({ kind: "tasks", threadId: "thread" }), "/tasks/thread");
+
+  const section = parseRoute("/?section=plain&surface=terminal");
+  assert.equal(section.sectionSurface, "terminal");
+  assert.equal(section.sectionTool, "");
+  assert.equal(section.path, "");
+  assert.equal(routeUrl(section), "/?section=plain&surface=terminal");
 });

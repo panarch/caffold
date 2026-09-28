@@ -5,14 +5,20 @@ import { fileURLToPath } from "node:url";
 import { installTaskSseControllerInBrowser } from "./task-sse-fixture.js";
 
 const require = createRequire(import.meta.url);
-// The suite runs the real library rather than a stand-in: a PDF that fails to
-// render produces no fallback content to assert against.
-const PDFJS_ROOT = fileURLToPath(
-  new URL("../../../node_modules/pdfjs-dist/", import.meta.url),
+// The suite runs the real libraries the app loads from jsDelivr rather than
+// stand-ins: a PDF or terminal that fails to render produces no fallback
+// content to assert against.
+const CDN_PACKAGES = ["pdfjs-dist", "@xterm/xterm", "@xterm/addon-fit"].map(
+  (name) => ({
+    root: fileURLToPath(
+      new URL(`../../../node_modules/${name}/`, import.meta.url),
+    ),
+    prefix:
+      `https://cdn.jsdelivr.net/npm/${name}@${require(`${name}/package.json`).version}/`,
+  }),
 );
-const PDFJS_CDN_PREFIX =
-  `https://cdn.jsdelivr.net/npm/pdfjs-dist@${require("pdfjs-dist/package.json").version}/`;
-const PDFJS_CONTENT_TYPES = {
+const CDN_CONTENT_TYPES = {
+  ".css": "text/css",
   ".mjs": "text/javascript",
   ".wasm": "application/wasm",
 };
@@ -262,11 +268,11 @@ export async function installBrowserDefaults(page) {
 
 export async function installExternalModuleDefaults(page) {
   await page.route("https://cdn.jsdelivr.net/**", (route) => {
-    const file = pdfjsAssetPath(route.request().url());
+    const file = cdnAssetPath(route.request().url());
     if (!file) {
       return route.abort();
     }
-    return route.fulfill({ path: file, contentType: pdfjsContentType(file) });
+    return route.fulfill({ path: file, contentType: cdnContentType(file) });
   });
 
   await page.route("https://esm.sh/**", (route) => {
@@ -452,6 +458,7 @@ export async function installExternalModuleDefaults(page) {
         ];
         export const History = [["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" }], ["path", { d: "M3 3v5h5" }], ["path", { d: "M12 7v5l4 2" }]];
         export const Info = [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "M12 16v-4" }], ["path", { d: "M12 8h.01" }]];
+        export const SquareTerminal = [["path", { d: "m7 11 2-2-2-2" }], ["path", { d: "M11 13h4" }], ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2" }]];
         export const Keyboard = [["path", { d: "M10 8h.01" }], ["path", { d: "M12 12h.01" }], ["path", { d: "M14 8h.01" }], ["path", { d: "M16 12h.01" }], ["path", { d: "M18 8h.01" }], ["path", { d: "M6 8h.01" }], ["path", { d: "M7 16h10" }], ["path", { d: "M8 12h.01" }], ["rect", { width: "20", height: "16", x: "2", y: "4", rx: "2" }]];
         export const ImageOff = [["line", { x1: "2", x2: "22", y1: "2", y2: "22" }], ["path", { d: "M10.4 10.4 3 17.8V5a2 2 0 0 1 2-2h12.8" }], ["path", { d: "m14 14 1-1 6 6" }], ["path", { d: "M21 15V5a2 2 0 0 0-2-2h-1" }]];
         export const LoaderCircle = [["path", { d: "M21 12a9 9 0 1 1-6.2-8.6" }]];
@@ -509,18 +516,24 @@ export async function installExternalModuleDefaults(page) {
   });
 }
 
-function pdfjsAssetPath(url) {
-  if (!url.startsWith(PDFJS_CDN_PREFIX)) {
+// Answers a pinned jsDelivr URL from the installed package of the same version.
+function cdnAssetPath(url) {
+  const cdnPackage = CDN_PACKAGES.find(({ prefix }) => url.startsWith(prefix));
+  if (!cdnPackage) {
     return null;
   }
-  const file = `${PDFJS_ROOT}${url.slice(PDFJS_CDN_PREFIX.length)}`;
-  if (!file.startsWith(PDFJS_ROOT) || file.includes("..") || !existsSync(file)) {
+  const file = `${cdnPackage.root}${url.slice(cdnPackage.prefix.length)}`;
+  if (
+    !file.startsWith(cdnPackage.root) ||
+    file.includes("..") ||
+    !existsSync(file)
+  ) {
     return null;
   }
   return file;
 }
 
-function pdfjsContentType(file) {
+function cdnContentType(file) {
   const extension = file.slice(file.lastIndexOf("."));
-  return PDFJS_CONTENT_TYPES[extension] ?? "application/octet-stream";
+  return CDN_CONTENT_TYPES[extension] ?? "application/octet-stream";
 }

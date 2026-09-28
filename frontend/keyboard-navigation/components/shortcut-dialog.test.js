@@ -6,14 +6,9 @@ import {
 } from "../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-const previousButton = globalThis.HTMLButtonElement;
-globalThis.HTMLButtonElement = class TestButton extends globalThis.HTMLElement {};
 await import("./shortcut-dialog.js");
 const dialog = registry.element("caffold-keyboard-shortcut-dialog").prototype;
-after(() => {
-  restoreGlobal("HTMLButtonElement", previousButton);
-  registry.restore();
-});
+after(() => registry.restore());
 
 test("renders the shared shortcut map in one native dialog", () => {
   const nativeDialog = {};
@@ -31,6 +26,10 @@ test("renders the shared shortcut map in one native dialog", () => {
   assert.match(
     owner.innerHTML,
     /<caffold-keyboard-shortcut-list><\/caffold-keyboard-shortcut-list>/,
+  );
+  assert.match(
+    owner.innerHTML,
+    /<\/article>\s*<caffold-keyboard-navigation-presentation><\/caffold-keyboard-navigation-presentation>\s*<\/dialog>/,
   );
 });
 
@@ -64,10 +63,86 @@ test("opens, focuses, and closes only its retained native dialog", () => {
   assert.equal(calls.at(-1), "close");
 });
 
-function restoreGlobal(name, value) {
-  if (value === undefined) {
-    delete globalThis[name];
-  } else {
-    globalThis[name] = value;
-  }
-}
+test("announces a close it did not ask for", () => {
+  const reasons = [];
+  const nativeDialog = {
+    open: true,
+    close() {
+      this.open = false;
+    },
+  };
+  const owner = {
+    dialog: nativeDialog,
+    dispatchClose: (reason) => reasons.push(reason),
+  };
+  dialog.ensureRendered.call(Object.assign(owner, {
+    rendered: false,
+    querySelector: () => nativeDialog,
+  }));
+
+  dialog.close.call(owner);
+  owner.boundNativeClose(new Event("close"));
+  assert.deepEqual(reasons, []);
+
+  owner.boundNativeClose(new Event("close"));
+  assert.deepEqual(reasons, ["dialog"]);
+});
+
+test("offers its Close button to Action Hints and its list to Scroll", () => {
+  const calls = [];
+  const close = {
+    getAttribute: (name) =>
+      name === "aria-label" ? "Close keyboard shortcuts" : null,
+    focus: () => calls.push("focus"),
+    click: () => calls.push("click"),
+  };
+  const list = { getClientRects: () => [{}] };
+  const presentation = {
+    actionHintDialog: () => ({ name: "hints" }),
+    scrollModeHud: () => ({ name: "hud" }),
+    scrollSurfaceSelector: () => ({ name: "selector" }),
+  };
+  const nativeDialog = {
+    open: true,
+    querySelector(selector) {
+      if (selector.includes("keyboard-navigation-presentation")) {
+        return presentation;
+      }
+      if (selector.includes("close-shortcut-help")) {
+        return close;
+      }
+      return selector.includes("caffold-keyboard-shortcut-list") ? list : null;
+    },
+  };
+  const owner = { isConnected: true, dialog: nativeDialog };
+  owner.actionHintScope = () => dialog.actionHintScope.call(owner);
+  owner.scrollSurfaceScope = () => dialog.scrollSurfaceScope.call(owner);
+
+  const hints = owner.actionHintScope();
+  assert.deepEqual(
+    hints.targets.map(({ id, actionId, label }) => [id, actionId, label]),
+    [["app:keyboard-shortcuts:close", "dialog.button", "Close keyboard shortcuts"]],
+  );
+  assert.equal(hints.targets[0].isActionable(), true);
+  hints.targets[0].activate();
+  assert.deepEqual(calls, ["focus", "click"]);
+
+  const scroll = owner.scrollSurfaceScope();
+  assert.deepEqual(
+    scroll.surfaces.map(({ id, label, scrollport }) => [id, label, scrollport]),
+    [["app:keyboard-shortcuts:list", "Keyboard shortcuts", list]],
+  );
+  assert.equal(scroll.surfaces[0].isEligible(), true);
+
+  const [context] = dialog.keyboardNavigationContexts.call(owner);
+  assert.equal(context.id, "app:keyboard-shortcuts");
+  assert.equal(context.kind, "modal");
+  assert.equal(context.root, nativeDialog);
+  assert.equal(context.actionHints.dialog.name, "hints");
+  assert.equal(context.scroll.hud.name, "hud");
+  assert.equal(context.scroll.selector.name, "selector");
+
+  nativeDialog.open = false;
+  assert.equal(hints.targets[0].isActionable(), false);
+  assert.equal(scroll.surfaces[0].isEligible(), false);
+});

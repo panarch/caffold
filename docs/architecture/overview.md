@@ -21,8 +21,10 @@ flowchart TD
     Whisper["Host-local Whisper model"]
     SpeechApi["OpenAI, Gemini, or Grok speech-to-text API"]
     Tailscale["Tailscale CLI / Serve"]
+    Shell["Task or Section shell on a PTY"]
 
     PWA -->|"HTTP / SSE"| Backend
+    PWA -->|"terminal WebSocket"| Backend
     PWA -->|"16 kHz mono PCM WAV"| Backend
     MacWrapper -->|"HTTP"| Backend
     Backend -->|"JSON-RPC / WebSocket"| Proxy
@@ -30,6 +32,7 @@ flowchart TD
     Backend -->|"Unix socket"| Runner
     Runner -->|"stdio"| ClaudeSession
     Backend --> Git
+    Backend -->|"PTY"| Shell
     Backend --> Whisper
     Backend -->|"recording with the saved API key"| SpeechApi
     Backend -->|"fixed status and Serve commands"| Tailscale
@@ -66,6 +69,7 @@ The backend owns:
 - translation from each agent into Caffold's conversation, event, approval,
   and failure vocabulary;
 - live file, Git, GitHub, and managed-worktree operations;
+- each Task's and Section's terminal shell, its PTY, and its restorable screen;
 - voice provider selection, saved speech-to-text API keys, the Whisper model's
   download, verification, and memory lifetime, and transcription through the
   selected provider;
@@ -188,6 +192,8 @@ caffold/src/agent/codex.rs             Codex app-server boundary
 caffold/src/agent/claude.rs            Claude CLI boundary
 caffold/src/app/voice.rs               voice settings, Whisper lifecycle, WAV validation, provider routing
 caffold/src/app/tailscale.rs           status and constrained Serve orchestration
+caffold/src/app/terminal.rs            terminal HTTP/WebSocket routes and the Task close capability
+caffold/src/app/terminal/              terminal registry, shells on PTYs, screen snapshots
 caffold/src/watch.rs                   reference-counted native filesystem watches
 caffold/src/task_store.rs              Caffold-owned durable Task, Notes, and recovery data
 runners/claude/                         transport-only Claude process supervisor
@@ -212,6 +218,8 @@ writers for provider state.
 | Files, diffs, branches, commits, and worktree contents | Git and the filesystem |
 | Tailscale connection, Serve mapping, and Tailnet address | Tailscale CLI and Serve configuration |
 | Voice provider selection, saved API keys, and the Whisper model | Files under the Caffold data directory |
+| Which Tasks and Sections have a terminal, and each terminal's screen | Backend memory, until the backend exits |
+| A terminal's shell and whatever it runs | The shell process on its PTY |
 | Browser presentation, selection, and local Push identity | Browser/PWA |
 
 Caffold does not persist provider transcripts, active-turn state, or derived
@@ -235,6 +243,10 @@ Claude's transcript does.
 The browser can disconnect without stopping either runtime. Task viewer, request,
 and runtime leases determine which live subscriptions Caffold maintains, but
 they do not redefine agent status.
+
+Terminals have no runner. Each shell is a child of the backend on its own PTY,
+read by a backend thread, and ends with the backend. A browser disconnecting
+leaves the shell running; [Terminals](terminal.md) owns their lifetime.
 
 ## Task and repository context
 

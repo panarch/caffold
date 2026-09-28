@@ -1262,6 +1262,7 @@ mod tests {
             events::TaskEvents, lifecycle::TaskLifecycle, routes::TaskListEvents,
             worktrees::ManagedWorktrees,
         },
+        app::terminal::TaskTerminals,
         fs::RootedFs,
         task_store::{ManagedThread, PushSubscriptionInput, RunBy, TaskStore},
     };
@@ -2889,6 +2890,7 @@ mod tests {
             worktrees,
             claude.clone(),
             agent::grok::GrokClient::unreachable(),
+            TaskTerminals::for_tests(),
         );
         let (shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(

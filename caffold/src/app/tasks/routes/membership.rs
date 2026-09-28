@@ -146,6 +146,7 @@ pub(super) async fn task_archive(
         .lifecycle
         .preflight_archive_worktree(thread_id.clone())
         .await?;
+    state.lifecycle.close_terminal(&thread_id);
     let provider_archived = archive_provider(driver.as_ref(), &thread_id).await;
     let worktree = match state.lifecycle.archive_worktree(thread_id.clone()).await {
         Ok(worktree) => worktree,
@@ -455,6 +456,11 @@ pub(super) async fn task_recovery_archive(
         .record_from_conversation(&Conversation::from(&thread))?;
     apply_managed_thread_metadata(&mut task, &managed);
     task.conversation_available = false;
+    state
+        .lifecycle
+        .preflight_archive_worktree(thread_id.clone())
+        .await?;
+    state.lifecycle.close_terminal(&thread_id);
     let worktree = state.lifecycle.archive_worktree(thread_id.clone()).await?;
     match task_store_archive(&state, &thread_id).await {
         Ok(Some(_)) => {}
@@ -494,6 +500,11 @@ pub(super) async fn task_recovery_remove(
     }
 
     let worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
+    state
+        .lifecycle
+        .preflight_archive_worktree(thread_id.clone())
+        .await?;
+    state.lifecycle.close_terminal(&thread_id);
     let archived_worktree = state.lifecycle.archive_worktree(thread_id.clone()).await?;
     match task_store_delete_task_rows(
         &state,
@@ -725,7 +736,7 @@ mod tests {
     use crate::app::tasks::detail::loading_detail;
     use crate::app::tasks::live::TaskLiveSource;
     use crate::app::tasks::projection::task_record_from_conversation;
-    use crate::app::tasks::worktrees::inspect_ready_worktree;
+    use crate::app::tasks::worktrees::{IsolateOutcome, inspect_ready_worktree};
     use crate::task_store;
     use axum::body::Body;
     use axum::extract::Query;
@@ -1054,9 +1065,10 @@ mod tests {
             MockCodexResponse::ok("thread/unarchive", json!({ "thread": thread() })),
         ];
         let client = CodexThreadClient::mock(responses);
-        let state =
-            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let (state, terminals) =
+            task_state_with_terminals(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, &source).await;
+        terminals.open_for_test(thread_id, &source);
         state
             .lifecycle
             .isolate_current_task(
@@ -1075,10 +1087,16 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(std::path::Path::new(&worktree.worktree_path).is_dir());
+        assert!(
+            !terminals.is_open(thread_id),
+            "the terminal started before the move closes with it"
+        );
+        terminals.open_for_test(thread_id, std::path::Path::new(&worktree.worktree_path));
 
         let _ = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
             .unwrap();
+        assert!(!terminals.is_open(thread_id));
         assert!(!std::path::Path::new(&worktree.worktree_path).exists());
         assert_eq!(
             state
@@ -1110,6 +1128,55 @@ mod tests {
         );
         assert!(state.task_store.get(thread_id).unwrap().is_some());
         assert!(state.task_store.get_archived(thread_id).unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn a_task_terminal_closes_only_when_isolation_moves_the_task() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let plain = root.path().join("plain");
+        std::fs::create_dir(&plain).unwrap();
+        let (state, terminals) = task_state_with_terminals(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let isolate = |thread_id: &str, source: &std::path::Path| {
+            state.lifecycle.isolate_current_task(
+                source.to_path_buf(),
+                thread_id.to_string(),
+                "Isolated task".to_string(),
+                None,
+                None,
+                false,
+            )
+        };
+
+        // Outside a repository isolation fails, and the Task stays where it was.
+        manage_test_thread(&state, "thread-plain", &plain).await;
+        terminals.open_for_test("thread-plain", &plain);
+        assert!(isolate("thread-plain", &plain).await.is_err());
+        assert!(terminals.is_open("thread-plain"));
+        terminals.close("thread-plain");
+
+        manage_test_thread(&state, "thread-repository", &source).await;
+        terminals.open_for_test("thread-repository", &source);
+        let moved = isolate("thread-repository", &source).await.unwrap();
+        assert!(matches!(moved, IsolateOutcome::Isolated { .. }));
+        assert!(!terminals.is_open("thread-repository"));
+
+        // Asking again leaves the Task in the worktree it already has.
+        let IsolateOutcome::Isolated { worktree, .. } = moved else {
+            unreachable!();
+        };
+        let worktree_path = std::path::PathBuf::from(&worktree.worktree_path);
+        terminals.open_for_test("thread-repository", &worktree_path);
+        let again = isolate("thread-repository", &worktree_path).await.unwrap();
+        let terminal_kept = terminals.is_open("thread-repository");
+        terminals.close("thread-repository");
+        assert!(matches!(again, IsolateOutcome::AlreadyReady { .. }));
+        assert!(terminal_kept);
     }
 
     #[tokio::test]
@@ -1270,8 +1337,8 @@ mod tests {
             "thread/read",
             json!({ "thread": thread() }),
         )]);
-        let state =
-            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let (state, terminals) =
+            task_state_with_terminals(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, &source).await;
         state
             .lifecycle
@@ -1295,8 +1362,11 @@ mod tests {
             "keep me\n",
         )
         .unwrap();
+        terminals.open_for_test(thread_id, std::path::Path::new(&worktree.worktree_path));
 
         let result = task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
+        let terminal_kept = terminals.is_open(thread_id);
+        terminals.close(thread_id);
 
         assert!(matches!(
             result,
@@ -1316,6 +1386,7 @@ mod tests {
         );
         assert!(state.task_store.get(thread_id).unwrap().is_some());
         assert!(std::path::Path::new(&worktree.worktree_path).is_dir());
+        assert!(terminal_kept, "a refused Archive leaves the terminal open");
         assert_eq!(
             client
                 .mock_requests()
@@ -2021,15 +2092,17 @@ mod tests {
         let thread_id = "thread-recovery-archive";
         let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         let client = CodexThreadClient::mock(recovery_location_responses(vec![thread]));
-        let state =
-            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let (state, terminals) =
+            task_state_with_terminals(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
+        terminals.open_for_test(thread_id, root.path());
 
         let archived = task_recovery_archive(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
             .expect("recovery archive succeeds")
             .0;
 
+        assert!(!terminals.is_open(thread_id));
         assert_eq!(archived.thread_id, thread_id);
         assert!(!archived.conversation_available);
         assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
@@ -2053,15 +2126,17 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-recovery-remove";
         let client = CodexThreadClient::mock(recovery_location_responses(Vec::new()));
-        let state =
-            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let (state, terminals) =
+            task_state_with_terminals(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
+        terminals.open_for_test(thread_id, root.path());
 
         let removed = task_recovery_remove(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
             .expect("missing recovery removal succeeds")
             .0;
 
+        assert!(!terminals.is_open(thread_id));
         assert_eq!(removed.thread_id, thread_id);
         assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
         assert!(
@@ -2080,6 +2155,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_refused_recovery_archive_or_removal_leaves_the_terminal_open() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let thread_id = "thread-recovery-dirty";
+        let thread = task_thread_list(thread_id, &source)["data"][0].clone();
+        let mut responses = recovery_location_responses(vec![thread]);
+        responses.extend(recovery_location_responses(Vec::new()));
+        let (state, terminals) = task_state_with_terminals(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(responses),
+        )
+        .await;
+        manage_test_thread(&state, thread_id, &source).await;
+        let IsolateOutcome::Isolated { worktree, .. } = state
+            .lifecycle
+            .isolate_current_task(
+                source,
+                thread_id.to_string(),
+                "Dirty recovery task".to_string(),
+                None,
+                None,
+                false,
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("the Task moves into a new worktree");
+        };
+        let worktree_path = std::path::PathBuf::from(&worktree.worktree_path);
+        std::fs::write(worktree_path.join("uncommitted.txt"), "keep me\n").unwrap();
+        terminals.open_for_test(thread_id, &worktree_path);
+
+        let archived =
+            task_recovery_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
+        let kept_by_archive = terminals.is_open(thread_id);
+        let removed =
+            task_recovery_remove(State(state.clone()), AxumPath(thread_id.to_string())).await;
+        let kept_by_removal = terminals.is_open(thread_id);
+        terminals.close(thread_id);
+
+        assert!(matches!(
+            archived,
+            Err(ApiError::BadRequest {
+                code: "managed_worktree_dirty",
+                ..
+            })
+        ));
+        assert!(matches!(
+            removed,
+            Err(ApiError::BadRequest {
+                code: "managed_worktree_dirty",
+                ..
+            })
+        ));
+        assert!(
+            kept_by_archive,
+            "a refused recovery Archive leaves the terminal open"
+        );
+        assert!(
+            kept_by_removal,
+            "a refused recovery removal leaves the terminal open"
+        );
+        assert!(worktree_path.is_dir());
+    }
+
+    #[tokio::test]
     async fn recovery_remove_rejects_a_thread_that_reappeared_without_changing_membership() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-recovery-reappeared";
@@ -2094,17 +2236,25 @@ mod tests {
             }),
             task_thread_list(thread_id, root.path()),
         )]);
-        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        let (state, terminals) =
+            task_state_with_terminals(RootedFs::new(root.path()).unwrap(), client).await;
         manage_test_thread(&state, thread_id, root.path()).await;
+        terminals.open_for_test(thread_id, root.path());
+
+        let result =
+            task_recovery_remove(State(state.clone()), AxumPath(thread_id.to_string())).await;
+        let terminal_kept = terminals.is_open(thread_id);
+        terminals.close(thread_id);
 
         assert!(matches!(
-            task_recovery_remove(State(state.clone()), AxumPath(thread_id.to_string())).await,
+            result,
             Err(ApiError::BadRequest {
                 code: "task_recovery_changed",
                 ..
             })
         ));
         assert!(task_store_get(&state, thread_id).await.unwrap().is_some());
+        assert!(terminal_kept, "a refused removal leaves the terminal open");
     }
 
     #[tokio::test]
@@ -2117,11 +2267,14 @@ mod tests {
             "thread/read",
             json!({ "thread": thread }),
         )]);
-        let state =
-            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let (state, terminals) =
+            task_state_with_terminals(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
+        terminals.open_for_test(thread_id, root.path());
 
         let result = task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
+        let terminal_kept = terminals.is_open(thread_id);
+        terminals.close(thread_id);
 
         assert!(matches!(
             result,
@@ -2130,6 +2283,7 @@ mod tests {
                 ..
             })
         ));
+        assert!(terminal_kept, "a refused Archive leaves the terminal open");
         assert!(task_store_get(&state, thread_id).await.unwrap().is_some());
         assert!(
             task_store_get_archived(&state, thread_id)

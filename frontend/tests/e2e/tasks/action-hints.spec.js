@@ -175,6 +175,38 @@ test("opens global shortcut help from Normal and replaces Action Hints", { tag: 
   await expect(opener).toBeFocused();
 });
 
+test("Action Hints inside shortcut help reach its Close button", { tag: "@desktop" }, async ({
+  page,
+}, testInfo) => {
+  await installActionHintFixture(page, actionHintTasks(2));
+  await page.goto("/tasks");
+
+  const opener = page.locator(".task-workspace-surface");
+  const help = page.locator(
+    "caffold-keyboard-shortcut-dialog > dialog:modal",
+  );
+  const hints = help.locator("caffold-action-hint-dialog > dialog:modal");
+  await opener.focus();
+  await page.keyboard.press("?");
+  await expect(help).toBeVisible();
+
+  await page.keyboard.press("f");
+  await expect(hints).toBeVisible();
+  await expect(hints.locator("button[data-action-hint-code]")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(hints).toBeHidden();
+  await expect(help).toBeVisible();
+
+  await page.keyboard.press("f");
+  const close = hints.getByLabel(/ — Close keyboard shortcuts$/);
+  await expect(close).toBeVisible();
+  await captureReviewScreenshot(page, testInfo, "shortcut-help-action-hints");
+  const code = await close.getAttribute("data-action-hint-code");
+  await page.keyboard.type(code.toLowerCase());
+  await expect(help).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
 test("closes Hint when printable input cannot match an action", { tag: "@all-viewports" }, async ({
   page,
 }) => {

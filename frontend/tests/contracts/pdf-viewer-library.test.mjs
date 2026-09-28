@@ -24,10 +24,11 @@ test("the browser and the browser suite load the same pdf.js release", () => {
 test("the browser suite serves pdf.js from the installed package", () => {
   const defaults = read("tests/e2e/support/browser-defaults.js");
 
-  assert.match(defaults, /node_modules\/pdfjs-dist\//);
+  assert.match(defaults, /const CDN_PACKAGES = \[[^\]]*"pdfjs-dist"/);
+  assert.match(defaults, /node_modules\/\$\{name\}\//);
   assert.match(
     defaults,
-    /require\("pdfjs-dist\/package\.json"\)\.version/,
+    /require\(`\$\{name\}\/package\.json`\)\.version/,
     "the fulfilled version must follow the installed package rather than a second literal",
   );
   assert.match(
