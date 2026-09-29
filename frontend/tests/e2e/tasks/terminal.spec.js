@@ -204,7 +204,7 @@ test("a terminal that ends goes back to the screen before it and hands focus to 
   await expect(page.locator(".tasks-detail-pane")).toBeFocused();
 });
 
-test("opening the terminal on another screen takes it, and the first screen can take it back", { tag: "@desktop" }, async ({
+test("opening the terminal on another screen takes it, and the screen that lost it leaves with the toggle", { tag: "@desktop" }, async ({
   page,
   context,
 }) => {
@@ -232,10 +232,14 @@ test("opening the terminal on another screen takes it, and the first screen can 
     "elsewhere",
   );
 
-  // The toggle on a screen that lost the terminal brings it back there.
+  // The toggle on a screen that lost the terminal goes back without taking it.
   await terminalButton(page).click();
-  await expectLive(page);
-  await expect(otherTerminal).toHaveAttribute("data-terminal-node", "elsewhere");
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
+  await expect(terminalButton(page)).toHaveAttribute("aria-pressed", "false");
+  const pageTerminal = page.locator("caffold-terminal-page");
+  await expect(pageTerminal).toBeHidden();
+  await expect(pageTerminal).toHaveAttribute("data-terminal-node", "inactive");
+  await expect(otherTerminal).toHaveAttribute("data-terminal-node", "live");
   await other.close();
 });
 

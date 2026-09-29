@@ -356,10 +356,10 @@ Task. The complete sequence and safety boundary are defined in
 Every Task and Section has a terminal button in the Detail header: left of the
 Task details button on a Task, and last on a Section. It stays pressed while the
 terminal is shown and is unavailable until a Task's working directory is known.
-The button, `⌘J`, and `` Ctrl+` `` share one toggle: a screen using the
-running terminal returns to the surface it came from, and any other screen
-opens the terminal, starting a shell when there is none and taking it from
-another screen that shows it.
+The button, `⌘J`, and `` Ctrl+` `` share one toggle: the terminal screen
+returns to the surface it came from, whether or not it shows the shell, and any
+other screen opens the terminal, starting a shell when there is none and taking
+it from another screen that shows it.
 
 The terminal fills the Detail body. Like the code surfaces it leaves out the
 Task navigator on wide layouts, whichever surface opened it, and the side panel

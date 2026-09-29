@@ -349,7 +349,6 @@ test("the terminal toggle enters from any screen and returns to where it was", (
   const requested = [];
   const activations = [];
   let surface = "review";
-  let live = false;
   const reviewRoute = {
     kind: "tasks",
     threadId: "thread-a",
@@ -361,10 +360,7 @@ test("the terminal toggle enters from any screen and returns to where it was", (
     taskRoute: reviewRoute,
     taskSnapshot: { task: { threadId: "thread-a", cwdPath: "projects/app" } },
     activeSurface: () => surface,
-    terminalPage: () => ({
-      isLive: () => live,
-      activate: (options) => activations.push(options),
-    }),
+    terminalPage: () => ({ activate: (options) => activations.push(options) }),
     requestSubjectRoute: (route) => requested.push(route),
   });
 
@@ -376,19 +372,12 @@ test("the terminal toggle enters from any screen and returns to where it was", (
   });
   assert.equal(owner.pendingTerminalTake, "task:thread-a");
 
-  // On the terminal screen without the live terminal, the toggle takes it here.
+  // The terminal screen returns without asking for the terminal, whatever its
+  // connection shows.
   surface = "terminal";
   assert.equal(detailLayout.toggleTerminal.call(owner), true);
-  assert.deepEqual(activations, [{
-    subject: { kind: "task", id: "thread-a" },
-    cwd: "projects/app",
-    mode: "take",
-  }]);
-  assert.equal(requested.length, 1);
-
-  live = true;
-  assert.equal(detailLayout.toggleTerminal.call(owner), true);
   assert.deepEqual(requested.at(-1), reviewRoute);
+  assert.deepEqual(activations, []);
 
   // Entered directly by a link, it returns to the Task's conversation.
   assert.equal(detailLayout.toggleTerminal.call(owner), true);
@@ -429,7 +418,6 @@ test("a Section's terminal toggle returns to its New Task screen", () => {
     section: { id: "section-1", name: "notes" },
     sectionRoute: { sectionId: "section-1", sectionSurface: "new" },
     activeSurface: () => surface,
-    terminalPage: () => ({ isLive: () => true }),
     requestSubjectRoute: (route) => requested.push(route),
   });
 

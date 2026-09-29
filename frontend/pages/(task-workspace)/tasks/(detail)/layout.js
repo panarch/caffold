@@ -1121,9 +1121,9 @@ class CaffoldDetailLayout extends HTMLElement {
   }
 
   /**
-   * The terminal toggle behind the header button and Ctrl+`. A screen using
-   * the subject's live terminal returns to where it was before; any other
-   * screen enters the terminal, taking it from wherever it is shown.
+   * The terminal toggle behind the header button and Ctrl+`. The terminal
+   * screen returns to where it was before, whatever its connection shows; any
+   * other screen enters the terminal, taking it from wherever it is shown.
    */
   toggleTerminal() {
     this.ensureRendered();
@@ -1133,15 +1133,7 @@ class CaffoldDetailLayout extends HTMLElement {
       return false;
     }
     if (this.activeSurface() === "terminal") {
-      if (this.terminalPage()?.isLive()) {
-        this.leaveTerminal();
-      } else {
-        this.terminalPage()?.activate({
-          subject: identity,
-          cwd: this.terminalDirectory(),
-          mode: "take",
-        });
-      }
+      this.leaveTerminal();
       return true;
     }
     this.terminalReturnRoutes.set(
