@@ -427,7 +427,7 @@ fn spawn_watch(
             channel_open_frame("watch", Some(&subscription_id), generation),
         )
         .await?;
-        let mut subscription = match hub.subscribe(&path) {
+        let mut subscription = match hub.subscribe(&path).await {
             Ok(subscription) => subscription,
             Err(error) => {
                 send_frame(

@@ -105,6 +105,15 @@ non-recursively. Canonical scopes are reference counted by the backend, so
 multiple logical subscribers may share one native watcher without sharing
 selection or request state.
 
+Each canonical scope's native watcher runs on the scope's own thread, which
+registers the scope's paths and drops the watcher after the last subscriber
+leaves. A subscription receives `ready` only after that registration
+completes. The server's request threads never wait for a native
+watcher to start or stop, and the backend's list of scopes is locked only to
+find or change an entry, so a native watcher that never finishes starting or
+stopping holds up only that scope's subscribers. Once the last of them leaves,
+a new subscription to the same scope starts a new native watcher.
+
 Paths outside the configured RootedFs boundary, including traversal and symlink
 escapes, are rejected. Native watcher failure does not start polling. Active
 surfaces retain current content and expose manual Refresh or Retry.
