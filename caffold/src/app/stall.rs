@@ -1,11 +1,14 @@
 //! Notices when the server's request threads stop running work, and logs when
 //! that began, how many files the process holds open, and which requests were
-//! still waiting, so a freeze leaves evidence in the server log.
+//! still waiting, so a freeze leaves evidence in the server log. It also logs
+//! each request whose handler has gone too long without answering, so requests
+//! that pile up before a freeze leave evidence as they go.
 //!
 //! The monitor runs on its own thread outside the Tokio runtime, so it keeps
 //! running when every worker is held up. At a fixed interval it hands the
 //! runtime an empty task, and it counts the runtime as stalled once none has
-//! run for the threshold.
+//! run for the threshold. At the same interval it looks through the waiting
+//! requests and logs each one once when it passes its own threshold.
 
 use std::{
     cmp::Reverse,
@@ -35,6 +38,7 @@ const TIMING: Timing = Timing {
     probe: Duration::from_secs(1),
     stall_after: Duration::from_secs(5),
     repeat: Duration::from_secs(60),
+    unanswered_after: Duration::from_secs(60),
 };
 
 /// The most waiting requests one report lists.
@@ -56,7 +60,7 @@ impl StallMonitor {
         runtime: Handle,
         requests: RequestsInFlight,
         timing: Timing,
-        report: impl Fn(StallReport) + Send + 'static,
+        report: impl Fn(Report) + Send + 'static,
     ) -> Self {
         let (stop, stopped) = mpsc::channel();
         let thread = thread::Builder::new()
@@ -84,12 +88,14 @@ impl StallMonitor {
 }
 
 /// How often the monitor looks, how long without a task counts as a stall,
-/// and how often a stall that lasts is reported again.
+/// how often a stall that lasts is reported again, and how long a request may
+/// wait for its handler before it is reported.
 #[derive(Clone, Copy)]
 struct Timing {
     probe: Duration,
     stall_after: Duration,
     repeat: Duration,
+    unanswered_after: Duration,
 }
 
 /// The body of the monitor thread, until the monitor stops.
@@ -98,7 +104,7 @@ fn watch(
     requests: &RequestsInFlight,
     timing: Timing,
     stopped: &Receiver<()>,
-    report: impl Fn(StallReport),
+    report: impl Fn(Report),
 ) {
     let started = Instant::now();
     // When a handed task last ran, as nanoseconds after `started`.
@@ -118,11 +124,15 @@ fn watch(
         }
 
         let now = Instant::now();
+        for request in requests.newly_unanswered(now, timing.unanswered_after) {
+            report(Report::Unanswered(request));
+        }
+
         let ran_at = started + Duration::from_nanos(last_ran.load(Ordering::Acquire));
         let silent = now.saturating_duration_since(ran_at);
         if silent < timing.stall_after {
             if let Some(ended) = stall.take() {
-                report(StallReport::Resumed {
+                report(Report::Resumed {
                     stalled_for: ran_at.saturating_duration_since(ended.began),
                 });
             }
@@ -130,14 +140,14 @@ fn watch(
         }
         match &mut stall {
             None => {
-                report(StallReport::Stalled(snapshot(silent, requests, now)));
+                report(Report::Stalled(snapshot(silent, requests, now)));
                 stall = Some(Stall {
                     began: ran_at,
                     next_report: now + timing.repeat,
                 });
             }
             Some(ongoing) if now >= ongoing.next_report => {
-                report(StallReport::Stalled(snapshot(silent, requests, now)));
+                report(Report::Stalled(snapshot(silent, requests, now)));
                 ongoing.next_report += timing.repeat;
             }
             Some(_) => {}
@@ -155,9 +165,10 @@ fn nanos(duration: Duration) -> u64 {
     u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
 }
 
-enum StallReport {
+enum Report {
     Stalled(StallSnapshot),
     Resumed { stalled_for: Duration },
+    Unanswered(WaitingRequest),
 }
 
 struct StallSnapshot {
@@ -182,13 +193,13 @@ fn snapshot(silent: Duration, requests: &RequestsInFlight, now: Instant) -> Stal
     }
 }
 
-fn log_report(report: StallReport) {
+fn log_report(report: Report) {
     warn!("{}", report_message(&report));
 }
 
-fn report_message(report: &StallReport) -> String {
+fn report_message(report: &Report) -> String {
     match report {
-        StallReport::Stalled(snapshot) => {
+        Report::Stalled(snapshot) => {
             let open_files = match &snapshot.open_files {
                 Ok(count) => count.to_string(),
                 Err(error) => format!("unknown ({error})"),
@@ -211,9 +222,15 @@ fn report_message(report: &StallReport) -> String {
             }
             message
         }
-        StallReport::Resumed { stalled_for } => format!(
+        Report::Resumed { stalled_for } => format!(
             "request threads ran again after {:.1}s",
             stalled_for.as_secs_f64()
+        ),
+        Report::Unanswered(request) => format!(
+            "request unanswered after {:.1}s: {} {}",
+            request.age.as_secs_f64(),
+            request.method,
+            request.path
         ),
     }
 }
@@ -242,6 +259,8 @@ struct Waiting {
     method: Method,
     path: String,
     started: Instant,
+    /// Whether the monitor has reported this request as unanswered.
+    reported: bool,
 }
 
 struct WaitingRequest {
@@ -265,6 +284,7 @@ impl RequestsInFlight {
                 method: method.clone(),
                 path: path.to_string(),
                 started: Instant::now(),
+                reported: false,
             },
         );
         RequestEntry {
@@ -289,6 +309,25 @@ impl RequestsInFlight {
         listed.sort_by_key(|request| Reverse(request.age));
         listed.truncate(REPORTED_REQUESTS);
         (listed, waiting)
+    }
+
+    /// The requests that have waited at least `after` and were not returned
+    /// before. Each request is returned once.
+    fn newly_unanswered(&self, now: Instant, after: Duration) -> Vec<WaitingRequest> {
+        let mut unanswered = Vec::new();
+        for waiting in self.lock().values_mut() {
+            let age = now.saturating_duration_since(waiting.started);
+            if waiting.reported || age < after {
+                continue;
+            }
+            waiting.reported = true;
+            unanswered.push(WaitingRequest {
+                method: waiting.method.clone(),
+                path: waiting.path.clone(),
+                age,
+            });
+        }
+        unanswered
     }
 
     fn lock(&self) -> MutexGuard<'_, HashMap<u64, Waiting>> {
@@ -342,6 +381,7 @@ mod tests {
         probe: Duration::from_millis(10),
         stall_after: Duration::from_millis(200),
         repeat: Duration::from_secs(60),
+        unanswered_after: Duration::from_secs(60),
     };
 
     fn one_worker() -> Runtime {
@@ -356,7 +396,7 @@ mod tests {
         runtime: &Runtime,
         requests: &RequestsInFlight,
         timing: Timing,
-    ) -> (StallMonitor, Receiver<StallReport>) {
+    ) -> (StallMonitor, Receiver<Report>) {
         let (sender, reports) = mpsc::channel();
         let monitor = StallMonitor::start_with(
             runtime.handle().clone(),
@@ -388,7 +428,7 @@ mod tests {
         };
         let (monitor, reports) = monitor(&runtime, &requests, timing);
 
-        let Ok(StallReport::Stalled(first)) = reports.recv_timeout(WAIT) else {
+        let Ok(Report::Stalled(first)) = reports.recv_timeout(WAIT) else {
             panic!("the stall was not reported");
         };
         assert!(first.silent >= timing.stall_after);
@@ -396,16 +436,37 @@ mod tests {
         assert_eq!(first.requests[0].method, Method::GET);
         assert_eq!(first.requests[0].path, "/api/github/status");
         assert!(matches!(first.open_files, Ok(count) if count > 0));
-        let Ok(StallReport::Stalled(again)) = reports.recv_timeout(WAIT) else {
+        let Ok(Report::Stalled(again)) = reports.recv_timeout(WAIT) else {
             panic!("the lasting stall was not reported again");
         };
         assert!(again.silent >= first.silent + timing.repeat);
 
         release.send(()).unwrap();
-        let Ok(StallReport::Resumed { stalled_for }) = reports.recv_timeout(WAIT) else {
+        let Ok(Report::Resumed { stalled_for }) = reports.recv_timeout(WAIT) else {
             panic!("the end of the stall was not reported");
         };
         assert!(stalled_for >= again.silent);
+        monitor.stop();
+    }
+
+    #[test]
+    fn a_request_left_unanswered_is_reported_while_a_worker_is_free() {
+        let runtime = one_worker();
+        let requests = RequestsInFlight::default();
+        let _entry = requests.enter(&Method::GET, "/api/github/status");
+        let timing = Timing {
+            stall_after: Duration::from_secs(60),
+            unanswered_after: Duration::from_millis(200),
+            ..FAST
+        };
+        let (monitor, reports) = monitor(&runtime, &requests, timing);
+
+        let Ok(Report::Unanswered(request)) = reports.recv_timeout(WAIT) else {
+            panic!("the unanswered request was not reported");
+        };
+        assert_eq!(request.method, Method::GET);
+        assert_eq!(request.path, "/api/github/status");
+        assert!(request.age >= timing.unanswered_after);
         monitor.stop();
     }
 
@@ -428,7 +489,7 @@ mod tests {
 
     #[test]
     fn a_report_names_the_stall_the_files_and_the_waiting_requests() {
-        let stalled = StallReport::Stalled(StallSnapshot {
+        let stalled = Report::Stalled(StallSnapshot {
             silent: Duration::from_millis(5_200),
             open_files: Ok(37),
             file_limit: Some(256),
@@ -444,7 +505,7 @@ mod tests {
             "request threads have run nothing for 5.2s; open files 37 of 256; waiting requests: 1\n  GET /api/github/status for 12.3s"
         );
 
-        let exhausted = StallReport::Stalled(StallSnapshot {
+        let exhausted = Report::Stalled(StallSnapshot {
             silent: Duration::from_secs(5),
             open_files: Err("Too many open files (os error 24)".to_string()),
             file_limit: Some(256),
@@ -456,12 +517,22 @@ mod tests {
             "request threads have run nothing for 5.0s; open files unknown (Too many open files (os error 24)) of 256; waiting requests: 0"
         );
 
-        let resumed = StallReport::Resumed {
+        let resumed = Report::Resumed {
             stalled_for: Duration::from_millis(61_400),
         };
         assert_eq!(
             report_message(&resumed),
             "request threads ran again after 61.4s"
+        );
+
+        let unanswered = Report::Unanswered(WaitingRequest {
+            method: Method::GET,
+            path: "/api/github/status".to_string(),
+            age: Duration::from_millis(60_200),
+        });
+        assert_eq!(
+            report_message(&unanswered),
+            "request unanswered after 60.2s: GET /api/github/status"
         );
     }
 
@@ -511,5 +582,27 @@ mod tests {
         abandoned.abort();
         assert!(matches!(abandoned.await, Err(error) if error.is_cancelled()));
         assert_eq!(requests.waiting(Instant::now()).1, 0);
+    }
+
+    #[test]
+    fn a_request_is_returned_as_unanswered_one_time_after_it_has_waited_long_enough() {
+        let requests = RequestsInFlight::default();
+        let after = Duration::from_secs(60);
+        let _waiting = requests.enter(&Method::GET, "/api/github/status");
+        assert!(requests.newly_unanswered(Instant::now(), after).is_empty());
+
+        let later = Instant::now() + after;
+        let unanswered = requests.newly_unanswered(later, after);
+        assert_eq!(unanswered.len(), 1);
+        assert_eq!(unanswered[0].path, "/api/github/status");
+        assert!(unanswered[0].age >= after);
+        assert!(requests.newly_unanswered(later + after, after).is_empty());
+
+        drop(requests.enter(&Method::POST, "/api/tasks"));
+        assert!(
+            requests
+                .newly_unanswered(Instant::now() + after, after)
+                .is_empty()
+        );
     }
 }

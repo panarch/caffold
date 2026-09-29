@@ -253,8 +253,10 @@ still runs when every request thread is held up. When the request threads have
 run no work for five seconds, it writes to the server log how long they have
 been silent, how many files the process holds open against its limit, and
 which HTTP requests are still waiting for their handlers. It writes that again
-every minute while the stall lasts, and once more when work runs again. The
-thread ends with the backend.
+every minute while the stall lasts, and once more when work runs again. It
+also writes one line for each HTTP request whose handler has gone a minute
+without answering, once per request, so requests that pile up before a stall
+leave a trail. The thread ends with the backend.
 
 ## Task and repository context
 
