@@ -2,8 +2,9 @@
 
 ## Caffold does not open
 
-- Check that **Caffold Server** is in the menu bar. If its **Server** status is
-  not running, choose **Start Server**, or **Restart Server** if it is stuck.
+- Check that **Caffold Server** is in the menu bar. If its **Server** status
+  reads **Server · Stopped**, choose **Start Server**. If it reads
+  **Server · Not responding**, choose **Restart Server**.
 - Open `http://127.0.0.1:5178`, or the port set in **Server Settings...**, on
   the Mac itself.
 - **Show Logs** opens the log folder, `~/Library/Logs/Caffold`.
