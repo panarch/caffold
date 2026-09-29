@@ -69,12 +69,8 @@ test("a failed socket while connecting or live is disconnected", () => {
   }
 });
 
-test("asking here takes the terminal from another screen, a missing one, or a lost connection", () => {
-  for (const node of [
-    TERMINAL_NODE.ELSEWHERE,
-    TERMINAL_NODE.EMPTY,
-    TERMINAL_NODE.DISCONNECTED,
-  ]) {
+test("asking here takes the terminal from another screen or opens a missing one", () => {
+  for (const node of [TERMINAL_NODE.ELSEWHERE, TERMINAL_NODE.EMPTY]) {
     const result = apply(stateAt(node), activate(TERMINAL_MODE.TAKE));
     assert.equal(result.state.node, TERMINAL_NODE.CONNECTING, node);
     assert.equal(result.state.mode, TERMINAL_MODE.TAKE, node);
@@ -157,6 +153,7 @@ test("nodes refuse events they do not own", () => {
     [TERMINAL_NODE.LIVE, backend("ABSENT", 1)],
     [TERMINAL_NODE.ELSEWHERE, activate(TERMINAL_MODE.RESUME)],
     [TERMINAL_NODE.EMPTY, { type: TERMINAL_EVENT.RECOVER }],
+    [TERMINAL_NODE.DISCONNECTED, activate(TERMINAL_MODE.TAKE)],
     [TERMINAL_NODE.DISCONNECTED, { type: TERMINAL_EVENT.VISIBLE }],
     [TERMINAL_NODE.DISCONNECTED, backend("SOCKET_FAILED", 1)],
   ];

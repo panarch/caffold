@@ -162,10 +162,10 @@ browser. A socket that closes without one of the closing messages has failed.
 ## Browser
 
 The Detail layout owns the terminal surface for its subject, the header
-terminal button, and the toggle behind that button, `⌘J`, and `` Ctrl+` ``. A
-screen using the subject's live terminal returns to the surface it came from —
-or to the Task's Conversation or the Section's New Task when it was entered
-directly — and any other screen enters the terminal with `take`. Entering by any other
+terminal button, and the toggle behind that button, `⌘J`, and `` Ctrl+` ``. The
+terminal screen, whatever its node, returns to the surface it came from — or to
+the Task's Conversation or the Section's New Task when it was entered directly —
+and any other screen enters the terminal with `take`. Entering by any other
 path uses `resume`. [Navigation Routing](navigation.md#task-detail-routes) owns
 the routes and [Frontend Architecture](frontend.md#terminal) the component
 boundaries.

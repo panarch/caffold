@@ -115,15 +115,11 @@ function acceptedEdge(state, event) {
       if (node === TERMINAL_NODE.INACTIVE) {
         return connecting(mode, [CONNECT]);
       }
-      // Asking for the terminal here takes it wherever it is, and connects
-      // again after a lost connection.
+      // Asking for the terminal here takes it from another screen, or opens
+      // one where none runs.
       if (
         mode === TERMINAL_MODE.TAKE &&
-        [
-          TERMINAL_NODE.ELSEWHERE,
-          TERMINAL_NODE.EMPTY,
-          TERMINAL_NODE.DISCONNECTED,
-        ].includes(node)
+        [TERMINAL_NODE.ELSEWHERE, TERMINAL_NODE.EMPTY].includes(node)
       ) {
         return connecting(mode, [CONNECT]);
       }

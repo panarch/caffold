@@ -159,11 +159,6 @@ class CaffoldTerminalPage extends HTMLElement {
     return accepted ? this.settled() : null;
   }
 
-  /** Whether this screen is the one using the subject's running terminal. */
-  isLive() {
-    return this.state.node === TERMINAL_NODE.LIVE;
-  }
-
   get transportState() {
     switch (this.state.node) {
       case TERMINAL_NODE.CONNECTING:
