@@ -248,6 +248,14 @@ Terminals have no runner. Each shell is a child of the backend on its own PTY,
 read by a backend thread, and ends with the backend. A browser disconnecting
 leaves the shell running; [Terminals](terminal.md) owns their lifetime.
 
+The backend also keeps one monitor thread outside its request threads, so it
+still runs when every request thread is held up. When the request threads have
+run no work for five seconds, it writes to the server log how long they have
+been silent, how many files the process holds open against its limit, and
+which HTTP requests are still waiting for their handlers. It writes that again
+every minute while the stall lasts, and once more when work runs again. The
+thread ends with the backend.
+
 ## Task and repository context
 
 Caffold persists which agent runs each Task. A Claude Task also persists its

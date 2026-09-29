@@ -13,6 +13,7 @@ mod jev;
 mod live_updates;
 mod notes;
 mod shell;
+mod stall;
 mod tailscale;
 mod tasks;
 mod terminal;
@@ -81,7 +82,8 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         permission_reviewer,
         terminals.for_tasks(),
     );
-    let app = router_with_states(
+    let requests_in_flight = stall::RequestsInFlight::default();
+    let app = requests_in_flight.track(router_with_states(
         shell_router,
         workspace_router,
         tasks.router(),
@@ -91,7 +93,8 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         terminal_router,
         codex_mcp.router(),
         grok_mcp.router(),
-    );
+    ));
+    let stall_monitor = stall::StallMonitor::start(requests_in_flight);
 
     info!("serving Caffold at http://{addr}");
     info!("browsing root {}", root.display());
@@ -125,6 +128,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     };
     tasks.shutdown().await;
     terminals.shutdown().await;
+    stall_monitor.stop();
     result?;
 
     Ok(())
