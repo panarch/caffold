@@ -545,7 +545,7 @@ test("creates a task with responsive composer controls and canonical approval st
         backgroundColor: "rgb(255, 248, 231)",
         borderColor: "rgb(223, 197, 143)",
         borderRadius: "999px",
-        borderWidth: "1px",
+        borderWidth: "0px",
         color: "rgb(127, 86, 0)",
         display: "grid",
         height: Math.round(rootFontSize * 1.25),
