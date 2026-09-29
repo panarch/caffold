@@ -102,6 +102,11 @@ caffold-task-detail-info {
     height: var(--interface-icon-slot-size);
     justify-content: center;
     padding: 0;
+    border: 0;
+  }
+
+  & .task-detail-status[data-status="running"] {
+    background: transparent;
   }
 }
 

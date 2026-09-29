@@ -839,3 +839,54 @@ test("keeps canonical task status stable while the detail transport reconnects",
   await expect(infoButton.locator(".task-action-icon")).toHaveCount(1);
   await expect(infoButton).toHaveAttribute("title", "Status: idle");
 });
+
+test("draws the task info status chip without the pill border, like the Task list", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const states = {
+    running: canonicalTaskState("active", { turnId: "turn_summary_chip_running" }),
+    waiting_for_approval: canonicalTaskState("active", {
+      activeFlags: ["waitingOnApproval"],
+    }),
+    waiting_on_user_input: canonicalTaskState("active", {
+      activeFlags: ["waitingOnUserInput"],
+    }),
+    failed: canonicalTaskState("systemError"),
+  };
+  const cases = Object.entries(states).map(([status, state], index) => [status, {
+    ...summaryTask(`thread_summary_chip_${status}`, `Chip ${status}`, "repo-chip", 100 + index),
+    ...state,
+    worktree: null,
+  }]);
+  await installSummaryFixture(page, cases.map(([, task]) => task));
+
+  for (const [status, task] of cases) {
+    await page.goto(`/tasks/${task.threadId}`);
+    await emitTaskDetailBootstrap(page, summaryDetail(task));
+    const detailChip = page.locator(
+      "caffold-task-detail-summary .task-detail-info-button > .task-status-chip",
+    );
+    const rowChip = page.locator(
+      `.task-row[data-thread-id="${task.threadId}"] .task-status-chip`,
+    );
+    await expect(detailChip).toHaveAttribute("data-status", status);
+    await expect(rowChip).toHaveAttribute("data-status", status);
+    const [detail, row] = await Promise.all(
+      [detailChip, rowChip].map((chip) =>
+        chip.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            borderWidth: style.borderWidth,
+            backgroundColor: style.backgroundColor,
+          };
+        }),
+      ),
+    );
+    expect(detail.borderWidth).toBe("0px");
+    expect(detail.borderWidth).toBe(row.borderWidth);
+    if (status === "running") {
+      expect(detail.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+      expect(detail.backgroundColor).toBe(row.backgroundColor);
+    }
+  }
+});
