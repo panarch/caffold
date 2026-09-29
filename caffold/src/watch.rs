@@ -2,14 +2,16 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{Arc, Mutex, Weak},
+    thread,
     time::Duration,
 };
 
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Event, EventKind, PathsMut, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use thiserror::Error;
 use tokio::{
-    sync::{broadcast, mpsc, oneshot},
+    sync::{broadcast, mpsc, oneshot, watch},
+    task,
     time::{Instant, sleep_until},
 };
 
@@ -54,6 +56,15 @@ pub(crate) enum WatchError {
     Unavailable(String),
 }
 
+/// The backend's native filesystem watches, one per canonical scope shared by
+/// its subscribers.
+///
+/// Each scope's native watcher lives on the scope's own thread, which
+/// registers it and finally drops it. notify's FSEvents backend waits without
+/// a bound when it stops a stream, so a request thread of the server never
+/// does either, and the hub's lock covers only its list of scopes. A native
+/// watcher that never finishes starting or stopping holds up only that scope's
+/// subscribers.
 #[derive(Clone)]
 pub(crate) struct WatchHub {
     inner: Arc<WatchHubInner>,
@@ -62,34 +73,37 @@ pub(crate) struct WatchHub {
 struct WatchHubInner {
     fs: Arc<RootedFs>,
     shutdown: broadcast::Sender<()>,
-    scopes: Mutex<HashMap<String, ScopeEntry>>,
+    scopes: Mutex<Scopes>,
+    #[cfg(test)]
+    hold: Mutex<Option<Hold>>,
 }
 
+#[derive(Default)]
+struct Scopes {
+    entries: HashMap<String, ScopeEntry>,
+    next_scope: u64,
+}
+
+/// Dropping an entry ends its scope: the batching task stops, and the scope's
+/// thread drops the native watcher.
 struct ScopeEntry {
-    scope: WatchScope,
-    subscribers: usize,
-}
-
-struct WatchScope {
+    scope: u64,
     ready: WatchReady,
     sender: broadcast::Sender<WatchMessage>,
-    _watcher: Mutex<RecommendedWatcher>,
-    stop: Mutex<Option<oneshot::Sender<()>>>,
+    started: watch::Receiver<Option<Started>>,
+    subscribers: usize,
+    _stop_batches: oneshot::Sender<()>,
+    _release_watcher: oneshot::Sender<()>,
 }
 
-impl Drop for WatchScope {
-    fn drop(&mut self) {
-        if let Ok(mut stop) = self.stop.lock()
-            && let Some(stop) = stop.take()
-        {
-            let _ = stop.send(());
-        }
-    }
-}
+/// Whether a scope's native watcher registered, with the error's message if
+/// not.
+type Started = Result<(), String>;
 
 pub(crate) struct WatchSubscription {
     hub: Weak<WatchHubInner>,
     key: String,
+    scope: u64,
     pub ready: WatchReady,
     receiver: broadcast::Receiver<WatchMessage>,
 }
@@ -108,16 +122,15 @@ impl Drop for WatchSubscription {
         let Ok(mut scopes) = hub.scopes.lock() else {
             return;
         };
-        let remove = scopes.get_mut(&self.key).is_some_and(|entry| {
-            if entry.subscribers > 1 {
+        let remove = match scopes.entries.get_mut(&self.key) {
+            Some(entry) if entry.scope == self.scope => {
                 entry.subscribers -= 1;
-                false
-            } else {
-                true
+                entry.subscribers == 0
             }
-        });
+            _ => false,
+        };
         if remove {
-            scopes.remove(&self.key);
+            scopes.entries.remove(&self.key);
         }
     }
 }
@@ -138,62 +151,136 @@ impl WatchHub {
             inner: Arc::new(WatchHubInner {
                 fs,
                 shutdown,
-                scopes: Mutex::new(HashMap::new()),
+                scopes: Mutex::default(),
+                #[cfg(test)]
+                hold: Mutex::default(),
             }),
         }
     }
 
-    pub(crate) fn subscribe(&self, requested_path: &str) -> Result<WatchSubscription, WatchError> {
-        let config = self.scope_config(requested_path)?;
+    /// Subscribes to the canonical scope of `requested_path` and returns once
+    /// its native watcher is registered, so every later change reaches the
+    /// subscription.
+    pub(crate) async fn subscribe(
+        &self,
+        requested_path: &str,
+    ) -> Result<WatchSubscription, WatchError> {
+        let config = self.scope_config(requested_path).await?;
+        // The subscription exists before the wait, so a caller that gives up
+        // waiting still leaves the scope.
+        let (subscription, mut started) = self.join_scope(config)?;
+        let started = match started.wait_for(Option::is_some).await {
+            Ok(started) => started.clone().expect("a started scope reports how"),
+            Err(_) => Err("the native watcher ended before it started".to_string()),
+        };
+        started.map_err(WatchError::Unavailable)?;
+        Ok(subscription)
+    }
+
+    /// Resolving a scope runs Git, so it happens on the blocking pool.
+    async fn scope_config(&self, requested_path: &str) -> Result<ScopeConfig, WatchError> {
+        let inner = self.inner.clone();
+        let requested_path = requested_path.to_string();
+        task::spawn_blocking(move || inner.scope_config(&requested_path))
+            .await
+            .map_err(|error| WatchError::Unavailable(error.to_string()))?
+    }
+
+    /// Counts a subscriber of the config's scope, starting the scope if it has
+    /// none, and returns the subscription with the scope's start report.
+    fn join_scope(
+        &self,
+        config: ScopeConfig,
+    ) -> Result<(WatchSubscription, watch::Receiver<Option<Started>>), WatchError> {
         let key = config.scope_path.clone();
         let mut scopes =
             self.inner.scopes.lock().map_err(|_| {
                 WatchError::Unavailable("watch registry is unavailable".to_string())
             })?;
 
-        if let Some(entry) = scopes.get_mut(&key) {
+        if let Some(entry) = scopes.entries.get_mut(&key) {
             entry.subscribers += 1;
-            return Ok(WatchSubscription {
-                hub: Arc::downgrade(&self.inner),
-                key,
-                ready: entry.scope.ready.clone(),
-                receiver: entry.scope.sender.subscribe(),
-            });
+            return Ok((self.subscription(&key, entry), entry.started.clone()));
         }
 
-        let scope = self.start_scope(config)?;
-        let ready = scope.ready.clone();
-        let receiver = scope.sender.subscribe();
-        scopes.insert(
-            key.clone(),
-            ScopeEntry {
-                scope,
-                subscribers: 1,
+        scopes.next_scope += 1;
+        let scope = scopes.next_scope;
+        let (sender, _) = broadcast::channel(128);
+        let (report, started) = watch::channel(None);
+        let (stop_batches, batches_stopped) = oneshot::channel();
+        let (release_watcher, watcher_released) = oneshot::channel();
+        let entry = ScopeEntry {
+            scope,
+            ready: WatchReady {
+                revision: 1,
+                scope_path: config.scope_path.clone(),
+                repository_root_path: config.repository_root_path.clone(),
             },
-        );
+            sender: sender.clone(),
+            started: started.clone(),
+            subscribers: 1,
+            _stop_batches: stop_batches,
+            _release_watcher: release_watcher,
+        };
+        let subscription = self.subscription(&key, &entry);
+        scopes.entries.insert(key.clone(), entry);
+        drop(scopes);
 
-        Ok(WatchSubscription {
+        let (events, raw_receiver) = mpsc::unbounded_channel();
+        tokio::spawn(run_scope(
+            config.clone(),
+            raw_receiver,
+            sender,
+            batches_stopped,
+            self.inner.shutdown.subscribe(),
+        ));
+        let native = NativeWatcher {
             hub: Arc::downgrade(&self.inner),
-            key,
-            ready,
-            receiver,
-        })
+            scope,
+            config,
+            events,
+            report,
+            released: watcher_released,
+            #[cfg(test)]
+            hold: self.inner.hold.lock().unwrap().take(),
+        };
+        let spawned = thread::Builder::new()
+            .name("caffold-watch".to_string())
+            .spawn(move || native.run());
+        // The report's sender went with the thread, so waiting subscribers
+        // learn that the scope ended before its native watcher started.
+        if spawned.is_err() {
+            self.inner.remove(&key, scope);
+        }
+        Ok((subscription, started))
     }
 
+    fn subscription(&self, key: &str, entry: &ScopeEntry) -> WatchSubscription {
+        WatchSubscription {
+            hub: Arc::downgrade(&self.inner),
+            key: key.to_string(),
+            scope: entry.scope,
+            ready: entry.ready.clone(),
+            receiver: entry.sender.subscribe(),
+        }
+    }
+}
+
+impl WatchHubInner {
     fn scope_config(&self, requested_path: &str) -> Result<ScopeConfig, WatchError> {
-        let requested = self.inner.fs.absolute_directory_path(requested_path)?;
+        let requested = self.fs.absolute_directory_path(requested_path)?;
         let repository = git::repository_for(&requested)
-            .filter(|repository| repository.root.starts_with(self.inner.fs.root()));
+            .filter(|repository| repository.root.starts_with(self.fs.root()));
         let watch_root = repository
             .as_ref()
             .map(|repository| repository.root.clone())
             .unwrap_or(requested);
-        let scope_path = self.inner.fs.logical_path_for_absolute(&watch_root)?;
+        let scope_path = self.fs.logical_path_for_absolute(&watch_root)?;
         let repository_root_path = repository.as_ref().map(|_| scope_path.clone());
         let metadata_paths = repository.as_ref().and_then(git::repository_metadata_paths);
 
         Ok(ScopeConfig {
-            fs_root: self.inner.fs.root().to_path_buf(),
+            fs_root: self.fs.root().to_path_buf(),
             watch_root,
             scope_path,
             repository,
@@ -202,51 +289,86 @@ impl WatchHub {
         })
     }
 
-    fn start_scope(&self, config: ScopeConfig) -> Result<WatchScope, WatchError> {
-        let (raw_sender, raw_receiver) = mpsc::unbounded_channel();
-        let mut watcher = notify::recommended_watcher(move |event| {
-            let _ = raw_sender.send(event);
-        })
-        .map_err(|error| WatchError::Unavailable(error.to_string()))?;
-
-        register_watch_paths(&mut watcher, &config)
-            .map_err(|error| WatchError::Unavailable(error.to_string()))?;
-
-        let (sender, _) = broadcast::channel(128);
-        let (stop_sender, stop_receiver) = oneshot::channel();
-        let shutdown = self.inner.shutdown.subscribe();
-        tokio::spawn(run_scope(
-            config.clone(),
-            raw_receiver,
-            sender.clone(),
-            stop_receiver,
-            shutdown,
-        ));
-
-        Ok(WatchScope {
-            ready: WatchReady {
-                revision: 1,
-                scope_path: config.scope_path,
-                repository_root_path: config.repository_root_path,
-            },
-            sender,
-            _watcher: Mutex::new(watcher),
-            stop: Mutex::new(Some(stop_sender)),
-        })
-    }
-
-    #[cfg(test)]
-    fn active_scope_count(&self) -> usize {
-        self.inner.scopes.lock().unwrap().len()
+    /// Removes the key's scope if it is still `scope`.
+    fn remove(&self, key: &str, scope: u64) {
+        if let Ok(mut scopes) = self.scopes.lock()
+            && scopes
+                .entries
+                .get(key)
+                .is_some_and(|entry| entry.scope == scope)
+        {
+            scopes.entries.remove(key);
+        }
     }
 }
 
-fn register_watch_paths(
-    watcher: &mut RecommendedWatcher,
+/// What a scope's own thread needs to register, keep, and finally drop its
+/// native watcher.
+struct NativeWatcher {
+    hub: Weak<WatchHubInner>,
+    scope: u64,
+    config: ScopeConfig,
+    events: mpsc::UnboundedSender<notify::Result<Event>>,
+    report: watch::Sender<Option<Started>>,
+    released: oneshot::Receiver<()>,
+    #[cfg(test)]
+    hold: Option<Hold>,
+}
+
+impl NativeWatcher {
+    /// The body of the scope's thread.
+    fn run(self) {
+        let Self {
+            hub,
+            scope,
+            config,
+            events,
+            report,
+            released,
+            #[cfg(test)]
+            mut hold,
+        } = self;
+        #[cfg(test)]
+        pause(&mut hold, HoldPoint::Starting);
+        let watcher = match start_native_watcher(&config, events) {
+            Ok(watcher) => watcher,
+            Err(error) => {
+                // A subscriber that arrives after the failure starts a new
+                // scope rather than joining this one.
+                if let Some(hub) = hub.upgrade() {
+                    hub.remove(&config.scope_path, scope);
+                }
+                let _ = report.send(Some(Err(error.to_string())));
+                return;
+            }
+        };
+        let _ = report.send(Some(Ok(())));
+        // Returns once the hub drops the scope's entry, which holds the sender.
+        let _ = released.blocking_recv();
+        #[cfg(test)]
+        pause(&mut hold, HoldPoint::Stopping);
+        drop(watcher);
+    }
+}
+
+/// Registers every path of the scope at once, so FSEvents starts one stream
+/// instead of restarting it for each path.
+fn start_native_watcher(
     config: &ScopeConfig,
-) -> notify::Result<()> {
+    events: mpsc::UnboundedSender<notify::Result<Event>>,
+) -> notify::Result<RecommendedWatcher> {
+    let mut watcher = notify::recommended_watcher(move |event| {
+        let _ = events.send(event);
+    })?;
+    let mut paths = watcher.paths_mut();
+    register_watch_paths(&mut *paths, config)?;
+    paths.commit()?;
+    Ok(watcher)
+}
+
+fn register_watch_paths(paths: &mut dyn PathsMut, config: &ScopeConfig) -> notify::Result<()> {
     let recursive = config.repository.is_some();
-    watcher.watch(
+    paths.add(
         &config.watch_root,
         if recursive {
             RecursiveMode::Recursive
@@ -268,10 +390,10 @@ fn register_watch_paths(
         if root.starts_with(&config.watch_root) || !watched.insert(root.clone()) {
             continue;
         }
-        watcher.watch(root, RecursiveMode::NonRecursive)?;
+        paths.add(root, RecursiveMode::NonRecursive)?;
         let refs = root.join("refs");
         if refs.is_dir() && watched.insert(refs.clone()) {
-            watcher.watch(&refs, RecursiveMode::Recursive)?;
+            paths.add(&refs, RecursiveMode::Recursive)?;
         }
     }
     Ok(())
@@ -484,12 +606,61 @@ fn slash_path(path: &Path) -> String {
         .join("/")
 }
 
+/// Test hooks into the hub's scopes.
+#[cfg(test)]
+impl WatchHub {
+    fn active_scope_count(&self) -> usize {
+        self.inner.scopes.lock().unwrap().entries.len()
+    }
+
+    /// Holds the next scope's thread at `point` until the returned sender is
+    /// used or dropped. The receiver resolves once the thread is held.
+    fn hold_next_scope(&self, point: HoldPoint) -> (oneshot::Sender<()>, oneshot::Receiver<()>) {
+        let (release, released) = oneshot::channel();
+        let (held_sender, held) = oneshot::channel();
+        *self.inner.hold.lock().unwrap() = Some(Hold {
+            point,
+            held: held_sender,
+            released,
+        });
+        (release, held)
+    }
+}
+
+/// Where a test holds a scope's thread.
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HoldPoint {
+    /// Before the native watcher registers.
+    Starting,
+    /// After the scope ended and before the native watcher is dropped.
+    Stopping,
+}
+
+#[cfg(test)]
+struct Hold {
+    point: HoldPoint,
+    held: oneshot::Sender<()>,
+    released: oneshot::Receiver<()>,
+}
+
+#[cfg(test)]
+fn pause(hold: &mut Option<Hold>, point: HoldPoint) {
+    if let Some(current) = hold.take_if(|hold| hold.point == point) {
+        let _ = current.held.send(());
+        let _ = current.released.blocking_recv();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use notify::event::{CreateKind, ModifyKind, RemoveKind, RenameMode};
     use std::{fs, process::Command};
     use tempfile::TempDir;
+    use tokio::{task::JoinHandle, time::timeout};
+
+    const WAIT: Duration = Duration::from_secs(30);
 
     fn config(root: &Path, repository: Option<Repository>) -> ScopeConfig {
         ScopeConfig {
@@ -684,8 +855,8 @@ mod tests {
         let (shutdown, _) = broadcast::channel(1);
         let hub = WatchHub::new(fs, shutdown);
 
-        let first = hub.subscribe("").unwrap();
-        let second = hub.subscribe("").unwrap();
+        let first = hub.subscribe("").await.unwrap();
+        let second = hub.subscribe("").await.unwrap();
         assert_eq!(hub.active_scope_count(), 1);
         assert_eq!(first.ready, second.ready);
 
@@ -695,13 +866,160 @@ mod tests {
         assert_eq!(hub.active_scope_count(), 0);
     }
 
+    /// A native watcher that never finishes registering delays only its own
+    /// subscribers. With a single worker thread, another scope still starts,
+    /// the waiting subscriber can leave, and its path starts again.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn a_scope_held_while_starting_holds_up_only_its_own_subscribers() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir(root.path().join("held")).unwrap();
+        fs::create_dir(root.path().join("other")).unwrap();
+        let fs = Arc::new(RootedFs::new(root.path()).unwrap());
+        let (shutdown, _) = broadcast::channel(1);
+        let hub = WatchHub::new(fs, shutdown);
+        let (release, held) = hub.hold_next_scope(HoldPoint::Starting);
+
+        let waiting = subscribe_on_worker(&hub, "held");
+        timeout(WAIT, held)
+            .await
+            .expect("the scope is held")
+            .unwrap();
+
+        let other = timeout(WAIT, subscribe_on_worker(&hub, "other"))
+            .await
+            .expect("another scope starts")
+            .unwrap()
+            .unwrap();
+        assert_eq!(other.ready.scope_path, "other");
+
+        waiting.abort();
+        assert!(matches!(waiting.await, Err(error) if error.is_cancelled()));
+        assert_eq!(hub.active_scope_count(), 1);
+
+        let again = timeout(WAIT, subscribe_on_worker(&hub, "held"))
+            .await
+            .expect("the held path starts a new scope")
+            .unwrap()
+            .unwrap();
+        assert_eq!(again.ready.scope_path, "held");
+        assert_eq!(hub.active_scope_count(), 2);
+        drop(release);
+    }
+
+    /// Dropping the last subscriber returns at once even when the native
+    /// watcher never finishes stopping, and the path can start again.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn a_scope_held_while_stopping_leaves_its_path_free_to_start_again() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir(root.path().join("held")).unwrap();
+        let fs = Arc::new(RootedFs::new(root.path()).unwrap());
+        let (shutdown, _) = broadcast::channel(1);
+        let hub = WatchHub::new(fs, shutdown);
+        let (release, held) = hub.hold_next_scope(HoldPoint::Stopping);
+
+        let first = timeout(WAIT, subscribe_on_worker(&hub, "held"))
+            .await
+            .expect("the scope starts")
+            .unwrap()
+            .unwrap();
+        timeout(WAIT, tokio::spawn(async move { drop(first) }))
+            .await
+            .expect("the last subscriber leaves at once")
+            .unwrap();
+        timeout(WAIT, held)
+            .await
+            .expect("the scope is held")
+            .unwrap();
+        assert_eq!(hub.active_scope_count(), 0);
+
+        let again = timeout(WAIT, subscribe_on_worker(&hub, "held"))
+            .await
+            .expect("the path starts a new scope")
+            .unwrap()
+            .unwrap();
+        assert_eq!(again.ready.scope_path, "held");
+        assert_eq!(hub.active_scope_count(), 1);
+        drop(release);
+    }
+
+    #[tokio::test]
+    async fn a_native_watcher_that_cannot_start_is_reported_and_forgotten() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir(root.path().join("vanishing")).unwrap();
+        let fs = Arc::new(RootedFs::new(root.path()).unwrap());
+        let (shutdown, _) = broadcast::channel(1);
+        let hub = WatchHub::new(fs, shutdown);
+        let (release, held) = hub.hold_next_scope(HoldPoint::Starting);
+
+        let waiting = subscribe_on_worker(&hub, "vanishing");
+        timeout(WAIT, held)
+            .await
+            .expect("the scope is held")
+            .unwrap();
+        fs::remove_dir(root.path().join("vanishing")).unwrap();
+        drop(release);
+
+        let refused = timeout(WAIT, waiting)
+            .await
+            .expect("the subscriber hears the failure")
+            .unwrap();
+        assert!(matches!(refused, Err(WatchError::Unavailable(_))));
+        assert_eq!(hub.active_scope_count(), 0);
+    }
+
+    /// A linked worktree's scope registers its own tree and the Git metadata
+    /// outside it together, so a ref created from the main checkout reaches it.
+    #[tokio::test]
+    async fn a_linked_worktree_scope_hears_refs_change_in_the_common_git_directory() {
+        let root = TempDir::new().unwrap();
+        let main = root.path().join("main");
+        fs::create_dir(&main).unwrap();
+        repository(&main);
+        fs::write(main.join("tracked.txt"), "tracked\n").unwrap();
+        git(&main, &["add", "tracked.txt"]);
+        git(&main, &["commit", "-m", "initial"]);
+        git(&main, &["worktree", "add", "-b", "linked", "../linked"]);
+        let fs = Arc::new(RootedFs::new(root.path()).unwrap());
+        let (shutdown, _) = broadcast::channel(1);
+        let hub = WatchHub::new(fs, shutdown);
+        let mut subscription = hub.subscribe("linked").await.unwrap();
+        assert_eq!(
+            subscription.ready.repository_root_path.as_deref(),
+            Some("linked")
+        );
+
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        git(&main, &["branch", "from-main"]);
+        let change = timeout(Duration::from_secs(10), async {
+            loop {
+                if let WatchMessage::Change(change) = subscription.recv().await.unwrap()
+                    && change.git_refs_changed
+                {
+                    return change;
+                }
+            }
+        })
+        .await
+        .expect("ref change");
+
+        assert!(change.git_status_changed);
+    }
+
+    fn subscribe_on_worker(
+        hub: &WatchHub,
+        path: &'static str,
+    ) -> JoinHandle<Result<WatchSubscription, WatchError>> {
+        let hub = hub.clone();
+        tokio::spawn(async move { hub.subscribe(path).await })
+    }
+
     #[tokio::test]
     async fn native_watcher_reports_external_file_changes() {
         let root = TempDir::new().unwrap();
         let fs = Arc::new(RootedFs::new(root.path()).unwrap());
         let (shutdown, _) = broadcast::channel(1);
         let hub = WatchHub::new(fs, shutdown);
-        let mut subscription = hub.subscribe("").unwrap();
+        let mut subscription = hub.subscribe("").await.unwrap();
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         fs::write(root.path().join("live.txt"), "changed").unwrap();
@@ -801,8 +1119,8 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[test]
-    fn rejects_watch_scopes_that_escape_the_root_through_symlinks() {
+    #[tokio::test]
+    async fn rejects_watch_scopes_that_escape_the_root_through_symlinks() {
         use std::os::unix::fs::symlink;
 
         let root = TempDir::new().unwrap();
@@ -813,7 +1131,7 @@ mod tests {
         let hub = WatchHub::new(fs, shutdown);
 
         assert!(matches!(
-            hub.subscribe("outside"),
+            hub.subscribe("outside").await,
             Err(WatchError::Fs(FsError::PathEscapesRoot))
         ));
     }
