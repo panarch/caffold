@@ -26,9 +26,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var updater: ApplicationUpdater?
     private var preferences = ServerRuntimePreferences.load()
     private var lastTailscaleStatus: TailscaleStatus?
-    private var ownsServer = false
-    private var serverRunning = false
-    private var restartAfterTermination = false
+    private var lifecycle = ServerLifecycle()
     private var configureTailscaleAfterRestart = false
     private var serverNameAfterStart: String?
 
@@ -87,22 +85,21 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.setActivationPolicy(.accessory)
         installStatusMenu()
         installUpdater()
-        setStatus("Checking local server...")
+        renderServerPhase()
         updater?.checkAutomatically()
 
-        checkHealth { [weak self] isRunning in
+        let generation = lifecycle.generation
+        checkHealth { [weak self] answered in
             guard let self else { return }
-            if isRunning {
-                self.serverRunning = true
-                self.setStatus(self.serverStatusTitle(external: true))
-                self.updateServerControls()
-                if self.preferences.autoStartTailscaleServe {
-                    self.configureTailscaleServe()
-                }
-                self.refreshSystemStatus()
-            } else {
+            guard answered else {
                 self.startServer()
+                return
             }
+            self.apply(.healthAnswered(true, generation: generation))
+            if self.preferences.autoStartTailscaleServe {
+                self.configureTailscaleServe()
+            }
+            self.refreshSystemStatus()
         }
     }
 
@@ -115,8 +112,8 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        restartAfterTermination = false
-        if ownsServer, let serverProcess, serverProcess.isRunning {
+        apply(.quitRequested)
+        if let serverProcess, serverProcess.isRunning {
             let outcome = terminateOwnedProcess(serverProcess)
             appendLog("Owned server \(outcome.description) during application termination.")
         }
@@ -224,8 +221,15 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             bundleURL: Bundle.main.bundleURL,
             menuItem: updateMenuItem,
             runtimeState: { [weak self] in
-                guard let self, self.serverRunning else { return .stopped }
-                return self.ownsServer ? .ownedServer : .externalServer
+                guard let self else { return .stopped }
+                switch self.lifecycle.phase {
+                case .ready:
+                    return .ownedServer
+                case .external:
+                    return .externalServer
+                default:
+                    return .stopped
+                }
             },
             serverBaseURL: { [weak self] in
                 self?.localURL ?? URL(string: "http://127.0.0.1:5178/")!
@@ -293,22 +297,28 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func serverStatusTitle(external: Bool = false) -> String {
-        let ownership = external ? "External" : preferences.bindMode.title
-        return "Running · \(ownership) · 127.0.0.1:\(preferences.port)"
+    /// The one place the server's phase changes. The status row and the
+    /// restart item follow the phase, and a server's first answer finishes its
+    /// startup whichever health check brings it.
+    @discardableResult
+    private func apply(_ event: ServerEvent) -> Bool {
+        let previous = lifecycle.phase
+        guard lifecycle.handle(event) else { return false }
+        renderServerPhase()
+        if previous == .starting, lifecycle.phase == .ready {
+            serverDidBecomeReady()
+        }
+        return true
     }
 
-    private func updateServerControls() {
-        if serverRunning {
-            restartMenuItem?.title = "Restart Server"
-            restartMenuItem?.isEnabled = ownsServer
-        } else if serverProcess?.isRunning == true {
-            restartMenuItem?.title = "Restart Server"
-            restartMenuItem?.isEnabled = false
-        } else {
-            restartMenuItem?.title = "Start Server"
-            restartMenuItem?.isEnabled = true
-        }
+    private func renderServerPhase() {
+        let presentation = lifecycle.phase.presentation(
+            bindMode: preferences.bindMode,
+            port: preferences.port
+        )
+        setStatus(presentation.status)
+        restartMenuItem?.title = presentation.control
+        restartMenuItem?.isEnabled = presentation.controlEnabled
     }
 
     private func refreshSystemStatus() {
@@ -320,17 +330,13 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         tailscaleToggleMenuItem?.isEnabled = false
         tailnetURLMenuItem?.isEnabled = false
 
-        checkHealth { [weak self] isRunning in
+        let generation = lifecycle.generation
+        checkHealth { [weak self] answered in
             guard let self else { return }
-            self.serverRunning = isRunning
-            if isRunning {
-                self.setStatus(self.serverStatusTitle(external: !self.ownsServer))
-            } else if self.serverProcess?.isRunning == true {
-                self.setStatus("Starting server...")
-            } else {
-                self.setStatus("Server · Stopped")
+            // Also replaces a passing message such as "Loading server settings...".
+            if !self.apply(.healthAnswered(answered, generation: generation)) {
+                self.renderServerPhase()
             }
-            self.updateServerControls()
         }
 
         probeCodexStatus(url: codexStatusURL) { [weak self] status in
@@ -458,47 +464,42 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             process.standardError = handle
             process.terminationHandler = { [weak self] process in
                 DispatchQueue.main.async {
-                    guard let self else { return }
-                    let shouldRestart = self.restartAfterTermination
-                    self.restartAfterTermination = false
+                    guard let self, self.serverProcess === process else { return }
                     self.serverProcess = nil
-                    self.ownsServer = false
-                    self.serverRunning = false
                     try? self.logHandle?.close()
                     self.logHandle = nil
-                    if shouldRestart {
-                        self.setStatus("Restarting server...")
+                    let startAgain = self.lifecycle.phase == .restarting
+                    self.apply(.exited(process.terminationStatus))
+                    if startAgain {
                         self.startServer()
-                    } else {
-                        self.setStatus("Server · Stopped (exit \(process.terminationStatus))")
-                        self.updateServerControls()
                     }
                 }
             }
 
             try process.run()
             serverProcess = process
-            ownsServer = true
-            serverRunning = false
-            setStatus("Starting Caffold...")
-            updateServerControls()
-            waitForHealth(attemptsRemaining: 80)
+            apply(.launched)
+            waitForHealth(attemptsRemaining: 80, generation: lifecycle.generation)
         } catch {
-            setStatus("Caffold failed to start")
+            apply(.launchFailed)
             presentError("Caffold could not start", detail: error.localizedDescription)
         }
     }
 
-    private func waitForHealth(attemptsRemaining: Int) {
-        checkHealth { [weak self] isRunning in
-            guard let self else { return }
-            if isRunning {
-                self.serverDidBecomeReady()
+    private func waitForHealth(attemptsRemaining: Int, generation: Int) {
+        checkHealth { [weak self] answered in
+            guard
+                let self,
+                self.lifecycle.phase == .starting,
+                self.lifecycle.generation == generation
+            else { return }
+            if answered {
+                self.apply(.healthAnswered(true, generation: generation))
                 return
             }
 
             guard attemptsRemaining > 0 else {
-                self.setStatus("Caffold did not become ready")
+                self.apply(.startupExpired)
                 self.presentError(
                     "Caffold did not become ready",
                     detail: "Review \(self.logURL.path) for startup errors."
@@ -507,16 +508,16 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.waitForHealth(attemptsRemaining: attemptsRemaining - 1)
+                self.waitForHealth(
+                    attemptsRemaining: attemptsRemaining - 1,
+                    generation: generation
+                )
             }
         }
     }
 
     private func serverDidBecomeReady() {
-        serverRunning = true
-        setStatus(serverStatusTitle())
-        updateServerControls()
-        updater?.serverDidBecomeReady(isOwnedServer: ownsServer)
+        updater?.serverDidBecomeReady(isOwnedServer: true)
 
         guard let name = serverNameAfterStart else {
             finishServerStartup()
@@ -648,7 +649,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let runtimeChanged = nextPreferences.bindMode != preferences.bindMode
             || nextPreferences.port != preferences.port
 
-        if runtimeChanged, serverRunning, !ownsServer {
+        if runtimeChanged, lifecycle.phase == .external {
             guard nextPreferences.port != preferences.port else {
                 presentError(
                     "Server settings cannot be applied",
@@ -674,7 +675,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         guard let self else { return }
                         guard disabled else {
                             self.configureTailscaleAfterRestart = false
-                            self.setStatus(self.serverStatusTitle())
+                            self.renderServerPhase()
                             self.presentError(
                                 "Server runtime settings were not changed",
                                 detail: "Caffold could not disable its current Tailscale Serve mapping before changing the server address. Retry after checking Tailscale."
@@ -731,7 +732,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         checkHealth(at: nextHealthURL) { [weak self] isRunning in
             guard let self else { return }
             guard !isRunning else {
-                self.setStatus(self.serverStatusTitle(external: true))
+                self.renderServerPhase()
                 self.presentError(
                     "Port \(nextPreferences.port) is already in use",
                     detail: "Another Caffold server is already running on that port. Choose a different port."
@@ -745,7 +746,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     guard let self else { return }
                     guard disabled else {
                         self.configureTailscaleAfterRestart = false
-                        self.setStatus(self.serverStatusTitle(external: true))
+                        self.renderServerPhase()
                         self.presentError(
                             "Server runtime settings were not changed",
                             detail: "Caffold could not disable its current Tailscale Serve mapping before starting on the new port. Retry after checking Tailscale."
@@ -773,24 +774,21 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         preferences = nextPreferences
         preferences.save()
         serverNameAfterStart = name
-        serverRunning = false
         startServer()
     }
 
     private func restartServerProcess() {
-        if ownsServer, let serverProcess, serverProcess.isRunning {
-            restartAfterTermination = true
-            setStatus("Restarting server...")
-            restartMenuItem?.isEnabled = false
+        switch lifecycle.phase {
+        case .starting, .ready, .notResponding:
+            guard let serverProcess, serverProcess.isRunning else { return }
+            apply(.restartRequested)
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 let outcome = terminateOwnedProcess(serverProcess)
                 DispatchQueue.main.async {
                     guard let self else { return }
                     self.appendLog("Owned server \(outcome.description) during restart.")
                     if outcome == .timedOut {
-                        self.restartAfterTermination = false
-                        self.setStatus("Server restart timed out")
-                        self.updateServerControls()
+                        self.apply(.restartTimedOut)
                         self.presentError(
                             "Caffold could not restart the server",
                             detail: "The owned server process did not stop after its shutdown deadline. Review \(self.logURL.path)."
@@ -798,19 +796,21 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     }
                 }
             }
-        } else if !serverRunning {
+        case .stopped:
             startServer()
-        } else {
+        case .external:
             presentInformation(
                 "Server is externally managed",
                 detail: "Caffold Server will not restart a process it did not start."
             )
+        case .checking, .restarting, .stopping:
+            break
         }
     }
 
     private func scheduleRelaunchAfterUpdate(expectedVersion: String) throws {
         let parentPID = ProcessInfo.processInfo.processIdentifier
-        let serverPID = ownsServer && serverProcess?.isRunning == true
+        let serverPID = serverProcess?.isRunning == true
             ? serverProcess?.processIdentifier ?? 0
             : 0
         let relauncher = Process()

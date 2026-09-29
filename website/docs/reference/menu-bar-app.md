@@ -5,12 +5,16 @@ server. Its menu opens with **Open Caffold**, followed by four groups.
 
 ## Server
 
-- The server's status and port.
+- The server's status and port. **Server · Not responding** means the server
+  is still running but has stopped answering, or never answered after it
+  started.
 - **Server Settings...** sets the **Name** of installed apps, which server
   address it listens on, the **Port**, and whether Tailscale Serve starts with
   the server. **Local only (127.0.0.1)** is the default, and
   [remote access](../get-started/other-devices.md) works with it.
 - **Restart Server**, which reads **Start Server** while the server is stopped.
+  A server that is not responding is stopped, forcibly if it does not quit,
+  and started again.
 
 ## Remote Access
 
