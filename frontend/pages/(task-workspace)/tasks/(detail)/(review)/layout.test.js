@@ -191,3 +191,66 @@ test("merges only visible Review navigator and viewer Scroll leaves", () => {
   panes.viewer.visible = false;
   assert.deepEqual(review.scrollSurfaceScope.call(owner).surfaces, []);
 });
+
+test("drops a Branch compare that returns after Review leaves Branch", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const compares = [];
+  globalThis.window = { location: { origin: "http://caffold.test" } };
+  globalThis.fetch = (input, ...options) => {
+    if (new URL(input).pathname !== "/api/git/compare") {
+      return previousFetch(input, ...options);
+    }
+    const response = Promise.withResolvers();
+    compares.push(response);
+    return response.promise;
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  });
+  const payload = {
+    baseRef: "origin/main",
+    headRef: "main",
+    files: [{ path: "src/planner.rs", repoRelativePath: "planner.rs", status: "M" }],
+  };
+  const drawn = [];
+  const branchTree = {
+    setBaseSelection() {},
+    setLoading() {},
+    setEmptyMessage() {},
+    setCompare: (compare) => drawn.push(compare),
+    updateCompare: (compare) => drawn.push(compare),
+  };
+  const owner = {
+    active: true,
+    isConnected: true,
+    task: { threadId: "thread-a", worktree: { rootPath: "/repo", branch: "main" } },
+    refs: {
+      repository: { rootPath: "/repo" },
+      refs: [{ name: "origin/main", kind: "remote" }],
+      defaultBaseRef: "origin/main",
+    },
+    route: { scope: "branch", baseRef: "origin/main", path: "" },
+    branchGeneration: 0,
+    compare: null,
+    acceptRequest: review.acceptRequest,
+    branchTree: () => branchTree,
+    patchControls() {},
+    patchErrorState() {},
+    patchEmptyStates() {},
+    syncSelection() {},
+  };
+
+  const current = review.ensureBranchData.call(owner);
+  compares.at(-1).resolve(new Response(JSON.stringify(payload)));
+  assert.deepEqual(await current, payload);
+  assert.equal(drawn.length, 1);
+
+  const late = review.ensureBranchData.call(owner);
+  owner.route = { ...owner.route, scope: "working" };
+  compares.at(-1).resolve(new Response(JSON.stringify(payload)));
+  assert.equal(await late, null);
+  assert.equal(drawn.length, 1);
+});

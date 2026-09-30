@@ -13,7 +13,7 @@ export async function installTaskReviewFixture(page) {
   let cleanWorkingTree = false;
   let cleanBranch = false;
   let failNextGitStatus = false;
-  let gitDiffDelayMs = 0;
+  let diffGate = null;
   let workingDiffText = "new planner behavior";
   const compareDelays = new Map();
   const compareGates = new Map();
@@ -200,9 +200,7 @@ export async function installTaskReviewFixture(page) {
   });
   await page.route(/\/api\/git\/diff(?:\?|$)/, async (route) => {
     gitDiffRequests += 1;
-    if (gitDiffDelayMs > 0) {
-      await new Promise((resolve) => setTimeout(resolve, gitDiffDelayMs));
-    }
+    await diffGate?.promise;
     const url = new URL(route.request().url());
     const file = url.searchParams.get("file");
     const relativePath = file.replace(/^src\//, "");
@@ -341,9 +339,6 @@ export async function installTaskReviewFixture(page) {
     set failNextGitStatus(value) {
       failNextGitStatus = value;
     },
-    set gitDiffDelayMs(value) {
-      gitDiffDelayMs = value;
-    },
     set workingDiffText(value) {
       workingDiffText = value;
     },
@@ -364,6 +359,24 @@ export async function installTaskReviewFixture(page) {
       return () => {
         if (compareGates.get(baseRef) === gate) {
           compareGates.delete(baseRef);
+        }
+        releaseGate();
+      };
+    },
+    holdDiff() {
+      if (diffGate) {
+        throw new Error("Diff requests already held");
+      }
+      let releaseGate;
+      const gate = {
+        promise: new Promise((resolve) => {
+          releaseGate = resolve;
+        }),
+      };
+      diffGate = gate;
+      return () => {
+        if (diffGate === gate) {
+          diffGate = null;
         }
         releaseGate();
       };
