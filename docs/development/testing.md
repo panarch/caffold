@@ -46,10 +46,9 @@ Caffold does not currently enforce a repository-wide coverage percentage.
 Explain the production paths measured and any integration boundary the coverage
 run did not exercise.
 
-The macOS stall-capture check deliberately blocks the sole Tokio worker in
-its own test process and waits for the independent monitor to save a real
-three-second stack report. It requires permission for `/usr/bin/sample` to
-inspect that process and is opt-in; it does not touch an installed server:
+The opt-in macOS capture check blocks the sole Tokio worker and log writer and
+verifies a real stack report. It needs `/usr/bin/sample` permission and must run
+with `--exact` because it owns the process's global log subscriber:
 
 ```sh
 cargo test --locked -p caffold --lib app::stall::tests::a_blocked_runtime_automatically_saves_real_macos_thread_stacks -- --ignored --exact --nocapture
@@ -75,7 +74,7 @@ one records where it runs from and what it needs:
 | `node --test docs/tests/*.test.mjs` | repository root | Node | documentation index, links, entrypoints, and this command index |
 | `node --test scripts/tests/*.test.mjs` | repository root | Node | release version tooling |
 | `desktop/macos/test-contracts` | repository root | Node | macOS packaging, release, and installer contracts, from `desktop/macos/tests/` |
-| `desktop/macos/test-runtime` | repository root | macOS, Xcode tools | Swift wrapper process lifecycle |
+| `desktop/macos/test-runtime` | repository root | macOS, Xcode tools | Swift wrapper lifecycle and external stack capture |
 | `desktop/macos/test-system-status` | repository root | macOS, Xcode tools | Swift system-status behavior |
 | `desktop/macos/test-updater` | repository root | macOS, Xcode tools | Swift updater behavior |
 
@@ -406,8 +405,9 @@ desktop/macos/test-updater
 ```
 
 Each compiles the production wrapper source together with its test program. The
-runtime test launches owned child processes and verifies both graceful
-termination and the exact-PID forced fallback.
+runtime test verifies owned-child shutdown and real stack capture during HTTP
+failure. It requires local sockets and permission for `/usr/bin/sample` to
+inspect disposable children.
 
 The packaging, release, and local-install contracts need only Node:
 

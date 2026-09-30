@@ -10,6 +10,7 @@ MINIMUM_MACOS_VERSION="14.0"
 SWIFT_SOURCES=(
   "${SCRIPT_DIR}/CaffoldServer.swift"
   "${SCRIPT_DIR}/CaffoldServer/Runtime.swift"
+  "${SCRIPT_DIR}/CaffoldServer/Runtime/Diagnostics.swift"
   "${SCRIPT_DIR}/CaffoldServer/SystemStatus.swift"
   "${SCRIPT_DIR}/CaffoldServer/UpdateModel.swift"
   "${SCRIPT_DIR}/CaffoldServer/Updater.swift"

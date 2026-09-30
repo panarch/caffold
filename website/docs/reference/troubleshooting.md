@@ -60,3 +60,6 @@ key is not saved. The button opens **Settings → Voice Input**.
 details. Include them, with the relevant part of
 `~/Library/Logs/Caffold/caffold.log`, in an issue on
 [GitHub](https://github.com/panarch/caffold/issues).
+
+If the server stopped responding, also include any diagnostic reports from
+`~/Library/Application Support/Caffold/data/diagnostics/stalls`.

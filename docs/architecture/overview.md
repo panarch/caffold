@@ -258,17 +258,40 @@ also writes one line for each HTTP request whose handler has gone a minute
 without answering, once per request, so requests that pile up before a stall
 leave a trail. The thread ends with the backend.
 
-On macOS, the first stall report also starts `/usr/bin/sample` on a separate
-thread to collect three seconds of this backend's thread stacks. This does not
-need a browser connection or a manual restart. Reports are saved under
-`diagnostics/stalls` in the backend data directory; the server log names each
-report. Only one capture runs at a time, the sampler is stopped if it has not
-finished within ten seconds, and the most recent ten reports are retained.
-The monitor rearms after the runtime runs work again. A later stall starts
-another capture unless the previous sampler is still running; an overlapping
-request is skipped and logged. A failed helper is logged and its report
-annotated, preserving any partial stacks. A report can be incomplete if the
-backend exits before collection finishes.
+On macOS, the first detected runtime stall starts `/usr/bin/sample` on a
+separate thread to collect three seconds of this backend's thread stacks.
+Starting capture precedes inspecting waiting requests, open files, and writing
+the stall log. The sampling thread starts its helper before logging its result.
+A busy request tracker is skipped during routine request checks. Only one
+backend capture runs at a time; overlapping requests are skipped. The monitor
+rearms after runtime work runs again. This detector observes delayed runtime
+work, not whether HTTP answers.
+
+The macOS menu-bar wrapper independently watches its own backend's local
+`/api/health`, even while the menu is closed. It checks once a second, with a
+0.8-second request deadline. Five seconds without a successful response starts
+one three-second stack sample of the exact Process the wrapper launched. Its
+private queue, HTTP session, and report files do not depend on backend locks,
+Tokio, request tracking, or backend logging. A successful HTTP response rearms
+collection. Servers the wrapper did not launch are not sampled or signaled.
+
+`Restart Server` stops that observer, waits for any ongoing capture, and reuses
+a successful report of the current incident or collects a report before sending
+the backend its first shutdown signal. Failed captures are retried during
+restart preparation. If termination fails and the owned backend remains alive,
+the wrapper attaches a fresh observer. Quitting also collects evidence when
+the server is not responding or a restart is pending; an ordinary healthy quit
+skips collection.
+
+Both collectors save under `diagnostics/stalls` in the backend data directory.
+Backend reports use `stall-*.sample.txt`; wrapper reports use
+`external-*.sample.txt` with a matching `.context.txt` containing the PID,
+executable, reason, health failure, and helper output. Each collector retains
+its own most recent ten captures. Helpers have a ten-second execution deadline;
+the wrapper allows another two seconds for a killed helper to exit. A failed
+capture records its error in the context and partial report when those files
+are writable, then restart can proceed. Logging follows file capture. A report
+can be incomplete if the backend exits during collection or the helper fails.
 
 ## Task and repository context
 

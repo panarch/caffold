@@ -9,8 +9,8 @@
 //! runtime an empty task, and it counts the runtime as stalled once none has
 //! run for the threshold. At the same interval it looks through the waiting
 //! requests and logs each one once when it passes its own threshold.
-//! On macOS, the first report of each stall also starts an independent stack
-//! sample, so evidence is collected without waiting for a person to restart.
+//! On macOS, the first detection of each stall starts an independent stack
+//! sample before reporting, so a blocked log writer cannot delay its start.
 
 use std::{
     cmp::Reverse,
@@ -18,7 +18,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::{
-        Arc, Mutex, MutexGuard,
+        Arc, Mutex, MutexGuard, TryLockError,
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
     },
@@ -128,22 +128,7 @@ fn watch(
     let probing = Arc::new(AtomicBool::new(false));
     let mut stall: Option<Stall> = None;
     while let Err(RecvTimeoutError::Timeout) = stopped.recv_timeout(timing.probe) {
-        // A task that has not run yet is left waiting rather than joined by
-        // another, so a stall does not pile tasks up.
-        if !probing.swap(true, Ordering::AcqRel) {
-            let last_ran = last_ran.clone();
-            let probing = probing.clone();
-            runtime.spawn(async move {
-                last_ran.store(nanos(started.elapsed()), Ordering::Release);
-                probing.store(false, Ordering::Release);
-            });
-        }
-
         let now = Instant::now();
-        for request in requests.newly_unanswered(now, timing.unanswered_after) {
-            report(Report::Unanswered(request));
-        }
-
         let ran_at = started + Duration::from_nanos(last_ran.load(Ordering::Acquire));
         let silent = now.saturating_duration_since(ran_at);
         if silent < timing.stall_after {
@@ -152,22 +137,36 @@ fn watch(
                     stalled_for: ran_at.saturating_duration_since(ended.began),
                 });
             }
-            continue;
+        } else {
+            match &mut stall {
+                None => {
+                    on_stall();
+                    stall = Some(Stall {
+                        began: ran_at,
+                        next_report: now + timing.repeat,
+                    });
+                    report(Report::Stalled(snapshot(silent, requests, now)));
+                }
+                Some(ongoing) if now >= ongoing.next_report => {
+                    report(Report::Stalled(snapshot(silent, requests, now)));
+                    ongoing.next_report += timing.repeat;
+                }
+                Some(_) => {}
+            }
         }
-        match &mut stall {
-            None => {
-                report(Report::Stalled(snapshot(silent, requests, now)));
-                on_stall();
-                stall = Some(Stall {
-                    began: ran_at,
-                    next_report: now + timing.repeat,
-                });
-            }
-            Some(ongoing) if now >= ongoing.next_report => {
-                report(Report::Stalled(snapshot(silent, requests, now)));
-                ongoing.next_report += timing.repeat;
-            }
-            Some(_) => {}
+
+        // Starting evidence must precede the request lock and report writer.
+        // A task that has not run yet is left waiting, without piling up probes.
+        if !probing.swap(true, Ordering::AcqRel) {
+            let last_ran = last_ran.clone();
+            let probing = probing.clone();
+            runtime.spawn(async move {
+                last_ran.store(nanos(started.elapsed()), Ordering::Release);
+                probing.store(false, Ordering::Release);
+            });
+        }
+        for request in requests.newly_unanswered(now, timing.unanswered_after) {
+            report(Report::Unanswered(request));
         }
     }
 }
@@ -332,7 +331,14 @@ impl RequestsInFlight {
     /// before. Each request is returned once.
     fn newly_unanswered(&self, now: Instant, after: Duration) -> Vec<WaitingRequest> {
         let mut unanswered = Vec::new();
-        for waiting in self.lock().values_mut() {
+        // Request registration must never prevent this native monitor from
+        // reaching the next stall check. Retry a busy tracker on the next tick.
+        let mut requests = match self.inner.waiting.try_lock() {
+            Ok(requests) => requests,
+            Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(TryLockError::WouldBlock) => return unanswered,
+        };
+        for waiting in requests.values_mut() {
             let age = now.saturating_duration_since(waiting.started);
             if waiting.reported || age < after {
                 continue;
@@ -428,6 +434,56 @@ mod tests {
             },
         );
         (monitor, reports, captures)
+    }
+
+    #[test]
+    fn a_locked_request_tracker_cannot_delay_stall_capture() {
+        let runtime = one_worker();
+        let requests = RequestsInFlight::default();
+        let (release, released) = mpsc::channel::<()>();
+        let (held, holding) = mpsc::channel::<()>();
+        runtime.spawn(async move {
+            held.send(()).unwrap();
+            let _ = released.recv();
+        });
+        holding.recv_timeout(WAIT).unwrap();
+        let tracker = requests.lock();
+        let (monitor, _reports, captures) = monitor(&runtime, &requests, FAST);
+        let captured = captures.recv_timeout(WAIT);
+        drop(tracker);
+        release.send(()).unwrap();
+        monitor.stop();
+        assert!(captured.is_ok(), "capture waited on the request tracker");
+    }
+
+    #[test]
+    fn a_blocked_report_writer_cannot_delay_stall_capture() {
+        let runtime = one_worker();
+        let (release, released) = mpsc::channel::<()>();
+        let (held, holding) = mpsc::channel::<()>();
+        runtime.spawn(async move {
+            held.send(()).unwrap();
+            let _ = released.recv();
+        });
+        holding.recv_timeout(WAIT).unwrap();
+        let (writer_release, writer_released) = mpsc::channel::<()>();
+        let (capture, captures) = mpsc::channel();
+        let monitor = StallMonitor::start_with(
+            runtime.handle().clone(),
+            RequestsInFlight::default(),
+            FAST,
+            move |_| {
+                let _ = writer_released.recv();
+            },
+            move || {
+                let _ = capture.send(());
+            },
+        );
+        let captured = captures.recv_timeout(WAIT);
+        let _ = writer_release.send(());
+        release.send(()).unwrap();
+        monitor.stop();
+        assert!(captured.is_ok(), "capture waited on the report writer");
     }
 
     #[test]
@@ -537,9 +593,21 @@ mod tests {
     #[test]
     #[ignore = "requires macOS permission for /usr/bin/sample to inspect this test process"]
     fn a_blocked_runtime_automatically_saves_real_macos_thread_stacks() {
-        let _ = tracing_subscriber::fmt()
+        use std::{io, sync::Condvar};
+
+        let log_gate = Arc::new((Mutex::new(false), Condvar::new()));
+        let (log_entered, log_seen) = mpsc::channel();
+        let (sample_saved, sample_completed) = mpsc::channel();
+        let gate = log_gate.clone();
+        tracing_subscriber::fmt()
             .with_max_level(tracing::Level::WARN)
-            .try_init();
+            .with_writer(move || BlockedLog {
+                gate: gate.clone(),
+                entered: log_entered.clone(),
+                saved: sample_saved.clone(),
+            })
+            .try_init()
+            .expect("run this process-level capture test in isolation with --exact");
         let runtime = one_worker();
         let directory = tempfile::tempdir().unwrap();
         let (release, released) = mpsc::channel::<()>();
@@ -565,9 +633,22 @@ mod tests {
             }
             thread::sleep(Duration::from_millis(50));
         }
+        let logging_blocked = log_seen.recv_timeout(WAIT);
+        // Always release both blocked boundaries before asserting or joining.
+        *log_gate.0.lock().unwrap() = true;
+        log_gate.1.notify_all();
         release.send(()).unwrap();
         monitor.stop();
+        let helper_finished = sample_completed.recv_timeout(Duration::from_secs(12));
 
+        assert!(
+            logging_blocked.is_ok(),
+            "the real log writer was not reached"
+        );
+        assert!(
+            helper_finished.is_ok(),
+            "the sampler did not confirm successful helper exit"
+        );
         assert!(report.contains("Call graph:"), "no stack report: {report}");
         assert!(
             report.contains("tokio-rt-worker"),
@@ -581,6 +662,30 @@ mod tests {
             "Automatic stack report retained in {}",
             directory.keep().display()
         );
+
+        struct BlockedLog {
+            gate: Arc<(Mutex<bool>, Condvar)>,
+            entered: Sender<()>,
+            saved: Sender<()>,
+        }
+
+        impl io::Write for BlockedLog {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                let _ = self.entered.send(());
+                let mut released = self.gate.0.lock().unwrap();
+                while !*released {
+                    released = self.gate.1.wait(released).unwrap();
+                }
+                if String::from_utf8_lossy(bytes).contains("stall stack sample saved") {
+                    let _ = self.saved.send(());
+                }
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
     }
 
     #[test]

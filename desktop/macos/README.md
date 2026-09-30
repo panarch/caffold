@@ -107,10 +107,6 @@ setup fails.
   that provider. Localhost needs no Tailscale; remote mobile access uses the
   same tailnet-only HTTPS Serve URL as the rest of Caffold.
 - Logs are stored in `~/Library/Logs/Caffold/caffold.log`.
-- Automatic stall stack reports are saved under
-  `~/Library/Application Support/Caffold/data/diagnostics/stalls`; the server
-  log names each report. [Backend monitoring](../../docs/architecture/overview.md#process-model)
-  describes when collection runs and how reports are retained.
 - Caffold ensures the persistent Codex app-server daemon is running, then owns
   only a disposable proxy connection. Caffold restarts and app replacements do
   not stop the daemon or its active turns.
