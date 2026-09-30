@@ -196,7 +196,7 @@ mod tests {
             let verification = tokio::time::timeout(Duration::from_secs(180), async {
                 let mut events = client.subscribe();
                 let started = client.request_value("thread/start", json!({
-                    "cwd": temp.path(), "ephemeral": true, "model": "gpt-5.6-sol",
+                    "cwd": temp.path(), "ephemeral": true, "model": "gpt-6.1-sol",
                     "approvalPolicy": "on-request", "sandbox": "workspace-write",
                     "config": {"features.default_mode_request_user_input": true},
                 })).await?;

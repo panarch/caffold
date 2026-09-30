@@ -10,9 +10,10 @@ export const TOKEN_FIELDS = [
 export const LIVE_MODEL_POLICY = Object.freeze({
   reasoningEffort: "low",
   models: Object.freeze({
-    spark: "gpt-5.3-codex-spark",
-    fast: "gpt-5.6-luna",
-    multimodal: "gpt-5.6-luna",
+    task: "gpt-6-luna",
+    plan: "gpt-6.1-sol",
+    fast: "gpt-6-luna",
+    multimodal: "gpt-6-luna",
   }),
 });
 

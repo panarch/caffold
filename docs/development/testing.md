@@ -284,8 +284,11 @@ come from the final cumulative `thread/tokenUsage/updated` notification for
 each thread. The report also snapshots account lifetime tokens and both the
 overall and named model rate-limit windows before and after the suite.
 
-Live scenarios use `low` reasoning effort. Spark-specific coverage uses
-`gpt-5.3-codex-spark`; Fast-mode and multimodal coverage use `gpt-5.6-luna`.
+Model-backed Codex live checks use explicit models with `low` reasoning effort.
+The browser Task, Fast-mode, and multimodal scenarios use `gpt-6-luna`. Rust
+reconnect and MCP replacement/restart checks also use `gpt-6-luna`. The browser
+current-plan scenario and Rust clarification and MCP approval checks use
+`gpt-6.1-sol`.
 
 Rate-limit `usedPercent` values have integer resolution, so a non-zero live run
 can legitimately report a `0pp` change. Account snapshots can also include
