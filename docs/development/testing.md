@@ -46,6 +46,15 @@ Caffold does not currently enforce a repository-wide coverage percentage.
 Explain the production paths measured and any integration boundary the coverage
 run did not exercise.
 
+The macOS stall-capture check deliberately blocks the sole Tokio worker in
+its own test process and waits for the independent monitor to save a real
+three-second stack report. It requires permission for `/usr/bin/sample` to
+inspect that process and is opt-in; it does not touch an installed server:
+
+```sh
+cargo test --locked -p caffold --lib app::stall::tests::a_blocked_runtime_automatically_saves_real_macos_thread_stacks -- --ignored --exact --nocapture
+```
+
 ## JavaScript and browser tests
 
 Commands are owned by the thing they verify rather than by one package, so each

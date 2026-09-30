@@ -258,6 +258,18 @@ also writes one line for each HTTP request whose handler has gone a minute
 without answering, once per request, so requests that pile up before a stall
 leave a trail. The thread ends with the backend.
 
+On macOS, the first stall report also starts `/usr/bin/sample` on a separate
+thread to collect three seconds of this backend's thread stacks. This does not
+need a browser connection or a manual restart. Reports are saved under
+`diagnostics/stalls` in the backend data directory; the server log names each
+report. Only one capture runs at a time, the sampler is stopped if it has not
+finished within ten seconds, and the most recent ten reports are retained.
+The monitor rearms after the runtime runs work again. A later stall starts
+another capture unless the previous sampler is still running; an overlapping
+request is skipped and logged. A failed helper is logged and its report
+annotated, preserving any partial stacks. A report can be incomplete if the
+backend exits before collection finishes.
+
 ## Task and repository context
 
 Caffold persists which agent runs each Task. A Claude Task also persists its
