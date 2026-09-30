@@ -52,6 +52,9 @@ it sends `SIGTERM`, waits up to five seconds, then sends `SIGKILL` only to that
 exact still-running PID and waits another two seconds. It never discovers a
 force-kill target by executable name, port, or database file.
 
+Diagnostics collection can delay shutdown before these signals; see the
+[process model](../architecture/overview.md#process-model).
+
 The installer does not force-kill the installed runtime because it cannot prove
 that runtime's in-memory ownership. If the wrapper, bundled server, or listener
 remains after the deadline, replacement stops before moving the installed app.

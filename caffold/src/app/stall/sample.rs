@@ -42,7 +42,6 @@ impl Sampler {
 
     fn capture_with(&self, capture: impl FnOnce(&Path) -> io::Result<PathBuf> + Send + 'static) {
         if self.running.swap(true, Ordering::AcqRel) {
-            warn!("a stall stack sample is already running; skipping overlapping capture");
             return;
         }
         let running = Sampling(self.running.clone());
@@ -84,10 +83,7 @@ fn capture_stacks(directory: &Path, pid: u32) -> io::Result<PathBuf> {
     );
     let path = directory.join(name);
     File::options().write(true).create_new(true).open(&path)?;
-    warn!(
-        "capturing a {SAMPLE_SECONDS}s stall stack sample of process {pid} to {}",
-        path.display()
-    );
+    // The backend log writer may itself be stuck. Run the helper before logging.
     if let Err(error) = sample_into(&path, pid) {
         // Keep partial stacks, and make an empty or incomplete report actionable.
         if let Ok(mut file) = File::options().append(true).open(&path) {

@@ -11,6 +11,7 @@ private struct UpdateServerSettingsRequest: Encodable {
 
 final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var serverProcess: Process?
+    private var serverDiagnostics: OwnedServerDiagnostics?
     private var logHandle: FileHandle?
     private var statusItem: NSStatusItem?
     private var statusMenuItem: NSMenuItem?
@@ -112,8 +113,14 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        let needsCapture = lifecycle.phase == .notResponding || lifecycle.phase == .restarting
         apply(.quitRequested)
         if let serverProcess, serverProcess.isRunning {
+            if let capture = serverDiagnostics?.captureBeforeStopping(
+                reason: "application termination", requireCapture: needsCapture
+            ) {
+                appendLog(capture.description)
+            }
             let outcome = terminateOwnedProcess(serverProcess)
             appendLog("Owned server \(outcome.description) during application termination.")
         }
@@ -465,6 +472,8 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             process.terminationHandler = { [weak self] process in
                 DispatchQueue.main.async {
                     guard let self, self.serverProcess === process else { return }
+                    self.serverDiagnostics?.stop()
+                    self.serverDiagnostics = nil
                     self.serverProcess = nil
                     try? self.logHandle?.close()
                     self.logHandle = nil
@@ -478,11 +487,22 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             try process.run()
             serverProcess = process
+            startDiagnostics(for: process)
             apply(.launched)
             waitForHealth(attemptsRemaining: 80, generation: lifecycle.generation)
         } catch {
             apply(.launchFailed)
             presentError("Caffold could not start", detail: error.localizedDescription)
+        }
+    }
+
+    private func startDiagnostics(for process: Process) {
+        serverDiagnostics = OwnedServerDiagnostics(
+            process: process,
+            healthURL: healthURL,
+            directory: dataDirectory.appendingPathComponent("diagnostics/stalls", isDirectory: true)
+        ) { [weak self] capture in
+            DispatchQueue.main.async { self?.appendLog(capture.description) }
         }
     }
 
@@ -782,12 +802,20 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .starting, .ready, .notResponding:
             guard let serverProcess, serverProcess.isRunning else { return }
             apply(.restartRequested)
+            let diagnostics = serverDiagnostics
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                if let capture = diagnostics?.captureBeforeStopping(reason: "Restart Server requested") {
+                    DispatchQueue.main.async { self?.appendLog(capture.description) }
+                }
                 let outcome = terminateOwnedProcess(serverProcess)
                 DispatchQueue.main.async {
                     guard let self else { return }
                     self.appendLog("Owned server \(outcome.description) during restart.")
                     if outcome == .timedOut {
+                        guard self.serverProcess === serverProcess, self.lifecycle.phase == .restarting else { return }
+                        // Restart preparation stopped this process's observer.
+                        // If termination failed, watch the still-owned backend again.
+                        self.startDiagnostics(for: serverProcess)
                         self.apply(.restartTimedOut)
                         self.presentError(
                             "Caffold could not restart the server",

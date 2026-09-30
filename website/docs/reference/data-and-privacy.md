@@ -1,33 +1,22 @@
 # Data and privacy
 
-Caffold runs on your Mac and keeps its data there. This page lists what
-Caffold stores and everything that leaves the Mac because of Caffold.
+Caffold runs on your Mac. This page explains where your data is stored, which
+features send data to external services, and who can access Caffold.
 
-## What stays on the Mac
+## Where data is stored
 
-Your repositories, the agents and their sign-ins, and the agents' conversations
-stay on the Mac. Each agent keeps its own conversation history, and Caffold does
-not keep a second copy.
+Caffold's data folder is `~/Library/Application Support/Caffold/data`.
 
-Caffold's own data lives in `~/Library/Application Support/Caffold/data`:
-
-- your Tasks and Sections, and the choices each Task was last run with;
-- [Notes](../notes/index.md);
-- the worktrees Caffold prepares, under `data/worktrees`;
-- voice input settings, saved speech-to-text API keys, and the downloaded
-  Whisper model;
-- the Jev API key and rules;
-- the browsers subscribed to notifications.
+| Data | Where it is stored |
+| --- | --- |
+| **Caffold app data** — Tasks, Sections, [Notes](../notes/index.md), Task options, voice input settings and API keys, the Whisper model, Jev's key and rules, and notification subscriptions | Caffold's data folder. |
+| **Conversation history and agent sign-ins** | Each agent's own local storage on the Mac. Caffold reads conversation history from the agent and does not save a second copy. |
+| **Project files and [prompt attachments](../tasks/start-a-task.md#attach-files)** | The Task's working directory. Worktrees Caffold prepares are under `worktrees/` in its data folder; attachments are under `.caffold/uploads/` in the Task's working directory. |
+| **Logs and diagnostic reports** — records used to investigate problems with Caffold | Logs: `~/Library/Logs/Caffold`. Reports saved when the server stops responding: `diagnostics/stalls/` in Caffold's data folder. |
+| **Browser settings** — Appearance, Keyboard, and Files | Saved separately in each browser on each device. |
 
 API keys are stored in files only your user account can read, and Caffold never
 shows a saved key again.
-
-Files you [attach to a prompt](../tasks/start-a-task.md#attach-files) are
-uploaded into `.caffold/uploads/` in the Task's working directory, not into
-Caffold's data.
-
-Logs are in `~/Library/Logs/Caffold`. Appearance, Keyboard, and Files settings
-are kept by each browser rather than on the Mac.
 
 ## What leaves the Mac
 
