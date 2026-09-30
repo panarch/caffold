@@ -30,7 +30,7 @@ use super::{
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
 const TURN_TIMEOUT: Duration = Duration::from_secs(90);
-const SPIKE_MODEL: &str = "gpt-5.3-codex-spark";
+const SPIKE_MODEL: &str = "gpt-6-luna";
 
 async fn eligible_codex_executable() -> Result<PathBuf> {
     inspect_codex_installation()

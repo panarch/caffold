@@ -290,7 +290,7 @@ for line in sys.stdin:
             let mut events = client.subscribe();
             let started = client.request_value("thread/start", json!({
                 "cwd":temp.path(), "ephemeral":true, "approvalPolicy":"on-request", "approvalsReviewer":"user",
-                "sandbox":"workspace-write", "model":"gpt-5.6-sol",
+                "sandbox":"workspace-write", "model":"gpt-6.1-sol",
                 "config": {
                     "features.tool_call_mcp_elicitation":true,
                     "mcp_servers.caffold_approval_probe":{

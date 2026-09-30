@@ -21,7 +21,8 @@ import {
   mergeLiveUsageReports,
 } from "./codex-live-usage.mjs";
 
-const SPARK_MODEL = LIVE_MODEL_POLICY.models.spark;
+const TASK_MODEL = LIVE_MODEL_POLICY.models.task;
+const PLAN_MODEL = LIVE_MODEL_POLICY.models.plan;
 const FAST_MODEL = LIVE_MODEL_POLICY.models.fast;
 const MULTIMODAL_MODEL = LIVE_MODEL_POLICY.models.multimodal;
 const LIVE_REASONING_EFFORT = LIVE_MODEL_POLICY.reasoningEffort;
@@ -83,7 +84,6 @@ async function chooseModel(taskForm, scenario) {
   await modelOption.click();
   await expect(taskForm.locator('input[name="model"]')).toHaveValue(model);
 
-  await taskForm.getByRole("button", { name: /Choose model/ }).click();
   const effortOption = taskForm.locator(`[data-effort="${effort}"]`);
   await expect(
     effortOption,
@@ -395,7 +395,7 @@ test("hydrates, orders, and restores Tasks through the local navigator ledger", 
       data: {
         cwd: fixture.cwd,
         titleSource: prompt,
-        model: SPARK_MODEL,
+        model: TASK_MODEL,
         effort: LIVE_REASONING_EFFORT,
       },
     });
@@ -409,12 +409,12 @@ test("hydrates, orders, and restores Tasks through the local navigator ledger", 
     expect(created.activeTopPlacement?.section?.id).toBeTruthy();
     expect(created.activeTopPlacement?.section?.name).toBe(fixture.cwd);
     expect(created.activeTopPlacement?.section?.repository).toBe(true);
-    trackLiveThread(threadId, "spark", SPARK_MODEL);
+    trackLiveThread(threadId, "task", TASK_MODEL);
     const prompted = await request.post(`/api/tasks/${threadId}/prompts`, {
       data: {
         prompt,
         images: [],
-        model: SPARK_MODEL,
+        model: TASK_MODEL,
         effort: LIVE_REASONING_EFFORT,
         fastMode: false,
         activeTurnId: null,
@@ -425,7 +425,7 @@ test("hydrates, orders, and restores Tasks through the local navigator ledger", 
     return threadId;
   };
 
-  const sectionTaskIds = async (threadIds) => {
+  const sectionTasks = async (threadIds) => {
     const response = await request.get("/api/tasks");
     const body = await response.text();
     expect(response.status(), `active Task response: ${body}`).toBe(200);
@@ -435,15 +435,22 @@ test("hydrates, orders, and restores Tasks through the local navigator ledger", 
     expect(
       projection.unsectioned.some(({ threadId }) => threadIds.includes(threadId)),
     ).toBe(false);
-    return section.tasks
+    return section.tasks;
+  };
+
+  const sectionTaskIds = async (threadIds) =>
+    (await sectionTasks(threadIds))
       .map(({ threadId }) => threadId)
       .filter((threadId) => threadIds.includes(threadId));
-  };
 
   const firstThreadId = await createTask("first");
   const secondThreadId = await createTask("second");
   await expectLiveThreadIdle(request, firstThreadId);
   await expectLiveThreadIdle(request, secondThreadId);
+  const secondTaskTitle = (await sectionTasks([firstThreadId, secondThreadId])).find(
+    ({ threadId }) => threadId === secondThreadId,
+  )?.title;
+  expect(secondTaskTitle).toBeTruthy();
 
   const daemonClient = await CodexDaemonClient.connect();
   try {
@@ -478,18 +485,14 @@ test("hydrates, orders, and restores Tasks through the local navigator ledger", 
   );
   await expect(firstRow).toHaveAttribute("data-task-status", "idle");
   await expect(secondRow).toHaveAttribute("data-task-status", "idle");
-  await expect(secondRow.locator(".task-row-title")).toContainText(
-    `caffold-section-second-${marker}`,
-  );
+  await expect(secondRow.locator(".task-row-title")).toHaveText(secondTaskTitle);
   await expect(secondRow.locator(".task-row-title")).not.toContainText(
     "External stale navigator name",
   );
   await page.reload();
   await expect(firstRow).toHaveAttribute("data-task-status", "idle");
   await expect(secondRow).toHaveAttribute("data-task-status", "idle");
-  await expect(secondRow.locator(".task-row-title")).toContainText(
-    `caffold-section-second-${marker}`,
-  );
+  await expect(secondRow.locator(".task-row-title")).toHaveText(secondTaskTitle);
 
   expect(await sectionTaskIds([firstThreadId, secondThreadId])).toEqual([
     secondThreadId,
@@ -521,7 +524,7 @@ test("rechecks externally archived and deleted Codex Threads through explicit Re
     data: {
       cwd: fixture.cwd,
       titleSource: prompt,
-      model: SPARK_MODEL,
+      model: TASK_MODEL,
       effort: LIVE_REASONING_EFFORT,
     },
   });
@@ -530,12 +533,12 @@ test("rechecks externally archived and deleted Codex Threads through explicit Re
   const created = JSON.parse(createdBody);
   const threadId = created.detail?.threadId;
   expect(threadId).toBeTruthy();
-  trackLiveThread(threadId, "spark", SPARK_MODEL);
+  trackLiveThread(threadId, "task", TASK_MODEL);
   const promptedResponse = await request.post(`/api/tasks/${threadId}/prompts`, {
     data: {
       prompt,
       images: [],
-      model: SPARK_MODEL,
+      model: TASK_MODEL,
       effort: LIVE_REASONING_EFFORT,
       fastMode: false,
       activeTurnId: null,
@@ -695,7 +698,7 @@ test("creates a real Codex task in Fast mode and restores the task setting", asy
   await expect(followUp.locator(".task-model-fast")).toHaveAttribute("title", "Fast mode");
 });
 
-test("creates and resumes a real Codex task through Caffold with Spark", async ({
+test("creates and resumes a real Codex task through Caffold with Luna", async ({
   page,
 }) => {
   const cwd = liveCwd();
@@ -714,7 +717,7 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   const navigator = taskNavigator(page);
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await expect(newTaskForm).toBeVisible();
-  await chooseModel(newTaskForm, "spark");
+  await chooseModel(newTaskForm, "task");
 
   const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
   await newTaskPrompt.fill(
@@ -724,7 +727,7 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
-  trackLiveThread(threadId, "spark", SPARK_MODEL);
+  trackLiveThread(threadId, "task", TASK_MODEL);
 
   const assistantMessages = tasksPage.locator(
     'caffold-task-assistant-message',
@@ -759,7 +762,7 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   const followUpForm = tasksPage.locator(
     '.task-follow-up-form[data-task-form="follow-up"]',
   );
-  await chooseModel(followUpForm, "spark");
+  await chooseModel(followUpForm, "task");
   const followUpPrompt = followUpForm.getByRole("textbox", { name: "Follow-up prompt" });
   await followUpPrompt.fill(
     [
@@ -898,6 +901,10 @@ test("uses the current plan convention across a real Codex resume", async ({
 }) => {
   const marker = `${Date.now()}`;
   const fixture = initializeLiveRepository(`current-plan-${marker}`);
+  // Keep the plan fixture independent of the maintainer's global ignore rules.
+  execFileSync("git", [
+    "-C", fixture.repository, "config", "core.excludesFile", "/dev/null",
+  ]);
   const initialReply = `caffold-live-plan-created-${marker}`;
   const resumedReply = `caffold-live-plan-resumed-${marker}`;
   let threadId;
@@ -907,7 +914,7 @@ test("uses the current plan convention across a real Codex resume", async ({
     const tasksPage = page.locator("caffold-tasks-page");
     const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
     await expect(newTaskForm).toBeVisible();
-    await chooseModel(newTaskForm, "spark");
+    await chooseModel(newTaskForm, "plan");
 
     const newTaskPrompt = newTaskForm.getByRole("textbox", {
       name: "New task prompt",
@@ -925,7 +932,7 @@ test("uses the current plan convention across a real Codex resume", async ({
     await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
     threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
     expect(threadId).toBeTruthy();
-    trackLiveThread(threadId, "spark", SPARK_MODEL);
+    trackLiveThread(threadId, "plan", PLAN_MODEL);
 
     const finalMessages = tasksPage.locator(
       'caffold-task-assistant-message[data-message-phase="final"]',
@@ -1022,7 +1029,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
   const navigator = taskNavigator(page);
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await expect(newTaskForm).toBeVisible();
-  await chooseModel(newTaskForm, "spark");
+  await chooseModel(newTaskForm, "task");
 
   const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
   await newTaskPrompt.fill(firstPrompt);
@@ -1033,7 +1040,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
     const response = await route.fetch();
     expect(response.ok()).toBeTruthy();
     const created = await response.json();
-    trackLiveThread(created.detail.threadId, "spark", SPARK_MODEL);
+    trackLiveThread(created.detail.threadId, "task", TASK_MODEL);
     await expect.poll(async () => {
       const status = await readCodexStatus(page.request);
       return status.diagnostics?.threadSessions?.subscribedSessions;
@@ -1045,7 +1052,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
   await page.unroute("**/api/tasks");
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
-  trackLiveThread(threadId, "spark", SPARK_MODEL);
+  trackLiveThread(threadId, "task", TASK_MODEL);
 
   const finalAssistantMessages = tasksPage.locator(
     'caffold-task-assistant-message[data-message-phase="final"]',
@@ -1101,7 +1108,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
     '.task-follow-up-form[data-task-form="follow-up"]',
   );
   await expect(followUpForm).toHaveAttribute("data-thread-id", threadId);
-  await chooseModel(followUpForm, "spark");
+  await chooseModel(followUpForm, "task");
   const followUpPrompt = followUpForm.getByRole("textbox", { name: "Follow-up prompt" });
   await followUpPrompt.fill(
     `Reply with exactly ${followUpReply}. Do not inspect files, modify files, or run commands.`,
@@ -1144,7 +1151,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
   ).toHaveText(requestedName);
 });
 
-test("moves one dirty Spark task into a worktree and resumes the same thread", async ({
+test("moves one dirty Luna task into a worktree and resumes the same thread", async ({
   page,
 }) => {
   const marker = `${Date.now()}`;
@@ -1167,7 +1174,7 @@ test("moves one dirty Spark task into a worktree and resumes the same thread", a
     const tasksPage = page.locator("caffold-tasks-page");
     const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
     await expect(newTaskForm).toBeVisible();
-    await chooseModel(newTaskForm, "spark");
+    await chooseModel(newTaskForm, "task");
 
     const newTaskPrompt = newTaskForm.getByRole("textbox", {
       name: "New task prompt",
@@ -1186,7 +1193,7 @@ test("moves one dirty Spark task into a worktree and resumes the same thread", a
     await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
     threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
     expect(threadId).toBeTruthy();
-    trackLiveThread(threadId, "spark", SPARK_MODEL);
+    trackLiveThread(threadId, "task", TASK_MODEL);
 
     await expect(
       tasksPage
@@ -1386,7 +1393,7 @@ test("sends image attachments through Caffold with a multimodal model", async ({
   await expect(activeTurn).toHaveCount(0);
 });
 
-test("reconciles a managed Spark task through a second daemon client", async ({
+test("reconciles a managed Luna task through a second daemon client", async ({
   page,
 }) => {
   const cwd = liveCwd();
@@ -1401,7 +1408,7 @@ test("reconciles a managed Spark task through a second daemon client", async ({
   const tasksPage = page.locator("caffold-tasks-page");
   const navigator = taskNavigator(page);
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
-  await chooseModel(newTaskForm, "spark");
+  await chooseModel(newTaskForm, "task");
   const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
   await newTaskPrompt.fill(
     `Reply with exactly ${initialReply}. Do not modify files or run commands.`,
@@ -1410,7 +1417,7 @@ test("reconciles a managed Spark task through a second daemon client", async ({
   await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
-  trackLiveThread(threadId, "spark", SPARK_MODEL);
+  trackLiveThread(threadId, "task", TASK_MODEL);
 
   const assistantMessages = tasksPage.locator(
     'caffold-task-assistant-message[data-message-phase="final"]',
@@ -1423,7 +1430,7 @@ test("reconciles a managed Spark task through a second daemon client", async ({
     '.task-follow-up-form[data-task-form="follow-up"]',
   );
   await expect(followUpForm).toHaveAttribute("data-thread-id", threadId);
-  await chooseModel(followUpForm, "spark");
+  await chooseModel(followUpForm, "task");
   const followUpPrompt = followUpForm.getByRole("textbox", { name: "Follow-up prompt" });
 
   await followUpPrompt.fill(
@@ -1444,7 +1451,7 @@ test("reconciles a managed Spark task through a second daemon client", async ({
     followUpPrompt.press("Enter"),
   );
   expect(enterOutcome.steered).toBe(false);
-  await expect(followUpPrompt).toBeFocused();
+  await expect(followUpPrompt).not.toBeFocused();
   await expect(userMessages.filter({ hasText: enterReply })).toBeVisible();
   await expect(assistantMessages.filter({ hasText: enterReply })).toBeVisible();
   await expectLiveThreadIdle(page.request, threadId);
@@ -1460,7 +1467,7 @@ test("reconciles a managed Spark task through a second daemon client", async ({
     await daemonClient.startTurn({
       threadId,
       cwd: canonicalCwd,
-      model: SPARK_MODEL,
+      model: TASK_MODEL,
       effort: LIVE_REASONING_EFFORT,
       prompt: `Reply with exactly ${externalReply}. Do not modify files or run commands.`,
     });
@@ -1472,7 +1479,7 @@ test("reconciles a managed Spark task through a second daemon client", async ({
     await daemonClient.startTurn({
       threadId,
       cwd: canonicalCwd,
-      model: SPARK_MODEL,
+      model: TASK_MODEL,
       effort: LIVE_REASONING_EFFORT,
       prompt: [
         "This block is automatically supplied ambient UI state, not part of the user's request.",

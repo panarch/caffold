@@ -1389,6 +1389,8 @@ mod tests {
                     "Use the rename_current_task tool to rename the current Caffold task to exactly \"Live Caffold MCP first turn\". You must call the tool; do not merely say it was renamed. After the tool succeeds, reply with exactly MCP-READY. Do not run commands or modify files.",
                     &[],
                     CodexTurnOptions {
+                        model: Some("gpt-6-luna".to_string()),
+                        effort: Some("low".to_string()),
                         service_tier: Some(NORMAL_SERVICE_TIER_ID.to_string()),
                         ..CodexTurnOptions::default()
                     },
@@ -1643,6 +1645,8 @@ mod tests {
                     "Use rename_current_task to rename this Caffold task to exactly \"Live MCP before runtime restart\". You must call the tool. Then reply with exactly MCP-RUNTIME-READY. Do not run commands or modify files.",
                     &[],
                     CodexTurnOptions {
+                        model: Some("gpt-6-luna".to_string()),
+                        effort: Some("low".to_string()),
                         service_tier: Some(NORMAL_SERVICE_TIER_ID.to_string()),
                         ..CodexTurnOptions::default()
                     },

@@ -43,6 +43,15 @@ function status({ lifetimeTokens, overallPercent, sparkPercent, threads = {} }) 
 }
 
 test("enforces the authenticated live model policy", () => {
+  assert.deepEqual(LIVE_MODEL_POLICY, {
+    reasoningEffort: "low",
+    models: {
+      task: "gpt-6-luna",
+      plan: "gpt-6.1-sol",
+      fast: "gpt-6-luna",
+      multimodal: "gpt-6-luna",
+    },
+  });
   for (const [scenario, model] of Object.entries(LIVE_MODEL_POLICY.models)) {
     assert.doesNotThrow(() =>
       assertLiveModelPolicy({
@@ -57,16 +66,25 @@ test("enforces the authenticated live model policy", () => {
     () =>
       assertLiveModelPolicy({
         scenario: "fast",
-        model: "gpt-5.6-sol",
+        model: "gpt-6.1-sol",
         effort: "low",
       }),
-    /must use gpt-5\.6-luna/,
+    /must use gpt-6-luna/,
   );
   assert.throws(
     () =>
       assertLiveModelPolicy({
-        scenario: "spark",
-        model: "gpt-5.3-codex-spark",
+        scenario: "plan",
+        model: "gpt-6-luna",
+        effort: "low",
+      }),
+    /must use gpt-6.1-sol/,
+  );
+  assert.throws(
+    () =>
+      assertLiveModelPolicy({
+        scenario: "task",
+        model: "gpt-6-luna",
         effort: "medium",
       }),
     /must use low reasoning/,
