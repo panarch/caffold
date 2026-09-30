@@ -5,8 +5,8 @@ use super::store::{
     task_store_get, task_store_get_archived, task_store_worktree_for_thread,
 };
 use super::{
-    SectionReorderRequest, SectionReorderResponse, TaskDeleteResponse, TaskReorderRequest,
-    TaskReorderResponse, TaskRestoreResponse,
+    SectionReorderRequest, SectionReorderResponse, TaskDeleteRequest, TaskDeleteResponse,
+    TaskReorderRequest, TaskReorderResponse, TaskRestoreResponse,
 };
 use crate::agent;
 use crate::agent::{Conversation, Driver};
@@ -109,6 +109,10 @@ pub(super) async fn task_archive(
     let Some(managed) = task_store_get(&state, &thread_id).await? else {
         return Err(task_not_managed_error());
     };
+    state
+        .lifecycle
+        .preflight_archive_worktree(thread_id.clone())
+        .await?;
     let driver = match task_provider_driver(&state, &managed).await? {
         Ok(driver) => Some(driver),
         Err(error) => {
@@ -596,7 +600,27 @@ pub(super) async fn task_restore(
 pub(super) async fn task_delete(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
+    request: Option<Json<TaskDeleteRequest>>,
 ) -> Result<Json<TaskDeleteResponse>, ApiError> {
+    let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
+    let request = request.map(|Json(request)| request).unwrap_or_default();
+    if let Some(managed) = task_store_get(&state, &thread_id).await? {
+        if task_store_worktree_for_thread(&state, &thread_id)
+            .await?
+            .is_none()
+        {
+            return Err(task_not_archived_error());
+        }
+        return delete_broken_task(&state, managed, request).await;
+    }
+    if request.confirm_broken_worktree_deletion || request.expected_worktree_id.is_some() {
+        return Err(ApiError::Conflict {
+            code: "broken_worktree_confirmation_stale",
+            message:
+                "the confirmed Task is no longer active; open its current state before deleting"
+                    .to_string(),
+        });
+    }
     let Some(archived) = task_store_get_archived(&state, &thread_id).await? else {
         return Err(task_not_archived_error());
     };
@@ -631,6 +655,76 @@ pub(super) async fn task_delete(
     state.lifecycle.delete_task_resources(&thread_id).await;
     notify_task_removed(&state, &thread_id, "deleted");
 
+    Ok(Json(TaskDeleteResponse { thread_id }))
+}
+
+async fn delete_broken_task(
+    state: &TaskState,
+    managed: ManagedThread,
+    request: TaskDeleteRequest,
+) -> Result<Json<TaskDeleteResponse>, ApiError> {
+    let thread_id = managed.thread_id;
+    let Some(expected_id) = request
+        .expected_worktree_id
+        .filter(|_| request.confirm_broken_worktree_deletion)
+    else {
+        return Err(ApiError::BadRequest {
+            code: "broken_worktree_confirmation_required",
+            message: "deleting a broken Task requires confirmation and expectedWorktreeId"
+                .to_string(),
+        });
+    };
+    let worktree = state
+        .lifecycle
+        .preflight_broken_deletion(thread_id.clone(), expected_id.clone())
+        .await?;
+    let managed = task_store_get(state, &thread_id)
+        .await?
+        .ok_or_else(task_not_managed_error)?;
+    let driver = task_provider_driver(state, &managed)
+        .await?
+        .map_err(ApiError::from)?;
+    match driver.describe(&thread_id).await {
+        Ok(Some(conversation))
+            if matches!(conversation.status, agent::ThreadStatus::Active { .. }) =>
+        {
+            return Err(ApiError::BadRequest {
+                code: "task_active",
+                message: "active tasks cannot be deleted".to_string(),
+            });
+        }
+        Ok(_) | Err(agent::AgentError::ConversationGone(_)) => {}
+        Err(error) => return Err(error.into()),
+    }
+    // Acquisition and description can wait on the provider. Confirmation is
+    // still scoped to a broken, owned slot after that wait.
+    state
+        .lifecycle
+        .preflight_broken_deletion(thread_id.clone(), expected_id.clone())
+        .await?;
+    state.lifecycle.close_terminal(&thread_id);
+    driver.delete_conversation_contents(&thread_id).await?;
+    state
+        .lifecycle
+        .delete_broken_files(thread_id.clone(), expected_id)
+        .await?;
+    if !task_store_delete_task_rows(
+        state,
+        &thread_id,
+        ManagedTaskMembership::Active,
+        Some(&worktree.worktree_id),
+    )
+    .await?
+    {
+        return Err(task_not_managed_error());
+    }
+    // The durable deletion is already committed. A private provider reference
+    // that could not be unlinked must not strand the UI on a deleted Task.
+    if let Err(error) = driver.forget_deleted_conversation(&thread_id).await {
+        eprintln!("failed to forget provider references for deleted Task {thread_id}: {error}");
+    }
+    state.lifecycle.delete_task_resources(&thread_id).await;
+    notify_task_removed(state, &thread_id, "deleted");
     Ok(Json(TaskDeleteResponse { thread_id }))
 }
 
@@ -756,6 +850,478 @@ mod tests {
         fs::RootedFs,
         task_store::RunBy,
     };
+
+    #[tokio::test]
+    async fn broken_task_http_and_live_diagnosis_do_not_need_a_provider_and_confirmed_delete_cleans_rows()
+     {
+        use futures_util::StreamExt;
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let id = "broken-http";
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/read",
+                json!({"thread": broken_thread(id, &source, "idle")}),
+            ),
+            MockCodexResponse::ok("thread/delete", json!({})),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, id, &source).await;
+        let worktree = isolate_broken_fixture(&state, id, &source).await;
+        let checkout = inspect_ready_worktree(&worktree).unwrap();
+        std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(format!("/api/tasks/{id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
+        let body: JsonValue = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), 8192)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["error"]["code"], "managed_worktree_not_repository");
+        assert_eq!(body["error"]["allowedActions"], json!(["deleteTask"]));
+        assert_eq!(body["error"]["worktreeId"], worktree.worktree_id);
+        assert_eq!(body["error"]["worktreePath"], worktree.worktree_path);
+        let mut live = state.detail.stream(id).await.unwrap();
+        let initial = serde_json::to_value(live.next().await.unwrap()).unwrap();
+        assert_eq!(initial["payload"]["error"], body["error"]);
+        assert!(initial["payload"]["detail"]["task"].is_null());
+        let archive = task_archive(State(state.clone()), AxumPath(id.to_string())).await;
+        assert!(matches!(archive, Err(ApiError::Diagnostic(ref diagnosis))
+            if serde_json::to_value(diagnosis).unwrap() == body["error"]));
+        assert!(client.mock_requests().await.is_empty());
+
+        let unconfirmed = task_delete(State(state.clone()), AxumPath(id.to_string()), None).await;
+        assert!(matches!(
+            unconfirmed,
+            Err(ApiError::BadRequest {
+                code: "broken_worktree_confirmation_required",
+                ..
+            })
+        ));
+        assert!(client.mock_requests().await.is_empty());
+        let response = router(state.clone()).oneshot(axum::http::Request::builder()
+            .method("DELETE").uri(format!("/api/tasks/{id}")) .header("content-type", "application/json")
+            .body(Body::from(json!({"confirmBrokenWorktreeDeletion": true, "expectedWorktreeId": worktree.worktree_id}).to_string())).unwrap()).await.unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert!(state.task_store.get(id).unwrap().is_none());
+        assert!(state.task_store.worktree_for_thread(id).unwrap().is_none());
+        assert!(!checkout.path.exists());
+        assert!(git_branch_exists(&source, &checkout.branch_name));
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            ["thread/read", "thread/delete"]
+        );
+    }
+
+    #[tokio::test]
+    async fn broken_delete_rejects_a_stale_confirmation_before_native_deletion() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let id = "broken-changed";
+        let (read, release) = MockCodexResponse::gated_ok(
+            "thread/read",
+            json!({"thread": broken_thread(id, &source, "idle")}),
+        );
+        let client = CodexThreadClient::mock(vec![read]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, id, &source).await;
+        let worktree = isolate_broken_fixture(&state, id, &source).await;
+        let checkout = inspect_ready_worktree(&worktree).unwrap();
+        std::fs::remove_dir_all(&checkout.path).unwrap();
+        let deleting = tokio::spawn(task_delete(
+            State(state.clone()),
+            AxumPath(id.to_string()),
+            Some(Json(TaskDeleteRequest {
+                confirm_broken_worktree_deletion: true,
+                expected_worktree_id: Some(worktree.worktree_id.clone()),
+            })),
+        ));
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while client.mock_requests().await.is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        crate::git::remove_worktree_admin_entries(&checkout.path, &checkout.common_dir).unwrap();
+        crate::git::restore_attached_worktree(
+            &checkout.common_dir,
+            &checkout.path,
+            &checkout.branch_name,
+        )
+        .unwrap();
+        std::fs::write(checkout.path.join("dirty.txt"), "must stay").unwrap();
+        release.send(()).unwrap();
+        assert!(
+            matches!(deleting.await.unwrap(), Err(ApiError::Diagnostic(ref body)) if body.code == "managed_worktree_not_broken")
+        );
+        assert!(state.task_store.get(id).unwrap().is_some());
+        assert_eq!(
+            std::fs::read_to_string(checkout.path.join("dirty.txt")).unwrap(),
+            "must stay"
+        );
+        assert_eq!(client.mock_requests().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn broken_delete_keeps_files_and_rows_when_provider_deletion_fails_or_turn_is_active() {
+        for (status, fail_describe, fail_delete) in [
+            ("active", false, false),
+            ("idle", true, false),
+            ("idle", false, true),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let source = root.path().join("source");
+            initialize_git_repository(&source);
+            let id = "broken-refused";
+            let description = if fail_describe {
+                MockCodexResponse::error("thread/read", CodexThreadError::ProcessUnavailable)
+            } else {
+                MockCodexResponse::ok(
+                    "thread/read",
+                    json!({"thread": broken_thread(id, &source, status)}),
+                )
+            };
+            let mut responses = vec![description];
+            if fail_delete {
+                responses.push(MockCodexResponse::error(
+                    "thread/delete",
+                    CodexThreadError::ProcessUnavailable,
+                ));
+            }
+            let client = CodexThreadClient::mock(responses);
+            let state =
+                task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone())
+                    .await;
+            manage_test_thread(&state, id, &source).await;
+            let worktree = isolate_broken_fixture(&state, id, &source).await;
+            let checkout = inspect_ready_worktree(&worktree).unwrap();
+            std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+            let result = task_delete(
+                State(state.clone()),
+                AxumPath(id.to_string()),
+                Some(Json(TaskDeleteRequest {
+                    confirm_broken_worktree_deletion: true,
+                    expected_worktree_id: Some(worktree.worktree_id.clone()),
+                })),
+            )
+            .await;
+            if fail_describe || fail_delete {
+                assert!(matches!(result, Err(ApiError::Agent(_))));
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(ApiError::BadRequest {
+                        code: "task_active",
+                        ..
+                    })
+                ));
+            }
+            assert!(checkout.path.exists());
+            assert!(state.task_store.get(id).unwrap().is_some());
+            assert!(state.task_store.worktree_for_thread(id).unwrap().is_some());
+            assert_eq!(
+                client.mock_requests().await.len(),
+                if fail_delete { 2 } else { 1 }
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn broken_delete_retries_after_native_contents_are_gone_and_filesystem_cleanup_failed() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let id = "broken-partial-files";
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/read",
+                json!({"thread": broken_thread(id, &source, "idle")}),
+            ),
+            MockCodexResponse::ok("thread/delete", json!({})),
+            MockCodexResponse::error(
+                "thread/read",
+                CodexThreadError::ThreadUnavailable("already deleted".to_string()),
+            ),
+            MockCodexResponse::error(
+                "thread/delete",
+                CodexThreadError::ThreadUnavailable("already deleted".to_string()),
+            ),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, id, &source).await;
+        let worktree = isolate_broken_fixture(&state, id, &source).await;
+        let checkout = inspect_ready_worktree(&worktree).unwrap();
+        std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+        let parent = checkout.path.parent().unwrap();
+        let original = std::fs::metadata(parent).unwrap().permissions();
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let request = || {
+            Some(Json(TaskDeleteRequest {
+                confirm_broken_worktree_deletion: true,
+                expected_worktree_id: Some(worktree.worktree_id.clone()),
+            }))
+        };
+        let first = task_delete(State(state.clone()), AxumPath(id.to_string()), request()).await;
+        std::fs::set_permissions(parent, original).unwrap();
+        assert!(first.is_err());
+        assert!(checkout.path.exists());
+        assert!(state.task_store.get(id).unwrap().is_some());
+        assert!(state.task_store.worktree_for_thread(id).unwrap().is_some());
+        assert_eq!(
+            state
+                .lifecycle
+                .preflight_broken_deletion(id.to_string(), worktree.worktree_id.clone())
+                .await
+                .unwrap()
+                .thread_id
+                .as_deref(),
+            Some(id)
+        );
+        assert_eq!(client.mock_requests().await.len(), 2);
+
+        let deleted = task_delete(State(state.clone()), AxumPath(id.to_string()), request())
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(deleted.thread_id, id);
+        assert!(!checkout.path.exists());
+        assert!(state.task_store.get(id).unwrap().is_none());
+        assert!(state.task_store.worktree_for_thread(id).unwrap().is_none());
+        assert!(git_branch_exists(&source, &checkout.branch_name));
+        assert_eq!(client.mock_requests().await.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn broken_claude_delete_uses_the_native_transcript_path_and_is_idempotent() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let id = "claude-broken";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_claude_task(&state, id, root.path()).await;
+        let worktree = isolate_broken_fixture(&state, id, &source).await;
+        let checkout = inspect_ready_worktree(&worktree).unwrap();
+        let written = written_down(root.path(), id, &checkout.path);
+        std::fs::create_dir_all(written.parent().unwrap()).unwrap();
+        std::fs::rename(written_down(root.path(), id, root.path()), &written).unwrap();
+        std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+        // Simulate a prior successful native delete followed by another failed
+        // cleanup: the row is still the authority for retrying this Task.
+        state
+            .task_runtime
+            .claude()
+            .driver(worktree.worktree_path.as_str())
+            .delete_conversation(id)
+            .await
+            .unwrap();
+        let _ = task_delete(
+            State(state.clone()),
+            AxumPath(id.to_string()),
+            Some(Json(TaskDeleteRequest {
+                confirm_broken_worktree_deletion: true,
+                expected_worktree_id: Some(worktree.worktree_id),
+            })),
+        )
+        .await
+        .unwrap();
+        assert!(!written.exists());
+        assert!(!checkout.path.exists());
+        assert!(state.task_store.get(id).unwrap().is_none());
+        assert!(client.mock_requests().await.is_empty());
+    }
+
+    fn broken_thread(id: &str, source: &std::path::Path, status: &str) -> JsonValue {
+        json!({"id": id, "preview": "Broken Task", "status": {"type": status, "activeFlags": []},
+            "cwd": source.display().to_string(), "createdAt": 1.0, "updatedAt": 1.0, "turns": []})
+    }
+
+    #[tokio::test]
+    async fn broken_grok_deletion_retains_native_references_for_retry_until_local_commit() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let codex = CodexThreadClient::mock(Vec::new());
+        let (state, leader, _memory, _host) =
+            task_state_with_grok(RootedFs::new(root.path()).unwrap(), codex.clone()).await;
+        let response = router(state.clone()).oneshot(axum::http::Request::builder().method("POST").uri("/api/tasks")
+            .header("content-type", "application/json")
+            .body(Body::from(json!({"provider": "grok", "titleSource": "Broken Grok Task", "cwd": "source"}).to_string())).unwrap()).await.unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let created: JsonValue = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), 32768)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        let id = created["detail"]["threadId"].as_str().unwrap();
+        let worktree = isolate_broken_fixture(&state, id, &source).await;
+        let checkout = inspect_ready_worktree(&worktree).unwrap();
+        std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+        let managed = task_store_get(&state, id).await.unwrap().unwrap();
+        let driver = task_provider_driver(&state, &managed)
+            .await
+            .unwrap()
+            .unwrap();
+        driver.delete_conversation_contents(id).await.unwrap();
+        let binding = root
+            .path()
+            .join(".caffold-test/grok/bindings")
+            .join(format!("{id}.json"));
+        assert!(
+            binding.is_file(),
+            "native references survive a later cleanup failure"
+        );
+        assert_eq!(leader.requests("_x.ai/session/delete").len(), 1);
+        let _ = task_delete(
+            State(state.clone()),
+            AxumPath(id.to_string()),
+            Some(Json(TaskDeleteRequest {
+                confirm_broken_worktree_deletion: true,
+                expected_worktree_id: Some(worktree.worktree_id),
+            })),
+        )
+        .await
+        .unwrap();
+        assert_eq!(leader.requests("_x.ai/session/delete").len(), 2);
+        assert!(!binding.exists());
+        assert!(!checkout.path.exists());
+        assert!(state.task_store.get(id).unwrap().is_none());
+        assert!(codex.mock_requests().await.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn committed_broken_grok_deletion_notifies_removal_even_if_private_reference_cleanup_fails()
+     {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_git_repository(&source);
+        let codex = CodexThreadClient::mock(Vec::new());
+        let (state, leader, _memory, _host) =
+            task_state_with_grok(RootedFs::new(root.path()).unwrap(), codex.clone()).await;
+        let response = router(state.clone()).oneshot(axum::http::Request::builder().method("POST").uri("/api/tasks")
+            .header("content-type", "application/json")
+            .body(Body::from(json!({"provider": "grok", "titleSource": "Broken Grok Task", "cwd": "source"}).to_string())).unwrap()).await.unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let created: JsonValue = serde_json::from_slice(
+            &axum::body::to_bytes(response.into_body(), 32768)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        let id = created["detail"]["threadId"].as_str().unwrap();
+        let worktree = isolate_broken_fixture(&state, id, &source).await;
+        let checkout = inspect_ready_worktree(&worktree).unwrap();
+        std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+        let bindings = root.path().join(".caffold-test/grok/bindings");
+        let original = std::fs::metadata(&bindings).unwrap().permissions();
+        std::fs::set_permissions(&bindings, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let (mut removals, _) = state.task_list_events.subscribe();
+        let result = task_delete(
+            State(state.clone()),
+            AxumPath(id.to_string()),
+            Some(Json(TaskDeleteRequest {
+                confirm_broken_worktree_deletion: true,
+                expected_worktree_id: Some(worktree.worktree_id),
+            })),
+        )
+        .await;
+        std::fs::set_permissions(&bindings, original).unwrap();
+        assert_eq!(result.unwrap().0.thread_id, id);
+        let removal = removals.try_recv().unwrap();
+        assert_eq!(removal.thread_id, id);
+        assert_eq!(removal.reason, "deleted");
+        assert!(state.task_store.get(id).unwrap().is_none());
+        assert!(state.task_store.worktree_for_thread(id).unwrap().is_none());
+        assert!(!checkout.path.exists());
+        assert_eq!(leader.requests("_x.ai/session/delete").len(), 1);
+        // Only the driver's private, now-orphaned reference remains. It does
+        // not retain a native conversation or resurrect Caffold membership.
+        assert!(bindings.join(format!("{id}.json")).is_file());
+        assert!(codex.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn broken_confirmation_does_not_fall_through_to_ordinary_archived_deletion() {
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, "changed-membership", root.path()).await;
+        task_store_archive(&state, "changed-membership")
+            .await
+            .unwrap();
+        let result = task_delete(
+            State(state.clone()),
+            AxumPath("changed-membership".to_string()),
+            Some(Json(TaskDeleteRequest {
+                confirm_broken_worktree_deletion: true,
+                expected_worktree_id: Some("old-id".to_string()),
+            })),
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(ApiError::Conflict {
+                code: "broken_worktree_confirmation_stale",
+                ..
+            })
+        ));
+        assert!(
+            state
+                .task_store
+                .get_archived("changed-membership")
+                .unwrap()
+                .is_some()
+        );
+        assert!(client.mock_requests().await.is_empty());
+    }
+
+    async fn isolate_broken_fixture(
+        state: &TaskState,
+        id: &str,
+        source: &std::path::Path,
+    ) -> crate::task_store::ManagedWorktree {
+        state
+            .lifecycle
+            .isolate_current_task(
+                source.to_path_buf(),
+                id.to_string(),
+                "Broken Task".to_string(),
+                None,
+                None,
+                false,
+            )
+            .await
+            .unwrap();
+        state.task_store.worktree_for_thread(id).unwrap().unwrap()
+    }
 
     #[tokio::test]
     async fn reorder_mutates_only_the_local_section_order_and_notifies_after_commit() {
@@ -1295,7 +1861,7 @@ mod tests {
             .expect("archive succeeds");
         assert!(git_branch_exists(&source, &branch_name));
 
-        let response = task_delete(State(state.clone()), AxumPath(thread_id.to_string()))
+        let response = task_delete(State(state.clone()), AxumPath(thread_id.to_string()), None)
             .await
             .expect("delete succeeds");
 
@@ -1400,7 +1966,7 @@ mod tests {
                 .into_iter()
                 .map(|(method, _)| method)
                 .collect::<Vec<_>>(),
-            ["thread/read"]
+            Vec::<String>::new()
         );
     }
 
@@ -1646,7 +2212,7 @@ mod tests {
             .await
             .expect("archived first, as deleting requires");
 
-        let deleted = task_delete(State(state.clone()), AxumPath(thread_id.to_string()))
+        let deleted = task_delete(State(state.clone()), AxumPath(thread_id.to_string()), None)
             .await
             .expect("a Claude Task can be deleted")
             .0;
@@ -2502,7 +3068,7 @@ mod tests {
 
         for thread_id in ["thread-unmanaged-delete", active_id] {
             assert!(matches!(
-                task_delete(State(state.clone()), AxumPath(thread_id.to_string())).await,
+                task_delete(State(state.clone()), AxumPath(thread_id.to_string()), None).await,
                 Err(ApiError::BadRequest {
                     code: "task_not_archived",
                     ..
@@ -2609,7 +3175,7 @@ mod tests {
             .unwrap();
 
         assert!(matches!(
-            task_delete(State(state.clone()), AxumPath(thread_id.to_string())).await,
+            task_delete(State(state.clone()), AxumPath(thread_id.to_string()), None).await,
             Err(ApiError::Agent(_))
         ));
         assert!(state.task_store.get_archived(thread_id).unwrap().is_some());

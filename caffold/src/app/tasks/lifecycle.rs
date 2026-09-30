@@ -11,7 +11,7 @@ use crate::{
     app::tasks::sessions::{ConversationSettings, RequestLease, TaskSessions},
     app::terminal::TaskTerminals,
     fs::RootedFs,
-    task_store::{ManagedThread, RunBy, TaskStore, TaskStoreError},
+    task_store::{ManagedThread, ManagedWorktree, RunBy, TaskStore, TaskStoreError},
 };
 
 use super::{
@@ -311,6 +311,28 @@ impl TaskLifecycle {
             .map_err(worktree_api_error)
     }
 
+    pub(in crate::app::tasks) async fn preflight_broken_deletion(
+        &self,
+        thread_id: String,
+        expected_id: String,
+    ) -> Result<ManagedWorktree, ApiError> {
+        self.worktrees
+            .preflight_broken_deletion(thread_id, expected_id)
+            .await
+            .map_err(worktree_api_error)
+    }
+
+    pub(in crate::app::tasks) async fn delete_broken_files(
+        &self,
+        thread_id: String,
+        expected_id: String,
+    ) -> Result<(), ApiError> {
+        self.worktrees
+            .delete_broken_files(thread_id, expected_id)
+            .await
+            .map_err(worktree_api_error)
+    }
+
     pub(in crate::app::tasks) async fn rollback_archived_worktree(
         &self,
         thread_id: &str,
@@ -553,6 +575,13 @@ fn managed_thread_from_task_record(
 
 pub(in crate::app::tasks) fn worktree_api_error(error: ManagedWorktreeError) -> ApiError {
     match error {
+        ManagedWorktreeError::Unavailable(body) => ApiError::Diagnostic(body),
+        ManagedWorktreeError::UnownedPath(_) | ManagedWorktreeError::InvalidId(_) => {
+            ApiError::Conflict {
+                code: "managed_worktree_ownership_changed",
+                message: error.to_string(),
+            }
+        }
         ManagedWorktreeError::Git(git::WorktreeError::Dirty(_)) => ApiError::BadRequest {
             code: "managed_worktree_dirty",
             message: error.to_string(),

@@ -1,7 +1,8 @@
 # Archive, restore, and delete
 
 Archive a Task when you are done with it. Archived Tasks leave the active list
-but can come back, and only an archived Task can be deleted.
+but can come back. Permanent deletion is also available from the error screen
+of a verified broken worktree.
 
 ## Archive
 
@@ -34,3 +35,20 @@ exists.
 The delete button, a trash can on the same row, asks for confirmation, then
 deletes the agent's conversation and Caffold's record of the Task. Your local
 Git branch is kept. Deletion cannot be undone.
+
+## Delete a broken worktree Task
+
+If Caffold confirms that a worktree it prepared is missing or has lost its
+Git metadata, the Task's error screen offers **Delete task**. Open that dialog,
+read the Task name and folder path, and choose **Delete task** to confirm.
+**Cancel** or Escape closes the dialog without deleting anything.
+
+This permanently deletes the remaining worktree files, the agent conversation,
+and Caffold's Task data. Caffold cannot check those files for uncommitted
+changes. If the folder is already missing, the dialog says so; the
+conversation and Task data are still deleted. Local Git branches are kept.
+The Task and its worktree cannot be restored after deletion.
+
+Deletion is withheld when Caffold cannot establish ownership or the checkout
+has a repairable branch mismatch. Caffold rechecks before deleting, so an old
+confirmation does not authorize deleting a worktree that is usable again.

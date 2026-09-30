@@ -1,4 +1,4 @@
-import { getTask } from "../../../../../api.js";
+import { getTask, taskResponseError } from "../../../../../api.js";
 import { TASK_TRANSPORT_STATE } from "../../runtime-state.js";
 import { TaskStreamLifecycle } from "../../stream.js";
 
@@ -19,6 +19,7 @@ const TASK_DETAIL_SESSION_EVENT = Object.freeze({
   START_FALLBACK: "start-fallback",
   FINISH_FALLBACK: "finish-fallback",
   DEACTIVATE: "deactivate",
+  SOURCE_ERROR: "source-error",
 });
 const TASK_DETAIL_SESSION_TRANSITIONS = Object.freeze({
   [TASK_DETAIL_SESSION_PHASE.INACTIVE]: Object.freeze({
@@ -26,6 +27,7 @@ const TASK_DETAIL_SESSION_TRANSITIONS = Object.freeze({
       TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
   }),
   [TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP]: Object.freeze({
+    [TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR]: TASK_DETAIL_SESSION_PHASE.UNAVAILABLE,
     [TASK_DETAIL_SESSION_EVENT.ACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
     [TASK_DETAIL_SESSION_EVENT.ACCEPT_LOADING_BOOTSTRAP]:
@@ -38,6 +40,7 @@ const TASK_DETAIL_SESSION_TRANSITIONS = Object.freeze({
       TASK_DETAIL_SESSION_PHASE.INACTIVE,
   }),
   [TASK_DETAIL_SESSION_PHASE.WAITING_READABLE]: Object.freeze({
+    [TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR]: TASK_DETAIL_SESSION_PHASE.UNAVAILABLE,
     [TASK_DETAIL_SESSION_EVENT.ACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
     [TASK_DETAIL_SESSION_EVENT.ACCEPT_READABLE_SYNC]:
@@ -48,12 +51,14 @@ const TASK_DETAIL_SESSION_TRANSITIONS = Object.freeze({
       TASK_DETAIL_SESSION_PHASE.INACTIVE,
   }),
   [TASK_DETAIL_SESSION_PHASE.STREAMING]: Object.freeze({
+    [TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR]: TASK_DETAIL_SESSION_PHASE.UNAVAILABLE,
     [TASK_DETAIL_SESSION_EVENT.ACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
     [TASK_DETAIL_SESSION_EVENT.DEACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.INACTIVE,
   }),
   [TASK_DETAIL_SESSION_PHASE.REST_FALLBACK]: Object.freeze({
+    [TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR]: TASK_DETAIL_SESSION_PHASE.UNAVAILABLE,
     [TASK_DETAIL_SESSION_EVENT.ACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
     [TASK_DETAIL_SESSION_EVENT.FINISH_FALLBACK]:
@@ -62,6 +67,7 @@ const TASK_DETAIL_SESSION_TRANSITIONS = Object.freeze({
       TASK_DETAIL_SESSION_PHASE.INACTIVE,
   }),
   [TASK_DETAIL_SESSION_PHASE.UNAVAILABLE]: Object.freeze({
+    [TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR]: TASK_DETAIL_SESSION_PHASE.UNAVAILABLE,
     [TASK_DETAIL_SESSION_EVENT.ACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
     [TASK_DETAIL_SESSION_EVENT.DEACTIVATE]:
@@ -289,6 +295,17 @@ export class TaskDetailSession {
       return;
     }
     if (this.onTaskSync(message) === false) {
+      return;
+    }
+    if (Array.isArray(message.error?.allowedActions)) {
+      this.transition(TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR);
+      window.clearTimeout(bootstrap.timer);
+      bootstrap.pendingEvents = [];
+      if (!bootstrap.settled) {
+        bootstrap.settled = true;
+        bootstrap.resolve(true);
+      }
+      this.settleAttempt({ ok: false, error: taskResponseError(message.error) });
       return;
     }
     if (!message.detail?.task) {

@@ -120,6 +120,33 @@ function deferred() {
   return { promise, resolve };
 }
 
+test("structured worktree errors settle bootstrap without a timeout or provider fallback", async () => {
+  for (const initial of [true, false]) {
+    const browser = installBrowserHarness();
+    const syncs = [];
+    let reads = 0;
+    const session = new TaskDetailSession({ subscribe: browser.subscribe, onTaskSync: (message) => syncs.push(message),
+      loadDetail: async () => { reads += 1; throw new Error("unexpected fallback"); } });
+    const acquisition = session.open("broken");
+    const source = browser.sources[0];
+    source.emitOpen();
+    await Promise.resolve();
+    if (!initial) source.emit("task-sync", syncMessage("broken", 1, { readable: false }));
+    const error = { code: "managed_worktree_not_repository", message: "broken checkout", allowedActions: ["deleteTask"],
+      worktreeId: "uuid", worktreePath: "/managed/uuid", worktreeMissing: false };
+    source.emit("task-sync", { ...syncMessage("broken", 2, { readable: false, reason: initial ? "stream-bootstrap" : "canonical-source-error" }), error });
+    const outcome = await acquisition;
+    assert.equal(outcome.ok, false);
+    assert.equal(outcome.error.code, error.code);
+    assert.deepEqual(outcome.error.allowedActions, ["deleteTask"]);
+    assert.equal(outcome.error.worktreeId, "uuid");
+    assert.equal(session.phase, "unavailable");
+    assert.equal(reads, 0);
+    assert.deepEqual(syncs.at(-1).error, error);
+    session.deactivate();
+  }
+});
+
 test("waits for a readable bootstrap and buffers connection-local events", async () => {
   const browser = installBrowserHarness();
   const syncs = [];

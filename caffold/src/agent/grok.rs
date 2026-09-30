@@ -584,6 +584,14 @@ impl GrokClient {
 
     /// Remove every session this Task created, then the binding.
     pub(crate) async fn erase(&self, thread_id: &str) -> Result<(), GrokError> {
+        self.erase_sessions(thread_id).await?;
+        self.forget_erased_binding(thread_id).await
+    }
+
+    /// Keep the native session references until Caffold commits deletion of
+    /// the broken Task. Failed filesystem/store cleanup can then repeat the
+    /// native delete, whose explicit ConversationGone response is idempotent.
+    pub(crate) async fn erase_sessions(&self, thread_id: &str) -> Result<(), GrokError> {
         let binding =
             self.inner.bindings.read(thread_id).await?.ok_or_else(|| {
                 GrokError::Binding(format!("Task {thread_id} has no Grok binding"))
@@ -619,11 +627,14 @@ impl GrokClient {
                 Err(error) => return Err(error),
             }
         }
-        self.inner.bindings.remove(thread_id).await?;
         self.settled_switch(thread_id);
         self.forget_mcp_binding(thread_id).await;
         self.forget(thread_id).await;
         Ok(())
+    }
+
+    pub(crate) async fn forget_erased_binding(&self, thread_id: &str) -> Result<(), GrokError> {
+        self.inner.bindings.remove(thread_id).await
     }
 
     // -----------------------------------------------------------------------

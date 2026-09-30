@@ -13,13 +13,14 @@ use super::{
         TaskEventPosition, TaskEventPublication, TaskEventRecord, TaskEvents, TaskHistoryCursor,
         TaskHistoryPage, compose_pending_approval_events, sort_task_events, task_event_turn_id,
     },
+    lifecycle::worktree_api_error,
     projection::{
         ResolvedTaskCwd, TaskRecord, apply_turn_states_projection, resolve_checkout_cwd,
         resolve_conversation_cwd, task_record_from_conversation,
     },
     runtime::{CodexConnection, TaskAgent, TaskRuntime, TaskRuntimeSignal},
     sync::TaskSync,
-    worktrees::inspect_ready_worktree,
+    worktrees::{ManagedWorktrees, inspect_ready_worktree},
 };
 use crate::agent::AgentError;
 use crate::{
@@ -27,7 +28,7 @@ use crate::{
         Conversation,
         codex::{CodexThreadClient, CodexThreadError},
     },
-    app::error::ApiError,
+    app::error::{ApiError, ErrorBody},
     app::tasks::sessions::{SessionSnapshot, TaskSessions, ViewerLease},
     fs::RootedFs,
     task_store::{ManagedThread, ManagedWorktreeState, TaskProvider, TaskStore, TaskStoreError},
@@ -43,6 +44,7 @@ type RefreshTaskList = Arc<dyn Fn() + Send + Sync>;
 pub(in crate::app::tasks) struct DetailContext {
     fs: Arc<RootedFs>,
     store: TaskStore,
+    worktrees: ManagedWorktrees,
     runtime: TaskRuntime,
     runtime_signals: Arc<AsyncMutex<Option<broadcast::Receiver<TaskRuntimeSignal>>>>,
     sessions: TaskSessions,
@@ -137,7 +139,7 @@ pub(in crate::app) struct TaskDetailSync {
     pub(in crate::app::tasks) detail: TaskDetailResponse,
     pub(in crate::app::tasks) reason: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::app::tasks) error: Option<String>,
+    pub(in crate::app::tasks) error: Option<ErrorBody>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -170,6 +172,7 @@ impl DetailContext {
     pub(in crate::app::tasks) fn new(
         fs: Arc<RootedFs>,
         store: TaskStore,
+        worktrees: ManagedWorktrees,
         runtime: TaskRuntime,
         runtime_signals: broadcast::Receiver<TaskRuntimeSignal>,
         sessions: TaskSessions,
@@ -182,6 +185,7 @@ impl DetailContext {
             file_links: TaskFileLinkResolver::new(fs.clone()),
             fs,
             store,
+            worktrees,
             runtime,
             runtime_signals: Arc::new(AsyncMutex::new(Some(runtime_signals))),
             sessions,
@@ -219,6 +223,7 @@ impl DetailContext {
         cursor: Option<&str>,
     ) -> Result<TaskDetailResponse, ApiError> {
         let cursor = cursor.map(str::trim).filter(|cursor| !cursor.is_empty());
+        self.check_worktree(thread_id).await?;
         self.restore_managed_composer_settings(thread_id).await?;
         if let Some(cursor) = cursor {
             let agent = self.agent(thread_id).await?;
@@ -248,14 +253,22 @@ impl DetailContext {
         let receiver = self.events.subscribe();
         let sync_receiver = self.sync.subscribe_updates();
         let viewer = self.sessions.reserve_viewer(thread_id).await;
-        let (detail, baseline_revision) = self.cached(thread_id).await?;
+        let (detail, baseline_revision, error) = match self.cached(thread_id).await {
+            Ok((detail, revision)) => (detail, revision, None),
+            Err(ApiError::Diagnostic(error)) => (
+                loading_detail(thread_id, 0, self.store_get(thread_id).await?.as_ref()),
+                0,
+                Some(error),
+            ),
+            Err(error) => return Err(error),
+        };
         let file_link_task_root = detail.task.as_ref().map(file_links::task_root);
         let initial = DetailLiveEvent::Sync(Box::new(TaskDetailSync {
             thread_id: thread_id.to_string(),
             revision: detail.revision,
             detail,
             reason: "stream-bootstrap",
-            error: None,
+            error,
         }));
         let context = self.clone();
         let bootstrap_thread_id = thread_id.to_string();
@@ -285,6 +298,7 @@ impl DetailContext {
         thread_id: &str,
         cursor: Option<&str>,
     ) -> Result<TaskDetailResponse, ApiError> {
+        self.check_worktree(thread_id).await?;
         self.restore_managed_composer_settings(thread_id).await?;
         let cursor = cursor.map(TaskDetailCursor::decode).unwrap_or_default();
         let mut snapshot = self
@@ -356,6 +370,7 @@ impl DetailContext {
         &self,
         thread_id: &str,
     ) -> Result<(TaskDetailResponse, u64), ApiError> {
+        self.check_worktree(thread_id).await?;
         let stored = self.store_get(thread_id).await?;
         let Some(snapshot) = self.sessions.snapshot(thread_id).await else {
             return Ok((loading_detail(thread_id, 0, stored.as_ref()), 0));
@@ -379,16 +394,24 @@ impl DetailContext {
     }
 
     pub(in crate::app::tasks) async fn bootstrap(&self, thread_id: &str, baseline_revision: u64) {
+        if let Err(error) = self.check_worktree(thread_id).await {
+            self.broadcast_error(thread_id, error.into_error_body())
+                .await;
+            return;
+        }
         if let Err(error) = self.restore_managed_composer_settings(thread_id).await {
-            self.broadcast_error(thread_id, error.to_string()).await;
+            self.broadcast_error(thread_id, error.into_error_body())
+                .await;
             return;
         }
         let agent = match self.agent(thread_id).await {
             Ok(agent) => agent,
             Err(error) => {
                 self.sessions.fail_external_sync(thread_id, &error).await;
-                self.broadcast_error(thread_id, error.to_string()).await;
-                if matches!(error, AgentError::ConversationGone(_)) {
+                let gone = matches!(error, AgentError::ConversationGone(_));
+                self.broadcast_error(thread_id, ApiError::from(error).into_error_body())
+                    .await;
+                if gone {
                     (self.refresh_task_list)();
                 }
                 return;
@@ -402,8 +425,10 @@ impl DetailContext {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 self.sessions.fail_external_sync(thread_id, &error).await;
-                self.broadcast_error(thread_id, error.to_string()).await;
-                if matches!(error, AgentError::ConversationGone(_)) {
+                let gone = matches!(error, AgentError::ConversationGone(_));
+                self.broadcast_error(thread_id, ApiError::from(error).into_error_body())
+                    .await;
+                if gone {
                     (self.refresh_task_list)();
                 }
                 return;
@@ -445,6 +470,7 @@ impl DetailContext {
         let conversation = snapshot
             .conversation
             .expect("conversation metadata was checked above");
+        self.check_worktree(&thread_id).await?;
         let (conversation, resolved_cwd) = self.project_managed_worktree_cwd(conversation)?;
         let pending_approvals = self.runtime.approval_events(&thread_id).await;
         events = compose_pending_approval_events(events, pending_approvals.clone());
@@ -536,7 +562,11 @@ impl DetailContext {
                             .await;
                     }
                     Ok(TaskRuntimeSignal::SessionUnavailable { thread_id, message }) => {
-                        context.broadcast_error(&thread_id, message).await;
+                        let error = match context.check_worktree(&thread_id).await {
+                            Err(error) => error.into_error_body(),
+                            Ok(()) => ApiError::Agent(message).into_error_body(),
+                        };
+                        context.broadcast_error(&thread_id, error).await;
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(broadcast::error::RecvError::Closed) => {
@@ -553,11 +583,16 @@ impl DetailContext {
         snapshot: SessionSnapshot,
         reason: &'static str,
     ) {
-        let Ok(detail) = self
+        let detail = match self
             .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
             .await
-        else {
-            return;
+        {
+            Ok(detail) => detail,
+            Err(error) => {
+                self.broadcast_error(thread_id, error.into_error_body())
+                    .await;
+                return;
+            }
         };
         self.sync.publish(TaskDetailSync {
             revision: detail.revision,
@@ -568,7 +603,7 @@ impl DetailContext {
         });
     }
 
-    async fn broadcast_error(&self, thread_id: &str, error: String) {
+    async fn broadcast_error(&self, thread_id: &str, error: ErrorBody) {
         let revision = self
             .sessions
             .snapshot(thread_id)
@@ -583,6 +618,18 @@ impl DetailContext {
             reason: "canonical-source-error",
             error: Some(error),
         });
+    }
+
+    async fn check_worktree(&self, thread_id: &str) -> Result<(), ApiError> {
+        if let Some(error) = self
+            .worktrees
+            .availability_error(thread_id.to_string())
+            .await
+            .map_err(worktree_api_error)?
+        {
+            return Err(ApiError::Diagnostic(error));
+        }
+        Ok(())
     }
 
     async fn store_get(&self, thread_id: &str) -> Result<Option<ManagedThread>, ApiError> {
@@ -1231,7 +1278,7 @@ mod inline_tests {
         assert_eq!(projected.cwd, "/original/source");
     }
 
-    fn initialize_repository(path: &std::path::Path) {
+    pub(super) fn initialize_repository(path: &std::path::Path) {
         std::fs::create_dir(path).unwrap();
         for args in [
             &["init"][..],
@@ -1307,6 +1354,76 @@ mod request_tests {
         fs::RootedFs,
         task_store::TaskStore,
     };
+
+    #[tokio::test]
+    async fn snapshot_assembly_broadcasts_the_broken_worktree_diagnosis() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        super::inline_tests::initialize_repository(&source);
+        let thread_id = "thread-broken-snapshot";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, &source).await;
+        state
+            .lifecycle
+            .isolate_current_task(
+                source.clone(),
+                thread_id.to_string(),
+                "Broken snapshot".to_string(),
+                None,
+                None,
+                false,
+            )
+            .await
+            .unwrap();
+        let worktree = state
+            .task_store
+            .worktree_for_thread(thread_id)
+            .unwrap()
+            .unwrap();
+        let checkout = inspect_ready_worktree(&worktree).unwrap();
+        std::fs::remove_dir_all(&checkout.git_dir).unwrap();
+        let thread: CodexThread =
+            serde_json::from_value(resumed_task(thread_id, &source)["thread"].clone()).unwrap();
+        let snapshot = SessionSnapshot {
+            lifecycle: SessionLifecycle::Subscribed,
+            conversation: Some(Conversation::from(&thread)),
+            turns_page: None,
+            active_turn_id: None,
+            active_turn_cwd: None,
+            active_turn_prompt: None,
+            viewer_leases: 0,
+            runtime_lease: false,
+            generation: 1,
+            revision: 1,
+            history_base_revision: Some(0),
+            last_sync_ms: Some(3_000),
+            last_error: None,
+            permission_mode: None,
+            model: None,
+            reasoning_effort: None,
+            fast_mode: false,
+        };
+        let mut updates = state.task_sync.subscribe_updates();
+        state
+            .detail
+            .broadcast_snapshot(thread_id, snapshot, "app-server-notification")
+            .await;
+        let update = updates
+            .try_recv()
+            .expect("assembly failure must be published");
+        assert_eq!(update.thread_id, thread_id);
+        let diagnosis = update.error.unwrap();
+        assert_eq!(diagnosis.code, "managed_worktree_not_repository");
+        assert_eq!(diagnosis.allowed_actions, Some(vec!["deleteTask"]));
+        assert_eq!(
+            diagnosis.worktree_id.as_deref(),
+            Some(worktree.worktree_id.as_str())
+        );
+        assert!(update.detail.task.is_none());
+        assert!(client.mock_requests().await.is_empty());
+    }
 
     #[tokio::test]
     async fn event_notification_does_not_broadcast_its_own_full_detail_snapshot() {

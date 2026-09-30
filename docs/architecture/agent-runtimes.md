@@ -122,15 +122,20 @@ Claude restore makes the retained Task active again only when its transcript
 still exists, and a Grok restore only when the session's directory is still
 there under Grok's home.
 
-Permanent deletion is available only after archive and asks the recorded
+Permanent deletion ordinarily requires archive; verified broken managed
+Tasks also allow [confirmed deletion](worktree-lifecycle.md#broken-task-deletion).
+Deletion asks the recorded
 driver to forget the conversation before Caffold deletes its own row. Codex
 uses app-server thread deletion. Claude removes the exact transcript file and
 the same-session directory beside it, including subagent conversations and
 spilled tool output, after deriving and validating the path from the Task's
 conversation ID and cwd. Grok closes and deletes every session the Task's
 binding records — the current one and those a worktree move left behind — and
-then removes the binding; the CLI keeps its per-directory prompt history. None
-of these paths deletes a Git branch.
+then removes the binding. Broken Task deletion retains that binding until
+filesystem cleanup and Caffold's store commit finish, so a partial failure can
+repeat native deletion. Failure to unlink this private reference after the
+commit is logged without hiding the committed Task removal. The CLI keeps its
+per-directory prompt history. None of these paths deletes a Git branch.
 
 ## Runtime comparison
 

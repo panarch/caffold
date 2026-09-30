@@ -138,6 +138,10 @@ class CaffoldTasksPage extends HTMLElement {
         this.taskNavigator()?.acceptArchivedTask(event.detail.task);
         this.syncSelectedManagedTask();
         this.requestRoute({ kind: "tasks" }, { correction: true });
+      } else if (event.detail?.type === "task-deleted" && event.detail.threadId) {
+        this.taskNavigator()?.removeTask(event.detail.threadId);
+        this.syncSelectedManagedTask();
+        this.requestRoute({ kind: "tasks" }, { correction: true });
       } else if (
         ["review-route", "domain-route"].includes(event.detail?.type) &&
         event.detail.route

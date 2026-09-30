@@ -345,6 +345,7 @@ class CaffoldDetailLayout extends HTMLElement {
       return;
     }
     this.managedTask = nextTask;
+    this.taskDetail()?.setManagedTask?.(nextTask);
     if (this.subjectKind === "task") {
       this.syncTaskPresentation();
     }

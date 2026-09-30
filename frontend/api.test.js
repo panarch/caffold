@@ -4,6 +4,7 @@ import test, { afterEach } from "node:test";
 import {
   createTaskFork,
   discardTaskUploads,
+  deleteTask,
   forkTask,
   getCurrentPlan,
   getHealth,
@@ -56,6 +57,25 @@ function jsonResponse(payload, { ok = true, status = 200 } = {}) {
     json: async () => payload,
   };
 }
+
+test("broken deletion confirms one worktree and preserves structured refusal actions", async () => {
+  const body = { code: "managed_worktree_missing", message: "folder is missing", allowedActions: ["deleteTask"],
+    worktreeId: "worktree-uuid", worktreePath: "/managed/worktree-uuid", worktreeMissing: true };
+  let request;
+  installBrowserHarness((url, options) => {
+    request = { url, options };
+    return jsonResponse({ error: body }, { ok: false, status: 409 });
+  });
+  const confirmation = { confirmBrokenWorktreeDeletion: true, expectedWorktreeId: body.worktreeId };
+  await assert.rejects(deleteTask("broken task", confirmation), (error) => {
+    assert.equal(error.status, 409);
+    for (const [key, value] of Object.entries(body)) assert.deepEqual(error[key], value);
+    return true;
+  });
+  assert.equal(request.url.pathname, "/api/tasks/broken%20task");
+  assert.equal(request.options.method, "DELETE");
+  assert.deepEqual(JSON.parse(request.options.body), confirmation);
+});
 
 test("Task history cancellation reaches its own HTTP request", async () => {
   let received;

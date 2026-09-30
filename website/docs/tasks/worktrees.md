@@ -59,3 +59,8 @@ rebase, or changes inside a submodule, stop the move instead.
 Archiving a Task removes the worktree Caffold prepared for it and keeps its
 branch; see [Archive, restore, and delete](archive-and-delete.md). Caffold
 never removes a worktree it did not prepare, and never deletes a branch.
+
+If removal fails and leaves the worktree unusable, its Task can show
+**Delete task** instead of Retry. See
+[Delete a broken worktree Task](archive-and-delete.md#delete-a-broken-worktree-task)
+for the permanent deletion dialog and what it removes.

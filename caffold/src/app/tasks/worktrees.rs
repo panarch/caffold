@@ -7,13 +7,16 @@ use std::{
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::app::error::ErrorBody;
+
 use crate::{
     fs::{FsError, RootedFs},
     git::{
         WorktreeCheckout, WorktreeError, WorktreeIsolationMode, attached_worktree_is_dirty,
         delete_local_branch_if_matches, delete_transfer_snapshot, execute_worktree_transfer,
         inspect_attached_worktree, prepare_worktree_transfer, recover_worktree_transfer,
-        remove_attached_worktree, restore_attached_worktree,
+        remove_attached_worktree, remove_worktree_admin_entries, restore_attached_worktree,
+        worktree_admin_entries,
     },
     task_store::{
         CheckoutAnchor, ManagedWorktree, ManagedWorktreeState, TaskStore, TaskStoreError,
@@ -22,6 +25,8 @@ use crate::{
 
 #[derive(Debug, Error)]
 pub(in crate::app::tasks) enum ManagedWorktreeError {
+    #[error("{}", .0.message)]
+    Unavailable(ErrorBody),
     #[error(transparent)]
     Store(#[from] TaskStoreError),
     #[error(transparent)]
@@ -148,6 +153,176 @@ impl ManagedWorktrees {
         tokio::task::spawn_blocking(move || worktrees.restore_blocking(&thread_id))
             .await
             .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
+    }
+
+    pub(in crate::app::tasks) async fn availability_error(
+        &self,
+        thread_id: String,
+    ) -> Result<Option<ErrorBody>, ManagedWorktreeError> {
+        let worktrees = self.clone();
+        tokio::task::spawn_blocking(move || worktrees.availability_error_blocking(&thread_id))
+            .await
+            .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
+    }
+
+    pub(in crate::app::tasks) async fn preflight_broken_deletion(
+        &self,
+        thread_id: String,
+        expected_id: String,
+    ) -> Result<ManagedWorktree, ManagedWorktreeError> {
+        let worktrees = self.clone();
+        tokio::task::spawn_blocking(move || {
+            worktrees.broken_deletion_record(&thread_id, &expected_id)
+        })
+        .await
+        .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
+    }
+
+    pub(in crate::app::tasks) async fn delete_broken_files(
+        &self,
+        thread_id: String,
+        expected_id: String,
+    ) -> Result<(), ManagedWorktreeError> {
+        let worktrees = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let record = worktrees.broken_deletion_record(&thread_id, &expected_id)?;
+            let path = worktrees.owned_path(&record)?;
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(WorktreeError::Io(error).into()),
+            }
+            remove_worktree_admin_entries(&path, Path::new(&record.repository_git_dir))?;
+            Ok(())
+        })
+        .await
+        .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
+    }
+
+    fn availability_error_blocking(
+        &self,
+        thread_id: &str,
+    ) -> Result<Option<ErrorBody>, ManagedWorktreeError> {
+        let Some(record) = self.store.worktree_for_thread(thread_id)? else {
+            return Ok(None);
+        };
+        if !matches!(
+            record.state,
+            ManagedWorktreeState::Ready | ManagedWorktreeState::Removing
+        ) {
+            return Ok(None);
+        }
+        let result = self.owned_path(&record).and_then(|path| {
+            inspect_attached_worktree(
+                &path,
+                Path::new(&record.repository_git_dir),
+                record
+                    .checkout_anchor
+                    .as_ref()
+                    .map(|anchor| anchor.branch_name.as_str()),
+            )
+            .map_err(Into::into)
+        });
+        match result {
+            Ok(_) if record.state == ManagedWorktreeState::Ready => Ok(None),
+            Ok(_) => Ok(Some(unavailable_diagnostic(
+                &record,
+                "managed_worktree_removing",
+                "worktree removal has not completed".to_string(),
+                vec!["retry"],
+            ))),
+            Err(error) => Ok(Some(self.diagnostic(&record, error))),
+        }
+    }
+
+    fn diagnostic(&self, record: &ManagedWorktree, error: ManagedWorktreeError) -> ErrorBody {
+        let (code, missing) = match &error {
+            ManagedWorktreeError::Git(WorktreeError::TargetMissing(_)) => {
+                ("managed_worktree_missing", Some(true))
+            }
+            ManagedWorktreeError::Git(WorktreeError::NotRepository(_)) => {
+                ("managed_worktree_not_repository", Some(false))
+            }
+            ManagedWorktreeError::Git(WorktreeError::MissingMetadata(_)) => {
+                ("managed_worktree_missing_metadata", Some(false))
+            }
+            _ => ("managed_worktree_unavailable", None),
+        };
+        if let Some(missing) = missing {
+            match worktree_admin_entries(
+                Path::new(&record.worktree_path),
+                Path::new(&record.repository_git_dir),
+            ) {
+                Ok(_) => {
+                    let mut body =
+                        unavailable_diagnostic(record, code, error.to_string(), vec!["deleteTask"]);
+                    body.worktree_id = Some(record.worktree_id.clone());
+                    body.worktree_path = Some(record.worktree_path.clone());
+                    body.worktree_missing = Some(missing);
+                    return body;
+                }
+                Err(error) => {
+                    let actions =
+                        if matches!(error, WorktreeError::Io(_) | WorktreeError::Command { .. }) {
+                            vec!["retry"]
+                        } else {
+                            vec![]
+                        };
+                    return unavailable_diagnostic(
+                        record,
+                        "managed_worktree_unavailable",
+                        error.to_string(),
+                        actions,
+                    );
+                }
+            }
+        }
+        let actions = if matches!(
+            error,
+            ManagedWorktreeError::Git(WorktreeError::Io(_) | WorktreeError::Command { .. })
+                | ManagedWorktreeError::Worker(_)
+        ) {
+            vec!["retry"]
+        } else {
+            vec![]
+        };
+        unavailable_diagnostic(record, code, error.to_string(), actions)
+    }
+
+    fn broken_deletion_record(
+        &self,
+        thread_id: &str,
+        expected_id: &str,
+    ) -> Result<ManagedWorktree, ManagedWorktreeError> {
+        let record = self.store.worktree_for_thread(thread_id)?.ok_or_else(|| {
+            ManagedWorktreeError::UnownedPath("Task no longer has a managed worktree".to_string())
+        })?;
+        if record.worktree_id != expected_id
+            || !matches!(
+                record.state,
+                ManagedWorktreeState::Ready | ManagedWorktreeState::Removing
+            )
+        {
+            return Err(ManagedWorktreeError::UnownedPath(
+                "the confirmed worktree has changed".to_string(),
+            ));
+        }
+        let Some(body) = self.availability_error_blocking(thread_id)? else {
+            return Err(ManagedWorktreeError::Unavailable(unavailable_diagnostic(
+                &record,
+                "managed_worktree_not_broken",
+                "the worktree is usable; broken Task deletion is not allowed".to_string(),
+                vec![],
+            )));
+        };
+        if !body
+            .allowed_actions
+            .as_ref()
+            .is_some_and(|actions| actions.contains(&"deleteTask"))
+        {
+            return Err(ManagedWorktreeError::Unavailable(body));
+        }
+        Ok(record)
     }
 
     fn isolate_current_blocking(
@@ -283,6 +458,17 @@ impl ManagedWorktrees {
     }
 
     fn archive_blocking(&self, thread_id: &str) -> Result<ArchiveOutcome, ManagedWorktreeError> {
+        self.archive_blocking_with(thread_id, remove_attached_worktree)
+    }
+
+    fn archive_blocking_with(
+        &self,
+        thread_id: &str,
+        remove: impl FnOnce(&Path, &Path, &str) -> Result<WorktreeCheckout, WorktreeError>,
+    ) -> Result<ArchiveOutcome, ManagedWorktreeError> {
+        if let Some(error) = self.availability_error_blocking(thread_id)? {
+            return Err(ManagedWorktreeError::Unavailable(error));
+        }
         let Some(record) = self.store.worktree_for_thread(thread_id)? else {
             return Ok(ArchiveOutcome::NotManaged);
         };
@@ -297,24 +483,23 @@ impl ManagedWorktrees {
             branch_name: checkout.branch_name.clone(),
             head_sha: checkout.head_sha.clone(),
         };
-        self.store.transition_worktree(
+        let removing = self.store.transition_worktree(
             &record.worktree_id,
             ManagedWorktreeState::Ready,
             ManagedWorktreeState::Removing,
             Some(anchor.clone()),
             now_ms()?,
         )?;
-        if let Err(error) =
-            remove_attached_worktree(&path, &checkout.common_dir, &checkout.branch_name)
-        {
-            let _ = self.store.transition_worktree(
-                &record.worktree_id,
-                ManagedWorktreeState::Removing,
-                ManagedWorktreeState::Ready,
-                None,
-                now_ms()?,
-            );
-            return Err(error.into());
+        if let Err(error) = remove(&path, &checkout.common_dir, &checkout.branch_name) {
+            return match self.reconcile_removal(&removing) {
+                Ok(record) if record.state == ManagedWorktreeState::Archived => {
+                    Ok(ArchiveOutcome::Archived(record))
+                }
+                Ok(_) => Err(error.into()),
+                Err(error) => Err(ManagedWorktreeError::Unavailable(
+                    self.diagnostic(&removing, error),
+                )),
+            };
         }
         let archived = self.store.transition_worktree(
             &record.worktree_id,
@@ -327,6 +512,9 @@ impl ManagedWorktrees {
     }
 
     fn preflight_archive_blocking(&self, thread_id: &str) -> Result<(), ManagedWorktreeError> {
+        if let Some(error) = self.availability_error_blocking(thread_id)? {
+            return Err(ManagedWorktreeError::Unavailable(error));
+        }
         let Some(record) = self.store.worktree_for_thread(thread_id)? else {
             return Ok(());
         };
@@ -337,6 +525,39 @@ impl ManagedWorktrees {
             return Err(WorktreeError::Dirty(path.display().to_string()).into());
         }
         Ok(())
+    }
+
+    fn reconcile_removal(
+        &self,
+        record: &ManagedWorktree,
+    ) -> Result<ManagedWorktree, ManagedWorktreeError> {
+        let path = self.owned_path(record)?;
+        let anchor = required_anchor(record)?;
+        let next = match inspect_attached_worktree(
+            &path,
+            Path::new(&record.repository_git_dir),
+            Some(&anchor.branch_name),
+        ) {
+            Ok(_) => ManagedWorktreeState::Ready,
+            Err(WorktreeError::TargetMissing(_)) => {
+                remove_worktree_admin_entries(&path, Path::new(&record.repository_git_dir))?;
+                ManagedWorktreeState::Archived
+            }
+            Err(error) => return Err(error.into()),
+        };
+        self.store
+            .transition_worktree(
+                &record.worktree_id,
+                ManagedWorktreeState::Removing,
+                next,
+                if next == ManagedWorktreeState::Ready {
+                    None
+                } else {
+                    Some(anchor.clone())
+                },
+                now_ms()?,
+            )
+            .map_err(Into::into)
     }
 
     fn restore_blocking(&self, thread_id: &str) -> Result<RestoreOutcome, ManagedWorktreeError> {
@@ -417,36 +638,12 @@ impl ManagedWorktrees {
                     ),
                 },
                 ManagedWorktreeState::Removing => {
-                    let anchor = required_anchor(&record)?.clone();
-                    let next = if !path.exists() {
-                        ManagedWorktreeState::Archived
-                    } else {
-                        match inspect_attached_worktree(
-                            &path,
-                            Path::new(&record.repository_git_dir),
-                            Some(&anchor.branch_name),
-                        ) {
-                            Ok(_) => ManagedWorktreeState::Ready,
-                            Err(error) => {
-                                eprintln!(
-                                    "managed worktree removal {} requires recovery: {error}",
-                                    record.worktree_id
-                                );
-                                continue;
-                            }
-                        }
-                    };
-                    self.store.transition_worktree(
-                        &record.worktree_id,
-                        ManagedWorktreeState::Removing,
-                        next,
-                        if next == ManagedWorktreeState::Ready {
-                            None
-                        } else {
-                            Some(anchor)
-                        },
-                        now_ms()?,
-                    )?;
+                    if let Err(error) = self.reconcile_removal(&record) {
+                        eprintln!(
+                            "managed worktree removal {} is unavailable: {error}",
+                            record.worktree_id
+                        );
+                    }
                 }
                 ManagedWorktreeState::Restoring => {
                     let anchor = required_anchor(&record)?.clone();
@@ -577,6 +774,23 @@ fn isolation_recovery_state(mode: WorktreeIsolationMode) -> ManagedWorktreeState
         WorktreeIsolationMode::HandoffClean => ManagedWorktreeState::HandoffRecoveryRequired,
         WorktreeIsolationMode::TransferChanges => ManagedWorktreeState::RecoveryRequired,
     }
+}
+
+fn unavailable_diagnostic(
+    record: &ManagedWorktree,
+    code: &'static str,
+    reason: String,
+    actions: Vec<&'static str>,
+) -> ErrorBody {
+    let mut body = ErrorBody::new(
+        code,
+        format!(
+            "the managed worktree is unavailable at {}: {reason}",
+            record.worktree_path
+        ),
+    );
+    body.allowed_actions = Some(actions);
+    body
 }
 
 fn isolation_mode_for_state(state: ManagedWorktreeState) -> Option<WorktreeIsolationMode> {
@@ -723,6 +937,477 @@ mod tests {
     use std::{fs, process::Command};
 
     use super::*;
+
+    #[tokio::test]
+    async fn broken_ready_deletion_preserves_other_worktrees_branches_and_symlink_targets() {
+        let (temp, source, worktrees, record) = deletion_fixture();
+        let checkout = inspect_ready_worktree(&record).unwrap();
+        let IsolateOutcome::Isolated {
+            checkout: other, ..
+        } = worktrees
+            .isolate_current_blocking(&source, "other", "Other", None, None, false)
+            .unwrap()
+        else {
+            panic!()
+        };
+        let external = temp.path().join("external");
+        fs::create_dir(&external).unwrap();
+        fs::write(external.join("keep.txt"), "keep").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&external, checkout.path.join("external-link")).unwrap();
+        fs::remove_dir_all(&checkout.git_dir).unwrap();
+        let diagnosis = worktrees
+            .availability_error_blocking("broken")
+            .unwrap()
+            .unwrap();
+        assert_eq!(diagnosis.code, "managed_worktree_not_repository");
+        assert_eq!(diagnosis.allowed_actions, Some(vec!["deleteTask"]));
+        assert_eq!(
+            diagnosis.worktree_id.as_deref(),
+            Some(record.worktree_id.as_str())
+        );
+        assert!(record.checkout_anchor.is_none());
+
+        worktrees
+            .delete_broken_files("broken".to_string(), record.worktree_id.clone())
+            .await
+            .unwrap();
+        assert!(!checkout.path.exists());
+        assert!(other.path.is_dir());
+        assert!(other.git_dir.is_dir());
+        assert_eq!(
+            fs::read_to_string(external.join("keep.txt")).unwrap(),
+            "keep"
+        );
+        assert!(checkout.common_dir.is_dir());
+        assert!(!git_output(&source, &["branch", "--list", &checkout.branch_name]).is_empty());
+        // Filesystem cleanup never erases the durable row before native/store
+        // deletion has completed at the route boundary.
+        assert!(
+            worktrees
+                .store
+                .worktree(&record.worktree_id)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_target_cleanup_is_scoped_by_backlink_even_with_a_different_admin_name() {
+        let (_temp, source, worktrees, record) = deletion_fixture();
+        let checkout = inspect_ready_worktree(&record).unwrap();
+        let renamed = checkout.git_dir.with_file_name("not-the-task-uuid");
+        fs::rename(&checkout.git_dir, &renamed).unwrap();
+        let IsolateOutcome::Isolated {
+            checkout: other, ..
+        } = worktrees
+            .isolate_current_blocking(&source, "other", "Other", None, None, false)
+            .unwrap()
+        else {
+            panic!()
+        };
+        fs::remove_dir_all(&other.path).unwrap();
+        fs::remove_dir_all(&checkout.path).unwrap();
+        let diagnosis = worktrees
+            .availability_error_blocking("broken")
+            .unwrap()
+            .unwrap();
+        assert_eq!(diagnosis.code, "managed_worktree_missing");
+        assert_eq!(diagnosis.worktree_missing, Some(true));
+        assert_eq!(diagnosis.allowed_actions, Some(vec!["deleteTask"]));
+        worktrees
+            .delete_broken_files("broken".to_string(), record.worktree_id)
+            .await
+            .unwrap();
+        assert!(!renamed.exists());
+        assert!(other.git_dir.is_dir());
+    }
+
+    #[tokio::test]
+    async fn missing_common_pointer_is_deletable_only_with_an_owned_admin_backlink() {
+        let (_temp, _source, worktrees, record) = deletion_fixture();
+        let checkout = inspect_ready_worktree(&record).unwrap();
+        fs::remove_file(checkout.git_dir.join("commondir")).unwrap();
+        assert_eq!(
+            worktrees
+                .availability_error_blocking("broken")
+                .unwrap()
+                .unwrap()
+                .allowed_actions,
+            Some(vec!["deleteTask"])
+        );
+        worktrees
+            .delete_broken_files("broken".to_string(), record.worktree_id)
+            .await
+            .unwrap();
+        assert!(!checkout.git_dir.exists());
+        assert!(!checkout.path.exists());
+    }
+
+    #[tokio::test]
+    async fn a_missing_admin_parent_still_allows_the_owned_broken_slot_to_be_deleted() {
+        let (_temp, _source, worktrees, record) = deletion_fixture();
+        let checkout = inspect_ready_worktree(&record).unwrap();
+        fs::remove_dir_all(checkout.git_dir.parent().unwrap()).unwrap();
+        let diagnosis = worktrees
+            .availability_error_blocking("broken")
+            .unwrap()
+            .unwrap();
+        assert_eq!(diagnosis.code, "managed_worktree_not_repository");
+        assert_eq!(diagnosis.allowed_actions, Some(vec!["deleteTask"]));
+        worktrees
+            .delete_broken_files("broken".to_string(), record.worktree_id)
+            .await
+            .unwrap();
+        assert!(!checkout.path.exists());
+        assert!(checkout.common_dir.is_dir());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn metadata_cleanup_does_not_follow_admin_or_backlink_symlinks() {
+        use std::os::unix::fs::symlink;
+        let (temp, _source, worktrees, record) = deletion_fixture();
+        let checkout = inspect_ready_worktree(&record).unwrap();
+        let external = temp.path().join("external-admin");
+        fs::create_dir(&external).unwrap();
+        fs::write(
+            external.join("gitdir"),
+            checkout.path.join(".git").to_str().unwrap(),
+        )
+        .unwrap();
+        fs::write(external.join("keep"), "external metadata").unwrap();
+        let admins = checkout.git_dir.parent().unwrap();
+        let admin_link = admins.join("linked-admin");
+        symlink(&external, &admin_link).unwrap();
+        let linked_backlink = admins.join("linked-backlink");
+        fs::create_dir(&linked_backlink).unwrap();
+        symlink(external.join("gitdir"), linked_backlink.join("gitdir")).unwrap();
+        let unrelated = admins.join("unrelated-file");
+        fs::write(&unrelated, "not an admin directory").unwrap();
+        fs::remove_file(checkout.git_dir.join("commondir")).unwrap();
+
+        worktrees
+            .delete_broken_files("broken".to_string(), record.worktree_id)
+            .await
+            .unwrap();
+        assert!(!checkout.git_dir.exists());
+        assert!(!checkout.path.exists());
+        assert!(
+            admin_link
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert!(
+            linked_backlink
+                .join("gitdir")
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(
+            fs::read_to_string(external.join("keep")).unwrap(),
+            "external metadata"
+        );
+        assert_eq!(
+            fs::read_to_string(unrelated).unwrap(),
+            "not an admin directory"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_admin_ownership_is_retryable_and_never_authorizes_deletion() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_temp, _source, worktrees, record) = deletion_fixture();
+        let checkout = inspect_ready_worktree(&record).unwrap();
+        fs::remove_dir_all(&checkout.git_dir).unwrap();
+        let admin = checkout.git_dir.with_file_name("unreadable-admin");
+        fs::create_dir(&admin).unwrap();
+        let backlink = admin.join("gitdir");
+        fs::write(&backlink, checkout.path.join(".git").to_str().unwrap()).unwrap();
+        let original = fs::metadata(&backlink).unwrap().permissions();
+        fs::set_permissions(&backlink, fs::Permissions::from_mode(0o000)).unwrap();
+        let diagnosis = worktrees
+            .availability_error_blocking("broken")
+            .unwrap()
+            .unwrap();
+        let deletion = worktrees.broken_deletion_record("broken", &record.worktree_id);
+        fs::set_permissions(&backlink, original).unwrap();
+        assert_eq!(diagnosis.code, "managed_worktree_unavailable");
+        assert_eq!(diagnosis.allowed_actions, Some(vec!["retry"]));
+        assert!(diagnosis.worktree_id.is_none());
+        assert!(deletion.is_err());
+        assert!(checkout.path.exists());
+        assert!(admin.is_dir());
+    }
+
+    #[test]
+    fn a_missing_backlink_and_git_command_failure_do_not_authorize_deletion() {
+        let (_temp, _source, worktrees, _record) = deletion_fixture();
+        let record = worktrees
+            .store
+            .worktree_for_thread("broken")
+            .unwrap()
+            .unwrap();
+        let checkout = inspect_ready_worktree(&record).unwrap();
+        fs::write(checkout.git_dir.join("HEAD"), "invalid HEAD\n").unwrap();
+        let diagnosis = worktrees
+            .availability_error_blocking("broken")
+            .unwrap()
+            .unwrap();
+        assert_eq!(diagnosis.allowed_actions, Some(vec!["retry"]));
+        fs::remove_file(checkout.git_dir.join("gitdir")).unwrap();
+        let diagnosis = worktrees
+            .availability_error_blocking("broken")
+            .unwrap()
+            .unwrap();
+        assert_eq!(diagnosis.allowed_actions, Some(vec![]));
+        assert!(
+            worktrees
+                .broken_deletion_record("broken", &record.worktree_id)
+                .is_err()
+        );
+        assert!(checkout.path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn permission_errors_are_not_classified_as_missing_repository_metadata() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_temp, _source, worktrees, record) = deletion_fixture();
+        let marker = Path::new(&record.worktree_path).join(".git");
+        let original = fs::metadata(&marker).unwrap().permissions();
+        fs::set_permissions(&marker, fs::Permissions::from_mode(0o000)).unwrap();
+        let diagnosis = worktrees
+            .availability_error_blocking("broken")
+            .unwrap()
+            .unwrap();
+        fs::set_permissions(&marker, original).unwrap();
+        assert_eq!(diagnosis.code, "managed_worktree_unavailable");
+        assert_eq!(diagnosis.allowed_actions, Some(vec!["retry"]));
+        assert!(diagnosis.worktree_id.is_none());
+    }
+
+    #[test]
+    fn deletion_confirmation_cannot_remove_a_healthy_dirty_or_detached_checkout() {
+        let (_temp, _source, worktrees, record) = deletion_fixture();
+        assert!(
+            worktrees
+                .broken_deletion_record("broken", &record.worktree_id)
+                .is_err()
+        );
+        let path = Path::new(&record.worktree_path);
+        fs::write(path.join("uncommitted.txt"), "changes").unwrap();
+        assert!(
+            worktrees
+                .broken_deletion_record("broken", &record.worktree_id)
+                .is_err()
+        );
+        git(path, &["checkout", "--detach"]);
+        assert_eq!(
+            worktrees
+                .availability_error_blocking("broken")
+                .unwrap()
+                .unwrap()
+                .allowed_actions,
+            Some(vec![])
+        );
+        assert!(
+            worktrees
+                .broken_deletion_record("broken", &record.worktree_id)
+                .is_err()
+        );
+        assert!(
+            worktrees
+                .broken_deletion_record("broken", &Uuid::new_v4().to_string())
+                .is_err()
+        );
+        assert_eq!(
+            fs::read_to_string(path.join("uncommitted.txt")).unwrap(),
+            "changes"
+        );
+    }
+
+    #[test]
+    fn an_intact_removing_checkout_and_an_anchor_branch_mismatch_cannot_be_deleted() {
+        let (_temp, _source, worktrees, record) = deletion_fixture();
+        let checkout = inspect_ready_worktree(&record).unwrap();
+        worktrees
+            .store
+            .transition_worktree(
+                &record.worktree_id,
+                ManagedWorktreeState::Ready,
+                ManagedWorktreeState::Removing,
+                Some(CheckoutAnchor {
+                    branch_name: checkout.branch_name,
+                    head_sha: checkout.head_sha,
+                }),
+                now_ms().unwrap(),
+            )
+            .unwrap();
+        let diagnosis = worktrees
+            .availability_error_blocking("broken")
+            .unwrap()
+            .unwrap();
+        assert_eq!(diagnosis.code, "managed_worktree_removing");
+        assert_eq!(diagnosis.allowed_actions, Some(vec!["retry"]));
+        assert!(
+            worktrees
+                .broken_deletion_record("broken", &record.worktree_id)
+                .is_err()
+        );
+
+        git(&checkout.path, &["switch", "-c", "another-branch"]);
+        let diagnosis = worktrees
+            .availability_error_blocking("broken")
+            .unwrap()
+            .unwrap();
+        assert_eq!(diagnosis.allowed_actions, Some(vec![]));
+        assert!(
+            worktrees
+                .broken_deletion_record("broken", &record.worktree_id)
+                .is_err()
+        );
+        assert!(checkout.path.exists());
+        assert_eq!(
+            worktrees
+                .store
+                .worktree(&record.worktree_id)
+                .unwrap()
+                .unwrap()
+                .state,
+            ManagedWorktreeState::Removing
+        );
+    }
+
+    #[test]
+    fn failed_removal_of_an_intact_checkout_returns_to_ready_even_when_it_became_dirty() {
+        let (_temp, _source, worktrees, record) = deletion_fixture();
+        let error = worktrees
+            .archive_blocking_with("broken", |path, _, _| {
+                fs::write(path.join("new.txt"), "late write").unwrap();
+                Err(removal_failure())
+            })
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            ManagedWorktreeError::Git(WorktreeError::Command { .. })
+        ));
+        let current = worktrees
+            .store
+            .worktree(&record.worktree_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(current.state, ManagedWorktreeState::Ready);
+        assert!(current.checkout_anchor.is_none());
+        assert!(attached_worktree_is_dirty(Path::new(&current.worktree_path)).unwrap());
+    }
+
+    #[test]
+    fn failed_removal_with_a_missing_target_completes_archive_and_retains_the_anchor() {
+        let (_temp, _source, worktrees, record) = deletion_fixture();
+        let checkout = inspect_ready_worktree(&record).unwrap();
+        let ArchiveOutcome::Archived(archived) = worktrees
+            .archive_blocking_with("broken", |path, _, _| {
+                fs::remove_dir_all(path).unwrap();
+                Err(removal_failure())
+            })
+            .unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(archived.state, ManagedWorktreeState::Archived);
+        assert_eq!(
+            archived.checkout_anchor.unwrap().head_sha,
+            checkout.head_sha
+        );
+        assert!(!checkout.git_dir.exists());
+    }
+
+    #[test]
+    fn partial_removal_preserves_removing_and_anchor_across_a_redb_restart() {
+        let (temp, _source, worktrees, record) = deletion_fixture();
+        let checkout = inspect_ready_worktree(&record).unwrap();
+        let error = worktrees
+            .archive_blocking_with("broken", |path, _, _| {
+                fs::remove_dir_all(&checkout.git_dir).unwrap();
+                fs::remove_file(path.join(".git")).unwrap();
+                Err(removal_failure())
+            })
+            .unwrap_err();
+        assert!(
+            matches!(error, ManagedWorktreeError::Unavailable(ref body) if body.allowed_actions == Some(vec!["deleteTask"]))
+        );
+        let before = worktrees
+            .store
+            .worktree(&record.worktree_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(before.state, ManagedWorktreeState::Removing);
+        assert_eq!(
+            before.checkout_anchor.as_ref().unwrap().head_sha,
+            checkout.head_sha
+        );
+        let managed_root = worktrees.root.as_ref().clone();
+        drop(worktrees);
+        let store = TaskStore::redb(temp.path().join("tasks.redb")).unwrap();
+        let restarted = ManagedWorktrees::new(
+            Arc::new(RootedFs::new(temp.path()).unwrap()),
+            store,
+            managed_root,
+        )
+        .unwrap();
+        assert_eq!(
+            restarted
+                .store
+                .worktree(&record.worktree_id)
+                .unwrap()
+                .unwrap(),
+            before
+        );
+        assert!(
+            restarted
+                .broken_deletion_record("broken", &record.worktree_id)
+                .is_ok()
+        );
+    }
+
+    fn deletion_fixture() -> (
+        tempfile::TempDir,
+        PathBuf,
+        ManagedWorktrees,
+        ManagedWorktree,
+    ) {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        fs::create_dir(&source).unwrap();
+        initialize_repository(&source);
+        let store = TaskStore::redb(temp.path().join("tasks.redb")).unwrap();
+        let worktrees = ManagedWorktrees::new(
+            Arc::new(RootedFs::new(temp.path()).unwrap()),
+            store,
+            temp.path().join("managed"),
+        )
+        .unwrap();
+        let IsolateOutcome::Isolated { worktree, .. } = worktrees
+            .isolate_current_blocking(&source, "broken", "Broken", None, None, false)
+            .unwrap()
+        else {
+            panic!()
+        };
+        (temp, source, worktrees, worktree)
+    }
+
+    fn removal_failure() -> WorktreeError {
+        WorktreeError::Command {
+            operation: "worktree removal",
+            message: "deterministic removal failure".to_string(),
+        }
+    }
 
     #[tokio::test]
     async fn ready_branch_switch_survives_restart_and_becomes_the_archive_restore_anchor() {
@@ -1858,8 +2543,8 @@ mod tests {
 
         assert!(matches!(
             worktrees.archive_for_thread("thread-1".to_string()).await,
-            Err(ManagedWorktreeError::UnownedPath(path))
-                if path == owned_slot.display().to_string()
+            Err(ManagedWorktreeError::Unavailable(ref body))
+                if body.allowed_actions == Some(vec![]) && body.message.contains(&owned_slot.display().to_string())
         ));
         assert!(external_path.is_dir());
         assert_eq!(

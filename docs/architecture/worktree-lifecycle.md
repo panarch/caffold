@@ -145,10 +145,46 @@ began before the conversation and Task return to the active list. The record
 transitions through `restoring` back to `ready`, where the checkout anchor is
 cleared again.
 
-Permanent deletion is available only after archive. The archived managed
-worktree path is already absent, so deletion removes only Caffold's ownership
-record. The local branch remains in the repository and no external worktree or
-Git ref is removed.
+Ordinary permanent deletion requires archive. The archived managed worktree
+path is already absent, so deletion removes its ownership record without
+removing any Git ref.
+
+A failed removal is reinspected against the recorded repository and anchor
+branch. An intact checkout returns to `ready` and clears the anchor, even if
+it has become dirty. A verified missing UUID slot completes `archived` after
+scoped administrative cleanup. A broken or unverifiable checkout stays in
+`removing` with its anchor. Startup uses the same reconciliation; it does not
+automatically delete broken worktrees.
+
+### Broken Task Deletion
+
+Detail checks the managed slot before acquiring the provider. For `ready` and
+`removing`, HTTP and `task-sync` errors carry the same `code`, `message`, and
+`allowedActions`. Verified `TargetMissing`, `NotRepository`, and
+`MissingMetadata` failures can allow `deleteTask` with `worktreeId`,
+`worktreePath`, and `worktreeMissing`. The UUID slot and repository
+administration must pass ownership checks. Git execution and permission
+failures are not proof of absence. Detached or mismatched branches,
+repository mismatches, symlinks, and unowned paths do not grant deletion.
+
+`DELETE /api/tasks/{thread_id}` accepts an active broken Task only with
+`confirmBrokenWorktreeDeletion: true` and its `expectedWorktreeId`. A Task
+mutation reservation serializes the operation. The server reinspects before
+native deletion and filesystem cleanup; confirmation does not bypass a
+healthy checkout's dirty protection, or apply to a changed or archived Task.
+
+Deletion closes the terminal, deletes the recorded agent's conversation,
+removes the owned UUID folder, and removes only Git administrative entries
+whose `gitdir` backlink names that slot's `.git`. It does not prune unrelated
+worktrees or remove branches. Task and worktree rows are deleted in one store
+transaction without requiring an anchor or a new persisted state. Grok retains
+its existing native session references through local cleanup and the store
+commit so an interrupted cleanup can repeat native deletion, then drops the
+binding. Conversation, filesystem, and store failures are reported; they are
+not treated as successful deletion. If unlinking a private provider reference
+fails after the store commit, Caffold logs that cleanup failure and still
+publishes the committed Task removal. The reference does not retain the
+deleted conversation or Caffold membership.
 
 If a later coordinated step fails, Caffold attempts the inverse worktree
 transition. It reverses the provider archive only when that provider operation

@@ -55,7 +55,8 @@ boundaries.
 - opt-in transfer of staged, unstaged, and untracked changes with bounded
   recovery;
 - archive/restore of Tasks and verified clean managed worktrees, plus explicit
-  permanent deletion of an archived Task and its agent conversation;
+  permanent deletion of an archived Task or a verified broken managed Task
+  and its agent conversation;
 - explicit per-browser Web Push subscription and system notifications when a
   managed Task turn completes, fails, or is interrupted, or when a Task stops
   to wait for an approval; and

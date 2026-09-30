@@ -873,6 +873,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.js"
             )))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css"
