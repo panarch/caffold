@@ -63,17 +63,13 @@ caffold-review-file-viewer[compact-chrome] {
     padding-bottom: 0;
   }
 
-  & .viewer-info-button,
-  & .viewer-refresh-button,
-  & .viewer-close-button {
+  & .viewer-info-button {
     position: relative;
     width: var(--interface-compact-hit-size);
     height: var(--interface-compact-hit-size);
   }
 
-  & .viewer-info-button::after,
-  & .viewer-refresh-button::before,
-  & .viewer-close-button::before {
+  & .viewer-info-button::after {
     position: absolute;
     inset: var(--interface-compact-hit-outset);
     content: "";
@@ -90,6 +86,8 @@ caffold-review-file-viewer {
 
   & .viewer-close-button {
     display: none;
+    margin-block: 0;
+    color: var(--control-fg);
   }
 
   & .viewer-title-block {
@@ -164,8 +162,7 @@ caffold-review-file-viewer {
     color: var(--danger);
   }
 
-  & .viewer-info-button,
-  & .viewer-refresh-button {
+  & .viewer-info-button {
     position: relative;
     display: grid;
     place-items: center;
@@ -178,8 +175,12 @@ caffold-review-file-viewer {
     cursor: pointer;
   }
 
-  & .viewer-info-button::after,
-  & .viewer-refresh-button::before {
+  & .viewer-refresh-button {
+    margin-block: 0;
+    color: var(--control-fg);
+  }
+
+  & .viewer-info-button::after {
     position: absolute;
     inset: var(--interface-compact-hit-outset);
     border: 1px solid var(--border);
@@ -193,9 +194,7 @@ caffold-review-file-viewer {
   }
 
   & .viewer-info-button:hover,
-  & .viewer-info-button:focus-visible,
-  & .viewer-refresh-button:hover,
-  & .viewer-refresh-button:focus-visible {
+  & .viewer-info-button:focus-visible {
     outline: none;
   }
 
@@ -347,8 +346,7 @@ caffold-review-file-viewer {
       gap: 0.375rem;
     }
 
-    & .viewer-info-button,
-    & .viewer-close-button {
+    & .viewer-info-button {
       position: relative;
       display: grid;
       place-items: center;
@@ -361,18 +359,8 @@ caffold-review-file-viewer {
       cursor: pointer;
     }
 
-    & .viewer-close-button::before {
-      position: absolute;
-      inset: var(--interface-compact-hit-outset);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      background: var(--surface);
-      content: "";
-    }
-
-    & .viewer-close-button:hover,
-    & .viewer-close-button:focus-visible {
-      outline: none;
+    & .viewer-close-button {
+      display: grid;
     }
 
     & .viewer-close-button:hover::before,

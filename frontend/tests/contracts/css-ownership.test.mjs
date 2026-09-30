@@ -8,6 +8,9 @@ import {
 } from "./css-ownership.mjs";
 
 const frontendRoot = fileURLToPath(new URL("../../", import.meta.url));
+const registeredStyles = [
+  "component-styles/compact-icon-button.css",
+];
 const ownership = new Map([
   ["components/code-viewer.css", ["caffold-code-viewer"]],
   ["components/diff-viewer.css", ["caffold-diff-viewer"]],
@@ -812,7 +815,7 @@ test("supports stylesheets shared by explicitly declared owners", () => {
 
 test("frontend CSS manifest covers every stylesheet", () => {
   const discovered = discoverCssFiles(frontendRoot);
-  const declared = [...ownership.keys(), "styles.css"].sort();
+  const declared = [...ownership.keys(), ...registeredStyles, "styles.css"].sort();
   assert.deepEqual(declared, discovered);
 });
 
@@ -823,6 +826,20 @@ test("all component styles stay inside their ownership boundaries", () => {
     violations.push(...ownershipViolations(css, { owners, path }));
   }
   assert.deepEqual(violations, []);
+});
+
+test("registered style sources target only their scope root and pseudo surface", () => {
+  const entrypoint = readFileSync(`${frontendRoot}styles.css`, "utf8");
+  for (const path of registeredStyles) {
+    const css = readFileSync(`${frontendRoot}${path}`, "utf8");
+    const selectors = effectiveSelectors(css);
+    assert.ok(selectors.length > 0, path);
+    for (const selector of selectors) {
+      assert.match(selector, /^:scope(?::(?:disabled|hover|focus-visible))?(?:::before)?$/, path);
+    }
+    assert.doesNotMatch(css, /@import\b|url\s*\(|caffold-/i, path);
+    assert.equal(entrypoint.includes(`@import "./${path}"`), false, path);
+  }
 });
 
 test("container styles add no untracked descendant ownership debt", () => {

@@ -6,23 +6,9 @@ caffold-task-detail-github {
   place-items: center;
 
   & > .task-github-button {
-    position: relative;
     display: inline-grid;
-    width: var(--interface-compact-hit-size);
-    height: var(--interface-compact-hit-size);
-    margin-block: calc(0rem - var(--interface-compact-hit-outset));
-    padding: 0;
-    place-items: center;
-    border: 0;
-    background: transparent;
     color: var(--text);
-    cursor: pointer;
     anchor-name: --task-review-github;
-  }
-
-  & > .task-github-button:disabled {
-    opacity: 0.35;
-    cursor: default;
   }
 
   & .task-github-icon {
@@ -36,11 +22,6 @@ caffold-task-detail-github {
     background-repeat: no-repeat;
     background-size: contain;
     transform: translate(-50%, -50%);
-  }
-
-  & > .task-github-button:hover,
-  & > .task-github-button:focus-visible {
-    outline: none;
   }
 
   &:has(> .task-github-popover:popover-open) > .task-github-button::before {
@@ -89,20 +70,5 @@ caffold-task-detail-github {
   & > .task-github-popover > button[data-github-button-action]:focus-visible {
     background: var(--control-hover-bg);
     outline: none;
-  }
-
-  & > .task-github-button::before {
-    position: absolute;
-    inset: var(--interface-compact-hit-outset);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    content: "";
-  }
-
-  & > .task-github-button:hover::before,
-  & > .task-github-button:focus-visible::before {
-    border-color: var(--border-strong);
-    background: var(--surface-muted);
   }
 }

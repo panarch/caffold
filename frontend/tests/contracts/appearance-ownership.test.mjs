@@ -826,44 +826,9 @@ test("icon-only controls use square slots from their semantic control tier", () 
   ];
   const contextualControls = [
     [
-      "pages/(task-workspace)/tasks/(detail)/(git)/layout.css",
-      ".task-domain-back",
-      "--interface-compact-hit-size",
-    ],
-    [
-      "pages/(task-workspace)/tasks/(detail)/(github)/layout.css",
-      ".task-domain-back",
-      "--interface-compact-hit-size",
-    ],
-    [
-      "pages/(task-workspace)/layout.css",
-      ".task-workspace-route-control",
-      "--interface-compact-hit-size",
-    ],
-    [
-      "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
-      ".task-git-button",
-      "--interface-compact-hit-size",
-    ],
-    [
-      "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
-      ".task-github-button",
-      "--interface-compact-hit-size",
-    ],
-    [
-      "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css",
-      ".task-detail-info-button",
-      "--interface-compact-hit-size",
-    ],
-    [
       "pages/(task-workspace)/tasks/components/archived-task-list.css",
       ".task-archived-action-button",
       "--task-list-row-height",
-    ],
-    [
-      "components/file-navigator/list.css",
-      ".file-refresh-button",
-      "--interface-compact-hit-size",
     ],
     [
       "pages/(task-workspace)/tasks/components/composer.css",
@@ -878,16 +843,6 @@ test("icon-only controls use square slots from their semantic control tier", () 
     [
       "components/file-viewer.css",
       ".viewer-info-button",
-      "--interface-compact-hit-size",
-    ],
-    [
-      "components/file-viewer.css",
-      ".viewer-refresh-button",
-      "--interface-compact-hit-size",
-    ],
-    [
-      "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css",
-      ".git-review-refresh",
       "--interface-compact-hit-size",
     ],
   ];
@@ -932,6 +887,36 @@ test("icon-only controls use square slots from their semantic control tier", () 
       /background: var\(--control-hover-bg\)/,
     ],
   );
+});
+
+test("compact icon controls declare shared styles at their own component boundary", () => {
+  const consumers = [
+    ["pages/(task-workspace)/tasks/(detail)/components/terminal-button", "caffold-task-detail-terminal", "> .task-terminal-button"],
+    ["pages/(task-workspace)/tasks/(detail)/components/git-menu", "caffold-task-detail-git", "> .task-git-button"],
+    ["pages/(task-workspace)/tasks/(detail)/components/github-menu", "caffold-task-detail-github", "> .task-github-button"],
+    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info", "caffold-task-detail-info", "> .task-detail-info-button"],
+    ["pages/(task-workspace)/notes/components/info", "caffold-notes-info", "> .notes-info-button"],
+    ["pages/(task-workspace)/tasks/components/navigator", "caffold-task-navigator", "> .task-list-primary-header > .task-list-primary-actions > .task-list-header-action"],
+    ["pages/(task-workspace)/layout", "caffold-task-workspace", "> .task-workspace-route-controls > .task-workspace-route-control"],
+    ["pages/(task-workspace)/tasks/(detail)/(git)/layout", "caffold-task-git-layout", "> .task-git-surface > .task-domain-header > .task-domain-back"],
+    ["pages/(task-workspace)/tasks/(detail)/(github)/layout", "caffold-task-github-layout", "> .task-github-surface > .task-domain-header > .task-domain-back"],
+    ["pages/(task-workspace)/tasks/(detail)/terminal/page", "caffold-terminal-page", "> .terminal-page-bar > .terminal-page-button"],
+    ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", "caffold-git-review-controls", "> .git-review-controls > .git-review-refresh"],
+    ["components/file-navigator/list", "caffold-file-list", "> .file-list-panel > header > .file-list-title-row > .file-list-actions > .file-refresh-button"],
+    ["components/pagination", "caffold-pagination", "> .pagination-panel > .pagination-button"],
+    ["components/file-viewer", "caffold-review-file-viewer", "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-actions > .viewer-refresh-button"],
+    ["components/file-viewer", "caffold-review-file-viewer", "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-close-button"],
+  ];
+  for (const [path, owner, target] of consumers) {
+    const javascript = readFrontend(`${path}.js`);
+    const declarations = [...javascript.matchAll(/await compactIconButton\.register\(\s*"([^"]+)",\s*"([^"]+)"\s*,?\s*\)/g)];
+    assert.ok(declarations.some(([, name, selector]) => name === owner && selector === target), path);
+  }
+  const compact = readFrontend("component-styles/compact-icon-button.css");
+  assert.match(compact, /width: var\(--interface-compact-hit-size\)/);
+  assert.match(compact, /height: var\(--interface-compact-hit-size\)/);
+  assert.match(compact, /margin-block: calc\(0rem - var\(--interface-compact-hit-outset\)\)/);
+  assert.match(compact, /place-items: center/);
 });
 
 test("archived actions use a visually secondary compact base", () => {
@@ -1033,9 +1018,6 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
       ".task-switcher-close::before",
       "--interface-control-hit-outset",
     ],
-    ["pages/(task-workspace)/layout.css", ".task-workspace-route-control::before", "--interface-compact-hit-outset"],
-    ["pages/(task-workspace)/tasks/(detail)/(git)/layout.css", ".task-domain-back::before", "--interface-compact-hit-outset"],
-    ["pages/(task-workspace)/tasks/(detail)/(github)/layout.css", ".task-domain-back::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-composer-attachment-remove::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/task-turn-options.css", ".task-model-button::before", "--interface-compact-hit-outset"],
@@ -1161,12 +1143,6 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
   const reviewLayout = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/(review)/layout.css",
   );
-  const gitButton = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
-  );
-  const githubButton = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
-  );
 
   assert.match(tokens, /--interface-compact-visual-size: 1\.875rem;/);
   assert.match(
@@ -1209,12 +1185,8 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
     /--segmented-control-label-padding-inline: var\(--interface-space-1\);/,
   );
   assert.match(
-    gitButton,
-    /\.task-git-button::before \{[\s\S]*--interface-compact-hit-outset/,
-  );
-  assert.match(
-    githubButton,
-    /\.task-github-button::before \{[\s\S]*--interface-compact-hit-outset/,
+    readFrontend("component-styles/compact-icon-button.css"),
+    /:scope::before \{[\s\S]*--interface-compact-hit-outset/,
   );
 });
 

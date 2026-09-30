@@ -20,30 +20,8 @@ caffold-pagination {
   }
 
   & .pagination-button {
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: var(--interface-compact-hit-size);
-    height: var(--interface-compact-hit-size);
-    padding: 0;
-    border: 0;
-    background: transparent;
+    margin-block: 0;
     color: var(--control-fg);
-    cursor: pointer;
-  }
-
-  & .pagination-button::before {
-    position: absolute;
-    inset: var(--interface-compact-hit-outset);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    content: "";
-  }
-
-  & .pagination-button:hover,
-  & .pagination-button:focus-visible {
-    outline: none;
   }
 
   & .pagination-button:hover::before,

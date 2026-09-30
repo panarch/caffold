@@ -1,3 +1,4 @@
+import { compactIconButton } from "../../component-styles.js";
 import { listDirectory } from "../../api.js";
 import { entryKindLabel, escapeHtml } from "../dom.js";
 import {
@@ -481,6 +482,11 @@ class CaffoldFileList extends HTMLElement {
     }
   }
 }
+
+await compactIconButton.register(
+  "caffold-file-list",
+  "> .file-list-panel > header > .file-list-title-row > .file-list-actions > .file-refresh-button",
+);
 
 customElements.define("caffold-file-list", CaffoldFileList);
 

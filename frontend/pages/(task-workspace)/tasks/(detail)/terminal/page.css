@@ -35,25 +35,8 @@ caffold-terminal-page {
   }
 
   & .terminal-page-button {
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: var(--interface-compact-hit-size);
-    height: var(--interface-compact-hit-size);
-    padding: 0;
-    border: 0;
-    background: transparent;
+    margin-block: 0;
     color: var(--control-fg);
-    cursor: pointer;
-  }
-
-  & .terminal-page-button::before {
-    position: absolute;
-    inset: var(--interface-compact-hit-outset);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    content: "";
   }
 
   & .terminal-page-button > svg {
@@ -64,21 +47,9 @@ caffold-terminal-page {
     stroke-width: 2;
   }
 
-  & .terminal-page-button:hover,
-  & .terminal-page-button:focus-visible {
-    outline: none;
-  }
-
-  & .terminal-page-button:hover::before,
-  & .terminal-page-button:focus-visible::before,
   & .terminal-page-button[aria-pressed="true"]::before {
     border-color: var(--border-strong);
     background: var(--surface-muted);
-  }
-
-  & .terminal-page-button:disabled {
-    opacity: 0.35;
-    cursor: default;
   }
 
   & > .terminal-page-body {

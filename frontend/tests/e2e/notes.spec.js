@@ -159,6 +159,48 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
+test("Note details keeps compact paint, touch targets and native keyboard disclosure across Interface scales", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
+  await stubNotes(page);
+  await page.goto("/notes/storage");
+  const button = notesWorkspace(page).getByRole("button", { name: "Note details" });
+  const popover = notesWorkspace(page).locator(".notes-info-popover");
+  await expect(button).toBeVisible();
+  for (const scale of [90, 120]) {
+    await page.evaluate(async (value) => {
+      const { setAppearanceRangeSetting } = await import("/assets/settings.js");
+      setAppearanceRangeSetting("interfaceScalePercent", value);
+    }, scale);
+    const metrics = await button.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const root = getComputedStyle(document.documentElement);
+      const surface = getComputedStyle(element, "::before");
+      return {
+        width: rect.width,
+        height: rect.height,
+        visual: rect.height - parseFloat(surface.top) - parseFloat(surface.bottom),
+        expectedVisual: parseFloat(root.fontSize) * 1.875,
+        floor: parseFloat(root.getPropertyValue("--interface-target-floor")),
+        border: surface.borderTopWidth,
+      };
+    });
+    expect(metrics.width).toBeCloseTo(metrics.height, 1);
+    expect(metrics.height).toBeCloseTo(Math.max(metrics.expectedVisual, metrics.floor), 1);
+    expect(metrics.visual).toBeCloseTo(metrics.expectedVisual, 1);
+    expect(metrics.border).toBe("1px");
+  }
+  await page.mouse.move(0, 0);
+  const idle = await button.evaluate((element) => getComputedStyle(element, "::before").backgroundColor);
+  await button.focus();
+  await expect(button).toBeFocused();
+  expect(await button.evaluate((element) => getComputedStyle(element, "::before").backgroundColor)).not.toBe(idle);
+  await button.press("Enter");
+  await expect(popover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(popover).toBeHidden();
+  await expect(button).toBeFocused();
+  await captureReviewScreenshot(page, testInfo, "notes-compact-button");
+});
+
 test("the Notes tab sits between Tasks and Settings and reads the server's empty store", { tag: "@desktop" }, async ({
   page,
 }) => {

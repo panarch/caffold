@@ -31,32 +31,10 @@ caffold-task-github-layout {
   }
 
   & .task-domain-back {
-    position: relative;
-    display: grid;
     flex: 0 0 var(--interface-compact-hit-size);
-    place-items: center;
-    width: var(--interface-compact-hit-size);
-    height: var(--interface-compact-hit-size);
+    margin-block: 0;
     margin-inline: calc(0rem - var(--interface-compact-hit-outset));
-    padding: 0;
-    border: 0;
-    background: transparent;
     color: var(--control-fg);
-    cursor: pointer;
-  }
-
-  & .task-domain-back::before {
-    position: absolute;
-    inset: var(--interface-compact-hit-outset);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    content: "";
-  }
-
-  & .task-domain-back:hover,
-  & .task-domain-back:focus-visible {
-    outline: none;
   }
 
   & .task-domain-back:hover::before,

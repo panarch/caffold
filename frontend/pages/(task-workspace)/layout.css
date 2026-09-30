@@ -147,36 +147,14 @@ caffold-task-workspace {
   }
 
   & .task-workspace-route-control {
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: var(--interface-compact-hit-size);
-    height: var(--interface-compact-hit-size);
-    padding: 0;
-    border: 0;
-    background: transparent;
+    margin-block: 0;
     color: var(--control-fg);
     font: inherit;
-    cursor: pointer;
-  }
-
-  & .task-workspace-route-control::before {
-    position: absolute;
-    inset: var(--interface-compact-hit-outset);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    content: "";
-  }
-
-  & .task-workspace-route-control:hover,
-  & .task-workspace-route-control:focus-visible {
-    outline: none;
   }
 
   & .task-workspace-route-control:hover::before,
   & .task-workspace-route-control:focus-visible::before {
-    border-color: var(--border-strong);
+    background: var(--surface);
   }
 
   & .task-workspace-route-control:disabled {

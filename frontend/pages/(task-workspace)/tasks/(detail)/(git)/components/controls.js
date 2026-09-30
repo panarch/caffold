@@ -1,3 +1,4 @@
+import { compactIconButton } from "../../../../../../component-styles.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
 import {
   ACTION_HINT_ACTION,
@@ -217,6 +218,11 @@ function gitRefSelectAvailable(control) {
       hasActionHintLayoutBox(control),
   );
 }
+
+await compactIconButton.register(
+  "caffold-git-review-controls",
+  "> .git-review-controls > .git-review-refresh",
+);
 
 customElements.define("caffold-git-review-controls", CaffoldGitReviewControls);
 

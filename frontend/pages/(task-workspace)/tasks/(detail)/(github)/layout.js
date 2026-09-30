@@ -1,3 +1,4 @@
+import { compactIconButton } from "../../../../../component-styles.js";
 import { getGitHubStatus } from "../../../../../api.js";
 import { renderInlineIcon, warmIcons } from "../../../../../components/icons.js";
 import { routeMode } from "../../../../../navigation-routes.js";
@@ -911,6 +912,11 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     );
   }
 }
+
+await compactIconButton.register(
+  "caffold-task-github-layout",
+  "> .task-github-surface > .task-domain-header > .task-domain-back",
+);
 
 customElements.define("caffold-task-github-layout", CaffoldTaskGithubLayout);
 

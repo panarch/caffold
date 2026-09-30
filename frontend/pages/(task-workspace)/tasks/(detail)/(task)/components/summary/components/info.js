@@ -1,3 +1,4 @@
+import { compactIconButton } from "../../../../../../../../component-styles.js";
 import {
   renderInlineIcon,
   warmIcons,
@@ -345,6 +346,8 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     return this.querySelector("caffold-task-detail-info-actions");
   }
 }
+
+await compactIconButton.register("caffold-task-detail-info", "> .task-detail-info-button");
 
 if (!customElements.get("caffold-task-detail-info")) {
   customElements.define("caffold-task-detail-info", CaffoldTaskDetailInfo);

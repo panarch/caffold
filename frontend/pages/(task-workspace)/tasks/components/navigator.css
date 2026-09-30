@@ -85,29 +85,18 @@ caffold-task-navigator {
   }
 
   & .task-list-header-action {
-    position: relative;
     isolation: isolate;
-    display: grid;
     flex: 0 0 auto;
-    width: var(--interface-compact-hit-size);
-    height: var(--interface-compact-hit-size);
-    margin-block: calc(0rem - var(--interface-compact-hit-outset));
-    padding: 0;
-    place-items: center;
-    border: 0;
-    background: transparent;
     color: var(--control-fg);
+  }
+
+  & .task-list-header-action:disabled {
+    opacity: 1;
     cursor: pointer;
   }
 
   & .task-list-header-action::before {
-    position: absolute;
     z-index: -1;
-    inset: var(--interface-compact-hit-outset);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    content: "";
   }
 
   & .task-list-header-action .task-action-icon {
@@ -166,17 +155,6 @@ caffold-task-navigator {
   }
 
   &:has(.task-list-reorder-popover:popover-open) .task-list-reorder::before {
-    border-color: var(--border-strong);
-    background: var(--surface-muted);
-  }
-
-  & .task-list-header-action:hover,
-  & .task-list-header-action:focus-visible {
-    outline: none;
-  }
-
-  & .task-list-header-action:hover::before,
-  & .task-list-header-action:focus-visible::before {
     border-color: var(--border-strong);
     background: var(--surface-muted);
   }
