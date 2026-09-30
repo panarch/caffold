@@ -13,11 +13,14 @@ import {
   popoverScrollSurfaceScope,
 } from "../../../../keyboard-navigation.js";
 import "../../../../keyboard-navigation/components/presentation.js";
+import "./info/components/copy-markdown.js";
+import "./info/components/copy-path.js";
 
 let notesInfoInstanceId = 0;
 
 // The details button at the end of the Note header. Its popover shows when the
-// open Note changed and was created and the Tasks that wrote it.
+// open Note changed and was created and the Tasks that wrote it, and copies the
+// Note's path or its Markdown.
 class CaffoldNotesInfo extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
@@ -84,6 +87,10 @@ class CaffoldNotesInfo extends HTMLElement {
             <dd data-notes-info-field="changed-by"></dd>
           </div>
         </dl>
+        <div class="notes-info-actions">
+          <caffold-notes-info-copy-path></caffold-notes-info-copy-path>
+          <caffold-notes-info-copy-markdown></caffold-notes-info-copy-markdown>
+        </div>
         <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       </div>
     `;
@@ -102,6 +109,8 @@ class CaffoldNotesInfo extends HTMLElement {
     this.hidden = !this.note;
     if (this.note) {
       this.renderFields();
+      this.copyPath().setNote(this.note);
+      this.copyMarkdown().setNote(this.note);
     }
   }
 
@@ -184,6 +193,16 @@ class CaffoldNotesInfo extends HTMLElement {
     const contextId = `${scopeId}:${noteId}:details`;
     const isCurrent = () => this.isConnected && this.note?.id === noteId;
     const links = [...popover.querySelectorAll(":scope > dl a[href]")];
+    const copyPathScope = this.copyPath().actionHintScope({
+      scopeId: contextId,
+      clipRoots: [popover],
+      isCurrent,
+    });
+    const copyMarkdownScope = this.copyMarkdown().actionHintScope({
+      scopeId: contextId,
+      clipRoots: [popover],
+      isCurrent,
+    });
     return [keyboardNavigationContext({
       id: contextId,
       kind: "popover",
@@ -203,7 +222,7 @@ class CaffoldNotesInfo extends HTMLElement {
           })),
           mutationRoots: [popover],
           scrollRoots: [popover],
-        }),
+        }, copyPathScope, copyMarkdownScope),
         sessionBound: true,
       },
       scroll: {
@@ -236,6 +255,18 @@ class CaffoldNotesInfo extends HTMLElement {
 
   infoPopover() {
     return this.querySelector(":scope > .notes-info-popover");
+  }
+
+  copyPath() {
+    return this.querySelector(
+      ":scope > .notes-info-popover > .notes-info-actions > caffold-notes-info-copy-path",
+    );
+  }
+
+  copyMarkdown() {
+    return this.querySelector(
+      ":scope > .notes-info-popover > .notes-info-actions > caffold-notes-info-copy-markdown",
+    );
   }
 }
 

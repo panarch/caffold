@@ -250,6 +250,26 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/notes/components/info.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/notes/components/info.js"
         ))),
+        "pages/(task-workspace)/notes/components/info/components/copy-markdown.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/notes/components/info/components/copy-markdown.css"
+            )))
+        }
+        "pages/(task-workspace)/notes/components/info/components/copy-markdown.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/notes/components/info/components/copy-markdown.js"
+            )))
+        }
+        "pages/(task-workspace)/notes/components/info/components/copy-path.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/notes/components/info/components/copy-path.css"
+            )))
+        }
+        "pages/(task-workspace)/notes/components/info/components/copy-path.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/notes/components/info/components/copy-path.js"
+            )))
+        }
         "pages/(task-workspace)/notes/components/navigator.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/notes/components/navigator.css"
         ))),
@@ -1562,6 +1582,8 @@ mod tests {
             "action-hints/components/dialog.js",
             "pages/(task-workspace)/notes/layout.js",
             "pages/(task-workspace)/notes/components/info.js",
+            "pages/(task-workspace)/notes/components/info/components/copy-markdown.js",
+            "pages/(task-workspace)/notes/components/info/components/copy-path.js",
             "pages/(task-workspace)/notes/components/navigator.js",
             "pages/(task-workspace)/notes/tree.js",
             "pages/(task-workspace)/settings/layout.js",
@@ -1610,6 +1632,8 @@ mod tests {
             "action-hints/components/dialog.css",
             "pages/(task-workspace)/notes/layout.css",
             "pages/(task-workspace)/notes/components/info.css",
+            "pages/(task-workspace)/notes/components/info/components/copy-markdown.css",
+            "pages/(task-workspace)/notes/components/info/components/copy-path.css",
             "pages/(task-workspace)/notes/components/navigator.css",
             "pages/(task-workspace)/settings/keyboard/page.css",
             "pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",

@@ -366,6 +366,14 @@ const ownership = new Map([
     ["caffold-notes-info"],
   ],
   [
+    "pages/(task-workspace)/notes/components/info/components/copy-markdown.css",
+    ["caffold-notes-info-copy-markdown"],
+  ],
+  [
+    "pages/(task-workspace)/notes/components/info/components/copy-path.css",
+    ["caffold-notes-info-copy-path"],
+  ],
+  [
     "pages/(task-workspace)/notes/components/navigator.css",
     ["caffold-notes-navigator"],
   ],

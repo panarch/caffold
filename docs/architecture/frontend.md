@@ -1272,12 +1272,24 @@ the way Settings does.
 
 `notes/components/info.js` defines `caffold-notes-info`, the Info button at the
 end of the Note header. Its popover lists when the open Note changed and was
-created and the Tasks that wrote it. The button provides its own Action Hint,
-and the popover is a session-bound keyboard context that Task Workspace includes
-while Notes is shown, so opening it through Action Hints continues them over the
-popover's Task links. The popover closes when another Note takes the header,
-when no Note is shown, or when Notes is left, and stays open while the same Note
-is read again.
+created and the Tasks that wrote it, and below that offers Copy path and Copy
+Markdown. The button provides its own Action Hint, and the popover is a
+session-bound keyboard context that Task Workspace includes while Notes is
+shown, so opening it through Action Hints continues them over the popover's
+Task links and copy actions. The popover closes when another Note takes the
+header, when no Note is shown, or when Notes is left, and stays open while the
+same Note is read again.
+
+The two copy actions are separate components in
+`notes/components/info/components/`, and the popover hands each the Note it
+shows. `copy-path.js` defines
+`caffold-notes-info-copy-path`, which copies the names in the Note's `location`
+and the Note's own name, joined by ` / `, followed by `(note id: <id>)` with the
+id the Notes tools read the Note by. `copy-markdown.js` defines
+`caffold-notes-info-copy-markdown`, which copies the Note's Markdown content and
+is disabled for an empty Note. Each writes to the clipboard, reports Copied or
+a failure for a moment, drops a copy still in flight when what it copies
+changes, and provides its own Action Hint.
 
 ## Settings
 

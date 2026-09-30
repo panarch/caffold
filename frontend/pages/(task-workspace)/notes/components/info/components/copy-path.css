@@ -1,0 +1,57 @@
+caffold-notes-info-copy-path {
+  display: grid;
+  justify-items: start;
+
+  /* The same button the Task details popover gives its actions. */
+  & > .notes-info-copy-path-button {
+    position: relative;
+    isolation: isolate;
+    display: inline-grid;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
+    padding: var(--interface-space-2) var(--interface-control-padding-inline);
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--control-fg);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & > .notes-info-copy-path-button::before {
+    position: absolute;
+    z-index: -1;
+    inset: var(--interface-compact-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & > .notes-info-copy-path-button:hover,
+  & > .notes-info-copy-path-button:focus-visible {
+    outline: none;
+  }
+
+  & > .notes-info-copy-path-button:hover::before,
+  & > .notes-info-copy-path-button:focus-visible::before {
+    border-color: var(--border-strong);
+  }
+
+  & > .notes-info-copy-path-button[data-copy-state="copied"] {
+    color: var(--success);
+  }
+
+  & > .notes-info-copy-path-button[data-copy-state="failed"] {
+    color: var(--danger);
+  }
+
+  & > .notes-info-copy-path-button[aria-disabled="true"] {
+    cursor: default;
+    opacity: 0.65;
+  }
+}

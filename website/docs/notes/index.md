@@ -31,6 +31,9 @@ wide screen or in its place on a phone, where **Back** returns to the tree.
 **Note details** at the top right shows when the Note was created and last
 changed, and which Task did each, with a link to that Task's conversation.
 
+In Note details, **Copy path** copies the Note's path and id to paste to an
+agent, and **Copy Markdown** copies its content.
+
 The open Note does not change on screen by itself. Notes reads the tree and
 the Note again whenever you come back to it or bring the app back to the
 foreground.

@@ -288,6 +288,120 @@ test("Action Hints open Note details and continue inside them until Escape close
   await expect(details).toBeHidden();
 });
 
+test("Note details copies the Note's path and its Markdown, and has no Markdown to copy for an empty Note", { tag: "@desktop" }, async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await stubNotes(page);
+  await page.goto("/notes/storage");
+  await expect(notesTitle(page)).toHaveText("Storage decision");
+  // Feedback lasts 1.8 seconds; the paused clock keeps it until the test moves on.
+  await page.clock.install();
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 60_000));
+  const clipboardText = () => page.evaluate(() => navigator.clipboard.readText());
+
+  const workspace = notesWorkspace(page);
+  const detailsButton = workspace.getByRole("button", { name: "Note details" });
+  await detailsButton.click();
+  const details = workspace.locator(".notes-info-popover");
+  const copyPath = details.locator("caffold-notes-info-copy-path > button");
+  const copyMarkdown = details.locator("caffold-notes-info-copy-markdown > button");
+  await expect(copyPath).toHaveText("Copy path");
+  await expect(copyMarkdown).toHaveText("Copy Markdown");
+
+  await copyPath.click();
+  await expect(copyPath).toHaveText("Copied");
+  await expect(details.locator('caffold-notes-info-copy-path > [role="status"]')).toHaveText("Copied");
+  await expect(details).toBeVisible();
+  await expect.poll(clipboardText).toBe("Projects / Decisions / Storage decision (note id: storage)");
+  await page.clock.fastForward(1_800);
+  await expect(copyPath).toHaveText("Copy path");
+
+  await copyMarkdown.click();
+  await expect(copyMarkdown).toHaveText("Copied");
+  await expect.poll(clipboardText).toBe("# Storage\n\nKeep **one** current copy.\n");
+
+  await treeEntry(page, "Blank").click();
+  await expect(notesTitle(page)).toHaveText("Blank");
+  await expect(details).toBeHidden();
+  await detailsButton.click();
+  await expect(copyMarkdown).toHaveText("Copy Markdown");
+  await expect(copyMarkdown).toBeDisabled();
+  await expect(copyPath).toBeEnabled();
+});
+
+test("Action Hints copy the Note path from inside Note details", { tag: "@desktop" }, async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await stubNotes(page);
+  await page.goto("/notes/storage");
+  await expect(notesTitle(page)).toHaveText("Storage decision");
+  await page.clock.install();
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 60_000));
+
+  await activateActionHintIntoPopover(page, "Note details");
+  const hint = popoverActionHintDialog(page);
+  await expect(hint.getByRole("button", { name: / — Copy Markdown$/ })).toBeVisible();
+  const code = await hint.getByRole("button", { name: / — Copy path$/ })
+    .getAttribute("data-action-hint-code");
+  expect(code).toMatch(/^[A-Z]+$/);
+  await page.keyboard.type(code.toLowerCase());
+
+  const details = notesWorkspace(page).locator(".notes-info-popover");
+  await expect(details.locator("caffold-notes-info-copy-path > button")).toHaveText("Copied");
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("Projects / Decisions / Storage decision (note id: storage)");
+});
+
+test("Note details actions measure the same as the Task details actions", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const actionGeometry = (section, button) => section.evaluate((element, buttonSelector) => {
+    const control = element.querySelector(buttonSelector);
+    const style = getComputedStyle(control);
+    const frame = getComputedStyle(control, "::before");
+    const sectionStyle = getComputedStyle(element);
+    return {
+      height: control.getBoundingClientRect().height,
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      lineHeight: style.lineHeight,
+      paddingInline: [style.paddingLeft, style.paddingRight],
+      frame: [frame.top, frame.bottom, frame.borderTopWidth, frame.borderTopLeftRadius],
+      section: [sectionStyle.marginTop, sectionStyle.paddingTop, sectionStyle.borderTopWidth],
+    };
+  }, button);
+
+  await mockAgentModels(page);
+  await openCompletedTaskForReview(page);
+  await page.locator("caffold-task-detail-info .task-detail-info-button").click();
+  const taskSection = page.locator(".task-detail-popover .task-detail-fork-action");
+  await expect(taskSection).toBeVisible();
+  const task = await actionGeometry(taskSection, ':scope > button[data-task-info-action="fork"]');
+
+  await stubNotes(page);
+  await page.goto("/notes/storage");
+  await expect(notesTitle(page)).toHaveText("Storage decision");
+  const workspace = notesWorkspace(page);
+  await workspace.getByRole("button", { name: "Note details" }).click();
+  const notesSection = workspace.locator(".notes-info-popover > .notes-info-actions");
+  await expect(notesSection).toBeVisible();
+  const copyPath = await actionGeometry(
+    notesSection,
+    ":scope > caffold-notes-info-copy-path > button",
+  );
+  const copyMarkdown = await actionGeometry(
+    notesSection,
+    ":scope > caffold-notes-info-copy-markdown > button",
+  );
+
+  expect(copyPath).toEqual(task);
+  expect(copyMarkdown).toEqual(task);
+});
+
 test("a Note address opens the directories that hold it", { tag: "@desktop" }, async ({
   page,
 }) => {
