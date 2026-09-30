@@ -1,4 +1,4 @@
-import { getTask, taskResponseError } from "../../../../../api.js";
+import { getTask, taskResponseError } from "#app/api.js";
 import { TASK_TRANSPORT_STATE } from "../../runtime-state.js";
 import { TaskStreamLifecycle } from "../../stream.js";
 

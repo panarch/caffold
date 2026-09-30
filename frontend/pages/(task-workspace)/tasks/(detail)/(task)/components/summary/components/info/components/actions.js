@@ -1,13 +1,13 @@
 import {
   isTaskTransportStale,
   taskThreadStatusType,
-} from "../../../../../../../runtime-state.js";
+} from "#tasks/runtime-state.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../../../../../../../action-hints.js";
-import { taskThreadId } from "../../../../../../../task-list-model.js";
+} from "#app/action-hints.js";
+import { taskThreadId } from "#tasks/task-list-model.js";
 
 /** The approval mode Caffold answers under, which is the one Jev judges for. */
 const REVIEWED_PERMISSION_MODE = "caffold:ask-jev-first";

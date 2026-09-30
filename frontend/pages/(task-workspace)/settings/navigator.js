@@ -1,4 +1,4 @@
-import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import {
   codexState,
   formatCodexReadiness,
@@ -7,13 +7,13 @@ import "../components/workspace-brand.js";
 import {
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "../../../action-hints.js";
+} from "#app/action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   scrollBackToTop,
-} from "../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 // Each brand mark is published in a single color so it can be tinted, and the
 // theme tints it through --brand-monochrome-filter.

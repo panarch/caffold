@@ -1,8 +1,8 @@
-import { getGitHubIssue, getGitHubIssues } from "../../../../../../api.js";
+import { getGitHubIssue, getGitHubIssues } from "#app/api.js";
 import "./list/page.js";
 import "./detail/page.js";
-import { emptyActionHintScope } from "../../../../../../action-hints.js";
-import { emptyScrollSurfaceScope } from "../../../../../../scroll-scope.js";
+import { emptyActionHintScope } from "#app/action-hints.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 
 const GITHUB_ISSUES_PER_PAGE = 50;
 const LOADING_DELAY_MS = 180;

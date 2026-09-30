@@ -3,8 +3,8 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
-} from "../../../../action-hints.js";
-import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+} from "#app/action-hints.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 
 export const SETTINGS_REFRESH_INTENT_EVENT = "caffold:settings-refresh-intent";
 

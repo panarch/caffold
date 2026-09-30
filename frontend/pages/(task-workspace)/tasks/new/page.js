@@ -1,9 +1,9 @@
 import { cleanLogicalPath } from "../task-format.js";
-import { mergeKeyboardNavigationContexts } from "../../../../keyboard-navigation.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 import "./components/directory-picker.js";
 import "../components/task-create.js";
 

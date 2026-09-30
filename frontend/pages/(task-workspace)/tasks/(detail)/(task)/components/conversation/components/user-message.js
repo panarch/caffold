@@ -1,9 +1,9 @@
-import { escapeHtml } from "../../../../../../../../components/dom.js";
-import { PROMPT_SUBMISSION_STATE } from "../../../../../runtime-state.js";
+import { escapeHtml } from "#components/dom.js";
+import { PROMPT_SUBMISSION_STATE } from "#tasks/runtime-state.js";
 import {
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import "./message-attachments.js";
 
 const { UPLOADING, SENDING, ACCEPTED, OUTCOME_UNKNOWN } = PROMPT_SUBMISSION_STATE;

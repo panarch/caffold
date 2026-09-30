@@ -1,7 +1,7 @@
-import { compactIconButton } from "../../../../../component-styles.js";
-import { getGitHubStatus } from "../../../../../api.js";
-import { renderInlineIcon, warmIcons } from "../../../../../components/icons.js";
-import { routeMode } from "../../../../../navigation-routes.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { getGitHubStatus } from "#app/api.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { routeMode } from "#app/navigation-routes.js";
 import "./components/task-start-dialog.js";
 import "./(issues)/layout.js";
 import "./(pulls)/layout.js";
@@ -10,11 +10,11 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   mergeKeyboardNavigationContexts,
-} from "../../../../../keyboard-navigation.js";
-import { emptyScrollSurfaceScope } from "../../../../../scroll-scope.js";
+} from "#app/keyboard-navigation.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 
 class CaffoldTaskGithubLayout extends HTMLElement {
   connectedCallback() {

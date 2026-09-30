@@ -1,5 +1,5 @@
-import { escapeHtml } from "../../../../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../../../../components/icons.js";
+import { escapeHtml } from "#components/dom.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import "../../components/markdown.js";
 import {
   ACTION_HINT_ACTION,
@@ -8,12 +8,12 @@ import {
   hasActionHintLayoutBox,
   linkActionHintTarget,
   mergeActionHintScopes,
-} from "../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "../../../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 class CaffoldGithubPullDetailPage extends HTMLElement {
   connectedCallback() {

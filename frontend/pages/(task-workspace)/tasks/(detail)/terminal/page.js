@@ -1,17 +1,17 @@
-import { compactIconButton } from "../../../../../component-styles.js";
-import { killTerminal, openTerminal } from "../../../../../api.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { killTerminal, openTerminal } from "#app/api.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   textboxActionHintTarget,
-} from "../../../../../action-hints.js";
-import { renderInlineIcon } from "../../../../../components/icons.js";
+} from "#app/action-hints.js";
+import { renderInlineIcon } from "#components/icons.js";
 import {
   TERMINAL_VIEW_INPUT_EVENT,
   TERMINAL_VIEW_RESIZE_EVENT,
   terminalInputBytes,
-} from "../../../../../components/terminal-view.js";
+} from "#components/terminal-view.js";
 import { TASK_TRANSPORT_STATE } from "../../runtime-state.js";
 import { TERMINAL_SPECIAL_KEY_EVENT } from "./components/special-keys.js";
 import { TerminalConnection } from "./page/connection.js";

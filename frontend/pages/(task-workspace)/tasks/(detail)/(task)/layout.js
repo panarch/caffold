@@ -9,23 +9,23 @@ import {
   sendTaskPrompt,
   taskResponseError,
   uploadTaskFile,
-} from "../../../../../api.js";
-import { escapeHtml } from "../../../../../components/dom.js";
-import { routeDomain } from "../../../../../navigation-routes.js";
+} from "#app/api.js";
+import { escapeHtml } from "#components/dom.js";
+import { routeDomain } from "#app/navigation-routes.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 import {
   mergeKeyboardNavigationContexts,
-} from "../../../../../keyboard-navigation.js";
+} from "#app/keyboard-navigation.js";
 import "../../components/composer.js";
 import "./components/conversation.js";
 import "./components/command-dialog.js";

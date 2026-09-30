@@ -1,17 +1,17 @@
 import {
   renderInlineIcon,
   warmIcons,
-} from "../../../../../../components/icons.js";
-import "../../../../../../components/markdown-preview.js";
+} from "#components/icons.js";
+import "#components/markdown-preview.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../../action-hints.js";
-import { emptyScrollSurfaceScope } from "../../../../../../scroll-scope.js";
-import { keyboardNavigationContext } from "../../../../../../keyboard-navigation.js";
-import "../../../../../../keyboard-navigation/components/presentation.js";
+} from "#app/action-hints.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
 
 class CaffoldTaskMarkdownPreviewDialog extends HTMLElement {
   connectedCallback() {

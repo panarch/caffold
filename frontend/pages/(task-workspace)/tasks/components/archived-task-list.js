@@ -2,9 +2,9 @@ import {
   deleteTask,
   getArchivedTasks,
   restoreTask,
-} from "../../../../api.js";
-import { escapeHtml } from "../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+} from "#app/api.js";
+import { escapeHtml } from "#components/dom.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import { taskStoreOperationsPresentation } from "../../codex-status.js";
 import {
   TASK_TRANSPORT_STATE,
@@ -26,7 +26,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 
 export const ARCHIVED_TASK_LIST_INITIAL_SETTLED_EVENT =
   "caffold:archived-task-list-initial-settled";

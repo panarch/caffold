@@ -1,12 +1,12 @@
-import { escapeHtml } from "../../../../../../components/dom.js";
-import { fileStatusPresentation } from "../../../../../../file-status.js";
+import { escapeHtml } from "#components/dom.js";
+import { fileStatusPresentation } from "#app/file-status.js";
 import {
   buildFileTreeNodes,
   FILE_TREE_SELECT_EVENT,
   readyFileTreeChildren,
-} from "../../../../../../components/file-tree.js";
-import { emptyActionHintScope } from "../../../../../../action-hint-scope.js";
-import { emptyScrollSurfaceScope } from "../../../../../../scroll-scope.js";
+} from "#components/file-tree.js";
+import { emptyActionHintScope } from "#app/action-hint-scope.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 
 const SECTIONS = [
   ["unstaged", "Unstaged"],

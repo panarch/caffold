@@ -1,20 +1,20 @@
-import { listDirectory } from "../../../../../api.js";
+import { listDirectory } from "#app/api.js";
 import {
   FILE_TREE_SELECT_EVENT,
-} from "../../../../../components/file-tree.js";
-import { renderInlineIcon, warmIcons } from "../../../../../components/icons.js";
+} from "#components/file-tree.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../action-hints.js";
-import { keyboardNavigationContext } from "../../../../../keyboard-navigation.js";
+} from "#app/action-hints.js";
+import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../../scroll-scope.js";
-import "../../../../../keyboard-navigation/components/presentation.js";
+} from "#app/scroll-scope.js";
+import "#app/keyboard-navigation/components/presentation.js";
 
 const DIRECTORY_LOADING_DELAY_MS = 180;
 

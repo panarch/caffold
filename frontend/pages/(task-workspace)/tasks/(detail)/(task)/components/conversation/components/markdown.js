@@ -1,4 +1,4 @@
-import { routeUrl } from "../../../../../../../../navigation-routes.js";
+import { routeUrl } from "#app/navigation-routes.js";
 import "./markdown/components/code-block.js";
 import {
   ACTION_HINT_ACTION,
@@ -9,12 +9,12 @@ import {
   linkActionHintTarget,
   matchesLinkActionHintBinding,
   mergeActionHintScopes,
-} from "../../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "../../../../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 

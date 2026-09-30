@@ -1,15 +1,15 @@
-import { escapeHtml } from "../../../../../../components/dom.js";
+import { escapeHtml } from "#components/dom.js";
 import {
   dedupeCanonicalEvents,
   eventIdentityKey,
   pendingApprovals,
-} from "../../../task-events.js";
-import { isTaskTransportStale } from "../../../runtime-state.js";
+} from "#tasks/task-events.js";
+import { isTaskTransportStale } from "#tasks/runtime-state.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "../../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -17,7 +17,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import "./conversation/components/active-turn.js";
 import "./conversation/components/approval.js";
 import "./conversation/components/assistant-message.js";

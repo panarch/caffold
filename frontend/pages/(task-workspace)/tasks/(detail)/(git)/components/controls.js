@@ -1,12 +1,12 @@
-import { compactIconButton } from "../../../../../../component-styles.js";
-import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   selectActionHintTarget,
-} from "../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 
 class CaffoldGitReviewControls extends HTMLElement {
   connectedCallback() {

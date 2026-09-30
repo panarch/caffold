@@ -1,13 +1,13 @@
 import {
   renderInlineIcon,
   warmIcons,
-} from "../../../../../../../../../../components/icons.js";
+} from "#components/icons.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
-} from "../../../../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 

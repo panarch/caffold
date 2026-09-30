@@ -1,21 +1,21 @@
-import { escapeHtml } from "../../../../../../../../components/dom.js";
+import { escapeHtml } from "#components/dom.js";
 import {
   renderInlineIcon,
   warmIcons,
-} from "../../../../../../../../components/icons.js";
+} from "#components/icons.js";
 import {
   eventIdentityKey,
   fileChangePathPresentations,
   sortEventsChronologically,
   taskEventAnchorMs,
   taskEventPositionIndex,
-} from "../../../../../task-events.js";
+} from "#tasks/task-events.js";
 import {
   formatDate,
   formatStatus,
   taskEventObservedMs,
   toolCallPresentation,
-} from "../../../../../task-format.js";
+} from "#tasks/task-format.js";
 import "./assistant-message.js";
 import "./changed-files.js";
 import "./command.js";
@@ -24,12 +24,12 @@ import {
   disclosureActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "../../../../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 const disclosureStateByIdentity = new Map();
 

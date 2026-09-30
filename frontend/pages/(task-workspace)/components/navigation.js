@@ -1,4 +1,4 @@
-import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import {
   codexState,
   formatCodexReadiness,
@@ -6,8 +6,8 @@ import {
 import {
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "../../../action-hints.js";
+} from "#app/action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 
 const ICONS = {
   tasks: "ListTodo",

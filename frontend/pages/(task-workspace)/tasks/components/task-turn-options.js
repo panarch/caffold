@@ -1,18 +1,18 @@
-import { getAgentModels, getAgentPermissions } from "../../../../api.js";
-import { escapeHtml } from "../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import { getAgentModels, getAgentPermissions } from "#app/api.js";
+import { escapeHtml } from "#components/dom.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
-} from "../../../../keyboard-navigation.js";
+} from "#app/keyboard-navigation.js";
 import { cleanLogicalPath } from "../task-format.js";
-import "../../../../keyboard-navigation/components/presentation.js";
+import "#app/keyboard-navigation/components/presentation.js";
 
 // A list that arrives quickly is never seen loading; only one still pending
 // after this long earns a spinner in the closed control.

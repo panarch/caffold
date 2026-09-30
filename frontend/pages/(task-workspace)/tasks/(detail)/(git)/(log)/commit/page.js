@@ -1,20 +1,20 @@
-import { getGitCommit, getGitCommitDiff } from "../../../../../../../api.js";
-import { diffViewerPresentation } from "../../../../../../../components/file-viewer-presentation.js";
-import "../../../../../../../components/file-viewer.js";
-import "../../../../../../../components/pane-resizer.js";
-import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "../../../../../../../components/review-responsive.js";
+import { getGitCommit, getGitCommitDiff } from "#app/api.js";
+import { diffViewerPresentation } from "#components/file-viewer-presentation.js";
+import "#components/file-viewer.js";
+import "#components/pane-resizer.js";
+import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "#components/review-responsive.js";
 import "./components/changes-tree.js";
 import {
   ACTION_HINT_ACTION,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "../../../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 const LOADING_DELAY_MS = 180;
 

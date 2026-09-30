@@ -64,6 +64,15 @@
       })();
     </script>
     <link rel="stylesheet" href="/assets/styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "#app/": "/assets/",
+          "#components/": "/assets/components/",
+          "#tasks/": "/assets/pages/(task-workspace)/tasks/"
+        }
+      }
+    </script>
     <script type="module" src="/assets/app.js"></script>
   </head>
   <body>

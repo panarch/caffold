@@ -1,18 +1,18 @@
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
-} from "../../../../action-hints.js";
-import { escapeHtml } from "../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+} from "#app/action-hints.js";
+import { escapeHtml } from "#components/dom.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
-} from "../../../../keyboard-navigation.js";
-import "../../../../keyboard-navigation/components/presentation.js";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 import { formatRelativeAgePresentation } from "../task-format.js";
 import { taskThreadId } from "../task-list-model.js";
 import { taskStatusKey } from "../runtime-state.js";

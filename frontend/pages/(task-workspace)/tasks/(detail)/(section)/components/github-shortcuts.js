@@ -1,9 +1,9 @@
-import { getGitHubStatus } from "../../../../../../api.js";
+import { getGitHubStatus } from "#app/api.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 
 const SECTION_DETAIL_INTENT_EVENT = "caffold:section-detail-intent";
 const GITHUB_KINDS = new Set(["issues", "pulls"]);

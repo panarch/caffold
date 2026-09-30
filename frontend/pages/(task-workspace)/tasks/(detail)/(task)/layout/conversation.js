@@ -3,7 +3,7 @@ import {
   applyProjectionDelta,
   eventIdentityKey,
   taskEventPosition,
-} from "../../../task-events.js";
+} from "#tasks/task-events.js";
 
 // Publication revisions apply only to the identities or membership extents
 // the server supplied. Extents also remember deletions, so an unseen stale

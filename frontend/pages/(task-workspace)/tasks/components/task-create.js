@@ -1,5 +1,5 @@
-import { escapeHtml } from "../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import { escapeHtml } from "#components/dom.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import { taskStoreBlocksTaskOperations } from "../../codex-status.js";
 import { cleanLogicalPath } from "../task-format.js";
 import "./composer.js";

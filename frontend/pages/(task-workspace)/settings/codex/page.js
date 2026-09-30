@@ -1,4 +1,4 @@
-import { getCodexUpdates } from "../../../../api.js";
+import { getCodexUpdates } from "#app/api.js";
 import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
   CODEX_RUNTIME_UPDATE_REQUEST_EVENT,
@@ -26,11 +26,11 @@ import {
   hasActionHintLayoutBox,
   linkActionHintTarget,
   mergeActionHintScopes,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 import { serviceStatusTargets } from "../service-status.js";
 
 const CODEX_INSTALL_COMMAND = "curl -fsSL https://chatgpt.com/codex/install.sh | sh";

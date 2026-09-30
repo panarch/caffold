@@ -1,4 +1,4 @@
-import { getGrokStatus } from "../../../../api.js";
+import { getGrokStatus } from "#app/api.js";
 import "../components/detail-list.js";
 import { SETTINGS_REFRESH_INTENT_EVENT } from "../components/refresh-button.js";
 import {
@@ -10,12 +10,12 @@ import {
 import {
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import { serviceStatusTargets } from "../service-status.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 const GROK_SERVICE_STATUS_URL = "https://status.x.ai";
 

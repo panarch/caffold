@@ -1,8 +1,8 @@
-import { escapeHtml } from "../../../../../../../components/dom.js";
+import { escapeHtml } from "#components/dom.js";
 import {
   isTaskActivelyWorking,
   promptSubmissionState,
-} from "../../../../runtime-state.js";
+} from "#tasks/runtime-state.js";
 import {
   assistantMessagePhase,
   canAcceptTurnContinuation,
@@ -20,7 +20,7 @@ import {
   sortEventsChronologically,
   taskEventAnchorMs,
   taskEventPositionIndex,
-} from "../../../../task-events.js";
+} from "#tasks/task-events.js";
 import {
   effectiveTaskFileRoot,
   formatDate,
@@ -28,7 +28,7 @@ import {
   formatStatus,
   taskEventObservedMs,
   toolCallPresentation,
-} from "../../../../task-format.js";
+} from "#tasks/task-format.js";
 import { activeTurnPresentation } from "./components/active-turn/model.js";
 export function renderConversation(events, task, approvals = [], options = {}) {
   const activeTurns = new Map();

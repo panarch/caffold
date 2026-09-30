@@ -2,17 +2,17 @@ import {
   FILE_SORT_MODES,
   getSettings,
   setFileSortMode,
-} from "../../../../settings.js";
+} from "#app/settings.js";
 import {
   ACTION_HINT_ACTION,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   radioActionHintTarget,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 const SORT_OPTIONS = Object.freeze([
   Object.freeze({

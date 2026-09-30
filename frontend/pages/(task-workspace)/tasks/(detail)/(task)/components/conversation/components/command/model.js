@@ -1,10 +1,10 @@
-import { eventIdentityKey } from "../../../../../../task-events.js";
+import { eventIdentityKey } from "#tasks/task-events.js";
 import {
   formatDate,
   formatDuration,
   formatStatus,
   taskEventObservedMs,
-} from "../../../../../../task-format.js";
+} from "#tasks/task-format.js";
 
 export function commandPresentation(event = {}) {
   const payload = event.payload ?? {};

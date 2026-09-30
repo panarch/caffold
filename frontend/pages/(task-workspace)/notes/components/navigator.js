@@ -1,14 +1,14 @@
 import {
   FILE_TREE_LOAD_EVENT,
   FILE_TREE_SELECT_EVENT,
-} from "../../../../components/file-tree.js";
+} from "#components/file-tree.js";
 import {
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "../../../../action-hints.js";
-import { emptyScrollSurfaceScope } from "../../../../scroll-scope.js";
+} from "#app/action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import "../../components/workspace-brand.js";
 import { directoryIdFromKey, noteKey, notesTreeNodes } from "../tree.js";
 

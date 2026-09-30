@@ -3,6 +3,11 @@
   "version": "0.17.3",
   "private": true,
   "type": "module",
+  "imports": {
+    "#app/*": "./*",
+    "#components/*": "./components/*",
+    "#tasks/*": "./pages/(task-workspace)/tasks/*"
+  },
   "scripts": {
     "test:unit": "node --test \"*.test.js\" \"action-hints/**/*.test.js\" \"components/**/*.test.js\" \"keyboard-navigation/**/*.test.js\" \"pages/**/*.test.js\"",
     "test:contract": "node --test \"tests/contracts/*.test.mjs\"",

@@ -1,4 +1,4 @@
-import { getClaudeStatus } from "../../../../api.js";
+import { getClaudeStatus } from "#app/api.js";
 import "../components/detail-list.js";
 import { SETTINGS_REFRESH_INTENT_EVENT } from "../components/refresh-button.js";
 import {
@@ -7,11 +7,11 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 import {
   idleTimeoutValue,
   usageWindowLabel,

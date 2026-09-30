@@ -1,14 +1,14 @@
-import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
-import "../../../components/markdown-preview.js";
-import { getNote, getNotes } from "../../../api.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import "#components/markdown-preview.js";
+import { getNote, getNotes } from "#app/api.js";
 import {
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../../../action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "../../../action-hints.js";
-import { emptyScrollSurfaceScope } from "../../../scroll-scope.js";
+} from "#app/action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import "./components/info.js";
 import { NOTES_NAVIGATOR_INTENT_EVENT } from "./components/navigator.js";
 import { noteDirectoryKey } from "./tree.js";

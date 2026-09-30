@@ -1,19 +1,19 @@
-import { compactIconButton } from "../../../../component-styles.js";
-import { formatModified } from "../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { formatModified } from "#components/dom.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import {
   buttonActionHintTarget,
   emptyActionHintScope,
   linkActionHintTarget,
   mergeActionHintScopes,
-} from "../../../../action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "../../../../action-hints.js";
+} from "#app/action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
-} from "../../../../keyboard-navigation.js";
-import "../../../../keyboard-navigation/components/presentation.js";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
 import "./info/components/copy-markdown.js";
 import "./info/components/copy-path.js";
 

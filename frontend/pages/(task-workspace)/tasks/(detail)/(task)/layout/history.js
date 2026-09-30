@@ -1,4 +1,4 @@
-import { eventIdentityKey, taskEventPosition } from "../../../task-events.js";
+import { eventIdentityKey, taskEventPosition } from "#tasks/task-events.js";
 import { comparePositions, projectionRevision } from "./conversation.js";
 
 // One request owner for explicit pagination and holes between retained pages.

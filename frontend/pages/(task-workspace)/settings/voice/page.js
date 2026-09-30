@@ -9,12 +9,12 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   radioActionHintTarget,
-} from "../../../../action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "../../../../action-hints.js";
+} from "#app/action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 const PROVIDER_CHOICES = Object.freeze([
   {

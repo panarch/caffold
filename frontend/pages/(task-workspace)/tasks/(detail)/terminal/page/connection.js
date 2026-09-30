@@ -1,7 +1,7 @@
 // One WebSocket for one attempt to attach to a terminal. The backend closes
 // the socket after its last message; a close without one is a failure.
 
-import { terminalSocketUrl } from "../../../../../../api.js";
+import { terminalSocketUrl } from "#app/api.js";
 
 const LAST_MESSAGES = new Set(["elsewhere", "absent", "taken", "ended"]);
 const TAB_STORAGE_KEY = "caffold:terminal-tab";

@@ -7,12 +7,12 @@ import {
   linkActionHintLabel,
   linkActionHintTarget,
   matchesLinkActionHintBinding,
-} from "../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "../../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 const FORBIDDEN_ELEMENTS = new Set([
   "base",

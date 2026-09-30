@@ -3,18 +3,18 @@ import {
   getPushInstallations,
   removePushInstallation,
   upsertPushInstallation,
-} from "../../../../api.js";
-import { escapeHtml } from "../../../../components/dom.js";
+} from "#app/api.js";
+import { escapeHtml } from "#components/dom.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 import {
   applicationServerKey,
   getOrCreatePushClientId,

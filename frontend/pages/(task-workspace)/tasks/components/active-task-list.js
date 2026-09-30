@@ -2,8 +2,8 @@ import {
   getTasks,
   reorderSection,
   reorderTask,
-} from "../../../../api.js";
-import { escapeHtml } from "../../../../components/dom.js";
+} from "#app/api.js";
+import { escapeHtml } from "#components/dom.js";
 import { taskStoreOperationsPresentation } from "../../codex-status.js";
 import {
   TASK_TRANSPORT_STATE,

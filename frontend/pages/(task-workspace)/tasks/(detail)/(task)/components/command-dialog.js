@@ -1,25 +1,25 @@
-import { escapeHtml } from "../../../../../../components/dom.js";
+import { escapeHtml } from "#components/dom.js";
 import {
   renderInlineIcon,
   warmIcons,
-} from "../../../../../../components/icons.js";
+} from "#components/icons.js";
 import {
   formatDate,
   formatDuration,
   taskEventObservedMs,
-} from "../../../task-format.js";
+} from "#tasks/task-format.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../../../action-hints.js";
-import { keyboardNavigationContext } from "../../../../../../keyboard-navigation.js";
+} from "#app/action-hints.js";
+import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "../../../../../../scroll-scope.js";
-import "../../../../../../keyboard-navigation/components/presentation.js";
+} from "#app/scroll-scope.js";
+import "#app/keyboard-navigation/components/presentation.js";
 
 class CaffoldTaskCommandDialog extends HTMLElement {
   connectedCallback() {

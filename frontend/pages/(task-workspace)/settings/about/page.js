@@ -1,16 +1,16 @@
-import { BUILD_INFO } from "../../../../build-info.js";
-import { getCodexMcpDiagnostics } from "../../../../api.js";
+import { BUILD_INFO } from "#app/build-info.js";
+import { getCodexMcpDiagnostics } from "#app/api.js";
 import "../components/detail-list.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 class CaffoldSettingsAboutPage extends HTMLElement {
   connectedCallback() {

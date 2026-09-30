@@ -1,15 +1,15 @@
-import { escapeHtml } from "../../../../../../../../components/dom.js";
+import { escapeHtml } from "#components/dom.js";
 import {
   renderInlineIcon,
   warmIcons,
-} from "../../../../../../../../components/icons.js";
+} from "#components/icons.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
-} from "../../../../../../../../action-hints.js";
-import { requestTaskImagePreview } from "../../../../../components/image-preview-dialog.js";
+} from "#app/action-hints.js";
+import { requestTaskImagePreview } from "#tasks/components/image-preview-dialog.js";
 
 const ATTACHMENT_ICONS = Object.freeze({
   image: ["FileImage", "Attached image", "task-message-attachment-icon"],

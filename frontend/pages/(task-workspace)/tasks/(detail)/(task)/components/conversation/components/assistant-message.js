@@ -1,12 +1,12 @@
-import { assistantMessagePhase } from "../../../../../task-events.js";
-import { formatDate, taskEventObservedMs } from "../../../../../task-format.js";
+import { assistantMessagePhase } from "#tasks/task-events.js";
+import { formatDate, taskEventObservedMs } from "#tasks/task-format.js";
 import "./markdown.js";
 import "./assistant-message/components/copy-button.js";
 import {
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../../../../action-hints.js";
-import { emptyScrollSurfaceScope } from "../../../../../../../../scroll-scope.js";
+} from "#app/action-hints.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 
 /**
  * What the agent said, drawn the same way wherever the conversation shows it.

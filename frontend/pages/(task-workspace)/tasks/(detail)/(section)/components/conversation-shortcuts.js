@@ -2,13 +2,13 @@ import {
   codexBlocksTaskOperations,
   codexState,
   taskStoreBlocksTaskOperations,
-} from "../../../../codex-status.js";
+} from "#app/pages/(task-workspace)/codex-status.js";
 import "./conversation-shortcuts/components/fork-dialog.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 
 class CaffoldSectionConversationShortcuts extends HTMLElement {
   connectedCallback() {

@@ -1,15 +1,15 @@
-import { compactIconButton } from "../../../../../component-styles.js";
+import { compactIconButton } from "#app/component-styles.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
-} from "../../../../../keyboard-navigation.js";
-import "../../../../../keyboard-navigation/components/presentation.js";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
 
 const GITHUB_INTENT_EVENT = "caffold:task-detail-github-intent";
 const UNAVAILABLE_TITLE =

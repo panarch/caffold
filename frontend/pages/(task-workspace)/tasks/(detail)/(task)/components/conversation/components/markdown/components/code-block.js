@@ -1,16 +1,16 @@
 import {
   renderInlineIcon,
   warmIcons,
-} from "../../../../../../../../../../components/icons.js";
+} from "#components/icons.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../../../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 const MARKDOWN_FENCE_LABELS = new Set(["markdown", "md"]);
