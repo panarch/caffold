@@ -9,11 +9,11 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   linkActionHintTarget,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 const CODEX_INSTALL_COMMAND = "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
 const CODEX_SETUP_GUIDE = "https://learn.chatgpt.com/docs/codex/cli";

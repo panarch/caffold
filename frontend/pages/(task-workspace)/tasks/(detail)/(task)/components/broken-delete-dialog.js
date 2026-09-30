@@ -1,7 +1,7 @@
-import { deleteTask, getTask } from "../../../../../../api.js";
-import { ACTION_HINT_ACTION, buttonActionHintTarget, emptyActionHintScope } from "../../../../../../action-hints.js";
-import { keyboardNavigationContext } from "../../../../../../keyboard-navigation.js";
-import "../../../../../../keyboard-navigation/components/presentation.js";
+import { deleteTask, getTask } from "#app/api.js";
+import { ACTION_HINT_ACTION, buttonActionHintTarget, emptyActionHintScope } from "#app/action-hints.js";
+import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
 
 // One authority owns the UI phase. Diagnosis and request identity are data,
 // independent of the native dialog's open attribute and transport state.

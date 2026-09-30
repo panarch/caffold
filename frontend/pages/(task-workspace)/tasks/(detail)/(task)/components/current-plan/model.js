@@ -1,4 +1,4 @@
-import { presentTaskFilePath } from "../../../../task-format.js";
+import { presentTaskFilePath } from "#tasks/task-format.js";
 
 // The graph tracks only whether a projection read is in flight. The accepted
 // projection, the latest read failure, and Watch availability stay orthogonal:

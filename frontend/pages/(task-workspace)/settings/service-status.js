@@ -3,7 +3,7 @@ import {
   hasActionHintLayoutBox,
   linkActionHintLabel,
   linkActionHintTarget,
-} from "../../../action-hints.js";
+} from "#app/action-hints.js";
 
 const SERVICE_STATUS_SELECTOR = "a.settings-service-status";
 

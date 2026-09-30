@@ -1,10 +1,10 @@
-import { escapeHtml } from "../../../../../../../../components/dom.js";
+import { escapeHtml } from "#components/dom.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
-} from "../../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 
 // Conversation supplies request state; this child owns its presentation and
 // controls. Loading and retry intents never start a request here.

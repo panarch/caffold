@@ -1,27 +1,27 @@
-import { compactIconButton } from "../../../../../../../../component-styles.js";
+import { compactIconButton } from "#app/component-styles.js";
 import {
   renderInlineIcon,
   warmIcons,
-} from "../../../../../../../../components/icons.js";
-import { formatTaskStatus } from "../../../../../runtime-state.js";
-import { shortId } from "../../../../../task-format.js";
-import { taskThreadId } from "../../../../../task-list-model.js";
+} from "#components/icons.js";
+import { formatTaskStatus } from "#tasks/runtime-state.js";
+import { shortId } from "#tasks/task-format.js";
+import { taskThreadId } from "#tasks/task-list-model.js";
 import {
   patchTaskStatusChip,
   renderTaskStatusChip,
-} from "../../../../../components/task-status.js";
+} from "#tasks/components/task-status.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
-} from "../../../../../../../../keyboard-navigation.js";
-import "../../../../../../../../keyboard-navigation/components/presentation.js";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
 import "./info/components/actions.js";
 
 let taskInfoInstanceId = 0;

@@ -1,22 +1,22 @@
-import { getCurrentPlan } from "../../../../../../api.js";
+import { getCurrentPlan } from "#app/api.js";
 import {
   renderInlineIcon,
   warmIcons,
-} from "../../../../../../components/icons.js";
-import { subscribeToWatch, watchChangeAffectsPath } from "../../../../../../watch.js";
+} from "#components/icons.js";
+import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
-} from "../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
   mergeKeyboardNavigationContexts,
   popoverScrollSurfaceScope,
-} from "../../../../../../keyboard-navigation.js";
-import "../../../../../../keyboard-navigation/components/presentation.js";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
 import {
   CURRENT_PLAN_NODE,
   currentPlanDocumentDisplayPath,

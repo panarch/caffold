@@ -1,4 +1,4 @@
-import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -7,11 +7,11 @@ import {
   radioActionHintTarget,
   rangeActionHintTarget,
   selectActionHintTarget,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 import {
   APPEARANCE_RANGE_SETTINGS,
   CODE_TYPEFACE_PRESETS,
@@ -25,7 +25,7 @@ import {
   setCodeTypefacePreset,
   setThemeMode,
   setUiTypefacePreset,
-} from "../../../../settings.js";
+} from "#app/settings.js";
 
 const TYPEFACE_SETTINGS = Object.freeze({
   uiTypefacePreset: Object.freeze({

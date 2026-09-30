@@ -1,16 +1,16 @@
-import { escapeHtml } from "../../../../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../../../../components/icons.js";
-import "../../../../../../../components/pagination.js";
+import { escapeHtml } from "#components/dom.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import "#components/pagination.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 class CaffoldGithubPullsListPage extends HTMLElement {
   connectedCallback() {

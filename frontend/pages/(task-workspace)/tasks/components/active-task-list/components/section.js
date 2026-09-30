@@ -1,11 +1,11 @@
-import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
-import { taskStoreOperationsPresentation } from "../../../../codex-status.js";
-import { taskThreadId } from "../../../task-list-model.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { taskStoreOperationsPresentation } from "#app/pages/(task-workspace)/codex-status.js";
+import { taskThreadId } from "#tasks/task-list-model.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   reorderHandleActionHintTarget,
-} from "../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   ACTIVE_TASK_ROW_INTENT_EVENT,
 } from "./section/components/row.js";

@@ -1,18 +1,18 @@
 import {
   getSettings,
   setActionHintsEnabled,
-} from "../../../../settings.js";
+} from "#app/settings.js";
 import {
   ACTION_HINT_ACTION,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   switchActionHintTarget,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
-import "../../../../keyboard-navigation/components/shortcut-list.js";
+} from "#app/scroll-scope.js";
+import "#app/keyboard-navigation/components/shortcut-list.js";
 
 class CaffoldSettingsKeyboardPage extends HTMLElement {
   connectedCallback() {

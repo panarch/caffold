@@ -1,6 +1,6 @@
-import { compactIconButton } from "../../../../component-styles.js";
-import { escapeHtml } from "../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { escapeHtml } from "#components/dom.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import "../../components/workspace-brand.js";
 import {
   taskStoreOperationsPresentation,
@@ -11,18 +11,18 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
-} from "../../../../keyboard-navigation.js";
-import "../../../../keyboard-navigation/components/presentation.js";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   scrollBackToTop,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 import {
   TASK_TRANSPORT_STATE,
 } from "../runtime-state.js";

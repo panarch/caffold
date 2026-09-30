@@ -1,6 +1,6 @@
-import { createTask } from "../../../../../../api.js";
-import { escapeHtml } from "../../../../../../components/dom.js";
-import "../../../components/task-turn-options.js";
+import { createTask } from "#app/api.js";
+import { escapeHtml } from "#components/dom.js";
+import "#tasks/components/task-turn-options.js";
 import "./task-start-dialog/components/github-issue.js";
 import "./task-start-dialog/components/github-pull.js";
 import {
@@ -8,17 +8,17 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   keyboardNavigationContext,
   mergeKeyboardNavigationContexts,
-} from "../../../../../../keyboard-navigation.js";
+} from "#app/keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "../../../../../../scroll-scope.js";
-import "../../../../../../keyboard-navigation/components/presentation.js";
+} from "#app/scroll-scope.js";
+import "#app/keyboard-navigation/components/presentation.js";
 
 class CaffoldGithubTaskStartDialog extends HTMLElement {
   connectedCallback() {

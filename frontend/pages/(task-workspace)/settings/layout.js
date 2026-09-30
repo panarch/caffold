@@ -1,4 +1,4 @@
-import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import "./appearance/page.js";
 import "./keyboard/page.js";
 import "./files/page.js";
@@ -15,12 +15,12 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../../../action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "../../../action-hints.js";
+} from "#app/action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 const TITLES = {
   appearance: "Appearance",

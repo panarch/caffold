@@ -1,4 +1,4 @@
-import { escapeHtml } from "../../../../../../components/dom.js";
+import { escapeHtml } from "#components/dom.js";
 
 class CaffoldSectionDetailSummary extends HTMLElement {
   setSnapshot({ section = null } = {}) {

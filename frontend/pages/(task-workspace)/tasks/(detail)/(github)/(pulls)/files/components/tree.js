@@ -1,10 +1,10 @@
-import { escapeHtml } from "../../../../../../../../components/dom.js";
+import { escapeHtml } from "#components/dom.js";
 import {
   buildFileTreeNodes,
   FILE_TREE_SELECT_EVENT,
-} from "../../../../../../../../components/file-tree.js";
-import { emptyActionHintScope } from "../../../../../../../../action-hint-scope.js";
-import { emptyScrollSurfaceScope } from "../../../../../../../../scroll-scope.js";
+} from "#components/file-tree.js";
+import { emptyActionHintScope } from "#app/action-hint-scope.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 
 class CaffoldGithubPullFilesTree extends HTMLElement {
   connectedCallback() {

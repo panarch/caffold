@@ -1,10 +1,10 @@
-import { compactIconButton } from "../../../../../component-styles.js";
-import { renderInlineIcon, warmIcons } from "../../../../../components/icons.js";
-import { routeMode } from "../../../../../navigation-routes.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { routeMode } from "#app/navigation-routes.js";
 import {
   createRefreshCoordinator,
   subscribeToWatch,
-} from "../../../../../watch.js";
+} from "#app/watch.js";
 import "./components/controls.js";
 import "./compare/page.js";
 import "./(log)/layout.js";
@@ -13,10 +13,10 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
-} from "../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 class CaffoldTaskGitLayout extends HTMLElement {
   connectedCallback() {

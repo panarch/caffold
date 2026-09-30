@@ -1,6 +1,6 @@
-import { getVoiceStatus, transcribeVoice } from "../../../../api.js";
-import { escapeHtml } from "../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import { getVoiceStatus, transcribeVoice } from "#app/api.js";
+import { escapeHtml } from "#components/dom.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
 import { requestTaskImagePreview } from "./image-preview-dialog.js";
 import { collectComposerActionHintTargets } from "./composer/action-hints.js";
@@ -8,7 +8,7 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   hasActionHintLayoutBox,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import "./task-turn-options.js";
 import "./voice-level-meter.js";
 import {

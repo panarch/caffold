@@ -2,12 +2,12 @@ import "../../components/task-create.js";
 import "./components/conversation-shortcuts.js";
 import "./components/github-shortcuts.js";
 import { cleanLogicalPath } from "../../task-format.js";
-import { mergeActionHintScopes } from "../../../../../action-hints.js";
-import { mergeKeyboardNavigationContexts } from "../../../../../keyboard-navigation.js";
+import { mergeActionHintScopes } from "#app/action-hints.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 class CaffoldSectionDetail extends HTMLElement {
   ensureState() {

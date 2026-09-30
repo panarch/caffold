@@ -8,7 +8,7 @@ import {
 
 const apiHook = registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier === "../../../api.js") {
+    if (specifier === "#app/api.js" && context.parentURL === new URL("./layout.js", import.meta.url).href) {
       return {
         shortCircuit: true,
         url: "data:text/javascript,export const getNotes=(...a)=>globalThis.notesApi.getNotes(...a);export const getNote=(...a)=>globalThis.notesApi.getNote(...a);",

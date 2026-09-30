@@ -1,20 +1,20 @@
 import {
   renderInlineIcon,
   warmIcons,
-} from "../../../../../../components/icons.js";
+} from "#components/icons.js";
 import {
   forgetTaskPermissionInstructions,
   getTaskPermissionInstructions,
-} from "../../../../../../api.js";
-import { formatDate } from "../../../task-format.js";
+} from "#app/api.js";
+import { formatDate } from "#tasks/task-format.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../../../action-hints.js";
-import { emptyScrollSurfaceScope } from "../../../../../../scroll-scope.js";
-import { keyboardNavigationContext } from "../../../../../../keyboard-navigation.js";
-import "../../../../../../keyboard-navigation/components/presentation.js";
+} from "#app/action-hints.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
 
 const EMPTY_MESSAGE =
   "Nothing yet. A prompt that says what this Task may or may not do is kept here while it runs under Ask Jev first.";

@@ -1,16 +1,16 @@
-import { createTask } from "../../../api.js";
-import { routeDomain, routeTarget } from "../../../navigation-routes.js";
+import { createTask } from "#app/api.js";
+import { routeDomain, routeTarget } from "#app/navigation-routes.js";
 import {
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 import {
   mergeKeyboardNavigationContexts,
-} from "../../../keyboard-navigation.js";
+} from "#app/keyboard-navigation.js";
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,

@@ -1,12 +1,12 @@
-import { getGitRefs } from "../../../../../../../../api.js";
-import { escapeHtml } from "../../../../../../../../components/dom.js";
+import { getGitRefs } from "#app/api.js";
+import { escapeHtml } from "#components/dom.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
   selectActionHintTarget,
-} from "../../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 
 class CaffoldGithubIssueTaskSource extends HTMLElement {
   connectedCallback() {

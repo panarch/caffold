@@ -1,20 +1,20 @@
 import {
   createTaskFork,
   previewTaskForkSource,
-} from "../../../../../../../../api.js";
-import { formatDate } from "../../../../../task-format.js";
+} from "#app/api.js";
+import { formatDate } from "#tasks/task-format.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   textboxActionHintTarget,
-} from "../../../../../../../../action-hints.js";
-import { keyboardNavigationContext } from "../../../../../../../../keyboard-navigation.js";
+} from "#app/action-hints.js";
+import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../../../../../scroll-scope.js";
-import "../../../../../../../../keyboard-navigation/components/presentation.js";
+} from "#app/scroll-scope.js";
+import "#app/keyboard-navigation/components/presentation.js";
 
 const CODEX_THREAD_URI_PREFIX = "codex://threads/";
 

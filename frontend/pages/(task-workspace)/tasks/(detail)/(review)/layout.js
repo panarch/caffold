@@ -5,28 +5,28 @@ import {
   getGitRefs,
   getGitStatus,
   readFile,
-} from "../../../../../api.js";
-import "../../../../../components/file-navigator.js";
-import "../../../../../components/file-viewer.js";
-import "../../../../../components/segmented-control.js";
+} from "#app/api.js";
+import "#components/file-navigator.js";
+import "#components/file-viewer.js";
+import "#components/segmented-control.js";
 import {
   diffViewerPresentation,
   sourceViewerPresentation,
-} from "../../../../../components/file-viewer-presentation.js";
-import { fileStatusPresentation } from "../../../../../file-status.js";
-import "../../../../../components/git-compare-browser/compare-tree.js";
+} from "#components/file-viewer-presentation.js";
+import { fileStatusPresentation } from "#app/file-status.js";
+import "#components/git-compare-browser/compare-tree.js";
 import "./components/changes-tree.js";
 import {
   fileNameFromPath,
   imageTypeLabel,
   isPdfPath,
   isPreviewableImagePath,
-} from "../../../../../components/dom.js";
-import "../../../../../components/pane-resizer.js";
+} from "#components/dom.js";
+import "#components/pane-resizer.js";
 import {
   subscribeToWatch,
   watchChangeAffectsPath,
-} from "../../../../../watch.js";
+} from "#app/watch.js";
 import { cleanLogicalPath } from "../../task-format.js";
 import { taskThreadId } from "../../task-list-model.js";
 import {
@@ -35,12 +35,12 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 // Matches the width where layout.css stops showing one pane at a time.
 const REVIEW_SPLIT_MEDIA_QUERY = "(min-width: 561px)";

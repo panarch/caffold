@@ -35,6 +35,35 @@ explicit public API from `name.js`. A mounting owner imports the component path
 directly so custom-element registration remains visible. Unlike page ownership
 directories, an expanded module directory contains no `page.js` or `layout.js`.
 
+## Native module imports
+
+JavaScript modules run directly without a bundler or transpiler. Shared imports
+can use three native aliases:
+
+| Prefix | Frontend-relative directory | Example |
+| --- | --- | --- |
+| `#app/` | `./` | `#app/api.js` |
+| `#components/` | `components/` | `#components/icons.js` |
+| `#tasks/` | `pages/(task-workspace)/tasks/` | `#tasks/task-format.js` |
+
+`frontend/index.html` declares the browser import map before the app module.
+`frontend/package.json` declares matching `imports` patterns for Node unit
+tests. Keep both mappings aligned; their targets describe the same files under
+the browser's `/assets/` URL and the frontend package directory respectively.
+
+Use relative imports within the same owner and aliases for shared dependencies.
+Use `#components/` for shared components and `#tasks/` for Task-owned shared
+modules; `#app/` covers other app-wide modules. Retain explicit `.js` extensions
+and the existing public-entry-point and private-implementation boundaries.
+Aliases only change path resolution, not module ownership or registration.
+
+Production imports that ascend three or more directories use these aliases.
+Nearby relative imports remain useful within an owner. The native-import
+contract checks that long relative imports do not return, that both runtimes
+resolve aliases to the same files, and that those files are served and cached.
+Worker and AudioWorklet modules do not inherit the document's import map;
+their imports and asset URLs remain relative or explicit URLs.
+
 ## Routed hierarchy
 
 ```text

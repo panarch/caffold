@@ -1,5 +1,5 @@
-import { escapeHtml } from "../../../../../../components/dom.js";
-import { taskThreadId } from "../../../task-list-model.js";
+import { escapeHtml } from "#components/dom.js";
+import { taskThreadId } from "#tasks/task-list-model.js";
 import "./summary/components/info.js";
 
 class CaffoldTaskDetailSummary extends HTMLElement {

@@ -8,11 +8,11 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   linkActionHintTarget,
-} from "../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 const STATE_COPY = Object.freeze({
   notInstalled: {

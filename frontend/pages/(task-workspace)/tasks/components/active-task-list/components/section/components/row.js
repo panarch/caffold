@@ -1,21 +1,21 @@
-import { escapeHtml } from "../../../../../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../../../../../components/icons.js";
-import { taskStoreOperationsPresentation } from "../../../../../../codex-status.js";
+import { escapeHtml } from "#components/dom.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { taskStoreOperationsPresentation } from "#app/pages/(task-workspace)/codex-status.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   reorderHandleActionHintTarget,
-} from "../../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   taskStatusView,
   taskThreadStatusType,
-} from "../../../../../runtime-state.js";
-import { taskThreadId } from "../../../../../task-list-model.js";
-import { formatRelativeAgePresentation } from "../../../../../task-format.js";
+} from "#tasks/runtime-state.js";
+import { taskThreadId } from "#tasks/task-list-model.js";
+import { formatRelativeAgePresentation } from "#tasks/task-format.js";
 import {
   patchTaskStatusChip,
   renderTaskStatusChip,
-} from "../../../../task-status.js";
+} from "#tasks/components/task-status.js";
 
 export const ACTIVE_TASK_ROW_INTENT_EVENT = "caffold:active-task-row-intent";
 

@@ -1,10 +1,10 @@
-import { compactIconButton } from "../../../../../component-styles.js";
+import { compactIconButton } from "#app/component-styles.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../../action-hints.js";
-import { renderInlineIcon } from "../../../../../components/icons.js";
+} from "#app/action-hints.js";
+import { renderInlineIcon } from "#components/icons.js";
 
 export const TERMINAL_BUTTON_INTENT_EVENT = "caffold:task-detail-terminal-intent";
 

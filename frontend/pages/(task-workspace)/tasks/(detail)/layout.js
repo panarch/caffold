@@ -1,13 +1,13 @@
-import { routeDomain, routeMode, sectionDetailRoute } from "../../../../navigation-routes.js";
+import { routeDomain, routeMode, sectionDetailRoute } from "#app/navigation-routes.js";
 import {
   ACTION_HINT_ACTION,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../action-hints.js";
-import { emptyScrollSurfaceScope } from "../../../../scroll-scope.js";
+} from "#app/action-hints.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import {
   mergeKeyboardNavigationContexts,
-} from "../../../../keyboard-navigation.js";
+} from "#app/keyboard-navigation.js";
 import { taskThreadStatusType } from "../runtime-state.js";
 import { cleanLogicalPath } from "../task-format.js";
 import { taskThreadId } from "../task-list-model.js";
@@ -15,7 +15,7 @@ import "./(task)/layout.js";
 import "./(git)/layout.js";
 import "./(github)/layout.js";
 import "./(review)/layout.js";
-import "../../../../components/segmented-control.js";
+import "#components/segmented-control.js";
 import "./components/git-menu.js";
 import "./components/github-menu.js";
 import { TERMINAL_BUTTON_INTENT_EVENT } from "./components/terminal-button.js";

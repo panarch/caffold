@@ -1,14 +1,14 @@
-import { escapeHtml } from "../../../../../../../../components/dom.js";
-import { formatDecision } from "../../../../../task-format.js";
+import { escapeHtml } from "#components/dom.js";
+import { formatDecision } from "#tasks/task-format.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 // One normalized approval owns its presentation and local interactions. The
 // Task API owner receives decisions as intent and supplies request errors.

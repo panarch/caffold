@@ -3,7 +3,7 @@ import {
   loadingFileTreeChildren,
   readyFileTreeChildren,
   unloadedFileTreeChildren,
-} from "../../../components/file-tree.js";
+} from "#components/file-tree.js";
 
 // `levels` maps a directory id, or "" for the top of the tree, to its latest
 // read: the `listing` that arrived last, and the read's `state` and `message`.

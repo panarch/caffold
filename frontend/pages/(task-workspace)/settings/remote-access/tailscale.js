@@ -1,7 +1,7 @@
 import {
   getTailscaleStatus,
   setTailscaleServe,
-} from "../../../../api.js";
+} from "#app/api.js";
 
 const STATES = new Set([
   "notInstalled",

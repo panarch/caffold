@@ -1,8 +1,8 @@
-import { escapeHtml } from "../../../../../../../../components/dom.js";
+import { escapeHtml } from "#components/dom.js";
 import {
   renderInlineIcon,
   warmIcons,
-} from "../../../../../../../../components/icons.js";
+} from "#components/icons.js";
 import {
   commandPresentation,
   sameCommandPresentation,
@@ -12,11 +12,11 @@ import {
   buttonActionHintTarget,
   disclosureActionHintTarget,
   emptyActionHintScope,
-} from "../../../../../../../../action-hints.js";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../../../../../../scroll-scope.js";
+} from "#app/scroll-scope.js";
 
 class CaffoldTaskCommand extends HTMLElement {
   connectedCallback() {

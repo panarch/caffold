@@ -1,5 +1,5 @@
-import { taskActiveFlagLabel } from "../../../../../../runtime-state.js";
-import { formatDuration } from "../../../../../../task-format.js";
+import { taskActiveFlagLabel } from "#tasks/runtime-state.js";
+import { formatDuration } from "#tasks/task-format.js";
 
 export function activeTurnPresentation(events = [], task = null) {
   return {
