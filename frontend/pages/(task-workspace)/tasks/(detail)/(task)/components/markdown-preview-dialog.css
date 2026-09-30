@@ -32,7 +32,8 @@ caffold-task-markdown-preview-dialog {
     align-items: center;
     gap: var(--interface-space-8);
     min-width: 0;
-    padding: var(--interface-space-8) var(--interface-space-10);
+    padding-block: var(--interface-space-4);
+    padding-inline: var(--interface-space-10) var(--interface-space-4);
     border-bottom: 1px solid var(--border);
   }
 
@@ -101,7 +102,7 @@ caffold-task-markdown-preview-dialog {
     }
 
     & .task-markdown-preview-header {
-      padding: var(--interface-space-6);
+      padding-inline: var(--interface-space-6) var(--interface-space-4);
     }
   }
 }
