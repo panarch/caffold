@@ -43,7 +43,7 @@ test("offers Note details from the header only while its popover is closed", () 
   assert.deepEqual(info.actionHintScope.call(owner).targets, []);
 });
 
-test("declares a session-bound popover context whose Action Hints are its Task links", () => {
+test("declares a session-bound popover context whose Action Hints are its Task links and copy actions", () => {
   const link = control("Write storage notes", { href: "/tasks/task-writer" });
   const popover = {
     matches: () => true,
@@ -54,20 +54,36 @@ test("declares a session-bound popover context whose Action Hints are its Task l
     }),
     querySelectorAll: () => [link],
   };
+  const copyScopes = [];
   const owner = {
     isConnected: true,
     hidden: false,
     note: { id: "note-a" },
     ensureRendered() {},
     infoPopover: () => popover,
+    copyPath: () => copyAction("copy-path"),
+    copyMarkdown: () => copyAction("copy-markdown"),
   };
+  function copyAction(name) {
+    return {
+      actionHintScope(options) {
+        copyScopes.push({ name, ...options });
+        return {
+          blocked: false,
+          targets: [{ id: `${options.scopeId}:${name}` }],
+          mutationRoots: [],
+          scrollRoots: [],
+        };
+      },
+    };
+  }
 
   const [context] = info.keyboardNavigationContexts.call(owner, { scopeId: "notes" });
   assert.equal(context.id, "notes:note-a:details");
   assert.equal(context.kind, "popover");
   assert.equal(context.root, popover);
   assert.equal(context.actionHints.sessionBound, true);
-  const [target] = context.actionHints.scope.targets;
+  const [target, ...copyTargets] = context.actionHints.scope.targets;
   assert.deepEqual(
     { id: target.id, actionId: target.actionId, label: target.label },
     {
@@ -76,9 +92,19 @@ test("declares a session-bound popover context whose Action Hints are its Task l
       label: "Write storage notes",
     },
   );
+  assert.deepEqual(copyTargets.map(({ id }) => id), [
+    "notes:note-a:details:copy-path",
+    "notes:note-a:details:copy-markdown",
+  ]);
+  assert.deepEqual(copyScopes.map(({ name, clipRoots }) => [name, clipRoots]), [
+    ["copy-path", [popover]],
+    ["copy-markdown", [popover]],
+  ]);
   assert.equal(target.isActionable(), true);
+  assert.equal(copyScopes[0].isCurrent(), true);
   owner.note = { id: "note-b" };
   assert.equal(target.isActionable(), false);
+  assert.equal(copyScopes[0].isCurrent(), false, "a copy action belongs to the Note it was offered for");
 
   owner.hidden = true;
   assert.deepEqual(info.keyboardNavigationContexts.call(owner, { scopeId: "notes" }), []);
@@ -112,6 +138,8 @@ test("closes the popover for a different Note and keeps it open for the same Not
     renderFields() {
       calls.push(`fields:${this.note.id}`);
     },
+    copyPath: () => ({ setNote() {} }),
+    copyMarkdown: () => ({ setNote() {} }),
   };
 
   info.setNote.call(owner, { id: "note-a" });
@@ -121,6 +149,30 @@ test("closes the popover for a different Note and keeps it open for the same Not
   assert.deepEqual(calls, ["fields:note-a", "close", "fields:note-b", "close"]);
   assert.equal(owner.note, null);
   assert.equal(owner.hidden, true);
+});
+
+test("hands the Note it shows to each copy action", () => {
+  const handed = [];
+  const owner = {
+    note: null,
+    ensureRendered() {},
+    deactivate() {},
+    renderFields() {},
+    copyPath: () => ({
+      setNote(note) {
+        handed.push(["path", note.id]);
+      },
+    }),
+    copyMarkdown: () => ({
+      setNote(note) {
+        handed.push(["markdown", note.id]);
+      },
+    }),
+  };
+
+  info.setNote.call(owner, { id: "storage" });
+  info.setNote.call(owner, null);
+  assert.deepEqual(handed, [["path", "storage"], ["markdown", "storage"]]);
 });
 
 function control(label, attributes = {}) {

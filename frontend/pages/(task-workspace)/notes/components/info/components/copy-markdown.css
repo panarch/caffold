@@ -1,0 +1,68 @@
+caffold-notes-info-copy-markdown {
+  display: grid;
+  justify-items: start;
+
+  /* The same button the Task details popover gives its actions. */
+  & > .notes-info-copy-markdown-button {
+    position: relative;
+    isolation: isolate;
+    display: inline-grid;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
+    padding: var(--interface-space-2) var(--interface-control-padding-inline);
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--control-fg);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & > .notes-info-copy-markdown-button::before {
+    position: absolute;
+    z-index: -1;
+    inset: var(--interface-compact-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & > .notes-info-copy-markdown-button:hover,
+  & > .notes-info-copy-markdown-button:focus-visible {
+    outline: none;
+  }
+
+  & > .notes-info-copy-markdown-button:not(:disabled):hover::before,
+  & > .notes-info-copy-markdown-button:focus-visible::before {
+    border-color: var(--border-strong);
+  }
+
+  & > .notes-info-copy-markdown-button[data-copy-state="copied"] {
+    color: var(--success);
+  }
+
+  & > .notes-info-copy-markdown-button[data-copy-state="failed"] {
+    color: var(--danger);
+  }
+
+  & > .notes-info-copy-markdown-button[aria-disabled="true"] {
+    cursor: default;
+    opacity: 0.65;
+  }
+
+  & > .notes-info-copy-markdown-button:disabled {
+    color: var(--disabled-text);
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+
+  & > .notes-info-copy-markdown-button:disabled::before {
+    border-color: var(--border);
+    background: var(--surface-muted);
+  }
+}

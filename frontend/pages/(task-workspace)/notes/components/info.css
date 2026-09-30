@@ -96,6 +96,18 @@ caffold-notes-info {
     text-decoration: underline;
     text-underline-offset: 0.15em;
   }
+
+  & .notes-info-actions {
+    display: grid;
+    justify-items: start;
+    gap: max(
+      var(--interface-space-3),
+      calc(var(--interface-compact-hit-outset) * 2)
+    );
+    margin-top: var(--interface-space-6);
+    padding-top: var(--interface-space-5);
+    border-top: 1px solid var(--border);
+  }
 }
 
 @media (max-width: 520px) {
