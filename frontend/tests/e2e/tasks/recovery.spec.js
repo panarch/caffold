@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { activateActionHint } from "../support/action-hints.js";
+import {
+  activateActionHint,
+  enterActionHints,
+  waitForActionHintTarget,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeListTask,
@@ -74,19 +78,34 @@ async function installRecoveryList(page, recovery, state = {}) {
   return state;
 }
 
-async function openRecovery(page, recovery) {
-  await page.goto("/tasks");
+async function openRecovery(page, recovery, { iconsPending = false } = {}) {
+  await page.goto("/tasks", {
+    waitUntil: iconsPending ? "domcontentloaded" : "load",
+  });
   const row = page.locator(
     `.task-row[data-thread-id="${recovery.threadId}"]`,
   );
   await expect(row).toBeVisible();
-  await expect(row.locator(".task-row-recovery-icon")).toBeVisible();
+  if (!iconsPending) {
+    await expect(row.locator(".task-row-recovery-icon")).toBeVisible();
+  }
   await expect(row.locator(".task-row-recovery-reason")).toHaveCount(0);
   await row.click();
   await expect(page).toHaveURL(
     new RegExp(`/tasks/${recovery.threadId}/recovery$`),
   );
   await expect(page.locator("caffold-task-recovery")).toBeVisible();
+}
+
+async function holdRecoveryIcons(page) {
+  const requested = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  await page.route("https://esm.sh/lucide@1.22.0", async (route) => {
+    requested.resolve();
+    await release.promise;
+    await route.fallback();
+  });
+  return { requested: requested.promise, release: release.resolve };
 }
 
 async function scrollRecoveryActionIntoView(action) {
@@ -278,6 +297,159 @@ test("confirms before removing a missing Codex Thread from Caffold", { tag: "@al
   await expect(
     page.locator(`.task-row[data-thread-id="${threadId}"]`),
   ).toHaveCount(0);
+});
+
+for (const scenario of [
+  {
+    action: "archive",
+    reason: "codexArchived",
+    actions: ["restoreToActive", "moveToArchived", "recheck"],
+    label: /Move to Archived/,
+  },
+  {
+    action: "remove",
+    reason: "threadMissing",
+    actions: ["removeFromCaffold", "recheck"],
+    label: /Remove from Caffold/,
+  },
+]) {
+  test(`keeps the ${scenario.action} Action Hint usable when Recovery icons finish loading`, { tag: "@all-viewports" }, async ({ page }) => {
+    const threadId = `thread_recovery_late_icons_${scenario.action}`;
+    const recovery = recoveryTask(
+      threadId,
+      "Recovery with delayed icons",
+      scenario.reason,
+      scenario.actions,
+    );
+    const state = await installRecoveryList(page, recovery);
+    await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+      route.fulfill({ json: { tasks: [], nextCursor: null } }),
+    );
+    let actionCalls = 0;
+    await page.route(`/api/tasks/${threadId}/recovery/${scenario.action}`, (route) => {
+      actionCalls += 1;
+      state.projection = activeTaskProjection();
+      return route.fulfill({
+        json: scenario.action === "archive" ? recovery : { threadId },
+      });
+    });
+    const icons = await holdRecoveryIcons(page);
+    try {
+      await openRecovery(page, recovery, { iconsPending: true });
+      await icons.requested;
+      const owner = page.locator("caffold-task-recovery");
+      const button = owner.locator(`[data-task-recovery-action="${scenario.action}"]`);
+      await expect(button.locator("svg")).toHaveCount(0);
+      await waitForActionHintTarget(page, scenario.label);
+      const dialog = await enterActionHints(page);
+      const badge = dialog.getByLabel(scenario.label);
+      await expect(badge).toBeVisible();
+      const code = await badge.getAttribute("data-action-hint-code");
+      expect(code).toMatch(/^[A-Z]+$/);
+      const originalButton = await button.elementHandle();
+      const originalScrollport = await owner.locator(".task-recovery-body").elementHandle();
+
+      icons.release();
+      await expect(button.locator("svg")).toHaveCount(1);
+      await expect(badge).toBeVisible();
+      await expect(badge).toHaveAttribute("data-action-hint-code", code);
+      expect(await originalButton.evaluate((element) => element.isConnected)).toBe(true);
+      expect(await originalScrollport.evaluate((element) => element.isConnected)).toBe(true);
+      await page.keyboard.type(code.toLowerCase());
+      await expect(dialog).toBeHidden();
+
+      if (scenario.action === "remove") {
+        await expect(page.getByText("Remove this Task from Caffold?")).toBeVisible();
+        expect(actionCalls).toBe(0);
+        await activateActionHint(page, /Remove Task$/);
+      }
+      await expect.poll(() => actionCalls).toBe(1);
+      await expect(page).toHaveURL(/\/tasks$|\/$/);
+    } finally {
+      icons.release();
+    }
+  });
+}
+
+test("keeps the removal confirmation Action Hint usable when Recovery icons finish loading", { tag: "@all-viewports" }, async ({ page }) => {
+  const threadId = "thread_recovery_confirmation_late_icons";
+  const recovery = recoveryTask(
+    threadId,
+    "Missing Thread with delayed icons",
+    "threadMissing",
+    ["removeFromCaffold", "recheck"],
+  );
+  const state = await installRecoveryList(page, recovery);
+  let removeCalls = 0;
+  await page.route(`/api/tasks/${threadId}/recovery/remove`, (route) => {
+    removeCalls += 1;
+    state.projection = activeTaskProjection();
+    return route.fulfill({ json: { threadId } });
+  });
+  const icons = await holdRecoveryIcons(page);
+  try {
+    await openRecovery(page, recovery, { iconsPending: true });
+    await icons.requested;
+    await page.getByRole("button", { name: /Remove from Caffold/ }).click();
+    await expect(page.getByText("Remove this Task from Caffold?")).toBeVisible();
+    await waitForActionHintTarget(page, /Remove Task$/);
+    const dialog = await enterActionHints(page);
+    const badge = dialog.getByLabel(/Remove Task$/);
+    await expect(badge).toBeVisible();
+    const code = await badge.getAttribute("data-action-hint-code");
+    expect(code).toMatch(/^[A-Z]+$/);
+
+    icons.release();
+    await expect(page.locator(".task-recovery-icon-slot svg")).toHaveCount(1);
+    await expect(badge).toBeVisible();
+    await expect(badge).toHaveAttribute("data-action-hint-code", code);
+    expect(removeCalls).toBe(0);
+    await page.keyboard.type(code.toLowerCase());
+    await expect.poll(() => removeCalls).toBe(1);
+    await expect(dialog).toBeHidden();
+    await expect(page).toHaveURL(/\/tasks$|\/$/);
+  } finally {
+    icons.release();
+  }
+});
+
+test("preserves Recovery focus and scroll position when icons finish loading", { tag: "@all-viewports" }, async ({ page }) => {
+  const recovery = recoveryTask(
+    "thread_recovery_focus_late_icons",
+    "Recovery with delayed icons",
+    "codexArchived",
+    ["restoreToActive", "moveToArchived", "recheck"],
+  );
+  await installRecoveryList(page, recovery);
+  const icons = await holdRecoveryIcons(page);
+  try {
+    await openRecovery(page, recovery, { iconsPending: true });
+    await icons.requested;
+    await page.addStyleTag({
+      content: `
+        caffold-task-recovery .task-recovery-content { min-height: 800px; }
+        caffold-task-recovery .task-recovery-body { height: 120px; max-height: 120px; }
+      `,
+    });
+    const button = page.getByRole("button", { name: /Move to Archived/ });
+    await button.evaluate((element) => element.focus({ preventScroll: true }));
+    await expect(button).toBeFocused();
+    const scrollport = page.locator(".task-recovery-body");
+    const originalScrollport = await scrollport.elementHandle();
+    await expect.poll(() => scrollport.evaluate(
+      (element) => element.scrollHeight > element.clientHeight + 80,
+    )).toBe(true);
+    await scrollport.evaluate((element) => { element.scrollTop = 80; });
+    await expect.poll(() => scrollport.evaluate((element) => element.scrollTop)).toBe(80);
+
+    icons.release();
+    await expect(button.locator("svg")).toHaveCount(1);
+    await expect(button).toBeFocused();
+    expect(await originalScrollport.evaluate((element) => element.isConnected)).toBe(true);
+    await expect.poll(() => scrollport.evaluate((element) => element.scrollTop)).toBe(80);
+  } finally {
+    icons.release();
+  }
 });
 
 test("recheck uses the explicit recovery endpoint without rewriting the cached list", { tag: "@all-viewports" }, async ({

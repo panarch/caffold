@@ -7,7 +7,8 @@ import {
 
 const registry = installCustomElementUnitRegistry();
 await import("./page.js");
-const recovery = registry.element("caffold-task-recovery").prototype;
+const Recovery = registry.element("caffold-task-recovery");
+const recovery = Recovery.prototype;
 after(() => registry.restore());
 
 function button(action) {
@@ -75,3 +76,100 @@ test("provides the current recovery actions and exact recovery body", () => {
   controls = [];
   assert.equal(scope.targets[0].isActionable(), false);
 });
+
+test("stores an equivalent fresh projection without clearing confirmation or error", () => {
+  const current = recoveryTask();
+  const { view, renders } = recoveryView(current);
+  const error = new Error("Removal failed");
+  view.confirmingRemoval = true;
+  view.actionError = error;
+  const refreshed = {
+    ...current,
+    updatedMs: 2,
+    unseen: true,
+    recovery: { ...current.recovery, actions: [...current.recovery.actions] },
+  };
+
+  view.updateRecovery(refreshed);
+
+  assert.equal(view.recovery, refreshed);
+  assert.deepEqual(renders, []);
+  assert.equal(view.confirmingRemoval, true);
+  assert.equal(view.actionError, error);
+});
+
+test("keeps a pending action through an equivalent projection update", () => {
+  const current = recoveryTask();
+  const { view, renders } = recoveryView(current);
+  view.pendingAction = "recheck";
+  const refreshed = { ...current, updatedMs: 2 };
+
+  view.updateRecovery(refreshed);
+
+  assert.equal(view.recovery, refreshed);
+  assert.equal(view.pendingAction, "recheck");
+  assert.deepEqual(renders, []);
+});
+
+test("preparing the same Task explicitly resets interaction and renders its entry state", () => {
+  const current = recoveryTask();
+  const { view, renders } = recoveryView(current);
+  view.confirmingRemoval = true;
+  view.actionError = new Error("Removal failed");
+
+  view.prepare(current);
+
+  assert.equal(view.confirmingRemoval, false);
+  assert.equal(view.actionError, null);
+  assert.deepEqual(renders, [current]);
+});
+
+for (const [name, change] of [
+  ["title", { title: "Renamed recovery" }],
+  ["reason", {
+    recovery: { reason: "temporarilyUnavailable", actions: ["removeFromCaffold", "recheck"] },
+  }],
+  ["actions", {
+    recovery: { reason: "threadMissing", actions: ["recheck"] },
+  }],
+  ["Task identity", { threadId: "another-thread" }],
+  ["unavailable projection", null],
+]) {
+  test(`renders a changed Recovery ${name} and resets obsolete interaction state`, () => {
+    const current = recoveryTask();
+    const { view, renders } = recoveryView(current);
+    view.confirmingRemoval = true;
+    view.actionError = new Error("Removal failed");
+    const refreshed = change === null ? null : { ...current, ...change };
+
+    view.updateRecovery(refreshed);
+
+    assert.equal(view.recovery, refreshed);
+    assert.equal(view.confirmingRemoval, false);
+    assert.equal(view.actionError, null);
+    assert.deepEqual(renders, [refreshed]);
+  });
+}
+
+function recoveryTask() {
+  return {
+    threadId: "thread-recovery",
+    title: "Recovery Task",
+    updatedMs: 1,
+    recovery: { reason: "threadMissing", actions: ["removeFromCaffold", "recheck"] },
+  };
+}
+
+function recoveryView(current) {
+  const view = new Recovery();
+  Object.assign(view, {
+    stateReady: true,
+    recovery: current,
+    pendingAction: "",
+    actionError: null,
+    confirmingRemoval: false,
+  });
+  const renders = [];
+  view.render = () => renders.push(view.recovery);
+  return { view, renders };
+}

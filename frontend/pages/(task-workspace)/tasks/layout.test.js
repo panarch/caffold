@@ -317,3 +317,40 @@ test("the terminal toggle and its input belong to an open Task or Section", () =
   }
   assert.equal(toggles, 1);
 });
+
+test("delivers the Recovery projection only after the route refresh completes", async () => {
+  const recovery = {
+    threadId: "thread-recovery",
+    title: "Recovery Task",
+    recovery: { reason: "temporarilyUnavailable", actions: ["recheck"] },
+  };
+  const refresh = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  const updates = [];
+  const navigator = {
+    activate({ force } = {}) {
+      if (force) {
+        started.resolve();
+        return refresh.promise;
+      }
+      return Promise.resolve();
+    },
+    recoveryFor: () => recovery,
+  };
+  const owner = {
+    prepareRoute: () => ({}),
+    taskNavigator: () => navigator,
+    taskNew: () => null,
+    taskDetail: () => null,
+    taskRecovery: () => ({ updateRecovery: (value) => updates.push(value) }),
+    render() {},
+  };
+  const opened = tasksPage.openRoute.call(owner, {
+    kind: "tasks", threadId: recovery.threadId, recovery: true,
+  });
+  await started.promise;
+  assert.deepEqual(updates, []);
+  refresh.resolve();
+  assert.equal(await opened, recovery);
+  assert.deepEqual(updates, [recovery]);
+});

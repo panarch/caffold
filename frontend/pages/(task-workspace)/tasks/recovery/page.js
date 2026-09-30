@@ -41,7 +41,7 @@ class CaffoldTaskRecovery extends HTMLElement {
     this.actionError = null;
     this.confirmingRemoval = false;
     this.boundClick = (event) => this.handleClick(event);
-    this.boundIconsReady = () => this.render();
+    this.boundIconsReady = () => this.refreshIcons();
     warmIcons();
   }
 
@@ -56,7 +56,11 @@ class CaffoldTaskRecovery extends HTMLElement {
 
   updateRecovery(recovery) {
     this.ensureState();
+    const previous = this.recovery;
     this.recovery = recovery ?? null;
+    if (sameRecoveryPresentation(previous, this.recovery)) {
+      return;
+    }
     this.pendingAction = "";
     this.actionError = null;
     this.confirmingRemoval = false;
@@ -286,25 +290,43 @@ class CaffoldTaskRecovery extends HTMLElement {
       recheck: "Checking Task state…",
     }[this.pendingAction] ?? "";
     this.innerHTML = `
-      <section class="task-recovery-view" aria-labelledby="task-recovery-task-title">
+      <section
+        class="task-recovery-view"
+        aria-labelledby="task-recovery-task-title"
+      >
         <header class="task-recovery-header">
-          <h2 id="task-recovery-task-title">${escapeHtml(recovery.title ?? "Unavailable Task")}</h2>
+          <h2 id="task-recovery-task-title">
+            ${escapeHtml(recovery.title ?? "Unavailable Task")}
+          </h2>
         </header>
         <div class="task-recovery-body">
           <div class="task-recovery-content">
             <div class="task-recovery-heading">
-              <span class="task-recovery-icon-slot">
-                ${renderInlineIcon("TriangleAlert", "Task recovery", "task-recovery-icon")}
-              </span>
+              <span
+                class="task-recovery-icon-slot"
+                data-task-recovery-icon="warning"
+              ></span>
               <h3>${escapeHtml(copy.title)}</h3>
             </div>
             <div class="task-recovery-description">
-              ${copy.messages.map((message) => `<p>${escapeHtml(message)}</p>`).join("")}
+              ${copy.messages.map((message) => `
+                <p>${escapeHtml(message)}</p>
+              `).join("")}
             </div>
-            ${this.confirmingRemoval ? this.renderRemovalConfirmation(busy) : this.renderActions(actions, busy)}
+            ${this.confirmingRemoval
+              ? this.renderRemovalConfirmation(busy)
+              : this.renderActions(actions, busy)}
             <div class="task-recovery-feedback" aria-live="polite">
-              ${pendingLabel ? `<p class="task-recovery-progress" role="status">${escapeHtml(pendingLabel)}</p>` : ""}
-              ${this.actionError ? `<p class="task-recovery-error" role="alert">${escapeHtml(this.actionError.message)}</p>` : ""}
+              ${pendingLabel ? `
+                <p class="task-recovery-progress" role="status">
+                  ${escapeHtml(pendingLabel)}
+                </p>
+              ` : ""}
+              ${this.actionError ? `
+                <p class="task-recovery-error" role="alert">
+                  ${escapeHtml(this.actionError.message)}
+                </p>
+              ` : ""}
             </div>
             <div class="task-recovery-thread">
               <span>Thread</span>
@@ -314,17 +336,70 @@ class CaffoldTaskRecovery extends HTMLElement {
         </div>
       </section>
     `;
+    this.refreshIcons();
   }
 
   renderActions(actions, busy) {
     return `
       <div class="task-recovery-action-row">
         <div class="task-recovery-resolution-actions">
-          ${actions.has("restoreToActive") ? `<button type="button" class="task-secondary-button" data-task-recovery-action="restore" ${busy ? "disabled" : ""}>${renderInlineIcon("ArchiveRestore", "Restore to Active", "task-action-icon")}<span>Restore to Active</span></button>` : ""}
-          ${actions.has("moveToArchived") ? `<button type="button" class="task-secondary-button" data-task-recovery-action="archive" ${busy ? "disabled" : ""}>${renderInlineIcon("Archive", "Move to Archived", "task-action-icon")}<span>Move to Archived</span></button>` : ""}
-          ${actions.has("removeFromCaffold") ? `<button type="button" class="task-secondary-button task-recovery-remove-button" data-task-recovery-action="remove" ${busy ? "disabled" : ""}>${renderInlineIcon("Trash2", "Remove from Caffold", "task-action-icon")}<span>Remove from Caffold</span></button>` : ""}
+          ${actions.has("restoreToActive") ? `
+            <button
+              type="button"
+              class="task-secondary-button"
+              data-task-recovery-action="restore"
+              ${busy ? "disabled" : ""}
+            >
+              <span
+                class="task-recovery-action-icon-slot"
+                data-task-recovery-icon="restore"
+              ></span>
+              <span>Restore to Active</span>
+            </button>
+          ` : ""}
+          ${actions.has("moveToArchived") ? `
+            <button
+              type="button"
+              class="task-secondary-button"
+              data-task-recovery-action="archive"
+              ${busy ? "disabled" : ""}
+            >
+              <span
+                class="task-recovery-action-icon-slot"
+                data-task-recovery-icon="archive"
+              ></span>
+              <span>Move to Archived</span>
+            </button>
+          ` : ""}
+          ${actions.has("removeFromCaffold") ? `
+            <button
+              type="button"
+              class="task-secondary-button task-recovery-remove-button"
+              data-task-recovery-action="remove"
+              ${busy ? "disabled" : ""}
+            >
+              <span
+                class="task-recovery-action-icon-slot"
+                data-task-recovery-icon="remove"
+              ></span>
+              <span>Remove from Caffold</span>
+            </button>
+          ` : ""}
         </div>
-        ${actions.has("recheck") ? `<button type="button" class="task-recovery-recheck-button" data-task-recovery-action="recheck" ${busy ? "disabled" : ""}>${renderInlineIcon("RefreshCw", "Recheck Task", "task-action-icon")}<span>Recheck</span></button>` : ""}
+        ${actions.has("recheck") ? `
+          <button
+            type="button"
+            class="task-recovery-recheck-button"
+            data-task-recovery-action="recheck"
+            ${busy ? "disabled" : ""}
+          >
+            <span
+              class="task-recovery-action-icon-slot"
+              data-task-recovery-icon="recheck"
+            ></span>
+            <span>Recheck</span>
+          </button>
+        ` : ""}
       </div>
     `;
   }
@@ -333,14 +408,58 @@ class CaffoldTaskRecovery extends HTMLElement {
     return `
       <div class="task-recovery-removal-confirmation" role="alert">
         <strong>Remove this Task from Caffold?</strong>
-        <p>The Codex Thread could not be found. Caffold will remove its membership and managed Task resources. This cannot be undone.</p>
+        <p>
+          The Codex Thread could not be found. Caffold will remove its membership
+          and managed Task resources. This cannot be undone.
+        </p>
         <div class="task-recovery-confirmation-actions">
-          <button type="button" class="task-secondary-button" data-task-recovery-action="cancel-remove" ${busy ? "disabled" : ""}>Cancel</button>
-          <button type="button" class="task-secondary-button task-recovery-remove-button" data-task-recovery-action="confirm-remove" ${busy ? "disabled" : ""}>Remove Task</button>
+          <button
+            type="button"
+            class="task-secondary-button"
+            data-task-recovery-action="cancel-remove"
+            ${busy ? "disabled" : ""}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="task-secondary-button task-recovery-remove-button"
+            data-task-recovery-action="confirm-remove"
+            ${busy ? "disabled" : ""}
+          >
+            Remove Task
+          </button>
         </div>
       </div>
     `;
   }
+
+  refreshIcons() {
+    for (const [key, name, label, className = "task-action-icon"] of [
+      ["warning", "TriangleAlert", "Task recovery", "task-recovery-icon"],
+      ["restore", "ArchiveRestore", "Restore to Active"],
+      ["archive", "Archive", "Move to Archived"],
+      ["remove", "Trash2", "Remove from Caffold"],
+      ["recheck", "RefreshCw", "Recheck Task"],
+    ]) {
+      const slot = this.querySelector(`[data-task-recovery-icon="${key}"]`);
+      if (slot) {
+        slot.innerHTML = renderInlineIcon(name, label, className);
+      }
+    }
+  }
+}
+
+function sameRecoveryPresentation(left, right) {
+  const leftActions = left?.recovery?.actions ?? [];
+  const rightActions = right?.recovery?.actions ?? [];
+  return (
+    taskThreadId(left) === taskThreadId(right) &&
+    left?.title === right?.title &&
+    left?.recovery?.reason === right?.recovery?.reason &&
+    leftActions.length === rightActions.length &&
+    leftActions.every((action, index) => action === rightActions[index])
+  );
 }
 
 function recoveryCopy(reason) {

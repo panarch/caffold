@@ -90,6 +90,10 @@ caffold-task-recovery {
     color: var(--warning);
   }
 
+  & .task-recovery-action-icon-slot {
+    display: contents;
+  }
+
   & h3,
   & p {
     margin: 0;
