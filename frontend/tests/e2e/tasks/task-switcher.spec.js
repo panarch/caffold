@@ -521,13 +521,15 @@ test("stands beside Back the way the Task list header spaces its own buttons", {
   await captureReviewScreenshot(page, testInfo, "task-switcher-route-control");
 });
 
-test("draws its header the way the Markdown preview draws its header", { tag: "@all-viewports" }, async ({
+test("draws its header the way the other title-and-X dialogs draw theirs", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const tasks = switcherTasks();
   await installSwitcherFixture(page, tasks);
+  await page.route("**/permission-instructions", (route) =>
+    route.fulfill({ json: { instructions: null } }));
   await page.goto("/tasks/switcher_oldest");
-  // The Markdown preview lives in a loaded Task's conversation.
+  // The Markdown preview and the settled prompts live in a loaded Task.
   await emitTaskDetailBootstrap(page, switcherTaskDetail(tasks[2]));
   await expect(page.locator(".task-conversation-pane")).toBeVisible();
 
@@ -548,6 +550,25 @@ test("draws its header the way the Markdown preview draws its header", { tag: "@
     .click();
   await expect(previewDialog).toBeHidden();
 
+  const settled = page.locator("caffold-task-permission-instructions-dialog");
+  await settled.evaluate(
+    (element, threadId) => element.open({ threadId }),
+    tasks[2].threadId,
+  );
+  const settledDialog = page.locator(
+    "caffold-task-permission-instructions-dialog > dialog",
+  );
+  await expect(settledDialog).toBeVisible();
+  const settledHeader = await dialogHeaderGeometry(settledDialog, {
+    header: ".task-permission-instructions-header",
+    title: ".task-permission-instructions-title",
+    close: ".task-permission-instructions-close",
+  });
+  await settledDialog
+    .getByRole("button", { name: "Close what this Task settled" })
+    .click();
+  await expect(settledDialog).toBeHidden();
+
   await switcherOpeners(page).click();
   const dialog = page.locator("caffold-task-switcher-dialog > dialog");
   await expect(dialog).toBeVisible();
@@ -557,7 +578,13 @@ test("draws its header the way the Markdown preview draws its header", { tag: "@
     close: ".task-switcher-close",
   });
 
+  expect(settledHeader).toEqual(reference);
   expect(header).toEqual(reference);
+  // The X sits in the header's corner as far from the top and bottom lines as
+  // from the end.
+  const [top, end, bottom] = header.closeInset;
+  expect(end).toBe(top);
+  expect(bottom).toBe(top);
   await captureReviewScreenshot(page, testInfo, "task-switcher-header");
 });
 
@@ -683,7 +710,11 @@ async function dialogHeaderGeometry(dialog, selectors) {
   return dialog.evaluate((element, { header, title, close }) => {
     const round = (value) => Math.round(value * 100) / 100;
     const box = element.getBoundingClientRect();
-    const headerBox = element.querySelector(header).getBoundingClientRect();
+    const headerElement = element.querySelector(header);
+    const headerBox = headerElement.getBoundingClientRect();
+    const headerBorder = parseFloat(
+      getComputedStyle(headerElement).borderBottomWidth,
+    );
     const titleElement = element.querySelector(title);
     const titleBox = titleElement.getBoundingClientRect();
     const titleStyle = getComputedStyle(titleElement);
@@ -701,6 +732,11 @@ async function dialogHeaderGeometry(dialog, selectors) {
       closeSize: [round(closeBox.width), round(closeBox.height)],
       closeEnd: round(box.right - closeBox.right),
       closeCenter: round(closeBox.top + closeBox.height / 2 - headerBox.top),
+      closeInset: [
+        round(closeBox.top - headerBox.top),
+        round(headerBox.right - closeBox.right),
+        round(headerBox.bottom - headerBorder - closeBox.bottom),
+      ],
     };
   }, selectors);
 }
