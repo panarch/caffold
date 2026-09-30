@@ -110,9 +110,11 @@ unclaimed child.
    current data. If live updates remain unavailable, the Detail reports that
    state without discarding readable content.
 4. If canonical Detail cannot be read, the header keeps only the matching
-   managed Task identity, the body reports the provider failure, and Retry and
-   Archive remain available. Caffold does not infer conversation content,
-   status, or repository context from that row.
+   managed Task identity and the body reports the failure. Provider failures
+   retain Retry and Archive. A verified broken managed worktree offers
+   **Delete task** and an irreversible deletion dialog instead of Retry;
+   ownership or checkout mismatches do not offer deletion. Caffold does not
+   infer conversation content, status, or repository context from that row.
 5. Scrolling to the top or choosing Load older messages prepends older history
    to the current conversation. The button remains available when collapsed
    work leaves no scrollbar. While a request is pending, a spinner and loading
@@ -287,14 +289,22 @@ cwd movement, ownership, archive, and restore follow the
 - Restoring recreates an archived managed worktree from its retained branch and
   returns the same Task to the active navigator.
 - Tasks without a managed-worktree ownership record retain their cwd and files.
-- Permanent deletion is available only after archive. It removes the
+- Ordinary permanent deletion requires archive. It removes the
   agent-owned conversation through that Task's driver — the Codex thread, the
   Claude transcript and its same-session files, or every Grok session the Task
   ran on — then removes Caffold's Task and worktree-ownership records. It does
   not delete the retained Git branch.
+- A verified broken managed worktree can also be deleted from its error
+  screen after confirmation. This removes the remaining owned files, the
+  conversation, and Task data permanently. A missing folder still requires
+  confirmation because the conversation is deleted. The server rechecks the
+  current target; a confirmation cannot force deletion of a usable worktree.
 
 Archive and filesystem cleanup are coordinated but distinct state changes. An
-external worktree is never deleted merely because a Task uses it.
+external worktree is never deleted merely because a Task uses it. Failed
+removal keeps a broken worktree's anchor and exposes its cleanup path;
+[Worktree Lifecycle](../architecture/worktree-lifecycle.md#archive-and-restore)
+owns the reconciliation and deletion safety contract.
 
 ## Product object boundary
 

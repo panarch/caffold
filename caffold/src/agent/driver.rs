@@ -949,6 +949,36 @@ impl Driver {
         }
     }
 
+    /// Delete native contents while retaining driver-owned references needed
+    /// to retry a broken Task's remaining filesystem/store cleanup.
+    pub(crate) async fn delete_conversation_contents(
+        &self,
+        conversation_id: &str,
+    ) -> Result<(), AgentError> {
+        match self {
+            Self::Codex(client) => match client
+                .delete_thread(conversation_id)
+                .await
+                .map_err(AgentError::from)
+            {
+                Ok(()) | Err(AgentError::ConversationGone(_)) => Ok(()),
+                Err(error) => Err(error),
+            },
+            Self::Claude(claude) => Ok(claude.client.erase(conversation_id, &claude.cwd).await?),
+            Self::Grok(client) => Ok(client.erase_sessions(conversation_id).await?),
+        }
+    }
+
+    pub(crate) async fn forget_deleted_conversation(
+        &self,
+        conversation_id: &str,
+    ) -> Result<(), AgentError> {
+        match self {
+            Self::Codex(_) | Self::Claude(_) => Ok(()),
+            Self::Grok(client) => Ok(client.forget_erased_binding(conversation_id).await?),
+        }
+    }
+
     /// Whether the agent still has this conversation to go back to.
     ///
     /// Asked of an archived Task, where the answer decides whether restoring is

@@ -13,7 +13,8 @@ pub(crate) use worktree::{
     WorktreeCheckout, WorktreeError, WorktreeIsolationMode, attached_worktree_is_dirty,
     delete_local_branch_if_matches, delete_transfer_snapshot, execute_worktree_transfer,
     inspect_attached_worktree, prepare_worktree_transfer, recover_worktree_transfer,
-    remove_attached_worktree, restore_attached_worktree,
+    remove_attached_worktree, remove_worktree_admin_entries, restore_attached_worktree,
+    worktree_admin_entries,
 };
 #[cfg(test)]
 pub(crate) use worktree::{create_attached_worktree, managed_repository};

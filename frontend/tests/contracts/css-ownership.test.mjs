@@ -133,6 +133,10 @@ const ownership = new Map([
     ["caffold-task-markdown-code-block"],
   ],
   [
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.css",
+    ["caffold-broken-task-delete-dialog"],
+  ],
+  [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
     ["caffold-task-command-dialog"],
   ],

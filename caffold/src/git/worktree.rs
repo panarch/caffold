@@ -504,18 +504,80 @@ pub(crate) fn inspect_attached_worktree(
     expected_branch: Option<&str>,
 ) -> Result<WorktreeCheckout, WorktreeError> {
     reject_symlink_target(target)?;
-    if !target.exists() {
-        return Err(WorktreeError::TargetMissing(target.display().to_string()));
+    match std::fs::symlink_metadata(target) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(WorktreeError::TargetMissing(target.display().to_string()));
+        }
+        Err(error) => return Err(error.into()),
     }
-    let repository = repository_for(target)
-        .ok_or_else(|| WorktreeError::NotRepository(target.display().to_string()))?;
-    let metadata = repository_metadata_paths(&repository)
-        .ok_or_else(|| WorktreeError::MissingMetadata(target.display().to_string()))?;
     let expected_common_dir = expected_common_dir.canonicalize()?;
-    if metadata.common_dir != expected_common_dir {
+    // Prove absence from the filesystem, not from a failed Git command. Git
+    // failures (including permissions and an unavailable executable) must not
+    // grant permission to delete a Task.
+    let marker = target.join(".git");
+    reject_symlink_target(&marker)?;
+    let marker_metadata = match std::fs::symlink_metadata(&marker) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(WorktreeError::NotRepository(target.display().to_string()));
+        }
+        Err(error) => return Err(error.into()),
+    };
+    if marker_metadata.is_file() {
+        let text = std::fs::read_to_string(&marker)?;
+        let Some(git_dir) = text.trim_end().strip_prefix("gitdir: ") else {
+            return Err(WorktreeError::NotRepository(target.display().to_string()));
+        };
+        let git_dir = target.join(git_dir);
+        // A linked worktree belongs to one entry immediately inside worktrees/.
+        // Check the parent even when Git already removed that entry.
+        let parent = git_dir
+            .parent()
+            .ok_or_else(|| WorktreeError::MissingMetadata(target.display().to_string()))?;
+        if resolve_metadata_path(parent)? != expected_common_dir.join("worktrees") {
+            return Err(WorktreeError::RepositoryMismatch {
+                expected: expected_common_dir.display().to_string(),
+                actual: git_dir.display().to_string(),
+            });
+        }
+        reject_symlink_target(&git_dir)?;
+        match std::fs::symlink_metadata(&git_dir) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(WorktreeError::NotRepository(target.display().to_string()));
+            }
+            Err(error) => return Err(error.into()),
+        }
+        for name in ["commondir", "gitdir"] {
+            let path = git_dir.join(name);
+            reject_symlink_target(&path)?;
+            match std::fs::symlink_metadata(&path) {
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    return Err(WorktreeError::MissingMetadata(target.display().to_string()));
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+    let git_dir = PathBuf::from(run_git_text(
+        target,
+        "metadata inspection",
+        ["rev-parse", "--absolute-git-dir"],
+    )?)
+    .canonicalize()?;
+    let common_dir = target
+        .join(run_git_text(
+            target,
+            "metadata inspection",
+            ["rev-parse", "--git-common-dir"],
+        )?)
+        .canonicalize()?;
+    if common_dir != expected_common_dir {
         return Err(WorktreeError::RepositoryMismatch {
             expected: expected_common_dir.display().to_string(),
-            actual: metadata.common_dir.display().to_string(),
+            actual: common_dir.display().to_string(),
         });
     }
     let branch_name = run_git_text(target, "branch inspection", ["branch", "--show-current"])?;
@@ -534,8 +596,8 @@ pub(crate) fn inspect_attached_worktree(
 
     Ok(WorktreeCheckout {
         path: target.canonicalize()?,
-        git_dir: metadata.git_dir,
-        common_dir: metadata.common_dir,
+        git_dir,
+        common_dir,
         branch_name,
         head_sha,
     })
@@ -548,6 +610,115 @@ pub(crate) fn attached_worktree_is_dirty(target: &Path) -> Result<bool, Worktree
         ["status", "--porcelain=v1", "--untracked-files=normal"],
     )?
     .is_empty())
+}
+
+/// Identify only administrative entries whose backlink names this exact slot.
+/// This is deliberately narrower than `git worktree prune`, which can remove
+/// registrations for unrelated missing worktrees.
+pub(crate) fn worktree_admin_entries(
+    target: &Path,
+    expected_common_dir: &Path,
+) -> Result<Vec<PathBuf>, WorktreeError> {
+    let common_dir = expected_common_dir.canonicalize()?;
+    let actual = PathBuf::from(run_git_dir_text(
+        &common_dir,
+        "repository inspection",
+        ["rev-parse", "--git-common-dir"],
+    )?)
+    .canonicalize()?;
+    if actual != common_dir {
+        return Err(WorktreeError::RepositoryMismatch {
+            expected: common_dir.display().to_string(),
+            actual: actual.display().to_string(),
+        });
+    }
+    let directory = common_dir.join("worktrees");
+    reject_symlink_target(&directory)?;
+    let entries = match std::fs::read_dir(&directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
+    };
+    let marker = target.join(".git");
+    let mut owned = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let backlink = entry.path().join("gitdir");
+        let metadata = match std::fs::symlink_metadata(&backlink) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            continue;
+        }
+        let path = std::fs::read_to_string(&backlink)?;
+        if Path::new(path.trim_end()) == marker {
+            owned.push(entry.path());
+        }
+    }
+    // A surviving forward pointer must agree with the backlink. A missing
+    // backlink is not evidence that an existing administrative directory is
+    // ours to delete.
+    match std::fs::symlink_metadata(&marker) {
+        Ok(metadata) if metadata.is_file() => {
+            reject_symlink_target(&marker)?;
+            let text = std::fs::read_to_string(&marker)?;
+            if let Some(pointer) = text.trim_end().strip_prefix("gitdir: ") {
+                let pointer = target.join(pointer);
+                match pointer.canonicalize() {
+                    Ok(pointer) if !owned.contains(&pointer) => {
+                        return Err(WorktreeError::RepositoryMismatch {
+                            expected: marker.display().to_string(),
+                            actual: pointer.display().to_string(),
+                        });
+                    }
+                    Ok(_) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    Ok(owned)
+}
+
+pub(crate) fn remove_worktree_admin_entries(
+    target: &Path,
+    expected_common_dir: &Path,
+) -> Result<(), WorktreeError> {
+    for entry in worktree_admin_entries(target, expected_common_dir)? {
+        // Revalidate the backlink immediately before deletion. remove_dir_all
+        // unlinks symlink children instead of following them.
+        reject_symlink_target(&entry)?;
+        let backlink = entry.join("gitdir");
+        reject_symlink_target(&backlink)?;
+        if Path::new(std::fs::read_to_string(&backlink)?.trim_end()) != target.join(".git") {
+            return Err(WorktreeError::MissingMetadata(entry.display().to_string()));
+        }
+        std::fs::remove_dir_all(entry)?;
+    }
+    Ok(())
+}
+
+fn resolve_metadata_path(path: &Path) -> Result<PathBuf, WorktreeError> {
+    match path.canonicalize() {
+        Ok(path) => Ok(path),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let parent = path.parent().ok_or(error)?;
+            let name = path
+                .file_name()
+                .ok_or_else(|| WorktreeError::MissingMetadata(path.display().to_string()))?;
+            Ok(resolve_metadata_path(parent)?.join(name))
+        }
+        Err(error) => Err(error.into()),
+    }
 }
 
 pub(crate) fn remove_attached_worktree(

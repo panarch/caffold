@@ -190,6 +190,14 @@ struct TaskDeleteResponse {
     thread_id: String,
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct TaskDeleteRequest {
+    #[serde(default)]
+    confirm_broken_worktree_deletion: bool,
+    expected_worktree_id: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskReorderRequest {

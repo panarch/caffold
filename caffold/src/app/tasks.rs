@@ -124,7 +124,7 @@ impl TaskState {
             task_sessions.clone(),
             task_list_events.clone(),
             task_store.clone(),
-            managed_worktrees,
+            managed_worktrees.clone(),
             claude.clone(),
             grok.clone(),
             terminals,
@@ -153,6 +153,7 @@ impl TaskState {
         let detail = DetailContext::new(
             fs.clone(),
             task_store.clone(),
+            managed_worktrees,
             task_runtime.clone(),
             task_runtime_signals,
             task_sessions.clone(),

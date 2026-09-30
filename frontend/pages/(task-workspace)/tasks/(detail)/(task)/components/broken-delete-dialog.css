@@ -1,0 +1,104 @@
+caffold-broken-task-delete-dialog {
+  position: absolute;
+
+  & > dialog {
+    width: min(28rem, calc(100vw - 2rem));
+    max-width: none;
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 0;
+    overflow: auto;
+    border: 1px solid var(--danger-border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 24%);
+  }
+
+  & > dialog::backdrop {
+    background: rgb(var(--scrim-rgb) / 32%);
+  }
+
+  & .broken-delete-card {
+    display: grid;
+    gap: var(--interface-space-5);
+    margin: 0;
+    padding: var(--interface-space-10);
+  }
+
+  & .broken-delete-card h2,
+  & .broken-delete-card p {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  & .broken-delete-card h2 {
+    font-size: var(--interface-heading-font-size);
+    line-height: 1.25;
+  }
+
+  & .broken-delete-card p {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .broken-delete-card .broken-delete-task {
+    color: var(--text);
+    font-weight: 650;
+  }
+
+  & .broken-delete-card .broken-delete-error {
+    color: var(--danger-strong);
+  }
+
+  & .broken-delete-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--interface-control-gap);
+    margin-top: var(--interface-space-3);
+  }
+
+  & .broken-delete-button {
+    min-height: var(--interface-control-hit-size);
+    padding: var(--interface-space-2) var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    cursor: pointer;
+  }
+
+  & .broken-delete-button:hover,
+  & .broken-delete-button:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+  }
+
+  & .broken-delete-confirm {
+    border-color: var(--danger-border);
+    background: var(--danger-subtle);
+    color: var(--danger-strong);
+  }
+
+  & .broken-delete-button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-broken-task-delete-dialog {
+    & > dialog {
+      width: calc(100vw - 1rem);
+    }
+
+    & .broken-delete-card {
+      padding: var(--interface-space-8);
+    }
+  }
+}

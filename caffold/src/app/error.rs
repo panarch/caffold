@@ -15,6 +15,7 @@ use crate::{
 
 #[derive(Debug)]
 pub(super) enum ApiError {
+    Diagnostic(ErrorBody),
     Fs(FsError),
     Agent(String),
     Watch(String),
@@ -30,6 +31,7 @@ pub(super) enum ApiError {
 impl std::fmt::Display for ApiError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Diagnostic(body) => formatter.write_str(&body.message),
             Self::Fs(error) => error.fmt(formatter),
             Self::Agent(message) | Self::Watch(message) | Self::Internal(message) => {
                 formatter.write_str(message)
@@ -51,10 +53,32 @@ struct ErrorResponse {
     error: ErrorBody,
 }
 
-#[derive(Debug, Serialize)]
-struct ErrorBody {
-    code: &'static str,
-    message: String,
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app) struct ErrorBody {
+    pub(in crate::app) code: &'static str,
+    pub(in crate::app) message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(in crate::app) allowed_actions: Option<Vec<&'static str>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(in crate::app) worktree_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(in crate::app) worktree_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(in crate::app) worktree_missing: Option<bool>,
+}
+
+impl ErrorBody {
+    pub(in crate::app) fn new(code: &'static str, message: String) -> Self {
+        Self {
+            code,
+            message,
+            allowed_actions: None,
+            worktree_id: None,
+            worktree_path: None,
+            worktree_missing: None,
+        }
+    }
 }
 
 impl From<FsError> for ApiError {
@@ -111,9 +135,14 @@ impl From<WatchError> for ApiError {
     }
 }
 
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
+impl ApiError {
+    pub(in crate::app) fn into_error_body(self) -> ErrorBody {
+        self.response_parts().1
+    }
+
+    fn response_parts(self) -> (StatusCode, ErrorBody) {
         let (status, code, message) = match self {
+            ApiError::Diagnostic(body) => return (StatusCode::CONFLICT, body),
             ApiError::Fs(FsError::RootUnavailable { path, .. }) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "root_unavailable",
@@ -269,13 +298,14 @@ impl IntoResponse for ApiError {
             ApiError::Conflict { code, message } => (StatusCode::CONFLICT, code, message),
         };
 
-        (
-            status,
-            Json(ErrorResponse {
-                error: ErrorBody { code, message },
-            }),
-        )
-            .into_response()
+        (status, ErrorBody::new(code, message))
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let (status, error) = self.response_parts();
+        (status, Json(ErrorResponse { error })).into_response()
     }
 }
 

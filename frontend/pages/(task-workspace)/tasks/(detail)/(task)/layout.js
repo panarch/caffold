@@ -7,6 +7,7 @@ import {
   markTaskSeen,
   resolveTaskApproval,
   sendTaskPrompt,
+  taskResponseError,
   uploadTaskFile,
 } from "../../../../../api.js";
 import { escapeHtml } from "../../../../../components/dom.js";
@@ -31,6 +32,7 @@ import "./components/command-dialog.js";
 import "./components/markdown-preview-dialog.js";
 import "./components/permission-instructions-dialog.js";
 import "./components/current-plan.js";
+import "./components/broken-delete-dialog.js";
 import { TaskDetailSession } from "./session.js";
 import { ConversationProjection, projectionRevision } from "./layout/conversation.js";
 import { ConversationHistory } from "./layout/history.js";
@@ -188,6 +190,13 @@ class CaffoldTaskDetail extends HTMLElement {
       event.stopPropagation();
       this.markdownPreviewDialog()?.openMarkdown(event.detail);
     });
+    this.addEventListener("caffold:task-detail-intent", (event) => {
+      if (event.target !== this.brokenDeleteDialog() || event.detail?.type !== "broken-delete-error") return;
+      event.stopPropagation();
+      this.detailLoadError = event.detail.error;
+      this.loading = false;
+      this.render();
+    });
     this.addEventListener("caffold:task-composer-submit", (event) => {
       const composer = closestElement(event.target, "caffold-task-composer");
       if (!composer || composer !== this.followUpComposer()) {
@@ -275,6 +284,7 @@ class CaffoldTaskDetail extends HTMLElement {
     }
 
     if (this.selectedThreadId !== targetThreadId) {
+      this.brokenDeleteDialog()?.reset();
       this.deactivateFollowUpComposer();
       this.history.deactivate();
       this.interruptActionToken += 1;
@@ -373,6 +383,7 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   deactivate({ retainComposerDom = false } = {}) {
+    this.brokenDeleteDialog()?.reset();
     this.history.deactivate();
     this.interruptActionToken += 1;
     this.interruptStateValue = { loading: false, error: null };
@@ -423,11 +434,23 @@ class CaffoldTaskDetail extends HTMLElement {
     if (
       this.hidden ||
       this.view !== "detail" ||
-      this.reviewView !== "conversation" ||
       !this.selectedThreadId
     ) {
       return emptyActionHintScope();
     }
+    const errorControl = this.querySelector('.task-detail-load-error button[data-task-action], .task-domain-pending button[data-task-action]');
+    if (errorControl) {
+      return {
+        blocked: false,
+        targets: [buttonActionHintTarget({
+          invalidationOwner: this, id: `task:${this.selectedThreadId}:load-error`,
+          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE, label: errorControl.textContent.trim(),
+          control: errorControl, clipRoots: [this],
+          isActionable: () => this.isConnected && !this.hidden && this.contains(errorControl) && !errorControl.disabled && hasActionHintLayoutBox(errorControl),
+        })], mutationRoots: [this], scrollRoots: [],
+      };
+    }
+    if (this.reviewView !== "conversation") return emptyActionHintScope();
     const composer = this.followUpComposer();
     const slot = this.followUpComposerSlot();
     const conversation = this.querySelector(":scope .task-conversation-pane");
@@ -511,17 +534,19 @@ class CaffoldTaskDetail extends HTMLElement {
 
   keyboardNavigationContexts() {
     this.ensureRendered();
+    const deletionContexts = this.brokenDeleteDialog()?.keyboardNavigationContexts() ?? [];
     if (
       this.hidden ||
       this.view !== "detail" ||
       this.reviewView !== "conversation" ||
       !this.selectedThreadId
     ) {
-      return [];
+      return deletionContexts;
     }
     const composer = this.followUpComposer();
     const slot = this.followUpComposerSlot();
     return mergeKeyboardNavigationContexts(
+      deletionContexts,
       composer && slot && composer.parentElement === slot
         ? composer.keyboardNavigationContexts({
             scopeId: `task:${this.selectedThreadId}`,
@@ -604,6 +629,7 @@ class CaffoldTaskDetail extends HTMLElement {
     const threadId = `${message?.threadId ?? ""}`;
     const detail = message?.detail;
     const preserveReadableDetail =
+      !message.error &&
       message.reason === "stream-bootstrap" &&
       !detail?.task &&
       taskDetailThreadId(this.taskDetail) === threadId &&
@@ -725,12 +751,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.taskDetail = { ...detail, task: stableTask };
     }
     this.history.accept(detail, historyCursor, this.events);
-    const canonicalError =
-      detailError instanceof Error
-        ? detailError
-        : detailError
-          ? new Error(`${detailError}`)
-          : null;
+    const canonicalError = detailError ? taskResponseError(detailError) : null;
     if (acceptMetadata) {
       this.loading = detail?.syncState === "loading" && !canonicalError;
       this.detailLoadError = canonicalError;
@@ -945,6 +966,10 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   handleAction(action, element) {
+    if (action === "delete-broken-task") {
+      this.brokenDeleteDialog()?.openTask();
+      return;
+    }
     if (action === "retry-task-detail") {
       if (this.selectedThreadId) {
         this.openTask(this.selectedThreadId);
@@ -1372,7 +1397,11 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.archiveStateValue = { loading: false, error };
-      this.emitSubjectSnapshot();
+      if (Array.isArray(error.allowedActions)) {
+        this.detailLoadError = error;
+        this.loading = false;
+        this.render();
+      } else this.emitSubjectSnapshot();
     }
   }
 
@@ -1487,6 +1516,11 @@ class CaffoldTaskDetail extends HTMLElement {
     this.setAttribute("data-task-detail-view", this.reviewView);
     this.ensureTaskShell();
     this.renderTaskContentRegion();
+    this.brokenDeleteDialog()?.setContext({
+      threadId: this.selectedThreadId,
+      title: taskThreadId(this.managedTask) === this.selectedThreadId ? this.managedTask?.title : this.taskDetail?.task?.title,
+      error: this.detailLoadError,
+    });
     this.commandDialog()?.setThreadId(this.selectedThreadId);
     this.markdownPreviewDialog()?.setThreadId(this.selectedThreadId);
     this.permissionInstructionsDialog()?.setThreadId(this.selectedThreadId);
@@ -1518,9 +1552,17 @@ class CaffoldTaskDetail extends HTMLElement {
 
     this.innerHTML = `
       <div class="tasks-detail-region"></div>
+      <caffold-broken-task-delete-dialog></caffold-broken-task-delete-dialog>
     `;
     this.taskContentRenderKey = "";
   }
+
+  setManagedTask(task) {
+    this.managedTask = task;
+    this.brokenDeleteDialog()?.setContext({ threadId: this.selectedThreadId, title: task?.title, error: this.detailLoadError });
+  }
+
+  brokenDeleteDialog() { return this.querySelector(":scope > caffold-broken-task-delete-dialog"); }
 
   conversationComponent() {
     return this.querySelector(
@@ -1920,12 +1962,12 @@ class CaffoldTaskDetail extends HTMLElement {
     if (this.view !== "detail") {
       return `view:${this.view}`;
     }
-    if (!this.hasSelectedTaskDetail()) {
+    if (!this.hasSelectedTaskDetail() || Array.isArray(this.detailLoadError?.allowedActions)) {
       if (this.loading) {
         return `loading:${this.selectedThreadId}:${this.reviewView}`;
       }
       if (this.detailLoadError) {
-        return `error:${this.selectedThreadId}:${this.reviewView}:${this.detailLoadError.message ?? this.detailLoadError}`;
+        return `error:${this.selectedThreadId}:${this.reviewView}:${this.detailLoadError.message ?? this.detailLoadError}:${this.detailLoadError.allowedActions}:${this.detailLoadError.worktreeId}`;
       }
       return `empty:${this.selectedThreadId}`;
     }
@@ -1969,7 +2011,7 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   renderBody() {
-    const hasSelectedTaskDetail = this.hasSelectedTaskDetail();
+    const hasSelectedTaskDetail = this.hasSelectedTaskDetail() && !Array.isArray(this.detailLoadError?.allowedActions);
     if (this.loading && !hasSelectedTaskDetail && this.view === "detail") {
       if (["git", "github"].includes(this.reviewView)) {
         return this.renderPendingDomain("Loading Task context...");
@@ -1980,7 +2022,7 @@ class CaffoldTaskDetail extends HTMLElement {
       if (["git", "github"].includes(this.reviewView)) {
         return this.renderPendingDomain(
           this.detailLoadError?.message ?? "Task details are temporarily unavailable.",
-          { retry: true },
+          { error: true },
         );
       }
       return this.renderTaskDetailLoadError();
@@ -1994,11 +2036,18 @@ class CaffoldTaskDetail extends HTMLElement {
   renderTaskDetailLoadError() {
     return `
       <section class="task-detail-load-error" role="alert">
-        <p>Task details are temporarily unavailable.</p>
+        <p>${Array.isArray(this.detailLoadError?.allowedActions) ? "The task worktree is unavailable." : "Task details are temporarily unavailable."}</p>
         <p class="task-detail-error-message">${escapeHtml(this.detailLoadError?.message ?? "")}</p>
-        <button type="button" class="task-secondary-button" data-task-action="retry-task-detail">Retry</button>
+        ${this.renderLoadErrorAction()}
       </section>
     `;
+  }
+
+  renderLoadErrorAction() {
+    const actions = this.detailLoadError?.allowedActions;
+    if (actions?.includes("deleteTask")) return '<button type="button" class="task-secondary-button" data-task-action="delete-broken-task">Delete task</button>';
+    if (!actions || actions.includes("retry")) return '<button type="button" class="task-secondary-button" data-task-action="retry-task-detail">Retry</button>';
+    return "";
   }
 
   renderPendingDomain(message, options = {}) {
@@ -2006,9 +2055,9 @@ class CaffoldTaskDetail extends HTMLElement {
     return `
       <section class="task-domain-pending" data-task-domain="${this.reviewView}" aria-label="${title}">
         <header><h2>${title}</h2></header>
-        <div class="task-domain-pending-body" ${options.retry ? 'role="alert"' : 'role="status"'}>
+        <div class="task-domain-pending-body" ${options.error ? 'role="alert"' : 'role="status"'}>
           <p>${escapeHtml(message)}</p>
-          ${options.retry ? '<button type="button" class="task-secondary-button" data-task-action="retry-task-detail">Retry</button>' : ""}
+          ${options.error ? this.renderLoadErrorAction() : ""}
         </div>
       </section>
     `;

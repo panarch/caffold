@@ -287,9 +287,10 @@ export async function removeRecoveryTask(threadId) {
   );
 }
 
-export async function deleteTask(threadId) {
+export async function deleteTask(threadId, confirmation = null) {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, {}, {
     method: "DELETE",
+    ...(confirmation ? { body: confirmation } : {}),
   });
 }
 
@@ -629,12 +630,18 @@ async function requestJson(endpoint, params = {}, options = {}) {
   return payload;
 }
 
+export function taskResponseError(value, fallback = "Task details are temporarily unavailable.") {
+  if (value instanceof Error) return value;
+  const body = value && typeof value === "object" ? value : {};
+  const error = new Error(body.message ?? (typeof value === "string" ? value : fallback));
+  for (const key of ["code", "allowedActions", "worktreeId", "worktreePath", "worktreeMissing"]) {
+    if (body[key] !== undefined) error[key] = body[key];
+  }
+  return error;
+}
+
 function responseError(payload, status) {
-  const error = new Error(
-    payload?.error?.message ??
-      (typeof payload?.error === "string" ? payload.error : null) ??
-      `Request failed with HTTP ${status}`,
-  );
+  const error = taskResponseError(payload?.error, `Request failed with HTTP ${status}`);
   error.code = payload?.error?.code ?? "request_failed";
   error.status = status;
   return error;

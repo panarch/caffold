@@ -50,10 +50,11 @@ A terminal ends only when:
    because the shell was started in the old directory. A Task already in its
    worktree and a failed isolation keep the terminal, and so does a Section
    terminal in the same directory;
-4. its Task leaves the Active list through Archive, recovery Archive, or
-   recovery removal. The terminal closes after the request's checks pass and
-   before any managed worktree is removed; a refused request leaves it running.
-   Permanent delete accepts only archived Tasks, which have none;
+4. its Task leaves the Active list through Archive, recovery Archive,
+   recovery removal, or confirmed broken-worktree deletion. The terminal closes
+   after the request's checks pass and before any managed worktree is removed;
+   a refused request leaves it running.
+   Ordinary archived Task deletion has no running terminal;
 5. the backend exits; or
 6. the cap below evicts it.
 

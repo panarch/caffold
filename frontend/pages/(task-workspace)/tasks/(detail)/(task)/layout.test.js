@@ -10,6 +10,15 @@ await import("./layout.js");
 const taskDetail = registry.element("caffold-task-detail").prototype;
 after(() => registry.restore());
 
+test("only the server's actions decide whether an unavailable worktree offers Delete or Retry", () => {
+  const action = (error) => taskDetail.renderLoadErrorAction.call({ detailLoadError: error });
+  assert.match(action({ allowedActions: ["deleteTask"] }), /delete-broken-task/);
+  assert.doesNotMatch(action({ allowedActions: ["deleteTask"] }), /Retry/);
+  assert.equal(action({ allowedActions: [] }), "");
+  assert.match(action({ allowedActions: ["retry"] }), /Retry/);
+  assert.match(action(new Error("provider unavailable")), /Retry/);
+});
+
 test("merges Conversation, follow-up composer, and Current Plan direct-owner scopes", () => {
   const composerTarget = { id: "prompt" };
   const conversationTarget = { id: "conversation-action" };
@@ -55,11 +64,12 @@ test("merges Conversation, follow-up composer, and Current Plan direct-owner sco
     reviewView: "conversation",
     selectedThreadId: "thread-a",
     ensureRendered() {},
+    brokenDeleteDialog: () => null,
     followUpComposer: () => composer,
     followUpComposerSlot: () => slot,
     conversationComponent: () => conversationOwner,
     currentPlanComponent: () => currentPlan,
-    querySelector: () => conversation,
+    querySelector: (selector) => selector === ":scope .task-conversation-pane" ? conversation : null,
   };
 
   assert.deepEqual(taskDetail.actionHintScope.call(owner), {
@@ -98,6 +108,7 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
     reviewView: "conversation",
     selectedThreadId: "thread-a",
     ensureRendered() {},
+    brokenDeleteDialog: () => null,
     followUpComposer: () => composer,
     followUpComposerSlot: () => slot,
     currentPlanComponent: () => ({
