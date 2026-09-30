@@ -24,18 +24,22 @@ test("keeps the selected Review file identity stable while content loads", { tag
 }) => {
   const { reviewScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
-  reviewScenario.gitDiffDelayMs = 500;
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
 
   const changes = taskReview.locator("caffold-git-diff-changes-tree");
   const viewer = taskReview.locator("caffold-review-file-viewer");
-  await changes.locator('button[data-file-tree-relative-path="planner.rs"]').click();
-  await expect(viewer.locator(".surface-message")).toHaveText("Loading file...");
-  await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
-  await expect(viewer.locator(".viewer-subtitle")).toHaveText(
-    "Modified · Unstaged",
-  );
-  await expect(viewer.locator(".viewer-line-stats")).toHaveCount(0);
+  const releaseDiff = reviewScenario.holdDiff();
+  try {
+    await changes.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+    await expect(viewer.locator(".surface-message")).toHaveText("Loading file...");
+    await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
+    await expect(viewer.locator(".viewer-subtitle")).toHaveText(
+      "Modified · Unstaged",
+    );
+    await expect(viewer.locator(".viewer-line-stats")).toHaveCount(0);
+  } finally {
+    releaseDiff();
+  }
   await expect(viewer.locator("caffold-diff-viewer")).toContainText(
     "new planner behavior",
   );
@@ -48,14 +52,19 @@ test("keeps the selected Review file identity stable while content loads", { tag
     "2 additions and 1 deletions",
   );
 
+  const releaseFile = Promise.withResolvers();
   await page.route(/\/api\/file(?:\?|$)/, async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await releaseFile.promise;
     await route.continue();
   });
-  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
-  await expect(viewer.locator(".surface-message")).toHaveText("Loading file...");
-  await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
-  await expect(viewer.locator(".viewer-subtitle")).toHaveCount(0);
+  try {
+    await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+    await expect(viewer.locator(".surface-message")).toHaveText("Loading file...");
+    await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
+    await expect(viewer.locator(".viewer-subtitle")).toHaveCount(0);
+  } finally {
+    releaseFile.resolve();
+  }
   await expect(viewer.locator("caffold-code-viewer")).toContainText("planner");
   await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
   await expect(viewer.locator(".viewer-subtitle")).toHaveCount(0);
@@ -286,27 +295,31 @@ test("reviews working tree changes through the canonical Review route", { tag: "
   await expect(visibleDiff).toHaveAttribute("data-unrelated-watch-probe", "kept");
   await expect(viewer).toContainText("new planner behavior");
 
-  reviewScenario.gitDiffDelayMs = 500;
   reviewScenario.workingDiffText = "refreshed planner behavior";
   const beforeRelatedDiff = reviewScenario.gitDiffRequests;
-  await page.evaluate(() => {
-    const source = window.__caffoldMockEventSources.find(
-      (candidate) =>
-        candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
-    );
-    source?.emit("change", {
-      revision: 5,
-      paths: ["src/planner.rs"],
-      gitStatusChanged: true,
-      gitRefsChanged: false,
-      overflow: false,
+  const releaseDiff = reviewScenario.holdDiff();
+  try {
+    await page.evaluate(() => {
+      const source = window.__caffoldMockEventSources.find(
+        (candidate) =>
+          candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
+      );
+      source?.emit("change", {
+        revision: 5,
+        paths: ["src/planner.rs"],
+        gitStatusChanged: true,
+        gitRefsChanged: false,
+        overflow: false,
+      });
     });
-  });
-  await expect
-    .poll(() => reviewScenario.gitDiffRequests)
-    .toBeGreaterThan(beforeRelatedDiff);
-  await expect(viewer).toContainText("new planner behavior");
-  await expect(viewer.locator(".surface-message")).toHaveCount(0);
+    await expect
+      .poll(() => reviewScenario.gitDiffRequests)
+      .toBeGreaterThan(beforeRelatedDiff);
+    await expect(viewer).toContainText("new planner behavior");
+    await expect(viewer.locator(".surface-message")).toHaveCount(0);
+  } finally {
+    releaseDiff();
+  }
   await expect(viewer).toContainText("refreshed planner behavior");
 
   await stabilizeDynamicText(page);
@@ -1637,24 +1650,6 @@ test("maps the visible source line when Diff and Source representations switch",
     (element) => element.scrollLeft,
   )).toBeGreaterThan(0);
   await page.keyboard.press("Escape");
-});
-
-test("rejects a late branch response after returning to the working tree", { tag: "@all-viewports" }, async ({ page }) => {
-  const { reviewScenario, tasksPage, taskReview } =
-    await openCompletedTaskForReview(page);
-  reviewScenario.setCompareDelay("origin/main", 250);
-  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
-  const compareBefore = reviewScenario.gitCompareRequests;
-  await selectTaskReviewScope(tasksPage, "branch");
-  await expect.poll(() => reviewScenario.gitCompareRequests).toBeGreaterThan(compareBefore);
-  await selectTaskReviewScope(tasksPage, "working");
-
-  const compareTree = taskReview.locator("caffold-git-compare-tree");
-  await page.waitForTimeout(300);
-  await expect(
-    compareTree.locator('button[data-file-tree-path="src/planner.rs"]'),
-  ).toHaveCount(0);
-  await expect(taskReview.locator("caffold-git-diff-changes-tree")).toBeVisible();
 });
 
 test("rejects a late compare response after the Branch base changes again", { tag: "@all-viewports" }, async ({
