@@ -732,9 +732,7 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
     if (this.view === "recovery") {
-      if (!sameRecoveryPresentation(this.taskRecovery()?.recovery, recovery)) {
-        this.taskRecovery()?.updateRecovery(recovery);
-      }
+      this.taskRecovery()?.updateRecovery(recovery);
       return;
     }
     if (this.view === "detail") {
@@ -899,18 +897,6 @@ function taskRoutePresentation(route) {
   return ["review", "review-file", "terminal"].includes(target)
     ? "code"
     : "reading";
-}
-
-function sameRecoveryPresentation(left, right) {
-  const leftActions = left?.recovery?.actions ?? [];
-  const rightActions = right?.recovery?.actions ?? [];
-  return (
-    taskDetailThreadId({ task: left }) === taskDetailThreadId({ task: right }) &&
-    left?.title === right?.title &&
-    left?.recovery?.reason === right?.recovery?.reason &&
-    leftActions.length === rightActions.length &&
-    leftActions.every((action, index) => action === rightActions[index])
-  );
 }
 
 if (!customElements.get("caffold-tasks-page")) {
