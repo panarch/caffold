@@ -1,3 +1,4 @@
+import { compactIconButton } from "../component-styles.js";
 import { escapeHtml } from "./dom.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 import {
@@ -168,5 +169,10 @@ class CaffoldPagination extends HTMLElement {
     return this.getAttribute("aria-label") ?? "Pagination";
   }
 }
+
+await compactIconButton.register(
+  "caffold-pagination",
+  "> .pagination-panel > .pagination-button",
+);
 
 customElements.define("caffold-pagination", CaffoldPagination);

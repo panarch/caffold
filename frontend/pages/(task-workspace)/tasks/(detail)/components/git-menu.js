@@ -1,3 +1,4 @@
+import { compactIconButton } from "../../../../../component-styles.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -265,6 +266,8 @@ class CaffoldTaskDetailGit extends HTMLElement {
     return this.querySelector(":scope > .task-git-popover");
   }
 }
+
+await compactIconButton.register("caffold-task-detail-git", "> .task-git-button");
 
 if (!customElements.get("caffold-task-detail-git")) {
   customElements.define("caffold-task-detail-git", CaffoldTaskDetailGit);

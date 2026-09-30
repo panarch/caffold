@@ -1,3 +1,4 @@
+import { compactIconButton } from "../../../../component-styles.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import "../../components/workspace-brand.js";
@@ -935,6 +936,11 @@ function taskListState(list) {
     error: "",
   };
 }
+
+await compactIconButton.register(
+  "caffold-task-navigator",
+  "> .task-list-primary-header > .task-list-primary-actions > .task-list-header-action",
+);
 
 if (!customElements.get("caffold-task-navigator")) {
   customElements.define("caffold-task-navigator", CaffoldTaskNavigator);

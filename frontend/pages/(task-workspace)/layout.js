@@ -1,3 +1,4 @@
+import { compactIconButton } from "../../component-styles.js";
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 import "../../components/pane-resizer.js";
 import { routeDomain, routeTab, routeTarget } from "../../navigation-routes.js";
@@ -1089,5 +1090,10 @@ function routeControlActionHintScope(
     scrollRoots: [],
   };
 }
+
+await compactIconButton.register(
+  "caffold-task-workspace",
+  "> .task-workspace-route-controls > .task-workspace-route-control",
+);
 
 customElements.define("caffold-task-workspace", CaffoldTaskWorkspace);

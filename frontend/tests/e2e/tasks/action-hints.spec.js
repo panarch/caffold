@@ -956,9 +956,16 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await expect(setting).toBeChecked();
   await setting.uncheck();
   await page.goto("/tasks");
+  // The bootstrap activation starts after health applies the final route.
+  // Then wait for the owning textarea's actionability and focus before typing.
+  await expect.poll(() => page.evaluate(() => {
+    const snapshot = document.querySelector("caffold-app-shell")?.foregroundRecoverySnapshot;
+    return snapshot?.lastTrigger === "bootstrap" ? snapshot.generation : 0;
+  })).toBeGreaterThan(0);
   const offPrompt = page.locator(
     'caffold-task-new textarea[name="prompt"]',
   );
+  await expect(offPrompt).toBeEnabled();
   await offPrompt.focus();
   await page.keyboard.press("Escape");
   await expect(offPrompt).toBeFocused();
@@ -973,10 +980,16 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await page.goto("/settings/keyboard");
   await setting.check();
   await page.goto("/tasks");
+  await expect.poll(() => page.evaluate(() => {
+    const snapshot = document.querySelector("caffold-app-shell")?.foregroundRecoverySnapshot;
+    return snapshot?.lastTrigger === "bootstrap" ? snapshot.generation : 0;
+  })).toBeGreaterThan(0);
   const prompt = page.locator(
     'caffold-task-new textarea[name="prompt"]',
   );
+  await expect(prompt).toBeEnabled();
   await prompt.focus();
+  await expect(prompt).toBeFocused();
   await page.keyboard.press("f");
   await expect(prompt).toHaveValue("f");
   await expect(actionHintDialog(page)).toBeHidden();

@@ -1544,6 +1544,19 @@ Components render in Light DOM, so CSS remains one cascade. Each stylesheet
 must scope internal selectors below the owning custom element. A parent may
 size or hide a child host, but descendant styling belongs to the child.
 
+`frontend/component-styles.js` exports `compactIconButton`. Components await
+`compactIconButton.register(owner, target)` before defining their element,
+declaring the explicit child path to their own local button class. This covers
+Task list/header actions, workspace and Git/GitHub Back controls, terminal and
+file refresh controls, pagination, and Task/Notes Info. Local colors, margins,
+visibility and native-state appearance remain with each owner. Regular-size
+Back controls and controls with different surfaces keep their existing styles.
+The module fetches `component-styles/compact-icon-button.css` once per document
+and adopts a native `@scope` sheet for each registration. The CSS uses `:scope`
+without naming consumers. Shared defaults use the `component-styles` layer;
+unlayered owner rules retain local overrides. Registration lasts for the
+document, while components retain their native state and Action Hint providers.
+
 `--font-ui` and `--font-code` are the two typeface roles. `--font-ui` covers
 interface chrome and conversation prose, including the Composer textarea;
 `--font-code` covers source, diffs, command and tool output, terminals, inline
@@ -1584,7 +1597,8 @@ start pane and separator itself. Each kind of pane has its own
 Every production JavaScript/CSS asset must be registered consistently in:
 
 - module imports;
-- `frontend/styles.css`;
+- `frontend/styles.css`, or the consuming component's explicit style declaration
+  for reusable `:scope` sources;
 - `frontend/service-worker.js`;
 - `caffold/src/static_assets.rs`;
 - static asset and CSS ownership tests.

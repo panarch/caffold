@@ -1,3 +1,4 @@
+import { compactIconButton } from "../component-styles.js";
 import { escapeHtml, formatBytes, formatModified } from "./dom.js";
 import {
   buttonActionHintTarget,
@@ -901,6 +902,16 @@ function patchInlineIcon(button, name, label, className) {
     button.innerHTML = markup;
   }
 }
+
+await compactIconButton.register(
+  "caffold-review-file-viewer",
+  "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-actions > .viewer-refresh-button",
+);
+
+await compactIconButton.register(
+  "caffold-review-file-viewer",
+  "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-close-button",
+);
 
 customElements.define("caffold-review-file-viewer", CaffoldReviewFileViewer);
 

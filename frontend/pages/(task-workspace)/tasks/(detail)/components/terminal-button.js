@@ -1,3 +1,4 @@
+import { compactIconButton } from "../../../../../component-styles.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -107,6 +108,8 @@ class CaffoldTaskDetailTerminal extends HTMLElement {
     return this.querySelector(":scope > .task-terminal-button");
   }
 }
+
+await compactIconButton.register("caffold-task-detail-terminal", "> .task-terminal-button");
 
 if (!customElements.get("caffold-task-detail-terminal")) {
   customElements.define("caffold-task-detail-terminal", CaffoldTaskDetailTerminal);

@@ -417,13 +417,18 @@ Use these rules when reviewing CSS:
   the child component's stylesheet.
 - Prefer `>` for container layout selectors.
 - Use component-local classes for internal chrome.
+- A component declares its own use of shared styles. Shared CSS must not name
+  feature consumers, and registration must not discover targets by scanning the
+  DOM. Preserve component-owned state and local overrides, and verify scoped
+  application and isolation in the browser. CSS ownership contracts must also
+  cover shared sources.
 - Avoid raw tag selectors from shell or container components.
 - Cross-component overrides must be narrow and intentional.
 - New component selectors must be scoped below that custom element, and
   overlapping broad container selectors must be removed when ownership moves.
-- Register new JavaScript and CSS assets in the stylesheet entrypoint, service
-  worker cache, Rust static asset table, and static asset tests in the same
-  change.
+- Register new JavaScript and CSS assets in module imports, the stylesheet
+  entrypoint or consuming component's style declaration, service worker cache,
+  Rust static asset table, and static asset tests in the same change.
 - If a selector looks convenient because it is broad, review it with suspicion.
 
 ### Appearance Ownership

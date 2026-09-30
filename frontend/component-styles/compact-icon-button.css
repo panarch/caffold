@@ -1,0 +1,37 @@
+:scope {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--interface-compact-hit-size);
+  height: var(--interface-compact-hit-size);
+  margin-block: calc(0rem - var(--interface-compact-hit-outset));
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+:scope::before {
+  position: absolute;
+  inset: var(--interface-compact-hit-outset);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  content: "";
+}
+
+:scope:hover,
+:scope:focus-visible {
+  outline: none;
+}
+
+:scope:hover::before,
+:scope:focus-visible::before {
+  border-color: var(--border-strong);
+  background: var(--surface-muted);
+}
+
+:scope:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

@@ -96,6 +96,7 @@ test("keeps bootstrap Retry keyboard-accessible outside the hidden workspace", {
   page,
 }) => {
   await page.goto("/");
+  await waitForAppShellBootstrap(page);
   const shell = page.locator("caffold-app-shell");
   const workspace = shell.locator("caffold-task-workspace");
   await shell.evaluate((element) => {
@@ -121,12 +122,7 @@ test("merges foreground Retry with normal workspace targets", { tag: "@all-viewp
 }) => {
   await page.goto("/");
   const shell = page.locator("caffold-app-shell");
-  await expect.poll(() => shell.evaluate(
-    (element) => element.foregroundRecoveryLifecycle.snapshot(),
-  )).toMatchObject({
-    lastTrigger: "bootstrap",
-    presentation: "none",
-  });
+  await waitForAppShellBootstrap(page);
   await shell.evaluate((element) => {
     element.foregroundRecoveryLifecycle.disconnect();
     window.__foregroundKeyboardRetries = 0;
@@ -186,17 +182,50 @@ test("returns a workspace tab to the screen it last showed", { tag: "@desktop" }
 test("puts the screens under a request into another tab's page", { tag: "@desktop" }, async ({
   page,
 }) => {
+  const stylesRequested = Promise.withResolvers();
+  const releaseStyles = Promise.withResolvers();
+  const healthRequested = Promise.withResolvers();
+  const releaseHealth = Promise.withResolvers();
+  await page.route("**/assets/component-styles/compact-icon-button.css", async (route) => {
+    stylesRequested.resolve();
+    await releaseStyles.promise;
+    await route.continue();
+  });
+  await page.route(/\/api\/health(?:\?|$)/, async (route) => {
+    healthRequested.resolve();
+    await releaseHealth.promise;
+    await route.continue();
+  });
   // Opening Voice Input setup from a Task names a Settings page directly, and
   // the Settings list belongs under it just as it would after a tab change.
-  await page.goto("/");
-  await page.evaluate(() => {
-    document.querySelector("caffold-app-shell").dispatchEvent(
-      new CustomEvent("caffold:open-settings", {
-        bubbles: true,
-        detail: { section: "voice" },
-      }),
-    );
-  });
+  try {
+    await page.goto("/");
+    await stylesRequested.promise;
+    expect(await page.evaluate(() => Boolean(customElements.get("caffold-app-shell")))).toBe(false);
+    releaseStyles.resolve();
+    await healthRequested.promise;
+    // Component definition precedes bootstrap: health still owns the initial route.
+    await Promise.all([
+      waitForAppShellBootstrap(page),
+      (async () => {
+        expect(await page.locator("caffold-app-shell").evaluate(
+          (shell) => shell.foregroundRecoverySnapshot.generation,
+        )).toBe(0);
+        releaseHealth.resolve();
+      })(),
+    ]);
+    await page.evaluate(() => {
+      document.querySelector("caffold-app-shell").dispatchEvent(
+        new CustomEvent("caffold:open-settings", {
+          bubbles: true,
+          detail: { section: "voice" },
+        }),
+      );
+    });
+  } finally {
+    releaseStyles.resolve();
+    releaseHealth.resolve();
+  }
   await expect(page).toHaveURL("/settings/voice");
 
   await page.goBack();
@@ -321,6 +350,7 @@ test("keeps exceptional build mismatch outside application layout", { tag: "@all
   page,
 }) => {
   await page.goto("/");
+  await waitForAppShellBootstrap(page);
   const shell = page.locator("caffold-app-shell");
   const alert = shell.locator("caffold-build-mismatch-alert");
   await expect(alert).toBeHidden();
@@ -369,3 +399,9 @@ test("keeps exceptional build mismatch outside application layout", { tag: "@all
   expect(layout.alertTop).toBeLessThan(layout.mainBottom);
   expect(layout.zIndex).toBeGreaterThan(20);
 });
+
+async function waitForAppShellBootstrap(page) {
+  await expect.poll(() => page.locator("caffold-app-shell").evaluate(
+    (shell) => shell.foregroundRecoverySnapshot,
+  )).toMatchObject({ lastTrigger: "bootstrap", presentation: "none" });
+}

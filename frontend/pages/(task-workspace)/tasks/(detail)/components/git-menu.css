@@ -6,23 +6,9 @@ caffold-task-detail-git {
   place-items: center;
 
   & > .task-git-button {
-    position: relative;
     display: inline-grid;
-    width: var(--interface-compact-hit-size);
-    height: var(--interface-compact-hit-size);
-    margin-block: calc(0rem - var(--interface-compact-hit-outset));
-    padding: 0;
-    place-items: center;
-    border: 0;
-    background: transparent;
     color: var(--text);
-    cursor: pointer;
     anchor-name: --task-review-git;
-  }
-
-  & > .task-git-button:disabled {
-    opacity: 0.35;
-    cursor: default;
   }
 
   & .task-git-icon {
@@ -36,11 +22,6 @@ caffold-task-detail-git {
     background-repeat: no-repeat;
     background-size: contain;
     transform: translate(-50%, -50%);
-  }
-
-  & > .task-git-button:hover,
-  & > .task-git-button:focus-visible {
-    outline: none;
   }
 
   &:has(> .task-git-popover:popover-open) > .task-git-button::before {
@@ -89,20 +70,5 @@ caffold-task-detail-git {
   & > .task-git-popover > button[data-git-button-action]:focus-visible {
     background: var(--control-hover-bg);
     outline: none;
-  }
-
-  & > .task-git-button::before {
-    position: absolute;
-    inset: var(--interface-compact-hit-outset);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    content: "";
-  }
-
-  & > .task-git-button:hover::before,
-  & > .task-git-button:focus-visible::before {
-    border-color: var(--border-strong);
-    background: var(--surface-muted);
   }
 }

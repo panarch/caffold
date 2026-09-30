@@ -2,38 +2,8 @@ caffold-notes-info {
   display: grid;
   place-items: center;
 
-  & .notes-info-button {
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: var(--interface-compact-hit-size);
-    height: var(--interface-compact-hit-size);
-    margin-block: calc(0rem - var(--interface-compact-hit-outset));
-    padding: 0;
-    border: 0;
-    background: transparent;
+  & > .notes-info-button {
     color: var(--control-fg);
-    cursor: pointer;
-  }
-
-  & .notes-info-button::before {
-    position: absolute;
-    inset: var(--interface-compact-hit-outset);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    content: "";
-  }
-
-  & .notes-info-button:hover,
-  & .notes-info-button:focus-visible {
-    outline: none;
-  }
-
-  & .notes-info-button:hover::before,
-  & .notes-info-button:focus-visible::before {
-    border-color: var(--border-strong);
-    background: var(--surface-muted);
   }
 
   & .notes-info-icon {

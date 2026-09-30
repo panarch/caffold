@@ -1,3 +1,4 @@
+import { compactIconButton } from "../../../../component-styles.js";
 import { formatModified } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import {
@@ -269,6 +270,8 @@ class CaffoldNotesInfo extends HTMLElement {
     );
   }
 }
+
+await compactIconButton.register("caffold-notes-info", "> .notes-info-button");
 
 customElements.define("caffold-notes-info", CaffoldNotesInfo);
 

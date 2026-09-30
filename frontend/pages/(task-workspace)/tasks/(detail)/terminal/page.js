@@ -1,3 +1,4 @@
+import { compactIconButton } from "../../../../../component-styles.js";
 import { killTerminal, openTerminal } from "../../../../../api.js";
 import {
   ACTION_HINT_ACTION,
@@ -466,6 +467,11 @@ class CaffoldTerminalPage extends HTMLElement {
     return this.querySelector(":scope > caffold-terminal-special-keys");
   }
 }
+
+await compactIconButton.register(
+  "caffold-terminal-page",
+  "> .terminal-page-bar > .terminal-page-button",
+);
 
 if (!customElements.get("caffold-terminal-page")) {
   customElements.define("caffold-terminal-page", CaffoldTerminalPage);

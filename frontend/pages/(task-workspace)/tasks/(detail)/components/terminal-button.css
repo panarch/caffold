@@ -4,26 +4,7 @@ caffold-task-detail-terminal {
   place-items: center;
 
   & > .task-terminal-button {
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: var(--interface-compact-hit-size);
-    height: var(--interface-compact-hit-size);
-    margin-block: calc(0rem - var(--interface-compact-hit-outset));
-    padding: 0;
-    border: 0;
-    background: transparent;
     color: var(--control-fg);
-    cursor: pointer;
-  }
-
-  & > .task-terminal-button::before {
-    position: absolute;
-    inset: var(--interface-compact-hit-outset);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    content: "";
   }
 
   & > .task-terminal-button > svg {
@@ -34,20 +15,8 @@ caffold-task-detail-terminal {
     stroke-width: 2;
   }
 
-  & > .task-terminal-button:hover,
-  & > .task-terminal-button:focus-visible {
-    outline: none;
-  }
-
-  & > .task-terminal-button:hover::before,
-  & > .task-terminal-button:focus-visible::before,
   & > .task-terminal-button[aria-pressed="true"]::before {
     border-color: var(--border-strong);
     background: var(--surface-muted);
-  }
-
-  & > .task-terminal-button:disabled {
-    opacity: 0.35;
-    cursor: default;
   }
 }

@@ -1,3 +1,4 @@
+import { compactIconButton } from "../../../../../component-styles.js";
 import { renderInlineIcon, warmIcons } from "../../../../../components/icons.js";
 import { routeMode } from "../../../../../navigation-routes.js";
 import {
@@ -714,5 +715,10 @@ class CaffoldTaskGitLayout extends HTMLElement {
     return this.mode;
   }
 }
+
+await compactIconButton.register(
+  "caffold-task-git-layout",
+  "> .task-git-surface > .task-domain-header > .task-domain-back",
+);
 
 customElements.define("caffold-task-git-layout", CaffoldTaskGitLayout);

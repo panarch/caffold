@@ -22,6 +22,8 @@ const APP_SHELL_ASSETS = [
   "/assets/build-info.js",
   "/assets/api.js",
   "/assets/action-hint-scope.js",
+  "/assets/component-styles.js",
+  "/assets/component-styles/compact-icon-button.css",
   "/assets/origin-reachability.js",
   "/assets/file-status.js",
   "/assets/fonts.js",

@@ -19,6 +19,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "app.js" => Some(js(include_str!("../../frontend/app.js"))),
         "api.js" => Some(js(include_str!("../../frontend/api.js"))),
         "action-hint-scope.js" => Some(js(include_str!("../../frontend/action-hint-scope.js"))),
+        "component-styles.js" => Some(js(include_str!("../../frontend/component-styles.js"))),
+        "component-styles/compact-icon-button.css" => Some(css(include_str!(
+            "../../frontend/component-styles/compact-icon-button.css"
+        ))),
         "origin-reachability.js" => Some(js(include_str!("../../frontend/origin-reachability.js"))),
         "file-status.js" => Some(js(include_str!("../../frontend/file-status.js"))),
         "fonts.js" => Some(js(include_str!("../../frontend/fonts.js"))),
@@ -1363,6 +1367,22 @@ fn plain_text(body: &'static str) -> StaticAsset {
 #[cfg(test)]
 mod tests {
     use super::get;
+
+    #[test]
+    fn serves_component_style_registration_assets() {
+        for (path, content_type) in [
+            ("component-styles.js", "text/javascript; charset=utf-8"),
+            (
+                "component-styles/compact-icon-button.css",
+                "text/css; charset=utf-8",
+            ),
+        ] {
+            let asset = get(path).expect("component style asset");
+            assert_eq!(asset.content_type, content_type);
+            assert!(!asset.body.is_empty());
+        }
+        assert!(get("component-styles.test.js").is_none());
+    }
 
     #[test]
     fn serves_pwa_icon_assets() {

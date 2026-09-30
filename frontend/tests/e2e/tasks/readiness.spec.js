@@ -349,29 +349,47 @@ test("keeps the stable Task shell while readiness is checking", { tag: "@all-vie
 });
 
 test("waits for explicit route activation when readiness settles first", { tag: "@all-viewports" }, async ({ page }) => {
-  await page.goto("/");
+  const stylesRequested = Promise.withResolvers();
+  const releaseStyles = Promise.withResolvers();
+  await page.route("**/assets/component-styles/compact-icon-button.css", async (route) => {
+    stylesRequested.resolve();
+    await releaseStyles.promise;
+    await route.continue();
+  });
+  let routeOpens;
+  try {
+    await page.goto("/");
+    await stylesRequested.promise;
+    [routeOpens] = await Promise.all([
+      page.evaluate(async (status) => {
+        const Workspace = await customElements.whenDefined("caffold-task-workspace");
+        const workspace = new Workspace();
+        workspace.ensureRendered();
+        workspace.codexRuntimeRestartDialog.close = () => {};
+        workspace.prepareRoute = () => {};
+        let opens = 0;
+        workspace.tasksPage.openRoute = async () => {
+          opens += 1;
+          return null;
+        };
 
-  const routeOpens = await page.evaluate(async (status) => {
-    const Workspace = customElements.get("caffold-task-workspace");
-    const workspace = new Workspace();
-    workspace.ensureRendered();
-    workspace.codexRuntimeRestartDialog.close = () => {};
-    workspace.prepareRoute = () => {};
-    let opens = 0;
-    workspace.tasksPage.openRoute = async () => {
-      opens += 1;
-      return null;
-    };
-
-    workspace.setCodexStatusSnapshot({
-      phase: "loaded",
-      status,
-      error: "",
-    });
-    const beforeActivation = opens;
-    await workspace.openRoute({ kind: "tasks" });
-    return { beforeActivation, afterActivation: opens };
-  }, mockCodexStatus());
+        workspace.setCodexStatusSnapshot({
+          phase: "loaded",
+          status,
+          error: "",
+        });
+        const beforeActivation = opens;
+        await workspace.openRoute({ kind: "tasks" });
+        return { beforeActivation, afterActivation: opens };
+      }, mockCodexStatus()),
+      (async () => {
+        expect(await page.evaluate(() => Boolean(customElements.get("caffold-task-workspace")))).toBe(false);
+        releaseStyles.resolve();
+      })(),
+    ]);
+  } finally {
+    releaseStyles.resolve();
+  }
 
   expect(routeOpens).toEqual({
     beforeActivation: 0,

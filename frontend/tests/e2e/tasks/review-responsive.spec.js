@@ -205,6 +205,12 @@ test("owns one collapsed Back across Conversation and Review modes", { tag: "@ph
   const masterPane = workspace.locator(".task-workspace-master-pane");
   const detailPane = workspace.locator(".task-workspace-detail-pane");
   const backToTasks = workspace.locator(".task-workspace-back");
+  // A full navigation may finish before async components apply the initial
+  // route. Let that owner initialize history before loading another address.
+  await expect.poll(() => page.evaluate(() => {
+    const snapshot = document.querySelector("caffold-app-shell")?.foregroundRecoverySnapshot;
+    return snapshot?.lastTrigger === "bootstrap" ? snapshot.generation : 0;
+  })).toBeGreaterThan(0);
   const routes = [
     {
       name: "Conversation",
@@ -225,6 +231,10 @@ test("owns one collapsed Back across Conversation and Review modes", { tag: "@ph
 
   for (const mode of routes) {
     await page.goto(mode.url);
+    await expect.poll(() => page.evaluate(() => {
+      const snapshot = document.querySelector("caffold-app-shell")?.foregroundRecoverySnapshot;
+      return snapshot?.lastTrigger === "bootstrap" ? snapshot.generation : 0;
+    })).toBeGreaterThan(0);
     await expect(page).toHaveURL(mode.url);
     await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
     await expect(tasksPage).toHaveAttribute(
