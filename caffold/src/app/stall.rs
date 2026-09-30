@@ -9,11 +9,14 @@
 //! runtime an empty task, and it counts the runtime as stalled once none has
 //! run for the threshold. At the same interval it looks through the waiting
 //! requests and logs each one once when it passes its own threshold.
+//! On macOS, the first report of each stall also starts an independent stack
+//! sample, so evidence is collected without waiting for a person to restart.
 
 use std::{
     cmp::Reverse,
     collections::HashMap,
     fs,
+    path::PathBuf,
     sync::{
         Arc, Mutex, MutexGuard,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -34,6 +37,12 @@ use rustix::process::{Resource, getrlimit};
 use tokio::runtime::Handle;
 use tracing::warn;
 
+#[cfg(target_os = "macos")]
+mod sample;
+
+#[cfg(target_os = "macos")]
+use sample::Sampler;
+
 const TIMING: Timing = Timing {
     probe: Duration::from_secs(1),
     stall_after: Duration::from_secs(5),
@@ -52,8 +61,13 @@ pub(super) struct StallMonitor {
 
 impl StallMonitor {
     /// Starts watching the current runtime. Must be called inside it.
-    pub(super) fn start(requests: RequestsInFlight) -> Self {
-        Self::start_with(Handle::current(), requests, TIMING, log_report)
+    pub(super) fn start(requests: RequestsInFlight, _sample_directory: PathBuf) -> Self {
+        #[cfg(target_os = "macos")]
+        let sampler = Sampler::new(_sample_directory);
+        Self::start_with(Handle::current(), requests, TIMING, log_report, move || {
+            #[cfg(target_os = "macos")]
+            sampler.capture();
+        })
     }
 
     fn start_with(
@@ -61,11 +75,12 @@ impl StallMonitor {
         requests: RequestsInFlight,
         timing: Timing,
         report: impl Fn(Report) + Send + 'static,
+        on_stall: impl Fn() + Send + 'static,
     ) -> Self {
         let (stop, stopped) = mpsc::channel();
         let thread = thread::Builder::new()
             .name("caffold-stall-monitor".to_string())
-            .spawn(move || watch(&runtime, &requests, timing, &stopped, report));
+            .spawn(move || watch(&runtime, &requests, timing, &stopped, report, on_stall));
         let thread = match thread {
             Ok(thread) => Some(thread),
             Err(error) => {
@@ -105,6 +120,7 @@ fn watch(
     timing: Timing,
     stopped: &Receiver<()>,
     report: impl Fn(Report),
+    on_stall: impl Fn(),
 ) {
     let started = Instant::now();
     // When a handed task last ran, as nanoseconds after `started`.
@@ -141,6 +157,7 @@ fn watch(
         match &mut stall {
             None => {
                 report(Report::Stalled(snapshot(silent, requests, now)));
+                on_stall();
                 stall = Some(Stall {
                     began: ran_at,
                     next_report: now + timing.repeat,
@@ -396,8 +413,9 @@ mod tests {
         runtime: &Runtime,
         requests: &RequestsInFlight,
         timing: Timing,
-    ) -> (StallMonitor, Receiver<Report>) {
+    ) -> (StallMonitor, Receiver<Report>, Receiver<()>) {
         let (sender, reports) = mpsc::channel();
+        let (capture, captures) = mpsc::channel();
         let monitor = StallMonitor::start_with(
             runtime.handle().clone(),
             requests.clone(),
@@ -405,8 +423,11 @@ mod tests {
             move |report| {
                 let _ = sender.send(report);
             },
+            move || {
+                let _ = capture.send(());
+            },
         );
-        (monitor, reports)
+        (monitor, reports, captures)
     }
 
     #[test]
@@ -426,7 +447,7 @@ mod tests {
             repeat: Duration::from_millis(300),
             ..FAST
         };
-        let (monitor, reports) = monitor(&runtime, &requests, timing);
+        let (monitor, reports, captures) = monitor(&runtime, &requests, timing);
 
         let Ok(Report::Stalled(first)) = reports.recv_timeout(WAIT) else {
             panic!("the stall was not reported");
@@ -436,16 +457,33 @@ mod tests {
         assert_eq!(first.requests[0].method, Method::GET);
         assert_eq!(first.requests[0].path, "/api/github/status");
         assert!(matches!(first.open_files, Ok(count) if count > 0));
+        captures.recv_timeout(WAIT).unwrap();
         let Ok(Report::Stalled(again)) = reports.recv_timeout(WAIT) else {
             panic!("the lasting stall was not reported again");
         };
         assert!(again.silent >= first.silent + timing.repeat);
+        assert!(matches!(
+            captures.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
 
         release.send(()).unwrap();
         let Ok(Report::Resumed { stalled_for }) = reports.recv_timeout(WAIT) else {
             panic!("the end of the stall was not reported");
         };
         assert!(stalled_for >= again.silent);
+
+        // Recovery rearms collection for a separate incident.
+        let (release, released) = mpsc::channel::<()>();
+        let (held, holding) = mpsc::channel::<()>();
+        runtime.spawn(async move {
+            let _ = held.send(());
+            let _ = released.recv();
+        });
+        holding.recv_timeout(WAIT).unwrap();
+        assert!(matches!(reports.recv_timeout(WAIT), Ok(Report::Stalled(_))));
+        captures.recv_timeout(WAIT).unwrap();
+        release.send(()).unwrap();
         monitor.stop();
     }
 
@@ -459,7 +497,7 @@ mod tests {
             unanswered_after: Duration::from_millis(200),
             ..FAST
         };
-        let (monitor, reports) = monitor(&runtime, &requests, timing);
+        let (monitor, reports, captures) = monitor(&runtime, &requests, timing);
 
         let Ok(Report::Unanswered(request)) = reports.recv_timeout(WAIT) else {
             panic!("the unanswered request was not reported");
@@ -467,6 +505,10 @@ mod tests {
         assert_eq!(request.method, Method::GET);
         assert_eq!(request.path, "/api/github/status");
         assert!(request.age >= timing.unanswered_after);
+        assert!(matches!(
+            captures.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
         monitor.stop();
     }
 
@@ -478,13 +520,67 @@ mod tests {
             stall_after: Duration::from_secs(1),
             ..FAST
         };
-        let (monitor, reports) = monitor(&runtime, &requests, timing);
+        let (monitor, reports, captures) = monitor(&runtime, &requests, timing);
 
         assert!(matches!(
             reports.recv_timeout(Duration::from_millis(1_500)),
             Err(RecvTimeoutError::Timeout)
         ));
+        assert!(matches!(
+            captures.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
         monitor.stop();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires macOS permission for /usr/bin/sample to inspect this test process"]
+    fn a_blocked_runtime_automatically_saves_real_macos_thread_stacks() {
+        let _ = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .try_init();
+        let runtime = one_worker();
+        let directory = tempfile::tempdir().unwrap();
+        let (release, released) = mpsc::channel::<()>();
+        let (held, holding) = mpsc::channel::<()>();
+        runtime.spawn(async move {
+            let _ = held.send(());
+            let _ = released.recv();
+        });
+        holding.recv_timeout(WAIT).unwrap();
+        let monitor = {
+            let _entered = runtime.enter();
+            StallMonitor::start(RequestsInFlight::default(), directory.path().to_path_buf())
+        };
+
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut report = String::new();
+        while Instant::now() < deadline {
+            for entry in fs::read_dir(directory.path()).unwrap() {
+                report = fs::read_to_string(entry.unwrap().path()).unwrap();
+            }
+            if report.contains("Binary Images:") || report.contains("Caffold stack sample failed") {
+                break;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        release.send(()).unwrap();
+        monitor.stop();
+
+        assert!(report.contains("Call graph:"), "no stack report: {report}");
+        assert!(
+            report.contains("tokio-rt-worker"),
+            "no Tokio worker stack: {report}"
+        );
+        assert!(report.contains(&format!("[{}]", std::process::id())));
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+        // Retain successful evidence, including while the detached sampler
+        // finishes its exit/status checks, for inspection after this test.
+        println!(
+            "Automatic stack report retained in {}",
+            directory.keep().display()
+        );
     }
 
     #[test]

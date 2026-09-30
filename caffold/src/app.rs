@@ -94,7 +94,8 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         codex_mcp.router(),
         grok_mcp.router(),
     ));
-    let stall_monitor = stall::StallMonitor::start(requests_in_flight);
+    let stall_monitor =
+        stall::StallMonitor::start(requests_in_flight, data_dir.join("diagnostics/stalls"));
 
     info!("serving Caffold at http://{addr}");
     info!("browsing root {}", root.display());
