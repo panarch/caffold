@@ -18,10 +18,12 @@ import {
   collectTestUsage,
   formatLiveUsageReport,
   LIVE_MODEL_POLICY,
+  liveReasoningEffort,
   mergeLiveUsageReports,
 } from "./codex-live-usage.mjs";
 
 const TASK_MODEL = LIVE_MODEL_POLICY.models.task;
+const NAMING_MODEL = LIVE_MODEL_POLICY.models.naming;
 const PLAN_MODEL = LIVE_MODEL_POLICY.models.plan;
 const FAST_MODEL = LIVE_MODEL_POLICY.models.fast;
 const MULTIMODAL_MODEL = LIVE_MODEL_POLICY.models.multimodal;
@@ -40,7 +42,7 @@ function trackLiveThread(threadId, scenario, model) {
   assertLiveModelPolicy({
     scenario,
     model,
-    effort: LIVE_REASONING_EFFORT,
+    effort: liveReasoningEffort(scenario),
   });
   liveThreadIds.add(threadId);
   measuredThreadModels.set(threadId, model);
@@ -76,7 +78,7 @@ function liveCwd() {
 
 async function chooseModel(taskForm, scenario) {
   const model = LIVE_MODEL_POLICY.models[scenario];
-  const effort = LIVE_REASONING_EFFORT;
+  const effort = liveReasoningEffort(scenario);
   assertLiveModelPolicy({ scenario, model, effort });
   await taskForm.getByRole("button", { name: /Choose model/ }).click();
   const modelOption = taskForm.locator(`[data-model="${model}"]`);
@@ -1029,7 +1031,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
   const navigator = taskNavigator(page);
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await expect(newTaskForm).toBeVisible();
-  await chooseModel(newTaskForm, "task");
+  await chooseModel(newTaskForm, "naming");
 
   const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
   await newTaskPrompt.fill(firstPrompt);
@@ -1040,7 +1042,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
     const response = await route.fetch();
     expect(response.ok()).toBeTruthy();
     const created = await response.json();
-    trackLiveThread(created.detail.threadId, "task", TASK_MODEL);
+    trackLiveThread(created.detail.threadId, "naming", NAMING_MODEL);
     await expect.poll(async () => {
       const status = await readCodexStatus(page.request);
       return status.diagnostics?.threadSessions?.subscribedSessions;
@@ -1052,7 +1054,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
   await page.unroute("**/api/tasks");
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
-  trackLiveThread(threadId, "task", TASK_MODEL);
+  trackLiveThread(threadId, "naming", NAMING_MODEL);
 
   const finalAssistantMessages = tasksPage.locator(
     'caffold-task-assistant-message[data-message-phase="final"]',
@@ -1108,7 +1110,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
     '.task-follow-up-form[data-task-form="follow-up"]',
   );
   await expect(followUpForm).toHaveAttribute("data-thread-id", threadId);
-  await chooseModel(followUpForm, "task");
+  await chooseModel(followUpForm, "naming");
   const followUpPrompt = followUpForm.getByRole("textbox", { name: "Follow-up prompt" });
   await followUpPrompt.fill(
     `Reply with exactly ${followUpReply}. Do not inspect files, modify files, or run commands.`,
