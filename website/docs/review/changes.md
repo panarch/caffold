@@ -38,6 +38,10 @@ allows:
 - **Source**, the whole file as text;
 - **Preview**, for Markdown, images, and PDF files.
 
+In **Source** and **Preview**, **Show details** at the top right of the file
+has **Download**, which saves the file to your device, including a large or
+binary file that Caffold cannot show.
+
 On a phone, the file list and the file take turns on the screen; **Back**
 returns from the file to the list.
 

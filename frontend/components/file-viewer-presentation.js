@@ -30,7 +30,8 @@ export function sourceViewerPresentation(source = {}) {
       : null,
   ].filter(Boolean);
 
-  return { title, subtitle: "", metadata };
+  // Source and Preview show the file on disk, so the same file can be saved.
+  return { title, subtitle: "", metadata, downloadPath: path };
 }
 
 export function diffViewerPresentation(diff = {}) {

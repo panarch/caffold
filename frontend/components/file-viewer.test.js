@@ -129,7 +129,7 @@ test("provides a direct notice representation action through its owned button", 
   assert.equal(target.isActionable(), false);
 });
 
-test("provides file details opener but no invented action inside its popover", () => {
+test("provides file details opener and no action inside a diff's popover", () => {
   const control = {
     disabled: false,
     focus() {},
@@ -164,6 +164,7 @@ test("provides file details opener but no invented action inside its popover", (
     isConnected: true,
     detailsPopover: () => popover,
     hasDetailsMetadata: () => true,
+    downloadLink: () => null,
     querySelector(selector) {
       if (selector.includes("viewer-info-button")) {
         return control;
@@ -186,9 +187,59 @@ test("provides file details opener but no invented action inside its popover", (
   assert.equal(context.root, popover);
   assert.equal(context.actionHints.dialog, dialog);
   assert.deepEqual(context.actionHints.scope.targets, []);
+  assert.equal(context.actionHints.sessionBound, false);
   assert.equal(context.scroll.hud, hud);
   assert.equal(context.scroll.selector, selector);
   assert.equal(context.scroll.scope.surfaces[0].scrollport, popover);
+});
+
+test("provides Download inside a source file's details popover", () => {
+  const presentation = {
+    actionHintDialog: () => ({}),
+    scrollModeHud: () => ({}),
+    scrollSurfaceSelector: () => ({}),
+  };
+  const popover = {
+    querySelector(selector) {
+      return selector.includes("keyboard-navigation-presentation")
+        ? presentation
+        : null;
+    },
+  };
+  let clicks = 0;
+  const link = {
+    textContent: "\n  Download\n",
+    focus() {},
+    click() {
+      clicks += 1;
+    },
+    getAttribute(name) {
+      return name === "href" ? "/api/download?path=dist%2Fbuild.zip" : null;
+    },
+  };
+  let currentLink = link;
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    detailsPopover: () => popover,
+    hasDetailsMetadata: () => true,
+    downloadLink: () => currentLink,
+  };
+
+  const [context] = fileViewer.keyboardNavigationContexts.call(owner, {
+    scopeId: "review:viewer",
+  });
+  const [target] = context.actionHints.scope.targets;
+  assert.equal(context.actionHints.sessionBound, true);
+  assert.equal(context.actionHints.scope.targets.length, 1);
+  assert.equal(target.actionId, "link.open");
+  assert.equal(target.label, "Download");
+  assert.equal(target.isActionable(), true);
+  target.activate();
+  assert.equal(clicks, 1);
+
+  currentLink = { ...link };
+  assert.equal(target.isActionable(), false);
 });
 
 test("provides its owned refresh button beside existing viewer actions", () => {

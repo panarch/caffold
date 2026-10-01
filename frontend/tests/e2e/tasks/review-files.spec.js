@@ -1,10 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { copyFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
 import { repositoryPath } from "../../repository-paths.mjs";
 import {
   actionHintDialog,
   activateActionHint,
+  activateActionHintIntoPopover,
   enterActionHints,
+  popoverActionHintDialog,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { openCompletedTaskForReview } from "../support/task-review-test.js";
@@ -12,6 +14,7 @@ import {
   activeWatchSubscriptionId,
   captureReviewScreenshot,
   isWatchSubscriptionClosed,
+  mockAgentModels,
   stabilizeDynamicText,
 } from "../support/task-fixtures.js";
 
@@ -170,7 +173,7 @@ test("browses source through the shared Files navigator and one root watch", { t
   await expect(taskReview.locator("caffold-review-file-viewer")).toContainText(
     "pub const ALPHA",
   );
-  await activateActionHint(page, /Show details for alpha\.rs$/);
+  await activateActionHintIntoPopover(page, "Show details for alpha.rs");
   const detailsPopover = taskReview.locator(
     "caffold-review-file-viewer:not([hidden]) .viewer-meta-popover",
   );
@@ -178,8 +181,16 @@ test("browses source through the shared Files navigator and one root watch", { t
   await expect.poll(() => detailsPopover.evaluate(
     (popover) => popover.scrollHeight <= popover.clientHeight + 1,
   )).toBe(true);
-  await page.keyboard.press("f");
-  await expect(actionHintDialog(page)).toBeHidden();
+  const detailsHints = popoverActionHintDialog(page);
+  await expect(detailsHints.getByRole("button", { name: / — Download$/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(detailsHints).toBeHidden();
+  await expect(detailsPopover).toBeHidden();
+
+  const detailsButton = taskReview.locator(
+    "caffold-review-file-viewer:not([hidden]) .viewer-info-button",
+  );
+  await detailsButton.click();
   await expect(detailsPopover).toBeVisible();
   await page.keyboard.press("s");
   await expect(
@@ -190,9 +201,7 @@ test("browses source through the shared Files navigator and one root watch", { t
   await expect(detailsPopover).toBeHidden();
 
   if (testInfo.project.name === "desktop") {
-    await taskReview.locator(
-      "caffold-review-file-viewer:not([hidden]) .viewer-info-button",
-    ).click();
+    await detailsButton.click();
     await expect(detailsPopover).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 160 });
     await expect.poll(() => detailsPopover.evaluate(
@@ -209,8 +218,8 @@ test("browses source through the shared Files navigator and one root watch", { t
       .toBeGreaterThan(before);
     await page.keyboard.press("Escape");
     await expect(localHud).toBeHidden();
-    await expect(detailsPopover).toBeVisible();
-    await page.keyboard.press("Escape");
+    // Details with an action close with the keyboard session, as Task and
+    // Note details do.
     await expect(detailsPopover).toBeHidden();
     await page.setViewportSize({ width: 1280, height: 800 });
   }
@@ -238,6 +247,93 @@ test("browses source through the shared Files navigator and one root watch", { t
       isWatchSubscriptionClosed(page, reviewWatchSubscriptionId),
     )
     .toBe(true);
+});
+
+test("downloads a file Source cannot show from inside File details", { tag: "@desktop" }, async ({
+  page,
+}, testInfo) => {
+  const name = `download-${testInfo.project.name}.bin`;
+  const path = repositoryPath("frontend/tests/e2e/fixtures/home/src/ignored-output", name);
+  const bytes = Buffer.from([0, 159, 146, 150, 0, 1, 2, 3]);
+  await writeFile(path, bytes);
+  try {
+    const { taskScenario, taskReview } = await openCompletedTaskForReview(page);
+    await page.goto(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=ignored-output/${name}`,
+    );
+    const viewer = taskReview.locator("caffold-review-file-viewer:not([hidden])");
+    await expect(viewer.locator(".error-panel")).toContainText(
+      "binary-looking files are not supported",
+    );
+
+    await activateActionHintIntoPopover(page, `Show details for ${name}`);
+    const code = await popoverActionHintDialog(page)
+      .getByRole("button", { name: / — Download$/ })
+      .getAttribute("data-action-hint-code");
+    expect(code).toMatch(/^[A-Z]+$/);
+    const download = page.waitForEvent("download");
+    await page.keyboard.type(code.toLowerCase());
+    const saved = await download;
+
+    expect(saved.suggestedFilename()).toBe(name);
+    expect(await readFile(await saved.path())).toEqual(bytes);
+  } finally {
+    await rm(path, { force: true });
+  }
+});
+
+test("File details Download measures the same as the Task details actions", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const actionGeometry = (section, control) => section.evaluate((element, controlSelector) => {
+    const action = element.querySelector(controlSelector);
+    const style = getComputedStyle(action);
+    const frame = getComputedStyle(action, "::before");
+    const sectionStyle = getComputedStyle(element);
+    return {
+      height: action.getBoundingClientRect().height,
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      lineHeight: style.lineHeight,
+      paddingInline: [style.paddingLeft, style.paddingRight],
+      frame: [frame.top, frame.bottom, frame.borderTopWidth, frame.borderTopLeftRadius],
+      section: [sectionStyle.marginTop, sectionStyle.paddingTop, sectionStyle.borderTopWidth],
+    };
+  }, control);
+
+  await mockAgentModels(page);
+  const { taskScenario, taskReview } = await openCompletedTaskForReview(page);
+  await page.locator("caffold-task-detail-info .task-detail-info-button").click();
+  const taskSection = page.locator(".task-detail-popover .task-detail-fork-action");
+  await expect(taskSection).toBeVisible();
+  const task = await actionGeometry(taskSection, ':scope > button[data-task-info-action="fork"]');
+
+  await page.goto(`/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=alpha.rs`);
+  const viewer = taskReview.locator("caffold-review-file-viewer:not([hidden])");
+  await expect(viewer).toContainText("pub const ALPHA");
+  await viewer.locator(".viewer-info-button").click();
+  const section = viewer.locator(".viewer-meta-popover > .viewer-meta-actions");
+  await expect(section).toBeVisible();
+  const link = section.locator(":scope > .viewer-download-link");
+  await expect(link).toHaveAttribute("download", "alpha.rs");
+  await expect(link.locator(".viewer-download-svg")).toBeVisible();
+
+  expect(await actionGeometry(section, ":scope > .viewer-download-link")).toEqual(task);
+  // The icon sits before the label on one line, and the frame leaves the same
+  // space before the icon as after the label.
+  const layout = await link.evaluate((element) => {
+    const frame = element.getBoundingClientRect();
+    const icon = element.querySelector(":scope > .viewer-download-icon").getBoundingClientRect();
+    const label = element.querySelector(":scope > span:last-child").getBoundingClientRect();
+    return {
+      iconBeforeLabel: icon.right <= label.left,
+      centerOffset: Math.abs((icon.top + icon.bottom) / 2 - (label.top + label.bottom) / 2),
+      insetDifference: Math.abs((icon.left - frame.left) - (frame.right - label.right)),
+    };
+  });
+  expect(layout.iconBeforeLabel).toBe(true);
+  expect(layout.centerOffset).toBeLessThanOrEqual(0.5);
+  expect(layout.insetDifference).toBeLessThanOrEqual(0.5);
 });
 
 test("renders a route-owned text-only Markdown Preview without changing file selection", { tag: "@all-viewports" }, async ({

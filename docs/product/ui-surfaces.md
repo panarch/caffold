@@ -324,7 +324,9 @@ Branch review. It combines:
 
 This is also the product path for general file/source inspection through the
 reusable file navigator, source viewer, text viewer, supported image viewer, and
-PDF viewer.
+PDF viewer. In Source and Preview, the file's details offer Download, which
+saves the file itself, including a large or binary file that no viewer can
+show. A diff's details offer no Download.
 
 ### Git
 

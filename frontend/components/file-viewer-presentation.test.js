@@ -19,6 +19,8 @@ test("source presentation keeps a stable basename while metadata becomes availab
   assert.equal(loaded.title, loading.title);
   assert.equal(loading.subtitle, "");
   assert.equal(loaded.subtitle, loading.subtitle);
+  assert.equal(loading.downloadPath, "src/planner/mod.rs");
+  assert.equal(loaded.downloadPath, loading.downloadPath);
   assert.deepEqual(
     loaded.metadata.map(({ field }) => field),
     ["path", "size", "modified", "language"],
@@ -53,6 +55,7 @@ test("diff presentation derives one title and subtitle before content arrives", 
   assert.equal(presentation.title, "planner/mod.rs");
   assert.equal(presentation.subtitle, "Modified · Commit abcdef1");
   assert.equal(presentation.lineStats, null);
+  assert.equal(presentation.downloadPath, undefined);
   assert.deepEqual(
     presentation.metadata.map(({ field }) => field),
     ["path", "kind", "repository"],
