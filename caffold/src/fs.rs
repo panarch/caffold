@@ -86,6 +86,13 @@ pub struct ImageResponse {
     pub bytes: Vec<u8>,
 }
 
+#[derive(Debug)]
+pub struct DownloadFile {
+    pub name: String,
+    pub size: u64,
+    pub file: fs::File,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct GitStatusResponse {
@@ -830,6 +837,45 @@ impl RootedFs {
         }
 
         Ok(bytes)
+    }
+
+    // A download is the file's bytes as they are, so neither the size limits
+    // nor the text checks of the viewers apply to it.
+    pub fn open_download(&self, requested_path: &str) -> Result<DownloadFile, FsError> {
+        let resolved = self.resolve_existing(requested_path)?;
+        let metadata = fs::metadata(&resolved.absolute).map_err(|source| FsError::Io {
+            action: "read metadata",
+            path: requested_path.to_string(),
+            source,
+        })?;
+
+        if metadata.is_dir() {
+            return Err(FsError::IsDirectory {
+                path: requested_path.to_string(),
+            });
+        }
+
+        if !metadata.is_file() {
+            return Err(FsError::NotFile {
+                path: requested_path.to_string(),
+            });
+        }
+
+        let file = fs::File::open(&resolved.absolute).map_err(|source| FsError::Io {
+            action: "open file",
+            path: requested_path.to_string(),
+            source,
+        })?;
+
+        Ok(DownloadFile {
+            name: resolved
+                .logical
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| relative_path_string(&resolved.logical)),
+            size: metadata.len(),
+            file,
+        })
     }
 
     pub fn git_status(&self, requested_path: &str) -> Result<GitStatusResponse, FsError> {
@@ -2667,6 +2713,74 @@ mod tests {
 
         assert!(matches!(
             rooted.read_pdf("../outside.pdf"),
+            Err(FsError::PathEscapesRoot)
+        ));
+    }
+
+    #[test]
+    fn opens_any_regular_file_for_download() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir(temp.path().join("dist")).unwrap();
+        let bytes = [
+            &[0, 159, 146, 150][..],
+            &vec![b'a'; MAX_FILE_BYTES as usize],
+        ]
+        .concat();
+        fs::write(temp.path().join("dist/build.zip"), &bytes).unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let mut download = rooted.open_download("dist/build.zip").unwrap();
+        let mut read = Vec::new();
+        download.file.read_to_end(&mut read).unwrap();
+
+        assert_eq!(download.name, "build.zip");
+        assert_eq!(download.size, bytes.len() as u64);
+        assert_eq!(read, bytes);
+    }
+
+    #[test]
+    fn rejects_download_of_a_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir(temp.path().join("dist")).unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+
+        assert!(matches!(
+            rooted.open_download("dist"),
+            Err(FsError::IsDirectory { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_download_of_anything_but_a_regular_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let _listener =
+            std::os::unix::net::UnixListener::bind(temp.path().join("agent.sock")).unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+
+        assert!(matches!(
+            rooted.open_download("agent.sock"),
+            Err(FsError::NotFile { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_download_outside_the_browsing_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        fs::create_dir(&root).unwrap();
+        fs::write(temp.path().join("secret.txt"), "secret").unwrap();
+        std::os::unix::fs::symlink(temp.path().join("secret.txt"), root.join("link.txt")).unwrap();
+
+        let rooted = RootedFs::new(&root).unwrap();
+
+        assert!(matches!(
+            rooted.open_download("../secret.txt"),
+            Err(FsError::PathEscapesRoot)
+        ));
+        assert!(matches!(
+            rooted.open_download("link.txt"),
             Err(FsError::PathEscapesRoot)
         ));
     }

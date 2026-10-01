@@ -295,6 +295,66 @@ caffold-review-file-viewer {
     min-width: 7ch;
   }
 
+  & .viewer-meta-actions {
+    display: grid;
+    justify-items: start;
+    margin-top: var(--interface-space-6);
+    padding-top: var(--interface-space-5);
+    border-top: 1px solid var(--border);
+  }
+
+  /* The button the Task and Note details popovers give their actions, with
+     its icon before the label. */
+  & .viewer-download-link {
+    position: relative;
+    isolation: isolate;
+    display: inline-grid;
+    grid-auto-flow: column;
+    gap: 0.3125rem;
+    align-items: center;
+    min-height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
+    padding: var(--interface-space-2) var(--interface-control-padding-inline);
+    border-radius: 5px;
+    color: var(--control-fg);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    text-decoration: none;
+  }
+
+  & .viewer-download-link::before {
+    position: absolute;
+    z-index: -1;
+    inset: var(--interface-compact-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .viewer-download-link:hover,
+  & .viewer-download-link:focus-visible {
+    outline: none;
+  }
+
+  & .viewer-download-link:hover::before,
+  & .viewer-download-link:focus-visible::before {
+    border-color: var(--border-strong);
+  }
+
+  & .viewer-download-icon {
+    display: block;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+  }
+
+  & .viewer-download-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    stroke-width: 2.2;
+  }
+
   & dt {
     color: var(--muted);
     font-size: 0.72rem;

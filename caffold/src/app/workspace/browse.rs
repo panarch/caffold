@@ -1,3 +1,5 @@
+mod download;
+
 use std::{path::Path, time::Duration};
 
 use axum::{
@@ -8,6 +10,8 @@ use axum::{
     routing::get,
 };
 use serde::Deserialize;
+
+use download::download;
 
 use super::{PathQuery, WorkspaceState};
 use crate::{
@@ -28,6 +32,7 @@ pub(super) fn router() -> Router<WorkspaceState> {
         .route("/api/file", get(file))
         .route("/api/image", get(image))
         .route("/api/pdf", get(pdf))
+        .route("/api/download", get(download))
         .route("/api/task-image", get(task_image))
 }
 

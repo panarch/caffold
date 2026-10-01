@@ -496,8 +496,9 @@ own surface. Every registered popover with actions declares it, and so does the
 Task switcher, which receives the session its key starts and the session in
 which a Hint chooses one of its openers. Every other dialog does not, so the
 user presses `F` again inside one or inside a popover opened by pointer, and
-such a session leaves that surface open. File details deliberately declares no
-internal Action Hint target.
+such a session leaves that surface open. File details has an action, and so
+declares itself session-bound, only when it offers Download for Source and
+Preview; a diff's File details declares no internal Action Hint target.
 
 Provider collection is hierarchical: each layout merges its own actions with
 only its active direct child scopes through `action-hint-scope.js`. Ancestors
@@ -1118,13 +1119,18 @@ fallback, and local scroll to the shared `caffold-markdown-preview` component
 also used by the current-plan dialog. It delegates PDF page rendering, document
 lifetime, and local scroll to `caffold-pdf-viewer`, which imports its pinned
 pdf.js release at first use, keeps one open document per selected file, and
-draws a page as it approaches the viewport.
+draws a page as it approaches the viewport. Source and Preview show the file
+on disk, so their File details offer Download, a link to `/api/download`. That
+route streams the file's bytes as an attachment without the viewers' size
+limits or text checks, so a file no viewer can show can still be saved. A diff
+shows a change rather than a file on disk and offers no Download.
 
 The shared file stack owns keyboard surfaces at the same boundaries. File List
 merges its Refresh button with the public file-tree selection and directory
 disclosure scope, File Navigator forwards caller semantics, and File Viewer
 publishes its current source, diff, Markdown, image, PDF, or notice leaf plus
-its existing Back, Details, Source/Preview, and conditional Refresh actions.
+its existing Back, Details, Source/Preview, and conditional Refresh actions,
+and the File details popover context with its conditional Download.
 Integrated Review chooses the current navigator and viewer roles and merges
 those public scopes; it never queries a child's `.file-tree-scroll`,
 `.code-lines`, `.diff-lines`, or directory buttons.

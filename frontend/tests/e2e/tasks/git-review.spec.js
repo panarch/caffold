@@ -1276,6 +1276,8 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
   );
   const detailsPopover = fileViewer.locator(".viewer-meta-popover");
   await expect(detailsPopover).toBeVisible();
+  // A commit diff is not the file on disk, so there is nothing to download.
+  await expect(detailsPopover.locator(".viewer-download-link")).toHaveCount(0);
   await page.keyboard.press("f");
   await expect(actionHintDialog(page)).toBeHidden();
   await expect(detailsPopover).toBeVisible();

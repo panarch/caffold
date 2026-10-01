@@ -3,8 +3,10 @@ import { escapeHtml, formatBytes, formatModified } from "./dom.js";
 import {
   buttonActionHintTarget,
   emptyActionHintScope,
+  linkActionHintTarget,
   mergeActionHintScopes,
 } from "../action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "../action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -14,8 +16,9 @@ import {
   sourceViewerPresentation,
 } from "./file-viewer-presentation.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
-import { imageUrl, pdfUrl } from "../api.js";
+import { downloadUrl, imageUrl, pdfUrl } from "../api.js";
 import {
+  KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
 } from "../keyboard-navigation.js";
@@ -52,6 +55,11 @@ class CaffoldReviewFileViewer extends HTMLElement {
             bubbles: true,
           }),
         );
+      });
+      this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) => {
+        if (event.target === this.detailsPopover()) {
+          this.deactivate();
+        }
       });
       this.boundIconsReady = () => this.patchViewerIcons();
       window.addEventListener("caffold:icons-ready", this.boundIconsReady);
@@ -472,13 +480,36 @@ class CaffoldReviewFileViewer extends HTMLElement {
       return [];
     }
     const contextId = `${scopeId}:details`;
+    const isCurrent = () =>
+      this.isConnected &&
+      !this.hidden &&
+      this.detailsPopover() === popover &&
+      this.hasDetailsMetadata(popover);
+    const download = this.downloadLink(popover);
     return [keyboardNavigationContext({
       id: contextId,
       kind: "popover",
       root: popover,
       actionHints: {
         dialog,
-        scope: emptyActionHintScope(),
+        scope: download
+          ? {
+              blocked: false,
+              targets: [linkActionHintTarget({
+                invalidationOwner: this,
+                id: `${contextId}:download`,
+                actionId: ACTION_HINT_ACTION.LINK_OPEN,
+                label: download.textContent.trim(),
+                control: download,
+                clipRoots: [popover],
+                isActionable: () =>
+                  isCurrent() && this.downloadLink(popover) === download,
+              })],
+              mutationRoots: [popover],
+              scrollRoots: [popover],
+            }
+          : emptyActionHintScope(),
+        sessionBound: Boolean(download),
       },
       scroll: {
         hud,
@@ -487,11 +518,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
           id: contextId,
           label: "File details",
           popover,
-          isCurrent: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.detailsPopover() === popover &&
-            this.hasDetailsMetadata(popover),
+          isCurrent,
         }),
       },
     })];
@@ -659,7 +686,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
 
     this.innerHTML = `
       <section class="viewer-panel image-panel">
-        ${this.renderHeader(image.name, metadata)}
+        ${this.renderHeader(image.name, metadata, { downloadPath: image.path })}
         <div class="image-stage">
           <img
             class="image-preview"
@@ -696,6 +723,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     const popoverId = this.detailsPopoverId;
     const subtitle = options.subtitle ?? "";
     const lineStats = options.lineStats ?? null;
+    const downloadPath = options.downloadPath ?? "";
 
     return `
       <header class="viewer-header">
@@ -743,9 +771,27 @@ class CaffoldReviewFileViewer extends HTMLElement {
               )
               .join("")}
           </dl>
+          ${downloadPath ? this.renderDownloadAction(title, downloadPath) : ""}
           <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
         </div>
       </header>
+    `;
+  }
+
+  renderDownloadAction(name, path) {
+    return `
+      <div class="viewer-meta-actions">
+        <a
+          class="viewer-download-link"
+          href="${escapeHtml(downloadUrl(path))}"
+          download="${escapeHtml(name)}"
+        >
+          <span class="viewer-download-icon" aria-hidden="true">
+            ${renderInlineIcon("Download", "", "viewer-download-svg")}
+          </span>
+          <span>Download</span>
+        </a>
+      </div>
     `;
   }
 
@@ -754,6 +800,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     const subtitle = presentation?.subtitle ?? "";
     const metadata = presentation?.metadata ?? [];
     const lineStats = presentation?.lineStats ?? null;
+    const downloadPath = presentation?.downloadPath ?? "";
     if (!subtitle && !lineStats && metadata.length === 0) {
       return this.renderBasicHeader(title);
     }
@@ -761,7 +808,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     return this.renderHeader(
       title,
       metadata,
-      { subtitle, lineStats },
+      { subtitle, lineStats, downloadPath },
     );
   }
 
@@ -871,6 +918,12 @@ class CaffoldReviewFileViewer extends HTMLElement {
     return Boolean(popover?.querySelector(":scope > dl > div"));
   }
 
+  downloadLink(popover = this.detailsPopover()) {
+    return popover?.querySelector(
+      ":scope > .viewer-meta-actions > .viewer-download-link",
+    ) ?? null;
+  }
+
   patchViewerIcons() {
     patchInlineIcon(
       this.querySelector(".viewer-close-button"),
@@ -889,6 +942,12 @@ class CaffoldReviewFileViewer extends HTMLElement {
       "Info",
       "Details",
       "viewer-info-icon",
+    );
+    patchInlineIcon(
+      this.downloadLink()?.querySelector(":scope > .viewer-download-icon"),
+      "Download",
+      "",
+      "viewer-download-svg",
     );
   }
 }
