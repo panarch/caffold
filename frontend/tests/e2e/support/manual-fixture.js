@@ -1219,6 +1219,26 @@ const NOTES_TREE = {
 };
 
 const NOTES = {
+  "note-announcement": {
+    id: "note-announcement",
+    name: "Announcement outline",
+    content: "# Announcement outline\n\nIntroduce Lumen's dark theme:\n\n- Show Settings in light and dark themes.\n- Explain that System follows the device's appearance.\n- Mention that the theme choice is remembered per browser.\n",
+    location: [{ id: "dir-launch", name: "Launch" }],
+    createdAtMs: MANUAL_NOW - 27 * 60 * 60_000,
+    updatedAtMs: MANUAL_NOW - 26 * 60 * 60_000,
+    createdBy: { threadId: MANUAL_TASKS.announcement.threadId, state: "active", displayName: MANUAL_TASKS.announcement.title },
+    updatedBy: { threadId: MANUAL_TASKS.announcement.threadId, state: "active", displayName: MANUAL_TASKS.announcement.title },
+  },
+  "note-release-checklist": {
+    id: "note-release-checklist",
+    name: "Release checklist",
+    content: "# Release checklist\n\nBefore shipping a Lumen release:\n\n- Run the browser tests in light and dark themes.\n- Check the small-screen navigation.\n- Review the theme tokens against the final UI.\n- Publish the release notes.\n",
+    location: [{ id: "dir-lumen", name: "Lumen" }],
+    createdAtMs: MANUAL_NOW - 4 * 24 * 60 * 60_000,
+    updatedAtMs: MANUAL_NOW - 3 * 24 * 60 * 60_000,
+    createdBy: { threadId: MANUAL_TASKS.darkTheme.threadId, state: "active", displayName: MANUAL_TASKS.darkTheme.title },
+    updatedBy: { threadId: MANUAL_TASKS.darkTheme.threadId, state: "active", displayName: MANUAL_TASKS.darkTheme.title },
+  },
   [MANUAL_NOTE_ID]: {
     id: MANUAL_NOTE_ID,
     name: "Theme tokens",
