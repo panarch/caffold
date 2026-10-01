@@ -26,7 +26,9 @@ caffold-settings-navigator {
     align-content: start;
     min-height: 0;
     overflow: auto;
-    padding: var(--interface-space-4) 0 var(--interface-space-5);
+    padding: var(--interface-space-4) 0
+      max(var(--interface-space-5), var(--task-workspace-navigation-clearance, 0rem));
+    scroll-padding-bottom: var(--task-workspace-navigation-clearance, 0rem);
     scrollbar-width: none;
   }
 

@@ -35,6 +35,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
+  withActionHintOcclusionRoots,
 } from "../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
@@ -140,6 +141,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
             <caffold-task-navigator class="tasks-list-region"></caffold-task-navigator>
             <caffold-notes-navigator hidden></caffold-notes-navigator>
             <caffold-settings-navigator hidden></caffold-settings-navigator>
+            <div class="notes-primary-slot"></div>
             <caffold-task-workspace-navigation></caffold-task-workspace-navigation>
           </aside>
           <caffold-pane-resizer
@@ -211,6 +213,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.tasksPage.setLiveUpdates(this.liveUpdates);
     this.tasksPage.connectTaskNavigator(this.taskNavigator);
     this.notesWorkspace.connectNotesNavigator(this.notesNavigator);
+    this.notesWorkspace.connectPrimarySlot(this.querySelector(".notes-primary-slot"));
     this.settingsWorkspace.connectSettingsNavigator(this.settingsNavigator);
     this.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
     this.tasksPage.setCodexRestartState(this.codexRestartStateValue);
@@ -276,9 +279,12 @@ class CaffoldTaskWorkspace extends HTMLElement {
         event.stopPropagation();
         const tab = event.detail?.mode;
         // Choosing the tab already shown keeps its route, an open Task
-        // included, and only brings its list back to the top.
+        // included, and brings its list back to the top. A Notes pair keeps
+        // its hidden or choosing tree at the same position.
         if (tab === this.mode) {
-          this.navigatorForTab(tab).scrollToTop();
+          if (tab !== "notes" || !this.notesWorkspace.sideBySide()) {
+            this.navigatorForTab(tab).scrollToTop();
+          }
           return;
         }
         this.dispatchEvent(
@@ -628,20 +634,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
     const modeScope = this.mode === "tasks"
       ? this.tasksPage?.actionHintScope()
       : this.mode === "notes"
-        ? mergeActionHintScopes(
-            hasActionHintLayoutBox(this.notesNavigator)
-              ? this.notesNavigator.actionHintScope({
-                  scopeId: "notes",
-                  clipRoots: navigationClipRoots,
-                })
-              : null,
-            hasActionHintLayoutBox(this.notesWorkspace)
-              ? this.notesWorkspace.actionHintScope({
-                  scopeId: "notes",
-                  clipRoots: detailClipRoots,
-                })
-              : null,
-          )
+        ? this.notesWorkspace.actionHintScope({
+            scopeId: "notes",
+            leftClipRoots: navigationClipRoots,
+            rightClipRoots: detailClipRoots,
+          })
         : this.mode === "settings"
         ? mergeActionHintScopes(
             hasActionHintLayoutBox(this.settingsNavigator)
@@ -696,7 +693,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
           })
         : null,
       resizerScope,
-      modeScope,
+      withActionHintOcclusionRoots(modeScope, [this.navigation].filter(Boolean)),
     );
   }
 
@@ -729,20 +726,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
         emptyScrollSurfaceScope();
     }
     if (this.mode === "notes") {
-      return mergeScrollSurfaceScopes(
-        hasScrollLayoutBox(this.notesNavigator)
-          ? this.notesNavigator.scrollSurfaceScope({
-              scopeId: "notes",
-              clipRoots: [this.masterPane, this.workspaceSurface].filter(Boolean),
-            })
-          : null,
-        hasScrollLayoutBox(this.notesWorkspace)
-          ? this.notesWorkspace.scrollSurfaceScope({
-              scopeId: "notes",
-              clipRoots: [this.detailPane, this.workspaceSurface].filter(Boolean),
-            })
-          : null,
-      );
+      return this.notesWorkspace.scrollSurfaceScope({
+        scopeId: "notes",
+        leftClipRoots: [this.masterPane, this.workspaceSurface].filter(Boolean),
+        rightClipRoots: [this.detailPane, this.workspaceSurface].filter(Boolean),
+      });
     }
     if (this.mode !== "settings") {
       return emptyScrollSurfaceScope();
@@ -904,6 +892,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.tasksPage.dataset.taskDetailPresentation ?? "reading";
     this.dataset.notesView =
       this.notesWorkspace?.dataset.notesView ?? "list";
+    this.dataset.notesPicker = this.notesWorkspace?.dataset.notesPicker ?? "";
     this.dataset.settingsView =
       this.settingsWorkspace.dataset.settingsView ?? "list";
     this.syncNavigationPane();
@@ -937,7 +926,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
    */
   detailOpen() {
     if (this.mode === "notes") {
-      return this.dataset.notesView === "detail";
+      return this.dataset.notesView !== "list";
     }
     if (this.mode === "settings") {
       return this.dataset.settingsView === "detail";
@@ -958,12 +947,16 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.toggleAttribute("data-workspace-detail-open", detailOpen);
     this.toggleAttribute(
       "data-side-pane-collapsed",
-      detailOpen && this.masterResizer.collapsed,
+      detailOpen && this.masterResizer.collapsed &&
+        !(this.mode === "notes" && this.notesWorkspace.sideBySide()),
     );
     this.syncSidePaneToggle();
   }
 
   navigationSidePane() {
+    if (this.mode === "notes" && this.notesWorkspace.sideBySide()) {
+      return { label: "navigation pane", beside: false, collapsible: false, collapsed: false };
+    }
     const collapsible = this.hasAttribute("data-workspace-detail-open");
     return {
       label: "navigation pane",

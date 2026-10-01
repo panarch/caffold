@@ -390,6 +390,20 @@ test("intersects targets with every clip and requires the original center", () =
   );
 });
 
+test("excludes even partial occlusion while keeping adjacent and clipped-away regions", () => {
+  const viewport = { left: 0, top: 0, right: 300, bottom: 300 };
+  const anchor = { left: 0, top: 70, right: 200, bottom: 90 };
+  const panel = { left: 0, top: 80, right: 50, bottom: 150 };
+  // The anchor center is outside the panel, but part of the row is covered.
+  assert.equal(visibleTargetRect(anchor, [], viewport, [panel]), null);
+  assert.ok(visibleTargetRect(anchor, [], viewport, [{ ...panel, top: 90 }]));
+  assert.ok(visibleTargetRect(anchor, [], viewport, [{ ...panel, right: 0 }]));
+  assert.ok(visibleTargetRect(anchor, [{ left: 50, top: 0, right: 300, bottom: 300 }], viewport, [panel]));
+  assert.equal(visibleTargetRect(anchor, [], viewport, [
+    { left: 250, top: 250, right: 300, bottom: 300 }, panel,
+  ]), null);
+});
+
 test("clamps badges to the visual viewport and compares captured geometry", () => {
   assert.deepEqual(
     clampBadgePosition(
@@ -522,6 +536,7 @@ test("treats owner identity, actionability, visibility, and binding as frozen", 
     { controlKind: "link" },
     { activationKey: "changed" },
     { clipRoots: [{}] },
+    { occlusionRoots: [{}] },
   ]) {
     const changed = { ...current, ...patch };
     assert.equal(sameActionHintTargetBinding(frozen, changed), false);

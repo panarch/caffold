@@ -485,6 +485,7 @@ export async function installExternalModuleDefaults(page) {
         export const TriangleAlert = [["path", { d: "M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z" }], ["path", { d: "M12 9v4" }], ["path", { d: "M12 17h.01" }]];
         export const Trash2 = [["path", { d: "M3 6h18" }], ["path", { d: "M8 6V4h8v2" }], ["path", { d: "M19 6l-1 15H6L5 6" }]];
         export const WrapText = [["path", { d: "M3 6h18" }], ["path", { d: "M3 12h15a3 3 0 1 1 0 6h-4" }], ["path", { d: "m16 16-2 2 2 2" }], ["path", { d: "M3 18h7" }]];
+        export const Columns2 = [["rect", { x: "3", y: "3", width: "18", height: "18", rx: "2" }], ["path", { d: "M12 3v18" }]];
         export const X = [["path", { d: "M18 6 6 18" }], ["path", { d: "m6 6 12 12" }]];
         export const Zap = [["path", { d: "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" }]];
         export function createElement(iconNode, attrs = {}) {

@@ -399,13 +399,21 @@ export function intersectRects(rects) {
   });
 }
 
-export function visibleTargetRect(anchorRect, clipRects, viewportRect) {
+export function visibleTargetRect(
+  anchorRect,
+  clipRects,
+  viewportRect,
+  occlusionRects = [],
+) {
   const anchor = normalizeRect(anchorRect);
   if (!anchor) {
     return null;
   }
   const visible = intersectRects([anchor, ...clipRects, viewportRect]);
   if (!visible) {
+    return null;
+  }
+  if (occlusionRects.some((rect) => intersectRects([visible, rect]))) {
     return null;
   }
   const centerX = anchor.left + anchor.width / 2;
@@ -466,7 +474,8 @@ export function sameActionHintTargetBinding(left, right) {
       left.invalidationOwner === right.invalidationOwner &&
       left.control === right.control &&
       left.anchor === right.anchor &&
-      sameElementSet(left.clipRoots, right.clipRoots),
+      sameElementSet(left.clipRoots, right.clipRoots) &&
+      sameElementSet(left.occlusionRoots ?? [], right.occlusionRoots ?? []),
   );
 }
 

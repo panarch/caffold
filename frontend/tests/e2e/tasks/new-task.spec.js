@@ -264,12 +264,15 @@ test("creates a task with responsive composer controls and canonical approval st
     }
     await expect(settingsNavigation).toHaveAccessibleName("Settings — Codex ready");
     await expect(settingsNavigation.locator("svg")).toBeVisible();
+    const rootFontSize = await page.evaluate(() =>
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+    );
     expect(await taskPresentation(settingsNavigation)).toEqual(
       expect.objectContaining({
         borderWidth: "0px",
         display: "grid",
         minHeight: touchInterface ? "40px" : "30px",
-        padding: "0px",
+        padding: `0px ${rootFontSize * 0.625}px`,
       }),
     );
   });

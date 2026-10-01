@@ -23,6 +23,7 @@
 @import "./pages/(task-workspace)/codex-status/components/runtime-update-dialog.css";
 @import "./pages/(task-workspace)/codex-status/components/reset-credit-dialog.css";
 @import "./pages/(task-workspace)/notes/layout.css";
+@import "./pages/(task-workspace)/notes/components/document.css";
 @import "./pages/(task-workspace)/notes/components/info.css";
 @import "./pages/(task-workspace)/notes/components/info/components/copy-markdown.css";
 @import "./pages/(task-workspace)/notes/components/info/components/copy-path.css";
@@ -433,6 +434,9 @@
   --danger-chip-bg: #ffebe8;
   --shadow-rgb: 0 0 0;
   --structural-shadow-panel: 0 4px 18px rgb(var(--shadow-rgb) / 6%);
+  --floating-shadow-panel:
+    0 0.125rem 0.375rem rgb(var(--shadow-rgb) / 12%),
+    0 0.375rem 1.25rem rgb(var(--shadow-rgb) / 14%);
   --structural-shadow-block-end: 0 3px 10px rgb(var(--shadow-rgb) / 3%);
   --structural-shadow-inline-end: linear-gradient(
     to right,
@@ -540,6 +544,9 @@
   --danger-chip-bg: #492725;
   --shadow-rgb: 0 0 0;
   --structural-shadow-panel: 0 4px 18px rgb(var(--shadow-rgb) / 28%);
+  --floating-shadow-panel:
+    0 0.125rem 0.375rem rgb(var(--shadow-rgb) / 24%),
+    0 0.375rem 1.25rem rgb(var(--shadow-rgb) / 36%);
   --structural-shadow-block-end: 0 3px 10px rgb(var(--shadow-rgb) / 20%);
   --structural-shadow-inline-end: linear-gradient(
     to right,

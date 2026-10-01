@@ -1,5 +1,11 @@
 caffold-task-workspace {
   --task-workspace-master-width: 380px;
+  --task-workspace-navigation-inset: var(--interface-space-4);
+  --task-workspace-navigation-height: max(
+    3rem,
+    calc(var(--interface-compact-hit-size) + var(--interface-space-4) + 2px)
+  );
+  --task-workspace-divider-width: 1px;
   --task-workspace-header-size: max(
     var(--interface-compact-hit-size),
     calc(
@@ -22,6 +28,7 @@ caffold-task-workspace {
   --task-header-leading-space: 0rem;
   --task-header-block-space: 0rem;
   position: relative;
+  container: task-workspace / inline-size;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
@@ -70,6 +77,15 @@ caffold-task-workspace {
   & .task-workspace-master-pane > caffold-settings-navigator {
     min-height: 0;
     height: auto;
+  }
+
+  & .notes-primary-slot {
+    display: none;
+    grid-row: 1;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
   }
 
   & .task-workspace-master-pane::after {
@@ -174,6 +190,60 @@ caffold-task-workspace {
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
     stroke-width: 2;
+  }
+}
+
+@container task-workspace (min-width: 641px) {
+  caffold-task-workspace {
+    & .task-workspace-master-pane {
+      grid-template-rows: minmax(0, 1fr);
+      --task-workspace-navigation-clearance: calc(
+        var(--task-workspace-navigation-height) +
+          var(--task-workspace-navigation-inset) +
+          env(safe-area-inset-bottom) + var(--interface-space-4)
+      );
+    }
+
+    & .task-workspace-master-pane > caffold-task-workspace-navigation {
+      position: absolute;
+      z-index: 4;
+      left: var(--task-workspace-navigation-inset);
+      bottom: calc(
+        var(--task-workspace-navigation-inset) + env(safe-area-inset-bottom)
+      );
+      width: max-content;
+      max-width: calc(100% - 2 * var(--task-workspace-navigation-inset));
+    }
+  }
+
+  caffold-task-workspace[data-workspace-mode="notes"][data-notes-view="split"] {
+    & .task-workspace-master-detail {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: var(--task-workspace-divider-width);
+      background: var(--border);
+    }
+    & .task-workspace-master-pane {
+      display: grid;
+      border-right: 0;
+    }
+    & .task-workspace-detail-pane { display: block; }
+    & .task-workspace-master-detail > caffold-pane-resizer { display: none; }
+    & .notes-primary-slot { display: block; }
+    & .task-workspace-master-pane > caffold-notes-navigator { display: none; }
+    &[data-notes-picker="primary"] .notes-primary-slot { display: none; }
+    &[data-notes-picker="primary"] .task-workspace-master-pane > caffold-notes-navigator { display: grid; }
+  }
+}
+
+@container task-workspace (max-width: 640px) {
+  caffold-task-workspace[data-workspace-mode="notes"][data-notes-view="split"] {
+    & .task-workspace-master-detail { grid-template-columns: minmax(0, 1fr); }
+    & .task-workspace-master-pane { display: grid; }
+    & .notes-primary-slot { display: block; }
+    & .task-workspace-detail-pane,
+    & .task-workspace-master-detail > caffold-pane-resizer,
+    & .task-workspace-master-pane > caffold-notes-navigator,
+    & .task-workspace-master-pane > caffold-task-workspace-navigation { display: none; }
   }
 }
 

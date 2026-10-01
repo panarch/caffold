@@ -24,6 +24,7 @@ test("components wait for shared CSS and share one CSS request", { tag: "@deskto
     expect(await page.evaluate(() => [
       "caffold-task-detail-terminal", "caffold-task-detail-git",
       "caffold-task-detail-github", "caffold-task-detail-info", "caffold-notes-info",
+      "caffold-note-document", "caffold-notes-navigator",
       "caffold-task-navigator", "caffold-task-workspace", "caffold-task-git-layout",
       "caffold-task-github-layout", "caffold-terminal-page", "caffold-git-review-controls",
       "caffold-file-list", "caffold-pagination", "caffold-review-file-viewer",
@@ -31,7 +32,7 @@ test("components wait for shared CSS and share one CSS request", { tag: "@deskto
     release.resolve();
     await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
     expect(requests.sort()).toEqual(["compact-icon-button.css"]);
-    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(15);
+    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(19);
   } finally {
     release.resolve();
   }
@@ -93,7 +94,8 @@ test("new consumers declare their own scope, retain local overrides and reconnec
 
 test("pagination keeps its compact surface, disabled appearance and native activation", { tag: "@all-viewports" }, async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-pagination"));
   await page.evaluate(() => {
     const pagination = document.createElement("caffold-pagination");
     pagination.setAttribute("page", "1");

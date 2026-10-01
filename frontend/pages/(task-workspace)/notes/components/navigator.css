@@ -11,6 +11,7 @@ caffold-notes-navigator {
   & > .notes-navigator-header {
     box-sizing: border-box;
     display: flex;
+    gap: var(--interface-space-3);
     align-items: center;
     height: var(--task-workspace-header-size);
     border-bottom: 1px solid var(--border);
@@ -19,6 +20,24 @@ caffold-notes-navigator {
       var(--interface-space-6) + var(--task-header-leading-space, 0rem)
     );
     box-shadow: var(--structural-shadow-block-end);
+  }
+
+  & .notes-picker-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: var(--workspace-header-title-size);
+    line-height: var(--interface-line-height);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .notes-picker-icon {
+    position: relative;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
   }
 
   & > .notes-navigator-status {
@@ -62,6 +81,7 @@ caffold-notes-navigator {
   }
 
   & > caffold-file-tree {
+    --file-tree-scroll-end-clearance: var(--task-workspace-navigation-clearance, 0rem);
     grid-row: 3;
     min-height: 0;
   }

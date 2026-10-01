@@ -248,6 +248,15 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/remote-access/tailscale.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/remote-access/tailscale.js"
         ))),
+        "pages/(task-workspace)/notes/components/document.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/notes/components/document.css"
+        ))),
+        "pages/(task-workspace)/notes/components/document.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/notes/components/document.js"
+        ))),
+        "pages/(task-workspace)/notes/layout/selection.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/notes/layout/selection.js"
+        ))),
         "pages/(task-workspace)/notes/components/info.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/notes/components/info.css"
         ))),
@@ -1601,6 +1610,8 @@ mod tests {
             "action-hints/model.js",
             "action-hints/components/dialog.js",
             "pages/(task-workspace)/notes/layout.js",
+            "pages/(task-workspace)/notes/layout/selection.js",
+            "pages/(task-workspace)/notes/components/document.js",
             "pages/(task-workspace)/notes/components/info.js",
             "pages/(task-workspace)/notes/components/info/components/copy-markdown.js",
             "pages/(task-workspace)/notes/components/info/components/copy-path.js",
@@ -1651,6 +1662,7 @@ mod tests {
             "keyboard-navigation/components/shortcut-dialog.css",
             "action-hints/components/dialog.css",
             "pages/(task-workspace)/notes/layout.css",
+            "pages/(task-workspace)/notes/components/document.css",
             "pages/(task-workspace)/notes/components/info.css",
             "pages/(task-workspace)/notes/components/info/components/copy-markdown.css",
             "pages/(task-workspace)/notes/components/info/components/copy-path.css",

@@ -55,6 +55,35 @@ export async function waitForActionHintTarget(page, accessibleName) {
   }).toBe(true);
 }
 
+// Independently classify the owner-declared controls from their actual painted
+// rectangles, so browser expectations do not call the production visibility model.
+export async function workspaceOcclusionTargets(page, ownerSelector) {
+  return page.evaluate((selector) => {
+    const owner = document.querySelector(selector);
+    const panel = document.querySelector("caffold-task-workspace-navigation").getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const bounds = { left: viewport?.offsetLeft ?? 0, top: viewport?.offsetTop ?? 0,
+      right: (viewport?.offsetLeft ?? 0) + (viewport?.width ?? innerWidth),
+      bottom: (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight) };
+    const result = { covered: [], clear: [] };
+    for (const target of document.querySelector("caffold-app-shell").actionHintScope().targets) {
+      if (!owner.contains(target.anchor) || !target.isActionable()) continue;
+      const anchor = target.anchor.getBoundingClientRect();
+      const clips = [bounds, anchor, ...target.clipRoots.map((root) => root.getBoundingClientRect())];
+      const left = Math.max(...clips.map((rect) => rect.left));
+      const top = Math.max(...clips.map((rect) => rect.top));
+      const right = Math.min(...clips.map((rect) => rect.right));
+      const bottom = Math.min(...clips.map((rect) => rect.bottom));
+      const x = (anchor.left + anchor.right) / 2, y = (anchor.top + anchor.bottom) / 2;
+      if (right <= left || bottom <= top || x < left || x > right || y < top || y > bottom) continue;
+      const covered = Math.min(right, panel.right) > Math.max(left, panel.left) &&
+        Math.min(bottom, panel.bottom) > Math.max(top, panel.top);
+      result[covered ? "covered" : "clear"].push(target.label);
+    }
+    return result;
+  }, ownerSelector);
+}
+
 export async function activateActionHint(page, accessibleName) {
   const { code, dialog } = await typeActionHintCode(page, accessibleName);
   await expect(dialog).toBeHidden();

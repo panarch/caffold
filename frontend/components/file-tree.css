@@ -13,6 +13,7 @@ caffold-file-tree {
     height: 100%;
     overflow: auto;
     overscroll-behavior: contain;
+    scroll-padding-bottom: var(--file-tree-scroll-end-clearance, 0rem);
   }
 
   & .file-tree-rows {
@@ -23,7 +24,7 @@ caffold-file-tree {
     min-width: 100%;
     min-height: 0;
     margin: 0;
-    padding: 0.25rem 0;
+    padding: 0.25rem 0 calc(0.25rem + var(--file-tree-scroll-end-clearance, 0rem));
     list-style: none;
   }
 

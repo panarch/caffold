@@ -164,6 +164,7 @@ test("offers the tree's Notes and folders, and Retry only while it is shown", ()
     hidden: false,
     isConnected: true,
     snapshotValue: { selectedNoteId: "storage" },
+    querySelectorAll: () => [],
     fileTree: () => fileTree,
     retryButton: () => retry,
   };

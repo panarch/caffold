@@ -335,6 +335,19 @@ export function mergeActionHintScopes(...scopes) {
   return merged;
 }
 
+export function withActionHintOcclusionRoots(scope, occlusionRoots) {
+  if (scope == null || occlusionRoots.length === 0) {
+    return scope;
+  }
+  return {
+    ...scope,
+    targets: (scope.targets ?? []).map((target) => ({
+      ...target,
+      occlusionRoots: [...(target.occlusionRoots ?? []), ...occlusionRoots],
+    })),
+  };
+}
+
 function focusActionHintTarget({
   id,
   actionId,

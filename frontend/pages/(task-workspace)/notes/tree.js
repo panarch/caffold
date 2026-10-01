@@ -7,7 +7,7 @@ import {
 
 // `levels` maps a directory id, or "" for the top of the tree, to its latest
 // read: the `listing` that arrived last, and the read's `state` and `message`.
-export function notesTreeNodes(levels) {
+export function notesTreeNodes(levels, { disabledNoteId = "" } = {}) {
   const nodesIn = (listing) => [
     ...listing.directories.map((directory) => ({
       key: noteDirectoryKey(directory.id),
@@ -20,6 +20,7 @@ export function notesTreeNodes(levels) {
       kind: "file",
       name: note.name,
       noteId: note.id,
+      ...(note.id === disabledNoteId ? { disabled: true } : {}),
     })),
   ];
   const directoryChildren = (directory) => {

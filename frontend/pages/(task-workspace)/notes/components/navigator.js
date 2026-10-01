@@ -10,6 +10,8 @@ import {
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import "../../components/workspace-brand.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import { directoryIdFromKey, noteKey, notesTreeNodes } from "../tree.js";
 
 export const NOTES_NAVIGATOR_INTENT_EVENT = "caffold:notes-navigator-intent";
@@ -23,6 +25,8 @@ const EMPTY_MESSAGE = "No notes yet. Ask an agent in a Task to save one.";
 class CaffoldNotesNavigator extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
+    window.addEventListener("caffold:icons-ready", this.boundPickerIcons);
+    this.renderPickerIcons();
   }
 
   ensureRendered() {
@@ -40,6 +44,9 @@ class CaffoldNotesNavigator extends HTMLElement {
     this.innerHTML = `
       <header class="notes-navigator-header">
         <caffold-workspace-brand></caffold-workspace-brand>
+        <button type="button" class="notes-picker-back" data-picker-action="cancel" aria-label="Cancel note selection" title="Return to the open note" hidden></button>
+        <h2 class="notes-picker-title" hidden></h2>
+        <button type="button" class="notes-picker-close" data-picker-action="close" aria-label="Close side by side" title="Close side by side" hidden></button>
       </header>
       <div class="notes-navigator-status" hidden>
         <p class="notes-navigator-message"></p>
@@ -64,12 +71,36 @@ class CaffoldNotesNavigator extends HTMLElement {
     this.retryButton().addEventListener("click", () => {
       this.dispatchIntent({ type: "retry" });
     });
+    this.addEventListener("click", (event) => {
+      const control = event.target.closest("button[data-picker-action]");
+      if (control) this.dispatchIntent({ type: control.dataset.pickerAction });
+    });
+    this.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || !this.snapshotValue.picker) return;
+      if (event.target.closest("input, textarea, [contenteditable]")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.dispatchIntent({ type: "cancel" });
+    });
+    this.renderPickerIcons();
+    this.boundPickerIcons ??= () => this.renderPickerIcons();
+    window.addEventListener("caffold:icons-ready", this.boundPickerIcons);
+    void warmIcons();
     this.render();
   }
 
   setSnapshot(snapshot) {
     this.ensureRendered();
     this.snapshotValue = snapshot;
+    const header = this.querySelector(":scope > .notes-navigator-header");
+    const picker = snapshot.picker || "";
+    this.dataset.picker = picker;
+    header.querySelector("caffold-workspace-brand").hidden = Boolean(picker);
+    header.querySelector(".notes-picker-back").hidden = !picker;
+    const title = header.querySelector("h2");
+    title.hidden = !picker;
+    title.textContent = snapshot.companion ? "Choose a note to read alongside" : "Choose another note";
+    header.querySelector(".notes-picker-close").hidden = picker !== "secondary" || snapshot.companion;
     this.render();
   }
 
@@ -99,7 +130,7 @@ class CaffoldNotesNavigator extends HTMLElement {
     if (listing) {
       fileTree.setModel({
         entityKey: "notes",
-        nodes: notesTreeNodes(levels),
+        nodes: notesTreeNodes(levels, { disabledNoteId: this.snapshotValue.disabledNoteId }),
         selectedKey: selectedNoteId ? noteKey(selectedNoteId) : "",
         expandNewDirectories: false,
       });
@@ -152,6 +183,17 @@ class CaffoldNotesNavigator extends HTMLElement {
         }
       : null;
     const fileTree = this.fileTree();
+    const pickerControls = [...this.querySelectorAll("button[data-picker-action]")].filter((control) => !control.hidden);
+    const pickerScope = {
+      blocked: false,
+      targets: pickerControls.map((control) => buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:${control.dataset.pickerAction}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label"), control, clipRoots: [this, ...clipRoots],
+        isActionable: () => this.isConnected && !this.hidden && !control.hidden,
+      })), mutationRoots: pickerControls, scrollRoots: [],
+    };
     const treeScope = !fileTree.hidden
       ? fileTree.actionHintScope({
           scopeId: `${scopeId}:tree`,
@@ -162,7 +204,7 @@ class CaffoldNotesNavigator extends HTMLElement {
           labelForNode: (node) => `Open ${node.name}`,
         })
       : null;
-    return mergeActionHintScopes(retryScope, treeScope);
+    return mergeActionHintScopes(pickerScope, retryScope, treeScope);
   }
 
   scrollSurfaceScope({ scopeId = "notes", clipRoots = [] } = {}) {
@@ -185,6 +227,27 @@ class CaffoldNotesNavigator extends HTMLElement {
     this.fileTree().scrollToTop();
   }
 
+  disconnectedCallback() {
+    window.removeEventListener("caffold:icons-ready", this.boundPickerIcons);
+  }
+
+  renderPickerIcons() {
+    this.querySelector('[data-picker-action="cancel"]').innerHTML = renderInlineIcon("ArrowLeft", "Cancel note selection", "notes-picker-icon");
+    this.querySelector('[data-picker-action="close"]').innerHTML = renderInlineIcon("X", "Close side by side", "notes-picker-icon");
+  }
+
+  focusPicker() { this.fileTree().focusFirstEntry(); }
+
+  place(parent, before = null) {
+    if (this.parentElement === parent) return;
+    const target = before?.parentElement === parent ? before : null;
+    const scrollport = this.fileTree().scrollSurfaceScope({ scopeId: "notes:placement" }).surfaces[0]?.scrollport;
+    const scroll = scrollport ? { top: scrollport.scrollTop, left: scrollport.scrollLeft } : null;
+    if (parent.moveBefore && this.isConnected) parent.moveBefore(this, target);
+    else parent.insertBefore(this, target);
+    if (scroll) { scrollport.scrollTop = scroll.top; scrollport.scrollLeft = scroll.left; }
+  }
+
   dispatchIntent(detail) {
     this.dispatchEvent(new CustomEvent(NOTES_NAVIGATOR_INTENT_EVENT, {
       bubbles: true,
@@ -203,4 +266,5 @@ class CaffoldNotesNavigator extends HTMLElement {
   }
 }
 
+await Promise.all(["back", "close"].map((action) => compactIconButton.register("caffold-notes-navigator", `> .notes-navigator-header > .notes-picker-${action}`)));
 customElements.define("caffold-notes-navigator", CaffoldNotesNavigator);

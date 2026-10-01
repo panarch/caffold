@@ -89,6 +89,22 @@ test("composes the navigation pane resizer through its public scope", () => {
   assert.equal(options.isCurrent(), false);
 });
 
+test("declares navigation as an occluder of content without occluding its own actions", () => {
+  const navigationTarget = { id: "navigation" };
+  const contentTarget = { id: "content" };
+  const navigation = { getClientRects: () => [{}], actionHintScope: () => ({ targets: [navigationTarget] }) };
+  const owner = {
+    hidden: false, mode: "tasks", masterPane: {}, navigation,
+    tasksPage: { actionHintScope: () => ({ targets: [contentTarget] }) },
+    querySelector: () => null,
+  };
+  const targets = workspace.actionHintScope.call(owner).targets;
+  assert.equal(targets[0], navigationTarget);
+  assert.equal(targets[0].occlusionRoots, undefined);
+  assert.deepEqual(targets[1].occlusionRoots, [navigation]);
+  assert.equal(contentTarget.occlusionRoots, undefined);
+});
+
 test("offers the visible compact Back and the Task switcher beside it", () => {
   const routeControl = (label) => ({
     hidden: false,

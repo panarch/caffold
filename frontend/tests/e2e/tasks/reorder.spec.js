@@ -1086,7 +1086,8 @@ test("reveals Tasks on explicit Section mode exit", { tag: "@all-viewports" }, a
 test("preserves the visible Section scroll anchor across compact mode", { tag: "@all-viewports" }, async ({
   page,
 }) => {
-  const sections = Array.from({ length: 24 }, (_, index) => ({
+  // Compact Sections must still have enough scroll range to restore the anchor.
+  const sections = Array.from({ length: 40 }, (_, index) => ({
     id: `section-${index}`,
     name: `/workspace/section-${index}`,
     repository: false,
@@ -1322,7 +1323,11 @@ test("preserves touch scrolling away from handles and drags from a handle", { ta
   };
 
   const scrollX = scrollerBounds.x + 80;
-  const scrollStartY = scrollerBounds.y + scrollerBounds.height - 60;
+  const navigationBounds = await page.locator("caffold-task-workspace-navigation").boundingBox();
+  const scrollStartY = Math.min(
+    scrollerBounds.y + scrollerBounds.height - 60,
+    navigationBounds.y - 24,
+  );
   await touch("touchStart", scrollX, scrollStartY);
   for (const distance of [30, 70, 110, 150]) {
     await touch("touchMove", scrollX, scrollStartY - distance);
