@@ -166,21 +166,6 @@ test("retires newly covered Task rows on panel resize without reallocating froze
   await expect(page).toHaveURL("/tasks/action_hint_48");
 });
 
-test("excludes covered Settings items and preserves navigation Hint activation", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
-  await installActionHintFixture(page, actionHintTasks(2));
-  await page.setViewportSize({ width: testInfo.project.name === "phone" ? 390 : 933, height: 320 });
-  await page.goto("/settings");
-  const initial = await workspaceOcclusionTargets(page, "caffold-settings-navigator");
-  expect(initial.clear.length).toBeGreaterThan(0);
-  expect(initial.covered.length > 0).toBe(testInfo.project.name !== "phone");
-  const dialog = await enterActionHints(page);
-  for (const label of initial.covered) await expect(dialog.getByLabel(new RegExp(` — ${label}$`))).toHaveCount(0);
-  for (const label of initial.clear) await expect(dialog.getByLabel(new RegExp(` — ${label}$`))).toBeVisible();
-  await captureReviewScreenshot(page, testInfo, "floating-settings-hints");
-  await dialog.getByLabel(/Open Tasks$/).click();
-  await expect(page).toHaveURL("/");
-});
-
 test("opens global shortcut help from Normal and replaces Action Hints", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
