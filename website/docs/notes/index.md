@@ -1,4 +1,4 @@
-# Notes
+# Keep and read Notes
 
 Notes are Markdown documents your agents keep for you across Tasks: decisions,
 findings, checklists you reuse. A Note belongs to no Task, Section, or

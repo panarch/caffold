@@ -64,7 +64,6 @@ font = false
 features = [
   "content.code.copy",
   "navigation.footer",
-  "navigation.indexes",
   "navigation.instant",
   "navigation.path",
   "navigation.sections",
