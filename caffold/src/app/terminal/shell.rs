@@ -6,6 +6,8 @@
 //! input, window size, the idle check, waking the reader, and the request to
 //! stop.
 
+mod pty;
+
 use std::{
     collections::HashMap,
     env,
@@ -21,10 +23,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use alacritty_terminal::{
-    event::WindowSize,
-    tty::{self, Options, Pty, Shell},
-};
 use rustix::{
     event::{PollFd, PollFlags, Timespec, poll},
     io::Errno,
@@ -34,6 +32,7 @@ use rustix::{
 use tokio::io::{Interest, unix::AsyncFd};
 
 use super::TerminalSize;
+use pty::Pty;
 
 /// How long a stopped shell has to exit after its hangup before it is killed.
 const HANGUP_GRACE: Duration = Duration::from_secs(3);
@@ -81,14 +80,8 @@ pub(super) fn spawn(
     cwd: &Path,
     size: TerminalSize,
 ) -> io::Result<(ShellControl, ShellReader)> {
-    let options = Options {
-        shell: Some(Shell::new(command.program.clone(), command.args.clone())),
-        working_directory: Some(cwd.to_path_buf()),
-        drain_on_exit: false,
-        env: environment(),
-    };
-    let pty = tty::new(&options, window_size(size), 0)?;
-    let pid = Pid::from_child(pty.child());
+    let pty = Pty::spawn(command, cwd, size)?;
+    let pid = pty.pid();
     let master = AsyncFd::with_interest(pty.file().try_clone()?, Interest::WRITABLE)?;
     let (wake, waker) = UnixStream::pair()?;
     wake.set_nonblocking(true)?;
@@ -345,15 +338,6 @@ fn environment() -> HashMap<String, String> {
     environment
 }
 
-fn window_size(size: TerminalSize) -> WindowSize {
-    WindowSize {
-        num_lines: size.rows,
-        num_cols: size.columns,
-        cell_width: 0,
-        cell_height: 0,
-    }
-}
-
 fn winsize(size: TerminalSize) -> Winsize {
     Winsize {
         ws_row: size.rows,
@@ -365,7 +349,10 @@ fn winsize(size: TerminalSize) -> Winsize {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::mpsc::{self, RecvTimeoutError};
+    use std::{
+        process::{Command, Stdio},
+        sync::mpsc::{self, RecvTimeoutError},
+    };
 
     use rustix::{
         io::{FdFlags, fcntl_getfd},
@@ -375,6 +362,62 @@ mod tests {
     use super::*;
 
     const WAIT: Duration = Duration::from_secs(10);
+
+    #[test]
+    fn child_exit_notifications_do_not_block_an_unread_terminal() {
+        const PROBE: &str = "CAFFOLD_TEST_TERMINAL_SIGCHLD_PROBE";
+        if env::var(PROBE).ok().as_deref() == Some("child") {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            let _entered = runtime.enter();
+            let (control, reader) = spawn(
+                &ShellCommand::new("/bin/sh", &[]),
+                &env::temp_dir(),
+                size(80, 24),
+            )
+            .unwrap();
+
+            // Keep the PTY unread while delivering more exit notifications
+            // than fit in the signal socket. A signal handler must never wait
+            // for the terminal reader to make progress.
+            for _ in 0..20_000 {
+                assert_eq!(unsafe { libc::raise(libc::SIGCHLD) }, 0);
+            }
+            control.stop();
+            reader.finish();
+            return;
+        }
+
+        // The old signal handler blocks inside send on macOS. Own the probe
+        // in a separate process so a regression fails within a deadline.
+        let mut probe = Command::new(env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "app::terminal::shell::tests::child_exit_notifications_do_not_block_an_unread_terminal",
+                "--nocapture",
+            ])
+            .env(PROBE, "child")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + WAIT;
+        loop {
+            if let Some(status) = probe.try_wait().unwrap() {
+                assert!(status.success(), "the child-exit probe failed: {status}");
+                return;
+            }
+            if Instant::now() >= deadline {
+                let _ = probe.kill();
+                let _ = probe.wait();
+                panic!("child-exit notifications blocked the terminal process");
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
 
     #[test]
     fn every_descriptor_of_the_pty_closes_on_exec() {
