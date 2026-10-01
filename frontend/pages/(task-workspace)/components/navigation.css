@@ -1,19 +1,22 @@
 caffold-task-workspace-navigation {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   min-width: 0;
+  min-height: max(
+    3rem,
+    calc(var(--interface-compact-hit-size) + var(--interface-space-4))
+  );
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding-bottom: env(safe-area-inset-bottom);
+  overflow: hidden;
 
   & .task-workspace-navigation {
+    position: relative;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
-    min-height: max(
-      3rem,
-      calc(var(--interface-compact-hit-size) + var(--interface-space-4))
-    );
-    border-top: 1px solid var(--border);
-    background: var(--surface);
-    padding-bottom: env(safe-area-inset-bottom);
   }
 
   & button {
@@ -49,13 +52,17 @@ caffold-task-workspace-navigation {
   & button + button::before {
     position: absolute;
     top: 50%;
-    left: 0;
     width: 1px;
     height: 0.875rem;
     background: var(--border);
     content: "";
     opacity: 0.72;
     pointer-events: none;
+    transform: translateY(-50%);
+  }
+
+  & button + button::before {
+    left: 0;
     transform: translate(-0.5px, -50%);
   }
 
@@ -92,6 +99,27 @@ caffold-task-workspace-navigation {
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
+  }
+}
+
+@container task-workspace (min-width: 641px) {
+  caffold-task-workspace-navigation {
+    height: var(--task-workspace-navigation-height);
+    min-height: var(--task-workspace-navigation-height);
+    padding: var(--interface-space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--interface-space-6);
+    box-shadow: var(--floating-shadow-panel);
+
+    & button {
+      gap: var(--interface-space-2);
+      padding-inline: var(--interface-control-padding-inline);
+      border-radius: var(--interface-space-4);
+    }
+
+    & button + button::before {
+      content: none;
+    }
   }
 }
 

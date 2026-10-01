@@ -155,6 +155,11 @@ class CaffoldFileTree extends HTMLElement {
     this.patchSelection(nextKey);
   }
 
+  focusFirstEntry() {
+    this.ensureRendered();
+    this.querySelector("button.file-tree-entry:not(:disabled)")?.focus({ preventScroll: true });
+  }
+
   expandKeys(keys) {
     this.ensureRendered();
     let changed = false;

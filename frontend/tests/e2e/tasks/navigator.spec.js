@@ -2492,20 +2492,24 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
       );
       const listRect = list.getBoundingClientRect();
       const navigationRect = navigation.getBoundingClientRect();
+      const inset = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.5;
       return {
         ownedByList: navigation.parentElement === list,
         listWidth: Math.round(listRect.width),
-        navigationMatchesListContent:
-          Math.abs(navigationRect.width - list.clientWidth) <= 1,
-        navigationEndsWithList:
-          Math.abs(navigationRect.bottom - listRect.bottom) <= 1,
+        navigationFitsListContent:
+          navigationRect.width <= list.clientWidth - 2 * inset + 1,
+        navigationUsesLeftInset:
+          Math.abs(navigationRect.left - listRect.left - inset) <= 1,
+        navigationUsesBottomInset:
+          Math.abs(listRect.bottom - navigationRect.bottom - inset) <= 1,
       };
     });
     expect(resizedNavigationLayout).toEqual({
       ownedByList: true,
       listWidth: 304,
-      navigationMatchesListContent: true,
-      navigationEndsWithList: true,
+      navigationFitsListContent: true,
+      navigationUsesLeftInset: true,
+      navigationUsesBottomInset: true,
     });
     await expect(workspaceNavigation).toBeVisible();
 

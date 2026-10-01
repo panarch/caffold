@@ -91,7 +91,7 @@ caffold-app-shell
 |   |           `-- Pull Requests
 |   |-- Notes
 |   |   |-- Notes navigator
-|   |   `-- Note
+|   |   `-- Note documents and pane selection
 |   `-- Settings
 |       `-- Keyboard
 |-- caffold-build-mismatch-alert
@@ -255,6 +255,20 @@ frontend routes. Every other frontend path receives the general unknown-route
 response.
 
 ## Task Workspace
+
+Workspace navigation stays in a separate bottom row up to 640px of available
+workspace width. Above that boundary, the master pane places it as a bounded
+floating panel at its bottom left and gives content the full pane height.
+The panel uses intrinsic `max-content` width and three equal Grid tracks, with
+shared Interface padding on each button. The selected font and widest item
+determine all three button widths; the master pane only limits the panel to its
+available width after insets. Window resizing does not stretch the panel.
+The layout owns the overlay clearance; each master-pane scroll owner consumes
+it as end padding and scroll padding. Notes passes it to shared File Tree and
+Markdown Preview through their optional `--file-tree-scroll-end-clearance` and
+`--markdown-preview-scroll-end-clearance` tokens, which default to zero. The
+detail pane does not inherit this clearance. Navigation owns the panel chrome
+and preserves the same buttons, input paths, and semantic selection.
 
 `frontend/pages/(task-workspace)/layout.js` is the only routed workspace. It
 owns:
@@ -525,14 +539,20 @@ Automatic first characters reserve the `N`, `M`, `P`, and `T` namespaces. The
 full result must be unique and prefix-free. Initial capture freezes each
 visible, actionable target's identity, exact native binding, code, activation
 closure, and exact retained `invalidationOwner`. It intersects anchors directly
-with the visual viewport and every owning scrollport, then renders buttons in
-one viewport-sized native modal dialog. The target set is monotonic for that
-session: later descriptors never receive codes, and a retired or initially
-offscreen target can participate only after a fresh `F`.
+with the visual viewport and every owning scrollport. A container may add
+explicit `occlusionRoots` through the shared scope composer: any positive
+intersection with the clipped anchor excludes that target, even when its
+center remains uncovered. Edge contact and empty hidden roots do not exclude
+targets. Task Workspace supplies its navigation host only to its content mode
+scope; the navigation's own actions remain available. The controller renders
+the remaining targets in one viewport-sized native modal dialog. The target set
+is monotonic for that session: later descriptors never receive codes, and a
+retired or initially offscreen target can participate only after a fresh `F`.
 
-Mutation, resize, and declared owner-scroll observations request one coalesced
-scope revalidation; their roots are signals, not evidence from which the
-controller infers ownership. If a frozen target disappears, becomes
+Mutation, resize (including declared occlusion roots), and declared owner-scroll
+observations request one coalesced scope revalidation; their roots are signals,
+not evidence from which the controller infers ownership. If a frozen target
+disappears, becomes
 non-actionable or invisible, changes owner, or changes any native binding, the
 controller retires every frozen target with that same frozen owner. Exact
 survivors retain their original code, order, control, and activation closure;
@@ -1274,30 +1294,46 @@ selection and request lifetime.
 ## Notes
 
 Notes lives inside Task Workspace. `notes/layout.js` defines
-`caffold-notes-workspace`, which owns the routed Note id, the server reads, and
-the open Note's presentation. The tree is read one level at a time: the top,
-each directory the navigator asks for when a person opens it, and the
-directories in the open Note's `location`. Every level and the Note are
-independent reads, each with its own generation and abort controller, so a late
-answer for a superseded read is dropped without touching the others. A level
-keeps what it held while it is read again, and a directory that no longer
-exists is dropped. Leaving Notes or disconnecting cancels every read. Entering
-Notes and a foreground recovery while Notes is shown read the top, every level
-already read, and the open Note again; the recovery also restarts Notes after a
-disconnection. Choosing a Note, including the one already open, reads that
-Note again.
+`caffold-notes-workspace`, the owner of the primary and optional secondary
+route ids, independent document reads, and one retained navigator. Each
+folder level and each document has its own generation and abort controller;
+a superseded answer cannot replace another pane. A failed refresh retains its
+last document or listing, while a missing Note clears only that document.
+Leaving Notes or disconnecting cancels all reads and deactivates both Info
+popovers. Reentry and foreground recovery reread the top, previously read
+levels, and both committed documents.
+
+`notes/layout/selection.js` owns the private transient selection graph: single,
+choose companion, paired, replace primary, and replace secondary. It accepts
+committed route changes, permits companion selection only from a readable
+primary, and cancels to the previous committed presentation. The route schema
+owns reloadable ids as described in [Notes routes](navigation.md#notes-routes).
+
+`notes/components/document.js` defines `caffold-note-document`. Each retained
+instance owns its header, Markdown Preview, Info, focus, and public keyboard,
+Action Hint, and Scroll providers. The primary instance moves between its
+ordinary detail location and a left slot above the workspace tabs. The
+navigator moves into the right pane for companion selection. Moving either
+uses the browser's state-preserving move when available and restores scroll
+through the child's public API otherwise. Replacing a document resets only
+its preview; refreshing the same document preserves its reading position.
 
 `notes/components/navigator.js` defines `caffold-notes-navigator`. It renders
-the workspace brand and the shared File Tree from the snapshot the Notes
-workspace publishes, pins the File Tree's order to directories first, keeps
-directories closed until opened, and opens each directory that holds the open
-Note once, when its row exists. It emits open-Note, load-directory, and Retry
-intents. `notes/tree.js` maps the levels read so far to File Tree nodes: a
-directory not yet read loads when it is opened, and one that holds nothing
-opens without a read. The Notes workspace publishes
-`data-notes-view` so Task Workspace shows the tree or the Note on compact
-layouts, and it merges the navigator's and its own Action Hint and Scroll scopes
-the way Settings does.
+the brand or selection header and the shared File Tree from workspace
+snapshots. Directory disclosure and tree scroll remain with that instance.
+It emits open-Note, load-directory, Retry, cancel, and close intents. The
+other pane's committed Note is disabled in a selector. `notes/tree.js` maps
+independently read folder levels to directories-first File Tree nodes and
+reveals the selected Note's containing directories once their rows exist.
+
+The workspace publishes semantic `data-notes-view` and `data-notes-picker`
+state. CSS uses available workspace width: at least 641px gives each document
+320px plus the divider; below that it shows the primary and retains the route
+and selector state for widening. This Notes-specific container breakpoint
+leaves ordinary workspace layouts unchanged. The pair hides the shared
+resizer and collapse toggle without writing their saved preferences. The left
+bottom tabs occur once, and each visible document or selector publishes its
+own clipped input and scroll scope. Hidden panes supply no active targets.
 
 `notes/components/info.js` defines `caffold-notes-info`, the Info button at the
 end of the Note header. Its popover lists when the open Note changed and was
@@ -1469,7 +1505,9 @@ frontend/
 |       |-- codex-status/...
 |       |-- notes/
 |       |   |-- layout.js
+|       |   |-- layout/selection.js
 |       |   |-- tree.js
+|       |   |-- components/document.js
 |       |   `-- components/navigator.js
 |       |-- settings/
 |       |   |-- keyboard/page.js

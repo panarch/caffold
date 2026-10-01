@@ -15,6 +15,7 @@ import {
   selectActionHintTarget,
   switchActionHintTarget,
   textboxActionHintTarget,
+  withActionHintOcclusionRoots,
 } from "./action-hint-scope.js";
 import {
   ACTION_HINT_ACTIVATE_EVENT,
@@ -72,6 +73,7 @@ export {
   switchActionHintTarget,
   taskHintSuffix,
   textboxActionHintTarget,
+  withActionHintOcclusionRoots,
 };
 
 export class ActionHintController {
@@ -556,9 +558,10 @@ export class ActionHintController {
     snapshot.mutationRoots = current.mutationRoots;
     snapshot.scrollRoots = current.scrollRoots;
     snapshot.resizeElements = uniqueElements(
-      reconciliation.targets.flatMap(({ anchor, clipRoots }) => [
+      reconciliation.targets.flatMap(({ anchor, clipRoots, occlusionRoots }) => [
         anchor,
         ...clipRoots,
+        ...(occlusionRoots ?? []),
       ]),
     );
     if (this.session === snapshot) {
@@ -617,16 +620,22 @@ export class ActionHintController {
       const clipRects = actionable
         ? descriptor.clipRoots.map((root) => root.getBoundingClientRect())
         : [];
+      const occlusionRects = actionable
+        ? descriptor.occlusionRoots.map((root) => root.getBoundingClientRect())
+        : [];
       return {
         ...descriptor,
         actionable,
         visibleRect: actionable
-          ? visibleTargetRect(anchorRect, clipRects, viewport.rect)
+          ? visibleTargetRect(anchorRect, clipRects, viewport.rect, occlusionRects)
           : null,
       };
     });
     const dependencyElements = uniqueElements(
-      descriptors.flatMap(({ clipRoots }) => clipRoots),
+      descriptors.flatMap(({ clipRoots, occlusionRoots }) => [
+        ...clipRoots,
+        ...occlusionRoots,
+      ]),
     );
     return {
       descriptorStates,
@@ -725,7 +734,8 @@ function normalizeDescriptors(targets) {
       return null;
     }
     const clipRoots = normalizeElementList(target.clipRoots ?? []);
-    if (!clipRoots) {
+    const occlusionRoots = normalizeElementList(target.occlusionRoots ?? []);
+    if (!clipRoots || !occlusionRoots) {
       return null;
     }
     ids.add(id);
@@ -736,6 +746,7 @@ function normalizeDescriptors(targets) {
       label,
       activationKey,
       clipRoots,
+      occlusionRoots,
       badgeAtEnd: Boolean(target.badgeAtEnd),
     });
   }

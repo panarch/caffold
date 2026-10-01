@@ -305,10 +305,14 @@ test("structural shadows separate fixed regions from floating elevation", () => 
     ],
   );
   assert.deepEqual(
+    tokenConsumers(sources, /var\(--floating-shadow-panel\)/),
+    ["pages/(task-workspace)/components/navigation.css"],
+  );
+  assert.deepEqual(
     tokenConsumers(sources, /var\(--structural-shadow-block-end\)/),
     [
+      "pages/(task-workspace)/notes/components/document.css",
       "pages/(task-workspace)/notes/components/navigator.css",
-      "pages/(task-workspace)/notes/layout.css",
       "pages/(task-workspace)/settings/layout.css",
       "pages/(task-workspace)/settings/navigator.css",
       "pages/(task-workspace)/tasks/(detail)/layout.css",

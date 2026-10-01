@@ -18,6 +18,7 @@ import {
   selectActionHintTarget,
   switchActionHintTarget,
   textboxActionHintTarget,
+  withActionHintOcclusionRoots,
 } from "./action-hint-scope.js";
 
 test("button Action Hint targets preserve owner state and native activation", () => {
@@ -270,6 +271,26 @@ test("Action Hint scopes compose direct owners in declaration order", () => {
   assert.notEqual(merged.targets, first.targets);
   first.targets.push({ id: "later" });
   assert.deepEqual(merged.targets, [firstTarget, secondTarget]);
+});
+
+test("a container adds its occlusion dependency without rewriting child actions", () => {
+  const root = {};
+  const existingRoot = {};
+  const activate = () => {};
+  const target = { id: "child", control: {}, invalidationOwner: {}, activate, occlusionRoots: [existingRoot] };
+  const scope = { blocked: true, targets: [target], mutationRoots: [{}], scrollRoots: [{}] };
+  const result = withActionHintOcclusionRoots(scope, [root]);
+
+  assert.deepEqual(result.targets[0].occlusionRoots, [existingRoot, root]);
+  assert.equal(result.targets[0].control, target.control);
+  assert.equal(result.targets[0].invalidationOwner, target.invalidationOwner);
+  assert.equal(result.targets[0].activate, activate);
+  assert.equal(result.blocked, true);
+  assert.equal(result.mutationRoots, scope.mutationRoots);
+  assert.equal(result.scrollRoots, scope.scrollRoots);
+  assert.deepEqual(target.occlusionRoots, [existingRoot]);
+  assert.equal(withActionHintOcclusionRoots(scope, []), scope);
+  assert.equal(withActionHintOcclusionRoots(null, [root]), null);
 });
 
 test("editable Action Hint targets focus synchronously and select uses native picker", () => {

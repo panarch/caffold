@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { actionHintBadgePresentation } from "../support/action-hints.js";
+import { actionHintBadgePresentation, workspaceOcclusionTargets } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import {
@@ -129,6 +129,43 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   await expect(surface).toBeVisible();
 });
 
+test("retires newly covered Task rows on panel resize without reallocating frozen codes", { tag: ["@desktop", "@foldable"] }, async ({ page }, testInfo) => {
+  await installActionHintFixture(page, actionHintTasks(48));
+  await page.setViewportSize({ width: 933, height: 440 });
+  await page.goto("/tasks");
+  await expect(page.locator("caffold-active-task-row")).toHaveCount(48);
+  const initial = await workspaceOcclusionTargets(page, "caffold-task-navigator");
+  expect(initial.covered.length).toBeGreaterThan(0);
+  const dialog = await enterActionHints(page);
+  for (const label of initial.covered) await expect(dialog.getByLabel(new RegExp(` — ${label}$`))).toHaveCount(0);
+  const frozen = await dialog.locator('button[data-action-hint-code^="T"]').evaluateAll((badges) => badges.map((badge) => ({
+    label: badge.getAttribute("aria-label").replace(/^[A-Z]+ — /, ""), code: badge.dataset.actionHintCode,
+  })));
+  const panel = page.locator("caffold-task-workspace-navigation");
+  await panel.evaluate((element) => { element.style.height = `${element.getBoundingClientRect().height + 80}px`; });
+  const expanded = await workspaceOcclusionTargets(page, "caffold-task-navigator");
+  const retired = frozen.filter(({ label }) => expanded.covered.includes(label));
+  const surviving = frozen.filter(({ label }) => expanded.clear.includes(label));
+  expect(retired.length).toBeGreaterThan(0);
+  expect(surviving.length).toBeGreaterThan(0);
+  for (const { code } of retired) await expect(dialog.locator(`[data-action-hint-code="${code}"]`)).toHaveCount(0);
+  for (const { code, label } of surviving) await expect(dialog.locator(`[data-action-hint-code="${code}"]`)).toHaveAttribute("aria-label", `${code} — ${label}`);
+  await expect(dialog.getByLabel(/Open Notes$/)).toBeVisible();
+  await captureReviewScreenshot(page, testInfo, "floating-hints-resize");
+  await panel.evaluate((element) => { element.style.removeProperty("height"); });
+  for (const { code } of retired) await expect(dialog.locator(`[data-action-hint-code="${code}"]`)).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await enterActionHints(page);
+  for (const { label } of retired) await expect(dialog.getByLabel(new RegExp(` — ${label}$`))).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.locator(".task-list-scroll").evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await enterActionHints(page);
+  const last = dialog.getByLabel(/Open task: Action Hint Task 48$/);
+  await expect(last).toBeVisible();
+  await page.keyboard.type((await last.getAttribute("data-action-hint-code")).toLowerCase());
+  await expect(page).toHaveURL("/tasks/action_hint_48");
+});
+
 test("opens global shortcut help from Normal and replaces Action Hints", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
@@ -240,6 +277,12 @@ test("closes Hint when printable input cannot match an action", { tag: "@all-vie
 }) => {
   await installActionHintFixture(page, actionHintTasks(2));
   await page.goto("/tasks");
+  await expect(page.locator("caffold-active-task-row > button.task-row")).toHaveCount(2);
+  // Bootstrap applies the final route before publishing initial activation.
+  await expect.poll(() => page.evaluate(() => {
+    const snapshot = document.querySelector("caffold-app-shell")?.foregroundRecoverySnapshot;
+    return snapshot?.lastTrigger === "bootstrap" ? snapshot.generation : 0;
+  })).toBeGreaterThan(0);
 
   const opener = page.locator(".task-list-new-task");
   await opener.focus();
@@ -889,6 +932,12 @@ test("selects Reorder through its declared popover and entered-mode contexts", {
 }, testInfo) => {
   await installActionHintFixture(page, actionHintTasks(2));
   await page.goto("/tasks");
+  await expect(page.locator("caffold-active-task-row > button.task-row")).toHaveCount(2);
+  // Bootstrap applies the final route before publishing initial activation.
+  await expect.poll(() => page.evaluate(() => {
+    const snapshot = document.querySelector("caffold-app-shell")?.foregroundRecoverySnapshot;
+    return snapshot?.lastTrigger === "bootstrap" ? snapshot.generation : 0;
+  })).toBeGreaterThan(0);
 
   await enterActionHints(page);
   let hint = actionHintDialog(page);
@@ -1849,6 +1898,7 @@ async function visibleTaskTitles(page) {
     const scroll = navigator.querySelector(":scope > .task-list-scroll");
     const navigatorRect = navigator.getBoundingClientRect();
     const scrollRect = scroll.getBoundingClientRect();
+    const panel = document.querySelector("caffold-task-workspace-navigation").getBoundingClientRect();
     const viewport = {
       left: window.visualViewport?.offsetLeft ?? 0,
       top: window.visualViewport?.offsetTop ?? 0,
@@ -1869,7 +1919,9 @@ async function visibleTaskTitles(page) {
       const top = Math.max(rect.top, navigatorRect.top, scrollRect.top, viewport.top);
       const right = Math.min(rect.right, navigatorRect.right, scrollRect.right, viewport.right);
       const bottom = Math.min(rect.bottom, navigatorRect.bottom, scrollRect.bottom, viewport.bottom);
-      return right > left && bottom > top &&
+      const covered = Math.min(right, panel.right) > Math.max(left, panel.left) &&
+        Math.min(bottom, panel.bottom) > Math.max(top, panel.top);
+      return right > left && bottom > top && !covered &&
         centerX >= left && centerX <= right &&
         centerY >= top && centerY <= bottom;
     }).map((row) => row.querySelector(".task-row-title").textContent);
@@ -1894,7 +1946,8 @@ async function captureActionHintVisualState(page) {
       right: Math.min(...rects.map((rect) => rect.right)),
       bottom: Math.min(...rects.map((rect) => rect.bottom)),
     });
-    const target = (element, clips) => {
+    const panel = document.querySelector("caffold-task-workspace-navigation").getBoundingClientRect();
+    const target = (element, clips, content = true) => {
       if (!element) {
         return null;
       }
@@ -1906,7 +1959,10 @@ async function captureActionHintVisualState(page) {
       ]);
       const centerX = anchor.left + anchor.width / 2;
       const centerY = anchor.top + anchor.height / 2;
-      return visible.right > visible.left &&
+      const covered = content &&
+        Math.min(visible.right, panel.right) > Math.max(visible.left, panel.left) &&
+        Math.min(visible.bottom, panel.bottom) > Math.max(visible.top, panel.top);
+      return !covered && visible.right > visible.left &&
           visible.bottom > visible.top &&
           centerX >= visible.left && centerX <= visible.right &&
           centerY >= visible.top && centerY <= visible.bottom
@@ -1979,7 +2035,7 @@ async function captureActionHintVisualState(page) {
       automaticTargets.set(label, target(control, [
         document.querySelector("caffold-task-workspace"),
         document.querySelector(".task-workspace-master-pane"),
-      ]));
+      ], false));
     }
     const workspace = document.querySelector("caffold-task-workspace");
     const masterDetail = workspace?.querySelector(
@@ -1994,7 +2050,7 @@ async function captureActionHintVisualState(page) {
     if (workspaceSeparator && workspaceHandle && masterDetail) {
       automaticTargets.set(
         workspaceSeparator.getAttribute("aria-label"),
-        target(workspaceHandle, [workspaceSeparator, workspace, masterDetail]),
+        target(workspaceHandle, [workspaceSeparator, workspace, masterDetail], false),
       );
     }
     let taskIndex = 0;

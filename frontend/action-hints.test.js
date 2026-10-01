@@ -18,6 +18,46 @@ test("normalizes Action Hint mutation roots at the public boundary", () => {
   }
 });
 
+test("captures declared occlusion, observes its geometry, and retires only covered frozen owners", () => {
+  const restoreGlobals = installDomGlobals();
+  try {
+    const panel = new FakeHTMLElement();
+    panel.rect = { left: 0, top: 80, right: 40, bottom: 100 };
+    const covered = new FakeHTMLElement();
+    covered.rect = { left: 0, top: 70, right: 90, bottom: 90 };
+    const adjacent = new FakeHTMLElement();
+    adjacent.rect = { left: 50, top: 70, right: 90, bottom: 90 };
+    const descriptor = (control, id) => ({
+      id, actionId: "task.open", controlKind: "button", label: id,
+      invalidationOwner: control, control, anchor: control, clipRoots: [],
+      occlusionRoots: [panel], isActionable: () => true, activate: () => {},
+    });
+    const scope = { targets: [descriptor(covered, "covered"), descriptor(adjacent, "adjacent")] };
+    const controller = new ActionHintController({
+      workspace: new FakeHTMLElement(), dialog: new FakeDialog(), collectScope: () => scope,
+    });
+    const initial = controller.captureSnapshot(scope);
+    assert.deepEqual(initial.targets.map(({ id }) => id), ["adjacent"]);
+    assert.ok(initial.resizeElements.includes(panel));
+
+    panel.rect = { left: 0, top: 0, right: 0, bottom: 0 };
+    const frozen = controller.captureSnapshot(scope);
+    frozen.buffer = "";
+    const survivor = frozen.targets.find(({ id }) => id === "adjacent");
+    panel.rect = { left: 0, top: 80, right: 40, bottom: 100 };
+    assert.equal(controller.reconcileSnapshot(frozen), true);
+    assert.deepEqual(frozen.targets.map(({ id }) => id), ["adjacent"]);
+    assert.equal(frozen.targets[0].code, survivor.code);
+    assert.equal(frozen.targets[0].activate, survivor.activate);
+    assert.ok(frozen.resizeElements.includes(panel));
+
+    const malformed = { targets: [{ ...scope.targets[0], occlusionRoots: [{}] }] };
+    assert.equal(controller.captureSnapshot(malformed), null);
+  } finally {
+    restoreGlobals();
+  }
+});
+
 test("cancel and activation close one session and clean every owned effect", () => {
   const restoreGlobals = installDomGlobals();
   try {

@@ -88,6 +88,9 @@ running turn, or pick up the same Task later.
 
 </div>
 
+Ask an agent to keep decisions in [Notes](notes/index.md). Read a reference
+beside a checklist with [two Notes open together](notes/index.md#read-two-notes-side-by-side).
+
 <figure class="cf-shot" markdown>
 ![A finished Caffold Task on a desktop: the request, the agent's answer, its plan, and the Task list](assets/screenshots/task-conversation-desktop.png)
 </figure>

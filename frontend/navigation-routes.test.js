@@ -485,3 +485,14 @@ test("a Task or Section terminal is a route of its own", () => {
   assert.equal(section.path, "");
   assert.equal(routeUrl(section), "/?section=plain&surface=terminal");
 });
+
+test("a Notes pair is reloadable, shares the single-note parent, and rejects duplicate ids", () => {
+  const pair = parseRoute("/notes/A?beside=B");
+  assert.deepEqual(pair, { kind: "notes", noteId: "A", secondaryNoteId: "B" });
+  assert.equal(routeUrl(pair), "/notes/A?beside=B");
+  assert.deepEqual(parentRoute(pair), { kind: "notes", noteId: "" });
+  assert.equal(routeRelation(pair, parseRoute("/notes/C?beside=B")), ROUTE_RELATION.SWAP);
+  assert.equal(routeEquals(pair, parseRoute("/notes/A")), false);
+  assert.equal(routeUrl(parseRoute("/notes/A?beside=A")), "/notes/A");
+  assert.equal(routeUrl(parseRoute("/notes?beside=B")), "/notes");
+});

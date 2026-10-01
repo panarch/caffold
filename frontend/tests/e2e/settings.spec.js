@@ -3,6 +3,7 @@ import {
   actionHintDialog,
   activateActionHint,
   enterActionHints,
+  workspaceOcclusionTargets,
 } from "./support/action-hints.js";
 import {
   installBrowserDefaults,
@@ -23,6 +24,46 @@ const SETTINGS_KEY = "caffold:settings";
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
   await mockAgentModels(page);
+});
+
+test("excludes covered Settings items and preserves navigation Hint activation", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
+  await installEventSourceMock(page, { autoOpen: true });
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([]) })
+  );
+  await page.setViewportSize({ width: testInfo.project.name === "phone" ? 390 : 933, height: 320 });
+
+  // Page load can precede the module's awaited component CSS registration.
+  // Release that response after load to exercise delayed initial rendering.
+  let releaseStyles;
+  const stylesReady = new Promise((resolve) => { releaseStyles = resolve; });
+  await page.route("**/assets/component-styles/compact-icon-button.css", async (route) => {
+    await stylesReady;
+    await route.continue();
+  });
+  try {
+    await page.goto("/settings");
+  } finally {
+    releaseStyles();
+  }
+
+  await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
+  await expect(page.locator('caffold-settings-navigator button[data-settings-section="appearance"]')).toBeVisible();
+  // The final bootstrap route application closes an existing Hint session.
+  await expect.poll(() => page.evaluate(() => {
+    const snapshot = document.querySelector("caffold-app-shell")?.foregroundRecoverySnapshot;
+    return snapshot?.lastTrigger === "bootstrap" ? snapshot.generation : 0;
+  })).toBeGreaterThan(0);
+
+  const initial = await workspaceOcclusionTargets(page, "caffold-settings-navigator");
+  expect(initial.clear.length).toBeGreaterThan(0);
+  expect(initial.covered.length > 0).toBe(testInfo.project.name !== "phone");
+  const dialog = await enterActionHints(page);
+  for (const label of initial.covered) await expect(dialog.getByLabel(new RegExp(` — ${label}$`))).toHaveCount(0);
+  for (const label of initial.clear) await expect(dialog.getByLabel(new RegExp(` — ${label}$`))).toBeVisible();
+  await captureReviewScreenshot(page, testInfo, "floating-settings-hints");
+  await dialog.getByLabel(/Open Tasks$/).click();
+  await expect(page).toHaveURL("/");
 });
 
 test("uses active Settings page actions and only visible overflowing panes", { tag: "@all-viewports" }, async ({

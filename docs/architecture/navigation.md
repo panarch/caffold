@@ -85,10 +85,17 @@ route with Tasks home.
 ## Notes routes
 
 `/notes` shows the Notes tree with no Note open. `/notes/:noteId` names the
-open Note by its id and carries nothing else. Wide layouts show the tree and
-the Note together. Compact layouts show the tree for `/notes` and the Note for
-`/notes/:noteId`, whose visible Back requests `/notes`. A Note id that no longer
-exists stays on its route and reports the missing Note.
+primary Note. `/notes/:noteId?beside=:secondaryNoteId` names a pair; the primary
+is on the left and the companion on the right. An empty or identical companion
+normalizes to a single Note, and `/notes` cannot carry a companion. Replacing
+either pane and closing the companion are swaps at the single Note's history
+depth; the parent of both single and paired routes is `/notes`. Opening or
+cancelling a selector changes only transient component state.
+
+The [Notes layout](frontend.md#notes) determines whether both panes fit. A
+narrow surface shows the primary Note without discarding the pair route, and
+its Back requests `/notes`. A missing Note displays its own missing state
+without replacing the other pane. Workspace tab history retains the pair URL.
 
 ## Canonical Task context
 

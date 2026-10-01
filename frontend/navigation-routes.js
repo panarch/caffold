@@ -4,6 +4,7 @@ const COMPARE_QUERY = [
   { name: "head", key: "headRef", defaultValue: "" },
 ];
 const CWD_QUERY = [{ name: "cwd", key: "cwd", defaultValue: "" }];
+const NOTES_QUERY = [{ name: "beside", key: "secondaryNoteId", defaultValue: "" }];
 const NEW_TASK_QUERY = [...CWD_QUERY];
 const TASK_REVIEW_QUERY = [
   { name: "scope", key: "reviewScope", defaultValue: "working" },
@@ -56,9 +57,10 @@ const ROUTE_DEFINITIONS = [
     id: "notes-note",
     kind: "notes",
     pattern: "/notes/[noteId]",
+    query: NOTES_QUERY,
     surface: "task-workspace",
     target: "note",
-    toRoute: ({ noteId }) => notesRoute(noteId),
+    toRoute: ({ noteId }, query) => notesRoute(noteId, query.secondaryNoteId),
     matchesRoute: (route) => route?.kind === "notes" && Boolean(route.noteId),
     parent: () => notesRoute(),
   }),
@@ -446,7 +448,9 @@ export function routeUrl(route) {
   }
 
   url.pathname = buildPath(definition, route);
-  writeQuery(definition, route, url.searchParams);
+  writeQuery(definition, definition.kind === "notes"
+    ? notesRoute(route.noteId, route.secondaryNoteId)
+    : route, url.searchParams);
   return `${url.pathname}${url.search}`;
 }
 
@@ -880,8 +884,14 @@ function sectionParentRoute(route) {
   return tasksRoute();
 }
 
-function notesRoute(noteId = "") {
-  return { kind: "notes", noteId: `${noteId ?? ""}` };
+function notesRoute(noteId = "", secondaryNoteId = "") {
+  const primary = `${noteId ?? ""}`;
+  const secondary = `${secondaryNoteId ?? ""}`;
+  return {
+    kind: "notes",
+    noteId: primary,
+    ...(primary && secondary && primary !== secondary ? { secondaryNoteId: secondary } : {}),
+  };
 }
 
 function settingsRoute(section = "") {

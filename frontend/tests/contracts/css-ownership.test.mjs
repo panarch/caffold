@@ -365,6 +365,10 @@ const ownership = new Map([
     ["caffold-notes-workspace"],
   ],
   [
+    "pages/(task-workspace)/notes/components/document.css",
+    ["caffold-note-document"],
+  ],
+  [
     "pages/(task-workspace)/notes/components/info.css",
     ["caffold-notes-info"],
   ],
@@ -889,12 +893,8 @@ test("global styles remain parseable without claiming a component owner", () => 
   assert.ok(effectiveSelectors(css).length > 0);
 });
 
-test("workspace navigation uses in-flow pane ownership without padding compensation", () => {
+test("Settings detail pages do not reserve space for the master-pane workspace navigation", () => {
   const paths = [
-    "pages/(task-workspace)/layout.css",
-    "pages/(task-workspace)/components/navigation.css",
-    "pages/(task-workspace)/tasks/components/navigator.css",
-    "pages/(task-workspace)/settings/navigator.css",
     "pages/(task-workspace)/settings/appearance/page.css",
     "pages/(task-workspace)/settings/files/page.css",
     "pages/(task-workspace)/settings/notifications/page.css",
@@ -908,7 +908,7 @@ test("workspace navigation uses in-flow pane ownership without padding compensat
   for (const path of paths) {
     const css = readFileSync(`${frontendRoot}${path}`, "utf8");
     assert.equal(
-      css.includes("--task-workspace-navigation-size"),
+      /--task-workspace-navigation-(?:size|clearance)/.test(css),
       false,
       `${path} must not reserve space for an overlaid workspace navigation`,
     );

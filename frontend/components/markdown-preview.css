@@ -5,6 +5,10 @@ caffold-markdown-preview {
   overflow: auto;
   overscroll-behavior: contain;
   padding: clamp(1rem, 3vw, 2rem);
+  padding-bottom: calc(
+    clamp(1rem, 3vw, 2rem) + var(--markdown-preview-scroll-end-clearance, 0rem)
+  );
+  scroll-padding-bottom: var(--markdown-preview-scroll-end-clearance, 0rem);
   color: var(--text);
   font-family: var(--font-ui);
   font-size: var(--conversation-font-size);

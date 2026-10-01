@@ -1,41 +1,30 @@
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
-import "#components/markdown-preview.js";
 import { getNote, getNotes } from "#app/api.js";
 import {
-  buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
-import "./components/info.js";
+import { emptyScrollSurfaceScope, mergeScrollSurfaceScopes } from "#app/scroll-scope.js";
+import { NotesSelection } from "./layout/selection.js";
+import { NOTE_DOCUMENT_INTENT_EVENT } from "./components/document.js";
 import { NOTES_NAVIGATOR_INTENT_EVENT } from "./components/navigator.js";
 import { noteDirectoryKey } from "./tree.js";
 
-const NO_SELECTION_MESSAGE = "Choose a note to read it.";
-const LOADING_MESSAGE = "Loading note…";
-const MISSING_MESSAGE = "This note no longer exists.";
-const EMPTY_NOTE_MESSAGE = "This note is empty.";
-
-// The Notes workspace: the Note the route names, read from the server each
+// The Notes workspace: the documents the route names, read from the server each
 // time Notes is entered, a Note is picked, or the app returns to the
 // foreground on Notes. Agents write Notes through their tools; nothing here
 // changes one.
 //
 // The tree is read one level at a time: the top, each directory a person
 // opens, and the directories that hold the open Note. Every level and the
-// open Note are independent reads, each with its own generation, so a late
+// two documents are independent reads, each with its own generation, so a late
 // answer that is no longer wanted is dropped without touching the others.
 class CaffoldNotesWorkspace extends HTMLElement {
   connectedCallback() {
-    this.boundIconsReady ??= () => this.renderBackIcon();
-    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.ensureRendered();
   }
 
   disconnectedCallback() {
-    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.deactivate();
   }
 
@@ -45,52 +34,27 @@ class CaffoldNotesWorkspace extends HTMLElement {
     }
     this.rendered = true;
     this.noteId = "";
+    this.secondaryNoteId = "";
+    this.selection = new NotesSelection();
     this.active = false;
     this.levels = new Map();
     this.levelReads = new Map();
     this.noteRead = { generation: 0, controller: null };
     this.noteState = { state: "idle", note: null, message: "" };
-    this.renderedMarkdown = null;
+    this.secondaryRead = { generation: 0, controller: null };
+    this.secondaryState = { state: "idle", note: null, message: "" };
     this.boundNavigatorIntent = (event) => {
       event.stopPropagation();
       this.handleNavigatorIntent(event.detail);
     };
-    this.innerHTML = `
-      <div
-        class="notes-workspace-detail-pane"
-        role="region"
-        aria-labelledby="notes-workspace-title"
-        tabindex="-1"
-      >
-        <header class="notes-workspace-detail-header" hidden>
-          <button
-            type="button"
-            data-action="back-to-notes"
-            title="Back to notes"
-            aria-label="Back to notes"
-          >
-            <span data-notes-back-icon>
-              ${renderInlineIcon("ArrowLeft", "Back to notes", "notes-workspace-back-icon")}
-            </span>
-          </button>
-          <h1 id="notes-workspace-title"></h1>
-          <caffold-notes-info></caffold-notes-info>
-        </header>
-        <p class="notes-workspace-location" hidden></p>
-        <div class="notes-workspace-status" hidden>
-          <p class="notes-workspace-message"></p>
-          <button type="button" data-action="retry-note" hidden>Retry</button>
-        </div>
-        <caffold-markdown-preview hidden></caffold-markdown-preview>
-      </div>
-    `;
-    this.backButton().addEventListener("click", () => this.requestNote(""));
-    this.retryButton().addEventListener("click", () => {
-      if (this.noteId) {
-        void this.loadNote(this.noteId);
-      }
-    });
-    warmIcons();
+    this.innerHTML = '<caffold-note-document></caffold-note-document><caffold-note-document hidden></caffold-note-document>';
+    [this.primaryDocument, this.secondaryDocument] = this.querySelectorAll(":scope > caffold-note-document");
+    for (const document of [this.primaryDocument, this.secondaryDocument]) {
+      document.addEventListener(NOTE_DOCUMENT_INTENT_EVENT, (event) => {
+        event.stopPropagation();
+        this.handleDocumentIntent(event.detail);
+      });
+    }
     this.renderDetail();
     this.syncPresentation();
   }
@@ -105,6 +69,7 @@ class CaffoldNotesWorkspace extends HTMLElement {
       this.boundNavigatorIntent,
     );
     this.connectedNotesNavigator = navigator ?? null;
+    this.navigatorHome = navigator?.parentElement;
     this.connectedNotesNavigator?.addEventListener(
       NOTES_NAVIGATOR_INTENT_EVENT,
       this.boundNavigatorIntent,
@@ -112,9 +77,18 @@ class CaffoldNotesWorkspace extends HTMLElement {
     this.syncNavigator();
   }
 
+  connectPrimarySlot(slot) {
+    this.primarySlot = slot;
+    this.renderDetail();
+  }
+
   prepareRoute(route) {
     this.ensureRendered();
     const noteId = route?.kind === "notes" ? `${route.noteId ?? ""}` : "";
+    const secondaryNoteId = noteId && route?.secondaryNoteId !== noteId ? `${route.secondaryNoteId ?? ""}` : "";
+    const changed = noteId !== this.noteId || secondaryNoteId !== this.secondaryNoteId;
+    const previousPicker = this.selection.picker;
+    const wasSplit = this.selection.split;
     if (noteId !== this.noteId) {
       this.noteId = noteId;
       this.cancelNoteRead();
@@ -125,9 +99,23 @@ class CaffoldNotesWorkspace extends HTMLElement {
         void this.loadNote(noteId);
       }
     }
+    if (secondaryNoteId !== this.secondaryNoteId) {
+      this.secondaryNoteId = secondaryNoteId;
+      this.cancelNoteRead("secondary");
+      this.secondaryState = { state: secondaryNoteId ? "loading" : "idle", note: null, message: "" };
+      if (this.active && secondaryNoteId) {
+        void this.loadNote(secondaryNoteId, "secondary");
+      }
+    }
+    if (changed) {
+      this.selection.transition("route", { paired: Boolean(secondaryNoteId) });
+    }
     this.syncNavigator();
     this.renderDetail();
     this.syncPresentation();
+    if (changed && this.active && (previousPicker || (wasSplit && !secondaryNoteId))) {
+      (previousPicker === "secondary" && secondaryNoteId ? this.secondaryDocument : this.primaryDocument)?.focusTitle();
+    }
   }
 
   activate() {
@@ -148,18 +136,31 @@ class CaffoldNotesWorkspace extends HTMLElement {
     if (this.noteId) {
       void this.loadNote(this.noteId);
     }
+    if (this.secondaryNoteId) {
+      void this.loadNote(this.secondaryNoteId, "secondary");
+    }
   }
 
   deactivate() {
     this.active = false;
     this.cancelLevelReads();
     this.cancelNoteRead();
+    this.cancelNoteRead("secondary");
     this.info()?.deactivate();
+    this.secondaryDocument?.info()?.deactivate();
   }
 
   handleNavigatorIntent(detail) {
     if (detail?.type === "retry") {
       void this.loadLevel("");
+      return;
+    }
+    if (detail?.type === "cancel") {
+      this.cancelPicker();
+      return;
+    }
+    if (detail?.type === "close") {
+      this.requestNote(this.noteId);
       return;
     }
     if (detail?.type === "load-directory" && detail.directoryId) {
@@ -169,6 +170,20 @@ class CaffoldNotesWorkspace extends HTMLElement {
     if (detail?.type !== "open-note" || !detail.noteId) {
       return;
     }
+    const picker = this.selection.picker;
+    if (picker) {
+      const other = picker === "primary" ? this.secondaryNoteId : this.noteId;
+      if (detail.noteId === other) return;
+      const current = picker === "primary" ? this.noteId : this.secondaryNoteId;
+      if (detail.noteId === current) {
+        this.cancelPicker();
+        void this.loadNote(current, picker);
+      } else {
+        this.requestNote(picker === "primary" ? detail.noteId : this.noteId,
+          picker === "secondary" ? detail.noteId : this.secondaryNoteId);
+      }
+      return;
+    }
     if (detail.noteId === this.noteId) {
       void this.loadNote(detail.noteId);
       return;
@@ -176,13 +191,40 @@ class CaffoldNotesWorkspace extends HTMLElement {
     this.requestNote(detail.noteId);
   }
 
-  requestNote(noteId) {
+  requestNote(noteId, secondaryNoteId = "") {
     this.dispatchEvent(
       new CustomEvent("caffold:request-workspace-route", {
         bubbles: true,
-        detail: { route: { kind: "notes", noteId: noteId ?? "" } },
+        detail: { route: { kind: "notes", noteId: noteId ?? "", ...(secondaryNoteId ? { secondaryNoteId } : {}) } },
       }),
     );
+  }
+
+  handleDocumentIntent({ type, side }) {
+    if (type === "back") this.requestNote("");
+    else if (type === "close") this.requestNote(this.noteId);
+    else if (type === "retry") void this.loadNote(side === "secondary" ? this.secondaryNoteId : this.noteId, side);
+    else if (this.selection.transition(type === "split" ? "start" : side, {
+      readable: Boolean(this.noteState.note),
+    })) {
+      this.syncNavigator();
+      this.renderDetail();
+      this.syncPresentation();
+      this.connectedNotesNavigator?.focusPicker();
+    }
+  }
+
+  cancelPicker() {
+    const side = this.selection.picker;
+    if (!this.selection.transition("cancel")) return;
+    this.syncNavigator();
+    this.renderDetail();
+    this.syncPresentation();
+    (side === "primary" || !this.secondaryNoteId ? this.primaryDocument : this.secondaryDocument)?.focusTitle({ preferSplit: !this.secondaryNoteId });
+  }
+
+  sideBySide() {
+    return this.selection.split;
   }
 
   // Reads one level of the tree; "" is the top. What a level held stays shown
@@ -226,14 +268,16 @@ class CaffoldNotesWorkspace extends HTMLElement {
     this.renderDetail();
   }
 
-  async loadNote(noteId) {
-    const generation = this.noteRead.generation + 1;
-    this.noteRead.controller?.abort();
+  async loadNote(noteId, side = "primary") {
+    const readKey = side === "secondary" ? "secondaryRead" : "noteRead";
+    const stateKey = side === "secondary" ? "secondaryState" : "noteState";
+    const generation = this[readKey].generation + 1;
+    this[readKey].controller?.abort();
     const controller = new AbortController();
-    this.noteRead = { generation, controller };
-    const previous = this.noteState.note?.id === noteId ? this.noteState.note : null;
+    this[readKey] = { generation, controller };
+    const previous = this[stateKey].note?.id === noteId ? this[stateKey].note : null;
     if (!previous) {
-      this.noteState = { state: "loading", note: null, message: "" };
+      this[stateKey] = { state: "loading", note: null, message: "" };
       this.renderDetail();
     }
     let next;
@@ -248,11 +292,11 @@ class CaffoldNotesWorkspace extends HTMLElement {
             message: error?.message || "Caffold could not load this note.",
           };
     }
-    if (this.noteRead.generation !== generation) {
+    if (this[readKey].generation !== generation) {
       return;
     }
-    this.noteRead = { generation, controller: null };
-    this.noteState = next;
+    this[readKey] = { generation, controller: null };
+    this[stateKey] = next;
     for (const directory of next.note?.location ?? []) {
       if (!this.levels.has(directory.id)) {
         void this.loadLevel(directory.id);
@@ -269,209 +313,97 @@ class CaffoldNotesWorkspace extends HTMLElement {
     }
   }
 
-  cancelNoteRead() {
-    this.noteRead.controller?.abort();
-    this.noteRead = { generation: this.noteRead.generation + 1, controller: null };
+  cancelNoteRead(side = "primary") {
+    const key = side === "secondary" ? "secondaryRead" : "noteRead";
+    this[key].controller?.abort();
+    this[key] = { generation: this[key].generation + 1, controller: null };
   }
 
   syncNavigator() {
-    const note = this.noteState.note;
-    const location = note?.id === this.noteId ? note.location ?? [] : [];
+    const picker = this.selection.picker;
+    const selectedNoteId = picker === "secondary" ? this.secondaryNoteId : this.noteId;
+    const note = picker === "secondary" ? this.secondaryState.note : this.noteState.note;
+    const location = note?.id === selectedNoteId ? note.location ?? [] : [];
     this.connectedNotesNavigator?.setSnapshot({
       levels: new Map(this.levels),
-      selectedNoteId: this.noteId,
+      selectedNoteId,
+      picker,
+      companion: this.selection.node === "choose-companion",
+      disabledNoteId: picker ? picker === "primary" ? this.secondaryNoteId : this.noteId : "",
       reveal: {
-        noteId: this.noteId,
+        noteId: selectedNoteId,
         keys: location.map((directory) => noteDirectoryKey(directory.id)),
       },
     });
   }
 
   syncPresentation() {
-    const view = this.noteId ? "detail" : "list";
-    if (this.dataset.notesView === view) {
+    const view = this.selection.split ? "split" : this.noteId ? "detail" : "list";
+    const picker = this.selection.picker;
+    if (this.dataset.notesView === view && this.dataset.notesPicker === picker) {
       return;
     }
     this.dataset.notesView = view;
+    this.dataset.notesPicker = picker;
     this.dispatchEvent(
       new CustomEvent("caffold:notes-presentation-change", { bubbles: true }),
     );
   }
 
   renderDetail() {
-    const { state, note, message } = this.noteState;
-    const header = this.querySelector(
-      ":scope > .notes-workspace-detail-pane > .notes-workspace-detail-header",
-    );
-    header.hidden = !this.noteId;
-    const title = header.querySelector(":scope > h1");
-    title.textContent = state === "missing" ? "Note not found" : note?.name ?? "";
-    title.title = title.textContent;
-    this.info().setNote(this.noteId ? note : null);
-    this.renderLocation(note);
-
     const top = this.levels.get("")?.listing;
-    const treeIsEmpty = Boolean(top) && top.directories.length === 0 && top.notes.length === 0;
-    const statusMessage = !this.noteId
-      ? treeIsEmpty ? "" : NO_SELECTION_MESSAGE
-      : state === "loading"
-        ? LOADING_MESSAGE
-        : state === "missing"
-          ? MISSING_MESSAGE
-          : state === "failed"
-            ? message
-            : note?.content === ""
-              ? EMPTY_NOTE_MESSAGE
-              : "";
-    const status = this.querySelector(
-      ":scope > .notes-workspace-detail-pane > .notes-workspace-status",
-    );
-    status.hidden = !statusMessage;
-    status.dataset.state = state === "failed" ? "failed" : "info";
-    status.querySelector(":scope > .notes-workspace-message").textContent = statusMessage;
-    this.retryButton().hidden = state !== "failed";
-
-    const preview = this.preview();
-    const showsContent = Boolean(this.noteId && note && note.content !== "");
-    preview.hidden = !showsContent;
-    if (!showsContent) {
-      return;
-    }
-    const rendered = this.renderedMarkdown;
-    if (rendered?.noteId === note.id && rendered.content === note.content) {
-      return;
-    }
-    preview.setMarkdown(note.content, rendered?.noteId === note.id
-      ? { preserveScroll: true }
-      : { scroll: { top: 0, left: 0 } });
-    this.renderedMarkdown = { noteId: note.id, content: note.content };
-  }
-
-  // The directories that hold the Note, from the top; the details button
-  // carries everything else about it.
-  renderLocation(note) {
-    const line = this.querySelector(
-      ":scope > .notes-workspace-detail-pane > .notes-workspace-location",
-    );
-    const location = (note?.location ?? []).map((directory) => directory.name);
-    line.textContent = location.join(" / ");
-    line.hidden = location.length === 0;
-  }
-
-  actionHintScope({ scopeId = "notes", clipRoots = [] } = {}) {
-    this.ensureRendered();
-    if (this.hidden) {
-      return emptyActionHintScope();
-    }
-    const back = this.backButton();
-    const backScope = this.noteId && hasActionHintLayoutBox(back)
-      ? ownButtonScope(this, back, {
-          id: `${scopeId}:parent:list`,
-          actionId: ACTION_HINT_ACTION.PARENT,
-          label: "Back to notes",
-          clipRoots,
-          isActionable: () => Boolean(this.noteId) && hasActionHintLayoutBox(back),
-        })
-      : null;
-    const retry = this.retryButton();
-    const retryScope = !retry.hidden
-      ? ownButtonScope(this, retry, {
-          id: `${scopeId}:retry`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label: "Retry loading the note",
-          clipRoots,
-          isActionable: () => !retry.hidden,
-        })
-      : null;
-    const infoScope = this.info().actionHintScope({
-      scopeId,
-      clipRoots: [this, ...clipRoots],
+    const emptyTree = Boolean(top) && top.directories.length === 0 && top.notes.length === 0;
+    const split = this.selection.split;
+    this.primaryDocument.setSnapshot({
+      noteId: this.noteId, result: this.noteState, side: "primary", split,
+      paired: Boolean(this.secondaryNoteId), readable: Boolean(this.noteState.note), emptyTree,
     });
-    const preview = this.preview();
-    const previewScope = !preview.hidden
-      ? preview.actionHintScope({
-          scopeId: `${scopeId}:content`,
-          linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
-          clipRoots: [this, ...clipRoots],
-        })
-      : null;
-    return mergeActionHintScopes(backScope, retryScope, infoScope, previewScope);
+    this.secondaryDocument.setSnapshot({
+      noteId: this.secondaryNoteId, result: this.secondaryState,
+      side: "secondary", split, paired: true, readable: false,
+    });
+    this.secondaryDocument.hidden = !this.secondaryNoteId || this.selection.picker === "secondary";
+    if (!this.primarySlot || !this.navigatorHome) return;
+    this.primaryDocument.place(split ? this.primarySlot : this, this.secondaryDocument);
+    const navigator = this.connectedNotesNavigator;
+    const rightPicker = this.selection.picker === "secondary";
+    navigator.place(rightPicker ? this : this.navigatorHome,
+      rightPicker ? this.secondaryDocument : this.primarySlot);
+  }
+
+  actionHintScope({ scopeId = "notes", leftClipRoots = [], rightClipRoots = [] } = {}) {
+    if (this.hidden) return emptyActionHintScope();
+    const primaryRoots = this.selection.split ? leftClipRoots : rightClipRoots;
+    const navigatorRoots = this.selection.picker === "secondary" ? rightClipRoots : leftClipRoots;
+    return mergeActionHintScopes(
+      this.primaryDocument.actionHintScope({ scopeId: `${scopeId}:primary`, clipRoots: primaryRoots }),
+      this.secondaryDocument.actionHintScope({ scopeId: `${scopeId}:secondary`, clipRoots: rightClipRoots }),
+      hasActionHintLayoutBox(this.connectedNotesNavigator)
+        ? this.connectedNotesNavigator.actionHintScope({ scopeId: `${scopeId}:navigator`, clipRoots: navigatorRoots }) : null,
+    );
   }
 
   keyboardNavigationContexts({ scopeId = "notes" } = {}) {
-    this.ensureRendered();
-    return this.hidden ? [] : this.info().keyboardNavigationContexts({ scopeId });
+    if (this.hidden) return [];
+    return [
+      ...this.primaryDocument.keyboardNavigationContexts({ scopeId: `${scopeId}:primary` }),
+      ...this.secondaryDocument.keyboardNavigationContexts({ scopeId: `${scopeId}:secondary` }),
+    ];
   }
 
-  scrollSurfaceScope({ scopeId = "notes", clipRoots = [] } = {}) {
-    this.ensureRendered();
-    const preview = this.preview();
-    if (this.hidden || preview.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    return preview.scrollSurfaceScope({
-      scopeId: `${scopeId}:content`,
-      label: this.noteState.note?.name || "Note",
-      clipRoots: [this, ...clipRoots],
-    });
-  }
-
-  renderBackIcon() {
-    const target = this.querySelector("[data-notes-back-icon]");
-    if (target) {
-      target.innerHTML = renderInlineIcon(
-        "ArrowLeft",
-        "Back to notes",
-        "notes-workspace-back-icon",
-      );
-    }
-  }
-
-  backButton() {
-    return this.querySelector(
-      ':scope > .notes-workspace-detail-pane > .notes-workspace-detail-header > button[data-action="back-to-notes"]',
-    );
-  }
-
-  retryButton() {
-    return this.querySelector(
-      ':scope > .notes-workspace-detail-pane > .notes-workspace-status > button[data-action="retry-note"]',
+  scrollSurfaceScope({ scopeId = "notes", leftClipRoots = [], rightClipRoots = [] } = {}) {
+    if (this.hidden) return emptyScrollSurfaceScope();
+    return mergeScrollSurfaceScopes(
+      this.primaryDocument.scrollSurfaceScope({ scopeId: `${scopeId}:primary`, clipRoots: this.selection.split ? leftClipRoots : rightClipRoots }),
+      this.secondaryDocument.scrollSurfaceScope({ scopeId: `${scopeId}:secondary`, clipRoots: rightClipRoots }),
+      hasActionHintLayoutBox(this.connectedNotesNavigator)
+        ? this.connectedNotesNavigator.scrollSurfaceScope({ scopeId: `${scopeId}:navigator`, clipRoots: this.selection.picker === "secondary" ? rightClipRoots : leftClipRoots }) : null,
     );
   }
 
   info() {
-    return this.querySelector(
-      ":scope > .notes-workspace-detail-pane > .notes-workspace-detail-header > caffold-notes-info",
-    );
+    return this.primaryDocument?.info();
   }
-
-  preview() {
-    return this.querySelector(
-      ":scope > .notes-workspace-detail-pane > caffold-markdown-preview",
-    );
-  }
-}
-
-function ownButtonScope(owner, control, { id, actionId, label, clipRoots, isActionable }) {
-  return {
-    blocked: false,
-    targets: [buttonActionHintTarget({
-      invalidationOwner: owner,
-      id,
-      actionId,
-      label,
-      control,
-      clipRoots: [owner, ...clipRoots],
-      isActionable: () =>
-        owner.isConnected &&
-        !owner.hidden &&
-        control.isConnected &&
-        !control.disabled &&
-        isActionable(),
-    })],
-    mutationRoots: [control],
-    scrollRoots: [],
-  };
 }
 
 customElements.define("caffold-notes-workspace", CaffoldNotesWorkspace);

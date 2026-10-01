@@ -106,7 +106,7 @@ test("navigates Settings as responsive master-detail pages with browser history"
     const masterDetailRect = masterDetail.getBoundingClientRect();
     return {
       ownedByList: navigationHost.parentElement === list,
-      position: getComputedStyle(navigation).position,
+      position: getComputedStyle(navigationHost).position,
       contentEndsAboveNavigation:
         navigatorRect.bottom <= navigationRect.top + 1,
       navigationEndsWithList:
@@ -121,9 +121,9 @@ test("navigates Settings as responsive master-detail pages with browser history"
   });
   expect(rootGeometry).toEqual({
     ownedByList: true,
-    position: "static",
-    contentEndsAboveNavigation: true,
-    navigationEndsWithList: true,
+    position: testInfo.project.name === "phone" ? "static" : "absolute",
+    contentEndsAboveNavigation: testInfo.project.name === "phone",
+    navigationEndsWithList: testInfo.project.name === "phone",
     detailFillsWorkspace: true,
     settingsHeadersAlign: true,
   });
@@ -1003,12 +1003,12 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
       const navigatorRect = navigator.getBoundingClientRect();
       const navigationRect = navigation.getBoundingClientRect();
       return {
-        contentEndsAboveNavigation:
-          navigatorRect.bottom <= navigationRect.top + 1,
-        navigationEndsWithList:
-          Math.abs(navigationRect.bottom - listRect.bottom) <= 1,
-        navigationMatchesListWidth:
-          Math.abs(navigationRect.width - listRect.width) <= 1,
+        contentFillsPane:
+          Math.abs(navigatorRect.bottom - listRect.bottom) <= 1,
+        navigationFloatsInsidePane:
+          navigationRect.bottom < listRect.bottom && navigationRect.left > listRect.left,
+        navigationFitsPane:
+          navigationRect.right < listRect.right,
         detailFillsWorkspace:
           Math.abs(
             detail.getBoundingClientRect().height -
@@ -1017,9 +1017,9 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
       };
     });
     expect(geometry).toEqual({
-      contentEndsAboveNavigation: true,
-      navigationEndsWithList: true,
-      navigationMatchesListWidth: true,
+      contentFillsPane: true,
+      navigationFloatsInsidePane: true,
+      navigationFitsPane: true,
       detailFillsWorkspace: true,
     });
   }
@@ -1044,9 +1044,11 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
   }
 });
 
-test("draws a light divider only between two unselected workspace tabs", { tag: "@desktop" }, async ({
+test("draws a light divider only between two unselected mobile workspace tabs", { tag: "@phone" }, async ({
   page,
 }, testInfo) => {
+  await installEventSourceMock(page);
+  await installTaskRoutes(page, workspaceTask());
   await page.goto("/");
 
   const tabs = page.locator(
@@ -1084,6 +1086,105 @@ test("draws a light divider only between two unselected workspace tabs", { tag: 
   await expect(tabs.nth(2)).toHaveAttribute("aria-current", "");
   expect(await dividers()).toEqual([null, divider(0.72), divider(0)]);
   await captureReviewScreenshot(page, testInfo, "workspace-tabs-settings");
+});
+
+test("floats the same workspace tabs at the bottom left while resizing the pane", { tag: ["@desktop", "@foldable"] }, async ({ page }, testInfo) => {
+  await page.goto("/");
+  const workspace = page.locator("caffold-task-workspace");
+  const footer = workspace.locator("caffold-task-workspace-navigation");
+  const tabs = footer.locator("button[data-workspace-mode]");
+  const resizer = workspace.getByRole("separator", { name: "Resize navigation pane" });
+  await expect(tabs).toHaveText(["Tasks", "Notes", "Settings"]);
+  await page.evaluate(() => document.fonts.ready);
+  let naturalWidth;
+  for (const key of ["End", "Home", "End"]) {
+    await resizer.press(key);
+    const geometry = await workspaceNavigationGeometry(footer);
+    naturalWidth ??= geometry.footerWidth;
+    expect(geometry.position).toBe("absolute");
+    expect(geometry.footerWidth).toBeCloseTo(Math.min(naturalWidth, geometry.paneWidth - 2 * geometry.inset), 1);
+    expect(geometry.footerLeft - geometry.paneLeft).toBeCloseTo(geometry.inset, 1);
+    expect(geometry.paneBottom - geometry.footerBottom).toBeCloseTo(geometry.inset, 1);
+    expect(geometry.contentBottom).toBeCloseTo(geometry.paneBottom, 1);
+    expect(geometry.labelsFit).toBe(true);
+    expect(Math.max(...geometry.buttonWidths) - Math.min(...geometry.buttonWidths)).toBeLessThan(0.02);
+    expect(geometry.trailingDivider).toBe("none");
+    expect(geometry.roundedSelection).toBe(true);
+  }
+  await captureReviewScreenshot(page, testInfo, "workspace-floating-tasks");
+  for (const mode of ["notes", "settings"]) {
+    const button = footer.locator(`button[data-workspace-mode="${mode}"]`);
+    await button.focus();
+    await button.press("Enter");
+    await expect(page).toHaveURL(`/${mode}`);
+    await expect(button).toBeFocused();
+    await expect(button).toHaveAttribute("aria-current", "");
+    expect((await footer.boundingBox()).width).toBeCloseTo(naturalWidth, 1);
+  }
+  await captureReviewScreenshot(page, testInfo, "workspace-floating-settings");
+});
+
+test("keeps the full-width mobile tabs and floats them beyond the available-width boundary", { tag: "@phone" }, async ({ page }, testInfo) => {
+  await page.goto("/notes");
+  const footer = page.locator("caffold-task-workspace-navigation");
+  await page.evaluate(() => document.fonts.ready);
+  let naturalWidth;
+  for (const width of [390, 430, 640, 641, 736, 899]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(footer).toBeVisible();
+    const geometry = await workspaceNavigationGeometry(footer);
+    expect(geometry.labelsFit).toBe(true);
+    expect(Math.max(...geometry.buttonWidths) - Math.min(...geometry.buttonWidths)).toBeLessThan(0.02);
+    if (width <= 640) {
+      expect(geometry.position).toBe("static");
+      expect(geometry.footerWidth).toBe(width);
+      expect(geometry.groupWidth).toBe(width);
+      expect(geometry.contentBottom).toBeCloseTo(geometry.footerTop, 1);
+      expect(geometry.roundedSelection).toBe(false);
+    } else {
+      naturalWidth ??= geometry.footerWidth;
+      expect(geometry.position).toBe("absolute");
+      expect(geometry.footerWidth).toBeCloseTo(Math.min(naturalWidth, width - 2 * geometry.inset), 1);
+      expect(geometry.contentBottom).toBeCloseTo(geometry.paneBottom, 1);
+    }
+    if (width === 430) await captureReviewScreenshot(page, testInfo, "workspace-tabs-phone-filled");
+    if (width === 736) await captureReviewScreenshot(page, testInfo, "workspace-floating-compact");
+  }
+});
+
+test("the last Task stays above the floating tabs and can be opened", { tag: ["@desktop", "@foldable"] }, async ({ page }) => {
+  await installEventSourceMock(page);
+  const tasks = Array.from({ length: 40 }, (_, index) => ({
+    ...workspaceTask(), id: `floating_task_${index}`, threadId: `floating_task_${index}`,
+    title: `Floating task ${index}`, preview: `Floating task ${index}`,
+    updatedMs: 100_000 - index * 1_000, recencyMs: 100_000 - index * 1_000,
+  }));
+  await installTaskRoutes(page, tasks[0], tasks);
+  await page.goto("/");
+  const list = page.locator("caffold-task-navigator > .task-list-scroll");
+  const last = list.locator(".task-row").filter({ hasText: "Floating task 39" });
+  await expect(last).toBeVisible();
+  await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const lastBox = await last.boundingBox();
+  const panel = await page.locator("caffold-task-workspace-navigation").boundingBox();
+  expect(lastBox.y + lastBox.height).toBeLessThan(panel.y);
+  await last.click();
+  await expect(page).toHaveURL(`/tasks/${tasks[39].threadId}`);
+});
+
+test("the last Settings entry stays above the floating tabs at short heights", { tag: ["@desktop", "@foldable"] }, async ({ page }) => {
+  await page.setViewportSize({ width: 736, height: 360 });
+  await page.goto("/settings");
+  const list = page.locator("caffold-settings-navigator > .settings-navigator-list");
+  const last = list.locator("button").last();
+  await expect(last).toBeAttached();
+  await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const lastBox = await last.boundingBox();
+  const panel = await page.locator("caffold-task-workspace-navigation").boundingBox();
+  expect(lastBox.y + lastBox.height).toBeLessThan(panel.y);
+  const section = await last.getAttribute("data-settings-section");
+  await last.click();
+  await expect(page).toHaveURL(`/settings/${section}`);
 });
 
 test("choosing the Tasks tab again brings the Task list back to the top", { tag: ["@desktop", "@phone"] }, async ({
@@ -1177,6 +1278,38 @@ async function installTaskRoutes(page, task, listed = [task]) {
       });
     }
     return route.continue();
+  });
+}
+
+async function workspaceNavigationGeometry(footer) {
+  return footer.evaluate((element) => {
+    const group = element.querySelector(".task-workspace-navigation");
+    const buttons = [...group.querySelectorAll("button")];
+    const pane = element.parentElement;
+    const content = [...pane.children].find((child) => child !== element && getComputedStyle(child).display !== "none");
+    const box = element.getBoundingClientRect();
+    const groupBox = group.getBoundingClientRect();
+    const paneBox = pane.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    return {
+      inset: rootFontSize * 0.5,
+      position: style.position,
+      footerLeft: box.left, footerTop: box.top, footerBottom: box.bottom, footerWidth: box.width,
+      paneLeft: paneBox.left, paneBottom: paneBox.bottom, paneWidth: pane.clientWidth,
+      contentBottom: content.getBoundingClientRect().bottom,
+      groupWidth: groupBox.width,
+      roundedSelection: Number.parseFloat(getComputedStyle(buttons[0]).borderRadius) > 0,
+      trailingDivider: getComputedStyle(group, "::after").content,
+      buttonWidths: buttons.map((button) => button.getBoundingClientRect().width),
+      labelsFit: buttons.every((button) => {
+        const buttonBox = button.getBoundingClientRect();
+        return [...button.children].every((child) => {
+          const childBox = child.getBoundingClientRect();
+          return childBox.left >= buttonBox.left && childBox.right <= buttonBox.right;
+        });
+      }),
+    };
   });
 }
 

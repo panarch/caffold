@@ -18,6 +18,7 @@ const apiHook = registerHooks({
   },
 });
 const registry = installCustomElementUnitRegistry();
+const { NotesSelection } = await import("./layout/selection.js");
 await import("./layout.js");
 const workspace = registry.element("caffold-notes-workspace").prototype;
 after(() => {
@@ -39,6 +40,10 @@ function deferred() {
 function readingOwner() {
   const owner = {
     noteId: "",
+    secondaryNoteId: "",
+    selection: new NotesSelection(),
+    secondaryRead: { generation: 0, controller: null },
+    secondaryState: { state: "idle", note: null, message: "" },
     active: true,
     levels: new Map(),
     levelReads: new Map(),
@@ -266,6 +271,7 @@ test("the navigator is told to open the directories that hold the open Note", ()
   const snapshots = [];
   const owner = {
     noteId: "storage",
+    selection: new NotesSelection(),
     levels: new Map([["", { state: "ready", listing: listing([]), message: "" }]]),
     noteState: {
       state: "ready",
@@ -300,6 +306,7 @@ test("picking the open Note rereads it, another Note asks for its route, and the
   const routes = [];
   const owner = {
     noteId: "open",
+    selection: new NotesSelection(),
     loadNote: (noteId) => loads.push(`note:${noteId}`),
     loadLevel: (directoryId) => loads.push(`level:${directoryId}`),
     requestNote: (noteId) => routes.push(noteId),
@@ -322,16 +329,70 @@ test("the details owner in the Note header provides the Notes keyboard contexts 
   const owner = {
     hidden: false,
     ensureRendered() {},
-    info: () => ({
+    primaryDocument: {
       keyboardNavigationContexts({ scopeId }) {
         scopeIds.push(scopeId);
         return [context];
       },
-    }),
+    },
+    secondaryDocument: { keyboardNavigationContexts: () => [] },
   };
 
   assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), [context]);
   owner.hidden = true;
   assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), []);
-  assert.deepEqual(scopeIds, ["notes"]);
+  assert.deepEqual(scopeIds, ["notes:primary"]);
+});
+
+test("replacing the secondary cancels only its request; closing drops its late answer", async () => {
+  const reads = new Map();
+  globalThis.notesApi = { getNote(id, signal) {
+    const read = deferred();
+    reads.set(id, { ...read, signal });
+    return read.promise;
+  } };
+  const owner = readingOwner();
+  workspace.prepareRoute.call(owner, { kind: "notes", noteId: "A", secondaryNoteId: "B" });
+  workspace.prepareRoute.call(owner, { kind: "notes", noteId: "A", secondaryNoteId: "C" });
+  assert.equal(reads.get("A").signal.aborted, false);
+  assert.equal(reads.get("B").signal.aborted, true);
+  reads.get("A").resolve({ id: "A", content: "A", location: [] });
+  reads.get("B").resolve({ id: "B", content: "stale", location: [] });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(owner.noteState.note.id, "A");
+  assert.equal(owner.secondaryState.state, "loading");
+  workspace.prepareRoute.call(owner, { kind: "notes", noteId: "A" });
+  assert.equal(reads.get("C").signal.aborted, true);
+  reads.get("C").resolve({ id: "C", content: "late", location: [] });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(owner.secondaryState.note, null);
+  assert.equal(owner.selection.split, false);
+});
+
+test("leaving Notes invalidates both document reads and returning rereads the retained pair", async () => {
+  const calls = recordingApi();
+  const owner = readingOwner();
+  workspace.prepareRoute.call(owner, { kind: "notes", noteId: "A", secondaryNoteId: "B" });
+  const primary = owner.noteRead.controller;
+  const secondary = owner.secondaryRead.controller;
+  owner.deactivate();
+  assert.equal(primary.signal.aborted, true);
+  assert.equal(secondary.signal.aborted, true);
+  workspace.activate.call(owner);
+  assert.deepEqual(calls, ["note:A", "note:B", "level:", "note:A", "note:B"]);
+  assert.equal(owner.selection.node, "paired");
+});
+
+test("a picker excludes the other pane and changes only its chosen document", () => {
+  const owner = readingOwner();
+  owner.noteId = "A";
+  owner.secondaryNoteId = "B";
+  owner.selection.transition("route", { paired: true });
+  owner.selection.transition("primary");
+  const routes = [];
+  owner.requestNote = (...ids) => routes.push(ids);
+  workspace.handleNavigatorIntent.call(owner, { type: "open-note", noteId: "B" });
+  workspace.handleNavigatorIntent.call(owner, { type: "open-note", noteId: "C" });
+  workspace.handleNavigatorIntent.call(owner, { type: "close" });
+  assert.deepEqual(routes, [["C", "B"], ["A"]]);
 });

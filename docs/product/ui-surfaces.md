@@ -11,7 +11,17 @@ Task navigator, Global New, Task/Section Detail, Notes, and Settings. The
 workspace navigation at the bottom of the navigation pane switches among Tasks,
 Notes, and Settings. Each returns to the screen it last showed, and browser Back
 leaves the current one for the previous one at its own depth. Choosing the one
-already shown brings its list back to the top.
+already shown keeps its route and brings its list back to the top, except
+while Notes is showing a pair.
+
+At workspace widths up to 640px, the navigation fills a separate bottom bar.
+At wider widths, the same three labeled buttons float at the bottom left of
+the navigation pane. Its three equal buttons use the width needed by the
+widest icon and label with padding in the selected interface font. Widening
+the pane leaves that width unchanged. The content fills the pane's height, and
+its scroll area leaves enough space at the end to bring the last item above the
+floating panel. Action Hints omit items partly covered by the panel. Scrolling
+them clear and entering Action Hint mode again makes them available.
 
 Desktop reading surfaces may keep the Task navigator visible. Code surfaces
 use the available detail width. Foldable and phone layouts use the same
@@ -401,6 +411,17 @@ The Notes surface only reads them.
   in view.
 - Choosing a Note opens it beside the tree on desktop and foldable layouts and
   in place of the tree on a phone, where Back returns to the tree.
+- View side by side in the open Note's header moves it to the left and opens
+  the Note tree on the right to choose a companion. The return arrow cancels
+  selection. Once both are open, each title chooses a replacement for that
+  pane; the Note in the other pane is unavailable in the tree. Closing the
+  right pane returns to the ordinary tree and the last committed left Note,
+  including when a replacement selection is still open.
+- A pair uses the two existing columns without adding a common header or
+  document tabs. The workspace tabs remain once, at the bottom left, and
+  switching away and back retains the pair and reading positions. Where two
+  usable columns do not fit, Notes shows the primary Note with Back to the tree;
+  widening the surface restores the pair and any open selector.
 - The Note header shows its name on one line and an Info button at its end.
   Below the header are the directories that hold the Note, when it is not at
   the top of the tree. The Info button opens when the Note last changed and
@@ -417,7 +438,7 @@ The Notes surface only reads them.
   exists each say so, and a failed read offers Retry.
 - With no Notes, the tree explains that an agent in a Task can save one.
 - Entering Notes, or returning the app to the foreground while Notes is shown,
-  reads the top of the tree, every directory already opened, and the open Note
+  reads the top of the tree, every directory already opened, and each open Note
   again, and choosing a Note reads that Note again. Nothing updates on its own
   while Notes stays open.
 
