@@ -61,6 +61,16 @@ Make ordinary Rust names read as the vocabulary of the file that uses them.
 - Keep imports in the narrowest scope that consumes them. Test-only imports
   belong inside the inline test module.
 
+## Rust Unsafe Code
+
+Do not add or expand `unsafe`, including tests, without first demonstrating
+necessity and obtaining explicit user approval. Existing use grants no further
+permission.
+
+Only approved case: terminal PTY startup
+([`pre_exec`](../../caffold/src/app/terminal/shell/pty.rs)) and its isolated
+SIGCHLD regression test ([`raise`](../../caffold/src/app/terminal/shell.rs)).
+
 ## Agent Integration Review
 
 Caffold preserves each supported agent's native harness behind the shared Task

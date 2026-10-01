@@ -29,6 +29,9 @@ device or another one. The browser draws the terminal in the Detail body.
 - The backend's screen state for a terminal is an `alacritty_terminal` screen
   with 5,000 lines of scrollback, fed by the terminal's thread. The browser's
   xterm.js buffer is only a view of the output it was sent.
+- The shell owner allocates the PTY and starts its child directly. Its
+  per-shell `waitid` observer is the only terminal exit watcher; terminal
+  creation installs no process-wide signal handler.
 
 | State | Owner | Writers | Persisted |
 | --- | --- | --- | --- |
