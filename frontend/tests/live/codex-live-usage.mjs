@@ -11,11 +11,23 @@ export const LIVE_MODEL_POLICY = Object.freeze({
   reasoningEffort: "low",
   models: Object.freeze({
     task: "gpt-6-luna",
+    naming: "gpt-6-luna",
     plan: "gpt-6.1-sol",
     fast: "gpt-6-luna",
     multimodal: "gpt-6-luna",
   }),
+  reasoningEffortExceptions: Object.freeze({
+    // On low, Luna can finish the first turn without naming the Task.
+    naming: "high",
+  }),
 });
+
+export function liveReasoningEffort(scenario) {
+  return (
+    LIVE_MODEL_POLICY.reasoningEffortExceptions[scenario] ??
+    LIVE_MODEL_POLICY.reasoningEffort
+  );
+}
 
 export function assertLiveModelPolicy({ scenario, model, effort }) {
   const expectedModel = LIVE_MODEL_POLICY.models[scenario];
@@ -27,9 +39,10 @@ export function assertLiveModelPolicy({ scenario, model, effort }) {
       `Live ${scenario} scenario must use ${expectedModel}, received ${model}`,
     );
   }
-  if (effort !== LIVE_MODEL_POLICY.reasoningEffort) {
+  const expectedEffort = liveReasoningEffort(scenario);
+  if (effort !== expectedEffort) {
     throw new Error(
-      `Live scenarios must use ${LIVE_MODEL_POLICY.reasoningEffort} reasoning, received ${effort}`,
+      `Live ${scenario} scenario must use ${expectedEffort} reasoning, received ${effort}`,
     );
   }
 }

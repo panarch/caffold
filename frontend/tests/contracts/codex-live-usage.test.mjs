@@ -7,6 +7,7 @@ import {
   collectTestUsage,
   formatLiveUsageReport,
   LIVE_MODEL_POLICY,
+  liveReasoningEffort,
   mergeLiveUsageReports,
 } from "../live/codex-live-usage.mjs";
 
@@ -47,9 +48,13 @@ test("enforces the authenticated live model policy", () => {
     reasoningEffort: "low",
     models: {
       task: "gpt-6-luna",
+      naming: "gpt-6-luna",
       plan: "gpt-6.1-sol",
       fast: "gpt-6-luna",
       multimodal: "gpt-6-luna",
+    },
+    reasoningEffortExceptions: {
+      naming: "high",
     },
   });
   for (const [scenario, model] of Object.entries(LIVE_MODEL_POLICY.models)) {
@@ -57,7 +62,7 @@ test("enforces the authenticated live model policy", () => {
       assertLiveModelPolicy({
         scenario,
         model,
-        effort: "low",
+        effort: liveReasoningEffort(scenario),
       }),
     );
   }
@@ -88,6 +93,15 @@ test("enforces the authenticated live model policy", () => {
         effort: "medium",
       }),
     /must use low reasoning/,
+  );
+  assert.throws(
+    () =>
+      assertLiveModelPolicy({
+        scenario: "naming",
+        model: "gpt-6-luna",
+        effort: "low",
+      }),
+    /must use high reasoning/,
   );
 });
 
