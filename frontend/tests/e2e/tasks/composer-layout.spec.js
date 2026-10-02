@@ -81,12 +81,71 @@ test("keeps conversation position stable while the follow-up composer grows", { 
     .toEqual(expect.objectContaining({ atBottom: false }));
 });
 
-async function installScrollableTask(page) {
+for (const themeMode of ["light", "dark"]) {
+  test(`fades ${themeMode} conversation content into the follow-up composer band`, { tag: "@all-viewports" }, async ({
+    page,
+  }, testInfo) => {
+    const detail = await installScrollableTask(page, {
+      themeMode,
+      trailingText: `| Fade | check |\n| --- | --- |\n${Array.from(
+        { length: 60 },
+        (_, index) => `| row ${index + 1} | row ${index + 1} |`,
+      ).join("\n")}`,
+    });
+    await page.goto("/tasks/thread-1?cwd=src");
+    await emitTaskDetailBootstrap(page, detail);
+
+    const form = page.locator(
+      'caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-follow-up-form[data-task-form="follow-up"]',
+    );
+    const scroller = page.locator(".task-conversation-scroll");
+    await expect(scroller.locator("table")).toBeVisible();
+    await expect
+      .poll(() => composerReady(form))
+      .toBe(true);
+    await expect
+      .poll(() => scrollPosition(scroller))
+      .toEqual(expect.objectContaining({ overflow: true, atBottom: true }));
+
+    const range = await scrollRangeBeyondContent(scroller);
+    expect(Math.abs(range.beyondContent - range.paddingBottom)).toBeLessThanOrEqual(1);
+
+    await scroller.evaluate((element) => {
+      const table = element.querySelector("table");
+      element.scrollTop +=
+        table.getBoundingClientRect().top - element.getBoundingClientRect().top - 16;
+      element.dispatchEvent(new Event("scroll"));
+    });
+    await expect
+      .poll(() => scrollPosition(scroller))
+      .toEqual(expect.objectContaining({ atBottom: false }));
+
+    const screenshot = await page.screenshot({
+      animations: "disabled",
+      caret: "hide",
+      scale: "css",
+    });
+    await captureReviewScreenshot(
+      page,
+      testInfo,
+      `tasks-follow-up-composer-fade-${themeMode}`,
+    );
+    const edge = await bottomEdgeContrast(page, screenshot);
+    expect(edge.borderAtEdge).toBeLessThan(3);
+    expect(edge.borderAboveFade).toBeGreaterThan(20);
+    for (const [index, channel] of edge.shadowAtEdge.entries()) {
+      expect(channel, `shadow channel ${index}`).toBeLessThan(edge.surface[index]);
+    }
+  });
+}
+
+async function installScrollableTask(page, { themeMode, trailingText = "" } = {}) {
   await installTaskApiFixture(page);
-  await page.addInitScript(() => {
+  await page.addInitScript((mode) => {
     localStorage.setItem(
       "caffold:settings",
       JSON.stringify({
+        themeMode: mode,
         uiTypefacePreset: "geist-sans",
         codeTypefacePreset: "geist-mono",
         interfaceScalePercent: 120,
@@ -94,16 +153,24 @@ async function installScrollableTask(page) {
         codeTextPx: 13,
       }),
     );
-  });
+  }, themeMode);
   const detail = taskDetailFixture();
-  detail.events = Array.from({ length: 8 }, (_, index) => ({
+  const texts = Array.from(
+    { length: 8 },
+    (_, index) =>
+      `Existing conversation block ${index + 1}.\n\n${"Keep this transcript scrollable. ".repeat(4)}`,
+  );
+  if (trailingText) {
+    texts.push(trailingText);
+  }
+  detail.events = texts.map((text, index) => ({
     id: `event_composer_resize_${index}`,
     threadId: detail.threadId,
     type: "assistant_message",
     summary: "Assistant response",
     payload: {
       turnId: `turn_composer_resize_${index}`,
-      text: `Existing conversation block ${index + 1}.\n\n${"Keep this transcript scrollable. ".repeat(4)}`,
+      text,
     },
     position: { anchorMs: 1_767_300_000_000 + index, index: 0 },
   }));
@@ -131,6 +198,67 @@ function scrollPosition(scroller) {
     atBottom:
       element.scrollHeight - element.clientHeight - element.scrollTop <= 2,
   }));
+}
+
+function scrollRangeBeyondContent(scroller) {
+  return scroller.evaluate((element) => {
+    const column = element.querySelector(".task-conversation-column");
+    const contentEnd =
+      column.getBoundingClientRect().bottom -
+      element.getBoundingClientRect().top +
+      element.scrollTop;
+    return {
+      beyondContent: element.scrollHeight - contentEnd,
+      paddingBottom: Number.parseFloat(getComputedStyle(element).paddingBottom),
+    };
+  });
+}
+
+function bottomEdgeContrast(page, screenshot) {
+  return page.evaluate(async (base64) => {
+    const bitmap = await createImageBitmap(
+      new Blob([Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))]),
+    );
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d");
+    context.drawImage(bitmap, 0, 0);
+    const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    const color = (x, y) => {
+      const offset = (Math.floor(y) * bitmap.width + Math.floor(x)) * 4;
+      return [pixels[offset], pixels[offset + 1], pixels[offset + 2]];
+    };
+
+    const scroller = document.querySelector(".task-conversation-scroll");
+    const panel = document.querySelector(".task-follow-up-form .task-composer-panel");
+    const bottom = Math.floor(scroller.getBoundingClientRect().bottom) - 1;
+    const fadeHeight = Number.parseFloat(getComputedStyle(scroller, "::after").height);
+    // The table's middle divider sits away from the panel's sides, where the
+    // panel's shadow is even.
+    const divider = Math.round(
+      scroller.querySelector("table th:nth-child(2)").getBoundingClientRect().left,
+    );
+    const borderContrast = (y) => {
+      const beside = color(divider - 8, y);
+      return Math.max(
+        ...[divider - 1, divider, divider + 1].flatMap((x) =>
+          color(x, y).map((channel, index) => Math.abs(channel - beside[index])),
+        ),
+      );
+    };
+    const panelBox = panel.getBoundingClientRect();
+    return {
+      // Several rows, so a row border crossing one of them cannot hide the divider.
+      borderAboveFade: Math.max(
+        ...[0, 1, 2, 3].map((offset) => borderContrast(bottom - fadeHeight - 4 - offset)),
+      ),
+      borderAtEdge: borderContrast(bottom),
+      shadowAtEdge: color(panelBox.left + panelBox.width * 0.75, bottom),
+      surface: getComputedStyle(panel.closest("form"))
+        .backgroundColor.match(/\d+/g)
+        .slice(0, 3)
+        .map(Number),
+    };
+  }, screenshot.toString("base64"));
 }
 
 function composerLayout(form) {

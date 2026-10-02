@@ -17,17 +17,20 @@ caffold-task-composer {
   & .task-composer.task-follow-up-form {
     width: 100%;
     max-width: none;
-    padding: 0.5rem 0.875rem 0.625rem;
+    padding: 0.25rem 0.875rem 0.625rem;
     border-top: 0;
     background: var(--surface);
   }
 
   & .task-follow-up-form .task-composer-panel {
+    --task-composer-panel-shadow: var(--structural-shadow-block-start),
+      var(--structural-shadow-panel);
     width: min(100%, 980px);
     margin: 0 auto;
   }
 
   & .task-composer-panel {
+    --task-composer-panel-shadow: var(--structural-shadow-panel);
     display: grid;
     grid-template-rows: auto auto;
     position: relative;
@@ -35,7 +38,7 @@ caffold-task-composer {
     border: 1px solid var(--border);
     border-radius: 14px;
     background: var(--surface);
-    box-shadow: var(--structural-shadow-panel);
+    box-shadow: var(--task-composer-panel-shadow);
   }
 
   & .task-composer-render-region {
@@ -271,7 +274,7 @@ caffold-task-composer {
 
   & .task-composer-panel[data-drop-target] {
     border-color: var(--focus-ring);
-    box-shadow: 0 0 0 1px var(--focus-ring), var(--structural-shadow-panel);
+    box-shadow: 0 0 0 1px var(--focus-ring), var(--task-composer-panel-shadow);
   }
 
   & .task-composer-attachment-error {
@@ -552,7 +555,7 @@ caffold-task-composer {
 @media (max-width: 860px), (pointer: coarse) {
   caffold-task-composer {
     & .task-composer.task-follow-up-form {
-      padding: 0.5rem 0.625rem 0.625rem;
+      padding: 0.25rem 0.625rem 0.625rem;
     }
 
     & .task-composer {
