@@ -293,6 +293,10 @@ test("structural shadows separate fixed regions from floating elevation", () => 
   );
   assert.match(
     root,
+    /--structural-shadow-block-start: 0 -6px 20px rgb\(var\(--shadow-rgb\) \/ 8%\)/,
+  );
+  assert.match(
+    root,
     /--structural-shadow-inline-end: linear-gradient\([\s\S]*to right,[\s\S]*rgb\(var\(--shadow-rgb\) \/ 2\.5%\) 0%,[\s\S]*rgb\(var\(--shadow-rgb\) \/ 1\.25%\) 35%,[\s\S]*rgb\(var\(--shadow-rgb\) \/ 0\.5%\) 70%,[\s\S]*transparent 100%[\s\S]*\)/,
   );
   assert.deepEqual(
@@ -319,6 +323,10 @@ test("structural shadows separate fixed regions from floating elevation", () => 
       "pages/(task-workspace)/tasks/components/navigator.css",
       "pages/(task-workspace)/tasks/recovery/page.css",
     ],
+  );
+  assert.deepEqual(
+    tokenConsumers(sources, /var\(--structural-shadow-block-start\)/),
+    ["pages/(task-workspace)/tasks/components/composer.css"],
   );
   assert.deepEqual(
     tokenConsumers(sources, /var\(--structural-shadow-inline-end\)/),
@@ -356,7 +364,11 @@ test("structural shadows separate fixed regions from floating elevation", () => 
 
   const composer = readFrontend("pages/(task-workspace)/tasks/components/composer.css");
   cssBlockMatching(composer, ".task-composer-panel", [
-    /box-shadow: var\(--structural-shadow-panel\)/,
+    /--task-composer-panel-shadow: var\(--structural-shadow-panel\)/,
+    /box-shadow: var\(--task-composer-panel-shadow\)/,
+  ]);
+  cssBlockMatching(composer, ".task-follow-up-form .task-composer-panel", [
+    /--task-composer-panel-shadow: var\(--structural-shadow-block-start\),\s+var\(--structural-shadow-panel\)/,
   ]);
   assert.doesNotMatch(
     cssBlock(composer, ".task-composer.task-follow-up-form"),
