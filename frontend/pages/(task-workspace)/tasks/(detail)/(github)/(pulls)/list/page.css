@@ -22,12 +22,6 @@ caffold-github-pulls-list-page {
     list-style: none;
   }
 
-  & .github-pulls-loading-body {
-    display: grid;
-    min-height: 0;
-    place-items: center;
-  }
-
   & .github-pull-row {
     display: block;
   }

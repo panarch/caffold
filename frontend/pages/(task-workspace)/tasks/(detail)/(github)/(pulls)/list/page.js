@@ -1,5 +1,6 @@
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
 import "#components/pagination.js";
 import {
   ACTION_HINT_ACTION,
@@ -41,7 +42,11 @@ class CaffoldGithubPullsListPage extends HTMLElement {
         }),
       );
     });
-    this.boundIconsReady = () => this.render();
+    this.boundIconsReady = () => {
+      if (this.state?.status === "ready") {
+        this.render();
+      }
+    };
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
 
@@ -205,24 +210,7 @@ class CaffoldGithubPullsListPage extends HTMLElement {
     }
 
     if (this.state.status === "loading") {
-      if (this.state.payload) {
-        this.innerHTML = `
-          <section class="github-pulls-panel" aria-busy="true">
-            <div class="github-pulls-loading-body">
-              <p class="surface-message" aria-live="polite">Loading pull requests...</p>
-            </div>
-            ${this.renderPagination(this.state.payload)}
-          </section>
-        `;
-        this.patchSelectedPull();
-        return;
-      }
-
-      this.innerHTML = `
-        <section class="github-pulls-panel" aria-busy="true">
-          <p class="surface-message">Loading pull requests...</p>
-        </section>
-      `;
+      this.renderLoading();
       return;
     }
 
@@ -256,6 +244,29 @@ class CaffoldGithubPullsListPage extends HTMLElement {
       </section>
     `;
     this.patchSelectedPull();
+  }
+
+  // Making the phrase again would restart its delay and shimmer, so a later
+  // render in the same wait changes only the pagination below it.
+  renderLoading() {
+    const { payload } = this.state;
+    const pagination = payload ? this.renderPagination(payload) : "";
+    const panel = this.querySelector(":scope > .github-pulls-panel.loading-panel");
+    if (!panel) {
+      this.innerHTML = `
+        <section class="github-pulls-panel loading-panel" aria-busy="true">
+          <p class="surface-message"><caffold-loading-text>Loading pull requests...</caffold-loading-text></p>
+          ${pagination}
+        </section>
+      `;
+      this.loadingPagination = pagination;
+      return;
+    }
+    if (pagination !== this.loadingPagination) {
+      panel.querySelector(":scope > caffold-pagination")?.remove();
+      panel.insertAdjacentHTML("beforeend", pagination);
+      this.loadingPagination = pagination;
+    }
   }
 
   renderPagination(payload) {
