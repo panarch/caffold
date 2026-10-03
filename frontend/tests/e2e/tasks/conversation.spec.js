@@ -96,8 +96,12 @@ test("keeps a large task usable while conversation history is loading", { tag: "
   await expect(tasksPage.locator(".task-detail-heading h2")).toContainText(
     "Large task history",
   );
-  await expect(tasksPage.getByText("Loading task...")).toHaveCount(0);
-  await expect(tasksPage.getByText("Loading conversation...")).toBeVisible();
+  const loadingText = tasksPage.locator("caffold-task-detail > caffold-loading-text");
+  await expect(loadingText).toHaveText("Loading conversation…");
+  await expect(loadingText).toBeVisible();
+  await expect(
+    tasksPage.locator("caffold-task-conversation caffold-loading-text"),
+  ).toHaveCount(0);
 
   const composer = tasksPage.locator(
     '.task-follow-up-form textarea[name="prompt"]',
@@ -146,7 +150,7 @@ test("keeps a large task usable while conversation history is loading", { tag: "
     });
   }, { threadId, canonicalDetail });
 
-  await expect(tasksPage.getByText("Loading conversation...")).toHaveCount(0);
+  await expect(loadingText).toBeHidden();
   await expect(tasksPage.getByText("Recent history is ready.")).toBeVisible();
   await expect(composer).toHaveValue("Keep this draft while history arrives");
 });
@@ -518,12 +522,11 @@ test("loads older collapsed work without a scrollbar and waits for each requeste
     const loading = conversation.getByRole("status").filter({ hasText: "Loading older messages..." });
     await expect(loading).toBeVisible();
     await expect(conversation.locator(".task-load-older button")).toHaveCount(0);
-    const spinner = loading.locator('[aria-hidden="true"]');
-    await expect(spinner).toBeVisible();
-    const loadingSpinner = await spinner.elementHandle();
+    expect(await loading.evaluate((element) => element.localName)).toBe("caffold-loading-text");
+    const loadingPhrase = await loading.elementHandle();
     await refreshAnswer(3);
-    expect(await spinner.evaluate((element, original) => element === original, loadingSpinner)).toBe(true);
-    expect(await spinner.evaluate((element) => element.getAnimations().some((animation) => animation.playState === "running"))).toBe(true);
+    expect(await loading.evaluate((element, original) => element === original, loadingPhrase)).toBe(true);
+    expect(await loading.evaluate((element) => element.getAnimations().some((animation) => animation.playState === "running"))).toBe(true);
     expect(await historyLayout()).toEqual(readyLayout);
     const hintLabels = await page.locator("caffold-app-shell").evaluate(
       (shell) => shell.actionHintScope().targets.map((target) => target.label),
@@ -541,7 +544,7 @@ test("loads older collapsed work without a scrollbar and waits for each requeste
     expect(cursors).toEqual(["older-1"]);
 
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await expect.poll(() => spinner.evaluate((element) => element.getAnimations().length)).toBe(0);
+    await expect.poll(() => loading.evaluate((element) => element.getAnimations().length)).toBe(0);
     await expect(loading).toBeVisible();
     expect(await historyLayout()).toEqual(readyLayout);
     await page.emulateMedia({ reducedMotion: "no-preference" });

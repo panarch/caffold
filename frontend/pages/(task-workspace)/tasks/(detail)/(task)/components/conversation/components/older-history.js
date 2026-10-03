@@ -1,4 +1,5 @@
 import { escapeHtml } from "#components/dom.js";
+import "#components/loading-text.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -119,10 +120,7 @@ class CaffoldTaskOlderHistory extends HTMLElement {
             ${hasOlder ? '<button type="button">Retry loading older messages</button>' : ""}
           </div>`
         : loading
-          ? `<div class="task-older-history-loading" role="status">
-              <span class="task-older-history-spinner" aria-hidden="true"></span>
-              <span>Loading older messages...</span>
-            </div>`
+          ? `<caffold-loading-text class="task-older-history-loading">Loading older messages...</caffold-loading-text>`
           : `<button type="button">Load older messages</button>`}
     </div>`;
   }

@@ -423,6 +423,37 @@ test("refresh controls share a defined spin animation with reduced-motion fallba
   }
 });
 
+test("the loading phrase waits, fades in, and falls back to still text for reduced motion", () => {
+  const loadingText = readFrontend("components/loading-text.css");
+
+  assert.match(
+    loadingText,
+    /animation: caffold-loading-text-enter 150ms ease-out 180ms backwards;/,
+  );
+  assert.match(
+    loadingText,
+    /linear-gradient\([\s\S]*var\(--muted\)[\s\S]*var\(--text\)[\s\S]*var\(--muted\)[\s\S]*\)/,
+  );
+  assert.match(
+    loadingText,
+    /caffold-loading-text-enter 150ms ease-out 180ms backwards,\s*caffold-loading-text-sweep 1\.8s linear 180ms infinite;/,
+  );
+  assert.match(
+    loadingText,
+    /&\[immediate\] \{\s*animation: caffold-loading-text-sweep 1\.8s linear infinite;/,
+    "an owner that already waited shows the phrase at once",
+  );
+  assert.match(
+    loadingText,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*background-image: none;[\s\S]*animation: caffold-loading-text-enter 1ms step-end 180ms backwards;[\s\S]*&\[immediate\] \{\s*animation: none;/,
+  );
+  assert.doesNotMatch(
+    loadingText,
+    /font-size|font-family/,
+    "the phrase takes its Interface text size from where it is placed",
+  );
+});
+
 test("workspace header identity and titles share semantic ownership", () => {
   const tokens = readFrontend("styles.css");
   const brand = readFrontend(

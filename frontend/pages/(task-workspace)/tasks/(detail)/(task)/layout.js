@@ -11,6 +11,7 @@ import {
   uploadTaskFile,
 } from "#app/api.js";
 import { escapeHtml } from "#components/dom.js";
+import "#components/loading-text.js";
 import { routeDomain } from "#app/navigation-routes.js";
 import {
   ACTION_HINT_ACTION,
@@ -1516,6 +1517,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.setAttribute("data-task-detail-view", this.reviewView);
     this.ensureTaskShell();
     this.renderTaskContentRegion();
+    this.conversationLoadingText().hidden = !this.waitsForConversation();
     this.brokenDeleteDialog()?.setContext({
       threadId: this.selectedThreadId,
       title: taskThreadId(this.managedTask) === this.selectedThreadId ? this.managedTask?.title : this.taskDetail?.task?.title,
@@ -1552,9 +1554,29 @@ class CaffoldTaskDetail extends HTMLElement {
 
     this.innerHTML = `
       <div class="tasks-detail-region"></div>
+      <caffold-loading-text hidden>Loading conversation…</caffold-loading-text>
       <caffold-broken-task-delete-dialog></caffold-broken-task-delete-dialog>
     `;
     this.taskContentRenderKey = "";
+  }
+
+  conversationLoadingText() {
+    return this.querySelector(":scope > caffold-loading-text");
+  }
+
+  // One retained phrase covers both waits of an opening conversation: Task
+  // details not yet read, then history not yet read. Staying shown across the
+  // two keeps its delay and animation from starting over.
+  waitsForConversation() {
+    if (this.view !== "detail" || this.reviewView !== "conversation") {
+      return false;
+    }
+    const shownDetail =
+      this.hasSelectedTaskDetail() &&
+      !Array.isArray(this.detailLoadError?.allowedActions);
+    return shownDetail
+      ? Boolean(this.taskDetail.historyLoading)
+      : this.loading;
   }
 
   setManagedTask(task) {
@@ -1826,7 +1848,6 @@ class CaffoldTaskDetail extends HTMLElement {
         task: null,
         events: [],
         eventsPage: { nextCursor: null },
-        loading: false,
         loadingOlder: false,
         detailError: null,
         historyError: null,
@@ -1841,7 +1862,6 @@ class CaffoldTaskDetail extends HTMLElement {
       task,
       events: this.events,
       eventsPage: this.eventsPage,
-      loading: Boolean(this.taskDetail?.historyLoading),
       loadingOlder: this.loadingOlderEvents,
       detailError: isTaskTransportStale(this.detailSession.state)
         ? null
@@ -2016,7 +2036,7 @@ class CaffoldTaskDetail extends HTMLElement {
       if (["git", "github"].includes(this.reviewView)) {
         return this.renderPendingDomain("Loading Task context...");
       }
-      return `<p class="surface-message task-detail-state-message">Loading task...</p>`;
+      return "";
     }
     if (this.detailLoadError && !hasSelectedTaskDetail && this.view === "detail") {
       if (["git", "github"].includes(this.reviewView)) {
@@ -2055,8 +2075,8 @@ class CaffoldTaskDetail extends HTMLElement {
     return `
       <section class="task-domain-pending" data-task-domain="${this.reviewView}" aria-label="${title}">
         <header><h2>${title}</h2></header>
-        <div class="task-domain-pending-body" ${options.error ? 'role="alert"' : 'role="status"'}>
-          <p>${escapeHtml(message)}</p>
+        <div class="task-domain-pending-body"${options.error ? ' role="alert"' : ""}>
+          <p>${options.error ? escapeHtml(message) : `<caffold-loading-text>${escapeHtml(message)}</caffold-loading-text>`}</p>
           ${options.error ? this.renderLoadErrorAction() : ""}
         </div>
       </section>
@@ -2067,7 +2087,7 @@ class CaffoldTaskDetail extends HTMLElement {
   renderTaskDetail() {
     const task = this.taskDetail?.task;
     if (!task) {
-      return `<p class="surface-message task-detail-state-message">${this.loading ? "Loading task..." : "Select a task."}</p>`;
+      return `<p class="surface-message task-detail-state-message">Select a task.</p>`;
     }
     return `
       <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.reviewView)}">

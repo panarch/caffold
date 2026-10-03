@@ -372,6 +372,14 @@ caffold-review-file-viewer {
     color: var(--muted);
   }
 
+  & .loading-panel > caffold-loading-text {
+    place-self: center;
+    padding: var(--interface-panel-padding);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    text-align: center;
+  }
+
   & .error-panel {
     background: var(--danger-soft);
     color: var(--danger);

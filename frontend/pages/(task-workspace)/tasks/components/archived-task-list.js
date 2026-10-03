@@ -5,6 +5,7 @@ import {
 } from "#app/api.js";
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
 import { taskStoreOperationsPresentation } from "../../task-store-status.js";
 import {
   TASK_TRANSPORT_STATE,
@@ -483,6 +484,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
       this.removeAttribute("role");
       this.removeAttribute("aria-label");
       this.replaceChildren();
+      this.renderedMarkup = "";
       this.publishState();
       return;
     }
@@ -497,7 +499,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
     if (this.taskOperationsBlocked && !tasks.length) {
       content = `<p class="task-section-message">${escapeHtml(this.taskOperations.message)}</p>`;
     } else if (this.archivedTaskLoading && !tasks.length) {
-      content = `<p class="task-section-message">Loading...</p>`;
+      content = `<p class="task-section-message"><caffold-loading-text>Loading...</caffold-loading-text></p>`;
     } else if (this.archivedTaskError && !tasks.length) {
       content = `
         <div class="task-section-message" role="alert">
@@ -513,7 +515,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
         ${groups.map((group) => this.renderRepositoryGroup(group)).join("")}
       </ol>`;
     }
-    this.innerHTML = `
+    const markup = `
       <header class="task-list-section-header">
         <h2>Archived</h2>
         <span class="task-list-section-count">${tasks.length}</span>
@@ -521,6 +523,11 @@ class CaffoldArchivedTaskList extends HTMLElement {
       ${content}
       ${this.renderArchivedPagination()}
     `;
+    // An unchanged section keeps its DOM, so a waiting phrase keeps animating.
+    if (markup !== this.renderedMarkup) {
+      this.innerHTML = markup;
+      this.renderedMarkup = markup;
+    }
     this.publishState();
   }
 

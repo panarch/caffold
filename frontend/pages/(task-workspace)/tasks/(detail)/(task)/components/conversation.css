@@ -86,14 +86,6 @@ caffold-task-conversation {
     line-height: var(--interface-line-height);
   }
 
-  & .task-history-loading {
-    justify-self: start;
-    margin: 0;
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
-
   & .task-event {
     min-width: 0;
   }

@@ -51,8 +51,7 @@ caffold-task-recovery {
     overflow: auto;
   }
 
-  & .task-recovery-content,
-  & .task-recovery-loading {
+  & .task-recovery-content {
     width: min(calc(100% - 2.5rem), 38rem);
     margin: 1.75rem auto;
   }
@@ -64,7 +63,14 @@ caffold-task-recovery {
   }
 
   & .task-recovery-loading {
-    color: var(--muted);
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    min-height: 100%;
+    margin: 0;
+    padding: var(--interface-space-7);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-recovery-heading {
@@ -208,8 +214,7 @@ caffold-task-recovery {
   caffold-task-recovery {
     --task-recovery-header-padding-inline: var(--interface-space-4);
 
-    & .task-recovery-content,
-    & .task-recovery-loading {
+    & .task-recovery-content {
       width: calc(100% - 2rem);
       margin-block: var(--interface-space-7);
     }

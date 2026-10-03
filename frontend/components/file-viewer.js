@@ -25,8 +25,13 @@ import {
 import "../keyboard-navigation/components/presentation.js";
 import "./code-viewer.js";
 import "./diff-viewer.js";
+import "./loading-text.js";
 import "./markdown-preview.js";
 import "./pdf-viewer.js";
+
+// How long switching to another file keeps showing the previous one before
+// the loading state replaces it.
+const RETAINED_CONTENT_MS = 180;
 
 let viewerInstanceId = 0;
 
@@ -58,7 +63,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
       });
       this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) => {
         if (event.target === this.detailsPopover()) {
-          this.deactivate();
+          this.closeDetailsPopover();
         }
       });
       this.boundIconsReady = () => this.patchViewerIcons();
@@ -77,6 +82,11 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   deactivate() {
+    this.cancelRetainedContent();
+    this.closeDetailsPopover();
+  }
+
+  closeDetailsPopover() {
     const popover = this.detailsPopover();
     if (!popover?.matches?.(":popover-open")) {
       return;
@@ -89,16 +99,60 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   setEmpty() {
+    this.cancelRetainedContent();
     this.state = { status: "empty" };
     this.render();
   }
 
+  // Shown content stays until the next state arrives; only a wait that
+  // outlasts RETAINED_CONTENT_MS turns it into the loading state. Requests made
+  // while already waiting keep that wait and its original deadline.
   setLoading(presentation) {
-    this.state = { status: "loading", presentation };
+    if (this.retainedContent) {
+      this.retainedContent.presentation = presentation;
+      return;
+    }
+    if (this.state?.status === "loading") {
+      this.state = { ...this.state, presentation };
+      this.render();
+      return;
+    }
+    if (this.state && this.state.status !== "empty") {
+      const retained = { presentation, timer: null };
+      retained.timer = window.setTimeout(
+        () => this.finishRetainedContent(retained),
+        RETAINED_CONTENT_MS,
+      );
+      this.retainedContent = retained;
+      return;
+    }
+    this.state = { status: "loading", presentation, waited: false };
     this.render();
   }
 
+  finishRetainedContent(retained) {
+    if (this.retainedContent !== retained) {
+      return;
+    }
+    this.retainedContent = null;
+    this.state = {
+      status: "loading",
+      presentation: retained.presentation,
+      waited: true,
+    };
+    this.render();
+  }
+
+  cancelRetainedContent() {
+    if (!this.retainedContent) {
+      return;
+    }
+    window.clearTimeout(this.retainedContent.timer);
+    this.retainedContent = null;
+  }
+
   setFile(file, options = {}) {
+    this.cancelRetainedContent();
     const scroll = options.preserveScroll ? this.captureContentScroll() : null;
     this.state = {
       status: "file",
@@ -109,6 +163,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   setMarkdown(file, options = {}) {
+    this.cancelRetainedContent();
     this.state = {
       status: "markdown",
       file,
@@ -118,11 +173,13 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   setImage(image) {
+    this.cancelRetainedContent();
     this.state = { status: "image", image };
     this.render();
   }
 
   setPdf(pdf) {
+    this.cancelRetainedContent();
     this.state = {
       status: "pdf",
       pdf,
@@ -137,6 +194,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   setDiff(diff, options = {}) {
+    this.cancelRetainedContent();
     const scroll = options.preserveScroll ? this.captureContentScroll() : null;
     const { presentation = diffViewerPresentation(diff), ...viewerOptions } = options;
     this.state = {
@@ -148,6 +206,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   setNotice(message, options = {}) {
+    this.cancelRetainedContent();
     this.state = {
       status: "notice",
       message,
@@ -159,6 +218,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   setError(presentation, error) {
+    this.cancelRetainedContent();
     this.state = { status: "error", presentation, error };
     this.render();
   }
@@ -532,7 +592,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   render(options = {}) {
-    this.deactivate();
+    this.closeDetailsPopover();
     if (!this.state || this.state.status === "empty") {
       this.innerHTML = `
         <section class="viewer-panel empty-panel">
@@ -543,12 +603,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     }
 
     if (this.state.status === "loading") {
-      this.innerHTML = `
-        <section class="viewer-panel" aria-busy="true">
-          ${this.renderPresentationHeader(this.state.presentation)}
-          <p class="surface-message">Loading file...</p>
-        </section>
-      `;
+      this.renderLoading();
       return;
     }
 
@@ -613,6 +668,23 @@ class CaffoldReviewFileViewer extends HTMLElement {
     this.querySelector("caffold-code-viewer").setFile(file, options);
   }
 
+  // The loading phrase stays the same element for the whole wait, so its
+  // appearance delay and animation never start over on a header update.
+  renderLoading() {
+    const { presentation, waited } = this.state;
+    const panel = this.querySelector(":scope > .loading-panel");
+    if (panel) {
+      this.replacePresentationHeader(panel, presentation);
+      return;
+    }
+    this.innerHTML = `
+      <section class="viewer-panel loading-panel" aria-busy="true">
+        ${this.renderPresentationHeader(presentation)}
+        <caffold-loading-text${waited ? " immediate" : ""}>Loading file...</caffold-loading-text>
+      </section>
+    `;
+  }
+
   renderMarkdown(options = {}) {
     const { file, presentation } = this.state;
     const { markdownChanged = false, ...previewOptions } = options;
@@ -659,7 +731,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   replacePresentationHeader(panel, presentation) {
-    this.deactivate();
+    this.closeDetailsPopover();
     const template = document.createElement("template");
     template.innerHTML = this.renderPresentationHeader(presentation);
     panel.querySelector(":scope > header")?.replaceWith(

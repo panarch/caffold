@@ -1,4 +1,5 @@
 import { renderEntryIcon, warmIcons } from "./icons.js";
+import { retainLoadingText } from "./loading-text.js";
 import {
   buttonActionHintTarget,
   disclosureActionHintTarget,
@@ -561,9 +562,19 @@ class CaffoldFileTree extends HTMLElement {
     if (node.kind === "status") {
       row.className = `file-tree-status${node.tone === "error" ? " is-error" : ""}`;
       row.style.setProperty("--tree-depth", depth);
-      const guides = createGuides();
+      const guides = row.querySelector(":scope > .file-tree-guides") ?? createGuides();
       patchGuides(guides, descriptor.passingGuideDepths);
-      row.replaceChildren(guides, node.name ?? "");
+      // Owners add a loading row only once its wait is long enough to show.
+      const label = node.loading
+        ? retainLoadingText(row.lastChild, node.name ?? "", { immediate: true })
+        : document.createTextNode(node.name ?? "");
+      if (
+        row.childNodes.length !== 2 ||
+        row.firstChild !== guides ||
+        row.lastChild !== label
+      ) {
+        row.replaceChildren(guides, label);
+      }
       return;
     }
 
@@ -853,6 +864,7 @@ function visibleRows(nodes, expandedKeys, fileSortMode) {
             kind: "status",
             name: children.message ?? (children.status === "loading" ? "Loading..." : "Unable to load directory."),
             tone: children.status === "error" ? "error" : "muted",
+            loading: children.status === "loading",
           },
           depth: depth + 1,
           parentKey: node.key,

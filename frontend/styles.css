@@ -9,6 +9,7 @@
 @import "./components/pdf-viewer.css";
 @import "./components/pane-resizer.css";
 @import "./components/segmented-control.css";
+@import "./components/loading-text.css";
 @import "./components/terminal-view.css";
 @import "./pages/(task-workspace)/layout.css";
 @import "./action-hints/components/dialog.css";

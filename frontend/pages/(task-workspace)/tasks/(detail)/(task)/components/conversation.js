@@ -95,7 +95,6 @@ class CaffoldTaskConversation extends HTMLElement {
       task: null,
       events: [],
       eventsPage: { nextCursor: null },
-      loading: false,
       loadingOlder: false,
       detailError: null,
       historyError: null,
@@ -136,7 +135,6 @@ class CaffoldTaskConversation extends HTMLElement {
       task: snapshot.task ?? null,
       events: [...(snapshot.events ?? [])],
       eventsPage: snapshot.eventsPage ?? { nextCursor: null },
-      loading: Boolean(snapshot.loading),
       loadingOlder: Boolean(snapshot.loadingOlder),
       detailError: snapshot.detailError ?? null,
       historyError: snapshot.historyError ?? null,
@@ -649,11 +647,6 @@ class CaffoldTaskConversation extends HTMLElement {
               <p class="task-load-error-message">${escapeHtml(this.snapshot.detailError.message)}</p>
               <button type="button" class="task-secondary-button" data-task-action="retry-task-detail" data-conversation-action="retry-detail">Retry</button>
             </div>`
-          : ""
-      }
-      ${
-        this.snapshot.loading
-          ? `<p class="task-history-loading" role="status">Loading conversation...</p>`
           : ""
       }
     `;
@@ -1526,7 +1519,6 @@ function sameConversationSnapshot(left, right) {
       left.task === right.task &&
       sameEventList(left.events, right.events) &&
       left.eventsPage?.nextCursor === right.eventsPage?.nextCursor &&
-      left.loading === right.loading &&
       left.loadingOlder === right.loadingOlder &&
       left.detailError === right.detailError &&
       left.historyError === right.historyError &&

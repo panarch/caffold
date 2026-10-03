@@ -65,6 +65,10 @@ caffold-conversation-fork-dialog {
     line-height: var(--interface-line-height);
   }
 
+  & .conversation-fork-loading {
+    justify-self: center;
+  }
+
   & .conversation-fork-body {
     display: grid;
     align-content: start;

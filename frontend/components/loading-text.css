@@ -1,0 +1,64 @@
+caffold-loading-text {
+  display: inline-block;
+  max-width: 100%;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  animation: caffold-loading-text-enter 150ms ease-out 180ms backwards;
+
+  &[hidden] {
+    display: none;
+  }
+
+  &[immediate] {
+    animation: none;
+  }
+}
+
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  caffold-loading-text {
+    background-image: linear-gradient(
+      90deg,
+      var(--muted) 0%,
+      var(--muted) 40%,
+      var(--text) 50%,
+      var(--muted) 60%,
+      var(--muted) 100%
+    );
+    background-position: 100% 0;
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation:
+      caffold-loading-text-enter 150ms ease-out 180ms backwards,
+      caffold-loading-text-sweep 1.8s linear 180ms infinite;
+
+    &[immediate] {
+      animation: caffold-loading-text-sweep 1.8s linear infinite;
+    }
+  }
+}
+
+@keyframes caffold-loading-text-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes caffold-loading-text-sweep {
+  to {
+    background-position: 0% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  caffold-loading-text {
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+    animation: caffold-loading-text-enter 1ms step-end 180ms backwards;
+
+    &[immediate] {
+      animation: none;
+    }
+  }
+}

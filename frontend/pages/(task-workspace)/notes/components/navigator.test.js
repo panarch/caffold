@@ -10,8 +10,51 @@ await import("./navigator.js");
 const navigator = registry.element("caffold-notes-navigator").prototype;
 after(() => registry.restore());
 
+// Enough of a node for the status message: plain text, or one child element.
+class FakeNode {
+  constructor(localName = "") {
+    this.localName = localName;
+    this.childNodes = [];
+    this.text = "";
+    this.attributes = new Set();
+  }
+
+  get firstChild() {
+    return this.childNodes[0] ?? null;
+  }
+
+  get textContent() {
+    return this.childNodes.length
+      ? this.childNodes.map((node) => node.textContent).join("")
+      : this.text;
+  }
+
+  set textContent(value) {
+    this.childNodes = [];
+    this.text = `${value}`;
+  }
+
+  replaceChildren(...nodes) {
+    this.childNodes = nodes;
+    this.text = "";
+  }
+
+  toggleAttribute(name, force) {
+    if (force) {
+      this.attributes.add(name);
+    } else {
+      this.attributes.delete(name);
+    }
+  }
+
+  hasAttribute(name) {
+    return this.attributes.has(name);
+  }
+}
+globalThis.document.createElement = (localName) => new FakeNode(localName);
+
 function presentationOwner({ levels, selectedNoteId = "", reveal = { noteId: "", keys: [] } }) {
-  const message = { textContent: "" };
+  const message = new FakeNode("p");
   const status = { hidden: true, dataset: {}, message };
   const retry = { hidden: true };
   const fileTree = {
@@ -63,6 +106,14 @@ test("shows loading, failure, emptiness, and the tree from the workspace snapsho
   navigator.render.call(loading);
   assert.equal(loading.status.hidden, false);
   assert.equal(loading.status.message.textContent, "Loading notes…");
+  const loadingText = loading.status.message.firstChild;
+  assert.equal(loadingText.localName, "caffold-loading-text");
+  navigator.render.call(loading);
+  assert.equal(
+    loading.status.message.firstChild,
+    loadingText,
+    "rendering again keeps the phrase, so its delay and animation do not restart",
+  );
   assert.equal(loading.retry.hidden, true);
   assert.equal(loading.tree.hidden, true);
 

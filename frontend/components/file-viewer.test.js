@@ -414,3 +414,164 @@ test("keeps an owned image surface bound to its exact retained scrollport", () =
   current = { ...scrollport };
   assert.equal(scope.surfaces[0].isEligible(), false);
 });
+
+// Load requests, the retained-content timer, and arriving states reach the
+// viewer separately; these cover every transition of that model.
+function retainingViewer(state) {
+  const timers = new Map();
+  let nextTimerId = 0;
+  globalThis.window = {
+    setTimeout(callback, delay) {
+      nextTimerId += 1;
+      timers.set(nextTimerId, { callback, delay });
+      return nextTimerId;
+    },
+    clearTimeout(id) {
+      timers.delete(id);
+    },
+  };
+  const owner = {
+    state,
+    retainedContent: null,
+    renders: [],
+    render() {
+      this.renders.push(this.state);
+    },
+    detailsPopover: () => null,
+  };
+  for (const method of [
+    "setLoading",
+    "finishRetainedContent",
+    "cancelRetainedContent",
+    "deactivate",
+    "closeDetailsPopover",
+    "setNotice",
+    "setEmpty",
+  ]) {
+    owner[method] = fileViewer[method].bind(owner);
+  }
+  const runTimers = () => {
+    for (const [id, timer] of [...timers]) {
+      timers.delete(id);
+      timer.callback();
+    }
+  };
+  return { owner, timers, runTimers };
+}
+
+after(() => {
+  delete globalThis.window;
+});
+
+const shown = { status: "notice", message: "README.md", actionLabel: "", action: "", title: "" };
+
+test("keeps shown content while another file loads and replaces it when that file arrives", () => {
+  const { owner, timers } = retainingViewer(shown);
+
+  owner.setLoading({ title: "next.md" });
+  assert.equal(owner.state, shown, "the previous content stays");
+  assert.deepEqual(owner.renders, []);
+  assert.deepEqual([...timers.values()].map((timer) => timer.delay), [180]);
+
+  owner.setNotice("next.md");
+  assert.equal(timers.size, 0, "an arriving state ends the wait");
+  assert.equal(owner.retainedContent, null);
+  assert.equal(owner.state.message, "next.md");
+  assert.equal(owner.renders.length, 1);
+});
+
+test("a wait past its deadline shows the latest request's loading state at once", () => {
+  const { owner, timers, runTimers } = retainingViewer(shown);
+
+  owner.setLoading({ title: "first.md" });
+  owner.setLoading({ title: "second.md" });
+  assert.equal(timers.size, 1, "a later request keeps the first deadline");
+  assert.equal(owner.state, shown);
+
+  runTimers();
+  assert.deepEqual(owner.state, {
+    status: "loading",
+    presentation: { title: "second.md" },
+    waited: true,
+  });
+  assert.equal(owner.retainedContent, null);
+  assert.equal(owner.renders.length, 1);
+
+  owner.setLoading({ title: "third.md" });
+  assert.deepEqual(owner.state, {
+    status: "loading",
+    presentation: { title: "third.md" },
+    waited: true,
+  });
+  assert.equal(timers.size, 0, "a request while loading stays in the loading state");
+});
+
+test("with nothing shown, a request loads at once and leaves the phrase its own delay", () => {
+  const { owner, timers } = retainingViewer({ status: "empty" });
+
+  owner.setLoading({ title: "first.md" });
+  assert.deepEqual(owner.state, {
+    status: "loading",
+    presentation: { title: "first.md" },
+    waited: false,
+  });
+  assert.equal(timers.size, 0);
+  assert.equal(owner.renders.length, 1);
+
+  owner.setNotice("first.md");
+  assert.equal(owner.state.status, "notice", "an arriving state replaces the loading state");
+});
+
+test("deactivation ends the wait and leaves the previous content shown", () => {
+  const { owner, timers } = retainingViewer(shown);
+
+  owner.setLoading({ title: "next.md" });
+  owner.closeDetailsPopover();
+  assert.equal(timers.size, 1, "closing the details popover, as every render does, keeps the wait");
+  owner.deactivate();
+  assert.equal(timers.size, 0);
+  assert.equal(owner.retainedContent, null);
+  assert.equal(owner.state, shown);
+
+  owner.setLoading({ title: "next.md" });
+  assert.equal(timers.size, 1, "a request after reactivation waits again");
+});
+
+test("a deadline whose wait already ended changes nothing", () => {
+  const { owner, timers } = retainingViewer(shown);
+
+  owner.setLoading({ title: "next.md" });
+  const [stale] = [...timers.values()];
+  owner.setEmpty();
+  stale.callback();
+  assert.deepEqual(owner.state, { status: "empty" });
+  assert.equal(owner.renders.length, 1);
+});
+
+test("the loading state keeps its phrase when only the header changes", () => {
+  let header = null;
+  let html = "";
+  const panel = {};
+  const owner = {
+    state: { status: "loading", presentation: { title: "next.md" }, waited: true },
+    querySelector: () => panel,
+    replacePresentationHeader(target, presentation) {
+      header = { target, presentation };
+    },
+    set innerHTML(value) {
+      html = value;
+    },
+  };
+  fileViewer.renderLoading.call(owner);
+  assert.deepEqual(header, { target: panel, presentation: { title: "next.md" } });
+  assert.equal(html, "", "the phrase element is left in place");
+
+  owner.querySelector = () => null;
+  owner.renderPresentationHeader = () => "<header></header>";
+  fileViewer.renderLoading.call(owner);
+  assert.match(html, /<caffold-loading-text immediate>Loading file\.\.\.<\/caffold-loading-text>/);
+
+  owner.state = { ...owner.state, waited: false };
+  fileViewer.renderLoading.call(owner);
+  assert.match(html, /<caffold-loading-text>Loading file\.\.\.<\/caffold-loading-text>/);
+});

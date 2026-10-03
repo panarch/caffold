@@ -1,4 +1,5 @@
 import { getCodexUpdates } from "#app/api.js";
+import { showLoadingText } from "#components/loading-text.js";
 import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
   CODEX_RUNTIME_UPDATE_REQUEST_EVENT,
@@ -676,19 +677,40 @@ function patchUpdates(root, view) {
   update.textContent = view.updateState === "refreshing"
     ? "Checking…"
     : updating ? "Updating…" : "Update Codex…";
-  root.querySelector("[data-updates-summary]").textContent =
-    updatesSummary(view);
-  root.querySelector("[data-updates-latest]").textContent = report
-    ? report.latestVersion ?? "Unavailable"
-    : view.updatesState === "unavailable" ? "Unavailable" : "Checking…";
-  root.querySelector("[data-updates-automatic]").textContent = report
-    ? AUTOMATIC_UPDATES_LABEL[report.automaticUpdates] ?? "Unknown"
-    : view.updatesState === "unavailable" ? "Unknown" : "Checking…";
+  const checking = !report && view.updatesState !== "unavailable";
+  patchUpdatesText(
+    root.querySelector("[data-updates-summary]"),
+    updatesSummary(view),
+    checking,
+  );
+  patchUpdatesText(
+    root.querySelector("[data-updates-latest]"),
+    report
+      ? report.latestVersion ?? "Unavailable"
+      : view.updatesState === "unavailable" ? "Unavailable" : "Checking…",
+    checking,
+  );
+  patchUpdatesText(
+    root.querySelector("[data-updates-automatic]"),
+    report
+      ? AUTOMATIC_UPDATES_LABEL[report.automaticUpdates] ?? "Unknown"
+      : view.updatesState === "unavailable" ? "Unknown" : "Checking…",
+    checking,
+  );
   patchMessage(
     root.querySelector("[data-update-message]"),
     view.updateState,
     view.updateMessage,
   );
+}
+
+// Text still being checked is the shared loading phrase, kept across patches.
+function patchUpdatesText(element, text, checking) {
+  if (checking) {
+    showLoadingText(element, text);
+  } else {
+    element.textContent = text;
+  }
 }
 
 const AUTOMATIC_UPDATES_LABEL = Object.freeze({

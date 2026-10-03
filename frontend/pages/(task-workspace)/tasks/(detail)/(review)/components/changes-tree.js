@@ -1,4 +1,5 @@
 import { escapeHtml } from "#components/dom.js";
+import "#components/loading-text.js";
 import { fileStatusPresentation } from "#app/file-status.js";
 import {
   buildFileTreeNodes,
@@ -142,7 +143,7 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
     if (state.status !== "ready") {
       const message =
         state.status === "loading"
-          ? "Loading changes..."
+          ? "<caffold-loading-text>Loading changes...</caffold-loading-text>"
           : state.status === "error"
             ? escapeHtml(state.error.message)
             : "";

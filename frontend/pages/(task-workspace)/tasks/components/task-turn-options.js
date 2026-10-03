@@ -1,6 +1,7 @@
 import { getAgentModels, getAgentPermissions } from "#app/api.js";
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -1545,14 +1546,14 @@ function renderPermissionOption(option, selectedMode) {
 // reload asks again.
 function renderModelFallback(reason) {
   if (!reason) {
-    return `<p class="task-model-note">Loading models...</p>`;
+    return `<p class="task-model-note"><caffold-loading-text>Loading models...</caffold-loading-text></p>`;
   }
   return `<p class="task-model-note">Models could not be loaded. ${escapeHtml(reason)} Reload the page to try again.</p>`;
 }
 
 function renderPermissionBody(list, selected) {
   if (!list) {
-    return `<p class="task-model-note">Loading permission modes...</p>`;
+    return `<p class="task-model-note"><caffold-loading-text>Loading permission modes...</caffold-loading-text></p>`;
   }
   if (list.error) {
     return `<p class="task-model-note">Permission modes could not be loaded. ${escapeHtml(errorMessage(list.error))} Reload the page to try again.</p>`;

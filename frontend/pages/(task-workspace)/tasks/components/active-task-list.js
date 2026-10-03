@@ -4,6 +4,7 @@ import {
   reorderTask,
 } from "#app/api.js";
 import { escapeHtml } from "#components/dom.js";
+import "#components/loading-text.js";
 import { taskStoreOperationsPresentation } from "../../task-store-status.js";
 import {
   TASK_TRANSPORT_STATE,
@@ -1368,7 +1369,9 @@ class CaffoldActiveTaskList extends HTMLElement {
     }
     const message = document.createElement("p");
     message.className = "task-section-message task-section-loading";
-    message.textContent = "Loading...";
+    const loadingText = document.createElement("caffold-loading-text");
+    loadingText.textContent = "Loading...";
+    message.append(loadingText);
     content.replaceChildren(message);
   }
 

@@ -1,5 +1,6 @@
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
 import "../../components/markdown.js";
 import {
   ACTION_HINT_ACTION,
@@ -40,7 +41,11 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
           );
         }
       });
-      this.boundIconsReady = () => this.render();
+      this.boundIconsReady = () => {
+        if (this.state?.status === "ready") {
+          this.render();
+        }
+      };
       window.addEventListener("caffold:icons-ready", this.boundIconsReady);
       warmIcons();
     }
@@ -60,6 +65,9 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
   }
 
   setLoading(number) {
+    if (this.state?.status === "loading" && this.state.number === number) {
+      return;
+    }
     this.state = { status: "loading", number };
     this.render();
   }
@@ -219,9 +227,9 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
 
     if (this.state.status === "loading") {
       this.innerHTML = `
-        <section class="github-issue-viewer-panel" aria-busy="true">
+        <section class="github-issue-viewer-panel loading-panel" aria-busy="true">
           ${this.renderBasicHeader(`Issue #${this.state.number}`)}
-          <p class="surface-message">Loading issue #${escapeHtml(`${this.state.number}`)}...</p>
+          <p class="surface-message"><caffold-loading-text>Loading issue #${escapeHtml(`${this.state.number}`)}...</caffold-loading-text></p>
         </section>
       `;
       return;

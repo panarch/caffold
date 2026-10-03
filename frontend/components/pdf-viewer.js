@@ -2,6 +2,7 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../scroll-scope.js";
+import "./loading-text.js";
 
 const PDFJS_VERSION = "6.3.289";
 const PDFJS_BASE = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}`;
@@ -250,7 +251,13 @@ class CaffoldPdfViewer extends HTMLElement {
     body.replaceChildren();
     const paragraph = window.document.createElement("p");
     paragraph.className = "pdf-viewer-message";
-    paragraph.textContent = message;
+    if (renderState === "loading") {
+      const loadingText = window.document.createElement("caffold-loading-text");
+      loadingText.textContent = message;
+      paragraph.append(loadingText);
+    } else {
+      paragraph.textContent = message;
+    }
     body.append(paragraph);
   }
 

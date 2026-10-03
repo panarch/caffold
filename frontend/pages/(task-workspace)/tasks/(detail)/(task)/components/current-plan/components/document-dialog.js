@@ -3,6 +3,7 @@ import {
   renderInlineIcon,
   warmIcons,
 } from "#components/icons.js";
+import "#components/loading-text.js";
 import "#components/markdown-preview.js";
 import {
   ACTION_HINT_ACTION,
@@ -222,6 +223,7 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
       }
       this.requestController = null;
       this.querySelector("[data-current-plan-dialog-status]").hidden = true;
+      this.querySelector("[data-current-plan-dialog-loading]").hidden = true;
       this.querySelector("[data-current-plan-dialog-error]").hidden = true;
       const preview = this.preview();
       preview.hidden = false;
@@ -234,6 +236,7 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
       const message = this.querySelector("[data-current-plan-dialog-error-message]");
       message.textContent = error?.message ?? `${error}`;
       this.querySelector("[data-current-plan-dialog-status]").hidden = true;
+      this.querySelector("[data-current-plan-dialog-loading]").hidden = true;
       this.querySelector("[data-current-plan-dialog-error]").hidden = false;
       if (!preserveScroll) {
         this.preview().hidden = true;
@@ -249,10 +252,11 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
     );
   }
 
+  // A refresh keeps the document shown under its status; a first read has
+  // nothing to show yet, so its phrase takes the document's place.
   showLoading({ preserveContent }) {
-    const status = this.querySelector("[data-current-plan-dialog-status]");
-    status.textContent = preserveContent ? "Refreshing document..." : "Loading document...";
-    status.hidden = false;
+    this.querySelector("[data-current-plan-dialog-status]").hidden = !preserveContent;
+    this.querySelector("[data-current-plan-dialog-loading]").hidden = preserveContent;
     this.querySelector("[data-current-plan-dialog-error]").hidden = true;
     if (!preserveContent) {
       this.preview().hidden = true;
@@ -304,9 +308,10 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
             </form>
           </header>
           <div class="current-plan-document-body">
-            <p class="current-plan-document-status" role="status" data-current-plan-dialog-status>
-              Loading document...
+            <p class="current-plan-document-status" role="status" data-current-plan-dialog-status hidden>
+              Refreshing document...
             </p>
+            <caffold-loading-text class="current-plan-document-loading" data-current-plan-dialog-loading hidden>Loading document...</caffold-loading-text>
             <div class="current-plan-document-error" role="alert" data-current-plan-dialog-error hidden>
               <p data-current-plan-dialog-error-message></p>
               <button type="button" data-current-plan-dialog-action="retry">Retry</button>

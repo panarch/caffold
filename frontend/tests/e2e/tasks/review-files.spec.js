@@ -735,3 +735,55 @@ test("keeps browser Back aligned with the semantic Review parent", { tag: ["@des
   await page.goBack();
   await expect(page).toHaveURL("/");
 });
+
+test("keeps the open file shown while the next one loads and names a longer wait", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const { reviewScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const changes = taskReview.locator("caffold-git-diff-changes-tree");
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  const title = viewer.locator(".viewer-title-block h2");
+  await changes.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+  await expect(viewer.locator("caffold-diff-viewer")).toContainText(
+    "new planner behavior",
+  );
+
+  // Timers stay still until the test moves them, so the wait cannot end
+  // before an answer that the test lets through.
+  await page.clock.install();
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 60_000));
+  await viewer.evaluate((element) => {
+    window.viewerShowedLoading = false;
+    new MutationObserver(() => {
+      if (element.querySelector("caffold-loading-text")) {
+        window.viewerShowedLoading = true;
+      }
+    }).observe(element, { childList: true, subtree: true });
+  });
+  await changes.locator('button[data-file-tree-relative-path="lib.rs"]').click();
+  await expect(title).toHaveText("lib.rs");
+  expect(
+    await page.evaluate(() => window.viewerShowedLoading),
+    "a file that arrives within the wait replaces the open one directly",
+  ).toBe(false);
+
+  const releaseDiff = reviewScenario.holdDiff();
+  try {
+    await changes.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+    await page.clock.runFor(179);
+    await expect(title).toHaveText("lib.rs");
+    await expect(viewer.locator("caffold-loading-text")).toHaveCount(0);
+    await page.clock.runFor(200);
+    await expect(title).toHaveText("planner.rs");
+    await expect(viewer.locator("caffold-loading-text")).toHaveText("Loading file...");
+    await expect(viewer.locator("caffold-loading-text")).toHaveAttribute("immediate", "");
+  } finally {
+    releaseDiff();
+  }
+  await page.clock.resume();
+  await expect(viewer.locator("caffold-diff-viewer")).toContainText(
+    "new planner behavior",
+  );
+});

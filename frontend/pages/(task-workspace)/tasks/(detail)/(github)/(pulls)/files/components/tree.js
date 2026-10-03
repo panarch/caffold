@@ -1,4 +1,5 @@
 import { escapeHtml } from "#components/dom.js";
+import "#components/loading-text.js";
 import {
   buildFileTreeNodes,
   FILE_TREE_SELECT_EVENT,
@@ -126,7 +127,7 @@ class CaffoldGithubPullFilesTree extends HTMLElement {
     if (state.status !== "ready") {
       const message =
         state.status === "loading"
-          ? "Loading pull request files..."
+          ? "<caffold-loading-text>Loading pull request files...</caffold-loading-text>"
           : state.status === "error"
             ? escapeHtml(state.error.message)
             : "";

@@ -10,6 +10,7 @@ import {
   unloadedFileTreeChildren,
 } from "../file-tree.js";
 import { renderInlineIcon } from "../icons.js";
+import "../loading-text.js";
 import {
   buttonActionHintTarget,
   emptyActionHintScope,
@@ -133,7 +134,10 @@ class CaffoldFileList extends HTMLElement {
       return;
     }
     this.refreshVisible = nextVisible;
-    if (this.state?.status === "ready" && this.readyHeader()) {
+    if (this.state?.status !== "ready") {
+      return;
+    }
+    if (this.readyHeader()) {
       this.patchReadyHeader(this.state.directory);
     } else {
       this.render();
@@ -151,7 +155,7 @@ class CaffoldFileList extends HTMLElement {
     if (state.status !== "ready") {
       const message =
         state.status === "loading"
-          ? "Loading files..."
+          ? "<caffold-loading-text>Loading files...</caffold-loading-text>"
           : state.status === "error"
             ? escapeHtml(state.error.message)
             : "";
@@ -498,12 +502,15 @@ function repositoryTreeNodes(directory, treeState) {
     nodes.push(...directoryEntryNodes(rootDirectory, treeState, keyByPath, true));
   } else {
     const error = treeState?.errors.get(treeState.rootPath);
-    nodes.push({
-      key: "files:repository-state",
-      kind: "status",
-      name: error?.message ?? "Loading repository...",
-      tone: error ? "error" : "muted",
-    });
+    if (error || treeState?.loading.has(treeState.rootPath)) {
+      nodes.push({
+        key: "files:repository-state",
+        kind: "status",
+        name: error?.message ?? "Loading repository...",
+        tone: error ? "error" : "muted",
+        loading: !error,
+      });
+    }
   }
   addParentKey(nodes, keyByPath);
   return { nodes, keyByPath };
