@@ -1,4 +1,5 @@
 import { escapeHtml } from "#components/dom.js";
+import "#components/loading-text.js";
 import "#components/pagination.js";
 import {
   ACTION_HINT_ACTION,
@@ -192,24 +193,7 @@ class CaffoldGithubIssuesListPage extends HTMLElement {
     }
 
     if (this.state.status === "loading") {
-      if (this.state.payload) {
-        this.innerHTML = `
-          <section class="github-issues-panel" aria-busy="true">
-            <div class="github-issues-loading-body">
-              <p class="surface-message" aria-live="polite">Loading issues...</p>
-            </div>
-            ${this.renderPagination(this.state.payload)}
-          </section>
-        `;
-        this.patchSelectedIssue();
-        return;
-      }
-
-      this.innerHTML = `
-        <section class="github-issues-panel" aria-busy="true">
-          <p class="surface-message">Loading issues...</p>
-        </section>
-      `;
+      this.renderLoading();
       return;
     }
 
@@ -243,6 +227,29 @@ class CaffoldGithubIssuesListPage extends HTMLElement {
       </section>
     `;
     this.patchSelectedIssue();
+  }
+
+  // Making the phrase again would restart its delay and shimmer, so a later
+  // render in the same wait changes only the pagination below it.
+  renderLoading() {
+    const { payload } = this.state;
+    const pagination = payload ? this.renderPagination(payload) : "";
+    const panel = this.querySelector(":scope > .github-issues-panel.loading-panel");
+    if (!panel) {
+      this.innerHTML = `
+        <section class="github-issues-panel loading-panel" aria-busy="true">
+          <p class="surface-message"><caffold-loading-text>Loading issues...</caffold-loading-text></p>
+          ${pagination}
+        </section>
+      `;
+      this.loadingPagination = pagination;
+      return;
+    }
+    if (pagination !== this.loadingPagination) {
+      panel.querySelector(":scope > caffold-pagination")?.remove();
+      panel.insertAdjacentHTML("beforeend", pagination);
+      this.loadingPagination = pagination;
+    }
   }
 
   renderPagination(payload) {

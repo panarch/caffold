@@ -22,12 +22,6 @@ caffold-github-issues-list-page {
     list-style: none;
   }
 
-  & .github-issues-loading-body {
-    display: grid;
-    min-height: 0;
-    place-items: center;
-  }
-
   & .github-issue-row {
     display: block;
   }

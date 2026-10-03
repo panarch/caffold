@@ -2654,6 +2654,87 @@ test("stops an older GitHub activation before it loads content for a replaced ro
   expect(fixture.counts.issues).toBe(1);
 });
 
+for (const list of [
+  {
+    kind: "issues",
+    element: "caffold-github-issues-list-page",
+    route: /\/api\/github\/issues(?:\?|$)/,
+    row: "button[data-issue-number]",
+    phrase: "Loading issues...",
+    older: "Older issue page",
+    response: (page) => pagedGithubListResponse(githubIssuesResponse(`Issue on page ${page}`), page, 3),
+  },
+  {
+    kind: "pulls",
+    element: "caffold-github-pulls-list-page",
+    route: /\/api\/github\/pulls(?:\?|$)/,
+    row: "button[data-pull-number]",
+    phrase: "Loading pull requests...",
+    older: "Older pull request page",
+    response: (page) => pagedGithubListResponse(githubPullsResponse(`Pull request on page ${page}`), page, 3),
+  },
+]) {
+  test(`keeps one ${list.kind} loading phrase at the first row through opening and paging`, { tag: "@all-viewports" }, async ({
+    page,
+  }) => {
+    await installLinkedWorktreeGithubFixture(page);
+    await page.unroute(list.route);
+    const pendingRoutes = [];
+    await page.route(list.route, (route) => {
+      pendingRoutes.push(route);
+    });
+    await page.goto(`/tasks/${THREAD_ID}`);
+    // Fast-forwarding moves past the list's own wait without racing it.
+    await page.clock.install();
+    await page.evaluate((selector) => {
+      window.listLoadingPhrases = [];
+      new MutationObserver(() => {
+        for (const phrase of document.querySelectorAll(`${selector} caffold-loading-text`)) {
+          if (!window.listLoadingPhrases.includes(phrase)) {
+            window.listLoadingPhrases.push(phrase);
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    }, list.element);
+    const shownPhrases = () => page.evaluate(() => window.listLoadingPhrases.length);
+
+    await chooseLinkedWorktreeGithubList(page, list.kind);
+    await expect.poll(() => pendingRoutes.length).toBe(1);
+    const listPage = page.locator(list.element);
+    const phrase = listPage.locator("caffold-loading-text");
+    await expect(phrase).toHaveText(list.phrase);
+    await page.clock.fastForward(1_000);
+    expect(await shownPhrases(), "the list's own wait keeps the phrase").toBe(1);
+
+    await pendingRoutes[0].fulfill({ json: list.response(1) });
+    const firstRow = listPage.locator(list.row).first();
+    await expect(firstRow).toContainText("on page 1");
+    const rowBox = await firstRow.boundingBox();
+
+    await listPage.getByRole("button", { name: list.older }).click();
+    await expect.poll(() => pendingRoutes.length).toBe(2);
+    await page.clock.fastForward(1_000);
+    await expect(phrase).toHaveText(list.phrase);
+    await expect(listPage.locator("caffold-pagination")).toHaveAttribute("page", "2");
+    const phraseBox = await phrase.boundingBox();
+    const phraseMiddle = phraseBox.y + phraseBox.height / 2;
+    expect(phraseMiddle).toBeGreaterThan(rowBox.y);
+    expect(phraseMiddle).toBeLessThan(rowBox.y + rowBox.height);
+    expect(await shownPhrases()).toBe(2);
+
+    await listPage.getByRole("button", { name: list.older }).click();
+    await expect.poll(() => pendingRoutes.length).toBe(3);
+    await page.clock.fastForward(1_000);
+    await expect(listPage.locator("caffold-pagination")).toHaveAttribute("page", "3");
+    expect(await shownPhrases(), "a later page in the same wait keeps the phrase").toBe(2);
+
+    await pendingRoutes[1].fulfill({ json: list.response(2) });
+    await pendingRoutes[2].fulfill({ json: list.response(3) });
+    await expect(firstRow).toContainText("on page 3");
+    await expect(phrase).toHaveCount(0);
+  });
+}
+
 function githubStatusResponse(repository, github) {
   return {
     repository,
@@ -2697,6 +2778,49 @@ function githubPullsResponse(title) {
     totalPages: 1,
     hasPrevious: false,
     hasNext: false,
+  };
+}
+
+function githubIssuesResponse(title) {
+  return {
+    repository: {
+      rootPath: WORKTREE_ROOT,
+      branch: "query-plan-limit-offset",
+      dirty: false,
+    },
+    github: {
+      owner: "gluesql",
+      name: "gluesql",
+      nameWithOwner: "gluesql/gluesql",
+      url: "https://github.com/gluesql/gluesql",
+    },
+    state: "open",
+    issues: [{
+      number: 1984,
+      title,
+      state: "open",
+      author: "panarch",
+      labels: [],
+      comments: 0,
+      updatedAt: "2026-08-07T03:00:00Z",
+      url: "https://github.com/gluesql/gluesql/issues/1984",
+    }],
+    page: 1,
+    perPage: 50,
+    totalIssues: 1,
+    totalPages: 1,
+    hasPrevious: false,
+    hasNext: false,
+  };
+}
+
+function pagedGithubListResponse(response, page, totalPages) {
+  return {
+    ...response,
+    page,
+    totalPages,
+    hasPrevious: page > 1,
+    hasNext: page < totalPages,
   };
 }
 
