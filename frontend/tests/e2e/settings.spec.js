@@ -2760,7 +2760,8 @@ test("updates independent ranges live without replacing their DOM", { tag: "@all
     settingsPage.getByRole("button", { name: "Reset code text" }),
   ).toBeVisible();
 
-  const semanticProbe = await page.evaluate(() => {
+  const semanticProbe = await page.evaluate(async () => {
+    await customElements.whenDefined("caffold-task-composer");
     const github = document.createElement("caffold-github-markdown");
     github.setHtml("<p>Conversation <code>code</code></p>");
     document.body.append(github);
@@ -3104,7 +3105,8 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
   await setRange(range(settingsPage, "interfaceScalePercent"), 120);
   await setRange(range(settingsPage, "conversationTextPx"), 20);
   await setRange(range(settingsPage, "codeTextPx"), 20);
-  const mixedMetrics = await page.evaluate(() => {
+  const mixedMetrics = await page.evaluate(async () => {
+    await customElements.whenDefined("caffold-task-composer");
     const host = document.createElement("section");
     host.style.cssText =
       "position:fixed;inset:0;z-index:100;background:var(--surface);overflow:auto;padding:1rem";
@@ -3197,7 +3199,8 @@ test("keeps model picker chrome compact and scales it only with Interface", { ta
   const conversationRange = range(settingsPage, "conversationTextPx");
   const codeRange = range(settingsPage, "codeTextPx");
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
+    await customElements.whenDefined("caffold-task-composer");
     const host = document.createElement("section");
     host.dataset.appearancePickerProbe = "";
     host.style.cssText =
