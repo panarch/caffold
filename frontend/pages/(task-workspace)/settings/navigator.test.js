@@ -10,59 +10,48 @@ await import("./navigator.js");
 const navigator = registry.element("caffold-settings-navigator").prototype;
 after(() => registry.restore());
 
-test("provides all non-current direct Settings sections", () => {
-  const sections = [
-    "appearance",
-    "keyboard",
-    "files",
-    "notifications",
-    "remote-access",
-    "voice",
-    "codex",
-    "claude",
-    "grok",
-    "about",
-  ];
-  const controls = new Map(sections.map((section) => [section, {
-    disabled: false,
-    getAttribute: () => null,
-    focus() {},
-    click() {},
-  }]));
+test("combines its Settings entries' Action Hints inside the section list", () => {
   const scroller = {};
+  const requests = [];
+  const items = ["keyboard", "about"].map((section) => ({
+    actionHintScope(options) {
+      requests.push(options);
+      return {
+        blocked: false,
+        targets: [{ id: `settings:section:${section}` }],
+        mutationRoots: [this],
+        scrollRoots: [],
+      };
+    },
+  }));
   const owner = {
     initialized: true,
     hidden: false,
     isConnected: true,
-    selectedSection: "appearance",
-    querySelector(selector) {
-      if (selector === ":scope > .settings-navigator-list") {
-        return scroller;
-      }
-      const section = selector.match(/data-settings-section="([^"]+)"/)?.[1];
-      return controls.get(section) ?? null;
-    },
+    querySelector: () => scroller,
+    items: () => items,
   };
 
   const scope = navigator.actionHintScope.call(owner, {
     clipRoots: [owner],
   });
-  assert.equal(scope.targets.length, 9);
   assert.deepEqual(
     scope.targets.map(({ id }) => id),
-    sections.slice(1).map((section) => `settings:section:${section}`),
+    ["settings:section:keyboard", "settings:section:about"],
   );
-  assert.ok(scope.targets.every(
-    ({ actionId, controlKind, clipRoots }) =>
-      actionId === "navigation.settings.section" &&
-      controlKind === "button" &&
-      clipRoots[0] === owner &&
-      clipRoots[1] === scroller,
-  ));
+  assert.deepEqual(scope.mutationRoots, [owner, ...items]);
   assert.deepEqual(scope.scrollRoots, [scroller]);
+  assert.ok(requests.every(({ scopeId, clipRoots }) =>
+    scopeId === "settings" &&
+    clipRoots.length === 2 &&
+    clipRoots[0] === owner &&
+    clipRoots[1] === scroller
+  ));
 
-  owner.selectedSection = "keyboard";
-  assert.equal(scope.targets[0].isActionable(), false);
+  assert.equal(requests[0].isCurrent(), true);
+  owner.hidden = true;
+  assert.equal(requests[0].isCurrent(), false);
+  assert.deepEqual(navigator.actionHintScope.call(owner).targets, []);
 });
 
 test("provides only its exact retained section list as a Scroll surface", () => {

@@ -310,6 +310,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/navigator.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/navigator.js"
         ))),
+        "pages/(task-workspace)/settings/navigator/components/item.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/navigator/components/item.css"
+        ))),
+        "pages/(task-workspace)/settings/navigator/components/item.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/navigator/components/item.js"
+        ))),
         "pages/(task-workspace)/settings/service-status.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/service-status.js"
         ))),
@@ -1642,6 +1648,7 @@ mod tests {
             "pages/(task-workspace)/notes/tree.js",
             "pages/(task-workspace)/settings/layout.js",
             "pages/(task-workspace)/settings/navigator.js",
+            "pages/(task-workspace)/settings/navigator/components/item.js",
             "pages/(task-workspace)/settings/service-status.js",
             "pages/(task-workspace)/settings/keyboard/page.js",
             "pages/(task-workspace)/settings/files/page.js",
@@ -1690,6 +1697,7 @@ mod tests {
             "pages/(task-workspace)/notes/components/info/components/copy-markdown.css",
             "pages/(task-workspace)/notes/components/info/components/copy-path.css",
             "pages/(task-workspace)/notes/components/navigator.css",
+            "pages/(task-workspace)/settings/navigator/components/item.css",
             "pages/(task-workspace)/settings/keyboard/page.css",
             "pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
         ] {

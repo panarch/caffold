@@ -1,14 +1,9 @@
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
-import {
-  codexState,
-  formatCodexReadiness,
-} from "../codex-status.js";
 import "../components/workspace-brand.js";
+import "./navigator/components/item.js";
 import {
-  buttonActionHintTarget,
   emptyActionHintScope,
+  mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -39,26 +34,7 @@ class CaffoldSettingsNavigator extends HTMLElement {
     this.initialized = true;
     this.selectedSection = "";
     this.codexStatusSnapshotValue = null;
-    this.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-settings-section]");
-      if (!button) {
-        return;
-      }
-      this.dispatchEvent(
-        new CustomEvent("caffold:settings-navigator-intent", {
-          bubbles: true,
-          detail: { section: button.dataset.settingsSection },
-        }),
-      );
-    });
-    this.boundIconsReady = () => this.render();
-    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.render();
-    warmIcons();
-  }
-
-  disconnectedCallback() {
-    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   setSelectedSection(section) {
@@ -79,40 +55,20 @@ class CaffoldSettingsNavigator extends HTMLElement {
     if (!scroller) {
       return emptyActionHintScope();
     }
-    const targets = ITEMS.flatMap((item) => {
-      const control = this.querySelector(
-        `:scope > .settings-navigator-list > button[data-settings-section="${item.section}"]`,
-      );
-      if (
-        !control ||
-        control.disabled ||
-        item.section === this.selectedSection
-      ) {
-        return [];
-      }
-      return [buttonActionHintTarget({
-        invalidationOwner: this,
-        id: `${scopeId}:section:${item.section}`,
-        actionId: ACTION_HINT_ACTION.SETTINGS_SECTION,
-        label: control.getAttribute("aria-label") || `Open ${item.label} settings`,
-        control,
+    const isCurrent = () => this.isConnected && !this.hidden;
+    return mergeActionHintScopes(
+      {
+        blocked: false,
+        targets: [],
+        mutationRoots: [this],
+        scrollRoots: [scroller],
+      },
+      ...this.items().map((item) => item.actionHintScope({
+        scopeId,
         clipRoots: [...clipRoots, scroller],
-        isActionable: () =>
-          this.isConnected &&
-          !this.hidden &&
-          this.selectedSection !== item.section &&
-          this.querySelector(
-            `:scope > .settings-navigator-list > button[data-settings-section="${item.section}"]`,
-          ) === control &&
-          !control.disabled,
-      })];
-    });
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [scroller],
-    };
+        isCurrent,
+      })),
+    );
   }
 
   scrollSurfaceScope({
@@ -159,46 +115,35 @@ class CaffoldSettingsNavigator extends HTMLElement {
       <header class="settings-navigator-header">
         <caffold-workspace-brand></caffold-workspace-brand>
       </header>
-      <nav class="settings-navigator-list" aria-label="Settings sections">
-        ${ITEMS.map((item) => `
-          <button
-            type="button"
-            data-settings-section="${item.section}"
-          >
-            ${item.brand
-              ? `<img class="settings-navigator-brand" src="/assets/brand/${item.brand}" alt="" />`
-              : renderInlineIcon(item.icon, "", "settings-navigator-icon")}
-            <span>${item.label}</span>
-          </button>
-        `).join("")}
-      </nav>
+      <nav class="settings-navigator-list" aria-label="Settings sections"></nav>
     `;
+    this.querySelector(":scope > .settings-navigator-list").append(
+      ...ITEMS.map((entry) => {
+        const item = document.createElement("caffold-settings-navigator-item");
+        item.setEntry(entry);
+        return item;
+      }),
+    );
     this.syncSelection();
     this.syncCodexStatus();
   }
 
   syncSelection() {
-    this.querySelectorAll("button[data-settings-section]").forEach((button) => {
-      const selected = button.dataset.settingsSection === this.selectedSection;
-      button.toggleAttribute("aria-current", selected);
-    });
+    for (const item of this.items()) {
+      item.setSelected(item.section === this.selectedSection);
+    }
   }
 
   syncCodexStatus() {
-    const button = this.querySelector('button[data-settings-section="codex"]');
-    if (!button) {
-      return;
-    }
-    const state = codexState(this.codexStatusSnapshotValue);
-    const readiness = formatCodexReadiness(this.codexStatusSnapshotValue);
-    const label = state === "available"
-      ? "Codex — ready"
-      : state === "pending"
-        ? "Codex — checking readiness"
-        : `Codex — ${readiness.toLowerCase()}`;
-    button.dataset.codexState = state;
-    button.title = label;
-    button.setAttribute("aria-label", label);
+    this.items()
+      .find((item) => item.section === "codex")
+      ?.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
+  }
+
+  items() {
+    return [...this.querySelectorAll(
+      ":scope > .settings-navigator-list > caffold-settings-navigator-item",
+    )];
   }
 }
 
