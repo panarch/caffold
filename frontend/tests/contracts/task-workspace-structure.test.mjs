@@ -1001,12 +1001,22 @@ test("archived task deletion dialog owns its modal state and markup", () => {
   assert.match(deleteDialog, /TASK_ARCHIVED_DELETE_CONFIRMED_EVENT/);
 });
 
-test("Codex status and Task recovery keep explicit lifecycle and UI owners", () => {
+test("Codex status, Task-store status, and their cards keep explicit lifecycle and UI owners", () => {
   const workspace = readFrontend("pages/(task-workspace)/layout.js");
   const owner = readFrontend("pages/(task-workspace)/codex-status.js");
   const model = readFrontend("pages/(task-workspace)/codex-status/model.js");
   const lifecycle = readFrontend(
     "pages/(task-workspace)/codex-status/lifecycle.js",
+  );
+  const storeOwner = readFrontend("pages/(task-workspace)/task-store-status.js");
+  const storeModel = readFrontend(
+    "pages/(task-workspace)/task-store-status/model.js",
+  );
+  const storeLifecycle = readFrontend(
+    "pages/(task-workspace)/task-store-status/lifecycle.js",
+  );
+  const storeRecovery = readFrontend(
+    "pages/(task-workspace)/tasks/components/task-store-recovery.js",
   );
   const restartLifecycle = readFrontend(
     "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js",
@@ -1054,10 +1064,24 @@ test("Codex status and Task recovery keep explicit lifecycle and UI owners", () 
   assert.doesNotMatch(owner, /class CodexStatusLifecycle/);
   assert.doesNotMatch(owner, /export \*/);
   assert.match(model, /function codexBlocksTaskOperations/);
-  assert.match(model, /function taskStoreBlocksTaskOperations/);
-  assert.match(model, /function taskStoreRecoveryVisible/);
   assert.match(model, /function codexSetupVisible/);
+  for (const codexSource of [owner, model, lifecycle]) {
+    assert.doesNotMatch(codexSource, /taskStore|TaskStore/);
+  }
   assert.match(lifecycle, /class CodexStatusLifecycle/);
+  assert.match(workspace, /from "\.\/task-store-status\.js"/);
+  assert.match(storeOwner, /from "\.\/task-store-status\/model\.js"/);
+  assert.match(storeOwner, /from "\.\/task-store-status\/lifecycle\.js"/);
+  assert.match(storeOwner, /function createTaskStoreStatusLifecycle/);
+  assert.doesNotMatch(storeOwner, /class TaskStoreStatusLifecycle/);
+  assert.doesNotMatch(storeOwner, /export \*/);
+  assert.match(storeModel, /function taskStoreBlocksTaskOperations/);
+  assert.match(storeModel, /function taskStoreOperationsPresentation/);
+  assert.match(storeLifecycle, /class TaskStoreStatusLifecycle/);
+  assert.match(storeLifecycle, /TASK_STORE_STATUS_TRANSITIONS/);
+  for (const storeSource of [storeOwner, storeModel, storeLifecycle]) {
+    assert.doesNotMatch(storeSource, /codex/i);
+  }
   assert.match(lifecycle, /new CodexRuntimeRestartLifecycle/);
   assert.match(lifecycle, /new CodexRuntimeUpdateLifecycle/);
   assert.match(restartLifecycle, /class CodexRuntimeRestartLifecycle/);
@@ -1074,6 +1098,12 @@ test("Codex status and Task recovery keep explicit lifecycle and UI owners", () 
   assert.match(taskRecovery, /CODEX_STATUS_REFRESH_REQUEST_EVENT/);
   assert.match(taskRecovery, /CODEX_RUNTIME_RESTART_REQUEST_EVENT/);
   assert.doesNotMatch(taskRecovery, /CODEX_RUNTIME_UPDATE_REQUEST_EVENT/);
+  assert.doesNotMatch(taskRecovery, /taskStore|Task setup/);
+  assert.match(tasks, /import "\.\/components\/task-store-recovery\.js"/);
+  assert.match(tasks, /<caffold-task-store-recovery hidden>/);
+  assert.match(storeRecovery, /class CaffoldTaskStoreRecovery/);
+  assert.match(storeRecovery, /TASK_STORE_RETRY_REQUEST_EVENT/);
+  assert.doesNotMatch(storeRecovery, /codex/i);
 
   for (const consumer of [tasks, settings]) {
     assert.match(consumer, /codex-status\.js"/);
@@ -1092,6 +1122,16 @@ test("Codex status and Task recovery keep explicit lifecycle and UI owners", () 
         source,
         /codex-status\/(?!components\/)/,
         `${path} must consume non-visual Codex status behavior through codex-status.js`,
+      );
+    }
+    const insideStoreOwner =
+      path === "pages/(task-workspace)/task-store-status.js" ||
+      path.startsWith("pages/(task-workspace)/task-store-status/");
+    if (!insideStoreOwner && !assetInventory) {
+      assert.doesNotMatch(
+        source,
+        /task-store-status\//,
+        `${path} must consume Task-store status through task-store-status.js`,
       );
     }
     if (

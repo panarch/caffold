@@ -4,7 +4,7 @@ import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import "../../components/workspace-brand.js";
 import {
   taskStoreOperationsPresentation,
-} from "../../codex-status.js";
+} from "../../task-store-status.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -609,7 +609,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
   }
 
-  setCodexStatusSnapshot(snapshot) {
+  setTaskStoreStatusSnapshot(snapshot) {
     this.ensureChildren();
     // The store's own gate is the only one the whole navigator shares.
     // Codex being unready locks nothing here: rows open for reading, and a

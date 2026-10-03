@@ -18,6 +18,7 @@ class CaffoldSectionDetail extends HTMLElement {
     this.section = null;
     this.transportAvailable = true;
     this.codexStatusSnapshot = null;
+    this.taskStoreStatusSnapshot = null;
   }
 
   ensureRendered() {
@@ -80,8 +81,16 @@ class CaffoldSectionDetail extends HTMLElement {
   setCodexStatusSnapshot(snapshot) {
     this.ensureState();
     this.codexStatusSnapshot = snapshot ?? null;
-    this.taskCreate()?.setCodexStatusSnapshot(this.codexStatusSnapshot);
     this.conversationShortcuts()?.setCodexStatusSnapshot(this.codexStatusSnapshot);
+  }
+
+  setTaskStoreStatusSnapshot(snapshot) {
+    this.ensureState();
+    this.taskStoreStatusSnapshot = snapshot ?? null;
+    this.taskCreate()?.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
+    this.conversationShortcuts()?.setTaskStoreStatusSnapshot(
+      this.taskStoreStatusSnapshot,
+    );
   }
 
   selectedContextPath() {
@@ -187,7 +196,7 @@ class CaffoldSectionDetail extends HTMLElement {
       composerSettings: this.section?.composerSettings ?? null,
     });
     taskCreate.setTransportAvailable(this.transportAvailable);
-    taskCreate.setCodexStatusSnapshot(this.codexStatusSnapshot);
+    taskCreate.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
   }
 
   syncGitHubShortcuts() {
@@ -210,6 +219,7 @@ class CaffoldSectionDetail extends HTMLElement {
     });
     shortcuts.setTransportAvailable(this.transportAvailable);
     shortcuts.setCodexStatusSnapshot(this.codexStatusSnapshot);
+    shortcuts.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
   }
 }
 

@@ -48,6 +48,16 @@ private struct CodexStatusResponse: Decodable {
     let account: Account?
 }
 
+/// What every Task request, Codex status included, answers while the server
+/// is still preparing its Task store.
+private struct TaskStoreRefusal: Decodable {
+    struct Detail: Decodable {
+        let code: String
+    }
+
+    let error: Detail
+}
+
 struct VoiceStatusResponse: Decodable {
     let provider: String
     let ready: Bool
@@ -241,6 +251,27 @@ func probeCodexStatus(
                     details: versionDetails
                 )
             }
+        } else if
+            let response = response as? HTTPURLResponse,
+            response.statusCode == 503,
+            let data,
+            let refusal = try? JSONDecoder().decode(TaskStoreRefusal.self, from: data),
+            ["task_store_migration_pending", "task_store_migration_failed"]
+                .contains(refusal.error.code)
+        {
+            statusResult = refusal.error.code == "task_store_migration_pending"
+                ? IntegrationStatus(
+                    name: "Codex",
+                    state: .checking,
+                    status: "Preparing...",
+                    details: []
+                )
+                : IntegrationStatus(
+                    name: "Codex",
+                    state: .unavailable,
+                    status: "Unavailable",
+                    details: []
+                )
         } else {
             statusResult = IntegrationStatus(
                 name: "Codex",

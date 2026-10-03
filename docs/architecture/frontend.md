@@ -170,8 +170,9 @@ HTTP, SSE, or backoff polling restarts on its own. A later visible lifecycle or
 connectivity hint may re-enter the ordinary recovery sequence. A fresh
 same-origin API response or current EventSource open is stronger reachability
 evidence and re-enters that same sequence even when the browser omits an
-`online` edge. The evidence never jumps directly to ready: status, list, and
-detail still validate through the current foreground generation.
+`online` edge. The evidence never jumps directly to ready: Task-store
+readiness, list, and detail still validate through the current foreground
+generation.
 
 Browser-specific connectivity APIs such as `navigator.connection` are optional
 hints rather than a second connectivity owner. Definite offline state takes the
@@ -179,24 +180,26 @@ same pause path, restoration requests the same canonical recovery, and
 unsupported browsers continue through standard lifecycle and transport paths.
 Every completion still has to match the active recovery generation.
 
-Foreground recovery refreshes the workspace's canonical backend status first,
-after which the Tasks page asks its navigator and selected detail to reconcile
-their separately owned transports. The selected detail's transports are the
-Task stream and, while the terminal is shown, the terminal socket. Parents call
-public child methods; the app shell does not inspect Task transport internals.
-Async completions must still match both the foreground generation and the
-active route.
+Foreground recovery checks Task-store readiness first, after which the Tasks
+page asks its navigator and selected detail to reconcile their separately owned
+transports. Every recovery after the initial activation also starts a Codex
+status refresh without waiting for it; that answer serves only Codex surfaces,
+and its failure does not fail the recovery. The selected detail's transports
+are the Task stream and, while the terminal is shown, the terminal socket.
+Parents call public child methods; the app shell does not inspect Task
+transport internals. Async completions must still match both the foreground
+generation and the active route.
 
 The app shell also owns the single viewport-level recovery notice. Task list
 and detail expose whether an active transport needs recovery; they do not render
 independent connection Retry controls. Initial foreground validation remains
 silent and preserves canonical Task status chips. The notice appears only after
 a real transport failure or foreground backoff. Once the retry budget is
-exhausted it exposes one Retry action that re-enters the same status,
-pending-route, list, and detail recovery operation. Known offline state uses
-the same notice without a spinner or Retry action. Initial bootstrap and
-domain-specific requests such as older-history loading retain their separately
-scoped failure UI.
+exhausted it exposes one Retry action that re-enters the same Task-store
+readiness, pending-route, list, and detail recovery operation. Known offline
+state uses the same notice without a spinner or Retry action. Initial
+bootstrap and domain-specific requests such as older-history loading retain
+their separately scoped failure UI.
 
 The app shell owns one `PwaUpdateLifecycle` instance. That lifecycle is the
 single owner of service-worker registration and build handoff, and publishes
@@ -633,8 +636,8 @@ identity, lifecycle, and layout without duplicating overflow policy or
 manufacturing CSS overflow for short content.
 
 Settings publishes its navigator plus the exact active page surface. Tasks
-publishes its navigator plus the visible New, Recovery, Codex-readiness,
-Section, or Task Detail child. Detail delegates to the exact active
+publishes its navigator plus the visible New, Recovery, Task-store recovery,
+Codex-readiness, Section, or Task Detail child. Detail delegates to the exact active
 Conversation, Integrated Review, Git, or GitHub domain. Integrated Review, Git
 Compare and Commit, and GitHub Pull Files merge their simultaneously visible
 tree and viewer leaves on desktop and omit the tree on single-pane layouts and
@@ -737,24 +740,33 @@ registered product dialog or popover owns one inside its retained root. Native
 scroll events, focus, Conversation anchoring, popover light dismiss, and
 product-dialog refresh/close lifecycle remain owned by those components.
 
-The workspace also owns the one browser lifecycle for backend-owned Codex
-readiness requests and forwards a request snapshot to Tasks, Settings, and the
-workspace navigation. That snapshot keeps frontend request phase (`checking`,
-`loaded`, or `failed`) separate from the canonical backend status payload. A
-refresh may retain the previous status while the request is checking.
+The workspace also owns the browser lifecycle for Task-store readiness. It
+reads `GET /api/task-store/status`, which the backend answers while it prepares
+the store at startup and answers `ready` once Tasks run, and forwards a snapshot
+of that answer to Tasks. Task-store readiness gates every Task operation —
+every agent shares the store — and alone presents the takeover recovery surface
+while it blocks; an answer not yet loaded blocks nothing. Its control graph
+separates attachment and suspension, a check in flight, a migrating store
+rechecked on a timer, a failed store waiting for **Retry Task setup**, and that
+retry in flight. A check that cannot reach the store keeps the last answer and
+stops rechecking until another check is requested, such as by foreground
+recovery.
 
-The snapshot carries two separate blocking axes, consumed as derived
-presentation rather than routing state. Task-store readiness gates every Task
-operation — it is the shared store — and alone presents the takeover recovery
-surface while it blocks. Codex readiness gates only Codex surfaces: the setup
-card renders beside the New Task surface, and routes always open — a Task's
-conversation stays readable from the store while its agent is unready. No
-surface pre-guesses an operation's fate from the snapshot: a Codex-run
-operation tried while Codex is unready is refused by the server, and the
-refusal is the answer shown. Claude and Grok surfaces never consult either
-Codex axis.
-Settings remains routable. Retry refreshes the canonical diagnosis; frontend
-code does not compare versions or classify stderr.
+A separate workspace lifecycle owns backend-owned Codex readiness requests and
+forwards a request snapshot to Tasks, Settings, and the workspace navigation.
+That snapshot keeps frontend request phase (`checking`, `loaded`, or `failed`)
+separate from the canonical backend status payload. A refresh may retain the
+previous status while the request is checking.
+
+Codex readiness gates only Codex surfaces and is consumed as derived
+presentation rather than routing state: the setup card renders beside the New
+Task surface, and routes always open — a Task's conversation stays readable
+from the store while its agent is unready. No surface pre-guesses an
+operation's fate from the snapshot: a Codex-run operation tried while Codex is
+unready is refused by the server, and the refusal is the answer shown. Claude
+and Grok surfaces never consult Codex readiness. Settings remains routable.
+Retry refreshes the canonical diagnosis; frontend code does not compare
+versions or classify stderr.
 
 One workspace-scoped Codex status lifecycle owns that request, the confirmed
 runtime-restart and update mutations, their request generations, and the status
@@ -817,11 +829,11 @@ Review, Git, GitHub, or their Summary controls.
 
 For keyboard navigation, each of these layout owners merges only the public
 scope of the child it currently presents. `caffold-tasks-page` composes Task
-Navigator with the visible New, Recovery, readiness, or Detail owner;
-setup-beside is an independent sibling when it is actually visible. The common
-Detail layout delegates Action and Scroll scopes to Conversation, Section New,
-Integrated Review, Git, GitHub, or the terminal without rebuilding child
-descriptors.
+Navigator with the visible New, Recovery, Task-store recovery, or Detail owner;
+the Codex setup card beside them is an independent sibling when it is actually
+visible. The common Detail layout delegates Action and Scroll scopes to
+Conversation, Section New, Integrated Review, Git, GitHub, or the terminal
+without rebuilding child descriptors.
 
 One pending prompt per Task belongs to Detail, whether it originated in the
 Task Composer or was transferred from a New Task or GitHub creation surface.
@@ -1509,6 +1521,8 @@ frontend/
 |       |-- live-updates/lifecycle.js
 |       |-- codex-status.js
 |       |-- codex-status/...
+|       |-- task-store-status.js
+|       |-- task-store-status/...
 |       |-- notes/
 |       |   |-- layout.js
 |       |   |-- layout/selection.js

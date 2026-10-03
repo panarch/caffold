@@ -159,7 +159,7 @@ Hiding the document or entering the App Shell's definite offline suspension
 closes the physical SSE while retaining desired logical subscriptions.
 Returning to visible or starting foreground recovery opens a new connection
 and republishes the snapshot. The existing App Shell foreground-recovery owner
-still performs the canonical status, Task List, and selected Task Detail
+still performs the Task-store readiness, Task List, and selected Task Detail
 reconciliation; the gateway adds no second recovery UI. A physical error is
 reported to every logical consumer, while a `channel-error` affects only its
 named subscription.

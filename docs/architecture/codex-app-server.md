@@ -660,13 +660,18 @@ deterministically places Sections without active Tasks afterward. The v7-to-v8
 migration adds nullable Section composer fields without backfilling historical selections; Sections
 begin recording them only after a later turn starts successfully. The v8-to-v9
 migration marks every existing Task as Codex and adds the nullable cwd field
-required by Claude Tasks, without copying Codex-owned cwd state. While Codex
-is unavailable or incompatible, the HTTP server remains available with explicit
-Task-store/Codex readiness and retry controls; Codex-run operations answer
-with the blocking readiness, while Task reads and the other agent's operations
-continue. The Caffold-owned Archive escape hatch may still complete from the
-managed row after local worktree safety checks, without claiming that Codex was
-idle or successfully archived the thread.
+required by Claude Tasks, without copying Codex-owned cwd state. While the
+store is being prepared, the HTTP server answers `GET /api/task-store/status`
+and the migration retry, and refuses every other request the Tasks app serves,
+agent status included, with 503 `task_store_migration_pending`, or
+`task_store_migration_failed` after a failed upgrade. Once Tasks run, the same
+status route answers `ready`. While Codex is unavailable or incompatible, the
+HTTP server remains available with explicit Codex readiness and retry
+controls; Codex-run operations answer with the blocking readiness, while Task
+reads and the other agent's operations continue. The Caffold-owned Archive
+escape hatch may still complete from the managed row after local worktree
+safety checks, without claiming that Codex was idle or successfully archived
+the thread.
 
 Archived Tasks remain Caffold-owned and independent of Sections. Archived
 Codex Tasks continue to read 30 managed IDs at a time from the archived Redb

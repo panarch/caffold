@@ -1,6 +1,6 @@
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
-import { taskStoreBlocksTaskOperations } from "../../codex-status.js";
+import { taskStoreBlocksTaskOperations } from "../../task-store-status.js";
 import { cleanLogicalPath } from "../task-format.js";
 import "./composer.js";
 
@@ -117,11 +117,11 @@ class CaffoldTaskCreate extends HTMLElement {
     this.syncComposer();
   }
 
-  setCodexStatusSnapshot(snapshot) {
+  setTaskStoreStatusSnapshot(snapshot) {
     this.ensureState();
     // Only the store gates creating — it is shared by every agent. Codex
     // being unready costs the picker its Codex models and nothing more.
-    const blocked = taskStoreBlocksTaskOperations(snapshot?.status);
+    const blocked = taskStoreBlocksTaskOperations(snapshot);
     if (this.taskOperationsBlocked === blocked) {
       return;
     }

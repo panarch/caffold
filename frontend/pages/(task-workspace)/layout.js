@@ -13,6 +13,10 @@ import {
   resetCreditExpiry,
 } from "./codex-status.js";
 import {
+  TASK_STORE_RETRY_REQUEST_EVENT,
+  createTaskStoreStatusLifecycle,
+} from "./task-store-status.js";
+import {
   CODEX_RESET_CREDIT_CONFIRMED_EVENT,
 } from "./codex-status/components/reset-credit-dialog.js";
 import {
@@ -75,6 +79,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.ensureRendered();
     this.sidePaneResizeObserver.observe(this);
     this.liveUpdates.connect();
+    this.taskStoreStatusLifecycle.connect();
     this.codexStatusLifecycle.connect();
     void warmIcons();
   }
@@ -83,6 +88,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.sidePaneResizeObserver.disconnect();
     this.liveUpdates.disconnect();
+    this.taskStoreStatusLifecycle.disconnect();
     this.codexStatusLifecycle.disconnect();
   }
 
@@ -100,6 +106,10 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.codexResetCreditStateValue = { state: "idle", message: "", retryPending: false };
     this.codexRuntimeActionValue = "idle";
     this.liveUpdates = new WorkspaceLiveUpdates();
+    this.taskStoreStatusLifecycle = createTaskStoreStatusLifecycle({
+      onSnapshotChange: (snapshot) => this.setTaskStoreStatusSnapshot(snapshot),
+    });
+    this.taskStoreStatusSnapshotValue = this.taskStoreStatusLifecycle.snapshot();
     this.codexStatusLifecycle = createCodexStatusLifecycle({
       onSnapshotChange: (snapshot) => this.setCodexStatusSnapshot(snapshot),
       onRestartStateChange: (state) => this.setCodexRestartState(state),
@@ -215,6 +225,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.notesWorkspace.connectNotesNavigator(this.notesNavigator);
     this.notesWorkspace.connectPrimarySlot(this.querySelector(".notes-primary-slot"));
     this.settingsWorkspace.connectSettingsNavigator(this.settingsNavigator);
+    this.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshotValue);
     this.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
     this.tasksPage.setCodexRestartState(this.codexRestartStateValue);
     this.tasksPage.setCodexRuntimeAction(this.codexRuntimeActionValue);
@@ -297,11 +308,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
     );
     this.addEventListener(CODEX_STATUS_REFRESH_REQUEST_EVENT, (event) => {
       event.stopPropagation();
-      const retry = this.codexStatusLifecycle.statusSnapshot()
-        ?.taskStoreReadiness?.blocksTaskOperations
-        ? this.codexStatusLifecycle.retryTaskStoreMigration()
-        : this.codexStatusLifecycle.refresh();
-      void retry.catch(() => {});
+      void this.codexStatusLifecycle.refresh().catch(() => {});
+    });
+    this.addEventListener(TASK_STORE_RETRY_REQUEST_EVENT, (event) => {
+      event.stopPropagation();
+      this.taskStoreStatusLifecycle.retry();
     });
     this.addEventListener(CODEX_RUNTIME_RESTART_REQUEST_EVENT, (event) => {
       event.stopPropagation();
@@ -478,6 +489,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   suspendForeground() {
     this.liveUpdates.suspend();
+    this.taskStoreStatusLifecycle.suspend();
     this.codexStatusLifecycle.suspend();
     this.tasksPage?.suspendForeground();
   }
@@ -487,17 +499,21 @@ class CaffoldTaskWorkspace extends HTMLElement {
     isCurrent = () => true,
     progress,
   } = {}) {
+    this.taskStoreStatusLifecycle.resume();
     this.codexStatusLifecycle.resume();
+    // Codex status serves only Codex surfaces, so recovery never waits for it.
+    if (!initialActivation) {
+      void this.codexStatusLifecycle.refresh().catch(() => {});
+    }
     progress?.validatingStatus();
-    let statusError = null;
-    const statusSnapshot = this.codexStatusLifecycle.snapshot();
-    if (initialActivation && statusSnapshot.phase === "failed") {
-      statusError = new Error(statusSnapshot.error || "Caffold status unavailable.");
-    } else if (!(initialActivation && statusSnapshot.phase === "loaded")) {
+    let storeError = null;
+    // Connecting already asked the store, so the initial activation reuses an
+    // answer it has instead of asking again.
+    if (!(initialActivation && this.taskStoreStatusLifecycle.snapshot().readiness)) {
       try {
-        await this.codexStatusLifecycle.refresh();
+        await this.taskStoreStatusLifecycle.check();
       } catch (error) {
-        statusError = error;
+        storeError = error;
       }
     }
     if (!isCurrent()) {
@@ -518,11 +534,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
     const tasks = await tasksRecovery;
     return {
       retry: Boolean(
-        statusError ||
+        storeError ||
         (!initialActivation && this.tasksPage.taskStoreOperationsBlocked()) ||
         tasks?.retry
       ),
-      error: statusError ?? tasks?.error ?? null,
+      error: storeError ?? tasks?.error ?? null,
     };
   }
 
@@ -553,8 +569,15 @@ class CaffoldTaskWorkspace extends HTMLElement {
     if (nextStatus?.readiness && !codexRuntimeUpdateAvailable(nextStatus)) {
       this.codexRuntimeUpdateDialog.close();
     }
+  }
+
+  setTaskStoreStatusSnapshot(snapshot) {
+    this.ensureRendered();
+    this.taskStoreStatusSnapshotValue =
+      snapshot ?? this.taskStoreStatusLifecycle.snapshot();
+    this.tasksPage.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshotValue);
     this.toggleAttribute(
-      "data-codex-recovery-visible",
+      "data-task-store-takeover",
       this.tasksPage.taskStoreRecoveryVisible(),
     );
     this.syncNavigationPane();
@@ -931,7 +954,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     if (this.mode === "settings") {
       return this.dataset.settingsView === "detail";
     }
-    if (this.hasAttribute("data-codex-recovery-visible")) {
+    if (this.hasAttribute("data-task-store-takeover")) {
       return true;
     }
     const view = this.dataset.tasksView;

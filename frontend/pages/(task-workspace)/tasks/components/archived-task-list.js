@@ -5,7 +5,7 @@ import {
 } from "#app/api.js";
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
-import { taskStoreOperationsPresentation } from "../../codex-status.js";
+import { taskStoreOperationsPresentation } from "../../task-store-status.js";
 import {
   TASK_TRANSPORT_STATE,
   isTaskTransportStale,

@@ -54,6 +54,7 @@ class CaffoldDetailLayout extends HTMLElement {
     this.activeReviewKey = "";
     this.transportAvailable = true;
     this.codexStatusSnapshot = null;
+    this.taskStoreStatusSnapshot = null;
     this.liveUpdates = null;
     // Where the terminal toggle returns to, per subject, and the subject whose
     // terminal screen the person asked for and is about to open.
@@ -294,6 +295,7 @@ class CaffoldDetailLayout extends HTMLElement {
     this.sectionDetail()?.setSection(this.section);
     this.sectionDetail()?.setTransportAvailable(this.transportAvailable);
     this.sectionDetail()?.setCodexStatusSnapshot(this.codexStatusSnapshot);
+    this.sectionDetail()?.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
     this.syncSectionPresentation();
     return true;
   }
@@ -459,6 +461,11 @@ class CaffoldDetailLayout extends HTMLElement {
   setCodexStatusSnapshot(snapshot) {
     this.codexStatusSnapshot = snapshot ?? null;
     this.sectionDetail()?.setCodexStatusSnapshot(this.codexStatusSnapshot);
+  }
+
+  setTaskStoreStatusSnapshot(snapshot) {
+    this.taskStoreStatusSnapshot = snapshot ?? null;
+    this.sectionDetail()?.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
   }
 
   captureTaskSnapshot() {

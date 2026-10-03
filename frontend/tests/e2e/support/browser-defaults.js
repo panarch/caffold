@@ -23,6 +23,15 @@ const CDN_CONTENT_TYPES = {
   ".wasm": "application/wasm",
 };
 
+export function mockTaskStoreStatus(overrides = {}) {
+  return {
+    state: "ready",
+    blocksTaskOperations: false,
+    diagnosticMessage: "",
+    ...overrides,
+  };
+}
+
 export function mockCodexStatus(overrides = {}) {
   return {
     readiness: {
@@ -196,6 +205,9 @@ export function mockGrokStatus(overrides = {}) {
 
 export async function installBrowserDefaults(page) {
   await page.addInitScript(installTaskSseControllerInBrowser);
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, (route) =>
+    route.fulfill({ json: mockTaskStoreStatus() })
+  );
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",

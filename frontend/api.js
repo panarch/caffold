@@ -44,6 +44,10 @@ export async function updateCodexRuntime() {
   return requestJson("/api/codex/update", {}, { method: "POST" });
 }
 
+export async function getTaskStoreStatus() {
+  return requestJson("/api/task-store/status");
+}
+
 export async function retryTaskStoreMigration() {
   return requestJson("/api/task-store/migration/retry", {}, {
     method: "POST",

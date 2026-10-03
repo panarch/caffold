@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import {
   installBrowserDefaults,
   mockCodexStatus,
+  mockTaskStoreStatus,
 } from "../support/browser-defaults.js";
 import {
   activeListTask,
@@ -425,6 +426,123 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
   );
 });
 
+test("a return reconciles Tasks while Codex status is still unanswered", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const registryKey = "__codexHeldReturnSources";
+  await page.addInitScript(() => {
+    window.__caffoldVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => window.__caffoldVisibilityState,
+    });
+  });
+  await installEventSourceMock(page, {
+    registryKey,
+    autoOpen: true,
+    bootstrapFunctionKey: "__codexHeldReturnBootstrap",
+  });
+  await mockAgentModels(page);
+
+  const threadId = "thread_codex_held_return";
+  const now = 1_767_190_455_000;
+  const task = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Before the return",
+    preview: "Initial projection",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Initial projection",
+    conversationAvailable: true,
+  };
+  let returned = false;
+  let heldCodexReads = 0;
+  const codexAnswer = Promise.withResolvers();
+  const currentTask = () =>
+    returned ? { ...task, title: "Renamed while away" } : task;
+  const detail = () => ({
+    threadId,
+    syncState: "ready",
+    revision: returned ? 2 : 1,
+    eventRevision: returned ? 2 : 1,
+    task: currentTask(),
+    events: [{
+      id: returned ? "event_after_return" : "event_before_return",
+      threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        text: returned
+          ? "Detail reconciled while Codex status was unanswered."
+          : "Detail loaded before leaving.",
+      },
+      position: { anchorMs: now + (returned ? 2 : 1), index: 0 },
+    }],
+    eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
+    pendingApprovals: [],
+  });
+  await page.exposeFunction("__codexHeldReturnBootstrap", (requestedThreadId) =>
+    requestedThreadId === threadId ? detail() : null,
+  );
+  await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
+    if (returned) {
+      heldCodexReads += 1;
+      await codexAnswer.promise;
+    }
+    return route.fulfill({ json: mockCodexStatus() });
+  });
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([currentTask()]) })
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ json: detail() }),
+  );
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const workspace = page.locator("caffold-task-workspace");
+  const rowTitle = workspace.locator(
+    `.task-row[data-thread-id="${threadId}"] .task-row-title`,
+  );
+  await expect(rowTitle).toHaveText("Before the return");
+  await expect(workspace).toContainText("Detail loaded before leaving.");
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+
+  returned = true;
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect
+    .poll(() =>
+      page.evaluate((key) =>
+        window[key].every((source) => source.readyState === 2), registryKey),
+    )
+    .toBe(true);
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+
+  // The Codex read stays unanswered to the end, so everything below finished
+  // without it.
+  await expect.poll(() => heldCodexReads).toBeGreaterThan(0);
+  await expect(rowTitle).toHaveText("Renamed while away");
+  await expect(workspace).toContainText(
+    "Detail reconciled while Codex status was unanswered.",
+  );
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
+  codexAnswer.resolve();
+});
+
 test("BFCache pageshow and top-level focus use the shared foreground recovery", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
@@ -620,27 +738,26 @@ test("foreground recovery retries a blocking Task-store snapshot with bounded ba
     autoOpen: true,
   });
   await mockAgentModels(page);
-  // Only the Task store still earns the retry loop: it gates every agent,
-  // where a blocked Codex gates only its own surfaces and is not waited on.
-  const blockedStatus = mockCodexStatus();
-  blockedStatus.taskStoreReadiness = {
+  // Only the Task store earns the retry loop: it gates every agent, where a
+  // blocked Codex gates only its own surfaces and is not waited on.
+  const blockedStore = mockTaskStoreStatus({
     state: "failed",
     blocksTaskOperations: true,
     diagnosticMessage: "Foreground Task store has not recovered yet.",
-  };
+  });
   let recoveryBlockedReads = 0;
   let foregroundRecovery = false;
-  let statusReads = 0;
+  let storeReads = 0;
   let heldRecoveredRead = false;
   let releaseRecoveredRead = () => {};
   const recoveredRead = new Promise((resolve) => {
     releaseRecoveredRead = resolve;
   });
-  await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
-    statusReads += 1;
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, async (route) => {
+    storeReads += 1;
     if (foregroundRecovery && recoveryBlockedReads < 2) {
       recoveryBlockedReads += 1;
-      return route.fulfill({ json: blockedStatus });
+      return route.fulfill({ json: blockedStore });
     }
     if (foregroundRecovery && !heldRecoveredRead) {
       // Hold the read that ends the retry loop, so the blocked surface is
@@ -649,7 +766,7 @@ test("foreground recovery retries a blocking Task-store snapshot with bounded ba
       heldRecoveredRead = true;
       await recoveredRead;
     }
-    return route.fulfill({ json: mockCodexStatus() });
+    return route.fulfill({ json: mockTaskStoreStatus() });
   });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: activeTaskProjection() })
@@ -662,7 +779,7 @@ test("foreground recovery retries a blocking Task-store snapshot with bounded ba
   // own activation is still running would be coalesced into it and read no
   // status at all.
   await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
-  const readsBeforeRecovery = statusReads;
+  const readsBeforeRecovery = storeReads;
   foregroundRecovery = true;
   await page.evaluate(() => {
     window.dispatchEvent(new Event("blur"));
@@ -670,17 +787,17 @@ test("foreground recovery retries a blocking Task-store snapshot with bounded ba
   });
 
   await expect(
-    page.locator('[data-readiness-state="taskStore-failed"]'),
+    page.locator('.task-store-recovery-card[data-task-store-state="failed"]'),
   ).toBeVisible();
   await expect.poll(() => recoveryBlockedReads).toBe(2);
-  await expect.poll(() => statusReads).toBe(readsBeforeRecovery + 3);
+  await expect.poll(() => storeReads).toBe(readsBeforeRecovery + 3);
   releaseRecoveredRead();
-  await expect(page.locator(".codex-readiness-surface")).toBeHidden();
+  await expect(page.locator("caffold-task-store-recovery")).toBeHidden();
   await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
   // A spent budget and a pending fourth attempt both stop reading for a while,
   // so the settled lifecycle is what separates them.
   await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
-  expect(statusReads).toBe(readsBeforeRecovery + 3);
+  expect(storeReads).toBe(readsBeforeRecovery + 3);
 });
 
 test("fresh origin reachability recovers a foreground offline pause without an online edge", { tag: "@all-viewports" }, async ({
@@ -697,6 +814,7 @@ test("fresh origin reachability recovers a foreground offline pause without an o
   const threadId = "thread_foreground_offline";
   const task = transportOverlayTask(threadId);
   let recovered = false;
+  let storeReads = 0;
   let statusReads = 0;
   let listReads = 0;
   let detailReads = 0;
@@ -729,6 +847,10 @@ test("fresh origin reachability recovers a foreground offline pause without an o
     requestedThreadId === threadId ? detail() : null,
   );
 
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, (route) => {
+    storeReads += 1;
+    return route.fulfill({ json: mockTaskStoreStatus() });
+  });
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
     statusReads += 1;
     return route.fulfill({ json: mockCodexStatus() });
@@ -756,11 +878,13 @@ test("fresh origin reachability recovers a foreground offline pause without an o
     )
     .toEqual(["task-detail", "task-list", "watch"]);
 
-  const readsBeforeOffline = {
+  const reads = () => ({
     detail: detailReads,
     list: listReads,
     status: statusReads,
-  };
+    store: storeReads,
+  });
+  const readsBeforeOffline = reads();
   await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
 
@@ -783,9 +907,7 @@ test("fresh origin reachability recovers a foreground offline pause without an o
     .toBe(true);
 
   await page.clock.runFor(30_000);
-  expect({ detail: detailReads, list: listReads, status: statusReads }).toEqual(
-    readsBeforeOffline,
-  );
+  expect(reads()).toEqual(readsBeforeOffline);
   await captureReviewScreenshot(
     page,
     testInfo,
@@ -806,6 +928,7 @@ test("fresh origin reachability recovers a foreground offline pause without an o
     "Conversation reconciled after network recovery.",
   );
   await expect(composer).toHaveValue("Keep this foreground offline draft");
+  expect(storeReads).toBe(readsBeforeOffline.store + 1);
   expect(statusReads).toBe(readsBeforeOffline.status + 1);
   expect(listReads).toBe(readsBeforeOffline.list + 1);
   expect(detailReads).toBe(readsBeforeOffline.detail);
@@ -827,6 +950,7 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
   const task = transportOverlayTask(threadId);
   let disconnected = false;
   let recovered = false;
+  let storeReads = 0;
   let statusReads = 0;
   let listReads = 0;
   let detailReads = 0;
@@ -859,6 +983,12 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
     !disconnected && requestedThreadId === threadId ? detail() : null,
   );
 
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, (route) => {
+    storeReads += 1;
+    return disconnected
+      ? route.abort("internetdisconnected")
+      : route.fulfill({ json: mockTaskStoreStatus() });
+  });
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
     statusReads += 1;
     return disconnected
@@ -888,11 +1018,13 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
     "Conversation remains useful before connection loss.",
   );
   await composer.fill("Keep the connection-change draft");
-  const readsBeforeDisconnect = {
+  const reads = () => ({
     detail: detailReads,
     list: listReads,
     status: statusReads,
-  };
+    store: storeReads,
+  });
+  const readsBeforeDisconnect = reads();
 
   disconnected = true;
   await page.evaluate(() => {
@@ -910,14 +1042,10 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
     "Conversation remains useful before connection loss.",
   );
   await expect(composer).toHaveValue("Keep the connection-change draft");
-  expect({ detail: detailReads, list: listReads, status: statusReads }).toEqual(
-    readsBeforeDisconnect,
-  );
+  expect(reads()).toEqual(readsBeforeDisconnect);
 
   await page.clock.runFor(30_000);
-  expect({ detail: detailReads, list: listReads, status: statusReads }).toEqual(
-    readsBeforeDisconnect,
-  );
+  expect(reads()).toEqual(readsBeforeDisconnect);
 
   disconnected = false;
   recovered = true;
@@ -932,6 +1060,7 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
     "Conversation reconciled after connection recovery.",
   );
   await expect(composer).toHaveValue("Keep the connection-change draft");
+  expect(storeReads).toBe(readsBeforeDisconnect.store + 1);
   expect(statusReads).toBe(readsBeforeDisconnect.status + 1);
   expect(listReads).toBe(readsBeforeDisconnect.list + 1);
   expect(detailReads).toBe(readsBeforeDisconnect.detail);
@@ -965,7 +1094,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", { tag:
   const newerProbeStarted = new Promise((resolve) => {
     reportNewerProbeStarted = resolve;
   });
-  let statusReads = 0;
+  let storeReads = 0;
   let listReads = 0;
   let detailReads = 0;
   let readsBeforeProbe = null;
@@ -998,9 +1127,9 @@ test("a late failed disconnect probe yields to a newer reconnect signal", { tag:
     requestedThreadId === threadId ? detail() : null,
   );
 
-  await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
-    statusReads += 1;
-    if (readsBeforeProbe && statusReads === readsBeforeProbe.status + 2) {
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, async (route) => {
+    storeReads += 1;
+    if (readsBeforeProbe && storeReads === readsBeforeProbe.store + 2) {
       reportNewerProbeStarted();
     }
     if (holdProbe && !heldProbe) {
@@ -1009,7 +1138,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", { tag:
       await probeGate;
       return route.abort("internetdisconnected");
     }
-    return route.fulfill({ json: mockCodexStatus() });
+    return route.fulfill({ json: mockTaskStoreStatus() });
   });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     listReads += 1;
@@ -1033,7 +1162,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", { tag:
   readsBeforeProbe = {
     detail: detailReads,
     list: listReads,
-    status: statusReads,
+    store: storeReads,
   };
 
   holdProbe = true;
@@ -1058,7 +1187,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", { tag:
     "Conversation reconciled after the late failure.",
   );
   await expect(composer).toHaveValue("Keep the late-failure draft");
-  expect(statusReads).toBe(readsBeforeProbe.status + 2);
+  expect(storeReads).toBe(readsBeforeProbe.store + 2);
   expect(listReads).toBeGreaterThan(readsBeforeProbe.list);
   expect(detailReads).toBe(readsBeforeProbe.detail);
 });
@@ -1078,7 +1207,7 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
   const task = transportOverlayTask(threadId);
   let unavailable = false;
   let recovered = false;
-  let statusReads = 0;
+  let storeReads = 0;
   const detail = () => ({
     threadId,
     syncState: "ready",
@@ -1108,15 +1237,23 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
     requestedThreadId === threadId ? detail() : null,
   );
 
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
-    statusReads += 1;
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, (route) => {
+    storeReads += 1;
     return unavailable
       ? route.fulfill({
           status: 502,
           json: { error: { message: "Caffold server unavailable." } },
         })
-      : route.fulfill({ json: mockCodexStatus() });
+      : route.fulfill({ json: mockTaskStoreStatus() });
   });
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    unavailable
+      ? route.fulfill({
+          status: 502,
+          json: { error: { message: "Caffold server unavailable." } },
+        })
+      : route.fulfill({ json: mockCodexStatus() })
+  );
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     unavailable
       ? route.fulfill({
@@ -1149,7 +1286,7 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
     .toEqual(["task-detail", "task-list", "watch"]);
   await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
 
-  const readsBeforeRecovery = statusReads;
+  const readsBeforeRecovery = storeReads;
   unavailable = true;
   await page.evaluate(() => {
     window.dispatchEvent(new Event("blur"));
@@ -1164,7 +1301,7 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
   await expect(composer).toHaveValue("Keep this offline recovery draft");
   await expect(page.locator(".task-list-stale-warning")).toHaveCount(0);
   await expect(page.locator(".task-list-availability, .task-stream-state")).toHaveCount(0);
-  await expect.poll(() => statusReads).toBe(readsBeforeRecovery + 1);
+  await expect.poll(() => storeReads).toBe(readsBeforeRecovery + 1);
 
   for (const [requestCount, presentation] of [
     [2, "reconnecting"],
@@ -1173,10 +1310,10 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
   ]) {
     await advanceClockUntil(
       page,
-      () => statusReads >= readsBeforeRecovery + requestCount,
+      () => storeReads >= readsBeforeRecovery + requestCount,
       { budgetMs: 5_000 },
     );
-    expect(statusReads).toBe(readsBeforeRecovery + requestCount);
+    expect(storeReads).toBe(readsBeforeRecovery + requestCount);
     await expect(notice).toHaveAttribute("data-recovery-state", presentation);
   }
 

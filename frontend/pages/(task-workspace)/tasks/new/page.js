@@ -34,7 +34,7 @@ class CaffoldTaskNew extends HTMLElement {
     this.stateReady = true;
     this.cwd = ".";
     this.transportAvailable = true;
-    this.codexStatusSnapshot = null;
+    this.taskStoreStatusSnapshot = null;
     this.boundCreateIntent = (event) => this.handleCreateIntent(event);
     this.boundDirectoryPicked = (event) => this.handleDirectoryPicked(event);
   }
@@ -95,10 +95,10 @@ class CaffoldTaskNew extends HTMLElement {
     this.taskCreate()?.setTransportAvailable(this.transportAvailable);
   }
 
-  setCodexStatusSnapshot(snapshot) {
+  setTaskStoreStatusSnapshot(snapshot) {
     this.ensureState();
-    this.codexStatusSnapshot = snapshot ?? null;
-    this.taskCreate()?.setCodexStatusSnapshot(this.codexStatusSnapshot);
+    this.taskStoreStatusSnapshot = snapshot ?? null;
+    this.taskCreate()?.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
   }
 
   selectedContextPath() {
@@ -202,7 +202,7 @@ class CaffoldTaskNew extends HTMLElement {
     }
     taskCreate.setContext({ cwd: this.selectedContextPath(), browseCwd: true });
     taskCreate.setTransportAvailable(this.transportAvailable);
-    taskCreate.setCodexStatusSnapshot(this.codexStatusSnapshot);
+    taskCreate.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
   }
 
   dispatchRoute(route) {

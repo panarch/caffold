@@ -471,6 +471,15 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/codex-status/lifecycle.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/codex-status/lifecycle.js"
         ))),
+        "pages/(task-workspace)/task-store-status.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/task-store-status.js"
+        ))),
+        "pages/(task-workspace)/task-store-status/model.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/task-store-status/model.js"
+        ))),
+        "pages/(task-workspace)/task-store-status/lifecycle.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/task-store-status/lifecycle.js"
+        ))),
         "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js" => {
             Some(js(include_str!(
                 "../../frontend/pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js"
@@ -1047,6 +1056,14 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/codex-readiness-recovery.js"
             )))
         }
+        "pages/(task-workspace)/tasks/components/task-store-recovery.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/components/task-store-recovery.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/task-store-recovery.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/tasks/components/task-store-recovery.js"
+        ))),
         "pages/(task-workspace)/tasks/components/navigator.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/navigator.css"
         ))),
@@ -2091,6 +2108,10 @@ mod tests {
                 b"caffold-codex-readiness-recovery".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/task-store-recovery.js",
+                b"caffold-task-store-recovery".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js",
                 b"caffold-task-conversation".as_slice(),
             ),
@@ -2244,6 +2265,11 @@ mod tests {
             "/assets/pages/(task-workspace)/tasks/components/archived-task-list.js",
             "/assets/pages/(task-workspace)/tasks/components/codex-readiness-recovery.css",
             "/assets/pages/(task-workspace)/tasks/components/codex-readiness-recovery.js",
+            "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.css",
+            "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.js",
+            "/assets/pages/(task-workspace)/task-store-status.js",
+            "/assets/pages/(task-workspace)/task-store-status/model.js",
+            "/assets/pages/(task-workspace)/task-store-status/lifecycle.js",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.css",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.js",
             "/assets/pages/(task-workspace)/codex-status/lifecycle.js",
@@ -2282,6 +2308,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/codex-readiness-recovery.css",
                 b"caffold-codex-readiness-recovery".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/task-store-recovery.css",
+                b"caffold-task-store-recovery".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/voice-level-meter.css",

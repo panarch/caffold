@@ -16,9 +16,6 @@ use tower::ServiceExt;
 
 use super::TasksApp;
 use crate::{
-    agent::codex::{
-        CodexReadiness, CodexReadinessReason, CodexReadinessState, CodexStatusResponse,
-    },
     fs::RootedFs,
     task_store::{TaskStoreError, migrate_task_store},
     watch::WatchHub,
@@ -54,11 +51,14 @@ impl TaskRouterGateway {
     }
 }
 
+const TASK_STORE_STATUS_PATH: &str = "/api/task-store/status";
+
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum TaskStoreReadinessState {
     Migrating,
     Failed,
+    Ready,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -69,6 +69,16 @@ struct TaskStoreReadiness {
     diagnostic_message: String,
 }
 
+impl TaskStoreReadiness {
+    fn ready() -> Self {
+        Self {
+            state: TaskStoreReadinessState::Ready,
+            blocks_task_operations: false,
+            diagnostic_message: String::new(),
+        }
+    }
+}
+
 #[derive(Clone)]
 struct StartupTaskState {
     status: Arc<RwLock<StartupTaskStatus>>,
@@ -77,17 +87,8 @@ struct StartupTaskState {
 
 #[derive(Clone)]
 struct StartupTaskStatus {
-    codex: CodexStatusResponse,
     task_store: TaskStoreReadiness,
     error_code: &'static str,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StartupStatusResponse {
-    #[serde(flatten)]
-    codex: CodexStatusResponse,
-    task_store_readiness: TaskStoreReadiness,
 }
 
 pub(in crate::app) struct PersistentTasksGateway {
@@ -123,7 +124,6 @@ impl PersistentTasksGateway {
         terminals: TaskTerminals,
     ) -> Self {
         let status = Arc::new(RwLock::new(StartupTaskStatus {
-            codex: pending_codex_status(),
             task_store: TaskStoreReadiness {
                 state: TaskStoreReadinessState::Migrating,
                 blocks_task_operations: true,
@@ -132,20 +132,11 @@ impl PersistentTasksGateway {
             error_code: "task_store_migration_pending",
         }));
         let retry = Arc::new(Notify::new());
-        let startup_state = StartupTaskState {
-            status: status.clone(),
-            retry: retry.clone(),
-        };
-        let startup_router = Router::new()
-            .route("/api/codex/status", get(startup_codex_status))
-            .route(
-                "/api/task-store/migration/retry",
-                post(retry_startup_migration),
-            )
-            .fallback(any(startup_task_blocked))
-            .with_state(startup_state);
         let gateway = TaskRouterGateway {
-            router: Arc::new(RwLock::new(startup_router)),
+            router: Arc::new(RwLock::new(startup_router(StartupTaskState {
+                status: status.clone(),
+                retry: retry.clone(),
+            }))),
         };
         let router = gateway.router();
         let app = Arc::new(StdMutex::new(None));
@@ -190,7 +181,9 @@ impl PersistentTasksGateway {
                     self.terminals.clone(),
                 ) {
                     Ok(tasks) => {
-                        self.gateway.replace(tasks.router()).await;
+                        self.gateway
+                            .replace(with_ready_task_store(tasks.router()))
+                            .await;
                         *self
                             .app
                             .lock()
@@ -232,14 +225,33 @@ impl PersistentTasksGateway {
     }
 }
 
-async fn startup_codex_status(
+/// Every Task request reaches this router until the store is ready. Only the
+/// store's own status and retry answer; everything else is refused.
+fn startup_router(state: StartupTaskState) -> Router {
+    Router::new()
+        .route(TASK_STORE_STATUS_PATH, get(startup_task_store_status))
+        .route(
+            "/api/task-store/migration/retry",
+            post(retry_startup_migration),
+        )
+        .fallback(any(startup_task_blocked))
+        .with_state(state)
+}
+
+/// The Task router as the gateway serves it once the store is ready, still
+/// answering the store's status at the same path.
+fn with_ready_task_store(router: Router) -> Router {
+    router.route(TASK_STORE_STATUS_PATH, get(ready_task_store_status))
+}
+
+async fn startup_task_store_status(
     axum::extract::State(state): axum::extract::State<StartupTaskState>,
-) -> Json<StartupStatusResponse> {
-    let status = state.status.read().await.clone();
-    Json(StartupStatusResponse {
-        codex: status.codex,
-        task_store_readiness: status.task_store,
-    })
+) -> Json<TaskStoreReadiness> {
+    Json(state.status.read().await.task_store.clone())
+}
+
+async fn ready_task_store_status() -> Json<TaskStoreReadiness> {
+    Json(TaskStoreReadiness::ready())
 }
 
 async fn retry_startup_migration(
@@ -303,22 +315,6 @@ async fn set_storage_failure(status: Arc<RwLock<StartupTaskStatus>>, message: St
         diagnostic_message: format!("Task-store migration failed: {message}"),
     };
     status.error_code = "task_store_migration_failed";
-}
-
-fn pending_codex_status() -> CodexStatusResponse {
-    CodexStatusResponse {
-        readiness: CodexReadiness::blocking(
-            CodexReadinessState::Error,
-            CodexReadinessReason::ReadyRuntimeUnavailable,
-            "Codex readiness is checked once the Task store is ready.",
-            None,
-        ),
-        account: None,
-        rate_limits: None,
-        usage: None,
-        app_server: None,
-        daemon: None,
-    }
 }
 
 #[cfg(test)]
@@ -390,7 +386,6 @@ mod tests {
     fn startup_test_state(state: TaskStoreReadinessState) -> StartupTaskState {
         StartupTaskState {
             status: Arc::new(tokio::sync::RwLock::new(StartupTaskStatus {
-                codex: pending_codex_status(),
                 task_store: TaskStoreReadiness {
                     state,
                     blocks_task_operations: true,
@@ -402,21 +397,82 @@ mod tests {
         }
     }
 
+    async fn get_json(router: &Router, uri: &str) -> (StatusCode, serde_json::Value) {
+        let response = router
+            .clone()
+            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&body).unwrap())
+    }
+
     #[tokio::test]
     async fn startup_status_get_is_observational_and_does_not_retry_migration() {
         let state = startup_test_state(TaskStoreReadinessState::Failed);
 
-        let response = startup_codex_status(axum::extract::State(state.clone())).await;
+        let response = startup_task_store_status(axum::extract::State(state.clone())).await;
 
-        assert!(matches!(
-            response.0.task_store_readiness.state,
-            TaskStoreReadinessState::Failed
-        ));
+        assert!(matches!(response.0.state, TaskStoreReadinessState::Failed));
         assert!(
             tokio::time::timeout(Duration::from_millis(10), state.retry.notified())
                 .await
                 .is_err(),
             "status GET must not schedule a migration retry"
+        );
+    }
+
+    #[tokio::test]
+    async fn while_preparing_only_the_store_answers_and_codex_status_is_refused_like_any_task_request()
+     {
+        let router = startup_router(startup_test_state(TaskStoreReadinessState::Migrating));
+
+        let (status, store) = get_json(&router, TASK_STORE_STATUS_PATH).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            store,
+            serde_json::json!({
+                "state": "migrating",
+                "blocksTaskOperations": true,
+                "diagnosticMessage": "startup test state",
+            })
+        );
+
+        let refused = serde_json::json!({
+            "error": { "code": "startup_test", "message": "startup test state" }
+        });
+        for uri in ["/api/codex/status", "/api/claude/status", "/api/tasks"] {
+            assert_eq!(
+                get_json(&router, uri).await,
+                (StatusCode::SERVICE_UNAVAILABLE, refused.clone()),
+                "{uri}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn the_activated_task_router_reports_a_ready_store_and_keeps_its_own_routes() {
+        let router = with_ready_task_store(
+            Router::new().route("/api/tasks", get(|| async { Json(serde_json::json!([])) })),
+        );
+
+        assert_eq!(
+            get_json(&router, TASK_STORE_STATUS_PATH).await,
+            (
+                StatusCode::OK,
+                serde_json::json!({
+                    "state": "ready",
+                    "blocksTaskOperations": false,
+                    "diagnosticMessage": "",
+                })
+            )
+        );
+        assert_eq!(
+            get_json(&router, "/api/tasks").await,
+            (StatusCode::OK, serde_json::json!([]))
         );
     }
 

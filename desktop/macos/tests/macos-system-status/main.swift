@@ -134,6 +134,7 @@ private func tailscaleFixture(
 
 private func probeCodexFixture(
     _ json: String,
+    statusCode: Int = 200,
     url: URL,
     session: URLSession
 ) throws -> IntegrationStatus {
@@ -141,7 +142,7 @@ private func probeCodexFixture(
         try require(request.url == url, "the menu must probe the Codex status endpoint")
         let response = HTTPURLResponse(
             url: url,
-            statusCode: 200,
+            statusCode: statusCode,
             httpVersion: nil,
             headerFields: ["Content-Type": "application/json"]
         )!
@@ -418,6 +419,25 @@ private func runTests() throws {
             status.status == expectedStatus,
             "\(readinessState) must use the canonical compact summary"
         )
+    }
+
+    let storeRefusals: [(String, IntegrationState, String)] = [
+        ("task_store_migration_pending", .checking, "Preparing..."),
+        ("task_store_migration_failed", .unavailable, "Unavailable"),
+        ("internal_error", .unavailable, "Server unavailable"),
+    ]
+    for (code, expectedState, expectedStatus) in storeRefusals {
+        let status = try probeCodexFixture(
+            #"{"error":{"code":"\#(code)","message":"Caffold is preparing the Task store."}}"#,
+            statusCode: 503,
+            url: codexStatusURL,
+            session: session
+        )
+        try require(
+            status.state == expectedState && status.status == expectedStatus,
+            "a 503 \(code) must read as \(expectedStatus)"
+        )
+        try require(status.details.isEmpty, "a refusal carries no Codex details")
     }
 
     let updateRequired = try probeCodexFixture(

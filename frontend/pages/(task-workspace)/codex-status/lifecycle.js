@@ -43,7 +43,6 @@ export class CodexStatusLifecycle {
     onSnapshotChange,
     onUpdateStateChange,
     restartRuntime,
-    retryTaskStore,
     updateRuntime,
   }) {
     this.loadStatus = loadStatus;
@@ -55,8 +54,6 @@ export class CodexStatusLifecycle {
     this.suspended = false;
     this.statusRequestId = 0;
     this.statusRequest = null;
-    this.taskStorePollTimer = null;
-    this.retryTaskStore = retryTaskStore;
     this.snapshotValue = INITIAL_CODEX_STATUS_SNAPSHOT;
     this.runtimeActionValue = "idle";
     this.runtimeActionId = 0;
@@ -97,7 +94,6 @@ export class CodexStatusLifecycle {
     this.suspended = false;
     this.statusRequestId += 1;
     this.statusRequest = null;
-    this.clearTaskStorePoll();
     this.runtimeActionId += 1;
     this.runtimeActionRequest = null;
     this.transitionRuntimeAction("disconnected");
@@ -112,7 +108,6 @@ export class CodexStatusLifecycle {
     this.suspended = true;
     this.statusRequestId += 1;
     this.statusRequest = null;
-    this.clearTaskStorePoll();
   }
 
   resume() {
@@ -316,18 +311,6 @@ export class CodexStatusLifecycle {
     return true;
   }
 
-  async retryTaskStoreMigration() {
-    if (
-      !this.active ||
-      !this.retryTaskStore ||
-      this.statusSnapshot()?.taskStoreReadiness?.blocksTaskOperations !== true
-    ) {
-      return null;
-    }
-    await this.retryTaskStore();
-    return await this.refresh();
-  }
-
   async refresh() {
     if (!this.active || this.suspended) {
       return null;
@@ -385,7 +368,6 @@ export class CodexStatusLifecycle {
 
   setSnapshot(snapshot) {
     if (sameCodexStatusSnapshot(this.snapshotValue, snapshot)) {
-      this.scheduleTaskStorePoll(snapshot);
       return false;
     }
     const previousReadinessState =
@@ -397,30 +379,6 @@ export class CodexStatusLifecycle {
       this.runtimeUpdate.reset();
     }
     this.onSnapshotChange?.(snapshot);
-    this.scheduleTaskStorePoll(snapshot);
     return true;
-  }
-
-  scheduleTaskStorePoll(snapshot) {
-    this.clearTaskStorePoll();
-    if (
-      !this.active ||
-      this.suspended ||
-      snapshot.phase !== "loaded" ||
-      snapshot.status?.taskStoreReadiness?.state !== "migrating"
-    ) {
-      return;
-    }
-    this.taskStorePollTimer = setTimeout(() => {
-      this.taskStorePollTimer = null;
-      void this.refresh().catch(() => {});
-    }, 500);
-  }
-
-  clearTaskStorePoll() {
-    if (this.taskStorePollTimer !== null) {
-      clearTimeout(this.taskStorePollTimer);
-      this.taskStorePollTimer = null;
-    }
   }
 }
