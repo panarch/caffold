@@ -83,6 +83,12 @@ caffold-note-document {
     padding: var(--interface-space-7);
   }
 
+  /* A Note still being read fills the reading area with its centered phrase. */
+  & > .notes-workspace-detail-pane > .notes-workspace-status[data-state="loading"] {
+    grid-row: 3 / -1;
+    place-self: center;
+  }
+
   & .notes-workspace-message {
     margin: 0;
     color: var(--muted);

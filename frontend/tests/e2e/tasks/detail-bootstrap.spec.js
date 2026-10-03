@@ -123,7 +123,7 @@ test("uses one SSE snapshot for initial detail, reconnect, and cursor history", 
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
   const tasksPage = page.locator("caffold-tasks-page");
-  await expect(tasksPage.getByText("Loading task...")).toBeVisible();
+  await expect(tasksPage.getByText("Loading conversation…")).toBeVisible();
   await activeDetailSource(page, threadId);
   await expect.poll(() => initialDetailReads).toBe(0);
 
@@ -382,7 +382,7 @@ test("bounds a detail stream that never opens and falls back once", { tag: "@all
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
   const tasksPage = page.locator("caffold-tasks-page");
-  await expect(tasksPage.getByText("Loading task...")).toBeVisible();
+  await expect(tasksPage.getByText("Loading conversation…")).toBeVisible();
   await page.clock.runFor(40_000);
 
   await expect(tasksPage).toContainText(
@@ -554,4 +554,68 @@ test("does not let a pending REST fallback overwrite an explicit stream recovery
   await expect(tasksPage).not.toContainText("Late REST fallback must stay hidden.");
   await expect(tasksPage).toContainText("Recovered SSE remains authoritative.");
   expect(detailReads).toBe(1);
+});
+
+test("one retained phrase stands for an opening conversation until its history arrives", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, { autoOpen: true });
+  await mockAgentModels(page);
+  const threadId = "thread_opening_phrase";
+  const task = taskRecord(threadId, "Opening phrase", 1_767_400_300_000);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+  const emitSync = (reason, detail) =>
+    page.evaluate(({ id, reason: syncReason, detail: syncDetail }) => {
+      window.__caffoldTaskSse.source(id).emit("task-sync", {
+        threadId: id,
+        revision: syncDetail.revision,
+        reason: syncReason,
+        detail: syncDetail,
+      });
+    }, { id: threadId, reason, detail });
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const phrase = tasksPage.locator("caffold-task-detail > caffold-loading-text");
+  await expect(phrase).toHaveText("Loading conversation…");
+  await expect(phrase).toHaveAttribute("role", "status");
+  await expect(phrase).toBeVisible();
+
+  await activeDetailSource(page, threadId);
+  await emitSync("stream-bootstrap", loadingDetail(threadId, 1));
+  await expect(phrase).toBeVisible();
+  const placement = await phrase.evaluate((element) => {
+    element.dataset.openingPhrase = "first";
+    const { x, y } = element.getBoundingClientRect();
+    return { x, y };
+  });
+
+  await emitSync("session-bootstrap", {
+    ...taskDetail(task, "", 2),
+    events: [],
+    eventsRange: null,
+    historyLoading: true,
+  });
+  const composer = tasksPage.locator(".task-follow-up-composer-dock");
+  await expect(composer).toBeVisible();
+  await expect(phrase).toHaveAttribute("data-opening-phrase", "first");
+  expect(
+    await phrase.evaluate((element) => {
+      const { x, y } = element.getBoundingClientRect();
+      return { x, y };
+    }),
+    "the phrase stays put when the Composer appears",
+  ).toEqual(placement);
+  const phraseBox = await phrase.boundingBox();
+  const composerBox = await composer.boundingBox();
+  expect(phraseBox.y + phraseBox.height).toBeLessThanOrEqual(composerBox.y);
+  await expect(
+    tasksPage.locator("caffold-task-conversation caffold-loading-text"),
+  ).toHaveCount(0);
+
+  await emitSync("session-bootstrap", taskDetail(task, "History arrived.", 3));
+  await expect(tasksPage).toContainText("History arrived.");
+  await expect(phrase).toBeHidden();
 });

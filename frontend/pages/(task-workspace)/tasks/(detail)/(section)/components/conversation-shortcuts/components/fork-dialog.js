@@ -3,6 +3,7 @@ import {
   previewTaskForkSource,
 } from "#app/api.js";
 import { formatDate } from "#tasks/task-format.js";
+import "#components/loading-text.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -422,7 +423,7 @@ class CaffoldConversationForkDialog extends HTMLElement {
                 >Preview thread</button>
               </div>
             </div>
-            <p class="conversation-fork-loading" role="status" hidden></p>
+            <caffold-loading-text class="conversation-fork-loading" hidden>Loading the Codex thread…</caffold-loading-text>
             <section class="conversation-fork-preview" aria-label="Thread preview" hidden>
               <dl class="conversation-fork-metadata">
                 <div><dt>Provider</dt><dd data-fork-preview="provider"></dd></div>
@@ -484,9 +485,7 @@ class CaffoldConversationForkDialog extends HTMLElement {
     forkButton.disabled = this.forkPending || !this.canFork();
     forkButton.textContent = this.forkPending ? "Forking…" : "Fork task";
 
-    const loading = this.querySelector(".conversation-fork-loading");
-    loading.hidden = !this.previewPending;
-    loading.textContent = this.previewPending ? "Loading the Codex thread…" : "";
+    this.querySelector(".conversation-fork-loading").hidden = !this.previewPending;
     this.patchPreview();
 
     const error = this.querySelector(".conversation-fork-error");

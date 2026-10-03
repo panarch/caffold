@@ -320,3 +320,103 @@ test("provides its exact retained tree scrollport", () => {
   currentScroller = null;
   assert.equal(scope.surfaces[0].isEligible(), false);
 });
+
+// Enough of an element for a status row, its guides, and its phrase.
+class FakeElement {
+  constructor(localName) {
+    this.localName = localName;
+    this.className = "";
+    this.dataset = {};
+    this.style = { setProperty() {} };
+    this.attributes = new Map();
+    this.childNodes = [];
+  }
+
+  get firstChild() {
+    return this.childNodes[0] ?? null;
+  }
+
+  get lastChild() {
+    return this.childNodes.at(-1) ?? null;
+  }
+
+  get textContent() {
+    return this.childNodes.map((node) => node.textContent).join("");
+  }
+
+  set textContent(value) {
+    this.childNodes = [{ textContent: `${value}` }];
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, `${value}`);
+  }
+
+  hasAttribute(name) {
+    return this.attributes.has(name);
+  }
+
+  toggleAttribute(name, force) {
+    if (force) {
+      this.attributes.set(name, "");
+    } else {
+      this.attributes.delete(name);
+    }
+  }
+
+  replaceChildren(...nodes) {
+    this.childNodes = nodes;
+  }
+
+  querySelector(selector) {
+    const className = /^:scope > \.([\w-]+)$/.exec(selector)?.[1];
+    return this.childNodes.find((node) => node.className === className) ?? null;
+  }
+}
+
+test("draws a loading row's phrase at once and keeps it while the row stays loading", () => {
+  const { createElement, createTextNode } = globalThis.document;
+  globalThis.document.createElement = (localName) => new FakeElement(localName);
+  globalThis.document.createTextNode = (text) => ({ textContent: text });
+  try {
+    const row = new FakeElement("li");
+    const loading = {
+      key: "src:children-state",
+      node: {
+        key: "src:children-state",
+        kind: "status",
+        name: "Loading...",
+        tone: "muted",
+        loading: true,
+      },
+      depth: 1,
+      parentKey: "src",
+      passingGuideDepths: [],
+      firstSibling: true,
+      lastSibling: true,
+    };
+
+    fileTree.patchRow.call({}, row, loading);
+    const [guides, phrase] = row.childNodes;
+    assert.equal(row.className, "file-tree-status");
+    assert.equal(guides.className, "file-tree-guides");
+    assert.equal(phrase.localName, "caffold-loading-text");
+    assert.equal(phrase.hasAttribute("immediate"), true, "its owner already waited before adding the row");
+    assert.equal(phrase.textContent, "Loading...");
+
+    fileTree.patchRow.call({}, row, loading);
+    assert.equal(row.childNodes[0], guides);
+    assert.equal(row.childNodes[1], phrase, "a reconciled loading row keeps its phrase");
+
+    fileTree.patchRow.call({}, row, {
+      ...loading,
+      node: { ...loading.node, name: "Unable to load directory.", tone: "error", loading: false },
+    });
+    assert.equal(row.className, "file-tree-status is-error");
+    assert.equal(row.childNodes[1].localName, undefined, "an error row is plain text");
+    assert.equal(row.textContent, "Unable to load directory.");
+  } finally {
+    globalThis.document.createElement = createElement;
+    globalThis.document.createTextNode = createTextNode;
+  }
+});

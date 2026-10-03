@@ -21,11 +21,31 @@ const registry = installCustomElementUnitRegistry();
 const { NotesSelection } = await import("./layout/selection.js");
 await import("./layout.js");
 const workspace = registry.element("caffold-notes-workspace").prototype;
+const timers = new Map();
+let nextTimerId = 0;
+globalThis.window = {
+  setTimeout(callback, delay) {
+    nextTimerId += 1;
+    timers.set(nextTimerId, { callback, delay });
+    return nextTimerId;
+  },
+  clearTimeout(id) {
+    timers.delete(id);
+  },
+};
 after(() => {
   registry.restore();
   apiHook.deregister();
   delete globalThis.notesApi;
+  delete globalThis.window;
 });
+
+function runTimers() {
+  for (const [id, timer] of [...timers]) {
+    timers.delete(id);
+    timer.callback();
+  }
+}
 
 function deferred() {
   let resolve;
@@ -123,6 +143,7 @@ test("a Note read that another route superseded never replaces the Note shown", 
 });
 
 test("a level answer arriving after Notes was left is dropped", async () => {
+  timers.clear();
   const read = deferred();
   globalThis.notesApi = { getNotes: () => read.promise };
   const owner = readingOwner();
@@ -132,8 +153,49 @@ test("a level answer arriving after Notes was left is dropped", async () => {
   read.resolve(listing(["Late"]));
   await loading;
 
-  assert.equal(owner.levels.get("").state, "loading");
+  assert.equal(owner.levels.get("").state, "pending");
   assert.equal(owner.levels.get("").listing, null);
+  assert.equal(timers.size, 0, "leaving Notes ends the wait for a loading row");
+});
+
+test("a directory with nothing to show is marked loading only once its read outlasts the wait", async () => {
+  timers.clear();
+  const read = deferred();
+  globalThis.notesApi = { getNotes: () => read.promise };
+  const owner = readingOwner();
+
+  const loading = owner.loadLevel("projects");
+  assert.deepEqual(owner.levels.get("projects"), { state: "pending", listing: null, message: "" });
+  assert.deepEqual([...timers.values()].map((timer) => timer.delay), [180]);
+
+  runTimers();
+  assert.deepEqual(owner.levels.get("projects"), { state: "loading", listing: null, message: "" });
+
+  read.resolve(listing(["Plan"]));
+  await loading;
+  assert.equal(owner.levels.get("projects").state, "ready");
+});
+
+test("a quick read ends its wait, and a listed directory is read again without one", async () => {
+  timers.clear();
+  globalThis.notesApi = { getNotes: () => Promise.resolve(listing(["Plan"])) };
+  const owner = readingOwner();
+
+  await owner.loadLevel("projects");
+  assert.equal(owner.levels.get("projects").state, "ready");
+  assert.equal(timers.size, 0, "a read finished within the wait never shows a loading row");
+
+  const read = deferred();
+  globalThis.notesApi = { getNotes: () => read.promise };
+  const again = owner.loadLevel("projects");
+  assert.deepEqual(owner.levels.get("projects"), {
+    state: "loading",
+    listing: listing(["Plan"]),
+    message: "",
+  });
+  assert.equal(timers.size, 0, "what the directory held stays shown while it is read again");
+  read.resolve(listing(["Plan"]));
+  await again;
 });
 
 test("each directory's read keeps its own generation", async () => {

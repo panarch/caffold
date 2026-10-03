@@ -117,8 +117,8 @@ unclaimed child.
    infer conversation content, status, or repository context from that row.
 5. Scrolling to the top or choosing Load older messages prepends older history
    to the current conversation. The button remains available when collapsed
-   work leaves no scrollbar. While a request is pending, a spinner and loading
-   text occupy the button's row without shifting the conversation. One page
+   work leaves no scrollbar. While a request is pending, a loading phrase
+   occupies the button's row without shifting the conversation. One page
    request runs at a time; waiting for the provider does not start additional
    requests. A failure preserves the
    conversation and exposes an explicit retry.

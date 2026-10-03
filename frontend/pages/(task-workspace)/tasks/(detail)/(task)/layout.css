@@ -60,6 +60,7 @@ caffold-task-detail {
 }
 
 caffold-task-detail {
+  position: relative;
   display: block;
   min-height: 0;
   height: 100%;
@@ -67,6 +68,18 @@ caffold-task-detail {
 
   &[hidden] {
     display: none;
+  }
+
+  /* Centered on the whole Task area, which stays put when the Composer
+     appears below the conversation. */
+  & > caffold-loading-text {
+    position: absolute;
+    inset: 0;
+    width: fit-content;
+    height: fit-content;
+    margin: auto;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & > .tasks-detail-region {

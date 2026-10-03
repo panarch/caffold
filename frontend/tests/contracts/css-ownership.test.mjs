@@ -41,6 +41,7 @@ const ownership = new Map([
     ["caffold-pane-resizer"],
   ],
   ["components/segmented-control.css", ["caffold-segmented-control"]],
+  ["components/loading-text.css", ["caffold-loading-text"]],
   ["components/terminal-view.css", ["caffold-terminal-view"]],
   ["pages/(task-workspace)/layout.css", ["caffold-task-workspace"]],
   [

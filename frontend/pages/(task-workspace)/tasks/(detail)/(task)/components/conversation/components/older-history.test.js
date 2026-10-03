@@ -43,7 +43,7 @@ function host() {
   return owner;
 }
 
-test("retains the same control or spinner for equivalent display snapshots", () => {
+test("retains the same control or loading phrase for equivalent display snapshots", () => {
   const owner = host();
   const ready = { threadId: "a", hasOlder: true };
   assert.equal(owner.setSnapshot(ready), true);
@@ -56,6 +56,11 @@ test("retains the same control or spinner for equivalent display snapshots", () 
   assert.equal(owner.setSnapshot({ ...ready, loading: true }), false);
   assert.equal(owner.writes, 2);
   assert.equal(owner.button(), null);
+  assert.match(
+    owner.html,
+    /<caffold-loading-text class="task-older-history-loading">Loading older messages\.\.\.<\/caffold-loading-text>/,
+  );
+  assert.doesNotMatch(owner.html, /spinner/, "a waiting row shows the phrase without a ring");
 
   assert.equal(owner.setSnapshot({ ...ready, error: new Error("Unavailable") }), true);
   assert.equal(owner.setSnapshot({ ...ready, error: new Error("Unavailable") }), false);

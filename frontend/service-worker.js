@@ -368,6 +368,8 @@ const APP_SHELL_ASSETS = [
   "/assets/components/pdf-viewer.js",
   "/assets/components/file-viewer-presentation.js",
   "/assets/components/icons.js",
+  "/assets/components/loading-text.css",
+  "/assets/components/loading-text.js",
   "/assets/components/pagination.css",
   "/assets/components/pagination.js",
   "/assets/components/segmented-control.css",

@@ -31,7 +31,7 @@ test("keeps the selected Review file identity stable while content loads", { tag
   const releaseDiff = reviewScenario.holdDiff();
   try {
     await changes.locator('button[data-file-tree-relative-path="planner.rs"]').click();
-    await expect(viewer.locator(".surface-message")).toHaveText("Loading file...");
+    await expect(viewer.locator("caffold-loading-text")).toHaveText("Loading file...");
     await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
     await expect(viewer.locator(".viewer-subtitle")).toHaveText(
       "Modified · Unstaged",
@@ -59,7 +59,7 @@ test("keeps the selected Review file identity stable while content loads", { tag
   });
   try {
     await taskReview.getByRole("button", { name: "Source", exact: true }).click();
-    await expect(viewer.locator(".surface-message")).toHaveText("Loading file...");
+    await expect(viewer.locator("caffold-loading-text")).toHaveText("Loading file...");
     await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
     await expect(viewer.locator(".viewer-subtitle")).toHaveCount(0);
   } finally {

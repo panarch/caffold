@@ -6,6 +6,7 @@ import {
 } from "#app/api.js";
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
 import { taskThreadId } from "../task-list-model.js";
 import {
   ACTION_HINT_ACTION,
@@ -273,7 +274,7 @@ class CaffoldTaskRecovery extends HTMLElement {
             <h2>Task recovery</h2>
           </header>
           <div class="task-recovery-body">
-            <p class="task-recovery-loading" role="status">Checking recovery state…</p>
+            <p class="task-recovery-loading"><caffold-loading-text>Checking recovery state…</caffold-loading-text></p>
           </div>
         </section>
       `;

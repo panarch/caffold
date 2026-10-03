@@ -55,33 +55,4 @@ caffold-task-older-history {
     inset: calc(0px - var(--interface-compact-hit-outset)) 0;
     content: "";
   }
-
-  & .task-older-history-loading {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  & .task-older-history-spinner {
-    box-sizing: border-box;
-    width: var(--interface-icon-small-size);
-    height: var(--interface-icon-small-size);
-    flex: 0 0 var(--interface-icon-small-size);
-    border: 2px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: task-older-history-spin 800ms linear infinite;
-  }
-}
-
-@keyframes task-older-history-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  caffold-task-older-history .task-older-history-spinner {
-    animation: none;
-  }
 }

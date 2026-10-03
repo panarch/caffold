@@ -1,4 +1,5 @@
 import { escapeHtml } from "#components/dom.js";
+import "#components/loading-text.js";
 import {
   buildFileTreeNodes,
   FILE_TREE_SELECT_EVENT,
@@ -135,7 +136,7 @@ class CaffoldCommitChangesTree extends HTMLElement {
     if (state.status !== "ready") {
       const message =
         state.status === "loading"
-          ? "Loading commit..."
+          ? "<caffold-loading-text>Loading commit...</caffold-loading-text>"
           : state.status === "error"
             ? escapeHtml(state.error.message)
             : "";

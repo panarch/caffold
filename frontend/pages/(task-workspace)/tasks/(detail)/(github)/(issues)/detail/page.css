@@ -14,6 +14,10 @@ caffold-github-issue-detail-page {
     overflow: hidden;
   }
 
+  & .github-issue-viewer-panel.loading-panel > .surface-message {
+    place-self: center;
+  }
+
   & .github-issue-viewer-panel > header {
     display: grid;
     gap: 0.25rem;

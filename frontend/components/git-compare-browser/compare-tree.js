@@ -8,6 +8,7 @@ import {
   selectActionHintTarget,
 } from "../../action-hint-scope.js";
 import { emptyScrollSurfaceScope } from "../../scroll-scope.js";
+import { showLoadingText } from "../loading-text.js";
 
 class CaffoldGitCompareTree extends HTMLElement {
   connectedCallback() {
@@ -255,7 +256,11 @@ class CaffoldGitCompareTree extends HTMLElement {
     panel.toggleAttribute("aria-busy", state.status === "loading");
     this.patchHeader(payload, ready ? files.length : null);
     if (message) {
-      patchText(this.message(), message);
+      if (state.status === "loading") {
+        showLoadingText(this.message(), message);
+      } else {
+        patchText(this.message(), message);
+      }
       return;
     }
 
@@ -433,7 +438,6 @@ function patchText(element, value) {
     element.textContent = value;
   }
 }
-
 function setAttribute(element, name, value) {
   if (!element) {
     return;

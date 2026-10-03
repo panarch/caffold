@@ -10,6 +10,10 @@ import { NOTE_DOCUMENT_INTENT_EVENT } from "./components/document.js";
 import { NOTES_NAVIGATOR_INTENT_EVENT } from "./components/navigator.js";
 import { noteDirectoryKey } from "./tree.js";
 
+// A level with nothing to show yet is marked loading only once its read
+// outlasts this wait, so a quick read never flashes a loading row.
+const LEVEL_LOADING_DELAY_MS = 180;
+
 // The Notes workspace: the documents the route names, read from the server each
 // time Notes is entered, a Note is picked, or the app returns to the
 // foreground on Notes. Agents write Notes through their tools; nothing here
@@ -229,14 +233,27 @@ class CaffoldNotesWorkspace extends HTMLElement {
 
   // Reads one level of the tree; "" is the top. What a level held stays shown
   // while it is read again, and a directory that no longer exists is dropped.
+  // A level with nothing to show stays "pending" until the read has lasted
+  // LEVEL_LOADING_DELAY_MS.
   async loadLevel(directoryId) {
     const previousRead = this.levelReads.get(directoryId);
     previousRead?.controller?.abort();
+    window.clearTimeout(previousRead?.loadingTimer);
     const generation = (previousRead?.generation ?? 0) + 1;
     const controller = new AbortController();
-    this.levelReads.set(directoryId, { generation, controller });
     const listing = this.levels.get(directoryId)?.listing ?? null;
-    this.levels.set(directoryId, { state: "loading", listing, message: "" });
+    const loadingTimer = listing ? null : window.setTimeout(() => {
+      if (this.levelReads.get(directoryId)?.generation === generation) {
+        this.levels.set(directoryId, { state: "loading", listing: null, message: "" });
+        this.syncNavigator();
+      }
+    }, LEVEL_LOADING_DELAY_MS);
+    this.levelReads.set(directoryId, { generation, controller, loadingTimer });
+    this.levels.set(directoryId, {
+      state: listing ? "loading" : "pending",
+      listing,
+      message: "",
+    });
     this.syncNavigator();
     let next;
     try {
@@ -258,7 +275,8 @@ class CaffoldNotesWorkspace extends HTMLElement {
     if (this.levelReads.get(directoryId)?.generation !== generation) {
       return;
     }
-    this.levelReads.set(directoryId, { generation, controller: null });
+    window.clearTimeout(loadingTimer);
+    this.levelReads.set(directoryId, { generation, controller: null, loadingTimer: null });
     if (next) {
       this.levels.set(directoryId, next);
     } else {
@@ -309,7 +327,12 @@ class CaffoldNotesWorkspace extends HTMLElement {
   cancelLevelReads() {
     for (const [directoryId, read] of this.levelReads) {
       read.controller?.abort();
-      this.levelReads.set(directoryId, { generation: read.generation + 1, controller: null });
+      window.clearTimeout(read.loadingTimer);
+      this.levelReads.set(directoryId, {
+        generation: read.generation + 1,
+        controller: null,
+        loadingTimer: null,
+      });
     }
   }
 

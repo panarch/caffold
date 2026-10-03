@@ -788,7 +788,7 @@ test("keeps the managed header and Archive escape hatch when canonical Detail di
 
   await page.goto("/tasks/thread-1?cwd=src");
   await emitTaskDetailBootstrap(page, loadingDetail);
-  const loadingMessage = page.getByText("Loading task...");
+  const loadingMessage = page.getByText("Loading conversation…");
   await expect(loadingMessage).toBeVisible();
   const loadingClearance = await loadingMessage.evaluate((message) => {
     const close = document.querySelector(".task-workspace-back");
@@ -827,7 +827,7 @@ test("keeps the managed header and Archive escape hatch when canonical Detail di
   }, detail);
 
   await expect(page.getByRole("heading", { name: "New task" })).toBeVisible();
-  await expect(page.getByText("Loading task...")).toHaveCount(0);
+  await expect(page.getByText("Loading conversation…")).toBeHidden();
 
   await page.evaluate(() => {
     const message = {

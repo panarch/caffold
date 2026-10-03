@@ -12,6 +12,7 @@ import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import "../../components/workspace-brand.js";
 import { compactIconButton } from "#app/component-styles.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { showLoadingText } from "#components/loading-text.js";
 import { directoryIdFromKey, noteKey, notesTreeNodes } from "../tree.js";
 
 export const NOTES_NAVIGATOR_INTENT_EVENT = "caffold:notes-navigator-intent";
@@ -121,8 +122,14 @@ class CaffoldNotesNavigator extends HTMLElement {
     const status = this.querySelector(":scope > .notes-navigator-status");
     status.hidden = !statusMessage;
     status.dataset.state = top?.state === "failed" ? "failed" : "info";
-    this.querySelector(":scope > .notes-navigator-status > .notes-navigator-message")
-      .textContent = statusMessage;
+    const message = this.querySelector(
+      ":scope > .notes-navigator-status > .notes-navigator-message",
+    );
+    if (statusMessage === LOADING_MESSAGE) {
+      showLoadingText(message, LOADING_MESSAGE);
+    } else {
+      message.textContent = statusMessage;
+    }
     this.retryButton().hidden = top?.state !== "failed";
 
     const fileTree = this.fileTree();

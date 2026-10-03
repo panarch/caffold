@@ -1,5 +1,6 @@
 import { compactIconButton } from "#app/component-styles.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { showLoadingText } from "#components/loading-text.js";
 import "#components/markdown-preview.js";
 import {
   buttonActionHintTarget, emptyActionHintScope, hasActionHintLayoutBox, mergeActionHintScopes,
@@ -79,15 +80,21 @@ class CaffoldNoteDocument extends HTMLElement {
     const location = this.querySelector(".notes-workspace-location");
     location.textContent = (note?.location ?? []).map((directory) => directory.name).join(" / ");
     location.hidden = !location.textContent;
+    const loading = Boolean(noteId) && state === "loading";
     const statusMessage = !noteId ? (emptyTree ? "" : "Choose a note to read it.")
-      : state === "loading" ? "Loading note…"
+      : loading ? "Loading note…"
       : state === "missing" ? "This note no longer exists."
       : state === "failed" ? message
       : note?.content === "" ? "This note is empty." : "";
     const status = this.querySelector(".notes-workspace-status");
     status.hidden = !statusMessage;
-    status.dataset.state = state === "failed" ? "failed" : "info";
-    status.querySelector("p").textContent = statusMessage;
+    status.dataset.state = state === "failed" ? "failed" : loading ? "loading" : "info";
+    const statusText = status.querySelector("p");
+    if (loading) {
+      showLoadingText(statusText, statusMessage);
+    } else {
+      statusText.textContent = statusMessage;
+    }
     this.querySelector('[data-action="retry"]').hidden = state !== "failed";
     const preview = this.preview();
     preview.hidden = !noteId || !note || note.content === "";

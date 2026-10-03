@@ -235,13 +235,13 @@ class CaffoldTaskDirectoryPicker extends HTMLElement {
     this.currentPath = normalizeDirectoryPath(path);
     this.currentRoot = "";
     this.setError(null);
-    this.setTreeMessage("Loading folders...");
+    this.clearTree();
     this.setChoosingEnabled(false);
     this.updatePathLabel();
     if (!this.dialog().open) {
       this.dialog().showModal();
     }
-    void this.loadDirectory(this.currentPath, { immediateLoading: true });
+    void this.loadDirectory(this.currentPath);
   }
 
   dismiss() {
@@ -251,7 +251,7 @@ class CaffoldTaskDirectoryPicker extends HTMLElement {
     }
   }
 
-  async loadDirectory(path, options = {}) {
+  async loadDirectory(path) {
     const requestId = ++this.directoryRequestId;
     const targetPath = normalizeDirectoryPath(path);
     const body = this.querySelector(".task-directory-picker-body");
@@ -260,9 +260,9 @@ class CaffoldTaskDirectoryPicker extends HTMLElement {
     this.setChoosingEnabled(false);
     const loadingTimer = window.setTimeout(() => {
       if (requestId === this.directoryRequestId) {
-        this.setTreeMessage("Loading folders...");
+        this.setTreeMessage("Loading folders...", { loading: true });
       }
-    }, options.immediateLoading ? 0 : DIRECTORY_LOADING_DELAY_MS);
+    }, DIRECTORY_LOADING_DELAY_MS);
 
     try {
       const directory = await listDirectory(targetPath);
@@ -283,7 +283,7 @@ class CaffoldTaskDirectoryPicker extends HTMLElement {
       const message = error instanceof Error ? error.message : `${error}`;
       this.setError(message || "Unable to load this directory.");
       if (!this.currentDirectory) {
-        this.setTreeMessage("Unable to load this directory.", "error");
+        this.setTreeMessage("Unable to load this directory.", { tone: "error" });
       } else {
         this.setChoosingEnabled(true);
       }
@@ -361,7 +361,7 @@ class CaffoldTaskDirectoryPicker extends HTMLElement {
     });
   }
 
-  setTreeMessage(message, tone = "muted") {
+  setTreeMessage(message, { tone = "muted", loading = false } = {}) {
     this.tree().setModel({
       entityKey: `directory-picker-state:${message}`,
       nodes: [
@@ -370,8 +370,19 @@ class CaffoldTaskDirectoryPicker extends HTMLElement {
           kind: "status",
           name: message,
           tone,
+          loading,
         },
       ],
+      selectedKey: "",
+      statusColumn: false,
+      expandNewDirectories: false,
+    });
+  }
+
+  clearTree() {
+    this.tree().setModel({
+      entityKey: "directory-picker-state:",
+      nodes: [],
       selectedKey: "",
       statusColumn: false,
       expandNewDirectories: false,

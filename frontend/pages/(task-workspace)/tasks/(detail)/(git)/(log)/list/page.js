@@ -1,5 +1,6 @@
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
 import "#components/pagination.js";
 import {
   ACTION_HINT_ACTION,
@@ -44,7 +45,11 @@ class CaffoldGitLogListPage extends HTMLElement {
       this.changePage(event.detail.page);
     });
 
-    this.boundIconsReady = () => this.render();
+    this.boundIconsReady = () => {
+      if (this.state?.status === "ready") {
+        this.render();
+      }
+    };
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
 
@@ -282,7 +287,7 @@ class CaffoldGitLogListPage extends HTMLElement {
     if (this.state.status === "loading") {
       this.innerHTML = `
         <section class="log-list-panel" aria-busy="true">
-          <p class="surface-message">Loading log...</p>
+          <p class="surface-message"><caffold-loading-text>Loading log...</caffold-loading-text></p>
         </section>
       `;
       return;

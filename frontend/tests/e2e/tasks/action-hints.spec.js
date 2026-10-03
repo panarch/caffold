@@ -538,7 +538,7 @@ test("does not enter while a Task route is still loading", { tag: "@desktop" }, 
   await page.keyboard.press("t");
   await page.keyboard.press("a");
   await expect(page).toHaveURL(`/tasks/${tasks[0].threadId}`);
-  await expect(page.getByText("Loading task...", { exact: true })).toBeVisible();
+  await expect(page.getByText("Loading conversation…", { exact: true })).toBeVisible();
   const row = page.locator(
     `.task-row[data-thread-id="${tasks[0].threadId}"]`,
   );

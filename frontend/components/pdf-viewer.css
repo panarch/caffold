@@ -17,6 +17,13 @@ caffold-pdf-viewer {
     min-width: 0;
   }
 
+  &[data-render-state="loading"] > .pdf-viewer-body {
+    min-height: 100%;
+    align-content: center;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
   /* A page never grows past the width the document declares, and never forces
      the panel wider than the viewport. */
   & .pdf-viewer-page {

@@ -160,6 +160,13 @@ caffold-current-plan-document-dialog {
     color: var(--muted);
   }
 
+  & .current-plan-document-loading {
+    place-self: center;
+    padding: var(--interface-space-7);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
   & .current-plan-document-error {
     display: flex;
     align-items: center;

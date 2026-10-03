@@ -998,6 +998,11 @@ the Task subject and are preserved by Task identity through incremental shell
 updates. Moving from Tasks to Settings ends active editing and transport work
 without destroying a retained Composer draft.
 
+While a Task's details or its first page of history are still being read,
+Task Detail shows one retained loading phrase centered over the Task area.
+The same element stays through both waits, so it neither restarts nor moves
+when the Composer appears; Conversation draws no loading notice of its own.
+
 Conversation also owns its Detail retry and exact rendered Thinking disclosure
 controls. Detail retry uses Conversation's coarse owner; each Thinking
 disclosure uses the exact retained timeline entry that contains it. A custom
@@ -1039,7 +1044,7 @@ Conversation mounts `conversation/components/older-history.js` as a retained
 child outside the timeline list. Older History owns its load button, loading
 status, error and retry presentation, styles, and Action Hint scope. It receives
 Task identity and request presentation from Conversation and emits load or
-retry intent upward. Equivalent snapshots retain its button or spinner DOM.
+retry intent upward. Equivalent snapshots retain its button or loading phrase DOM.
 Conversation composes that child's scope, forwards its intent, and owns scroll
 triggering and anchoring. Task Detail's private `layout/history.js` owns pagination and automatic gap
 recovery through one request controller. It joins actual received page spans
@@ -1136,6 +1141,12 @@ on disk, so their File details offer Download, a link to `/api/download`. That
 route streams the file's bytes as an attachment without the viewers' size
 limits or text checks, so a file no viewer can show can still be saved. A diff
 shows a change rather than a file on disk and offers no Download.
+
+A load request leaves the file viewer's shown content, header included, in
+place until the next state arrives, and only a wait longer than 180 ms turns it
+into the loading state. A viewer with nothing shown enters the loading state at
+once. Deactivation by its owner and disconnection end the wait; the four
+screens that host the viewer keep choosing which response it accepts.
 
 The shared file stack owns keyboard surfaces at the same boundaries. File List
 merges its Refresh button with the public file-tree selection and directory
@@ -1316,7 +1327,9 @@ Notes lives inside Task Workspace. `notes/layout.js` defines
 route ids, independent document reads, and one retained navigator. Each
 folder level and each document has its own generation and abort controller;
 a superseded answer cannot replace another pane. A failed refresh retains its
-last document or listing, while a missing Note clears only that document.
+last document or listing, while a missing Note clears only that document. A
+level with nothing to show stays pending until its read has lasted 180 ms and
+only then becomes a loading row.
 Leaving Notes or disconnecting cancels all reads and deactivates both Info
 popovers. Reentry and foreground recovery reread the top, previously read
 levels, and both committed documents.
@@ -1643,6 +1656,28 @@ and adopts a native `@scope` sheet for each registration. The CSS uses `:scope`
 without naming consumers. Shared defaults use the `component-styles` layer;
 unlayered owner rules retain local overrides. Registration lasts for the
 document, while components retain their native state and Action Hint providers.
+
+Busy controls and waiting content use two presentations. A busy control or
+icon slot, such as a status chip, a refresh icon, a closed model or permission
+picker, or the conversation's working line, shows a spinning ring. A place
+where content is about to appear shows `caffold-loading-text` from
+`frontend/components/loading-text.js`: a short muted phrase crossed by a moving
+highlight and announced as a status. It stays invisible for 180 ms and then
+fades in, so a load that finishes sooner never shows it; reduced motion keeps
+the delay and drops the highlight and the fade. Its one attribute,
+`immediate`, removes only the delay and the fade, for owners that already
+waited: File Tree loading rows, which their owners add after 180 ms so a quick
+load shifts nothing below them, and the File Viewer after it has kept the
+previous file for 180 ms. Button labels such as Sending or Refreshing change
+their text and use neither presentation.
+
+The component has no appearance options. Its owner decides when to insert and
+remove it, its text, and its place: the first row's position in list and tree
+panels, the center of other content areas, and the existing slot inside a row
+or a value. Its text size follows that Interface container. An owner keeps the
+same element while the wait lasts, because a new element starts the delay and
+the animation again; owners that patch their DOM use `retainLoadingText` or
+`showLoadingText`, which keep a phrase that already says the same thing.
 
 `--font-ui` and `--font-code` are the two typeface roles. `--font-ui` covers
 interface chrome and conversation prose, including the Composer textarea;

@@ -1312,6 +1312,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             "../../frontend/components/file-viewer-presentation.js"
         ))),
         "components/icons.js" => Some(js(include_str!("../../frontend/components/icons.js"))),
+        "components/loading-text.css" => Some(css(include_str!(
+            "../../frontend/components/loading-text.css"
+        ))),
+        "components/loading-text.js" => Some(js(include_str!(
+            "../../frontend/components/loading-text.js"
+        ))),
         "components/pagination.css" => Some(css(include_str!(
             "../../frontend/components/pagination.css"
         ))),
@@ -2176,6 +2182,10 @@ mod tests {
                 b"caffold-segmented-control".as_slice(),
             ),
             (
+                "components/loading-text.js",
+                b"caffold-loading-text".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
                 b"caffold-section-detail".as_slice(),
             ),
@@ -2384,6 +2394,10 @@ mod tests {
             (
                 "components/segmented-control.css",
                 b"caffold-segmented-control".as_slice(),
+            ),
+            (
+                "components/loading-text.css",
+                b"caffold-loading-text".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(section)/layout.css",

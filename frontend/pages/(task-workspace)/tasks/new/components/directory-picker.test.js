@@ -1,14 +1,34 @@
 import assert from "node:assert/strict";
+import { registerHooks } from "node:module";
 import test, { after } from "node:test";
 
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../tests/support/custom-element-unit.js";
 
+const apiHook = registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (
+      specifier === "#app/api.js" &&
+      context.parentURL === new URL("./directory-picker.js", import.meta.url).href
+    ) {
+      return {
+        shortCircuit: true,
+        url: "data:text/javascript,export const listDirectory=(...a)=>globalThis.pickerApi.listDirectory(...a);",
+      };
+    }
+    return nextResolve(specifier, context);
+  },
+});
 const registry = installCustomElementUnitRegistry();
 await import("./directory-picker.js");
 const picker = registry.element("caffold-task-directory-picker").prototype;
-after(() => registry.restore());
+after(() => {
+  registry.restore();
+  apiHook.deregister();
+  delete globalThis.pickerApi;
+  delete globalThis.window;
+});
 
 test("merges owned picker buttons with the child-owned directory rows", () => {
   const controls = new Map([
@@ -99,3 +119,89 @@ function layoutElement(properties = {}) {
     ...properties,
   };
 }
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function openingPicker() {
+  const timers = new Map();
+  let nextTimerId = 0;
+  globalThis.window = {
+    setTimeout(callback, delay) {
+      nextTimerId += 1;
+      timers.set(nextTimerId, { callback, delay });
+      return nextTimerId;
+    },
+    clearTimeout(id) {
+      timers.delete(id);
+    },
+  };
+  const models = [];
+  const body = { setAttribute() {}, removeAttribute() {} };
+  const owner = {
+    directoryRequestId: 0,
+    listings: [],
+    ensureRendered() {},
+    setError() {},
+    setChoosingEnabled() {},
+    updatePathLabel() {},
+    renderDirectory(directory) {
+      this.listings.push(directory);
+    },
+    dialog: () => ({ open: true }),
+    tree: () => ({ setModel: (model) => models.push(model) }),
+    querySelector: () => body,
+  };
+  for (const method of ["open", "loadDirectory", "setTreeMessage", "clearTree"]) {
+    owner[method] = picker[method].bind(owner);
+  }
+  const runTimers = () => {
+    for (const [id, timer] of [...timers]) {
+      timers.delete(id);
+      timer.callback();
+    }
+  };
+  return { owner, models, timers, runTimers };
+}
+
+test("opening clears the last folders and shows a loading row only after the wait", async () => {
+  const read = deferred();
+  globalThis.pickerApi = { listDirectory: () => read.promise };
+  const { owner, models, timers, runTimers } = openingPicker();
+
+  owner.open("projects");
+  assert.deepEqual(models.map((model) => model.nodes), [[]], "the previous folders are gone at once");
+  assert.deepEqual([...timers.values()].map((timer) => timer.delay), [180]);
+
+  runTimers();
+  assert.deepEqual(models.at(-1).nodes, [{
+    key: "directory-picker:state",
+    kind: "status",
+    name: "Loading folders...",
+    tone: "muted",
+    loading: true,
+  }]);
+
+  read.resolve({ path: "projects", root: "", entries: [] });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(owner.listings.length, 1);
+  assert.equal(timers.size, 0);
+});
+
+test("a folder list that arrives within the wait never shows a loading row", async () => {
+  globalThis.pickerApi = {
+    listDirectory: () => Promise.resolve({ path: "projects", root: "", entries: [] }),
+  };
+  const { owner, models, timers } = openingPicker();
+
+  owner.open("projects");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(timers.size, 0);
+  assert.equal(models.some((model) => model.nodes.some((node) => node.loading)), false);
+  assert.equal(owner.listings.length, 1);
+});
