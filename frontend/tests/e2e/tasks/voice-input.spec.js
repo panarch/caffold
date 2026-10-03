@@ -415,6 +415,7 @@ test("shows the elapsed duration and automatically transcribes at the recording 
   await expect(composer.getByRole("timer")).toHaveText("0:01");
   await expect(composer.getByRole("timer")).toHaveClass(/is-limit/);
   await expect(composer.locator(".task-composer-voice-status")).toHaveCount(0);
+  await expect(composer.locator(".task-voice-button.is-busy .task-voice-icon")).toHaveCSS("animation-name", "caffold-busy-spin");
   releaseTranscription();
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
   await expect(prompt).toHaveValue("제한 자동 전사");

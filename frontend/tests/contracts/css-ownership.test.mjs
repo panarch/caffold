@@ -10,6 +10,7 @@ import {
 const frontendRoot = fileURLToPath(new URL("../../", import.meta.url));
 const registeredStyles = [
   "component-styles/compact-icon-button.css",
+  "component-styles/busy-spin.css",
 ];
 const ownership = new Map([
   ["components/code-viewer.css", ["caffold-code-viewer"]],
@@ -853,7 +854,10 @@ test("registered style sources target only their scope root and pseudo surface",
     for (const selector of selectors) {
       assert.match(selector, /^:scope(?::(?:disabled|hover|focus-visible))?(?:::before)?$/, path);
     }
-    assert.doesNotMatch(css, /@import\b|url\s*\(|caffold-/i, path);
+    // A source may name the keyframes it defines, but never a consumer.
+    const ownKeyframes = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map(([, name]) => name);
+    const consumerFacing = ownKeyframes.reduce((text, name) => text.replaceAll(name, ""), css);
+    assert.doesNotMatch(consumerFacing, /@import\b|url\s*\(|caffold-/i, path);
     assert.equal(entrypoint.includes(`@import "./${path}"`), false, path);
   }
 });

@@ -1,4 +1,4 @@
-import { compactIconButton } from "#app/component-styles.js";
+import { busySpin, compactIconButton } from "#app/component-styles.js";
 import {
   renderInlineIcon,
   warmIcons,
@@ -348,6 +348,11 @@ class CaffoldTaskDetailInfo extends HTMLElement {
 }
 
 await compactIconButton.register("caffold-task-detail-info", "> .task-detail-info-button");
+
+await busySpin.register(
+  "caffold-task-detail-info",
+  "> .task-detail-info-button > .task-status-chip > .task-status-spinner",
+);
 
 if (!customElements.get("caffold-task-detail-info")) {
   customElements.define("caffold-task-detail-info", CaffoldTaskDetailInfo);

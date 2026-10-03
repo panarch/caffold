@@ -4,6 +4,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
 } from "#app/action-hints.js";
+import { busySpin } from "#app/component-styles.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 
 export const SETTINGS_REFRESH_INTENT_EVENT = "caffold:settings-refresh-intent";
@@ -83,5 +84,10 @@ class CaffoldSettingsRefreshButton extends HTMLElement {
     this.icon.innerHTML = renderInlineIcon("RefreshCw", "", "settings-refresh-icon");
   }
 }
+
+await busySpin.register(
+  "caffold-settings-refresh-button",
+  "> button.is-refreshing > span > .settings-refresh-icon",
+);
 
 customElements.define("caffold-settings-refresh-button", CaffoldSettingsRefreshButton);

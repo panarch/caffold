@@ -17,7 +17,6 @@ caffold-task-active-turn {
     border-right-color: transparent;
     border-radius: 999px;
     color: var(--control-fg);
-    animation: task-active-turn-spin 800ms linear infinite;
   }
 
   & .task-turn-active-duration {
@@ -29,18 +28,6 @@ caffold-task-active-turn {
     color: var(--text);
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-}
-
-@keyframes task-active-turn-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  caffold-task-active-turn .task-active-turn-spinner {
-    animation: none;
   }
 }
 

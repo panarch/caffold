@@ -2,6 +2,7 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
 } from "#app/action-hints.js";
+import { busySpin } from "#app/component-styles.js";
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import {
@@ -457,6 +458,11 @@ function syncAttribute(element, name, value) {
     element.setAttribute(name, value);
   }
 }
+
+await busySpin.register(
+  "caffold-task-switcher-dialog",
+  "> dialog > .task-switcher-card > .task-switcher-scroll > .task-switcher-list > .task-switcher-item > .task-switcher-row > .task-switcher-row-indicators > .task-status-chip > .task-status-spinner",
+);
 
 if (!customElements.get("caffold-task-switcher-dialog")) {
   customElements.define(

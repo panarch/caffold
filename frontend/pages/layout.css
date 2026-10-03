@@ -113,18 +113,5 @@ caffold-app-shell {
     border: 2px solid currentColor;
     border-right-color: transparent;
     border-radius: 50%;
-    animation: app-foreground-recovery-spin 800ms linear infinite;
-  }
-}
-
-@keyframes app-foreground-recovery-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  caffold-app-shell .app-foreground-recovery-spinner {
-    animation: none;
   }
 }

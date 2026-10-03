@@ -210,10 +210,6 @@ caffold-review-file-viewer {
     color: var(--warning);
   }
 
-  & .viewer-refresh-button.is-refreshing .viewer-refresh-icon {
-    animation: caffold-refresh-spin 0.8s linear infinite;
-  }
-
   & .viewer-refresh-icon {
     position: relative;
     display: block;

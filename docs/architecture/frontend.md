@@ -1644,22 +1644,36 @@ Components render in Light DOM, so CSS remains one cascade. Each stylesheet
 must scope internal selectors below the owning custom element. A parent may
 size or hide a child host, but descendant styling belongs to the child.
 
-`frontend/component-styles.js` exports `compactIconButton`. Components await
-`compactIconButton.register(owner, target)` before defining their element,
-declaring the explicit child path to their own local button class. This covers
-Task list/header actions, workspace and Git/GitHub Back controls, terminal and
-file refresh controls, pagination, and Task/Notes Info. Local colors, margins,
-visibility and native-state appearance remain with each owner. Regular-size
-Back controls and controls with different surfaces keep their existing styles.
-The module fetches `component-styles/compact-icon-button.css` once per document
-and adopts a native `@scope` sheet for each registration. The CSS uses `:scope`
-without naming consumers. Shared defaults use the `component-styles` layer;
-unlayered owner rules retain local overrides. Registration lasts for the
-document, while components retain their native state and Action Hint providers.
+`frontend/component-styles.js` exports two shared styles, `compactIconButton`
+and `busySpin`. Components await `register(owner, target)` on each style they
+use before defining their element, declaring the explicit child path from the
+owner to their own local class; a step in that path may add the owner's state
+classes. Each style fetches its stylesheet
+(`component-styles/compact-icon-button.css`, `component-styles/busy-spin.css`)
+once per document and adopts a native `@scope` sheet for each registration. The
+CSS uses `:scope` without naming consumers and may define its own keyframes.
+Shared defaults use the `component-styles` layer; unlayered owner rules retain
+local overrides. Registration lasts for the document, while components retain
+their native state and Action Hint providers.
+
+`compactIconButton` covers Task list/header actions, workspace and Git/GitHub
+Back controls, terminal and file refresh controls, pagination, and Task/Notes
+Info. Local colors, margins, visibility and native-state appearance remain with
+each owner. Regular-size Back controls and controls with different surfaces
+keep their existing styles.
+
+`busySpin` turns a busy element in place, one turn every 0.8 s, and stops it
+under reduced motion; the element's shape stays with its owner. Rings that
+appear only while their owner is busy register their own path: Task status
+chips, closed model and permission pickers, the conversation's working line,
+and the reconnect notice. Icons that stay while idle add the busy state class
+to the path: the Git and Settings refresh arrows, archived Task restore and
+delete, and the microphone. An owner may add its own animation properties; the
+Task list gives each running row's ring its own start delay so neighboring rows
+do not turn in step.
 
 Busy controls and waiting content use two presentations. A busy control or
-icon slot, such as a status chip, a refresh icon, a closed model or permission
-picker, or the conversation's working line, shows a spinning ring. A place
+icon slot turns its ring or icon in place through `busySpin`. A place
 where content is about to appear shows `caffold-loading-text` from
 `frontend/components/loading-text.js`: a short muted phrase crossed by a moving
 highlight and announced as a status. It stays invisible for 180 ms and then

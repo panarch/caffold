@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("components wait for shared CSS and share one CSS request", { tag: "@desktop" }, async ({ page }) => {
+test("components wait for shared CSS and share one request per stylesheet", { tag: "@desktop" }, async ({ page }) => {
   const started = Promise.withResolvers();
   const release = Promise.withResolvers();
   const requests = [];
@@ -31,8 +31,9 @@ test("components wait for shared CSS and share one CSS request", { tag: "@deskto
     ].some((name) => Boolean(customElements.get(name))))).toBe(false);
     release.resolve();
     await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
-    expect(requests.sort()).toEqual(["compact-icon-button.css"]);
-    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(19);
+    expect(requests.sort()).toEqual(["busy-spin.css", "compact-icon-button.css"]);
+    // 19 compact icon button scopes and 12 busy spin scopes.
+    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(31);
   } finally {
     release.resolve();
   }
@@ -90,6 +91,49 @@ test("new consumers declare their own scope, retain local overrides and reconnec
   });
   await expect(page.locator("caffold-style-contract > header > .contract-actions > .contract-button")).toHaveCount(2);
   expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(originalSheets + 1);
+});
+
+test("a busy spin turns only its owner's busy element and stops for reduced motion", { tag: "@desktop" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
+  await page.evaluate(async () => {
+    const { busySpin } = await import("/assets/component-styles.js");
+    await busySpin.register("caffold-spin-contract", "> .contract-button.is-busy > .contract-icon");
+    customElements.define("caffold-spin-contract", class extends HTMLElement {
+      connectedCallback() {
+        if (this.childElementCount) return;
+        this.innerHTML = `
+          <button class="contract-button is-busy" data-contract="busy"><span class="contract-icon"></span></button>
+          <button class="contract-button" data-contract="idle"><span class="contract-icon"></span></button>
+        `;
+      }
+    });
+    const other = document.createElement("caffold-unregistered-spin");
+    other.innerHTML = `<button class="contract-button is-busy"><span class="contract-icon"></span></button>`;
+    document.body.append(document.createElement("caffold-spin-contract"), other);
+  });
+  const busy = page.locator('caffold-spin-contract > [data-contract="busy"] > .contract-icon');
+  const idle = page.locator('caffold-spin-contract > [data-contract="idle"] > .contract-icon');
+  const otherOwner = page.locator("caffold-unregistered-spin .contract-icon");
+  await expect(busy).toHaveCSS("animation-name", "caffold-busy-spin");
+  await expect(busy).toHaveCSS("animation-duration", "0.8s");
+  await expect(busy).toHaveCSS("animation-timing-function", "linear");
+  await expect(busy).toHaveCSS("animation-iteration-count", "infinite");
+  await expect(idle).toHaveCSS("animation-name", "none");
+  await expect(otherOwner).toHaveCSS("animation-name", "none");
+
+  // An owner's own start delay stays on top of the shared turn.
+  await busy.evaluate((icon) => { icon.style.animationDelay = "-300ms"; });
+  await expect(busy).toHaveCSS("animation-delay", "-0.3s");
+  await expect(busy).toHaveCSS("animation-name", "caffold-busy-spin");
+
+  await idle.evaluate((icon) => icon.parentElement.classList.add("is-busy"));
+  await busy.evaluate((icon) => icon.parentElement.classList.remove("is-busy"));
+  await expect(idle).toHaveCSS("animation-name", "caffold-busy-spin");
+  await expect(busy).toHaveCSS("animation-name", "none");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(idle).toHaveCSS("animation-name", "none");
 });
 
 test("pagination keeps its compact surface, disabled appearance and native activation", { tag: "@all-viewports" }, async ({ page }) => {

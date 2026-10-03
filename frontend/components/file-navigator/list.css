@@ -78,10 +78,6 @@ caffold-file-list {
     color: var(--warning);
   }
 
-  & .file-refresh-button.is-refreshing .file-refresh-icon {
-    animation: caffold-refresh-spin 0.8s linear infinite;
-  }
-
   & .file-refresh-icon {
     position: relative;
     display: block;

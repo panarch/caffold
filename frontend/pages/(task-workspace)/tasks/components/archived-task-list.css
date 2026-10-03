@@ -244,10 +244,6 @@ caffold-archived-task-list {
     height: var(--interface-icon-size);
   }
 
-  & .task-archived-action-button.is-loading .task-archived-action-icon {
-    animation: task-status-spin 800ms linear infinite;
-  }
-
   & .task-delete-button {
     color: var(--danger);
   }
@@ -299,13 +295,5 @@ caffold-archived-task-list {
   & .task-archived-action-button:disabled {
     cursor: wait;
     opacity: 0.65;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  caffold-archived-task-list {
-    & .task-archived-action-button.is-loading .task-archived-action-icon {
-      animation: none;
-    }
   }
 }

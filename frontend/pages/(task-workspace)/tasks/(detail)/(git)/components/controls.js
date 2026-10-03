@@ -1,4 +1,4 @@
-import { compactIconButton } from "#app/component-styles.js";
+import { busySpin, compactIconButton } from "#app/component-styles.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import {
   ACTION_HINT_ACTION,
@@ -222,6 +222,11 @@ function gitRefSelectAvailable(control) {
 await compactIconButton.register(
   "caffold-git-review-controls",
   "> .git-review-controls > .git-review-refresh",
+);
+
+await busySpin.register(
+  "caffold-git-review-controls",
+  "> .git-review-controls > .git-review-refresh.is-refreshing > .git-review-refresh-icon",
 );
 
 customElements.define("caffold-git-review-controls", CaffoldGitReviewControls);

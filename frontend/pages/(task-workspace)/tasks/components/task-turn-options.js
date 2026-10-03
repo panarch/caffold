@@ -1,4 +1,5 @@
 import { getAgentModels, getAgentPermissions } from "#app/api.js";
+import { busySpin } from "#app/component-styles.js";
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
@@ -1596,6 +1597,16 @@ function permissionModeLabel(mode) {
 function compactPermissionModeLabel(mode, label = "") {
   return COMPACT_PERMISSION_MODE_LABELS[mode] ?? `${label || mode || ""}`;
 }
+
+await busySpin.register(
+  "caffold-task-turn-options",
+  "> .task-turn-options > .task-model-picker > .task-model-button > .task-picker-spinner",
+);
+
+await busySpin.register(
+  "caffold-task-turn-options",
+  "> .task-turn-options > .task-permission-picker > .task-permission-button > .task-picker-spinner",
+);
 
 if (!customElements.get("caffold-task-turn-options")) {
   customElements.define(

@@ -3,6 +3,7 @@ import {
   getArchivedTasks,
   restoreTask,
 } from "#app/api.js";
+import { busySpin } from "#app/component-styles.js";
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
@@ -647,6 +648,16 @@ function renderTaskRowMeta(task) {
     </time>
   `;
 }
+
+await busySpin.register(
+  "caffold-archived-task-list",
+  "> .task-repository-groups > .task-repository-group > .task-list > .task-archived-row > .task-archived-copy > .task-row-indicators > .task-status-chip > .task-status-spinner",
+);
+
+await busySpin.register(
+  "caffold-archived-task-list",
+  "> .task-repository-groups > .task-repository-group > .task-list > .task-archived-row > .task-archived-actions > .task-archived-action-button.is-loading > .task-archived-action-icon",
+);
 
 if (!customElements.get("caffold-archived-task-list")) {
   customElements.define("caffold-archived-task-list", CaffoldArchivedTaskList);

@@ -23,6 +23,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "component-styles/compact-icon-button.css" => Some(css(include_str!(
             "../../frontend/component-styles/compact-icon-button.css"
         ))),
+        "component-styles/busy-spin.css" => Some(css(include_str!(
+            "../../frontend/component-styles/busy-spin.css"
+        ))),
         "origin-reachability.js" => Some(js(include_str!("../../frontend/origin-reachability.js"))),
         "file-status.js" => Some(js(include_str!("../../frontend/file-status.js"))),
         "fonts.js" => Some(js(include_str!("../../frontend/fonts.js"))),
@@ -1414,6 +1417,7 @@ mod tests {
                 "component-styles/compact-icon-button.css",
                 "text/css; charset=utf-8",
             ),
+            ("component-styles/busy-spin.css", "text/css; charset=utf-8"),
         ] {
             let asset = get(path).expect("component style asset");
             assert_eq!(asset.content_type, content_type);
