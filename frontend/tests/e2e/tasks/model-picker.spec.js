@@ -163,6 +163,47 @@ test("fits a narrow phone with enlarged Interface text", { tag: "@phone" }, asyn
   await captureReviewScreenshot(page, testInfo, "model-picker-narrow-large");
 });
 
+test("opening the menu again offers the models the agents answer now", { tag: "@desktop" }, async ({ page }) => {
+  const agents = { models: catalog() };
+  const asked = await answerModelsFrom(page, agents);
+  await page.goto("/tasks/new?cwd=src");
+  const picker = page.locator(".task-new-form caffold-task-turn-options");
+  const menu = picker.locator(".task-model-popover");
+  await expect(picker.locator(".task-permission-button")).toContainText("Auto review");
+  const before = asked.length;
+
+  agents.models = [...catalog(), { ...catalog()[0], model: "gpt-7-nova", displayName: "GPT-7-Nova", isDefault: false }];
+  agents.held = Promise.withResolvers();
+  await picker.locator(".task-model-button").click();
+  await expect.poll(() => asked.length).toBe(before + 1);
+  await expect(menu.locator('[data-model="shared"]')).toContainText("Codex Shared");
+  await expect(menu.locator('[data-model="gpt-7-nova"]')).toHaveCount(0);
+
+  agents.held.resolve();
+  await expect(menu.locator('[data-model="gpt-7-nova"]')).toContainText("GPT-7-Nova");
+  await expect(menu.locator('[data-model="shared"]')).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a list that cannot be read again leaves the model unavailable", { tag: "@desktop" }, async ({ page }) => {
+  const agents = { models: catalog() };
+  const asked = await answerModelsFrom(page, agents);
+  await page.goto("/tasks/new?cwd=src");
+  const picker = page.locator(".task-new-form caffold-task-turn-options");
+  const trigger = picker.locator(".task-model-button");
+  await expect(picker.locator(".task-permission-button")).toContainText("Auto review");
+  const before = asked.length;
+
+  agents.refusal = { code: "no_agent_available", message: "codex: Codex app-server is unavailable." };
+  await trigger.click();
+  await expect.poll(() => asked.length).toBe(before + 1);
+  await expect(trigger).toHaveText("Unavailable");
+  await expect(trigger).toHaveAttribute(
+    "title",
+    "Models could not be loaded. codex: Codex app-server is unavailable.",
+  );
+  await expect(picker.locator(".task-permission-picker")).toBeHidden();
+});
+
 test("offers only the existing Task's provider", { tag: "@desktop" }, async ({ page }) => {
   await installCatalog(page);
   const detail = taskDetailFixture({ model: "shared", reasoningEffort: "xhigh" });
@@ -212,4 +253,20 @@ async function installCatalog(page, models = catalog()) {
     }
   });
   return requests;
+}
+
+// Answers each model list request with what `agents` holds when it arrives:
+// a request waits while `agents.held` is pending, and `agents.refusal` refuses it.
+async function answerModelsFrom(page, agents) {
+  await installTaskApiFixture(page);
+  await page.unroute("**/api/agent/models");
+  const asked = [];
+  await page.route("**/api/agent/models", async (route) => {
+    asked.push(route.request().url());
+    await agents.held?.promise;
+    return agents.refusal
+      ? route.fulfill({ status: 503, json: { error: agents.refusal } })
+      : route.fulfill({ json: { models: agents.models, unavailable: [] } });
+  });
+  return asked;
 }

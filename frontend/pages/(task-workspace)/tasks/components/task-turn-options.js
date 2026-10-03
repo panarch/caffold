@@ -318,11 +318,23 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     if (this.modelLoaded || this.modelLoading) {
       return;
     }
-    const requestId = ++this.modelRequestId;
-    this.modelLoading = true;
-    this.modelError = null;
     this.startLoadingFeedback(this.modelLoadingFeedback);
     this.render();
+    await this.askForModels();
+  }
+
+  // An account switch or an agent update changes what the agents offer, so
+  // opening the menu asks them again. The list on show stays until the answer
+  // takes its place.
+  refreshModels() {
+    if (this.modelLoaded && !this.modelLoading) {
+      void this.askForModels();
+    }
+  }
+
+  async askForModels() {
+    const requestId = ++this.modelRequestId;
+    this.modelLoading = true;
     try {
       const response = await getAgentModels();
       if (requestId !== this.modelRequestId) {
@@ -330,10 +342,14 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       }
       this.modelOptions = normalizeModelOptions(response);
       this.unavailableAgents = normalizeUnavailableAgents(response);
+      this.modelError = null;
     } catch (error) {
       if (requestId !== this.modelRequestId) {
         return;
       }
+      // An unreadable answer is not stood in for by the last list.
+      this.modelOptions = [];
+      this.unavailableAgents = [];
       this.modelError = error;
     } finally {
       if (requestId === this.modelRequestId) {
@@ -622,6 +638,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     if (popover === this.modelPopover()) {
       this.browsedProvider = this.selectedModel()?.provider ?? "";
       this.render();
+      this.refreshModels();
     }
     this.constrainAnchoredPopover(popover);
   }

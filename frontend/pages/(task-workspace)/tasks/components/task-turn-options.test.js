@@ -179,6 +179,21 @@ const GROK_MODES = {
 const GROK_FIXED =
   "Grok fixes the permission mode when the conversation starts; start a new Task to change it.";
 
+// A model the agents start offering after the first list, as an account
+// switch or an agent update brings one.
+const NEW_CODEX_MODEL = {
+  provider: "codex",
+  model: "gpt-7-nova",
+  displayName: "GPT-7-Nova",
+  isDefault: false,
+  defaultEffort: "medium",
+  efforts: ["low", "medium", "high"],
+  supportsFastMode: false,
+};
+
+const CODEX_SIGN_IN_REQUIRED =
+  "Codex is ready to connect, but authentication is required.";
+
 const SHARED_NAME_CATALOG = {
   models: [
     {
@@ -1219,6 +1234,155 @@ test("a Task whose agent offered no models reads as unavailable for that agent's
   assert.deepEqual(server.asked(), []);
 });
 
+test("opening the model menu asks the agents again and offers what they answer", async (t) => {
+  const { element, nodes, server } = mount();
+  t.after(() => server.restore());
+  await answerModels(server);
+  await answerModes(server);
+
+  openModelMenu(element, nodes);
+  assert.equal(server.models().length, 2);
+  await answerModels(server, {
+    models: [...CATALOG.models, NEW_CODEX_MODEL],
+    unavailable: [],
+  });
+  assert.equal(element.snapshot().model, "gpt-6-astra");
+
+  element.selectModel("gpt-7-nova", "codex");
+  assert.equal(element.snapshot().model, "gpt-7-nova");
+});
+
+test("a list asked for again leaves the control as it was until the answer arrives", async (t) => {
+  const { element, nodes, server } = mount();
+  t.after(() => server.restore());
+  await answerModels(server);
+  await answerModes(server);
+  const shown = nodes.modelButton.innerHTML;
+  const title = nodes.modelButton.title;
+
+  openModelMenu(element, nodes);
+  server.fireTimers();
+
+  assert.equal(server.models().length, 2);
+  assert.equal(nodes.modelButton.innerHTML, shown);
+  assert.equal(nodes.modelButton.title, title);
+  assert.equal(nodes.modelButton.attributes.has("aria-busy"), false);
+  assert.equal(element.readyForSubmission(), true);
+});
+
+test("the menu asks for no second list while one is on its way", async (t) => {
+  const { element, nodes, server } = mount();
+  t.after(() => server.restore());
+  openModelMenu(element, nodes);
+  assert.equal(server.models().length, 1);
+  await answerModels(server);
+  await answerModes(server);
+
+  openModelMenu(element, nodes);
+  openModelMenu(element, nodes);
+  assert.equal(server.models().length, 2);
+});
+
+test("a chosen model that leaves the list gives way to the next in line and its modes are asked for", async (t) => {
+  const { element, nodes, server } = mount({ provider: "codex" });
+  t.after(() => server.restore());
+  await answerModels(server);
+  await answerModes(server);
+  assert.equal(element.snapshot().model, "gpt-6-astra");
+
+  openModelMenu(element, nodes);
+  await answerModels(server, {
+    models: [{ ...CATALOG.models[1], isDefault: true }],
+    unavailable: [],
+  });
+
+  assert.equal(element.snapshot().model, "gpt-5.6-sol");
+  assert.deepEqual(server.asked(), ["codex/gpt-6-astra", "codex/gpt-5.6-sol"]);
+});
+
+test("a list that cannot be read again reads as unavailable and holds the submission", async (t) => {
+  const { element, nodes, events, server } = mount();
+  t.after(() => server.restore());
+  await answerModels(server);
+  await answerModes(server);
+  assert.equal(element.readyForSubmission(), true);
+
+  openModelMenu(element, nodes);
+  refuse(server.models().at(-1), "Codex app-server is unavailable.");
+  await drain();
+
+  assert.equal(element.readyForSubmission(), false);
+  assert.equal(events.at(-1).ready, false);
+  assert.equal(nodes.permissionPicker.hidden, true);
+  assert.equal(
+    nodes.modelButton.innerHTML,
+    '<span class="task-model-name">Unavailable</span>',
+  );
+  assert.equal(
+    nodes.modelButton.title,
+    "Models could not be loaded. Codex app-server is unavailable.",
+  );
+});
+
+test("an agent that cannot be asked at a later opening leaves its Task unavailable for that agent's reason", async (t) => {
+  const { element, nodes, server } = mount({ provider: "codex" });
+  t.after(() => server.restore());
+  await answerModels(server);
+  await answerModes(server);
+
+  openModelMenu(element, nodes);
+  await answerModels(server, {
+    models: CATALOG.models.filter((model) => model.provider !== "codex"),
+    unavailable: [{ provider: "codex", message: CODEX_SIGN_IN_REQUIRED }],
+  });
+
+  assert.equal(element.readyForSubmission(), false);
+  assert.equal(
+    nodes.modelButton.title,
+    `Models could not be loaded. ${CODEX_SIGN_IN_REQUIRED}`,
+  );
+});
+
+test("a list read again after a failure takes the failure's place", async (t) => {
+  const { element, nodes, server } = mount();
+  t.after(() => server.restore());
+  refuse(server.models().at(-1), "No agent offered a model.");
+  await drain();
+  assert.equal(nodes.modelButton.classList.contains("is-unavailable"), true);
+
+  openModelMenu(element, nodes);
+  await answerModels(server);
+  await answerModes(server);
+
+  assert.equal(nodes.modelButton.classList.contains("is-unavailable"), false);
+  assert.equal(element.snapshot().model, "gpt-6-astra");
+  assert.equal(element.readyForSubmission(), true);
+});
+
+test("a list answered after the control is detached is not taken up", async (t) => {
+  const { element, nodes, server } = mount({ provider: "codex" });
+  t.after(() => server.restore());
+  await answerModels(server);
+  await answerModes(server);
+  openModelMenu(element, nodes);
+  const late = server.models().at(-1);
+
+  element.disconnectedCallback();
+  element.isConnected = false;
+  answer(late, {
+    models: [{ ...CATALOG.models[1], isDefault: true }],
+    unavailable: [],
+  });
+  await drain();
+  element.isConnected = true;
+  element.connectedCallback();
+
+  assert.equal(element.snapshot().model, "gpt-6-astra");
+  assert.equal(server.models().length, 2);
+  openModelMenu(element, nodes);
+  assert.equal(server.models().length, 3);
+});
+
 test("a list still on its way when the control is detached is asked for again when it returns", async (t) => {
   const { element, server } = mount();
   t.after(() => server.restore());
@@ -1393,6 +1557,10 @@ function installAgentServer() {
   return server;
 }
 
+function openModelMenu(element, nodes) {
+  element.handleBeforeToggle({ newState: "open", target: nodes.modelPopover });
+}
+
 async function answerModels(server, catalog = CATALOG) {
   answer(server.models().at(-1), catalog);
   await drain();
@@ -1467,6 +1635,7 @@ function control() {
   return {
     attributes,
     disabled: false,
+    style: {},
     querySelector: (selector) => ({ selector }),
     assignments: 0,
     title: "",

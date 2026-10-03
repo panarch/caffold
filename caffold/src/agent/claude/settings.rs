@@ -117,8 +117,9 @@ impl ClaudeClient {
     ///
     /// The agent answers this over the control protocol, which means a process.
     /// There is no daemon to ask, so one is started for the question and the
-    /// answer is kept. The cache lock is held while asking, so callers that
-    /// arrive together cost one process rather than one each.
+    /// answer is kept until the runtime restarts. The cache lock is held while
+    /// asking, so callers that arrive together cost one process rather than one
+    /// each, and a restart that arrives meanwhile forgets the answer after it.
     pub(crate) async fn models(&self) -> Result<Vec<ModelOption>, ClaudeError> {
         let mut models = self.inner.models.lock().await;
         if let Some(cached) = models.clone() {
