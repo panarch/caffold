@@ -190,6 +190,42 @@ test("choosing the Settings tab again brings its list back to the top", { tag: "
   await expect(page).toHaveURL("/settings");
 });
 
+test("keeps the Settings list's scroll and focus when its icons arrive", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const iconsRequested = Promise.withResolvers();
+  const iconsReleased = Promise.withResolvers();
+  await page.route("https://esm.sh/lucide@1.22.0", async (route) => {
+    iconsRequested.resolve();
+    await iconsReleased.promise;
+    await route.fallback();
+  });
+  await page.setViewportSize({ width: 736, height: 360 });
+  await page.goto("/settings");
+  await iconsRequested.promise;
+
+  const list = page.locator("caffold-settings-navigator > .settings-navigator-list");
+  const about = list.locator('button[data-settings-section="about"]');
+  const aboutIcon = about.locator(".settings-navigator-item-icon");
+  await about.focus();
+  const listBeforeIcons = await list.elementHandle();
+  const bottom = await list.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    return element.scrollTop;
+  });
+  expect(bottom).toBeGreaterThan(0);
+  await expect(aboutIcon).toHaveCount(0);
+
+  iconsReleased.resolve();
+  await expect(aboutIcon).toBeAttached();
+  expect(await list.evaluate(
+    (element, earlier) => element === earlier,
+    listBeforeIcons,
+  )).toBe(true);
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(bottom);
+  await expect(about).toBeFocused();
+});
+
 test("collects MCP status only when About diagnostics are copied", { tag: "@desktop" }, async ({
   context,
   page,

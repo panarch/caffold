@@ -163,6 +163,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/settings/layout.js",
   "/assets/pages/(task-workspace)/settings/navigator.css",
   "/assets/pages/(task-workspace)/settings/navigator.js",
+  "/assets/pages/(task-workspace)/settings/navigator/components/item.css",
+  "/assets/pages/(task-workspace)/settings/navigator/components/item.js",
   "/assets/pages/(task-workspace)/settings/service-status.js",
   "/assets/pages/(task-workspace)/settings/components/detail-list.css",
   "/assets/pages/(task-workspace)/settings/components/detail-list.js",

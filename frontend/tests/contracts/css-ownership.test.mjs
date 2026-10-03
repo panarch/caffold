@@ -398,6 +398,10 @@ const ownership = new Map([
     ["caffold-settings-navigator"],
   ],
   [
+    "pages/(task-workspace)/settings/navigator/components/item.css",
+    ["caffold-settings-navigator-item"],
+  ],
+  [
     "pages/(task-workspace)/settings/appearance/page.css",
     ["caffold-settings-appearance-page"],
   ],
@@ -514,7 +518,10 @@ const componentChildren = new Map([
   ],
   ["caffold-notes-workspace", ["caffold-markdown-preview"]],
   ["caffold-notes-navigator", ["caffold-workspace-brand", "caffold-file-tree"]],
-  ["caffold-settings-navigator", ["caffold-workspace-brand"]],
+  [
+    "caffold-settings-navigator",
+    ["caffold-workspace-brand", "caffold-settings-navigator-item"],
+  ],
   ["caffold-settings-appearance-page", ["caffold-workspace-brand"]],
   [
     "caffold-tasks-page",
