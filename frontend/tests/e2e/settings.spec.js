@@ -1060,7 +1060,7 @@ test("refreshing the Grok report reads the leader that appeared and names a buil
   const refreshIcon = refresh.locator(".settings-refresh-icon");
   await refresh.click();
   await expect(refresh).toBeDisabled();
-  await expect(refreshIcon).toHaveCSS("animation-name", "caffold-refresh-spin");
+  await expect(refreshIcon).toHaveCSS("animation-name", "caffold-busy-spin");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(refreshIcon).toHaveCSS("animation-name", "none");
   await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -1147,7 +1147,7 @@ test("disables Codex Refresh and turns its icon while the readiness check runs",
   holdStatus = true;
   await refresh.click();
   await expect(refresh).toBeDisabled();
-  await expect(refreshIcon).toHaveCSS("animation-name", "caffold-refresh-spin");
+  await expect(refreshIcon).toHaveCSS("animation-name", "caffold-busy-spin");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(refreshIcon).toHaveCSS("animation-name", "none");
   await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -1593,7 +1593,7 @@ test("refreshing the Claude report keeps its rows and disables Refresh until the
   const refreshIcon = refresh.locator(".settings-refresh-icon");
   await activateActionHint(page, /Refresh$/);
   await expect(refresh).toBeDisabled();
-  await expect(refreshIcon).toHaveCSS("animation-name", "caffold-refresh-spin");
+  await expect(refreshIcon).toHaveCSS("animation-name", "caffold-busy-spin");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(refreshIcon).toHaveCSS("animation-name", "none");
   await page.emulateMedia({ reducedMotion: "no-preference" });

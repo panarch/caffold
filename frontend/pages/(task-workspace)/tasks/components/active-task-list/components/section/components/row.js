@@ -1,3 +1,4 @@
+import { busySpin } from "#app/component-styles.js";
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import { taskStoreOperationsPresentation } from "#app/pages/(task-workspace)/task-store-status.js";
@@ -628,6 +629,11 @@ function syncElementAttributes(element, nextElement, names) {
     }
   }
 }
+
+await busySpin.register(
+  "caffold-active-task-row",
+  "> .task-row > .task-row-indicators > .task-status-chip > .task-status-spinner",
+);
 
 if (!customElements.get("caffold-active-task-row")) {
   customElements.define("caffold-active-task-row", CaffoldActiveTaskRow);

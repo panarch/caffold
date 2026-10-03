@@ -1590,6 +1590,7 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
   await expect(
     page.locator('.app-foreground-recovery[data-recovery-state="reconnecting"]'),
   ).toBeVisible();
+  await expect(page.locator(".app-foreground-recovery-spinner")).toHaveCSS("animation-name", "caffold-busy-spin");
   await expect
     .poll(() => page.evaluate(() => window.__taskRecoveryPhysicalSources.length))
     .toBe(2);

@@ -1389,7 +1389,7 @@ test("starts active Task navigator spinners at independent phases", { tag: "@all
   await expect(navigatorSpinners).toHaveCount(3);
   const initial = await spinnerPhases();
   for (const spinner of initial) {
-    expect(spinner.animationName).toBe("task-status-spin");
+    expect(spinner.animationName).toBe("caffold-busy-spin");
     expect(spinner.animationDuration).toBe("0.8s");
     expect(Number.parseFloat(spinner.animationDelay)).toBeLessThan(0);
     expect(Number.parseFloat(spinner.animationDelay)).toBeGreaterThan(-0.8);
@@ -1401,6 +1401,7 @@ test("starts active Task navigator spinners at independent phases", { tag: "@all
     ".task-detail-info-button .task-status-spinner",
   );
   await expect(detailSpinner).toHaveCount(1);
+  await expect(detailSpinner).toHaveCSS("animation-name", "caffold-busy-spin");
   await expect(detailSpinner).toHaveCSS("animation-delay", "0s");
 });
 
@@ -1799,6 +1800,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   await expect(restoringButton).toBeDisabled();
   await expect(restoringButton).toHaveClass(/is-loading/);
   await expect(restoringButton.locator(".task-archived-action-icon")).toBeVisible();
+  await expect(restoringButton.locator(".task-archived-action-icon")).toHaveCSS("animation-name", "caffold-busy-spin");
   releaseRestore();
 
   await expect(
@@ -2321,7 +2323,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     );
     expect(await taskPresentation(runningChip.locator(".task-status-spinner"))).toEqual(
       expect.objectContaining({
-        animationName: "task-status-spin",
+        animationName: "caffold-busy-spin",
         borderRadius: "999px",
       }),
     );

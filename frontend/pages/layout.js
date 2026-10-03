@@ -1,5 +1,6 @@
 import { getHealth } from "../api.js";
 import { BUILD_INFO } from "../build-info.js";
+import { busySpin } from "../component-styles.js";
 import { renderInlineIcon, warmIcons } from "../components/icons.js";
 import {
   ACTION_HINT_ACTION,
@@ -762,6 +763,11 @@ function emptyPwaUpdateDiagnostics() {
 function diagnosticString(value) {
   return typeof value === "string" && value ? value : null;
 }
+
+await busySpin.register(
+  "caffold-app-shell",
+  "> .app-foreground-recovery > .app-foreground-recovery-spinner",
+);
 
 customElements.define("caffold-app-shell", CaffoldAppShell);
 

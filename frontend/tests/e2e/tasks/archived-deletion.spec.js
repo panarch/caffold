@@ -56,6 +56,22 @@ async function mockArchivedList(page, tasks) {
   );
 }
 
+test("turns the status ring of an archived Task that is still running", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await mockArchivedList(page, [{
+    ...archivedTask("thread_archived_running", "Archived running task"),
+    ...canonicalTaskState("active"),
+  }]);
+
+  await page.goto("/tasks");
+  const spinner = page.locator(
+    'caffold-task-navigator .task-archived-row[data-thread-id="thread_archived_running"] .task-status-spinner',
+  );
+  await expect(spinner).toBeVisible();
+  await expect(spinner).toHaveCSS("animation-name", "caffold-busy-spin");
+});
+
 test("confirms permanent deletion and removes the archived row only after success", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {

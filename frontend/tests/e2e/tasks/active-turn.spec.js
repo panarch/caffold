@@ -223,6 +223,7 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
   );
   await expectActiveTurnIdentity(page, true);
   await expectActiveTurnAttachment(page);
+  await expect(activeTurn.locator(".task-active-turn-spinner")).toHaveCSS("animation-name", "caffold-busy-spin");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(activeTurn.locator(".task-active-turn-spinner")).toHaveCSS(
     "animation-name",

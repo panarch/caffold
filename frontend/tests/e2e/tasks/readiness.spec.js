@@ -359,6 +359,9 @@ test("waits for explicit route activation when readiness settles first", { tag: 
     [routeOpens] = await Promise.all([
       page.evaluate(async (status) => {
         const Workspace = await customElements.whenDefined("caffold-task-workspace");
+        // The shell defines itself after its own shared styles, and only a
+        // booted shell keeps this second workspace's route work in the page.
+        await customElements.whenDefined("caffold-app-shell");
         const workspace = new Workspace();
         workspace.ensureRendered();
         workspace.codexRuntimeRestartDialog.close = () => {};

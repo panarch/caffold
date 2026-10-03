@@ -84,6 +84,7 @@ test("keeps the order it opened with while Tasks keep moving", { tag: "@desktop"
   }));
 
   await expect(middle.locator(".task-switcher-row-status")).toHaveCount(1);
+  await expect(middle.locator(".task-status-spinner")).toHaveCSS("animation-name", "caffold-busy-spin");
   await expect(dialog.locator(".task-switcher-row-title")).toHaveText([
     "Middle task",
     "Oldest task",

@@ -34,10 +34,6 @@ caffold-git-review-controls {
     color: var(--warning);
   }
 
-  & .git-review-refresh.is-refreshing .git-review-refresh-icon {
-    animation: caffold-refresh-spin 0.8s linear infinite;
-  }
-
   & .git-review-refresh-icon {
     position: relative;
     display: block;

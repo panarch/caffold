@@ -402,24 +402,42 @@ test("unseen completion attention blinks the marker without hiding it", () => {
   );
 });
 
-test("refresh controls share a defined spin animation with reduced-motion fallback", () => {
-  const root = readFrontend("styles.css");
-  const fileNavigator = readFrontend("components/file-navigator/list.css");
-  const fileViewer = readFrontend("components/file-viewer.css");
-  const gitControls = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css",
+test("busy elements turn through one registered spin with reduced-motion fallback", () => {
+  const spin = readFrontend("component-styles/busy-spin.css");
+  assert.match(spin, /@keyframes caffold-busy-spin[\s\S]*transform: rotate\(360deg\)/);
+  assert.match(spin, /:scope \{\s*animation: caffold-busy-spin 0\.8s linear infinite;\s*\}/);
+  assert.match(
+    spin,
+    /@media \(prefers-reduced-motion: reduce\) \{\s*:scope \{\s*animation: none;\s*\}\s*\}/,
   );
 
-  assert.match(
-    root,
-    /@keyframes caffold-refresh-spin[\s\S]*transform: rotate\(360deg\)/,
-  );
-  assert.match(
-    root,
-    /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.file-refresh-button\.is-refreshing \.file-refresh-icon,[\s\S]*\.viewer-refresh-button\.is-refreshing \.viewer-refresh-icon,[\s\S]*\.git-review-refresh\.is-refreshing \.git-review-refresh-icon[\s\S]*animation: none/,
-  );
-  for (const source of [fileNavigator, fileViewer, gitControls]) {
-    assert.match(source, /animation: caffold-refresh-spin 0\.8s linear infinite/);
+  const taskList = "> .task-repository-groups > .task-repository-group > .task-list > .task-archived-row";
+  const consumers = [
+    ["pages/layout", "caffold-app-shell", "> .app-foreground-recovery > .app-foreground-recovery-spinner"],
+    ["pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row", "caffold-active-task-row", "> .task-row > .task-row-indicators > .task-status-chip > .task-status-spinner"],
+    ["pages/(task-workspace)/tasks/components/archived-task-list", "caffold-archived-task-list", `${taskList} > .task-archived-copy > .task-row-indicators > .task-status-chip > .task-status-spinner`],
+    ["pages/(task-workspace)/tasks/components/archived-task-list", "caffold-archived-task-list", `${taskList} > .task-archived-actions > .task-archived-action-button.is-loading > .task-archived-action-icon`],
+    ["pages/(task-workspace)/tasks/components/task-switcher-dialog", "caffold-task-switcher-dialog", "> dialog > .task-switcher-card > .task-switcher-scroll > .task-switcher-list > .task-switcher-item > .task-switcher-row > .task-switcher-row-indicators > .task-status-chip > .task-status-spinner"],
+    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info", "caffold-task-detail-info", "> .task-detail-info-button > .task-status-chip > .task-status-spinner"],
+    ["pages/(task-workspace)/tasks/components/task-turn-options", "caffold-task-turn-options", "> .task-turn-options > .task-model-picker > .task-model-button > .task-picker-spinner"],
+    ["pages/(task-workspace)/tasks/components/task-turn-options", "caffold-task-turn-options", "> .task-turn-options > .task-permission-picker > .task-permission-button > .task-picker-spinner"],
+    ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn", "caffold-task-active-turn", "> .task-active-turn-spinner"],
+    ["pages/(task-workspace)/tasks/components/composer", "caffold-task-composer", "> .task-composer > .task-composer-panel > .task-composer-toolbar > .task-composer-actions > .task-voice-button.is-busy > .task-voice-icon"],
+    ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", "caffold-git-review-controls", "> .git-review-controls > .git-review-refresh.is-refreshing > .git-review-refresh-icon"],
+    ["pages/(task-workspace)/settings/components/refresh-button", "caffold-settings-refresh-button", "> button.is-refreshing > span > .settings-refresh-icon"],
+  ];
+  const declarations = [];
+  for (const [path, source] of frontendSources()) {
+    if (!path.endsWith(".js") || path.endsWith(".test.js")) continue;
+    for (const [, owner, target] of source.matchAll(/await busySpin\.register\(\s*"([^"]+)",\s*"([^"]+)"\s*,?\s*\)/g)) {
+      declarations.push([path.replace(/\.js$/, ""), owner, target]);
+    }
+  }
+  assert.deepEqual(declarations.map((entry) => entry.join(" ")).sort(), consumers.map((entry) => entry.join(" ")).sort());
+
+  for (const [path, source] of frontendSources()) {
+    if (!path.endsWith(".css") || path === "component-styles/busy-spin.css") continue;
+    assert.doesNotMatch(source, /rotate\(360deg\)/, `${path} must turn through busySpin`);
   }
 });
 

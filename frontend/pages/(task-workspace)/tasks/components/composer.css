@@ -477,10 +477,6 @@ caffold-task-composer {
     height: var(--interface-icon-size);
   }
 
-  & .task-voice-button.is-busy .task-voice-icon {
-    animation: task-voice-spin 0.9s linear infinite;
-  }
-
   & .task-primary-action-button {
     position: relative;
     display: grid;
@@ -538,18 +534,6 @@ caffold-task-composer {
     stroke-width: 2.2;
   }
 
-}
-
-@keyframes task-voice-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  caffold-task-composer .task-voice-button.is-busy .task-voice-icon {
-    animation: none;
-  }
 }
 
 @media (max-width: 860px), (pointer: coarse) {

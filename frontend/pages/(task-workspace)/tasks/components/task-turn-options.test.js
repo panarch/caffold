@@ -9,7 +9,7 @@ const registry = installCustomElementUnitRegistry();
 const previousElement = globalThis.Element;
 const previousDocument = globalThis.document;
 globalThis.Element = globalThis.HTMLElement;
-globalThis.document = { activeElement: null };
+globalThis.document = { ...previousDocument, activeElement: null };
 await import("./task-turn-options.js");
 const turnOptions = registry.element("caffold-task-turn-options").prototype;
 after(() => {

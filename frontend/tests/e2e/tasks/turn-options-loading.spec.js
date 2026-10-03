@@ -69,6 +69,7 @@ test("a model list still pending after the delay earns a spinner without moving 
   await expect(spinner).toBeHidden();
   await page.clock.runFor(1);
   await expect(spinner).toBeVisible();
+  await expect(spinner).toHaveCSS("animation-name", "caffold-busy-spin");
   await expect(modelButton).toHaveAttribute("aria-busy", "true");
   await expect(modelButton).toHaveAttribute("aria-label", "Choose model");
   await expect(modelButton.locator(".task-model-name")).toHaveCount(0);
@@ -163,6 +164,7 @@ test("a first permission pill appears where it will stay and turns once its own 
 
   await page.clock.runFor(LOADING_DELAY_MS);
   await expect(permissionSpinner).toBeVisible();
+  await expect(permissionSpinner).toHaveCSS("animation-name", "caffold-busy-spin");
   await expect(permissionButton).not.toHaveClass(/is-deferred/);
   expect(await permissionButton.boundingBox()).toEqual(appeared.permission);
   await captureReviewScreenshot(

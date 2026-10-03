@@ -29,7 +29,6 @@ caffold-task-switcher-dialog {
     border: 2px solid currentColor;
     border-right-color: transparent;
     border-radius: 999px;
-    animation: task-status-spin 800ms linear infinite;
   }
 
   & .task-status-chip[data-status="running"],
@@ -51,23 +50,6 @@ caffold-task-switcher-dialog {
     border-color: var(--danger-border);
     background: var(--danger-subtle);
     color: var(--danger-strong);
-  }
-}
-
-@keyframes task-status-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  caffold-tasks-page,
-  caffold-active-task-row,
-  caffold-archived-task-list,
-  caffold-task-switcher-dialog {
-    & .task-status-spinner {
-      animation: none;
-    }
   }
 }
 

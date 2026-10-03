@@ -1,4 +1,5 @@
 import { getVoiceStatus, transcribeVoice } from "#app/api.js";
+import { busySpin } from "#app/component-styles.js";
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
@@ -1782,6 +1783,11 @@ function normalizeAdoptedSubmission(value) {
 function closestElement(target, selector) {
   return target instanceof Element ? target.closest(selector) : null;
 }
+
+await busySpin.register(
+  "caffold-task-composer",
+  "> .task-composer > .task-composer-panel > .task-composer-toolbar > .task-composer-actions > .task-voice-button.is-busy > .task-voice-icon",
+);
 
 if (!customElements.get("caffold-task-composer")) {
   customElements.define("caffold-task-composer", CaffoldTaskComposer);

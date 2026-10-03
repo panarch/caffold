@@ -1,3 +1,4 @@
+import { busySpin } from "#app/component-styles.js";
 import { activeTurnDuration } from "./active-turn/model.js";
 
 class CaffoldTaskActiveTurn extends HTMLElement {
@@ -113,6 +114,11 @@ function patchText(element, value) {
     element.textContent = value;
   }
 }
+
+await busySpin.register(
+  "caffold-task-active-turn",
+  "> .task-active-turn-spinner",
+);
 
 if (!customElements.get("caffold-task-active-turn")) {
   customElements.define("caffold-task-active-turn", CaffoldTaskActiveTurn);

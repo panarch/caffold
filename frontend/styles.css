@@ -139,20 +139,6 @@
   }
 }
 
-@keyframes caffold-refresh-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .file-refresh-button.is-refreshing .file-refresh-icon,
-  .viewer-refresh-button.is-refreshing .viewer-refresh-icon,
-  .git-review-refresh.is-refreshing .git-review-refresh-icon {
-    animation: none;
-  }
-}
-
 @font-face {
   font-family: "Caffold Geist Sans";
   src: url("./fonts/GeistSans-Variable.woff2") format("woff2");

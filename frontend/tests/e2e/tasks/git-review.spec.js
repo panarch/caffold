@@ -1436,7 +1436,7 @@ test("keeps an in-flight Fetch isolated across Git route re-entry", { tag: "@all
     const after = getComputedStyle(icon).transform;
     return { animationName, before, after };
   });
-  expect(animation.animationName).toBe("caffold-refresh-spin");
+  expect(animation.animationName).toBe("caffold-busy-spin");
   expect(animation.after).not.toBe(animation.before);
 
   await page.getByRole("button", { name: "Conversation", exact: true }).click();

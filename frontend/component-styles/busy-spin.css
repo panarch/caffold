@@ -1,0 +1,15 @@
+@keyframes caffold-busy-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+:scope {
+  animation: caffold-busy-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :scope {
+    animation: none;
+  }
+}
