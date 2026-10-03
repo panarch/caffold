@@ -477,6 +477,7 @@ test("keeps badge Tab order and native click, Enter, and Space activation", { ta
   const tasks = actionHintTasks(1);
   await installActionHintFixture(page, tasks);
   await page.goto("/tasks");
+  await expect(page.locator("caffold-active-task-row")).toHaveCount(tasks.length);
 
   await enterActionHints(page);
   const dialog = actionHintDialog(page);
@@ -491,11 +492,13 @@ test("keeps badge Tab order and native click, Enter, and Space activation", { ta
   await expect(page).toHaveURL("/tasks/new");
 
   await page.goto("/tasks");
+  await expect(page.locator("caffold-active-task-row")).toHaveCount(tasks.length);
   await enterActionHints(page);
   await dialog.locator('[data-action-hint-code="N"]').click();
   await expect(page).toHaveURL("/tasks/new");
 
   await page.goto("/tasks");
+  await expect(page.locator("caffold-active-task-row")).toHaveCount(tasks.length);
   await enterActionHints(page);
   await dialog.locator('[data-action-hint-code="TA"]').focus();
   await page.keyboard.press("Space");
