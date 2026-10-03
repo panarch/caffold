@@ -463,7 +463,7 @@ checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
 
 [[package]]
 name = "caffold"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
