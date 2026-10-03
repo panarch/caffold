@@ -1,8 +1,10 @@
 import {
   codexBlocksTaskOperations,
   codexState,
-  taskStoreBlocksTaskOperations,
 } from "#app/pages/(task-workspace)/codex-status.js";
+import {
+  taskStoreBlocksTaskOperations,
+} from "#app/pages/(task-workspace)/task-store-status.js";
 import "./conversation-shortcuts/components/fork-dialog.js";
 import {
   ACTION_HINT_ACTION,
@@ -39,6 +41,7 @@ class CaffoldSectionConversationShortcuts extends HTMLElement {
     this.context = { key: "", sectionId: "", path: "" };
     this.transportAvailable = true;
     this.codexStatusSnapshot = null;
+    this.taskStoreStatusSnapshot = null;
     this.listenersAttached = false;
     this.boundClick = (event) => this.handleClick(event);
   }
@@ -96,6 +99,12 @@ class CaffoldSectionConversationShortcuts extends HTMLElement {
   setCodexStatusSnapshot(snapshot) {
     this.ensureRendered();
     this.codexStatusSnapshot = snapshot ?? null;
+    this.patch();
+  }
+
+  setTaskStoreStatusSnapshot(snapshot) {
+    this.ensureRendered();
+    this.taskStoreStatusSnapshot = snapshot ?? null;
     this.patch();
   }
 
@@ -185,11 +194,11 @@ class CaffoldSectionConversationShortcuts extends HTMLElement {
     if (!this.transportAvailable) {
       return "Reconnect to Caffold to fork a conversation.";
     }
-    const status = this.codexStatusSnapshot?.status;
-    if (taskStoreBlocksTaskOperations(status)) {
-      return status?.taskStoreReadiness?.diagnosticMessage ||
+    if (taskStoreBlocksTaskOperations(this.taskStoreStatusSnapshot)) {
+      return this.taskStoreStatusSnapshot.readiness.diagnosticMessage ||
         "Tasks are temporarily unavailable.";
     }
+    const status = this.codexStatusSnapshot?.status;
     if (state !== "available" || codexBlocksTaskOperations(status)) {
       return status?.readiness?.diagnosticMessage ||
         this.codexStatusSnapshot?.error ||

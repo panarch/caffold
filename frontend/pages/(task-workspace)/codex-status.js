@@ -2,7 +2,6 @@ import {
   consumeCodexResetCredit,
   getCodexStatus,
   restartCodexRuntime,
-  retryTaskStoreMigration,
   updateCodexRuntime,
 } from "../../api.js";
 import {
@@ -22,9 +21,6 @@ import {
   formatResetCredits,
   resetCreditExpiry,
   formatUsedPercent,
-  taskStoreBlocksTaskOperations,
-  taskStoreOperationsPresentation,
-  taskStoreRecoveryVisible,
 } from "./codex-status/model.js";
 import {
   CodexStatusLifecycle,
@@ -56,9 +52,6 @@ export {
   formatResetCredits,
   resetCreditExpiry,
   formatUsedPercent,
-  taskStoreBlocksTaskOperations,
-  taskStoreOperationsPresentation,
-  taskStoreRecoveryVisible,
 };
 
 export function createCodexStatusLifecycle({
@@ -70,7 +63,6 @@ export function createCodexStatusLifecycle({
   onSnapshotChange,
   onUpdateStateChange,
   restartRuntime = restartCodexRuntime,
-  retryTaskStore = retryTaskStoreMigration,
   updateRuntime = updateCodexRuntime,
 } = {}) {
   return new CodexStatusLifecycle({
@@ -82,7 +74,6 @@ export function createCodexStatusLifecycle({
     onSnapshotChange,
     onUpdateStateChange,
     restartRuntime,
-    retryTaskStore,
     updateRuntime,
   });
 }

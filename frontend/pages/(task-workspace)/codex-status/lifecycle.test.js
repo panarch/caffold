@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CodexStatusLifecycle } from "./lifecycle.js";
 import {
-  taskStoreRecoveryVisible,
   codexBlocksTaskOperations,
   createCodexStatusSnapshot,
 } from "./model.js";
@@ -165,66 +164,6 @@ test("a successful reset with a failed status refresh retries the same redemptio
   lifecycle.disconnect();
 });
 
-test("Task-store migration retry is an explicit mutation followed by status refresh", async () => {
-  let status = codexStatus("ready", false);
-  status.taskStoreReadiness = {
-    state: "failed",
-    blocksTaskOperations: true,
-    diagnosticMessage: "Migration failed.",
-  };
-  let retries = 0;
-  const lifecycle = new CodexStatusLifecycle({
-    loadStatus: async () => status,
-    retryTaskStore: async () => {
-      retries += 1;
-      status = codexStatus("ready", false);
-      status.taskStoreReadiness = {
-        state: "migrating",
-        blocksTaskOperations: true,
-        diagnosticMessage: "Retrying migration.",
-      };
-    },
-    restartRuntime: async () => {},
-  });
-
-  lifecycle.connect();
-  await settle();
-  await lifecycle.retryTaskStoreMigration();
-
-  assert.equal(retries, 1);
-  assert.equal(
-    lifecycle.snapshot().status?.taskStoreReadiness?.state,
-    "migrating",
-  );
-  lifecycle.disconnect();
-});
-
-test("Task-store migration status polls until startup leaves migrating", async () => {
-  let loads = 0;
-  const lifecycle = new CodexStatusLifecycle({
-    loadStatus: async () => {
-      loads += 1;
-      const status = codexStatus("ready", false);
-      if (loads === 1) {
-        status.taskStoreReadiness = {
-          state: "migrating",
-          blocksTaskOperations: true,
-          diagnosticMessage: "Migration is running.",
-        };
-      }
-      return status;
-    },
-    restartRuntime: async () => {},
-  });
-
-  lifecycle.connect();
-  await new Promise((resolve) => setTimeout(resolve, 550));
-
-  assert.equal(loads, 2);
-  assert.equal(lifecycle.snapshot().status?.taskStoreReadiness, undefined);
-  lifecycle.disconnect();
-});
-
 test("Codex status owns one ready-state restart request and refreshes canonical readiness", async () => {
   let status = codexStatus("ready", false);
   let restartRequests = 0;
@@ -364,28 +303,19 @@ test("a failed foreground status refresh preserves the last useful readiness", a
   assert.equal(lifecycle.snapshot().phase, "failed");
   assert.equal(lifecycle.snapshot().status?.readiness?.state, "ready");
   assert.equal(codexBlocksTaskOperations(lifecycle.snapshot().status), false);
-  assert.equal(taskStoreRecoveryVisible(lifecycle.snapshot()), false);
   lifecycle.disconnect();
 });
 
-test("suspending status recovery invalidates work and pauses migration polling", async () => {
+test("suspending status recovery invalidates work in flight", async () => {
   const pendingGate = deferred();
   let loadRequests = 0;
   const lifecycle = new CodexStatusLifecycle({
     loadStatus: async () => {
       loadRequests += 1;
       if (loadRequests === 1) {
-        const status = codexStatus("ready", false);
-        status.taskStoreReadiness = {
-          state: "migrating",
-          blocksTaskOperations: true,
-          diagnosticMessage: "Migration is running.",
-        };
-        return status;
+        return codexStatus("restartRequired");
       }
-      if (loadRequests === 2) {
-        await pendingGate.promise;
-      }
+      await pendingGate.promise;
       return codexStatus("ready", false);
     },
     restartRuntime: async () => {},
@@ -394,7 +324,7 @@ test("suspending status recovery invalidates work and pauses migration polling",
   lifecycle.connect();
   await settle();
   lifecycle.suspend();
-  await new Promise((resolve) => setTimeout(resolve, 550));
+  assert.equal(await lifecycle.refresh(), null);
   assert.equal(loadRequests, 1);
 
   lifecycle.resume();
@@ -402,9 +332,12 @@ test("suspending status recovery invalidates work and pauses migration polling",
   assert.equal(loadRequests, 2);
   lifecycle.suspend();
   pendingGate.resolve();
-  await refresh;
+  assert.equal(await refresh, null);
 
-  assert.equal(lifecycle.snapshot().status?.taskStoreReadiness?.state, "migrating");
+  assert.equal(
+    lifecycle.snapshot().status?.readiness?.state,
+    "restartRequired",
+  );
   lifecycle.disconnect();
 });
 

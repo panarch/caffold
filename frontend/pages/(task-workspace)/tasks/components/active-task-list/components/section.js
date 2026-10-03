@@ -1,5 +1,5 @@
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
-import { taskStoreOperationsPresentation } from "#app/pages/(task-workspace)/codex-status.js";
+import { taskStoreOperationsPresentation } from "#app/pages/(task-workspace)/task-store-status.js";
 import { taskThreadId } from "#tasks/task-list-model.js";
 import {
   ACTION_HINT_ACTION,

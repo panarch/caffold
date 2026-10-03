@@ -415,3 +415,134 @@ test("sends focus to the Task itself when no visible control opened it", () => {
     else globalThis.window = previousWindow;
   }
 });
+
+function recoveryOwner({
+  storeCheck = async () => ({ state: "ready" }),
+  storeAnswer = null,
+  codexRefresh = () => new Promise(() => {}),
+  tasksRecovery = async () => ({ retry: false }),
+  storeBlocked = false,
+} = {}) {
+  const calls = [];
+  const owner = {
+    mode: "tasks",
+    taskStoreStatusLifecycle: {
+      resume: () => calls.push("store:resume"),
+      check: () => {
+        calls.push("store:check");
+        return storeCheck();
+      },
+      snapshot: () => ({ readiness: storeAnswer, retryAvailable: false }),
+    },
+    codexStatusLifecycle: {
+      resume: () => calls.push("codex:resume"),
+      refresh: () => {
+        calls.push("codex:refresh");
+        return codexRefresh();
+      },
+    },
+    tasksPage: {
+      recoverForeground: (options) => {
+        calls.push("tasks:recover");
+        return tasksRecovery(options);
+      },
+      taskStoreOperationsBlocked: () => storeBlocked,
+    },
+    liveUpdates: {
+      resume: () => calls.push("live:resume"),
+      retry: () => calls.push("live:retry"),
+    },
+    notesWorkspace: { reload() {} },
+  };
+  return { owner, calls };
+}
+
+test("foreground recovery reads the Task store first and never waits for Codex", async () => {
+  let answerStore;
+  const { owner, calls } = recoveryOwner({
+    storeCheck: () => new Promise((resolve) => {
+      answerStore = resolve;
+    }),
+  });
+
+  const recovery = workspace.recoverForeground.call(owner);
+  assert.deepEqual(calls, [
+    "store:resume",
+    "codex:resume",
+    "codex:refresh",
+    "store:check",
+  ]);
+  await Promise.resolve();
+  assert.equal(calls.includes("tasks:recover"), false);
+
+  answerStore({ state: "ready" });
+  assert.deepEqual(await recovery, { retry: false, error: null });
+  assert.deepEqual(calls.slice(4), ["tasks:recover", "live:resume", "live:retry"]);
+});
+
+test("a Codex status failure stays out of the foreground recovery result", async () => {
+  const { owner } = recoveryOwner({
+    codexRefresh: () => Promise.reject(new TypeError("Failed to fetch")),
+  });
+
+  assert.deepEqual(await workspace.recoverForeground.call(owner), {
+    retry: false,
+    error: null,
+  });
+});
+
+test("a Task-store check failure asks recovery to retry with that error", async () => {
+  const failure = new TypeError("Load failed");
+  const { owner, calls } = recoveryOwner({
+    storeCheck: () => Promise.reject(failure),
+  });
+
+  const result = await workspace.recoverForeground.call(owner);
+
+  assert.equal(result.retry, true);
+  assert.equal(result.error, failure);
+  assert.equal(calls.includes("tasks:recover"), true);
+});
+
+test("initial activation reuses the connect-time answers and never retries a blocked store", async () => {
+  const answered = recoveryOwner({
+    storeAnswer: { state: "migrating", blocksTaskOperations: true },
+    storeBlocked: true,
+  });
+  assert.deepEqual(
+    await workspace.recoverForeground.call(answered.owner, {
+      initialActivation: true,
+    }),
+    { retry: false, error: null },
+  );
+  assert.equal(answered.calls.includes("codex:refresh"), false);
+  assert.equal(answered.calls.includes("store:check"), false);
+  assert.equal(answered.calls.includes("tasks:recover"), true);
+
+  const unanswered = recoveryOwner();
+  await workspace.recoverForeground.call(unanswered.owner, {
+    initialActivation: true,
+  });
+  assert.equal(
+    unanswered.calls.includes("store:check"),
+    true,
+    "a store that has not answered yet is still checked",
+  );
+
+  const returning = recoveryOwner({ storeBlocked: true });
+  assert.equal(
+    (await workspace.recoverForeground.call(returning.owner)).retry,
+    true,
+    "a blocked store keeps a later recovery retrying",
+  );
+});
+
+test("a recovery made stale while the store answers stops before the Task surfaces", async () => {
+  const { owner, calls } = recoveryOwner();
+
+  assert.deepEqual(
+    await workspace.recoverForeground.call(owner, { isCurrent: () => false }),
+    { stale: true, retry: false },
+  );
+  assert.equal(calls.includes("tasks:recover"), false);
+});

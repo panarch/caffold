@@ -10,7 +10,7 @@ export const FOREGROUND_RECOVERY_NODE = Object.freeze({
   // The visible document has no active recovery or retry timer.
   READY: "ready",
 
-  // The page is reading the backend's canonical readiness snapshot.
+  // The page is reading the readiness of Caffold's own Task store.
   VALIDATING_STATUS: "validating-status",
 
   // A requested or readiness-gated Task route is being applied.

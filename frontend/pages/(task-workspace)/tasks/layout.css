@@ -30,7 +30,7 @@ caffold-tasks-page {
   /* One child fills the pane; the Codex setup card shown beside the Task
      surface is the exception, taking its own height above it — capped, so
      however much the card has to say, the surface below stays reachable. */
-  & .tasks-detail-pane > caffold-codex-readiness-recovery,
+  & .tasks-detail-pane > caffold-task-store-recovery,
   & .tasks-detail-pane > caffold-task-new,
   & .tasks-detail-pane > caffold-detail-layout,
   & .tasks-detail-pane > caffold-task-recovery {
@@ -38,8 +38,9 @@ caffold-tasks-page {
     min-height: 0;
   }
 
-  & .tasks-detail-pane > caffold-codex-readiness-recovery[data-presentation="beside"] {
+  & .tasks-detail-pane > caffold-codex-readiness-recovery {
     flex: 0 1 auto;
+    min-height: 0;
     max-height: 60%;
   }
 

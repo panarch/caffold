@@ -261,6 +261,10 @@ const ownership = new Map([
     ["caffold-codex-readiness-recovery"],
   ],
   [
+    "pages/(task-workspace)/tasks/components/task-store-recovery.css",
+    ["caffold-task-store-recovery"],
+  ],
+  [
     "pages/(task-workspace)/tasks/recovery/page.css",
     ["caffold-task-recovery"],
   ],

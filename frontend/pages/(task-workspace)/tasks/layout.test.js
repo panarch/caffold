@@ -205,11 +205,12 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
   );
 });
 
-test("selects takeover or visible page owners and merges setup-beside explicitly", () => {
+test("selects the store takeover or visible page owners and merges setup-beside explicitly", () => {
   const taskNew = { hidden: false };
   const detail = { hidden: false };
   const recovery = { hidden: false };
   const setup = { hidden: false };
+  const storeRecovery = { hidden: false };
   const owner = {
     view: "new",
     takeover: false,
@@ -217,6 +218,7 @@ test("selects takeover or visible page owners and merges setup-beside explicitly
     taskDetail: () => detail,
     taskRecovery: () => recovery,
     codexReadinessRecovery: () => setup,
+    taskStoreRecovery: () => storeRecovery,
     taskStoreRecoveryVisible() {
       return this.takeover;
     },
@@ -228,8 +230,8 @@ test("selects takeover or visible page owners and merges setup-beside explicitly
   owner.view = "recovery";
   assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [recovery, setup]);
   owner.takeover = true;
-  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [setup]);
-  setup.hidden = true;
+  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [storeRecovery]);
+  storeRecovery.hidden = true;
   assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), []);
 });
 
@@ -266,13 +268,13 @@ test("restores managed identity before reopening Detail after a store takeover",
   const calls = [];
   let takeoverChecks = 0;
   const detail = {
-    setCodexStatusSnapshot() {},
+    setTaskStoreStatusSnapshot() {},
     open() {
       calls.push("open");
     },
   };
   const owner = {
-    codexStatusSnapshotValue: {},
+    taskStoreStatusSnapshotValue: {},
     view: "detail",
     selectedThreadId: "thread-a",
     currentRoute: { kind: "tasks", threadId: "thread-a" },
@@ -284,16 +286,50 @@ test("restores managed identity before reopening Detail after a store takeover",
     taskNew: () => null,
     taskDetail: () => detail,
     taskNavigator: () => null,
-    codexReadinessRecovery: () => null,
+    taskStoreRecovery: () => null,
     syncSelectedManagedTask() {
       calls.push("managed");
     },
     render() {},
   };
 
-  tasksPage.setCodexStatusSnapshot.call(owner, {});
+  tasksPage.setTaskStoreStatusSnapshot.call(owner, {});
 
   assert.deepEqual(calls, ["managed", "open"]);
+});
+
+test("a Codex status change never takes the Task surface over or reopens Detail", () => {
+  const calls = [];
+  const detail = {
+    setCodexStatusSnapshot(snapshot) {
+      calls.push(["detail", snapshot]);
+    },
+    deactivate() {
+      calls.push("deactivate");
+    },
+    open() {
+      calls.push("open");
+    },
+  };
+  const setup = {
+    setSnapshot(snapshot) {
+      calls.push(["setup", snapshot]);
+    },
+  };
+  const snapshot = { phase: "loaded", status: {} };
+  const owner = {
+    ensureRendered() {},
+    taskDetail: () => detail,
+    codexReadinessRecovery: () => setup,
+    taskStoreRecoveryVisible: () => true,
+    render() {
+      calls.push("render");
+    },
+  };
+
+  tasksPage.setCodexStatusSnapshot.call(owner, snapshot);
+
+  assert.deepEqual(calls, [["detail", snapshot], ["setup", snapshot], "render"]);
 });
 
 test("the terminal toggle and its input belong to an open Task or Section", () => {

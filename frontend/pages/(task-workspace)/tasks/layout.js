@@ -15,10 +15,13 @@ import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,
   codexSetupVisible,
-  taskStoreBlocksTaskOperations,
-  taskStoreRecoveryVisible as taskStoreTakesOver,
 } from "../codex-status.js";
+import {
+  INITIAL_TASK_STORE_STATUS_SNAPSHOT,
+  taskStoreBlocksTaskOperations,
+} from "../task-store-status.js";
 import "./components/codex-readiness-recovery.js";
+import "./components/task-store-recovery.js";
 import "./(detail)/layout.js";
 import { TERMINAL_PAGE_FOCUS_RELEASE_EVENT } from "./(detail)/terminal/page.js";
 import "./recovery/page.js";
@@ -49,6 +52,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.currentRoute = { kind: "tasks" };
     this.currentOpenOptions = {};
     this.codexStatusSnapshotValue = INITIAL_CODEX_STATUS_SNAPSHOT;
+    this.taskStoreStatusSnapshotValue = INITIAL_TASK_STORE_STATUS_SNAPSHOT;
     this.codexRestartStateValue = { state: "idle", message: "" };
     this.codexRuntimeActionValue = "idle";
     this.lastPublishedTransportTargets = "";
@@ -99,6 +103,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.innerHTML = `
       <section class="tasks-surface" aria-label="Tasks">
         <div class="tasks-detail-pane" role="region" aria-label="Task content" tabindex="-1">
+          <caffold-task-store-recovery hidden></caffold-task-store-recovery>
           <caffold-codex-readiness-recovery hidden></caffold-codex-readiness-recovery>
           <caffold-task-new hidden></caffold-task-new>
           <caffold-detail-layout hidden></caffold-detail-layout>
@@ -518,12 +523,25 @@ class CaffoldTasksPage extends HTMLElement {
 
   setCodexStatusSnapshot(snapshot) {
     this.ensureRendered();
-    const wasTakenOver = this.taskStoreRecoveryVisible();
     this.codexStatusSnapshotValue = snapshot ?? INITIAL_CODEX_STATUS_SNAPSHOT;
-    this.taskNew()?.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
     this.taskDetail()?.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
-    this.taskNavigator()?.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
     this.codexReadinessRecovery()?.setSnapshot(this.codexStatusSnapshotValue);
+    this.render();
+  }
+
+  setTaskStoreStatusSnapshot(snapshot) {
+    this.ensureRendered();
+    const wasTakenOver = this.taskStoreRecoveryVisible();
+    this.taskStoreStatusSnapshotValue =
+      snapshot ?? INITIAL_TASK_STORE_STATUS_SNAPSHOT;
+    this.taskNew()?.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshotValue);
+    this.taskDetail()?.setTaskStoreStatusSnapshot(
+      this.taskStoreStatusSnapshotValue,
+    );
+    this.taskNavigator()?.setTaskStoreStatusSnapshot(
+      this.taskStoreStatusSnapshotValue,
+    );
+    this.taskStoreRecovery()?.setSnapshot(this.taskStoreStatusSnapshotValue);
     if (this.taskStoreRecoveryVisible()) {
       this.taskDetail()?.deactivate();
     } else if (wasTakenOver && this.view === "detail" && this.selectedThreadId) {
@@ -555,11 +573,11 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   taskStoreOperationsBlocked() {
-    return taskStoreBlocksTaskOperations(this.codexStatusSnapshotValue.status);
+    return taskStoreBlocksTaskOperations(this.taskStoreStatusSnapshotValue);
   }
 
   taskStoreRecoveryVisible() {
-    return taskStoreTakesOver(this.codexStatusSnapshotValue);
+    return this.taskStoreOperationsBlocked();
   }
 
   get taskDetailView() {
@@ -622,10 +640,11 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   activeDirectSurfaceOwners() {
-    const setup = this.codexReadinessRecovery();
     if (this.taskStoreRecoveryVisible()) {
-      return setup && !setup.hidden ? [setup] : [];
+      const recovery = this.taskStoreRecovery();
+      return recovery && !recovery.hidden ? [recovery] : [];
     }
+    const setup = this.codexReadinessRecovery();
     const owners = [];
     if ((this.view === "home" || this.view === "new") && !this.taskNew()?.hidden) {
       owners.push(this.taskNew());
@@ -681,6 +700,12 @@ class CaffoldTasksPage extends HTMLElement {
   codexReadinessRecovery() {
     return this.querySelector(
       ":scope > .tasks-surface caffold-codex-readiness-recovery",
+    );
+  }
+
+  taskStoreRecovery() {
+    return this.querySelector(
+      ":scope > .tasks-surface caffold-task-store-recovery",
     );
   }
 
@@ -854,11 +879,8 @@ class CaffoldTasksPage extends HTMLElement {
     const takeover = this.taskStoreRecoveryVisible();
     const setupBeside =
       !takeover && showNew && codexSetupVisible(this.codexStatusSnapshotValue);
-    const setup = this.codexReadinessRecovery();
-    setup?.toggleAttribute("hidden", !(takeover || setupBeside));
-    if (setup) {
-      setup.dataset.presentation = setupBeside ? "beside" : "takeover";
-    }
+    this.taskStoreRecovery()?.toggleAttribute("hidden", !takeover);
+    this.codexReadinessRecovery()?.toggleAttribute("hidden", !setupBeside);
     this.taskNew()?.toggleAttribute("hidden", takeover || !showNew);
     this.taskDetail()?.toggleAttribute(
       "hidden",

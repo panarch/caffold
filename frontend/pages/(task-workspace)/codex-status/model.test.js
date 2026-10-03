@@ -12,8 +12,6 @@ import {
   formatResetCredits,
   resetCreditExpiry,
   sameCodexStatus,
-  taskStoreOperationsPresentation,
-  taskStoreRecoveryVisible,
 } from "./model.js";
 
 function codexStatus(state, blocksTaskOperations = state !== "ready") {
@@ -80,51 +78,6 @@ test("Codex readiness gates only Codex surfaces, and unknown is not blocked", ()
     [false, true, true, false, true],
     "the setup card shows for a blocked Codex or a status nobody could load",
   );
-});
-
-test("only the Task store takes every Task operation, and only when it says so", () => {
-  const migrating = codexStatus("ready", false);
-  migrating.taskStoreReadiness = {
-    state: "migrating",
-    blocksTaskOperations: true,
-    diagnosticMessage: "Applying the staged v5 database.",
-  };
-  const failed = codexStatus("ready", false);
-  failed.taskStoreReadiness = {
-    state: "failed",
-    blocksTaskOperations: true,
-    diagnosticMessage: "The staged database could not be published.",
-  };
-
-  assert.deepEqual(
-    [migrating, failed].map((status) => {
-      const view = taskStoreOperationsPresentation(loadedSnapshot(status));
-      return {
-        phase: view.phase,
-        title: view.title,
-        message: view.message,
-      };
-    }),
-    [
-      {
-        phase: "taskStore:migrating",
-        title: "Preparing Tasks…",
-        message: "Applying the staged v5 database.",
-      },
-      {
-        phase: "taskStore:failed",
-        title: "Task data upgrade failed",
-        message: "The staged database could not be published.",
-      },
-    ],
-  );
-
-  // Codex being blocked is not the store being blocked: no takeover, and
-  // nothing store-gated locks.
-  const codexOnly = loadedSnapshot(codexStatus("updateRequired"));
-  assert.equal(taskStoreOperationsPresentation(codexOnly).blocked, false);
-  assert.equal(taskStoreRecoveryVisible(codexOnly), false);
-  assert.equal(taskStoreRecoveryVisible(loadedSnapshot(migrating)), true);
 });
 
 test("a rate window is labelled by the period it meters, never by a guess", () => {

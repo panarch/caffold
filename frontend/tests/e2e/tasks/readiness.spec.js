@@ -5,6 +5,7 @@ import {
   installBrowserDefaults,
   mockCodexStatus,
   mockCodexUpdates,
+  mockTaskStoreStatus,
 } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -128,10 +129,6 @@ for (const [state, heading] of BLOCKING_STATES) {
     await expect(setup.getByRole("heading", { name: heading })).toBeVisible();
     await expect(setup.getByRole("button", { name: "Retry" })).toBeEnabled();
     await expect(setup.getByRole("button", { name: "Open Settings" })).toBeEnabled();
-    await expect(page.locator("caffold-codex-readiness-recovery")).toHaveAttribute(
-      "data-presentation",
-      "beside",
-    );
     const composerField = page.locator("caffold-task-new textarea");
     await expect(composerField).toBeVisible();
     await expect(composerField).toBeEnabled();
@@ -213,7 +210,6 @@ test("keeps the Codex setup card below the compact Back on New Task", { tag: "@p
     "data-tasks-view",
     "new",
   );
-  await expect(setup).toHaveAttribute("data-presentation", "beside");
   await expect(setup).toBeVisible();
   await expect(back).toBeVisible();
   const boxes = await page.evaluate(() => {
@@ -419,10 +415,6 @@ test("a readiness load failure is not presented as a setup requirement", { tag: 
   await expect(
     page.locator('[data-readiness-state="checkFailed"]'),
   ).toBeVisible();
-  await expect(page.locator("caffold-codex-readiness-recovery")).toHaveAttribute(
-    "data-presentation",
-    "beside",
-  );
   await expect(
     page.getByRole("heading", { name: "Codex readiness could not be checked" }),
   ).toBeVisible();
@@ -445,17 +437,15 @@ test("a failed Task-store migration has its own explicit retry lifecycle", { tag
 }) => {
   let retryRequests = 0;
   let retried = false;
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
-    const status = mockCodexStatus();
-    if (!retried) {
-      status.taskStoreReadiness = {
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: retried ? mockTaskStoreStatus() : mockTaskStoreStatus({
         state: "failed",
         blocksTaskOperations: true,
         diagnosticMessage: "Staged v5 validation failed.",
-      };
-    }
-    return route.fulfill({ json: status });
-  });
+      }),
+    })
+  );
   await page.route(/\/api\/task-store\/migration\/retry$/, (route) => {
     retryRequests += 1;
     retried = true;
@@ -465,14 +455,17 @@ test("a failed Task-store migration has its own explicit retry lifecycle", { tag
   await page.goto("/");
 
   const setup = page.locator(
-    '[data-readiness-state="taskStore-failed"]',
+    '.task-store-recovery-card[data-task-store-state="failed"]',
   );
   await expect(setup).toBeVisible();
   await expect(
     setup.getByRole("heading", { name: "Task data upgrade failed" }),
   ).toBeVisible();
   await expect(setup).toContainText("Staged v5 validation failed.");
-  await verifyReadinessScrollIsolation(page);
+  await verifyReadinessScrollIsolation(page, {
+    scrollport: "caffold-task-store-recovery:not([hidden]) > .task-store-recovery-surface",
+    label: "Task setup",
+  });
   await revealActionTarget(
     page,
     setup.getByRole("button", { name: "Retry Task setup" }),
@@ -480,7 +473,7 @@ test("a failed Task-store migration has its own explicit retry lifecycle", { tag
   await activateActionHint(page, /Retry Task setup$/);
 
   await expect.poll(() => retryRequests).toBe(1);
-  await expect(page.locator(".codex-readiness-surface")).toBeHidden();
+  await expect(page.locator("caffold-task-store-recovery")).toBeHidden();
   await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
 });
 
@@ -773,35 +766,26 @@ test("a Task-store takeover hands the open Task back when it clears", { tag: "@a
   const composer = page.locator(".task-follow-up-form textarea");
   await expect(composer).toBeVisible();
 
-  const takeover = mockCodexStatus();
-  takeover.taskStoreReadiness = {
+  const setTaskStore = (readiness) => page.evaluate((value) => {
+    document.querySelector("caffold-task-workspace").setTaskStoreStatusSnapshot({
+      readiness: value,
+      retryAvailable: value.state === "failed",
+    });
+  }, readiness);
+  const takeover = page.locator(
+    '.task-store-recovery-card[data-task-store-state="failed"]',
+  );
+  await setTaskStore(mockTaskStoreStatus({
     state: "failed",
     blocksTaskOperations: true,
     diagnosticMessage: "Staged v5 validation failed.",
-  };
-  await page.evaluate((status) => {
-    document.querySelector("caffold-task-workspace").setCodexStatusSnapshot({
-      phase: "loaded",
-      status,
-      error: "",
-    });
-  }, takeover);
-  await expect(
-    page.locator('[data-readiness-state="taskStore-failed"]'),
-  ).toBeVisible();
+  }));
+  await expect(takeover).toBeVisible();
   await expect(composer).toBeHidden();
 
-  await page.evaluate((status) => {
-    document.querySelector("caffold-task-workspace").setCodexStatusSnapshot({
-      phase: "loaded",
-      status,
-      error: "",
-    });
-  }, mockCodexStatus());
+  await setTaskStore(mockTaskStoreStatus());
 
-  await expect(
-    page.locator('[data-readiness-state="taskStore-failed"]'),
-  ).toBeHidden();
+  await expect(takeover).toBeHidden();
   await expect(composer).toBeVisible();
   await expect(composer).toBeEnabled();
 });
@@ -1050,10 +1034,11 @@ test("consumes the real backend readiness contract and gates Task creation", { t
   });
 });
 
-async function verifyReadinessScrollIsolation(page) {
-  const readinessScroll = page.locator(
-    "caffold-codex-readiness-recovery:not([hidden]) > .codex-readiness-surface",
-  );
+async function verifyReadinessScrollIsolation(page, {
+  scrollport = "caffold-codex-readiness-recovery:not([hidden]) > .codex-readiness-surface",
+  label = "Codex readiness",
+} = {}) {
+  const readinessScroll = page.locator(scrollport);
   await readinessScroll.evaluate((element) => {
     element.style.height = "120px";
     element.style.maxHeight = "120px";
@@ -1081,11 +1066,11 @@ async function verifyReadinessScrollIsolation(page) {
     await selector.isVisible() || await hud.isVisible()
   ).toBe(true);
   if (await selector.isVisible()) {
-    const readiness = selector.getByLabel(/^[A-Z]+ — Codex readiness$/);
+    const readiness = selector.getByLabel(new RegExp(`^[A-Z]+ — ${label}$`));
     await expect(readiness).toBeVisible();
     await readiness.click();
   }
-  await expect(hud).toContainText("Scroll: Codex readiness");
+  await expect(hud).toContainText(`Scroll: ${label}`);
   await page.keyboard.press("j");
   await expect.poll(() => readinessScroll.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(0);
