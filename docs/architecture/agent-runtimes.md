@@ -268,6 +268,12 @@ children and removing its socket. An explicit Claude runtime restart does the
 same immediately and then starts a fresh runner. Ended conversations remain
 resumable from Claude's transcript when their Tasks are opened.
 
+The backend asks a one-off `claude` process for the model list the first time a
+request needs it and keeps that answer. A successful explicit restart forgets
+it, so the next request asks the binary installed now, under the account
+signed in now; a composer receives that list the next time its model menu
+opens.
+
 A newly created Claude Task legitimately has no transcript until its first
 ordinary prompt materializes provider history. A backend replacement reattaches
 to the runner's exact live session when that session survived. If both the live

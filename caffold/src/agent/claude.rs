@@ -136,8 +136,9 @@ struct ClaudeClientInner {
     projects: Option<std::path::PathBuf>,
     sessions: AsyncMutex<HashMap<String, Arc<Session>>>,
     events: broadcast::Sender<ClaudeRuntimeEvent>,
-    /// The model list, once asked for. Asking costs a process start, and the
-    /// answer does not change while the installation does not.
+    /// The model list, once asked for. Asking costs a process start; a runtime
+    /// restart, which is how another installed binary or another signed-in
+    /// account is taken up, forgets it.
     models: AsyncMutex<Option<Vec<ModelOption>>>,
 }
 
@@ -584,8 +585,8 @@ impl ClaudeClient {
     /// Every session ends with the old runner and every Task it was running
     /// goes idle, exactly as an application update leaves them; conversations
     /// resume from their files as Tasks are opened. What this buys is a runner
-    /// running the currently installed binary, and a deliberate way to put the
-    /// whole Claude runtime down and up again.
+    /// running the currently installed binary, a model list asked for again,
+    /// and a deliberate way to put the whole Claude runtime down and up again.
     pub(crate) async fn restart_runtime(
         &self,
     ) -> Result<caffold_claude_runner::protocol::DaemonStatus, ClaudeError> {
@@ -600,6 +601,8 @@ impl ClaudeClient {
             for session in &sessions {
                 session.closing.store(false, Ordering::Relaxed);
             }
+        } else {
+            *self.inner.models.lock().await = None;
         }
         restarted
     }
@@ -2037,6 +2040,33 @@ mod tests {
             .await
             .expect("the task finishes")
             .expect("the conversation opens once the door is free");
+    }
+
+    #[tokio::test]
+    async fn a_runtime_restart_forgets_the_model_list() {
+        let (client, _runner) = ClaudeClient::mock();
+        client
+            .offer_models(vec![ModelOption {
+                model: "opus".to_string(),
+                display_name: "Opus".to_string(),
+                description: None,
+                is_default: true,
+                default_effort: None,
+                efforts: Vec::new(),
+                supports_fast_mode: false,
+                supports_auto_mode: true,
+            }])
+            .await;
+
+        client
+            .restart_runtime()
+            .await
+            .expect("the runtime restarts");
+
+        assert!(
+            client.inner.models.lock().await.is_none(),
+            "the next model request asks the restarted agent"
+        );
     }
 
     #[tokio::test]

@@ -483,7 +483,8 @@ Settings includes:
   signed-in account and plan, and the runner's process state, with a
   **Refresh** action; plus an explicit, confirmed restart that stops the runner
   and every Claude session it holds, starts a fresh runner on the installed
-  binary, and lets conversations resume when their Tasks are opened;
+  binary, makes the model menu offer the models that binary lists, and lets
+  conversations resume when their Tasks are opened;
 - Grok installation status, shown and never gated on: plan usage as the
   leader reports it, the executable's version and path, the signed-in account
   as the leader confirms it, the leader on Caffold's socket with its own
