@@ -152,10 +152,6 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
     const viewerAxis = review.querySelector(
       '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
     );
-    const summary = document.querySelector(".detail-layout-summary");
-    const github = summary.querySelector(".task-github-button");
-    // The group after GitHub starts with the terminal button.
-    const nextGroup = summary.querySelector(".task-terminal-button");
     const visualBounds = (element, pseudo) => {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element, pseudo);
@@ -165,20 +161,13 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
       };
     };
     const viewerInfoBounds = visualBounds(viewerInfo, "::after");
-    const githubBounds = visualBounds(github, "::before");
-    const nextGroupBounds = visualBounds(nextGroup, "::before");
     const rootStyle = getComputedStyle(document.documentElement);
     return {
       overflow: review.scrollWidth > review.clientWidth,
       navigatorVisible: getComputedStyle(navigator).display !== "none",
       viewerVisible: getComputedStyle(viewer).display !== "none",
-      lowerControlGap:
+      viewerControlGap:
         viewerAxis.getBoundingClientRect().left - viewerInfoBounds.right,
-      upperControlGap: nextGroupBounds.left - githubBounds.right,
-      upperControlsShareRow:
-        Math.abs(
-          nextGroup.getBoundingClientRect().top - github.getBoundingClientRect().top,
-        ) <= 1,
       expectedControlGap:
         Number.parseFloat(rootStyle.getPropertyValue("--interface-space-5")) *
         Number.parseFloat(rootStyle.fontSize),
@@ -188,13 +177,8 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   expect(after.viewerVisible).toBe(true);
   expect(after.navigatorVisible).toBe(testInfo.project.name !== "phone");
   expect(
-    Math.abs(after.lowerControlGap - after.expectedControlGap),
+    Math.abs(after.viewerControlGap - after.expectedControlGap),
   ).toBeLessThanOrEqual(1);
-  if (after.upperControlsShareRow) {
-    expect(
-      Math.abs(after.lowerControlGap - after.upperControlGap),
-    ).toBeLessThanOrEqual(1);
-  }
 });
 
 test("owns one collapsed Back across Conversation and Review modes", { tag: "@phone" }, async ({

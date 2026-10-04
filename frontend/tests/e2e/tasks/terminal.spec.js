@@ -499,34 +499,52 @@ test("the terminal bar is as tall as the review file header, with its buttons un
   await terminalButton(page).click();
   await expectLive(page);
 
-  const geometry = await page.evaluate(() => {
-    // The box a button draws, inside its larger hit area.
-    const drawn = (button) => {
-      const rect = button.getBoundingClientRect();
-      const box = ["::before", "::after"]
-        .map((pseudo) => getComputedStyle(button, pseudo))
-        .find((style) => style.position === "absolute" && style.content !== "none");
-      const inset = box ? parseFloat(box.left) : 0;
-      return { left: rect.left + inset, right: rect.right - inset };
-    };
-    const bar = document.querySelector("caffold-terminal-page > .terminal-page-bar");
-    const [keyboard, kill] = [...bar.querySelectorAll(":scope > button")].map(drawn);
-    return {
-      barHeight: bar.getBoundingClientRect().height,
-      terminal: drawn(document.querySelector("caffold-task-detail-terminal > button")),
-      info: drawn(
-        [...document.querySelectorAll(".task-detail-info-button")]
-          .find((button) => button.getClientRects().length),
-      ),
-      keyboard,
-      kill,
-    };
+  const barHeight = await page
+    .locator("caffold-terminal-page > .terminal-page-bar")
+    .evaluate((bar) => bar.getBoundingClientRect().height);
+  const buttons = await drawnButtons(page, {
+    terminal: "caffold-task-detail-terminal > button",
+    info: ".task-detail-info-button",
+    keyboard: '.terminal-page-bar > [data-terminal-action="special-keys"]',
+    kill: '.terminal-page-bar > [data-terminal-action="kill"]',
   });
-  expect(geometry.barHeight).toBeCloseTo(reviewHeight, 1);
-  expect(geometry.keyboard.left).toBeCloseTo(geometry.terminal.left, 1);
-  expect(geometry.keyboard.right).toBeCloseTo(geometry.terminal.right, 1);
-  expect(geometry.kill.left).toBeCloseTo(geometry.info.left, 1);
-  expect(geometry.kill.right).toBeCloseTo(geometry.info.right, 1);
+  expect(barHeight).toBeCloseTo(reviewHeight, 1);
+  expect(buttons.keyboard.left).toBeCloseTo(buttons.terminal.left, 1);
+  expect(buttons.keyboard.right).toBeCloseTo(buttons.terminal.right, 1);
+  expect(buttons.kill.left).toBeCloseTo(buttons.info.left, 1);
+  expect(buttons.kill.right).toBeCloseTo(buttons.info.right, 1);
+});
+
+// The phone moves GitHub to the second row, away from the terminal button.
+test("a Section's terminal bar has its buttons under GitHub and the terminal button", { tag: ["@desktop", "@foldable"] }, async ({
+  page,
+}, testInfo) => {
+  await page.route("**/api/terminal", (route) => route.fulfill({ status: 204 }));
+  await page.routeWebSocket(/\/api\/terminal\/socket/, (socket) => {
+    socket.onMessage(() => {});
+    socket.send(JSON.stringify({ type: "attached" }));
+  });
+  const sectionId = terminalTaskId("section-bar");
+  const projection = activeTaskProjection([terminalDetail(sectionId).task]);
+  projection.sections[0].id = sectionId;
+  await installTaskApiFixture(page);
+  await page.route("**/api/tasks", (route) => route.fulfill({ json: projection }));
+  await page.goto(`/?section=${sectionId}`);
+
+  await terminalButton(page).click();
+  await expectLive(page);
+  await captureReviewScreenshot(page, testInfo, "terminal-bar-section");
+
+  const buttons = await drawnButtons(page, {
+    github: ".task-github-button",
+    terminal: "caffold-task-detail-terminal > button",
+    keyboard: '.terminal-page-bar > [data-terminal-action="special-keys"]',
+    kill: '.terminal-page-bar > [data-terminal-action="kill"]',
+  });
+  expect(buttons.keyboard.left).toBeCloseTo(buttons.github.left, 1);
+  expect(buttons.keyboard.right).toBeCloseTo(buttons.github.right, 1);
+  expect(buttons.kill.left).toBeCloseTo(buttons.terminal.left, 1);
+  expect(buttons.kill.right).toBeCloseTo(buttons.terminal.right, 1);
 });
 
 test("from Working Tree the terminal keeps the header in place and brings no Task list", { tag: ["@desktop", "@foldable"] }, async ({
@@ -825,6 +843,23 @@ async function expectLive(page) {
 // types only once the prompt is on screen.
 async function expectPrompt(page) {
   await expect(terminalRows(page)).toContainText(/[$#]\s*$/);
+}
+
+// Where each button draws its box, inside its larger hit area. The first
+// button on screen for each selector is measured.
+async function drawnButtons(page, selectors) {
+  return page.evaluate((selectors) => Object.fromEntries(
+    Object.entries(selectors).map(([name, selector]) => {
+      const button = [...document.querySelectorAll(selector)]
+        .find((element) => element.getClientRects().length);
+      const rect = button.getBoundingClientRect();
+      const box = ["::before", "::after"]
+        .map((pseudo) => getComputedStyle(button, pseudo))
+        .find((style) => style.position === "absolute" && style.content !== "none");
+      const inset = box ? parseFloat(box.left) : 0;
+      return [name, { left: rect.left + inset, right: rect.right - inset }];
+    }),
+  ), selectors);
 }
 
 // Drags `fingers` from the middle of the terminal screen `rows` rows down, or

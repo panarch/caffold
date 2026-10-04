@@ -148,10 +148,10 @@ test("scales visible Task controls without shrinking their touch targets", { tag
       metrics.headerActionGap,
       1,
     );
-    // The terminal button starts a group after GitHub and pairs with Task details.
+    // On the phone the terminal button leaves GitHub's row for the title's.
     if (metrics.headerActionGaps.githubToTerminal !== null) {
       expect(metrics.headerActionGaps.githubToTerminal).toBeCloseTo(
-        metrics.headerGroupGap,
+        metrics.headerActionGap,
         1,
       );
     }
@@ -428,10 +428,6 @@ function taskInterfaceMetrics(page) {
         document.documentElement.clientWidth,
       headerActionGap: Math.max(
         tokenPixels("--interface-toolbar-gap"),
-        compactInset * 2,
-      ),
-      headerGroupGap: Math.max(
-        tokenPixels("--interface-space-5"),
         compactInset * 2,
       ),
       headerActionGaps: {

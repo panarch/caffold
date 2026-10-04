@@ -10,14 +10,6 @@ caffold-detail-layout {
         var(--interface-compact-hit-outset)
     )
   );
-  --detail-layout-group-gap: max(
-    0rem,
-    calc(
-      var(--interface-space-5) -
-        var(--interface-compact-hit-outset) -
-        var(--interface-compact-hit-outset)
-    )
-  );
   display: block;
   min-width: 0;
   min-height: 0;
@@ -108,8 +100,8 @@ caffold-detail-layout {
     overflow: hidden;
   }
 
-  /* The terminal bar ends where the header does and spaces its buttons like the
-     header's terminal and Task details buttons. */
+  /* The terminal bar ends where the header does and spaces its buttons as the
+     header does. */
   & .detail-layout-body > div > caffold-terminal-page {
     --terminal-page-bar-gap: var(--detail-layout-control-gap);
     --terminal-page-bar-padding-inline: var(--task-detail-header-padding-inline);
@@ -117,10 +109,10 @@ caffold-detail-layout {
 }
 
 @media (min-width: 521px) {
-  /* The terminal button starts a group after the view and repository actions. */
+  /* On the actions' row, the terminal button keeps their spacing. */
   caffold-detail-layout .detail-layout-summary > caffold-task-detail-terminal {
     margin-inline-start: calc(
-      var(--detail-layout-group-gap) - var(--detail-layout-summary-gap)
+      var(--detail-layout-control-gap) - var(--detail-layout-summary-gap)
     );
   }
 }
