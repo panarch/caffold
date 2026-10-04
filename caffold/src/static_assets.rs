@@ -187,6 +187,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/components/update-dialog.js" => Some(js(include_str!(
             "../../frontend/pages/components/update-dialog.js"
         ))),
+        "pages/components/update-result-dialog.css" => Some(css(include_str!(
+            "../../frontend/pages/components/update-result-dialog.css"
+        ))),
+        "pages/components/update-result-dialog.js" => Some(js(include_str!(
+            "../../frontend/pages/components/update-result-dialog.js"
+        ))),
         "components/file-tree.css" => {
             Some(css(include_str!("../../frontend/components/file-tree.css")))
         }
@@ -464,6 +470,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "pages/(task-workspace)/components/navigation.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/components/navigation.js"
+        ))),
+        "pages/(task-workspace)/components/update-task-dialog.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/components/update-task-dialog.css"
+        ))),
+        "pages/(task-workspace)/components/update-task-dialog.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/components/update-task-dialog.js"
         ))),
         "pages/(task-workspace)/components/workspace-brand.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/components/workspace-brand.css"
@@ -1580,6 +1592,21 @@ mod tests {
             get("pages/components/update-dialog.js").expect("update dialog js asset");
         assert_eq!(update_dialog.content_type, "text/javascript; charset=utf-8");
         assert!(update_dialog.body.starts_with(b"import "));
+
+        for path in [
+            "pages/components/update-result-dialog.js",
+            "pages/(task-workspace)/components/update-task-dialog.js",
+        ] {
+            let dialog = get(path).expect("update dialog js asset");
+            assert_eq!(dialog.content_type, "text/javascript; charset=utf-8");
+        }
+        for path in [
+            "pages/components/update-result-dialog.css",
+            "pages/(task-workspace)/components/update-task-dialog.css",
+        ] {
+            let dialog = get(path).expect("update dialog css asset");
+            assert_eq!(dialog.content_type, "text/css; charset=utf-8");
+        }
 
         assert!(get("pages/components/about-dialog.js").is_none());
         assert!(get("pages/components/about-dialog.css").is_none());

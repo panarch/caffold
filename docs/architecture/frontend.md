@@ -207,6 +207,17 @@ single owner of service-worker registration and build handoff, and publishes
 the update dialog and About Caffold; presentation components emit user intent
 without inspecting service-worker state.
 
+The app shell also asks `GET /api/caffold/update` at bootstrap, whenever About
+opens, and after every foreground recovery that reached the server, so a window
+left open during an update learns how it ended. It merges concurrent requests,
+never holds recovery up for the answer, and passes the answer down through
+the task workspace to the navigation dot, the Settings navigator, and About.
+It alone decides to open `caffold-update-result-dialog` for a rolled-back or
+unrestored attempt this browser has not seen, which it records under
+`caffold:update-result-seen`. About emits an update request; the task
+workspace owns `caffold-update-task-dialog` and hands the Task it starts to the
+Tasks page's `startTaskCreation`, as Start Task does.
+
 A replacement is `ready` only after its complete shell cache is available, and
 Reload explicitly transitions to that prepared generation. The viewport-fixed
 `caffold-build-mismatch-alert` remains a separate exceptional diagnostic and
@@ -231,7 +242,8 @@ deliberately page-local and is not persisted. A discarded page reconstructs
 update availability from the server and browser registration, then allows the
 user to request Reload again. Shell-cache pruning remains disabled
 until no handoff target or prepared generation remains and the active worker
-controls the page. About Caffold copy diagnostics includes the handoff node,
+controls the page. About Caffold copy diagnostics includes the Caffold version,
+newest release, last update, handoff node,
 target and observed worker build IDs, and navigation-attempt count. Invoking
 Copy diagnostics also requests the existing Codex proxy's on-demand MCP
 snapshot and appends its runtime generation, app-server version, and per-thread

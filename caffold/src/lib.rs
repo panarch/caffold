@@ -14,4 +14,5 @@ mod github;
 mod server_settings;
 mod static_assets;
 mod task_store;
+mod update;
 mod watch;

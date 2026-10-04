@@ -18,6 +18,7 @@ class CaffoldSettingsNavigatorItem extends HTMLElement {
     this.entry = null;
     this.selected = false;
     this.codexStatusSnapshotValue = null;
+    this.updateAvailable = false;
     this.connected = false;
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.renderIcon();
@@ -61,6 +62,7 @@ class CaffoldSettingsNavigatorItem extends HTMLElement {
     `;
     this.renderIcon();
     this.syncSelected();
+    this.syncUpdateAvailable();
   }
 
   setSelected(selected) {
@@ -72,6 +74,12 @@ class CaffoldSettingsNavigatorItem extends HTMLElement {
   setCodexStatusSnapshot(snapshot) {
     this.codexStatusSnapshotValue = snapshot ?? null;
     this.syncCodexStatus();
+  }
+
+  // Only the About entry shows that a newer Caffold exists.
+  setUpdateAvailable(available) {
+    this.updateAvailable = available === true;
+    this.syncUpdateAvailable();
   }
 
   handleClick(event) {
@@ -149,6 +157,19 @@ class CaffoldSettingsNavigatorItem extends HTMLElement {
     button.dataset.codexState = state;
     button.title = label;
     button.setAttribute("aria-label", label);
+  }
+
+  syncUpdateAvailable() {
+    const button = this.button();
+    if (!button || !this.entry) {
+      return;
+    }
+    button.toggleAttribute("data-update-available", this.updateAvailable);
+    if (this.updateAvailable) {
+      button.setAttribute("aria-label", `${this.entry.label} — update available`);
+    } else if (this.entry.section !== "codex") {
+      button.removeAttribute("aria-label");
+    }
   }
 
   button() {

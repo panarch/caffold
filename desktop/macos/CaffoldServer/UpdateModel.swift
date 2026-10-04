@@ -91,12 +91,6 @@ struct CaffoldRelease: Equatable {
     let webpageURL: URL
 }
 
-enum UpdateRuntimeState {
-    case stopped
-    case ownedServer
-    case externalServer
-}
-
 private struct GitHubReleasePayload: Decodable {
     let tagName: String
     let htmlURL: URL
@@ -111,32 +105,12 @@ private struct GitHubReleasePayload: Decodable {
     }
 }
 
-private struct UpdateTaskProjection: Decodable {
-    struct Task: Decodable {
-        struct ThreadStatus: Decodable {
-            let type: String
-        }
-
-        let threadStatus: ThreadStatus
-    }
-
-    struct Section: Decodable {
-        let tasks: [Task]
-    }
-
-    let sections: [Section]
-    let unsectioned: [Task]
-}
-
 enum ApplicationUpdateError: LocalizedError {
     case invalidRelease
     case invalidResponse
     case homebrewUnavailable
     case notInstalledByHomebrew
     case externallyManagedServer
-    case upgradeFailed(String)
-    case installedVersionMismatch(expected: String, found: String?)
-    case relaunchFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -150,13 +124,6 @@ enum ApplicationUpdateError: LocalizedError {
             return "This copy of Caffold is not managed by Homebrew."
         case .externallyManagedServer:
             return "Caffold is connected to an externally managed server. Stop that server before updating the application."
-        case let .upgradeFailed(message):
-            return "Homebrew could not update Caffold.\n\n\(message)"
-        case let .installedVersionMismatch(expected, found):
-            let actual = found ?? "unknown"
-            return "Homebrew completed, but the installed app is version \(actual) instead of \(expected). The tap may still be publishing; try again shortly."
-        case let .relaunchFailed(message):
-            return "Caffold was updated but could not schedule its relaunch.\n\n\(message)"
         }
     }
 }
@@ -173,13 +140,6 @@ func decodeCaffoldRelease(_ data: Data) throws -> CaffoldRelease {
     return CaffoldRelease(version: version, webpageURL: payload.htmlURL)
 }
 
-func decodeActiveTaskCount(_ data: Data) throws -> Int {
-    let projection = try JSONDecoder().decode(UpdateTaskProjection.self, from: data)
-    return (projection.sections.flatMap(\.tasks) + projection.unsectioned)
-        .filter { $0.threadStatus.type == "active" }
-        .count
-}
-
 func caffoldLatestReleaseRequest(currentVersion: CaffoldVersion) -> URLRequest {
     let url = URL(string: "https://api.github.com/repos/panarch/caffold/releases/latest")!
     var request = URLRequest(url: url)
@@ -191,64 +151,125 @@ func caffoldLatestReleaseRequest(currentVersion: CaffoldVersion) -> URLRequest {
     return request
 }
 
-func caffoldActiveTasksRequest(baseURL: URL) -> URLRequest {
-    var request = URLRequest(url: baseURL.appendingPathComponent("api/tasks"))
-    request.timeoutInterval = 5
-    return request
+
+/// The `caffold update` arguments that update this app and record the attempt
+/// as started from the menu bar.
+func caffoldUpdateArguments(bundleURL: URL, dataDirectory: URL, port: Int) -> [String] {
+    [
+        "update",
+        "--app", bundleURL.path,
+        "--data-dir", dataDirectory.path,
+        "--port", String(port),
+        "--from-menu-bar",
+    ]
 }
 
-func homebrewUpgradeArguments() -> [String] {
-    ["upgrade", "--cask", "panarch/tap/caffold"]
+func updateConfirmationText(for version: CaffoldVersion) -> String {
+    "Caffold backs up this version, installs \(version) with Homebrew, and restarts. If \(version) does not start, this version is restored. Running Tasks keep going; open terminals close."
 }
 
-func caffoldRelaunchScript() -> String {
-    """
-    parent_pid="$1"
-    server_pid="$2"
-    app_path="$3"
-    attempts=0
-    while /bin/kill -0 "$parent_pid" 2>/dev/null && [ "$attempts" -lt 300 ]; do
-      /bin/sleep 0.1
-      attempts=$((attempts + 1))
-    done
-    attempts=0
-    while [ "$server_pid" -gt 0 ] && /bin/kill -0 "$server_pid" 2>/dev/null && [ "$attempts" -lt 150 ]; do
-      /bin/sleep 0.1
-      attempts=$((attempts + 1))
-    done
-    /usr/bin/open "$app_path"
-    """
+/// One `caffold update` run, as it records itself in
+/// `caffold-updates/attempts/<id>/attempt.json` under the data directory.
+struct UpdateAttempt: Decodable, Equatable {
+    enum Outcome: String, Decodable {
+        case running
+        case upToDate
+        case homebrewFailed
+        case succeeded
+        case rolledBack
+        case restoreFailed
+        case interrupted
+    }
+
+    let id: String
+    let fromVersion: String
+    let toVersion: String?
+    let startedFromMenuBar: Bool
+    let outcome: Outcome
+    let reason: String?
 }
 
-func installedBundleVersion(at bundleURL: URL) -> CaffoldVersion? {
-    let plistURL = bundleURL.appendingPathComponent("Contents/Info.plist")
-    guard
-        let dictionary = NSDictionary(contentsOf: plistURL),
-        let rawVersion = dictionary["CFBundleShortVersionString"] as? String
-    else {
+/// The newest attempt with a record Caffold can read. Attempt ids are their
+/// UTC start times, so the newest sorts last.
+func latestUpdateAttempt(in recordsDirectory: URL) -> UpdateAttempt? {
+    let attempts = recordsDirectory.appendingPathComponent("attempts", isDirectory: true)
+    guard let ids = try? FileManager.default.contentsOfDirectory(atPath: attempts.path) else {
         return nil
     }
-    return CaffoldVersion(rawVersion)
+    for id in ids.sorted(by: >) {
+        let record = attempts
+            .appendingPathComponent(id, isDirectory: true)
+            .appendingPathComponent("attempt.json")
+        if let data = try? Data(contentsOf: record),
+           let attempt = try? JSONDecoder().decode(UpdateAttempt.self, from: data) {
+            return attempt
+        }
+    }
+    return nil
 }
 
-@discardableResult
-func validateHomebrewUpgrade(
-    _ command: CommandResult,
-    expectedVersion: CaffoldVersion,
-    bundleURL: URL
-) throws -> CaffoldVersion {
-    guard command.status == 0 else {
-        let output = String(command.output.prefix(2_000))
-        throw ApplicationUpdateError.upgradeFailed(
-            output.isEmpty ? "Homebrew exited with status \(command.status)." : output
+struct UpdateResultAlert: Equatable {
+    let title: String
+    let detail: String
+    let isWarning: Bool
+    /// Offers to open the records, for an outcome someone may need to look
+    /// into.
+    let showsRecords: Bool
+}
+
+/// The alert for a finished attempt; a running attempt has none yet.
+func updateResultAlert(
+    for attempt: UpdateAttempt,
+    recordsDirectory: URL
+) -> UpdateResultAlert? {
+    let from = attempt.fromVersion
+    let to = attempt.toVersion ?? "the new version"
+    let reason = attempt.reason ?? ""
+    let records = "The records are in \(recordsDirectory.path)."
+    switch attempt.outcome {
+    case .running:
+        return nil
+    case .succeeded:
+        return UpdateResultAlert(
+            title: "Caffold was updated",
+            detail: "Caffold \(to) is running and the local server is ready.",
+            isWarning: false,
+            showsRecords: false
+        )
+    case .upToDate:
+        return UpdateResultAlert(
+            title: "Caffold is up to date",
+            detail: "Homebrew has nothing newer than Caffold \(from).",
+            isWarning: false,
+            showsRecords: false
+        )
+    case .homebrewFailed:
+        return UpdateResultAlert(
+            title: "Caffold could not update",
+            detail: "Homebrew could not update Caffold, so Caffold \(from) kept running.\n\n\(reason)",
+            isWarning: true,
+            showsRecords: true
+        )
+    case .rolledBack:
+        return UpdateResultAlert(
+            title: "Caffold update was rolled back",
+            detail: "\(reason), so Caffold \(from) was restored.\n\n\(records)",
+            isWarning: true,
+            showsRecords: true
+        )
+    case .restoreFailed:
+        return UpdateResultAlert(
+            title: "Caffold update failed",
+            detail: "\(reason).\n\n\(records)",
+            isWarning: true,
+            showsRecords: true
+        )
+    case .interrupted:
+        return UpdateResultAlert(
+            title: "Caffold update stopped",
+            detail: "The update stopped before it finished.\n\n\(records)",
+            isWarning: true,
+            showsRecords: true
         )
     }
-    let installedVersion = installedBundleVersion(at: bundleURL)
-    guard installedVersion == expectedVersion else {
-        throw ApplicationUpdateError.installedVersionMismatch(
-            expected: expectedVersion.description,
-            found: installedVersion?.description
-        )
-    }
-    return expectedVersion
 }

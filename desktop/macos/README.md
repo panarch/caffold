@@ -91,7 +91,7 @@ setup fails.
 - The menu bar icon also configures the server, exposes logs, retries Tailscale Serve, and quits the server.
 - The About panel shows the version, source commit, and local package date and time.
 - The app checks the latest stable GitHub Release at launch and when its menu is reopened after six hours.
-- `Check for Updates…` installs an approved update through Homebrew, then relaunches Caffold and confirms that its owned local server becomes ready.
+- `Check for Updates…` runs an approved `caffold update`, which installs the release through Homebrew, restarts Caffold, and puts the previous app back if the new one does not start. The app that is running when the update ends shows its result.
 - Data is stored in `~/Library/Application Support/Caffold/data`.
 - Voice input uses the provider chosen in **Settings → Voice Input**.
   Downloading the pinned multilingual Whisper `large-v3-turbo` model (about
@@ -138,4 +138,4 @@ remain native wrapper responsibilities.
 
 The app only restarts a server process that it started. When it connects to an existing Caffold process, choosing a different port starts a separate app-managed server and leaves the external process untouched. Changing only the bind mode on the occupied port remains blocked.
 
-Updates follow the same ownership rule. Caffold refuses to update while connected to an externally managed server. For an app-managed server, it reads canonical managed-task status before confirmation and warns if active work may be interrupted. GitHub is only the release-discovery source; Homebrew remains responsible for downloading, checksum verification, installation, and CLI-link replacement. Manually copied app bundles receive a release-page link instead of being overwritten.
+Updates follow the same ownership rule. Caffold refuses to update while connected to an externally managed server, and only a server the app starts, with `--app-bundle`, offers an update Task in the browser. GitHub is only the release-discovery source; Homebrew remains responsible for downloading, checksum verification, installation, and CLI-link replacement. Manually copied app bundles receive a release-page link instead of being overwritten. The procedure and its records are described in [Application update lifecycle](../../docs/operations/macos-release.md#application-update-lifecycle).

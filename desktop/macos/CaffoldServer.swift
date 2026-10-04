@@ -226,28 +226,13 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updater = ApplicationUpdater(
             currentVersion: currentVersion,
             bundleURL: Bundle.main.bundleURL,
+            dataDirectory: dataDirectory,
             menuItem: updateMenuItem,
-            runtimeState: { [weak self] in
-                guard let self else { return .stopped }
-                switch self.lifecycle.phase {
-                case .ready:
-                    return .ownedServer
-                case .external:
-                    return .externalServer
-                default:
-                    return .stopped
-                }
+            serverIsExternal: { [weak self] in
+                self?.lifecycle.phase == .external
             },
-            serverBaseURL: { [weak self] in
-                self?.localURL ?? URL(string: "http://127.0.0.1:5178/")!
-            },
-            scheduleRelaunch: { [weak self] expectedVersion in
-                guard let self else {
-                    return .failure(UpdateRelaunchError.applicationUnavailable)
-                }
-                return Result {
-                    try self.scheduleRelaunchAfterUpdate(expectedVersion: expectedVersion)
-                }
+            serverPort: { [weak self] in
+                self?.preferences.port ?? 5178
             },
             logger: { [weak self] message in
                 self?.appendLog(message)
@@ -464,6 +449,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 "--host", preferences.bindMode.rawValue,
                 "--port", String(preferences.port),
                 "--data-dir", dataDirectory.path,
+                "--app-bundle", Bundle.main.bundleURL.path,
             ]
             process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
             process.environment = caffoldEnvironment()
@@ -537,7 +523,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func serverDidBecomeReady() {
-        updater?.serverDidBecomeReady(isOwnedServer: true)
+        updater?.serverDidBecomeReady()
 
         guard let name = serverNameAfterStart else {
             finishServerStartup()
@@ -836,27 +822,6 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func scheduleRelaunchAfterUpdate(expectedVersion: String) throws {
-        let parentPID = ProcessInfo.processInfo.processIdentifier
-        let serverPID = serverProcess?.isRunning == true
-            ? serverProcess?.processIdentifier ?? 0
-            : 0
-        let relauncher = Process()
-        relauncher.executableURL = URL(fileURLWithPath: "/bin/sh")
-        relauncher.arguments = [
-            "-c",
-            caffoldRelaunchScript(),
-            "caffold-relaunch",
-            String(parentPID),
-            String(serverPID),
-            Bundle.main.bundleURL.path,
-        ]
-        relauncher.environment = caffoldEnvironment()
-        try relauncher.run()
-        appendLog("Caffold \(expectedVersion) is installed; quitting for relaunch.")
-        NSApp.terminate(nil)
-    }
-
     private func configureTailscaleServe() {
         tailscaleStatusMenuItem?.title = "Tailscale · Configuring Serve..."
         tailscaleToggleMenuItem?.isEnabled = false
@@ -1132,14 +1097,6 @@ private enum ServerError: LocalizedError {
         case .missingBinary:
             return "The Caffold server binary is missing from the application bundle."
         }
-    }
-}
-
-private enum UpdateRelaunchError: LocalizedError {
-    case applicationUnavailable
-
-    var errorDescription: String? {
-        "The running Caffold application is no longer available."
     }
 }
 

@@ -1,5 +1,6 @@
 import { BUILD_INFO } from "#app/build-info.js";
 import { getCodexMcpDiagnostics } from "#app/api.js";
+import { showLoadingText } from "#components/loading-text.js";
 import "../components/detail-list.js";
 import {
   ACTION_HINT_ACTION,
@@ -12,6 +13,9 @@ import {
   hasScrollLayoutBox,
 } from "#app/scroll-scope.js";
 
+/** Asks the workspace to open the update Task dialog. */
+export const CAFFOLD_UPDATE_TASK_REQUEST_EVENT = "caffold:caffold-update-task-request";
+
 class CaffoldSettingsAboutPage extends HTMLElement {
   connectedCallback() {
     if (this.initialized) {
@@ -20,6 +24,7 @@ class CaffoldSettingsAboutPage extends HTMLElement {
     this.initialized = true;
     this.copyingDiagnostics = false;
     this.healthValue = null;
+    this.caffoldUpdateValue = { checking: true, status: null, error: null };
     this.updateStatusValue = {
       state: "checking",
       preparedUpdate: { ready: false, buildId: null },
@@ -28,6 +33,16 @@ class CaffoldSettingsAboutPage extends HTMLElement {
     this.addEventListener("click", (event) => {
       if (event.target.closest('[data-action="copy-diagnostics"]')) {
         void this.copyDiagnostics();
+      }
+      const update = event.target.closest('[data-action="update-caffold"]');
+      if (update && !update.disabled) {
+        this.dispatchEvent(
+          new CustomEvent(CAFFOLD_UPDATE_TASK_REQUEST_EVENT, {
+            bubbles: true,
+            composed: true,
+            detail: { opener: update },
+          }),
+        );
       }
       if (event.target.closest('[data-action="reload-update"]')) {
         this.dispatchEvent(
@@ -43,6 +58,18 @@ class CaffoldSettingsAboutPage extends HTMLElement {
 
   setBuildStatus(health) {
     this.healthValue = health ?? null;
+    if (this.initialized) {
+      this.render();
+    }
+  }
+
+  /** Whether a newer Caffold exists, and how the last update ended. */
+  setCaffoldUpdate(snapshot) {
+    this.caffoldUpdateValue = snapshot ?? {
+      checking: true,
+      status: null,
+      error: null,
+    };
     if (this.initialized) {
       this.render();
     }
@@ -109,6 +136,7 @@ class CaffoldSettingsAboutPage extends HTMLElement {
       `UI build: ${BUILD_INFO.id}`,
       `Server build: ${this.healthValue?.buildId ?? "unavailable"}`,
       `Built: ${buildDate().toISOString()}`,
+      ...caffoldUpdateDiagnosticLines(this.caffoldUpdateValue, this.healthValue),
       `Status: ${buildStatus(this.healthValue, this.updateStatusValue).label}`,
       `Update lifecycle: ${this.updateStatusValue.state}`,
       `Prepared update: ${this.updateStatusValue.preparedUpdate.ready ? "ready" : "none"}`,
@@ -133,6 +161,10 @@ class CaffoldSettingsAboutPage extends HTMLElement {
       return emptyActionHintScope();
     }
     const definitions = [
+      {
+        id: "update-caffold",
+        selector: 'button[data-action="update-caffold"]',
+      },
       {
         id: "reload-update",
         selector: 'button[data-action="reload-update"]',
@@ -221,7 +253,22 @@ class CaffoldSettingsAboutPage extends HTMLElement {
               <img src="/assets/icons/caffold.png" alt="" />
               <p>A review-first workspace for agent-assisted development.</p>
             </header>
-            <caffold-settings-detail-list></caffold-settings-detail-list>
+            <section class="settings-about-updates" aria-labelledby="settings-about-updates-title">
+              <div>
+                <h3 id="settings-about-updates-title">Updates</h3>
+                <p data-updates-summary></p>
+                <dl>
+                  <div><dt>Version</dt><dd data-updates-version></dd></div>
+                  <div><dt>Latest version</dt><dd data-updates-latest></dd></div>
+                  <div data-updates-last-row hidden><dt>Last update</dt><dd data-updates-last></dd></div>
+                </dl>
+              </div>
+              <button type="button" data-action="update-caffold" disabled>Update Caffold</button>
+            </section>
+            <section aria-labelledby="settings-about-window-title">
+              <h3 id="settings-about-window-title">This window</h3>
+              <caffold-settings-detail-list></caffold-settings-detail-list>
+            </section>
             <footer class="settings-about-actions">
               <span data-about-copy-status role="status" aria-live="polite"></span>
               <button type="button" data-action="reload-update" hidden>Reload to update</button>
@@ -237,8 +284,8 @@ class CaffoldSettingsAboutPage extends HTMLElement {
     const built = buildDate();
     const status = buildStatus(this.healthValue, this.updateStatusValue);
     const preparedUpdate = this.updateStatusValue.preparedUpdate;
+    this.patchUpdates();
     this.list.setRows([
-      { key: "version", label: "Version", value: BUILD_INFO.version },
       { key: "ui-build", label: "UI build", value: BUILD_INFO.id, kind: "code" },
       {
         key: "server-build",
@@ -265,6 +312,150 @@ class CaffoldSettingsAboutPage extends HTMLElement {
     ]);
     this.reloadAction.hidden = !preparedUpdate.ready;
   }
+
+  patchUpdates() {
+    const view = caffoldUpdatesView(this.caffoldUpdateValue, this.healthValue);
+    const summary = this.querySelector("[data-updates-summary]");
+    if (view.checking) {
+      showLoadingText(summary, view.summary);
+    } else {
+      summary.textContent = view.summary;
+    }
+    this.querySelector("[data-updates-version]").textContent = view.version;
+    const latest = this.querySelector("[data-updates-latest]");
+    if (view.latest.url) {
+      const link = document.createElement("a");
+      link.href = view.latest.url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = view.latest.text;
+      latest.replaceChildren(link);
+    } else {
+      latest.textContent = view.latest.text;
+    }
+    const lastRow = this.querySelector("[data-updates-last-row]");
+    const last = this.querySelector("[data-updates-last]");
+    lastRow.hidden = !view.lastUpdate;
+    last.textContent = view.lastUpdate?.text ?? "";
+    if (view.lastUpdate?.state) {
+      last.dataset.state = view.lastUpdate.state;
+    } else {
+      delete last.dataset.state;
+    }
+    this.querySelector('[data-action="update-caffold"]').disabled = !view.canUpdate;
+  }
+}
+
+/**
+ * What the Updates section says. `snapshot` is the app shell's latest answer
+ * about Caffold updates; `health` supplies the version before that answer.
+ */
+export function caffoldUpdatesView(snapshot, health = null) {
+  const status = snapshot?.status ?? null;
+  const version = status?.version ?? health?.version ?? "Unavailable";
+  const lastUpdate = lastUpdateValue(status?.lastAttempt);
+  if (snapshot?.checking !== false) {
+    return {
+      summary: "Checking for updates…",
+      checking: true,
+      version: health?.version ?? "Checking…",
+      latest: { text: "Checking…", url: null },
+      lastUpdate: null,
+      canUpdate: false,
+    };
+  }
+  if (!status) {
+    return {
+      summary: `Caffold could not check for updates.\n${snapshot.error ?? ""}`.trim(),
+      checking: false,
+      version,
+      latest: { text: "Unavailable", url: null },
+      lastUpdate,
+      canUpdate: false,
+    };
+  }
+  const latest = status.latestRelease
+    ? { text: status.latestRelease.version, url: status.latestRelease.url }
+    : { text: "Unavailable", url: null };
+  const view = { checking: false, version, latest, lastUpdate, canUpdate: false };
+  const running = status.runningAttempt;
+  if (running) {
+    const target = running.toVersion ?? status.latestRelease?.version;
+    return {
+      ...view,
+      summary: target ? `Updating to Caffold ${target}…` : "Updating Caffold…",
+      checking: true,
+    };
+  }
+  if (!status.latestRelease) {
+    return {
+      ...view,
+      summary: `Caffold could not check for updates.\n${status.releaseError ?? ""}`.trim(),
+    };
+  }
+  if (!status.updateAvailable) {
+    return { ...view, summary: "Caffold is up to date." };
+  }
+  if (!status.updateTask) {
+    return {
+      ...view,
+      summary: `Caffold ${latest.text} is available. Install it from the release page.`,
+    };
+  }
+  return {
+    ...view,
+    summary: `Caffold ${latest.text} is available. The menu-bar app can also update it.`,
+    canUpdate: true,
+  };
+}
+
+/** How the newest finished update ended, with when. */
+export function lastUpdateValue(attempt) {
+  if (!attempt) {
+    return null;
+  }
+  const from = attempt.fromVersion;
+  const outcome = {
+    succeeded: { text: `Updated to ${attempt.toVersion}`, state: "positive" },
+    rolledBack: {
+      text: `Rolled back to ${from} — ${attempt.reason}`,
+      state: "negative",
+    },
+    homebrewFailed: { text: "Homebrew could not update", state: "negative" },
+    upToDate: { text: "Already up to date", state: "" },
+    restoreFailed: { text: `Could not restore ${from}`, state: "negative" },
+    interrupted: { text: "Interrupted", state: "negative" },
+  }[attempt.outcome];
+  if (!outcome) {
+    return null;
+  }
+  const finished = attempt.finishedAt ? new Date(attempt.finishedAt) : null;
+  const when = finished && !Number.isNaN(finished.getTime())
+    ? ` · ${new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(finished)}`
+    : "";
+  return { text: `${outcome.text}${when}`, state: outcome.state };
+}
+
+function caffoldUpdateDiagnosticLines(snapshot, health) {
+  const status = snapshot?.status ?? null;
+  const attempt = status?.lastAttempt;
+  return [
+    `Caffold version: ${status?.version ?? health?.version ?? "unavailable"}`,
+    `Latest release: ${
+      status?.latestRelease?.version ??
+        (status?.releaseError
+          ? `unavailable (${diagnosticLineValue(status.releaseError, "")})`
+          : snapshot?.checking === false ? "unavailable" : "checking")
+    }`,
+    `Last update: ${
+      attempt
+        ? `${attempt.outcome} ${attempt.fromVersion} -> ${attempt.toVersion ?? "unknown"} at ${attempt.finishedAt ?? "unknown"}`
+        : "none"
+    }`,
+  ];
 }
 
 function buildDate() {

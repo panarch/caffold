@@ -91,3 +91,51 @@ test("marks exactly the chosen workspace mode as current", () => {
   navigation.setMode.call(owner, "unknown");
   assert.equal(owner.mode, "tasks");
 });
+
+test("marks the Settings button and its name while a newer Caffold exists", () => {
+  const button = {
+    dataset: {},
+    attributes: new Map(),
+    title: "",
+    setAttribute(name, value) {
+      this.attributes.set(name, value);
+    },
+    toggleAttribute(name, force) {
+      if (force) {
+        this.attributes.set(name, "");
+      } else {
+        this.attributes.delete(name);
+      }
+    },
+  };
+  const owner = {
+    codexStatusSnapshotValue: { status: { readiness: { state: "ready" } } },
+    updateAvailable: false,
+    ensureRendered() {},
+    querySelector: () => button,
+  };
+  owner.syncSettingsStatus = () => navigation.syncSettingsStatus.call(owner);
+
+  navigation.setCaffoldUpdate.call(owner, {
+    checking: false,
+    status: { updateAvailable: true },
+  });
+
+  assert.equal(button.attributes.has("data-update-available"), true);
+  assert.equal(
+    button.attributes.get("aria-label"),
+    "Settings — Codex ready, Caffold update available",
+  );
+  assert.equal(button.title, "Settings — Codex ready, Caffold update available");
+  assert.equal(button.dataset.codexState, "available");
+
+  navigation.setCaffoldUpdate.call(owner, {
+    checking: false,
+    status: { updateAvailable: false },
+  });
+  assert.equal(button.attributes.has("data-update-available"), false);
+  assert.equal(button.attributes.get("aria-label"), "Settings — Codex ready");
+
+  navigation.setCaffoldUpdate.call(owner, null);
+  assert.equal(button.attributes.has("data-update-available"), false);
+});

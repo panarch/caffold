@@ -1,0 +1,154 @@
+caffold-update-task-dialog {
+  display: contents;
+
+  & > dialog {
+    width: min(34rem, calc(100vw - 2rem));
+    max-width: none;
+    max-height: min(42rem, calc(100dvh - 2rem));
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 24%);
+  }
+
+  & > dialog::backdrop {
+    background: rgb(var(--scrim-rgb) / 32%);
+  }
+
+  & .update-task-dialog-card {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    max-height: inherit;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  & header {
+    display: grid;
+    gap: var(--interface-space-3);
+    min-width: 0;
+    padding: var(--interface-space-8) var(--interface-space-10);
+    border-bottom: 1px solid var(--border);
+  }
+
+  & header > h2,
+  & .update-task-dialog-description > p,
+  & .update-task-dialog-permission-hint,
+  & .update-task-dialog-error > p {
+    margin: 0;
+  }
+
+  & header > h2 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+
+  & .update-task-dialog-description {
+    display: grid;
+    gap: var(--interface-space-3);
+  }
+
+  & .update-task-dialog-description > p,
+  & .update-task-dialog-permission-hint,
+  & .update-task-dialog-error {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .update-task-dialog-body {
+    display: grid;
+    align-content: start;
+    gap: var(--interface-space-8);
+    min-width: 0;
+    min-height: 0;
+    padding: var(--interface-space-8) var(--interface-space-10);
+    overflow: auto;
+  }
+
+  & .update-task-dialog-error {
+    display: flex;
+    align-items: center;
+    min-height: 0;
+    color: var(--danger);
+  }
+
+  & .update-task-dialog-error:empty {
+    display: none;
+  }
+
+  & caffold-task-turn-options {
+    justify-self: start;
+    max-width: 100%;
+  }
+
+  & footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--interface-control-gap);
+    padding: var(--interface-space-8) var(--interface-space-10);
+    border-top: 1px solid var(--border);
+  }
+
+  & .update-task-dialog-button {
+    min-height: var(--interface-control-hit-size);
+    padding: var(--interface-space-2) var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    cursor: pointer;
+  }
+
+  & .update-task-dialog-button:hover,
+  & .update-task-dialog-button:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+  }
+
+  & .update-task-dialog-button.is-primary {
+    border-color: var(--primary-action-border);
+    background: var(--primary-action-bg);
+    color: var(--primary-action-fg);
+  }
+
+  & .update-task-dialog-button.is-primary:hover,
+  & .update-task-dialog-button.is-primary:focus-visible {
+    border-color: var(--border-strong);
+  }
+
+  & .update-task-dialog-button:disabled {
+    cursor: wait;
+    opacity: 0.55;
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-update-task-dialog {
+    & > dialog {
+      width: calc(100vw - 1rem);
+      max-height: calc(100dvh - 1rem);
+    }
+
+    & header,
+    & .update-task-dialog-body,
+    & footer {
+      padding-inline: var(--interface-space-8);
+    }
+
+    & footer {
+      padding-bottom: calc(
+        var(--interface-space-8) + env(safe-area-inset-bottom)
+      );
+    }
+  }
+}

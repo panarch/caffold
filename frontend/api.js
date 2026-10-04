@@ -4,6 +4,11 @@ export async function getHealth() {
   return requestJson("/api/health");
 }
 
+/** The server may ask GitHub first, which it bounds at eight seconds. */
+export async function getCaffoldUpdate() {
+  return requestJson("/api/caffold/update", {}, { timeoutMs: 20_000 });
+}
+
 export async function getCodexStatus() {
   return requestJson("/api/codex/status");
 }

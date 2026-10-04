@@ -9,19 +9,22 @@ final class ApplicationUpdater {
         @escaping (Result<CommandResult, Error>) -> Void
     ) -> Void
 
-    private static let pendingVersionKey = "update.pendingVersion"
+    private static let lastShownAttemptKey = "update.lastShownAttemptId"
     private static let staleCheckInterval: TimeInterval = 6 * 60 * 60
+    /// How long a relaunched app waits for the update that relaunched it to
+    /// record its outcome.
+    private static let resultChecks = 60
 
     private let currentVersion: CaffoldVersion
     private let bundleURL: URL
+    private let dataDirectory: URL
     private let menuItem: NSMenuItem
     private let defaults: UserDefaults
     private let session: URLSession
     private let executableResolver: ExecutableResolver
     private let commandRunner: CommandRunner
-    private let runtimeState: () -> UpdateRuntimeState
-    private let serverBaseURL: () -> URL
-    private let scheduleRelaunch: (String) -> Result<Void, Error>
+    private let serverIsExternal: () -> Bool
+    private let serverPort: () -> Int
     private let logger: (String) -> Void
 
     private var latestRelease: CaffoldRelease?
@@ -36,17 +39,21 @@ final class ApplicationUpdater {
         return nil
     }
 
+    private var recordsDirectory: URL {
+        dataDirectory.appendingPathComponent("caffold-updates", isDirectory: true)
+    }
+
     init?(
         currentVersion rawCurrentVersion: String,
         bundleURL: URL,
+        dataDirectory: URL,
         menuItem: NSMenuItem,
         defaults: UserDefaults = .standard,
         session: URLSession = .shared,
         executableResolver: @escaping ExecutableResolver = caffoldExecutable,
         commandRunner: @escaping CommandRunner = runCommand,
-        runtimeState: @escaping () -> UpdateRuntimeState,
-        serverBaseURL: @escaping () -> URL,
-        scheduleRelaunch: @escaping (String) -> Result<Void, Error>,
+        serverIsExternal: @escaping () -> Bool,
+        serverPort: @escaping () -> Int,
         logger: @escaping (String) -> Void
     ) {
         guard let currentVersion = CaffoldVersion(rawCurrentVersion) else {
@@ -56,14 +63,14 @@ final class ApplicationUpdater {
         }
         self.currentVersion = currentVersion
         self.bundleURL = bundleURL
+        self.dataDirectory = dataDirectory
         self.menuItem = menuItem
         self.defaults = defaults
         self.session = session
         self.executableResolver = executableResolver
         self.commandRunner = commandRunner
-        self.runtimeState = runtimeState
-        self.serverBaseURL = serverBaseURL
-        self.scheduleRelaunch = scheduleRelaunch
+        self.serverIsExternal = serverIsExternal
+        self.serverPort = serverPort
         self.logger = logger
         updateMenuTitle()
     }
@@ -91,23 +98,10 @@ final class ApplicationUpdater {
         }
     }
 
-    func serverDidBecomeReady(isOwnedServer: Bool) {
-        guard let expected = defaults.string(forKey: Self.pendingVersionKey) else { return }
-        guard let expectedVersion = CaffoldVersion(expected), currentVersion >= expectedVersion else {
-            return
-        }
-        guard isOwnedServer else {
-            presentError(
-                "Caffold update needs attention",
-                detail: "The new application is running, but port verification reached an externally managed server. Stop that server and restart Caffold to finish validation."
-            )
-            return
-        }
-        defaults.removeObject(forKey: Self.pendingVersionKey)
-        presentInformation(
-            "Caffold was updated",
-            detail: "Caffold \(currentVersion) is running and the local server is ready."
-        )
+    /// An update the menu bar started restarts the app, so the app that comes
+    /// back tells its result once the update records it.
+    func serverDidBecomeReady() {
+        presentMenuBarResultWhenFinished(remainingChecks: Self.resultChecks)
     }
 
     private func checkForUpdates(presentingResult: Bool) {
@@ -161,7 +155,7 @@ final class ApplicationUpdater {
 
     private func beginInstall(_ release: CaffoldRelease) {
         guard !isInstalling else { return }
-        guard runtimeState() != .externalServer else {
+        guard !serverIsExternal() else {
             presentError(
                 "Caffold cannot update right now",
                 detail: ApplicationUpdateError.externallyManagedServer.localizedDescription
@@ -187,77 +181,24 @@ final class ApplicationUpdater {
                 self.presentManualInstall(for: release, error: .notInstalledByHomebrew)
                 return
             }
-            self.confirmInstall(release, brew: brew)
+            self.updateMenuTitle()
+            self.presentInstallConfirmation(release)
         }
     }
 
-    private func confirmInstall(_ release: CaffoldRelease, brew: URL) {
-        switch runtimeState() {
-        case .stopped:
-            presentInstallConfirmation(release, brew: brew, activeTaskCount: .success(0))
-        case .ownedServer:
-            loadActiveTaskCount { [weak self] result in
-                self?.presentInstallConfirmation(release, brew: brew, activeTaskCount: result)
-            }
-        case .externalServer:
-            updateMenuTitle()
-            presentError(
-                "Caffold cannot update right now",
-                detail: ApplicationUpdateError.externallyManagedServer.localizedDescription
-            )
-        }
-    }
-
-    private func loadActiveTaskCount(
-        completion: @escaping (Result<Int, Error>) -> Void
-    ) {
-        let request = caffoldActiveTasksRequest(baseURL: serverBaseURL())
-        session.dataTask(with: request) { data, response, error in
-            DispatchQueue.main.async {
-                do {
-                    if let error { throw error }
-                    guard
-                        let response = response as? HTTPURLResponse,
-                        response.statusCode == 200,
-                        let data
-                    else {
-                        throw ApplicationUpdateError.invalidResponse
-                    }
-                    completion(.success(try decodeActiveTaskCount(data)))
-                } catch {
-                    completion(.failure(error))
-                }
-            }
-        }.resume()
-    }
-
-    private func presentInstallConfirmation(
-        _ release: CaffoldRelease,
-        brew: URL,
-        activeTaskCount: Result<Int, Error>
-    ) {
-        updateMenuTitle()
+    private func presentInstallConfirmation(_ release: CaffoldRelease) {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
+        alert.alertStyle = .informational
         alert.messageText = "Update to Caffold \(release.version)?"
-        switch activeTaskCount {
-        case let .success(count) where count > 0:
-            alert.alertStyle = .warning
-            alert.informativeText = "\(count) active task\(count == 1 ? " is" : "s are") still running. Updating restarts Caffold and may interrupt active work."
-        case .success:
-            alert.alertStyle = .informational
-            alert.informativeText = "Homebrew will replace the application, then Caffold will restart and verify the local server."
-        case .failure:
-            alert.alertStyle = .warning
-            alert.informativeText = "Caffold could not verify whether tasks are active. Updating restarts the local server and may interrupt active work."
-        }
+        alert.informativeText = updateConfirmationText(for: release.version)
         alert.addButton(withTitle: "Update and Restart")
         alert.addButton(withTitle: "Cancel")
         alert.addButton(withTitle: "View Release")
 
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            runUpgrade(release, brew: brew)
+            runUpdate(release)
         case .alertThirdButtonReturn:
             NSWorkspace.shared.open(release.webpageURL)
         default:
@@ -265,39 +206,93 @@ final class ApplicationUpdater {
         }
     }
 
-    private func runUpgrade(_ release: CaffoldRelease, brew: URL) {
+    /// Runs `caffold update` from this app. When the update restarts the app,
+    /// the app that comes back reports the result; when it does not, the
+    /// update has ended by the time the command does.
+    private func runUpdate(_ release: CaffoldRelease) {
+        guard let caffold = Bundle.main.resourceURL?.appendingPathComponent("caffold") else {
+            presentError(
+                "Caffold could not update",
+                detail: "The caffold command is missing from the application bundle."
+            )
+            return
+        }
         isInstalling = true
         menuItem.title = "Updating to Caffold \(release.version)…"
         menuItem.isEnabled = false
-        logger("Updating Caffold to \(release.version) with Homebrew.")
+        logger("Updating Caffold to \(release.version).")
+        let attemptBefore = latestUpdateAttempt(in: recordsDirectory)?.id
 
-        commandRunner(brew, homebrewUpgradeArguments()) { [weak self] result in
+        commandRunner(
+            caffold,
+            caffoldUpdateArguments(
+                bundleURL: bundleURL,
+                dataDirectory: dataDirectory,
+                port: serverPort()
+            )
+        ) { [weak self] result in
             guard let self else { return }
-            do {
-                let command = try result.get()
-                try validateHomebrewUpgrade(
-                    command,
-                    expectedVersion: release.version,
-                    bundleURL: self.bundleURL
-                )
-
-                self.defaults.set(
-                    release.version.description,
-                    forKey: Self.pendingVersionKey
-                )
-                switch self.scheduleRelaunch(release.version.description) {
-                case .success:
-                    self.logger("Caffold \(release.version) installed; relaunch scheduled.")
-                case let .failure(error):
-                    self.defaults.removeObject(forKey: Self.pendingVersionKey)
-                    throw ApplicationUpdateError.relaunchFailed(error.localizedDescription)
+            self.isInstalling = false
+            self.updateMenuTitle()
+            if let attempt = latestUpdateAttempt(in: self.recordsDirectory),
+               attempt.id != attemptBefore,
+               attempt.startedFromMenuBar,
+               attempt.outcome != .running {
+                // A server restart during the update may have shown it already.
+                if attempt.id != self.defaults.string(forKey: Self.lastShownAttemptKey) {
+                    self.present(attempt)
                 }
-            } catch {
-                self.isInstalling = false
-                self.updateMenuTitle()
-                self.logger("Caffold update failed: \(error.localizedDescription)")
-                self.presentError("Caffold could not update", detail: error.localizedDescription)
+                return
             }
+            // No attempt was recorded: `caffold update` refused and said why.
+            let output: String
+            switch result {
+            case let .success(command):
+                output = command.output
+            case let .failure(error):
+                output = error.localizedDescription
+            }
+            self.logger("Caffold update did not start: \(output)")
+            self.presentError("Caffold could not update", detail: output)
+        }
+    }
+
+    private func presentMenuBarResultWhenFinished(remainingChecks: Int) {
+        guard
+            let attempt = latestUpdateAttempt(in: recordsDirectory),
+            attempt.startedFromMenuBar,
+            attempt.id != defaults.string(forKey: Self.lastShownAttemptKey)
+        else {
+            return
+        }
+        guard attempt.outcome != .running else {
+            guard remainingChecks > 0 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.presentMenuBarResultWhenFinished(remainingChecks: remainingChecks - 1)
+            }
+            return
+        }
+        present(attempt)
+    }
+
+    /// Shows an attempt's result once.
+    private func present(_ attempt: UpdateAttempt) {
+        guard let result = updateResultAlert(for: attempt, recordsDirectory: recordsDirectory) else {
+            return
+        }
+        defaults.set(attempt.id, forKey: Self.lastShownAttemptKey)
+        logger("\(result.title): \(attempt.reason ?? attempt.outcome.rawValue)")
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = result.isWarning ? .warning : .informational
+        alert.messageText = result.title
+        alert.informativeText = result.detail
+        if result.showsRecords {
+            alert.addButton(withTitle: "Show Records")
+        }
+        alert.addButton(withTitle: "OK")
+        if alert.runModal() == .alertFirstButtonReturn, result.showsRecords {
+            NSWorkspace.shared.open(recordsDirectory)
         }
     }
 

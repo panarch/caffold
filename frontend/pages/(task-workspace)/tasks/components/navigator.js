@@ -527,6 +527,11 @@ class CaffoldTaskNavigator extends HTMLElement {
     return this.activeTaskList.sectionFor(sectionId);
   }
 
+  sectionForDirectory(path) {
+    this.ensureChildren();
+    return this.activeTaskList.sectionForDirectory(path);
+  }
+
   recoveryFor(threadId) {
     this.ensureChildren();
     return this.activeTaskList.recoveryFor(threadId);

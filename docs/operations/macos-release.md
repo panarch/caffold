@@ -3,8 +3,9 @@
 This document separates reversible local release preparation from public
 distribution. Caffold ships an arm64 macOS menu bar app through Homebrew.
 Developer ID signing, Apple notarization, Intel builds, and Linux packaging are
-not supported. The menu app can initiate an explicitly approved Homebrew
-upgrade; it does not download or replace executable content itself.
+not supported. Installed apps update through Homebrew only when someone starts
+`caffold update`, which puts the previous app back when the new one does not
+start; see [Application update lifecycle](#application-update-lifecycle).
 
 ## Version ownership
 
@@ -112,13 +113,16 @@ Published version tags and assets are not overwritten. If installation reveals a
 
 ## Application update lifecycle
 
-The menu app uses this update lifecycle:
+`caffold update --app <bundle> --data-dir <dir> --port <port>` replaces the installed app with the newest version Homebrew offers. The menu-bar app runs it from **Update to Caffold X…** with `--from-menu-bar`. An update Task runs the command the server reports in `GET /api/caffold/update`. Both run the same procedure:
 
-1. the menu app requests the latest stable `panarch/caffold` GitHub Release at launch and refreshes a stale result when the menu opens;
-2. GitHub provides only version discovery and the release-page fallback;
-3. before installation, the app verifies that the Cask is Homebrew-managed, refuses to replace an app connected to an externally managed server, and reads every managed-Task page to warn about canonical `active` conversations;
-4. explicit user approval runs `brew upgrade --cask panarch/tap/caffold` without downloading or replacing executable content directly;
-5. the running app verifies the installed bundle version, records a pending health receipt, schedules a detached relaunch, and terminates the server process it owns;
-6. the replacement app clears that receipt only after its own server becomes ready, and reports an externally managed port instead of claiming successful validation.
+1. The command refuses, recording nothing, when Homebrew is missing, Homebrew has no record of the `caffold` cask, the server on the port is not the one bundled in the app, or another update is running.
+2. It records an attempt in `<data-dir>/caffold-updates/attempts/<id>/attempt.json`, copies the app to the attempt's `backup/`, and starts a worker. The worker starts through a shell that exits at once, so it leaves both the caller's process tree and its process group. An agent's command timeout or the menu-bar app quitting does not stop it. The command follows the worker's `log.txt` and ends with a `Result:` line.
+3. The worker runs `brew update`, then `brew upgrade --cask panarch/tap/caffold`, while the app keeps running. By default Homebrew fetches its taps by itself at most once a day, while the server learns of a release from GitHub at once, so the worker fetches first. When `brew update` fails, the worker logs it and upgrades from the copy Homebrew has. An update between the GitHub Release and the tap push that follows it ends `upToDate`. When Homebrew's record is ahead of the app, which happens after a rollback, the worker runs `brew reinstall --cask` instead of the upgrade, because `brew upgrade` compares only that record with the tap.
+4. When the installed version is newer, the worker asks the app to quit and waits up to 20 seconds for the app, its server, and the port listener to go away. It never kills a process. It then opens the new app with an empty environment, so LaunchServices supplies the user's, and waits up to 30 seconds for `/api/health` to answer with the new version from that bundle's server.
+5. When the new app does not start, the worker quits it, moves it to the attempt's `failed/`, puts the backup back, and opens the previous app. When the previous app did not quit in step 4, the worker puts the backup back without restarting anything.
 
-Automatic background installation is intentionally not supported. Network failure leaves the installed app untouched, a Homebrew or version mismatch remains retryable, and manually copied app bundles open the release page rather than being overwritten.
+The outcome is one of `upToDate`, `homebrewFailed`, `succeeded`, `rolledBack`, `restoreFailed`, or `interrupted`, with a short `reason` the menu-bar app and browser show as written. Only the worker writes its attempt, except that the next attempt marks one whose worker is gone `interrupted`. The ten newest attempts are kept, and only the newest keeps its app bundles. Backups and failed bundles are removed from LaunchServices.
+
+The menu-bar app learns of a newer release itself, from the latest stable `panarch/caffold` GitHub Release, at launch and when its menu opens six hours after the last check. It refuses to update while connected to an externally managed server and offers the release page for a copy Homebrew did not install. It shows the result of an attempt it started once, in an alert from whichever app is running when the attempt ends. The server asks GitHub separately, when it starts and when a browser asks `GET /api/caffold/update` six hours after the last answer. The menu-bar app starts its server with `--app-bundle`, and only a server started that way offers an update Task.
+
+Caffold never installs an update without someone starting it.

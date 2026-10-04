@@ -31,6 +31,10 @@ import {
   CLAUDE_RUNTIME_RESTART_REQUEST_EVENT,
 } from "./settings/claude/page.js";
 import {
+  CAFFOLD_UPDATE_TASK_REQUEST_EVENT,
+} from "./settings/about/page.js";
+import "./components/update-task-dialog.js";
+import {
   CLAUDE_RUNTIME_RESTART_CONFIRMED_EVENT,
 } from "./settings/claude/components/runtime-restart-dialog.js";
 import {
@@ -105,6 +109,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.codexUpdateStateValue = { state: "idle", message: "" };
     this.codexResetCreditStateValue = { state: "idle", message: "", retryPending: false };
     this.codexRuntimeActionValue = "idle";
+    this.caffoldUpdateValue = null;
     this.liveUpdates = new WorkspaceLiveUpdates();
     this.taskStoreStatusLifecycle = createTaskStoreStatusLifecycle({
       onSnapshotChange: (snapshot) => this.setTaskStoreStatusSnapshot(snapshot),
@@ -176,6 +181,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       <caffold-codex-runtime-update-dialog></caffold-codex-runtime-update-dialog>
       <caffold-codex-reset-credit-dialog></caffold-codex-reset-credit-dialog>
       <caffold-claude-runtime-restart-dialog></caffold-claude-runtime-restart-dialog>
+      <caffold-update-task-dialog></caffold-update-task-dialog>
     `;
     this.sidePaneToggle = this.querySelector(".task-workspace-side-pane-toggle");
     this.sidePaneToggleLabel = "";
@@ -215,6 +221,9 @@ class CaffoldTaskWorkspace extends HTMLElement {
     );
     this.claudeRuntimeRestartDialog = this.querySelector(
       ":scope > caffold-claude-runtime-restart-dialog",
+    );
+    this.updateTaskDialog = this.querySelector(
+      ":scope > caffold-update-task-dialog",
     );
     this.tasksPage.ensureRendered();
     this.notesWorkspace.ensureRendered();
@@ -306,6 +315,31 @@ class CaffoldTaskWorkspace extends HTMLElement {
         );
       },
     );
+    this.addEventListener(CAFFOLD_UPDATE_TASK_REQUEST_EVENT, (event) => {
+      event.stopPropagation();
+      const status = this.caffoldUpdateValue?.status ?? null;
+      this.updateTaskDialog.open({
+        status,
+        composerSettings: this.taskNavigator.sectionForDirectory(
+          status?.updateTask?.cwd,
+        )?.composerSettings ?? null,
+        opener: event.detail?.opener,
+      });
+    });
+    // The update Task starts the way Start Task does, through the Tasks page,
+    // which opens it once created.
+    this.updateTaskDialog.addEventListener("caffold:task-create-intent", (event) => {
+      if (event.detail?.type !== "start") {
+        return;
+      }
+      event.stopPropagation();
+      const completion = this.tasksPage.startTaskCreation(
+        event.detail.request,
+        event.detail.submission,
+      );
+      event.detail.accepted = Boolean(completion);
+      event.detail.completion = completion;
+    });
     this.addEventListener(CODEX_STATUS_REFRESH_REQUEST_EVENT, (event) => {
       event.stopPropagation();
       void this.codexStatusLifecycle.refresh().catch(() => {});
@@ -646,6 +680,14 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.settingsWorkspace.setUpdateStatus(status);
   }
 
+  /** Whether a newer Caffold exists, and how the last update ended. */
+  setCaffoldUpdate(snapshot) {
+    this.ensureRendered();
+    this.caffoldUpdateValue = snapshot ?? null;
+    this.navigation.setCaffoldUpdate(snapshot);
+    this.settingsWorkspace.setCaffoldUpdate(snapshot);
+  }
+
   actionHintScope() {
     if (this.hidden) {
       return emptyActionHintScope();
@@ -734,6 +776,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.codexRuntimeUpdateDialog?.keyboardNavigationContexts?.() ?? [],
       this.codexResetCreditDialog?.keyboardNavigationContexts?.() ?? [],
       this.claudeRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
+      this.updateTaskDialog?.keyboardNavigationContexts?.() ?? [],
       this.archivedDeleteDialog?.keyboardNavigationContexts?.() ?? [],
       this.taskSwitcherDialog?.keyboardNavigationContexts?.() ?? [],
       childContexts,

@@ -1,4 +1,4 @@
-import { getHealth } from "../api.js";
+import { getCaffoldUpdate, getHealth } from "../api.js";
 import { BUILD_INFO } from "../build-info.js";
 import { busySpin } from "../component-styles.js";
 import { renderInlineIcon, warmIcons } from "../components/icons.js";
@@ -35,6 +35,7 @@ import {
   CAFFOLD_UPDATE_LATER_EVENT,
   CAFFOLD_UPDATE_RELOAD_EVENT,
 } from "./components/update-dialog.js";
+import "./components/update-result-dialog.js";
 import "../keyboard-navigation/components/presentation.js";
 import "../keyboard-navigation/components/shortcut-dialog.js";
 import "./(task-workspace)/layout.js";
@@ -70,6 +71,7 @@ class CaffoldAppShell extends HTMLElement {
     this.initialPath = "";
     this.aboutHealthRequest = null;
     this.buildHealth = null;
+    this.caffoldUpdateRequest = null;
     this.presentedUpdateBuildIds = new Set();
     this.pwaUpdateStatus = {
       state: "checking",
@@ -80,6 +82,9 @@ class CaffoldAppShell extends HTMLElement {
     this.taskWorkspace = this.querySelector("caffold-task-workspace");
     this.taskWorkspace.ensureRendered();
     this.updateDialog = this.querySelector(":scope > caffold-update-dialog");
+    this.updateResultDialog = this.querySelector(
+      ":scope > caffold-update-result-dialog",
+    );
     this.buildMismatchAlert = this.querySelector(
       ":scope > caffold-build-mismatch-alert",
     );
@@ -219,6 +224,7 @@ class CaffoldAppShell extends HTMLElement {
         <button type="button" data-action="retry-foreground-recovery" hidden>Retry</button>
       </section>
       <caffold-update-dialog></caffold-update-dialog>
+      <caffold-update-result-dialog></caffold-update-result-dialog>
       <caffold-build-mismatch-alert hidden></caffold-build-mismatch-alert>
       <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       <caffold-keyboard-shortcut-dialog></caffold-keyboard-shortcut-dialog>
@@ -236,6 +242,7 @@ class CaffoldAppShell extends HTMLElement {
 
   refreshAboutStatus() {
     void this.pwaUpdateLifecycle.checkForUpdate();
+    void this.refreshCaffoldUpdate();
     if (this.aboutHealthRequest) {
       return this.aboutHealthRequest;
     }
@@ -256,6 +263,51 @@ class CaffoldAppShell extends HTMLElement {
       });
     this.aboutHealthRequest = request;
     return request;
+  }
+
+  /**
+   * Asks whether a newer Caffold exists and how the last update ended. Both
+   * opening Caffold and opening About ask; the server decides when to ask
+   * GitHub again.
+   */
+  refreshCaffoldUpdate() {
+    if (this.caffoldUpdateRequest) {
+      return this.caffoldUpdateRequest;
+    }
+    const request = getCaffoldUpdate()
+      .then((status) => {
+        this.applyCaffoldUpdate({ checking: false, status, error: null });
+      })
+      .catch((error) => {
+        this.applyCaffoldUpdate({
+          checking: false,
+          status: null,
+          error: error instanceof Error ? error.message : "Request failed.",
+        });
+      })
+      .finally(() => {
+        if (this.caffoldUpdateRequest === request) {
+          this.caffoldUpdateRequest = null;
+        }
+      });
+    this.caffoldUpdateRequest = request;
+    return request;
+  }
+
+  applyCaffoldUpdate(snapshot) {
+    this.taskWorkspace?.setCaffoldUpdate(snapshot);
+    const attempt = snapshot.status?.lastAttempt;
+    if (
+      !["rolledBack", "restoreFailed"].includes(attempt?.outcome) ||
+      seenUpdateResult() === attempt.id
+    ) {
+      return;
+    }
+    rememberSeenUpdateResult(attempt.id);
+    this.keyboardNavigation?.cancelStoredMode("interaction-owner", {
+      restoreFocus: false,
+    });
+    this.updateResultDialog?.open(attempt);
   }
 
   installNavigationHandlers() {
@@ -401,6 +453,7 @@ class CaffoldAppShell extends HTMLElement {
       const health = await getHealth();
       this.initialPath = health.initialPath ?? "";
       this.updateBuildStatus(health);
+      void this.refreshCaffoldUpdate();
       const route = parseRoute(window.location.href);
       if (route) {
         await this.applyRoute(route);
@@ -437,7 +490,7 @@ class CaffoldAppShell extends HTMLElement {
     }
     const recoveryRoute = parseRoute(window.location.href) ?? this.currentRoute;
     const recoveryRouteKey = recoveryRoute ? routeUrl(recoveryRoute) : "";
-    return await this.taskWorkspace.recoverForeground({
+    const recovery = await this.taskWorkspace.recoverForeground({
       isCurrent: () => {
         const current = parseRoute(window.location.href) ?? this.currentRoute;
         return (
@@ -449,6 +502,13 @@ class CaffoldAppShell extends HTMLElement {
       initialActivation,
       progress,
     });
+    // Caffold answering again may mean an update just ended, so a window left
+    // open learns how. Asking only after recovery succeeded keeps a server that
+    // is still down from showing as a failed check, and recovery never waits.
+    if (!initialActivation && !recovery?.stale && !recovery?.retry) {
+      void this.refreshCaffoldUpdate();
+    }
+    return recovery;
   }
 
   setBootstrapError(error) {
@@ -732,9 +792,29 @@ class CaffoldAppShell extends HTMLElement {
     return mergeKeyboardNavigationContexts(
       workspaceContexts,
       this.updateDialog?.keyboardNavigationContexts?.() ?? [],
+      this.updateResultDialog?.keyboardNavigationContexts?.() ?? [],
       this.keyboardShortcutDialog?.keyboardNavigationContexts?.() ?? [],
       this.taskWorkspace?.keyboardNavigationContexts?.() ?? [],
     );
+  }
+}
+
+/** Which failed update this browser has told, so it tells each one once. */
+const SEEN_UPDATE_RESULT_KEY = "caffold:update-result-seen";
+
+function seenUpdateResult() {
+  try {
+    return window.localStorage.getItem(SEEN_UPDATE_RESULT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberSeenUpdateResult(id) {
+  try {
+    window.localStorage.setItem(SEEN_UPDATE_RESULT_KEY, id);
+  } catch {
+    // A browser that cannot store it tells the same result again next time.
   }
 }
 

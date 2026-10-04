@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { expect, test } from "@playwright/test";
 import { waitForActionHintTarget } from "./support/action-hints.js";
-import { installBrowserDefaults } from "./support/browser-defaults.js";
+import {
+  installBrowserDefaults,
+  mockCaffoldUpdate,
+} from "./support/browser-defaults.js";
 import { captureReviewScreenshot } from "./support/task-fixtures.js";
 
 const serviceWorkerSource = readFileSync(
@@ -16,6 +19,173 @@ const TEST_ACTIVATION_GATE_TIMEOUT_MS = 7_500;
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
+});
+
+const ROLLED_BACK_UPDATE = mockCaffoldUpdate({
+  latestRelease: {
+    version: "0.18.3",
+    url: "https://github.com/panarch/caffold/releases/tag/v0.18.3",
+  },
+  updateAvailable: true,
+  lastAttempt: {
+    id: "20261004T121000.000Z",
+    startedAt: "2026-10-04T12:08:00Z",
+    finishedAt: "2026-10-04T12:10:00Z",
+    fromVersion: "0.18.2",
+    toVersion: "0.18.3",
+    startedFromMenuBar: false,
+    outcome: "rolledBack",
+    reason: "0.18.3 could not start",
+  },
+});
+
+test("tells each browser once that an update of Caffold was rolled back", { tag: ["@desktop", "@phone"] }, async ({
+  browser,
+  page,
+}, testInfo) => {
+  await page.route(/\/api\/caffold\/update(?:\?|$)/, (route) =>
+    route.fulfill({ json: ROLLED_BACK_UPDATE }),
+  );
+  await page.goto("/");
+
+  const alert = page.getByRole("dialog", { name: "Caffold update was rolled back" });
+  await expect(alert).toBeVisible();
+  await expect(alert).toContainText(
+    "0.18.3 could not start, so Caffold 0.18.2 was restored. See Settings → About Caffold for details.",
+  );
+  await expect(alert.getByRole("button")).toHaveText(["OK"]);
+  // As wide as two controls are tall, so it does not shrink to its label.
+  const ok = await alert.getByRole("button", { name: "OK" }).boundingBox();
+  const controlHeight = await page.evaluate(() => {
+    const probe = document.createElement("div");
+    probe.style.height = "var(--interface-control-visual-size)";
+    document.body.append(probe);
+    const height = probe.getBoundingClientRect().height;
+    probe.remove();
+    return height;
+  });
+  expect(ok.width).toBeGreaterThanOrEqual(2 * controlHeight - 0.5);
+  await captureReviewScreenshot(page, testInfo, "update-result-dialog");
+  await alert.getByRole("button", { name: "OK" }).click();
+  await expect(alert).toBeHidden();
+
+  // The same browser has seen it: the answer arrives, marks Settings, and
+  // nothing opens.
+  await page.reload();
+  await expect(
+    page.locator('caffold-task-workspace-navigation button[data-workspace-mode="settings"]'),
+  ).toHaveAttribute("data-update-available", "");
+  await expect(alert).toBeHidden();
+
+  const other = await browser.newContext({
+    baseURL: testInfo.project.use.baseURL,
+    viewport: testInfo.project.use.viewport,
+  });
+  try {
+    const otherPage = await other.newPage();
+    await installBrowserDefaults(otherPage);
+    await otherPage.route(/\/api\/caffold\/update(?:\?|$)/, (route) =>
+      route.fulfill({ json: ROLLED_BACK_UPDATE }),
+    );
+    await otherPage.goto("/");
+    await expect(
+      otherPage.getByRole("dialog", { name: "Caffold update was rolled back" }),
+    ).toBeVisible();
+  } finally {
+    await other.close();
+  }
+});
+
+test("asks again once Caffold answers after a reconnection", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__caffoldVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => window.__caffoldVisibilityState,
+    });
+  });
+  const answer = { status: { ...ROLLED_BACK_UPDATE, lastAttempt: undefined } };
+  let reads = 0;
+  await page.route(/\/api\/caffold\/update(?:\?|$)/, (route) => {
+    reads += 1;
+    return route.fulfill({ json: answer.status });
+  });
+  await page.goto("/");
+  const settings = page.locator(
+    'caffold-task-workspace-navigation button[data-workspace-mode="settings"]',
+  );
+  const shell = page.locator("caffold-app-shell");
+  await expect(settings).toHaveAttribute("data-update-available", "");
+  // Bootstrap asks before it listens for the window coming back.
+  await expect(shell).toHaveAttribute(
+    "data-foreground-recovery-trigger",
+    "bootstrap",
+  );
+  expect(reads).toBe(1);
+
+  // The window stays open while an update runs and rolls back.
+  answer.status = ROLLED_BACK_UPDATE;
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.__caffoldVisibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+
+  await expect(shell).toHaveAttribute(
+    "data-foreground-recovery-trigger",
+    "visibility",
+  );
+  await expect(
+    page.getByRole("dialog", { name: "Caffold update was rolled back" }),
+  ).toBeVisible();
+  expect(reads).toBe(2);
+});
+
+test("tells a failed restore and leaves a successful update to the reload dialog", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const answer = {
+    status: {
+      ...ROLLED_BACK_UPDATE,
+      lastAttempt: {
+        ...ROLLED_BACK_UPDATE.lastAttempt,
+        id: "20261004T130000.000Z",
+        outcome: "restoreFailed",
+        reason: "0.18.3 could not start, and 0.18.2 could not be restored",
+      },
+    },
+  };
+  await page.route(/\/api\/caffold\/update(?:\?|$)/, (route) =>
+    route.fulfill({ json: answer.status }),
+  );
+  await page.goto("/");
+  const failed = page.getByRole("dialog", { name: "Caffold update failed" });
+  await expect(failed).toContainText(
+    "0.18.3 could not start, and 0.18.2 could not be restored. See Settings → About Caffold for details.",
+  );
+  await failed.getByRole("button", { name: "OK" }).click();
+
+  answer.status = mockCaffoldUpdate({
+    version: "0.18.3",
+    latestRelease: {
+      version: "0.18.3",
+      url: "https://github.com/panarch/caffold/releases/tag/v0.18.3",
+    },
+    lastAttempt: {
+      ...ROLLED_BACK_UPDATE.lastAttempt,
+      id: "20261004T140000.000Z",
+      outcome: "succeeded",
+      reason: undefined,
+    },
+  });
+  await page.goto("/settings/about");
+  await expect(
+    page.locator("caffold-settings-about-page [data-updates-last]"),
+  ).toContainText("Updated to 0.18.3");
+  await expect(page.locator("caffold-update-result-dialog > dialog")).toBeHidden();
 });
 
 test("waits for update registration while component styles are pending", { tag: "@desktop" }, async ({ page }) => {

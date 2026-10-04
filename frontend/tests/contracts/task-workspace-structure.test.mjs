@@ -281,6 +281,8 @@ test("registered dialog contexts stay owned and compose through public providers
 test("registered product dialogs retain one context-local keyboard presentation", () => {
   const dialogs = [
     "pages/components/update-dialog.js",
+    "pages/components/update-result-dialog.js",
+    "pages/(task-workspace)/components/update-task-dialog.js",
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
     "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
     "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
@@ -315,6 +317,8 @@ test("registered product dialogs retain one context-local keyboard presentation"
 test("product dialog CSS does not style nested keyboard presentation dialogs", () => {
   const styles = [
     "pages/components/update-dialog.css",
+    "pages/components/update-result-dialog.css",
+    "pages/(task-workspace)/components/update-task-dialog.css",
     "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
     "pages/(task-workspace)/tasks/components/task-switcher-dialog.css",
     "pages/(task-workspace)/tasks/new/components/directory-picker.css",

@@ -45,6 +45,25 @@ caffold-settings-navigator-item {
     color: var(--danger);
   }
 
+  & .settings-navigator-item-icon-slot {
+    position: relative;
+  }
+
+  /* A newer Caffold: the same dot as the workspace navigation's Settings
+     button, drawn by the icon slot because the slot is re-rendered. */
+  & > button[data-update-available] .settings-navigator-item-icon-slot::after {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: var(--interface-space-3);
+    height: var(--interface-space-3);
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 0 1.5px var(--surface);
+    content: "";
+    transform: translateY(-40%);
+  }
+
   & .settings-navigator-item-icon-slot,
   & .settings-navigator-item-icon,
   & .settings-navigator-item-brand {

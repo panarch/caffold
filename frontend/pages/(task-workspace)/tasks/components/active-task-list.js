@@ -1278,6 +1278,14 @@ class CaffoldActiveTaskList extends HTMLElement {
       : null;
   }
 
+  /** The Section of a directory, by the logical path a Task `cwd` uses. */
+  sectionForDirectory(path) {
+    const section = this.sections.find(
+      (candidate) => candidate.name === `${path ?? ""}`,
+    );
+    return section ? this.sectionFor(section.id) : null;
+  }
+
   recoveryFor(threadId) {
     return this.unsectioned.find(
       (task) => taskThreadId(task) === threadId && task?.recovery,
