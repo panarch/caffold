@@ -902,9 +902,11 @@ class CaffoldTaskTurnOptions extends HTMLElement {
               : permission?.label ?? "No approval mode is available here.",
       html: keepShown
         ? permissionButton.renderedHtml
-        : permissionUnavailable
-          ? "<span>Unavailable</span>"
-          : `<span>${escapeHtml(compactPermissionModeLabel(permission?.mode, permission?.label))}</span>`,
+        : permissionButtonHtml(
+            permissionUnavailable
+              ? "Unavailable"
+              : compactPermissionModeLabel(permission?.mode, permission?.label),
+          ),
     });
     // Until the model is known its width is not, and a control sitting to the
     // right of it would be carried along when the label lands. Without a model
@@ -1596,6 +1598,12 @@ function permissionModeLabel(mode) {
 
 function compactPermissionModeLabel(mode, label = "") {
   return COMPACT_PERMISSION_MODE_LABELS[mode] ?? `${label || mode || ""}`;
+}
+
+// A shield and the label, of which the width shows one. The shield is the same
+// for every mode; only the driver's `dangerous` mark colors it.
+function permissionButtonHtml(label) {
+  return `${renderInlineIcon("Shield", "", "task-permission-icon")}<span class="task-permission-label">${escapeHtml(label)}</span>`;
 }
 
 await busySpin.register(

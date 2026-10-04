@@ -1691,6 +1691,9 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       const modelButton = element.querySelector(".task-model-button");
       const modelName = element.querySelector(".task-model-name");
       const permissionButton = element.querySelector(".task-permission-button");
+      const permissionIcon = permissionButton.querySelector(".task-permission-icon");
+      const permissionLabel = permissionButton.querySelector(".task-permission-label");
+      const voiceButton = element.querySelector(".task-voice-button");
       const buildAlert = document.querySelector(
         "caffold-build-mismatch-alert",
       );
@@ -1716,6 +1719,14 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
         modelLabel: modelButton.innerText.replace(/\s+/g, " ").trim(),
         modelNameClipped: modelName.scrollWidth > modelName.clientWidth + 1,
         chipGap: permissionButtonRect.left - modelButtonRect.right,
+        permissionSize: [permissionButtonRect.width, permissionButtonRect.height],
+        voiceSize: [
+          voiceButton.getBoundingClientRect().width,
+          voiceButton.getBoundingClientRect().height,
+        ],
+        permissionShows: getComputedStyle(permissionIcon).display === "none"
+          ? permissionLabel.textContent
+          : "shield",
         viewportWidth: window.innerWidth,
         rootFontSize: Number.parseFloat(rootStyle.fontSize),
         formPaddingLeft: Number.parseFloat(formStyle.paddingLeft),
@@ -1730,6 +1741,7 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       };
     });
 
+  await expect(form.locator(".task-permission-button svg.task-permission-icon")).toHaveCount(1);
   const idle = await metrics();
   expect(idle).toEqual(
     expect.objectContaining({
@@ -1740,13 +1752,19 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
   );
   expect(idle.panelHeight).toBeLessThanOrEqual(96);
   expect(idle.modelLabel).toBe("Test · medium");
-  // At phone width the context pie takes the room the whole name needed; the
-  // model menu still names it in full.
-  expect(idle.modelNameClipped).toBe(testInfo.project.name === "phone");
+  expect(idle.modelNameClipped).toBe(false);
   expect(idle.chipGap).toBeGreaterThanOrEqual(0);
   expect(idle.chipGap).toBeLessThanOrEqual(8);
   expect(idle.panelBottom).toBeLessThanOrEqual(idle.workspaceBottom);
   expect(idle.workspaceBottom).toBeLessThanOrEqual(idle.shellBottom);
+  if (testInfo.project.name === "phone") {
+    // Only the shield, in a circle the microphone's size.
+    expect(idle.permissionShows).toBe("shield");
+    expect(idle.permissionSize).toEqual(idle.voiceSize);
+    expect(idle.permissionSize[0]).toBe(idle.permissionSize[1]);
+  } else {
+    expect(idle.permissionShows).toBe("Auto review");
+  }
   if (testInfo.project.name === "phone") {
     expect(idle.formPaddingLeft / idle.rootFontSize).toBeCloseTo(0.75, 2);
     expect(idle.conversationPaddingLeft / idle.rootFontSize).toBeCloseTo(
@@ -1777,6 +1795,45 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
   await expect(send).toBeDisabled();
   expect(reset.panelHeight).toBeLessThanOrEqual(idle.panelHeight + 1);
   expect(reset.sendBackground).toBe(idle.sendBackground);
+});
+
+test("shows a mode that gives up a protection as a danger-colored shield that opens the modes", { tag: "@phone" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const detail = { ...taskDetailFixture(), permissionMode: "fullAccess" };
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({ contentType: "text/event-stream", body: ": ready\n\n" }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const form = page.locator(
+    'caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-follow-up-form[data-task-form="follow-up"]',
+  );
+  const permission = form.locator(".task-permission-button");
+  const shield = permission.locator("svg.task-permission-icon");
+  await expect(permission).toHaveClass(/is-dangerous/);
+  await expect(shield).toBeVisible();
+  await expect(permission.locator(".task-permission-label")).toBeHidden();
+  const colors = await shield.evaluate((icon) => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--danger)";
+    document.body.append(probe);
+    const danger = getComputedStyle(probe).color;
+    probe.remove();
+    return { shield: getComputedStyle(icon).color, danger };
+  });
+  expect(colors.shield).toBe(colors.danger);
+
+  await permission.click();
+
+  const modes = form.locator(".task-permission-popover");
+  await expect(modes).toBeVisible();
+  await expect(modes.getByText("Full access")).toBeVisible();
 });
 
 test("managed tasks restore their last applied model, reasoning, and speed", { tag: "@all-viewports" }, async ({
