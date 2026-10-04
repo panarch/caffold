@@ -126,6 +126,14 @@ test("an ended terminal asks the Detail layout to leave the screen", () => {
   );
 });
 
+test("clearing the screen closes the terminal the view drew", () => {
+  const owner = pageOwner();
+
+  terminalPage.runEffect.call(owner, TERMINAL_EFFECT.CLEAR);
+
+  assert.equal(owner.closes, 1);
+});
+
 function pageOwner({
   sent = [],
   typed = [],
@@ -141,6 +149,9 @@ function pageOwner({
     reset: () => {
       owner.resets += 1;
     },
+    close: () => {
+      owner.closes += 1;
+    },
     sendInput: (text) => typed.push(text),
     applicationCursorKeys: () => applicationCursor,
   };
@@ -148,6 +159,7 @@ function pageOwner({
     state: { node, generation, mode: null, error: "" },
     encoder: new TextEncoder(),
     resets: 0,
+    closes: 0,
     connection: {
       send: (bytes) => sent.push(bytes),
       resize: (size) => resized.push(size),

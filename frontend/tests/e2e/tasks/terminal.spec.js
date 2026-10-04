@@ -15,8 +15,8 @@ import { openCompletedTaskForReview } from "../support/task-review-test.js";
 // These tests use the backend's real terminals: a shell on a PTY and its
 // WebSocket. Every test, in every project and repetition, names its own Task
 // or Section so no two share a terminal, and kills it at the end. A test that
-// only looks at the terminal screen's layout answers the terminal's requests
-// itself instead.
+// only looks at the terminal screen, not the shell behind it, answers the
+// terminal's requests itself instead.
 
 test.afterEach(async ({ request, baseURL }, testInfo) => {
   for (const subject of testInfo.annotations
@@ -239,8 +239,56 @@ test("opening the terminal on another screen takes it, and the screen that lost 
   const pageTerminal = page.locator("caffold-terminal-page");
   await expect(pageTerminal).toBeHidden();
   await expect(pageTerminal).toHaveAttribute("data-terminal-node", "inactive");
+  // Nothing it drew stays behind to show the next time the screen opens.
+  await expect(pageTerminal).not.toContainText("first-4");
   await expect(otherTerminal).toHaveAttribute("data-terminal-node", "live");
   await other.close();
+});
+
+test("a terminal screen shows nothing of another Task's terminal while its own connects", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const first = terminalDetail(terminalTaskId("before-first"), { title: "First terminal task" });
+  const second = terminalDetail(terminalTaskId("before-second"), { title: "Second terminal task" });
+  const sockets = new Map();
+  await installTaskApiFixture(page);
+  await page.route("**/api/tasks", (route) =>
+    route.fulfill({ json: activeTaskProjection([first.task, second.task]) })
+  );
+  await page.route("**/api/terminal", (route) => route.fulfill({ status: 204 }));
+  await page.routeWebSocket(/\/api\/terminal\/socket/, (socket) => {
+    socket.onMessage(() => {});
+    sockets.set(new URL(socket.url()).searchParams.get("task"), socket);
+  });
+  const attach = async (threadId, screen) => {
+    await expect.poll(() => sockets.has(threadId)).toBe(true);
+    sockets.get(threadId).send(JSON.stringify({ type: "attached" }));
+    sockets.get(threadId).send(Buffer.from(screen));
+  };
+  await page.goto(`/tasks/${first.threadId}`);
+  await emitTaskDetailBootstrap(page, first);
+  await terminalButton(page).click();
+  await attach(first.threadId, "first-screen");
+  await expectLive(page);
+  await expect(terminalRows(page)).toContainText("first-screen");
+
+  await terminalButton(page).click();
+  await page.locator(`caffold-task-navigator .task-row[data-thread-id="${second.threadId}"]`).click();
+  await emitTaskDetailBootstrap(page, second);
+  await terminalButton(page).click();
+
+  // The second Task's socket is open and its backend has not answered yet.
+  await expect.poll(() => sockets.has(second.threadId)).toBe(true);
+  const terminal = page.locator("caffold-terminal-page");
+  const view = terminal.locator("caffold-terminal-view");
+  await expect(terminal).toHaveAttribute("data-terminal-node", "connecting");
+  await expect(view).toBeVisible();
+  await expect(view).not.toContainText("first-screen");
+
+  await attach(second.threadId, "second-screen");
+  await expectLive(page);
+  await expect(terminalRows(page)).toContainText("second-screen");
+  await expect(terminalRows(page)).not.toContainText("first-screen");
 });
 
 test("a Task's terminal starts in the Task's working directory", { tag: "@desktop" }, async ({

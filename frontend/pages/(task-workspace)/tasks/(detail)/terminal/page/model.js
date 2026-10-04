@@ -34,6 +34,9 @@ export const TERMINAL_EVENT = Object.freeze({
 export const TERMINAL_EFFECT = Object.freeze({
   CONNECT: "connect",
   DISCONNECT: "disconnect",
+  // The screen drops what it drew, so the next activation shows only what the
+  // backend sends it.
+  CLEAR: "clear",
   FOCUS: "focus",
   RELEASE_FOCUS: "release-focus",
   // The terminal this screen was using ended; the screen goes back to where
@@ -106,7 +109,7 @@ export function terminalTransition(state, event) {
 
 function acceptedEdge(state, event) {
   const { node } = state;
-  const { CONNECT, DISCONNECT, FOCUS, RELEASE_FOCUS, LEAVE } = TERMINAL_EFFECT;
+  const { CONNECT, DISCONNECT, CLEAR, FOCUS, RELEASE_FOCUS, LEAVE } = TERMINAL_EFFECT;
   switch (event?.type) {
     case TERMINAL_EVENT.ACTIVATE: {
       const mode = event.mode === TERMINAL_MODE.TAKE
@@ -128,7 +131,7 @@ function acceptedEdge(state, event) {
     case TERMINAL_EVENT.DEACTIVATE:
       return node === TERMINAL_NODE.INACTIVE
         ? null
-        : { node: TERMINAL_NODE.INACTIVE, effects: [DISCONNECT] };
+        : { node: TERMINAL_NODE.INACTIVE, effects: [DISCONNECT, CLEAR] };
     case TERMINAL_EVENT.HIDDEN:
       return LEAVING.has(node)
         ? { node: TERMINAL_NODE.SUSPENDED, effects: [DISCONNECT] }

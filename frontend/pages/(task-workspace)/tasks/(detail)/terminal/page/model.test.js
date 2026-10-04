@@ -10,7 +10,7 @@ import {
   terminalTransition,
 } from "./model.js";
 
-const { CONNECT, DISCONNECT, FOCUS, RELEASE_FOCUS, LEAVE } = TERMINAL_EFFECT;
+const { CONNECT, DISCONNECT, CLEAR, FOCUS, RELEASE_FOCUS, LEAVE } = TERMINAL_EFFECT;
 
 test("activation connects with the mode it was asked in", () => {
   for (const mode of [TERMINAL_MODE.TAKE, TERMINAL_MODE.RESUME]) {
@@ -108,7 +108,7 @@ test("coming back resumes a suspended screen and recovers a lost connection", ()
   assert.deepEqual(recovered.effects, [CONNECT]);
 });
 
-test("deactivation leaves every active node", () => {
+test("deactivation leaves every active node and clears its screen", () => {
   for (const node of Object.values(TERMINAL_NODE)) {
     const result = terminalTransition(stateAt(node), {
       type: TERMINAL_EVENT.DEACTIVATE,
@@ -118,7 +118,7 @@ test("deactivation leaves every active node", () => {
       continue;
     }
     assert.equal(result.state.node, TERMINAL_NODE.INACTIVE, node);
-    assert.deepEqual(result.effects, [DISCONNECT], node);
+    assert.deepEqual(result.effects, [DISCONNECT, CLEAR], node);
   }
 });
 

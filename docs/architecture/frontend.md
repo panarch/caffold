@@ -1209,10 +1209,11 @@ control gap, so the bar ends where the header does and, on a Task, its two
 buttons stand under the terminal and Task details buttons.
 
 `caffold-terminal-view` in `frontend/components/terminal-view.js` is the
-reusable leaf that loads xterm.js, sizes it to its box, applies the Code
-typeface, Code size, and theme colors, scrolls the history under a dragged
-finger as [Terminals](terminal.md#browser) describes, and reports typed input
-and size changes. It owns no connection or terminal state.
+reusable leaf that loads xterm.js, opens and closes its terminal, sizes it to
+its box, applies the Code typeface, Code size, and theme colors, scrolls the
+history under a dragged finger as [Terminals](terminal.md#browser) describes,
+and reports typed input and size changes. It owns no connection or terminal
+state.
 
 An on-screen keyboard is the one layout value the terminal screen sets from
 JavaScript. Browsers keep the page laid out at full height when a phone's or

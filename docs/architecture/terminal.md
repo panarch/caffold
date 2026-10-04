@@ -186,6 +186,10 @@ The terminal screen follows one control model per activation:
   that arrives where no terminal runs. `elsewhere` and `empty` offer to take the
   terminal here;
 - a hidden page suspends the socket and resumes it when the page returns;
+- deactivation closes the xterm.js terminal with everything it drew, so the
+  next activation, for the same subject or another, shows nothing until the
+  backend's snapshot arrives. A connection made again within one activation
+  keeps the screen drawn so far until the snapshot replaces it;
 - a failed socket, or xterm.js failing to load, is `disconnected`. The Detail
   layout then reports its transport as unavailable, so the App Shell's recovery
   notice appears, and foreground recovery loads xterm.js again if it failed and
