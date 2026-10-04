@@ -42,7 +42,8 @@ in the Composer shows the current mode, for example **Auto review**, and opens
 the **Permissions** menu. Each agent offers its own modes, from asking before
 most actions to never asking, and the menu lists the ones the chosen agent and
 model offer, each with a short description. Modes that give up the protection
-of asking are marked in red.
+of asking are marked in red. On a phone the button shows only a shield, red for
+such a mode.
 
 ![The Permissions menu of a Codex Task](../assets/screenshots/approval-modes-desktop.png)
 

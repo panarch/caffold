@@ -82,6 +82,12 @@ caffold-task-turn-options {
     white-space: nowrap;
   }
 
+  & .task-permission-icon {
+    display: none;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+  }
+
   & .task-model-name {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -346,6 +352,21 @@ caffold-task-turn-options {
   caffold-task-turn-options {
     & .task-turn-options {
       gap: 0.1875rem;
+    }
+
+    /* Only the shield, in a circle the microphone's size, so the model keeps
+       the room its name needs. */
+    & .task-permission-button {
+      width: var(--interface-compact-visual-size);
+      padding-inline: 0;
+    }
+
+    & .task-permission-icon {
+      display: block;
+    }
+
+    & .task-permission-label {
+      display: none;
     }
   }
 }

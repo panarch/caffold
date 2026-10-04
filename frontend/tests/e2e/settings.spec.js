@@ -3192,7 +3192,9 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
 
 test("keeps model picker chrome compact and scales it only with Interface", { tag: "@all-viewports" }, async ({
   page,
-}) => {
+}, testInfo) => {
+  // At phone width the approval-mode control is its shield alone.
+  const shownIcons = testInfo.project.name === "phone" ? ["send", "permission"] : ["send"];
   await page.goto("/settings/appearance");
   const settingsPage = page.locator("caffold-settings-appearance-page");
   const interfaceRange = range(settingsPage, "interfaceScalePercent");
@@ -3247,7 +3249,7 @@ test("keeps model picker chrome compact and scales it only with Interface", { ta
   expect(compact.optionPadding / compact.rootFontSize).toBeCloseTo(0.375, 2);
   expect(compact.optionGap / compact.rootFontSize).toBeCloseTo(0.5, 2);
   expect(compact.modelButtonIconCount).toBe(0);
-  expect(compact.permissionButtonIconCount).toBe(0);
+  expect(compact.permissionButtonIconCount).toBe(shownIcons.length - 1);
   expect(compact.modelButtonBackground).not.toBe("rgba(0, 0, 0, 0)");
   expect(compact.permissionButtonBackground).not.toBe("rgba(0, 0, 0, 0)");
   expect(compact.modelButtonOverflow).toBe(false);
@@ -3255,7 +3257,7 @@ test("keeps model picker chrome compact and scales it only with Interface", { ta
   expect(compact.modelPickerDeadSpace).toBeLessThanOrEqual(1);
   expect(compact.chipGap).toBeGreaterThanOrEqual(0);
   expect(compact.chipGap).toBeLessThanOrEqual(compact.toolbarGap + 1);
-  expectComposerIconsCentered(compact);
+  expectComposerIconsCentered(compact, shownIcons);
 
   await setRange(conversationRange, 20);
   await setRange(codeRange, 20);
@@ -3298,7 +3300,7 @@ test("keeps model picker chrome compact and scales it only with Interface", { ta
   expect(spacious.modelPickerDeadSpace).toBeLessThanOrEqual(1);
   expect(spacious.chipGap).toBeGreaterThanOrEqual(0);
   expect(spacious.chipGap).toBeLessThanOrEqual(spacious.toolbarGap + 1);
-  expectComposerIconsCentered(spacious);
+  expectComposerIconsCentered(spacious, shownIcons);
   expect(compact.overflowX).toBe(false);
   expect(spacious.overflowX).toBe(false);
 });
@@ -3524,8 +3526,11 @@ async function modelPickerMetrics(composer) {
       probe.remove();
       return height;
     };
+    const shown = (icon) => icon && getComputedStyle(icon).display !== "none";
+    const permissionIcon = permissionButton.querySelector("svg.task-permission-icon");
     const iconGeometry = [
       ["send", element.querySelector(".task-primary-action-button"), element.querySelector(".task-primary-action-icon")],
+      ...(shown(permissionIcon) ? [["permission", permissionButton, permissionIcon]] : []),
     ].map(([name, button, icon]) => {
       const buttonBox = button.getBoundingClientRect();
       const iconBox = icon?.getBoundingClientRect();
@@ -3558,7 +3563,8 @@ async function modelPickerMetrics(composer) {
       modelButtonBackground: modelButtonStyle.backgroundColor,
       permissionButtonBackground: permissionButtonStyle.backgroundColor,
       modelButtonIconCount: modelButton.querySelectorAll("svg").length,
-      permissionButtonIconCount: permissionButton.querySelectorAll("svg").length,
+      permissionButtonIconCount: [...permissionButton.querySelectorAll("svg")].filter(shown)
+        .length,
       modelButtonOverflow: modelButton.scrollWidth > modelButton.clientWidth,
       permissionButtonOverflow:
         permissionButton.scrollWidth > permissionButton.clientWidth,
@@ -3589,8 +3595,8 @@ function stableModelPickerMetrics(metrics) {
   return stableMetrics;
 }
 
-function expectComposerIconsCentered(metrics) {
-  expect(metrics.iconGeometry).toHaveLength(1);
+function expectComposerIconsCentered(metrics, names) {
+  expect(metrics.iconGeometry.map(({ name }) => name)).toEqual(names);
   for (const icon of metrics.iconGeometry) {
     expect(icon.tagName, `${icon.name} must use an SVG icon`).toBe("svg");
     expect(icon.outerAspectDelta, `${icon.name} must use a square slot`).toBeLessThanOrEqual(

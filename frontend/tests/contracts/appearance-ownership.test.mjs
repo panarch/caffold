@@ -1397,7 +1397,14 @@ test("mixed surfaces keep content and controls on separate axes", () => {
     turnOptions,
     /\.task-model-button\.is-fast \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto auto;/,
   );
-  assert.doesNotMatch(turnOptions, /\.task-(?:model|permission)-(?:icon|caret)/);
+  assert.doesNotMatch(turnOptions, /\.task-(?:model-(?:icon|caret)|permission-caret)/);
+  // The permission shield never sits beside its label: it stands in for the
+  // label at phone width and is hidden everywhere else.
+  assert.match(turnOptions, /\.task-permission-icon \{\s*display: none;/);
+  assert.match(
+    turnOptions,
+    /@media \(max-width: 520px\) and \(orientation: portrait\) \{[\s\S]*\.task-permission-icon \{\s*display: block;\s*\}\s*& \.task-permission-label \{\s*display: none;/,
+  );
   assert.match(
     turnOptions,
     /\.task-model-popover,[\s\S]*padding: 0\.5rem;/,

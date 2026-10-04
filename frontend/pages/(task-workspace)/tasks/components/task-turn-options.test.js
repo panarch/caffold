@@ -881,7 +881,7 @@ test("shows the permission picker once the model is known and its label once a l
   assert.equal(nodes.permissionButton.classList.contains("is-deferred"), false);
 
   await answerModes(server);
-  assert.equal(nodes.permissionButton.innerHTML, "<span>Auto review</span>");
+  assert.equal(nodes.permissionButton.innerHTML, permissionButtonHtml("Auto review"));
   assert.equal(nodes.permissionButton.attributes.has("aria-busy"), false);
   assert.equal(nodes.permissionButton.title, "Approve for me");
 });
@@ -891,10 +891,10 @@ test("a closed permission control keeps what it showed until the delay, then sho
   t.after(() => server.restore());
   await answerModels(server);
   await answerModes(server);
-  assert.equal(nodes.permissionButton.innerHTML, "<span>Auto review</span>");
+  assert.equal(nodes.permissionButton.innerHTML, permissionButtonHtml("Auto review"));
 
   element.selectModel("opus[1m]", "claude");
-  assert.equal(nodes.permissionButton.innerHTML, "<span>Auto review</span>");
+  assert.equal(nodes.permissionButton.innerHTML, permissionButtonHtml("Auto review"));
   assert.equal(nodes.permissionButton.attributes.get("aria-busy"), "true");
   assert.equal(nodes.permissionButton.classList.contains("is-deferred"), false);
 
@@ -903,7 +903,7 @@ test("a closed permission control keeps what it showed until the delay, then sho
   assert.equal(nodes.permissionButton.classList.contains("is-deferred"), false);
 
   await answerModes(server);
-  assert.equal(nodes.permissionButton.innerHTML, "<span>Automatic</span>");
+  assert.equal(nodes.permissionButton.innerHTML, permissionButtonHtml("Automatic"));
   assert.equal(nodes.permissionButton.attributes.has("aria-busy"), false);
 });
 
@@ -1179,7 +1179,7 @@ test("an unreadable permission list reads as unavailable, holds the submission, 
 
   assert.equal(element.readyForSubmission(), false);
   assert.equal(Object.hasOwn(element.submissionOptions(), "permissionMode"), false);
-  assert.equal(nodes.permissionButton.innerHTML, "<span>Unavailable</span>");
+  assert.equal(nodes.permissionButton.innerHTML, permissionButtonHtml("Unavailable"));
   assert.equal(nodes.permissionButton.classList.contains("is-unavailable"), true);
   assert.equal(
     nodes.permissionButton.title,
@@ -1623,6 +1623,11 @@ function optionControl({
     focus() {},
     click() {},
   };
+}
+
+// The icon set is not loaded here, so the shield renders as its empty label.
+function permissionButtonHtml(label) {
+  return `<span class="sr-only"></span><span class="task-permission-label">${label}</span>`;
 }
 
 const LOADING_SLOT_HTML =
