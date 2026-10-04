@@ -18,13 +18,13 @@ browser offers an update only when the running app is older than the newest
 GitHub release, so the app installed first carries a lower version than that
 release, and the archives carry the release's version.
 
-1. Refresh Homebrew once. Homebrew updates taps by itself at most once a day,
-   or once an hour after a developer command, so it leaves the edited tap alone
-   while the checks run:
+1. Refresh Homebrew once, so the edits below sit on the tap's newest commit.
+   `caffold update` runs `brew update` before it upgrades, and Homebrew leaves
+   an edited tap alone while the tap on GitHub has nothing newer, so run the
+   checks while no Caffold release is being published:
 
    ```sh
    brew update
-   export HOMEBREW_NO_AUTO_UPDATE=1
    ```
 
 2. Build the working archive. Set the newest release's version, `NEXT`, in

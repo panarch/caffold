@@ -266,6 +266,17 @@ async fn update(
 ) -> (AttemptOutcome, Option<String>) {
     let app = &request.app;
     let from = attempt.from_version.clone();
+    // Homebrew fetches its taps by itself at most once a day, while the newest
+    // release is known from GitHub at once. A refresh that fails leaves the
+    // upgrade to the copy Homebrew has.
+    log("Refreshing Homebrew.");
+    match host.homebrew_refresh().await {
+        Ok(output) => log(output.trim_end()),
+        Err(output) => {
+            log(output.trim_end());
+            log("Homebrew could not refresh; upgrading from the copy it has.");
+        }
+    }
     // Homebrew compares only its own record with its tap. After a rollback
     // the record is ahead of the app, and only a reinstall installs that
     // version again.
@@ -476,6 +487,8 @@ pub(super) trait Host {
     fn pid(&self) -> u32;
     fn alive(&self, pid: u32) -> bool;
     async fn homebrew_record(&self) -> HomebrewRecord;
+    /// Brings Homebrew's copy of its taps up to date and returns what it said.
+    async fn homebrew_refresh(&self) -> Result<String, String>;
     /// Upgrades the cask, or reinstalls it, and returns what Homebrew said.
     async fn homebrew_install(&self, reinstall: bool) -> Result<String, String>;
     async fn bundle_version(&self, app: &Path) -> Result<Version, String>;
@@ -514,11 +527,14 @@ mod tests {
     const WORKER_PID: u32 = 200;
 
     /// A Mac with one Caffold app: bundles on disk by path, the running app,
-    /// and Homebrew's record and offer.
+    /// Homebrew's record and its copy of the tap, and what the tap on GitHub
+    /// offers.
     struct FakeMac {
         homebrew: Cell<bool>,
         record: RefCell<Option<Version>>,
+        tap: RefCell<Version>,
         offer: Version,
+        refresh_fails: bool,
         homebrew_fails: bool,
         bundles: RefCell<HashMap<PathBuf, Version>>,
         running: RefCell<Option<Version>>,
@@ -536,7 +552,9 @@ mod tests {
             Self {
                 homebrew: Cell::new(true),
                 record: RefCell::new(Some(installed.clone())),
+                tap: RefCell::new(version(offer)),
                 offer: version(offer),
+                refresh_fails: false,
                 homebrew_fails: false,
                 bundles: RefCell::new(HashMap::from([(PathBuf::from(APP), installed.clone())])),
                 running: RefCell::new(Some(installed.clone())),
@@ -581,6 +599,15 @@ mod tests {
             }
         }
 
+        async fn homebrew_refresh(&self) -> Result<String, String> {
+            self.did("brew update");
+            if self.refresh_fails {
+                return Err("Error: Failed to update tap: example/gone".to_string());
+            }
+            *self.tap.borrow_mut() = self.offer.clone();
+            Ok("Updated 1 tap (panarch/tap).".to_string())
+        }
+
         async fn homebrew_install(&self, reinstall: bool) -> Result<String, String> {
             self.did(if reinstall {
                 "brew reinstall"
@@ -591,11 +618,10 @@ mod tests {
                 return Err("==> Downloading\nError: Download failed".to_string());
             }
             let recorded = self.record.borrow().clone();
-            if reinstall || recorded.as_ref() < Some(&self.offer) {
-                *self.record.borrow_mut() = Some(self.offer.clone());
-                self.bundles
-                    .borrow_mut()
-                    .insert(PathBuf::from(APP), self.offer.clone());
+            let tap = self.tap.borrow().clone();
+            if reinstall || recorded.as_ref() < Some(&tap) {
+                *self.record.borrow_mut() = Some(tap.clone());
+                self.bundles.borrow_mut().insert(PathBuf::from(APP), tap);
             }
             Ok("==> Upgrading 1 outdated package".to_string())
         }
@@ -742,6 +768,38 @@ mod tests {
                 .join("../../update.lock")
                 .exists()
         );
+    }
+
+    #[tokio::test]
+    async fn refreshes_homebrew_before_it_upgrades() {
+        let (_directory, records) = records();
+        let mac = FakeMac::new("0.18.2", "0.18.3");
+        // Homebrew's copy of the tap predates the release.
+        *mac.tap.borrow_mut() = version("0.18.2");
+
+        let attempt = attempt(&mac, &records).await;
+
+        assert_eq!(attempt.outcome, AttemptOutcome::Succeeded);
+        assert_eq!(attempt.to_version.as_deref(), Some("0.18.3"));
+        let steps = mac.steps();
+        let refresh = steps.iter().position(|step| step == "brew update").unwrap();
+        let upgrade = steps
+            .iter()
+            .position(|step| step == "brew upgrade")
+            .unwrap();
+        assert!(refresh < upgrade, "{steps:?}");
+    }
+
+    #[tokio::test]
+    async fn upgrades_from_the_copy_it_has_when_homebrew_cannot_refresh() {
+        let (_directory, records) = records();
+        let mut mac = FakeMac::new("0.18.2", "0.18.3");
+        mac.refresh_fails = true;
+
+        let attempt = attempt(&mac, &records).await;
+
+        assert_eq!(attempt.outcome, AttemptOutcome::Succeeded);
+        assert_eq!(mac.app_version(), Some(version("0.18.3")));
     }
 
     #[tokio::test]

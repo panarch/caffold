@@ -39,17 +39,13 @@ impl Host for MacHost {
         homebrew_record().await
     }
 
+    async fn homebrew_refresh(&self) -> Result<String, String> {
+        brew_to_end(&["update"]).await
+    }
+
     async fn homebrew_install(&self, reinstall: bool) -> Result<String, String> {
-        let brew = find_brew(env::var_os("PATH").as_deref()).ok_or("Homebrew is not installed.")?;
         let action = if reinstall { "reinstall" } else { "upgrade" };
-        // Homebrew runs to its end: stopping it partway leaves a change it
-        // cannot undo, where letting it fail lets it undo its own.
-        let output = run_to_end(&brew, &[action, "--cask", CASK]).await?;
-        if output.success {
-            Ok(output.combined)
-        } else {
-            Err(output.combined)
-        }
+        brew_to_end(&[action, "--cask", CASK]).await
     }
 
     async fn bundle_version(&self, app: &Path) -> Result<Version, String> {
@@ -362,14 +358,22 @@ async fn run(
     Ok(CommandOutput::from(output))
 }
 
-/// Runs a command however long it takes.
-async fn run_to_end(program: &Path, arguments: &[&str]) -> Result<CommandOutput, String> {
-    let output = Command::new(program)
+/// Runs Homebrew however long it takes and returns what it said. Stopping it
+/// partway leaves a change it cannot undo, where letting it fail lets it undo
+/// its own.
+async fn brew_to_end(arguments: &[&str]) -> Result<String, String> {
+    let brew = find_brew(env::var_os("PATH").as_deref()).ok_or("Homebrew is not installed.")?;
+    let output = Command::new(&brew)
         .args(arguments)
         .output()
         .await
-        .map_err(|error| format!("{} could not start: {error}", program.display()))?;
-    Ok(CommandOutput::from(output))
+        .map_err(|error| format!("{} could not start: {error}", brew.display()))?;
+    let output = CommandOutput::from(output);
+    if output.success {
+        Ok(output.combined)
+    } else {
+        Err(output.combined)
+    }
 }
 
 impl From<Output> for CommandOutput {
