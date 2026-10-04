@@ -250,6 +250,9 @@ class CaffoldTerminalPage extends HTMLElement {
       case TERMINAL_EFFECT.DISCONNECT:
         this.closeConnection();
         break;
+      case TERMINAL_EFFECT.CLEAR:
+        this.terminalView()?.close();
+        break;
       case TERMINAL_EFFECT.FOCUS:
         this.terminalView()?.focus();
         break;

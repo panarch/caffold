@@ -46,7 +46,6 @@ class CaffoldTerminalView extends HTMLElement {
     this.rendered = true;
     this.terminal = null;
     this.fitAddon = null;
-    this.opening = null;
     this.size = null;
     this.fitFrame = 0;
     this.encoder = new TextEncoder();
@@ -55,16 +54,25 @@ class CaffoldTerminalView extends HTMLElement {
     this.innerHTML = `<div class="terminal-view-screen"></div>`;
   }
 
-  /** Opens the terminal on first use. Resolves with its size once it has a box. */
+  /** Opens a terminal unless one is open. Resolves with its size once it has a box. */
   async open() {
     this.ensureRendered();
-    this.opening ??= this.createTerminal().catch((error) => {
-      this.opening = null;
-      throw error;
-    });
-    await this.opening;
+    if (!this.terminal) {
+      await this.createTerminal();
+    }
     this.fit();
     return this.size;
+  }
+
+  /**
+   * Closes the terminal with everything it drew. A reset would not do:
+   * xterm.js still draws the output it had queued before the reset.
+   */
+  close() {
+    this.terminal?.dispose();
+    this.terminal = null;
+    this.fitAddon = null;
+    this.size = null;
   }
 
   reset() {
@@ -112,6 +120,10 @@ class CaffoldTerminalView extends HTMLElement {
       await document.fonts?.load(`${appearance.fontSize}px ${appearance.fontFamily}`);
     } catch {
       // A fallback font still gives the terminal a size.
+    }
+    // Another open may have made one while the library and font loaded.
+    if (this.terminal) {
+      return;
     }
     const terminal = new Terminal({
       ...appearance,
