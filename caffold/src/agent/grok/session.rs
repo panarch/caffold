@@ -48,6 +48,11 @@ pub(super) struct SessionState {
     pub(super) title: Option<String>,
     pub(super) context_window: Option<u64>,
     pub(super) session_tokens: Option<u64>,
+    /// How many times the leader has been asked how full the context is, and
+    /// which ask was last reported. A slower answer to an older ask must not
+    /// stand over a newer one.
+    context_asks: u64,
+    pub(super) context_reported: u64,
     /// Caffold asked for this session to end.
     pub(super) closed: bool,
     pub(super) opened_at_ms: u64,
@@ -88,6 +93,12 @@ impl SessionState {
             moved_at_ms: now,
             ..Self::default()
         }
+    }
+
+    /// Number one more ask of how full the context is.
+    pub(super) fn next_context_ask(&mut self) -> u64 {
+        self.context_asks += 1;
+        self.context_asks
     }
 
     pub(super) fn waiting_on_approval(&self) -> bool {

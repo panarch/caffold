@@ -696,6 +696,7 @@ function detailFor(task, overrides = {}) {
     model: "gpt-6-astra",
     reasoningEffort: "high",
     fastMode: false,
+    context: { usedTokens: 84_120, windowTokens: 258_400 },
     ...overrides,
   };
 }

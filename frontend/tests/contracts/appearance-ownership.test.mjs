@@ -422,7 +422,7 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
     ["pages/(task-workspace)/tasks/components/task-turn-options", "caffold-task-turn-options", "> .task-turn-options > .task-model-picker > .task-model-button > .task-picker-spinner"],
     ["pages/(task-workspace)/tasks/components/task-turn-options", "caffold-task-turn-options", "> .task-turn-options > .task-permission-picker > .task-permission-button > .task-picker-spinner"],
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn", "caffold-task-active-turn", "> .task-active-turn-spinner"],
-    ["pages/(task-workspace)/tasks/components/composer", "caffold-task-composer", "> .task-composer > .task-composer-panel > .task-composer-toolbar > .task-composer-actions > .task-voice-button.is-busy > .task-voice-icon"],
+    ["pages/(task-workspace)/tasks/components/composer", "caffold-task-composer", "> .task-composer > .task-composer-panel > .task-composer-toolbar > .task-composer-actions > .task-composer-render-region > .task-voice-button.is-busy > .task-voice-icon"],
     ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", "caffold-git-review-controls", "> .git-review-controls > .git-review-refresh.is-refreshing > .git-review-refresh-icon"],
     ["pages/(task-workspace)/settings/components/refresh-button", "caffold-settings-refresh-button", "> button.is-refreshing > span > .settings-refresh-icon"],
   ];

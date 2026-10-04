@@ -77,19 +77,29 @@ test("provides Model, Permission, and Prompt through their existing component ac
     actionHintButtonTargets(options) {
       return composer.actionHintButtonTargets.call(this, options);
     },
+    contextUsage: () => ({
+      actionHintTarget(options) {
+        pieOptions = options;
+        return pieTarget;
+      },
+    }),
   };
+  const pieTarget = { id: "task-composer:task:thread-a:context-usage" };
+  let pieOptions = null;
 
   const targets = composer.actionHintTargets.call(owner, {
     scopeId: "task:thread-a",
     clipRoots: [clipRoot],
   });
 
-  assert.equal(targets.length, 3);
+  assert.equal(targets.length, 4);
   assert.deepEqual(delegatedOptions, {
     scopeId: "task:thread-a",
     clipRoots: [clipRoot],
   });
-  const [model, permission, prompt] = targets;
+  assert.deepEqual(pieOptions, delegatedOptions, "the pie provides its own target");
+  const [model, permission, prompt, pie] = targets;
+  assert.equal(pie, pieTarget);
   assert.equal(model.control, modelControl);
   assert.equal(model.isActionable(), true);
   model.activate();
@@ -267,7 +277,7 @@ test("renders Send after the turn options take the new context", () => {
     const nodes = {
       ":scope > form[data-task-form]": node(),
       "textarea[name='prompt']": { ...node(), value: "Keep going" },
-      ".task-composer-actions": { innerHTML: "" },
+      '[data-composer-region="actions"]': { innerHTML: "" },
       'button[data-composer-action="attach"]': node(),
     };
     const owner = {
@@ -287,6 +297,7 @@ test("renders Send after the turn options take the new context", () => {
       renderVoiceStatus: () => "",
       renderVoiceControls: () => "",
       turnOptions: () => ({ readyForSubmission: () => ready }),
+      contextUsage: () => ({ hidden: true }),
       // A new working directory asks for its own permission list.
       syncTurnOptionsContext() {
         ready = false;
@@ -297,7 +308,7 @@ test("renders Send after the turn options take the new context", () => {
 
     composer.render.call(owner);
 
-    assert.match(nodes[".task-composer-actions"].innerHTML, /\sdisabled\s/);
+    assert.match(nodes['[data-composer-region="actions"]'].innerHTML, /\sdisabled\s/);
   } finally {
     restoreGlobal("document", previousDocument);
   }
@@ -439,6 +450,67 @@ test("takes the files of a drop and refuses the folders in it", async () => {
 
   assert.equal(prevented, true);
   assert.deepEqual(added, [{ names: ["server.log"], error: "Folders cannot be attached." }]);
+});
+
+test("hands the agent's count to the context pie without drawing the Composer again", () => {
+  const snapshots = [];
+  const owner = {
+    ensureState() {},
+    ensureRendered() {},
+    contextUsage: () => ({ setSnapshot: (context) => snapshots.push(context) }),
+    render() {
+      throw new Error("a new count is the pie's alone");
+    },
+  };
+
+  composer.setContextUsage.call(owner, { usedTokens: 32_147, windowTokens: 200_000 });
+  composer.setContextUsage.call(owner, null);
+
+  assert.deepEqual(snapshots, [{ usedTokens: 32_147, windowTokens: 200_000 }, null]);
+});
+
+test("shows the context pie only in a Task's follow-up Composer", () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { activeElement: null };
+  try {
+    const node = () => ({ dataset: {}, setAttribute() {}, removeAttribute() {} });
+    const pie = { hidden: true };
+    const owner = {
+      context: { mode: "follow-up", threadId: "thread-1", submitLabel: "Send prompt" },
+      voice: { phase: "idle" },
+      state: { prompt: "", attachments: [] },
+      ensureState() {},
+      ensureRendered() {},
+      stateFor() {
+        return this.state;
+      },
+      activeSubmissionFor: () => null,
+      acceptsAttachments: composer.acceptsAttachments,
+      primaryActionView: composer.primaryActionView,
+      querySelector: (selector) => ({
+        ":scope > form[data-task-form]": node(),
+        "textarea[name='prompt']": { ...node(), value: "" },
+        'button[data-composer-action="attach"]': node(),
+      })[selector] ?? { innerHTML: "" },
+      setRegion() {},
+      renderVoiceStatus: () => "",
+      renderVoiceControls: () => "",
+      turnOptions: () => ({ readyForSubmission: () => true }),
+      contextUsage: () => pie,
+      syncTurnOptionsContext() {},
+      syncTurnOptionsFields() {},
+      notifyLayoutChange() {},
+    };
+
+    composer.render.call(owner);
+    assert.equal(pie.hidden, false);
+
+    owner.context = { ...owner.context, mode: "create", threadId: "" };
+    composer.render.call(owner);
+    assert.equal(pie.hidden, true);
+  } finally {
+    restoreGlobal("document", previousDocument);
+  }
 });
 
 function restoreGlobal(name, value) {

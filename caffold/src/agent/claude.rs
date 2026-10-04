@@ -212,6 +212,11 @@ struct Session {
     /// Control requests Caffold has sent and is waiting on.
     pending: AsyncMutex<HashMap<String, oneshot::Sender<Result<protocol::ControlAnswer, String>>>>,
     next_control_id: AtomicU64,
+    /// How many times this session has been asked how full its context is,
+    /// and which of those asks was last reported. Answers can come back out
+    /// of order, and an older one must not stand over a newer one.
+    context_asks: AtomicU64,
+    context_reported: AsyncMutex<u64>,
     /// Caffold asked for this session to end, so its ending is a person's
     /// doing rather than the agent's. Kept beside the state rather than in
     /// it: ending sessions is what a person reaches for when one is stuck.
@@ -1953,6 +1958,7 @@ mod test_support {
             SessionEventKind::ItemChanged { .. } => "item",
             SessionEventKind::DiffChanged => "diff",
             SessionEventKind::UsageReported { .. } => "usage",
+            SessionEventKind::ContextReported { .. } => "context",
             SessionEventKind::ApprovalAnsweredElsewhere { .. } => "approval withdrawn",
         }
     }
@@ -2191,6 +2197,8 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn silence_after_a_prompt_neither_ends_the_turn_nor_reports_anything() {
         let (client, runner, mut events) = watching().await;
+        // Opening asked how full the context is; that answer is not silence.
+        next_session_event(&mut events, "context").await;
         let turn = running_turn(&client, &mut events, "run it").await;
 
         tokio::time::advance(Duration::from_secs(60)).await;

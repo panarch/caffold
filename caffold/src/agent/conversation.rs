@@ -90,6 +90,10 @@ pub(crate) enum SessionEventKind {
         turn_id: String,
         usage: TokenUsage,
     },
+    /// How full the model's context is, in the agent's own count.
+    ContextReported {
+        context: ContextUsage,
+    },
     /// An approval was answered somewhere other than Caffold, so the request is
     /// no longer waiting on anyone here.
     ApprovalAnsweredElsewhere {
@@ -118,6 +122,18 @@ pub(crate) struct TokenCount {
     pub(crate) cache_write_input_tokens: u64,
     pub(crate) output_tokens: u64,
     pub(crate) reasoning_output_tokens: u64,
+}
+
+/// What the conversation takes up of the model's context right now, and how
+/// much the model can hold.
+///
+/// This is a different question from [`TokenUsage`], which is what the
+/// conversation has spent. A driver reports it only when its agent says both.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ContextUsage {
+    pub(crate) used_tokens: u64,
+    pub(crate) window_tokens: u64,
 }
 
 /// A conversation as its agent currently reports it.

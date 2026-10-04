@@ -821,12 +821,29 @@ impl MockRunner {
                         "transcript_relocated": true,
                     } })
                 }
+            } else if frame["request"]["subtype"] == "get_context_usage" {
+                // Trimmed from what the agent answered after one short turn:
+                // what Caffold reads, beside some of what it does not.
+                serde_json::json!({ "response": {
+                    "totalTokens": 29_669,
+                    "maxTokens": 200_000,
+                    "percentage": 15,
+                    "autoCompactThreshold": 167_000,
+                    "categories": [{ "name": "Messages", "tokens": 1 }],
+                    "apiUsage": {
+                        "input_tokens": 10,
+                        "output_tokens": 61,
+                        "cache_creation_input_tokens": 7_780,
+                        "cache_read_input_tokens": 13_796,
+                    },
+                } })
             } else {
                 serde_json::json!({ "response": {} })
             };
             let moved =
                 frame["request"]["subtype"] == "set_cwd" && body["response"]["status"] == "ok";
             body["subtype"] = serde_json::json!("success");
+
             body["request_id"] = serde_json::json!(request_id);
             let answer = serde_json::json!({ "type": "control_response", "response": body });
             if moved && std::mem::take(&mut existing.holds_next_move) {

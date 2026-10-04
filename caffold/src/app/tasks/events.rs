@@ -208,6 +208,7 @@ impl TaskEvents {
             | SessionEventKind::TitleChanged { .. }
             | SessionEventKind::SettingsChanged { .. }
             | SessionEventKind::UsageReported { .. }
+            | SessionEventKind::ContextReported { .. }
             | SessionEventKind::ApprovalAnsweredElsewhere { .. } => None,
         };
         if let Some(record) = record {

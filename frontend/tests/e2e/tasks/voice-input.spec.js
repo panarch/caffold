@@ -185,7 +185,9 @@ test("records without focusing the prompt and inserts a host transcript at the s
       (element) => element.getBoundingClientRect(),
     ).filter((rect) => rect.width > 0 && rect.height > 0);
     const actions = Array.from(
-      form.querySelectorAll(".task-composer-actions > *"),
+      form.querySelectorAll(
+        ".task-composer-actions > caffold-task-context-usage, .task-composer-actions > [data-composer-region='actions'] > *",
+      ),
       (element) => element.getBoundingClientRect(),
     ).filter((rect) => rect.width > 0 && rect.height > 0);
     const voice = form

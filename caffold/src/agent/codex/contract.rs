@@ -33,9 +33,9 @@ use crate::agent::driver::{
 };
 use crate::agent::{
     self, ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
-    Conversation, ConversationItem, GeneratedImage, ItemKind, MessageContent, MessagePhase,
-    PermissionRow, SessionEvent, SessionEventKind, TokenCount, TokenUsage, Turn, TurnOrigin,
-    TurnPage, TurnState,
+    ContextUsage, Conversation, ConversationItem, GeneratedImage, ItemKind, MessageContent,
+    MessagePhase, PermissionRow, SessionEvent, SessionEventKind, TokenCount, TokenUsage, Turn,
+    TurnOrigin, TurnPage, TurnState,
 };
 
 /// Full reads and partial notifications have different contracts, entirely
@@ -163,6 +163,18 @@ pub(crate) async fn session_events(
     let (thread_id, turn, starting) = match notification {
         CodexNotification::TurnStarted { thread_id, turn } => (thread_id, turn, true),
         CodexNotification::TurnCompleted { thread_id, turn } => (thread_id, turn, false),
+        CodexNotification::ThreadTokenUsageUpdated {
+            thread_id,
+            token_usage,
+            ..
+        } => {
+            let mut events = vec![event];
+            events.extend(context_usage(token_usage).map(|context| SessionEvent {
+                thread_id: thread_id.clone(),
+                kind: SessionEventKind::ContextReported { context },
+            }));
+            return events;
+        }
         _ => return vec![event],
     };
     // Even a summary turn notification can contain a final item or error.
@@ -323,6 +335,17 @@ fn item_changed(turn_id: &str, item: ConversationItem, at_ms: u64) -> SessionEve
         item,
         at_ms,
     }
+}
+
+/// How full the thread's context is after its latest model request.
+///
+/// `last` counts that one request, so it is what the context holds now;
+/// `total` is everything the thread has spent and says nothing about it.
+fn context_usage(usage: &ThreadTokenUsage) -> Option<ContextUsage> {
+    Some(ContextUsage {
+        used_tokens: usage.last.total_tokens,
+        window_tokens: usage.model_context_window?,
+    })
 }
 
 impl From<&ThreadTokenUsage> for TokenUsage {
@@ -1161,6 +1184,51 @@ mod tests {
             SessionEventKind::TurnEnded { .. }
         ));
         assert!(client.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_token_count_also_says_how_full_the_context_is_when_codex_names_the_window() {
+        let client = CodexThreadClient::mock(vec![]);
+        let counted = |window: serde_json::Value| {
+            protocol::decode_notification(
+                "thread/tokenUsage/updated",
+                json!({
+                    "threadId": "thread", "turnId": "turn",
+                    "tokenUsage": {
+                        "total": token_count(2_667_566_652),
+                        "last": token_count(50_676),
+                        "modelContextWindow": window
+                    }
+                }),
+            )
+            .unwrap()
+        };
+
+        let reports = session_events(&counted(json!(258_400)), &client).await;
+        assert_eq!(reports.len(), 2);
+        assert!(matches!(
+            &reports[0].kind,
+            SessionEventKind::UsageReported { turn_id, .. } if turn_id == "turn"
+        ));
+        assert_eq!(
+            reports[1],
+            SessionEvent {
+                thread_id: "thread".to_string(),
+                kind: SessionEventKind::ContextReported {
+                    context: ContextUsage {
+                        used_tokens: 50_676,
+                        window_tokens: 258_400,
+                    },
+                },
+            }
+        );
+
+        let reports = session_events(&counted(json!(null)), &client).await;
+        assert_eq!(reports.len(), 1);
+        assert!(matches!(
+            &reports[0].kind,
+            SessionEventKind::UsageReported { .. }
+        ));
     }
 
     #[tokio::test]

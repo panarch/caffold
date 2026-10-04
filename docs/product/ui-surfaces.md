@@ -289,6 +289,15 @@ upload the Composer's primary action is **Cancel upload**, or **Stop current
 turn** while a turn is running, which also stops that turn. A failed upload is
 reported with the name of the file.
 
+A Task's follow-up Composer shows how full the conversation's context is as a
+small pie immediately left of the microphone, in the agent's own count (see
+[Agent Runtimes](../architecture/agent-runtimes.md#runtime-comparison)).
+Choosing it opens the used and window token counts above it in the same form as
+Task details, or `Not reported yet.` until the agent has reported one. The pie
+keeps its place whatever the model and permission labels say, so at phone width
+those labels truncate first; in portrait it hides with **Attach files** and the
+permission control while voice input runs. New Task has no pie.
+
 When the selected Task's effective working directory contains the valid
 [current plan document pair](workflows.md#current-plan-documents), a compact
 read-only control floats directly above the follow-up Composer without moving

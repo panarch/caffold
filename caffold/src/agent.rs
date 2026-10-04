@@ -66,7 +66,7 @@ pub(crate) use approval::{
     ApprovalToolDetail, PermissionRow,
 };
 pub(crate) use conversation::{
-    ActivityStatus, BackgroundTask, CommandExecution, Conversation, ConversationItem,
+    ActivityStatus, BackgroundTask, CommandExecution, ContextUsage, Conversation, ConversationItem,
     GeneratedImage, ItemKind, MessageContent, MessagePhase, SessionEvent, SessionEventKind,
     ThreadActiveFlag, ThreadStatus, TokenCount, TokenUsage, Turn, TurnOrigin, TurnPage, TurnState,
     TurnStatus,

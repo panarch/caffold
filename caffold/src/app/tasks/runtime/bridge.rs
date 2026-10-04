@@ -736,10 +736,11 @@ mod tests {
             TaskStore::memory().expect("in-memory task store"),
         );
 
-        runtime.record_reported_usage(
-            &reported(
-                "thread/tokenUsage/updated",
-                json!({
+        // One count is reported twice over — what was spent, and how full
+        // the context is — and only the first is a diagnostic.
+        let notification = codex::decode_notification(
+            "thread/tokenUsage/updated",
+            json!({
                     "threadId": "thread_usage",
                     "turnId": "turn_2",
                     "tokenUsage": {
@@ -761,10 +762,12 @@ mod tests {
                         },
                         "modelContextWindow": 128000
                     }
-                }),
-            )
-            .await,
-        );
+            }),
+        )
+        .expect("Codex sends this");
+        for event in session_events(&notification, &CodexThreadClient::mock(Vec::new())).await {
+            runtime.record_reported_usage(&event);
+        }
 
         let diagnostics = runtime.usage_diagnostics();
         let usage = diagnostics
