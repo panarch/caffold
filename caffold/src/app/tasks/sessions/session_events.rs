@@ -220,6 +220,13 @@ fn apply_session_event_state(
         SessionEventKind::ItemChanged { .. } | SessionEventKind::DiffChanged => {
             SessionEventEffect::RevisionOnly
         }
+        SessionEventKind::ContextReported { context } => {
+            if state.context == Some(*context) {
+                return SessionEventEffect::Ignored;
+            }
+            state.context = Some(*context);
+            SessionEventEffect::CanonicalStateChanged
+        }
         // Neither belongs to the session: usage is a diagnostic, and an approval
         // answered elsewhere is the runtime's to withdraw.
         SessionEventKind::UsageReported { .. }
@@ -230,6 +237,7 @@ fn apply_session_event_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::ContextUsage;
     use crate::app::tasks::sessions::test_support::*;
 
     #[tokio::test]
@@ -719,6 +727,58 @@ mod tests {
         assert!(snapshot.fast_mode);
         assert_eq!(snapshot.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(snapshot.reasoning_effort.as_deref(), Some("low"));
+    }
+
+    #[tokio::test]
+    async fn a_context_report_is_kept_until_the_agent_says_something_else() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+        )]);
+        let sessions = TaskSessions::default();
+        sessions
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
+            .await
+            .expect("subscribe");
+        let reported = |used_tokens| {
+            session_event(
+                "thread-1",
+                SessionEventKind::ContextReported {
+                    context: ContextUsage {
+                        used_tokens,
+                        window_tokens: 258_400,
+                    },
+                },
+            )
+        };
+        assert_eq!(sessions.snapshot("thread-1").await.unwrap().context, None);
+
+        let first = sessions
+            .apply_session_event_with_outcome(1, &reported(50_676))
+            .await;
+        assert!(first.accepted && first.canonical_state_changed);
+        let snapshot = sessions.snapshot("thread-1").await.unwrap();
+        assert_eq!(
+            snapshot.context,
+            Some(ContextUsage {
+                used_tokens: 50_676,
+                window_tokens: 258_400,
+            })
+        );
+
+        let repeated = sessions
+            .apply_session_event_with_outcome(1, &reported(50_676))
+            .await;
+        assert!(!repeated.canonical_state_changed && repeated.revision.is_none());
+
+        let stale = sessions
+            .apply_session_event_with_outcome(0, &reported(1))
+            .await;
+        assert!(!stale.accepted);
+        assert_eq!(
+            sessions.snapshot("thread-1").await.unwrap().context,
+            snapshot.context
+        );
     }
 
     #[tokio::test]

@@ -388,8 +388,8 @@ links in its popover; Task and Section selection; the Task switcher openers;
 the side pane toggle;
 archived-list, recovery, and Codex
 readiness buttons; Composer Model, Permission, Prompt, attachment, voice,
-cancel, submit, and interrupt actions; Conversation retry, image-preview, and
-approval actions; Section Fork; Current Plan document openers, status opener,
+cancel, submit, interrupt, and context usage actions; Conversation retry,
+image-preview, and approval actions; Section Fork; Current Plan document openers, status opener,
 and status Refresh; the terminal button and the terminal screen's input, bar,
 and state buttons; and direct Integrated Review, Git, GitHub, file-navigation,
 and file-viewer actions. Git
@@ -1562,7 +1562,8 @@ frontend/
 |           |   |-- task-create.js
 |           |   |-- task-turn-options.js
 |           |   |-- composer.js
-|           |   `-- composer/action-hints.js
+|           |   |-- composer/action-hints.js
+|           |   `-- composer/components/context-usage.js
 |           `-- (detail)/
 |               |-- layout.js
 |               |-- components/

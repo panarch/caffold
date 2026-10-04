@@ -1,0 +1,134 @@
+caffold-task-context-usage {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+
+  &[hidden] {
+    display: none;
+  }
+
+  /* The same round, quiet control as the Composer's microphone. */
+  & > .task-context-usage-button {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--interface-compact-visual-size);
+    height: var(--interface-compact-visual-size);
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  & > .task-context-usage-button::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset);
+    border-radius: inherit;
+    content: "";
+  }
+
+  & > .task-context-usage-button:hover,
+  & > .task-context-usage-button:focus-visible {
+    background: var(--control-active-bg);
+    color: var(--text);
+    outline: none;
+  }
+
+  & .task-context-usage-pie {
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    fill: none;
+    transform: rotate(-90deg);
+  }
+
+  & .task-context-usage-outline {
+    stroke: var(--border-strong);
+    stroke-width: 1.5;
+  }
+
+  /* A stroke as wide as the circle's diameter fills it as a pie. */
+  & .task-context-usage-fill {
+    stroke: currentColor;
+    stroke-width: 9;
+    stroke-dasharray: var(--task-context-used, 0) 100;
+  }
+
+  /* The Task details popover's form, opened upward from the pie. */
+  & > .task-context-usage-popover {
+    position: fixed;
+    inset: auto;
+    position-area: block-start span-inline-start;
+    position-try-fallbacks: flip-block;
+    width: max-content;
+    max-width: min(42rem, calc(100vw - 1.5rem));
+    max-height: min(75vh, 600px);
+    margin: var(--interface-space-3) 0;
+    padding: 0.75rem;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 14px 34px rgb(var(--shadow-rgb) / 18%);
+  }
+
+  & > .task-context-usage-popover::backdrop {
+    background: transparent;
+  }
+
+  & > .task-context-usage-popover dl {
+    display: grid;
+    grid-template-columns: max-content max-content;
+    gap: 0.5625rem 0.875rem;
+    margin: 0;
+  }
+
+  & > .task-context-usage-popover dl div {
+    display: contents;
+  }
+
+  & > .task-context-usage-popover dt {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & > .task-context-usage-popover :is(dd, p) {
+    margin: 0;
+    font-size: var(--interface-meta-font-size);
+    font-variant-numeric: lining-nums tabular-nums;
+    line-height: var(--interface-line-height);
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-task-context-usage {
+    & > .task-context-usage-popover {
+      position-anchor: --task-composer-panel;
+      position-area: none;
+      position-try-fallbacks: none;
+      inset: auto var(--interface-space-4);
+      bottom: calc(anchor(top) + var(--interface-space-3));
+      width: auto;
+      margin: 0;
+    }
+
+    & > .task-context-usage-popover dl {
+      grid-template-columns: 1fr;
+      gap: 0.1875rem;
+    }
+
+    & > .task-context-usage-popover dl div {
+      display: grid;
+      gap: 0.125rem;
+    }
+
+    & > .task-context-usage-popover dl div + div {
+      margin-top: 0.5rem;
+    }
+  }
+}

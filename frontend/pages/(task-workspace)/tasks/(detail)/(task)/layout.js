@@ -1786,6 +1786,7 @@ class CaffoldTaskDetail extends HTMLElement {
       fastMode: Boolean(this.taskDetail?.fastMode),
       permissionMode: `${this.taskDetail?.permissionMode ?? ""}`.trim(),
     });
+    composer.setContextUsage(this.taskDetail?.context ?? null);
     this.activateFollowUpComposer(threadId);
   }
 

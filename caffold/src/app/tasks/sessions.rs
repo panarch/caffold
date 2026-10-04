@@ -52,7 +52,7 @@ use tokio::{sync::Mutex as AsyncMutex, time::Instant};
 use control::SubscriptionTransition;
 
 use super::events::TaskEvents;
-use crate::agent::{Conversation, Driver, ThreadStatus, TurnPage, TurnState};
+use crate::agent::{ContextUsage, Conversation, Driver, ThreadStatus, TurnPage, TurnState};
 
 pub(super) const INITIAL_TURNS_PAGE_SIZE: usize = 8;
 
@@ -92,6 +92,7 @@ pub(in crate::app::tasks) struct SessionSnapshot {
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) reasoning_effort: Option<String>,
     pub(in crate::app::tasks) fast_mode: bool,
+    pub(in crate::app::tasks) context: Option<ContextUsage>,
 }
 
 /// Canonical lifecycle metadata from the latest turn read. Conversation items
@@ -287,6 +288,8 @@ struct SessionState {
     model: Option<String>,
     reasoning_effort: Option<String>,
     fast_mode: bool,
+    /// What the agent last said its context holds, until it says again.
+    context: Option<ContextUsage>,
 }
 
 impl Default for SessionState {
@@ -319,6 +322,7 @@ impl Default for SessionState {
             model: None,
             reasoning_effort: None,
             fast_mode: false,
+            context: None,
         }
     }
 }
@@ -480,6 +484,7 @@ fn snapshot(state: &SessionState) -> SessionSnapshot {
         model: state.model.clone(),
         reasoning_effort: state.reasoning_effort.clone(),
         fast_mode: state.fast_mode,
+        context: state.context,
     }
 }
 

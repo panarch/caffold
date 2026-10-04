@@ -56,6 +56,7 @@
 @import "./pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css";
 @import "./pages/(task-workspace)/tasks/components/composer.css";
+@import "./pages/(task-workspace)/tasks/components/composer/components/context-usage.css";
 @import "./pages/(task-workspace)/tasks/components/task-turn-options.css";
 @import "./pages/(task-workspace)/tasks/components/voice-level-meter.css";
 @import "./pages/(task-workspace)/tasks/new/components/directory-picker.css";

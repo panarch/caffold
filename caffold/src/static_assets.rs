@@ -616,6 +616,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/composer/action-hints.js"
             )))
         }
+        "pages/(task-workspace)/tasks/components/composer/components/context-usage.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/components/composer/components/context-usage.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/composer/components/context-usage.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/components/composer/components/context-usage.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/task-turn-options.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/task-turn-options.css"
         ))),
@@ -2256,6 +2266,10 @@ mod tests {
                 b"caffold-voice-level-meter".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/composer/components/context-usage.js",
+                b"caffold-task-context-usage".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/voice-recorder.js",
                 b"VoiceRecorder".as_slice(),
             ),
@@ -2294,6 +2308,8 @@ mod tests {
             "/assets/pages/(task-workspace)/task-store-status/lifecycle.js",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.css",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.js",
+            "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.css",
+            "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.js",
             "/assets/pages/(task-workspace)/codex-status/lifecycle.js",
             "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
             "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
@@ -2338,6 +2354,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/voice-level-meter.css",
                 b"caffold-voice-level-meter".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/composer/components/context-usage.css",
+                b"caffold-task-context-usage".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",

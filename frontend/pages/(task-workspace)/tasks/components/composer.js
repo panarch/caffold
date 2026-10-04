@@ -10,6 +10,7 @@ import {
   buttonActionHintTarget,
   hasActionHintLayoutBox,
 } from "#app/action-hints.js";
+import "./composer/components/context-usage.js";
 import "./task-turn-options.js";
 import "./voice-level-meter.js";
 import {
@@ -518,7 +519,8 @@ class CaffoldTaskComposer extends HTMLElement {
     return [
       ...existingTargets,
       ...this.actionHintButtonTargets({ mode, scopeId, clipRoots }),
-    ];
+      this.contextUsage()?.actionHintTarget({ scopeId, clipRoots }),
+    ].filter(Boolean);
   }
 
   actionHintButtonTargets({ mode, scopeId, clipRoots }) {
@@ -1394,7 +1396,8 @@ class CaffoldTaskComposer extends HTMLElement {
     // Taking the new context can ask for another permission list, and Send
     // waits for it.
     const primaryAction = this.primaryActionView();
-    this.querySelector(".task-composer-actions").innerHTML = `
+    this.contextUsage().hidden = this.context.mode !== "follow-up";
+    this.querySelector('[data-composer-region="actions"]').innerHTML = `
       ${this.renderVoiceControls(submitting)}
       <button
         type="${primaryAction.kind === "send" ? "submit" : "button"}"
@@ -1444,7 +1447,10 @@ class CaffoldTaskComposer extends HTMLElement {
               <div class="task-composer-render-region" data-composer-region="cancel"></div>
               <caffold-task-turn-options></caffold-task-turn-options>
             </div>
-            <div class="task-composer-actions"></div>
+            <div class="task-composer-actions">
+              <caffold-task-context-usage hidden></caffold-task-context-usage>
+              <div class="task-composer-render-region" data-composer-region="actions"></div>
+            </div>
           </div>
         </div>
       </form>
@@ -1460,6 +1466,19 @@ class CaffoldTaskComposer extends HTMLElement {
 
   turnOptions() {
     return this.querySelector(":scope caffold-task-turn-options");
+  }
+
+  // Mounted once beside the buttons that are drawn again, so an open popover
+  // stays open while the agent's count moves.
+  contextUsage() {
+    return this.querySelector(":scope caffold-task-context-usage");
+  }
+
+  // How full the Task's context is, as the agent last said, or null.
+  setContextUsage(context) {
+    this.ensureState();
+    this.ensureRendered();
+    this.contextUsage().setSnapshot(context);
   }
 
   turnOptionsContext(locked = null) {
@@ -1786,7 +1805,7 @@ function closestElement(target, selector) {
 
 await busySpin.register(
   "caffold-task-composer",
-  "> .task-composer > .task-composer-panel > .task-composer-toolbar > .task-composer-actions > .task-voice-button.is-busy > .task-voice-icon",
+  "> .task-composer > .task-composer-panel > .task-composer-toolbar > .task-composer-actions > .task-composer-render-region > .task-voice-button.is-busy > .task-voice-icon",
 );
 
 if (!customElements.get("caffold-task-composer")) {

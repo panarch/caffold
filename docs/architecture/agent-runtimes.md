@@ -150,6 +150,7 @@ per-directory prompt history. None of these paths deletes a Git branch.
 | Caffold-served tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized | Caffold-owned HTTP MCP server declared on session start and load, bound to the Task before its session exists |
 | Current-plan instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions | `_meta.rules` on a new session and the MCP `initialize` instructions on every load |
 | Prompt pictures | A `localImage` input naming the uploaded file, which Codex opens | A base64 image block the driver reads from the uploaded file | An ACP image block the driver reads from the uploaded file |
+| Context usage | `thread/tokenUsage/updated`: the last model request's `totalTokens` against `modelContextWindow`, on every request and again when a thread is resumed | `get_context_usage` after every result and when an existing conversation's session is opened: the last response's input, cached or not, against `maxTokens`, as Claude's own status line counts it | `_x.ai/session/info`: `context.used` against `context.total`, or the model list's window, on every load and after every turn |
 | Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure | Diagnostic status; an attempted operation reports its own failure |
 | Idle release | A thread subscription may be dropped when no viewer, request, or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation | The session stays loaded on the bridge; the leader is not asked to unload |
 
@@ -359,7 +360,9 @@ It contains only what the interface and Task lifecycle consume:
 - reasoning and tool activity;
 - commands, output, and changed paths;
 - turn and conversation status;
-- token usage where the agent reports it; and
+- token usage where the agent reports it;
+- how full the model's context is, in the agent's own count, when it names both
+  the count and the window; and
 - approvals under a Caffold identity paired privately with the provider
   request that must be answered.
 
@@ -426,7 +429,9 @@ second long-lived copy of turn items. A full `Turn` comes from a history read.
 Start and end reports carry only `TurnState`; named items carried by a provider
 notification become separate item updates. A partial completion report cannot
 replace the turn's item membership. Provider-specific inclusion flags remain
-inside that provider's adapter.
+inside that provider's adapter. `TaskSessions` also keeps the latest context
+usage the agent reported, in memory only, and serves it with Task Detail until
+the agent reports a different count; a restarted backend has none until then.
 
 The projection records provider history, live lifecycle observations, accepted
 submissions, and local projections with explicit roles. It reconciles a history

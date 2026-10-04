@@ -240,6 +240,7 @@ impl GrokClient {
                     );
                 }
                 self.report_turn_ended(thread_id, turn, changed);
+                self.ask_how_full_the_context_is(session).await;
             }
             Update::PendingInteraction { .. } | Update::InteractionResolved { .. } => {
                 // The question itself arrives as a request; these only say

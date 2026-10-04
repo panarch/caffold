@@ -31,6 +31,8 @@ caffold-task-composer {
 
   & .task-composer-panel {
     --task-composer-panel-shadow: var(--structural-shadow-panel);
+    /* What the context popover sits on at phone width. */
+    anchor-name: --task-composer-panel;
     display: grid;
     grid-template-rows: auto auto;
     position: relative;
@@ -567,7 +569,7 @@ caffold-task-composer {
         [data-voice-state="recording"],
         [data-voice-state="transcribing"]
       )
-      :is(.task-permission-picker, .task-composer-attach-button) {
+      :is(.task-permission-picker, .task-composer-attach-button, caffold-task-context-usage) {
       display: none;
     }
 
@@ -581,6 +583,7 @@ caffold-task-composer {
 caffold-task-composer {
   display: block;
   width: min(calc(100% - 1.75rem), 952px);
+  anchor-scope: --task-composer-panel;
   margin: 0 auto;
   padding: 0.875rem;
   font-size: var(--interface-font-size);

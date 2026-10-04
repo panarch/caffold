@@ -555,6 +555,39 @@ pub(crate) fn set_cwd_request(path: &str) -> Value {
     serde_json::json!({ "subtype": "set_cwd", "path": path })
 }
 
+/// Ask how full the session's context is. `summary` leaves out the per-category
+/// token counting `full` does, which Caffold does not read.
+pub(crate) fn context_usage_request() -> Value {
+    serde_json::json!({ "subtype": "get_context_usage", "detail": "summary" })
+}
+
+/// What Caffold reads from a `get_context_usage` answer: the window, and the
+/// usage of the last response, which the agent's own status line divides by
+/// it. The answer's `totalTokens` is an estimate that `summary` and `full`
+/// put thousands of tokens apart, so it is not read.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ContextUsageAnswer {
+    pub(crate) max_tokens: u64,
+    /// Absent until the session has had a response.
+    #[serde(default)]
+    pub(crate) api_usage: Option<ContextApiUsage>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct ContextApiUsage {
+    pub(crate) input_tokens: u64,
+    pub(crate) cache_creation_input_tokens: u64,
+    pub(crate) cache_read_input_tokens: u64,
+}
+
+impl ContextApiUsage {
+    /// What the last request put in the context: its input, cached or not.
+    pub(crate) fn context_tokens(&self) -> u64 {
+        self.input_tokens + self.cache_creation_input_tokens + self.cache_read_input_tokens
+    }
+}
+
 /// The second half of moving somewhere the agent does not yet trust: echo the
 /// directory its `needs_trust` answer named, accepted on the user's behalf —
 /// Caffold made the worktree it is asking the session into.

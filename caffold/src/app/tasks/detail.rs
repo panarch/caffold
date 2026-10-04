@@ -25,7 +25,7 @@ use super::{
 use crate::agent::AgentError;
 use crate::{
     agent::{
-        Conversation,
+        ContextUsage, Conversation,
         codex::{CodexThreadClient, CodexThreadError},
     },
     app::error::{ApiError, ErrorBody},
@@ -85,6 +85,10 @@ pub(in crate::app::tasks) struct TaskDetailResponse {
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) reasoning_effort: Option<String>,
     pub(in crate::app::tasks) fast_mode: bool,
+    /// How full the agent last said this conversation's context is. Only a
+    /// session that has heard it can say, so an answer read without one does
+    /// not.
+    pub(in crate::app::tasks) context: Option<ContextUsage>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -452,6 +456,7 @@ impl DetailContext {
         let session_model = snapshot.model.clone();
         let session_reasoning_effort = snapshot.reasoning_effort.clone();
         let session_fast_mode = snapshot.fast_mode;
+        let context = snapshot.context;
         let thread_id = snapshot
             .conversation
             .as_ref()
@@ -516,6 +521,7 @@ impl DetailContext {
                 model,
                 reasoning_effort,
                 fast_mode: session_fast_mode,
+                context,
             });
         }
         Err(not_managed_error())
@@ -713,6 +719,7 @@ pub(in crate::app::tasks) fn loading_detail(
         model: managed.and_then(|thread| thread.model.clone()),
         reasoning_effort: managed.and_then(|thread| thread.reasoning_effort.clone()),
         fast_mode: managed.is_some_and(|thread| thread.fast_mode),
+        context: None,
     }
 }
 
@@ -1346,7 +1353,7 @@ mod request_tests {
     use super::*;
     use crate::{
         agent::{
-            self, ThreadStatus, TurnStatus, codex,
+            self, SessionEvent, SessionEventKind, ThreadStatus, TurnStatus, codex,
             codex::{CodexNotification, CodexRuntimeEvent, CodexThreadClient},
         },
         app::error::ApiError,
@@ -1404,6 +1411,7 @@ mod request_tests {
             model: None,
             reasoning_effort: None,
             fast_mode: false,
+            context: None,
         };
         let mut updates = state.task_sync.subscribe_updates();
         state
@@ -1532,6 +1540,7 @@ mod request_tests {
         assert_eq!(detail.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(detail.fast_mode);
         assert_eq!(detail.permission_mode, None);
+        assert_eq!(detail.context, None);
     }
 
     #[tokio::test]
@@ -1593,6 +1602,68 @@ mod request_tests {
         assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(stored.fast_mode);
+    }
+
+    #[tokio::test]
+    async fn the_detail_carries_the_context_the_session_last_heard() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-context-usage";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "cwd": root.path().display().to_string(),
+                "thread": {
+                    "id": thread_id,
+                    "preview": "Context usage",
+                    "status": { "type": "idle" },
+                    "cwd": root.path().display().to_string(),
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "turns": []
+                },
+                "initialTurnsPage": {
+                    "data": [],
+                    "nextCursor": null,
+                    "backwardsCursor": null
+                }
+            }),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let snapshot = state
+            .task_sessions
+            .ensure_subscribed(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+        let unheard = state
+            .detail
+            .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
+            .await
+            .unwrap();
+        assert_eq!(unheard.context, None);
+
+        let context = ContextUsage {
+            used_tokens: 32_147,
+            window_tokens: 200_000,
+        };
+        state
+            .task_sessions
+            .apply_session_event_with_outcome(
+                1,
+                &SessionEvent {
+                    thread_id: thread_id.to_string(),
+                    kind: SessionEventKind::ContextReported { context },
+                },
+            )
+            .await;
+        let snapshot = state.task_sessions.snapshot(thread_id).await.unwrap();
+        let heard = state
+            .detail
+            .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
+            .await
+            .unwrap();
+        assert_eq!(heard.context, Some(context));
     }
 
     #[tokio::test]
@@ -1780,6 +1851,7 @@ mod request_tests {
             model: None,
             reasoning_effort: None,
             fast_mode: false,
+            context: None,
         };
 
         state.task_events.accept_history_page(
@@ -1877,6 +1949,7 @@ mod request_tests {
             model: None,
             reasoning_effort: None,
             fast_mode: false,
+            context: None,
         };
         let mut late_live_prompt = task_event_record(
             thread_id,
@@ -3337,6 +3410,10 @@ mod request_tests {
                 model: Some("gpt-test".to_string()),
                 reasoning_effort: Some("xhigh".to_string()),
                 fast_mode: true,
+                context: Some(ContextUsage {
+                    used_tokens: 32_147,
+                    window_tokens: 200_000,
+                }),
             },
             reason: "stream-bootstrap",
             error: None,
@@ -3354,6 +3431,10 @@ mod request_tests {
         assert_eq!(
             event["payload"]["detail"]["events"][0]["summary"],
             "canonical assistant response"
+        );
+        assert_eq!(
+            event["payload"]["detail"]["context"],
+            json!({ "usedTokens": 32_147, "windowTokens": 200_000 })
         );
     }
 

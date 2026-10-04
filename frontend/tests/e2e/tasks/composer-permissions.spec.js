@@ -1740,7 +1740,9 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
   );
   expect(idle.panelHeight).toBeLessThanOrEqual(96);
   expect(idle.modelLabel).toBe("Test · medium");
-  expect(idle.modelNameClipped).toBe(false);
+  // At phone width the context pie takes the room the whole name needed; the
+  // model menu still names it in full.
+  expect(idle.modelNameClipped).toBe(testInfo.project.name === "phone");
   expect(idle.chipGap).toBeGreaterThanOrEqual(0);
   expect(idle.chipGap).toBeLessThanOrEqual(8);
   expect(idle.panelBottom).toBeLessThanOrEqual(idle.workspaceBottom);

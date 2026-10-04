@@ -118,6 +118,8 @@ impl ClaudeClient {
             unowned_turn_settled: Notify::new(),
             pending: AsyncMutex::new(HashMap::new()),
             next_control_id: AtomicU64::new(1),
+            context_asks: AtomicU64::new(0),
+            context_reported: AsyncMutex::new(0),
             closing: AtomicBool::new(false),
         });
         self.inner
@@ -149,7 +151,12 @@ impl ClaudeClient {
                     return Err(error);
                 }
             }
-            SessionStart::Resume => self.take_up_what_was_already_happening(&session).await,
+            SessionStart::Resume => {
+                self.take_up_what_was_already_happening(&session).await;
+                // A conversation with a past already fills some of its
+                // context. A fresh one is first counted when its turn ends.
+                self.ask_how_full_the_context_is(&session);
+            }
         }
         Ok(session)
     }

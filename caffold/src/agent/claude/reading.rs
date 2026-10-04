@@ -10,7 +10,7 @@ use std::sync::atomic::Ordering;
 
 use serde_json::{Value, json};
 
-use crate::agent::CAFFOLD_CLARIFICATION_FEEDBACK;
+use crate::agent::{CAFFOLD_CLARIFICATION_FEEDBACK, ContextUsage};
 
 use super::runner::{self, RunnerEvent};
 use super::translate::{answers_tool_calls, message_items};
@@ -370,6 +370,8 @@ impl ClaudeClient {
             TurnStatus::Completed
         };
         let completed_at_ms = now_ms();
+        // Whatever turn this was, it changed what the context holds.
+        self.ask_how_full_the_context_is(session);
 
         if let Some(waiting) = session.state.lock().await.quiet_turn.take() {
             // Something Caffold asked for on its own account, answered.
@@ -409,6 +411,50 @@ impl ClaudeClient {
         }
         self.report_turn_ended(&session.id, ended, completed_at_ms);
         self.report_status(session).await;
+    }
+
+    /// Ask the agent how full this session's context is, and report the
+    /// answer when it comes.
+    ///
+    /// Asked off the reader: the answer arrives through the reader, so
+    /// waiting for it here would wait forever. An agent that cannot answer
+    /// leaves the last report standing.
+    pub(super) fn ask_how_full_the_context_is(&self, session: &Arc<Session>) {
+        let ask = session.context_asks.fetch_add(1, Ordering::Relaxed) + 1;
+        let client = self.clone();
+        let session = session.clone();
+        tokio::spawn(async move {
+            if let Ok(answer) = session.control(protocol::context_usage_request()).await {
+                client
+                    .report_context_answer(&session, ask, answer.payload)
+                    .await;
+            }
+        });
+    }
+
+    /// Report one answer about the context, unless a later ask has already
+    /// been answered. A session with no response yet has no count to give.
+    async fn report_context_answer(&self, session: &Session, ask: u64, answer: Value) {
+        let Ok(answer) = serde_json::from_value::<protocol::ContextUsageAnswer>(answer) else {
+            return;
+        };
+        let Some(usage) = answer.api_usage else {
+            return;
+        };
+        let mut reported = session.context_reported.lock().await;
+        if ask < *reported {
+            return;
+        }
+        *reported = ask;
+        self.report(
+            &session.id,
+            SessionEventKind::ContextReported {
+                context: ContextUsage {
+                    used_tokens: usage.context_tokens(),
+                    window_tokens: answer.max_tokens,
+                },
+            },
+        );
     }
 
     /// Ask the file again for the turn a taken-up session is in, now that the
@@ -702,9 +748,10 @@ mod tests {
         UnownedTurn, status_of, transcript,
     };
     use crate::agent::{
-        ActivityStatus, ApprovalDecision, CAFFOLD_CLARIFICATION_FEEDBACK, ItemKind, MessageContent,
-        SessionEventKind, ThreadStatus, TurnOrigin, TurnStatus,
+        ActivityStatus, ApprovalDecision, CAFFOLD_CLARIFICATION_FEEDBACK, ContextUsage, ItemKind,
+        MessageContent, SessionEventKind, ThreadStatus, TurnOrigin, TurnStatus,
     };
+    use std::sync::atomic::Ordering;
     use std::time::Duration;
     use tokio::sync::broadcast::Receiver;
 
@@ -2725,6 +2772,90 @@ mod tests {
         assert_eq!(
             usage.last.reasoning_output_tokens, 0,
             "the agent counts thinking inside its output, so counting it again would double it"
+        );
+    }
+
+    #[tokio::test]
+    async fn opening_a_conversation_and_ending_a_turn_each_ask_how_full_the_context_is() {
+        let (client, runner, mut events) = watching().await;
+        let opened = next_session_event(&mut events, "context").await;
+        let counted = SessionEventKind::ContextReported {
+            context: ContextUsage {
+                used_tokens: 21_586,
+                window_tokens: 200_000,
+            },
+        };
+        assert_eq!(opened, counted);
+        running_turn(&client, &mut events, "run it").await;
+
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+
+        assert_eq!(next_session_event(&mut events, "context").await, counted);
+        let asks = runner
+            .heard(SESSION)
+            .await
+            .into_iter()
+            .filter(|frame| frame["request"]["subtype"] == "get_context_usage")
+            .collect::<Vec<_>>();
+        assert_eq!(asks.len(), 2);
+        assert!(asks.iter().all(|ask| ask["request"]["detail"] == "summary"));
+    }
+
+    #[tokio::test]
+    async fn only_the_newest_answer_with_a_response_behind_it_is_reported() {
+        let (client, _runner, mut events) = watching().await;
+        // The open's own ask, answered before any of these are.
+        next_session_event(&mut events, "context").await;
+        let session = client.session(SESSION).await.unwrap();
+        let older = session.context_asks.fetch_add(1, Ordering::Relaxed) + 1;
+        let newer = session.context_asks.fetch_add(1, Ordering::Relaxed) + 1;
+        let answer = |cache_read: u64| {
+            json!({
+                "totalTokens": 99_999,
+                "maxTokens": 200_000,
+                "apiUsage": {
+                    "input_tokens": 10,
+                    "output_tokens": 360,
+                    "cache_creation_input_tokens": 969,
+                    "cache_read_input_tokens": cache_read,
+                },
+            })
+        };
+
+        client
+            .report_context_answer(&session, newer, answer(59_021))
+            .await;
+        client
+            .report_context_answer(&session, older, answer(39_021))
+            .await;
+        // Before its first response a session answers with no usage at all.
+        client
+            .report_context_answer(
+                &session,
+                newer + 1,
+                json!({ "totalTokens": 29_669, "maxTokens": 200_000, "apiUsage": null }),
+            )
+            .await;
+        client
+            .report_context_answer(&session, newer + 2, json!({ "percentage": 30 }))
+            .await;
+
+        let reported = std::iter::from_fn(|| events.try_recv().ok())
+            .filter_map(|event| match event {
+                ClaudeRuntimeEvent::Session(event) => match event.kind {
+                    SessionEventKind::ContextReported { context } => Some(context),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            reported,
+            vec![ContextUsage {
+                used_tokens: 60_000,
+                window_tokens: 200_000,
+            }],
+            "the last response's input, cached or not; never the estimate"
         );
     }
 

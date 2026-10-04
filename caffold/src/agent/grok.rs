@@ -50,15 +50,16 @@ use self::{
     protocol::{
         CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS, CONFIG_MODEL, CONFIG_REASONING_EFFORT, CloseResult,
         ConfigOption, ModelState, ModelsListResult, NewSession, PermissionMode, PromptResult,
-        SessionInfoResult, SessionLoadResult, SessionNewResult, SetConfigOptionResult, Update,
-        UpdatesResult, UpdatesWindow,
+        SessionContext, SessionInfoResult, SessionLoadResult, SessionNewResult,
+        SetConfigOptionResult, Update, UpdatesResult, UpdatesWindow,
     },
     session::{Session, SessionState},
     transport::{Bridge, LEADER_SOCKET_FILE_NAME, Transport},
 };
 use super::{
-    ActivityStatus, ApprovalDecision, ApprovalRequest, Conversation, ConversationItem, ItemKind,
-    SessionEvent, SessionEventKind, ThreadStatus, Turn, TurnPage, TurnState, TurnStatus,
+    ActivityStatus, ApprovalDecision, ApprovalRequest, ContextUsage, Conversation,
+    ConversationItem, ItemKind, SessionEvent, SessionEventKind, ThreadStatus, Turn, TurnPage,
+    TurnState, TurnStatus,
     driver::{
         AgentError, Driver, ModelOption, PermissionModeOption, PermissionModes,
         REVIEWED_PERMISSION_MODE, TurnOptions, TurnRejected, bounded,
@@ -1127,21 +1128,83 @@ impl GrokClient {
         loaded: SessionLoadResult,
         info: SessionInfoResult,
     ) {
+        let ask = {
+            let mut state = session.state.lock().await;
+            state.closed = false;
+            apply_catalog_facts(
+                &mut state,
+                loaded.models.as_ref(),
+                &loaded.config_options,
+                &GrokTurnOptions::default(),
+            );
+            if let Some(model) = info.result.model {
+                state.model = Some(model);
+            }
+            if let Some(context) = &info.result.context {
+                state.context_window = context.total.or(state.context_window);
+                state.session_tokens = context.used;
+            }
+            state.next_context_ask()
+        };
+        self.report_context(session, ask, info.result.context).await;
+    }
+
+    /// Ask the leader how full this session's context is, and report the
+    /// answer when it comes.
+    ///
+    /// Asked off the router, so that every other session's updates are not
+    /// held up behind the leader's answer. A leader that cannot answer leaves
+    /// the last report standing.
+    async fn ask_how_full_the_context_is(&self, session: &Arc<Session>) {
+        let ask = session.state.lock().await.next_context_ask();
+        let client = self.clone();
+        let session = session.clone();
+        tokio::spawn(async move {
+            let native = session.native.lock().await.session_id.clone();
+            let Ok(answer) = client
+                .inner
+                .transport
+                .call("_x.ai/session/info", protocol::session_params(&native))
+                .await
+            else {
+                return;
+            };
+            let Ok(info) = serde_json::from_value::<SessionInfoResult>(answer) else {
+                return;
+            };
+            client
+                .report_context(&session, ask, info.result.context)
+                .await;
+        });
+    }
+
+    /// Report what the leader said the context holds, unless a later ask has
+    /// already been reported. The window is the leader's when it names one,
+    /// and otherwise the one its model list gave for the session's model.
+    async fn report_context(&self, session: &Session, ask: u64, context: Option<SessionContext>) {
         let mut state = session.state.lock().await;
-        state.closed = false;
-        apply_catalog_facts(
-            &mut state,
-            loaded.models.as_ref(),
-            &loaded.config_options,
-            &GrokTurnOptions::default(),
+        let Some(used_tokens) = context.as_ref().and_then(|context| context.used) else {
+            return;
+        };
+        let Some(window_tokens) = context
+            .and_then(|context| context.total)
+            .or(state.context_window)
+        else {
+            return;
+        };
+        if ask < state.context_reported {
+            return;
+        }
+        state.context_reported = ask;
+        self.report(
+            &session.thread_id,
+            SessionEventKind::ContextReported {
+                context: ContextUsage {
+                    used_tokens,
+                    window_tokens,
+                },
+            },
         );
-        if let Some(model) = info.result.model {
-            state.model = Some(model);
-        }
-        if let Some(context) = info.result.context {
-            state.context_window = context.total.or(state.context_window);
-            state.session_tokens = context.used;
-        }
     }
 
     /// Load the session on this bridge and check it runs where the binding
@@ -1842,16 +1905,140 @@ mod tests {
             .expect("the channel is open")
     }
 
+    /// The next session event other than a context report, which lands
+    /// whenever the leader answers the ask; tests about it read it with
+    /// [`next_context_report`].
     async fn next_session_event(
         events: &mut broadcast::Receiver<GrokRuntimeEvent>,
     ) -> SessionEvent {
         loop {
             match next_event(events).await {
+                GrokRuntimeEvent::Session(event)
+                    if matches!(event.kind, SessionEventKind::ContextReported { .. }) =>
+                {
+                    continue;
+                }
                 GrokRuntimeEvent::Session(event) => return *event,
                 GrokRuntimeEvent::Diagnostic { .. } => continue,
                 other => panic!("expected a session event, got {other:?}"),
             }
         }
+    }
+
+    async fn next_context_report(
+        events: &mut broadcast::Receiver<GrokRuntimeEvent>,
+    ) -> ContextUsage {
+        loop {
+            if let GrokRuntimeEvent::Session(event) = next_event(events).await
+                && let SessionEventKind::ContextReported { context } = event.kind
+            {
+                return context;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn loading_a_session_reports_how_full_the_leader_says_its_context_is() {
+        let (client, leader, _dir) = client().await;
+        let conversation = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .unwrap();
+        leader.wait_for("session/new").await;
+        client.forget(&conversation.id).await;
+        let mut events = client.subscribe();
+
+        client.open_conversation(&conversation.id).await.unwrap();
+
+        assert_eq!(
+            next_context_report(&mut events).await,
+            ContextUsage {
+                used_tokens: 1_500,
+                window_tokens: 500_000,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn an_ended_turn_asks_the_leader_again_how_full_the_context_is() {
+        let (client, leader, _dir) = client().await;
+        let mut events = client.subscribe();
+        let id = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .unwrap()
+            .id;
+        let turn = client
+            .start_turn(&id, CWD, "hello", &[], &GrokTurnOptions::default())
+            .await
+            .unwrap();
+        leader.wait_for("session/prompt").await;
+
+        leader.notify("_x.ai/session_notification", update_frame(&id, "e-1", &turn.id, json!({ "sessionUpdate": "turn_completed", "prompt_id": turn.id, "stop_reason": "end_turn" }))).await;
+
+        assert_eq!(
+            next_context_report(&mut events).await,
+            ContextUsage {
+                used_tokens: 1_500,
+                window_tokens: 500_000,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_context_report_needs_the_used_count_and_a_window_and_the_newest_ask() {
+        let (client, leader, _dir) = client().await;
+        let id = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .unwrap()
+            .id;
+        leader.wait_for("session/new").await;
+        let session = client.session(&id).await.unwrap();
+        let (older, newer) = {
+            let mut state = session.state.lock().await;
+            state.context_window = None;
+            (state.next_context_ask(), state.next_context_ask())
+        };
+        let counted = |used, total| {
+            Some(SessionContext {
+                used: Some(used),
+                total,
+            })
+        };
+        let mut events = client.subscribe();
+
+        client
+            .report_context(&session, newer, counted(5_000, None))
+            .await;
+        session.state.lock().await.context_window = Some(256_000);
+        client
+            .report_context(&session, newer, Some(SessionContext::default()))
+            .await;
+        client
+            .report_context(&session, newer, counted(9_000, None))
+            .await;
+        client
+            .report_context(&session, older, counted(4_000, Some(500_000)))
+            .await;
+
+        let reported = std::iter::from_fn(|| events.try_recv().ok())
+            .filter_map(|event| match event {
+                GrokRuntimeEvent::Session(event) => match event.kind {
+                    SessionEventKind::ContextReported { context } => Some(context),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            reported,
+            vec![ContextUsage {
+                used_tokens: 9_000,
+                window_tokens: 256_000,
+            }],
+            "nothing without a window or a used count; the model list's window stands in for the leader's; an older ask is dropped"
+        );
     }
 
     #[tokio::test]
