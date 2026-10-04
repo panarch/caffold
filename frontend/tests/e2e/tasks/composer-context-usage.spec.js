@@ -213,18 +213,24 @@ test("has no pie before a Task has a conversation", { tag: "@desktop" }, async (
   await expect(form.locator("caffold-task-context-usage")).toBeHidden();
 });
 
-test("steps aside while recording on a phone", { tag: "@phone" }, async ({
+test("steps aside while voice input runs", { tag: "@all-viewports" }, async ({
   page,
-}) => {
+}, testInfo) => {
   const { form } = await openTask(page);
   const pie = form.locator("caffold-task-context-usage");
+  const attach = form.locator(".task-composer-attach-button");
   await expect(pie).toBeVisible();
 
   await form.getByRole("button", { name: "Start voice input" }).click();
 
   await expect(form).toHaveAttribute("data-voice-state", "recording");
   await expect(pie).toBeHidden();
-  await expect(form.locator(".task-composer-attach-button")).toBeHidden();
+  // Only a phone puts Attach files away with it.
+  if (testInfo.project.name === "phone") {
+    await expect(attach).toBeHidden();
+  } else {
+    await expect(attach).toBeVisible();
+  }
   await form.getByRole("button", { name: "Cancel voice input" }).click();
   await expect(form).toHaveAttribute("data-voice-state", "idle");
   await expect(pie).toBeVisible();

@@ -365,6 +365,15 @@ caffold-task-composer {
     gap: 0.1875rem;
   }
 
+  & .task-composer:is(
+      [data-voice-state="requesting"],
+      [data-voice-state="recording"],
+      [data-voice-state="transcribing"]
+    )
+    .task-composer-actions > caffold-task-context-usage {
+    display: none;
+  }
+
   & .task-toolbar-button {
     position: relative;
     display: inline-grid;
@@ -569,7 +578,7 @@ caffold-task-composer {
         [data-voice-state="recording"],
         [data-voice-state="transcribing"]
       )
-      :is(.task-permission-picker, .task-composer-attach-button, caffold-task-context-usage) {
+      :is(.task-permission-picker, .task-composer-attach-button) {
       display: none;
     }
 

@@ -67,7 +67,7 @@ class CaffoldTaskContextUsage extends HTMLElement {
       >
         <svg class="task-context-usage-pie" viewBox="0 0 24 24" aria-hidden="true">
           <circle class="task-context-usage-outline" cx="12" cy="12" r="9"></circle>
-          <circle class="task-context-usage-fill" cx="12" cy="12" r="4.5" pathLength="100"></circle>
+          <path class="task-context-usage-fill"></path>
         </svg>
       </button>
       <div
@@ -85,7 +85,7 @@ class CaffoldTaskContextUsage extends HTMLElement {
     const button = this.button();
     const popover = this.querySelector(":scope > .task-context-usage-popover");
     const view = contextView(this.context);
-    button.style.setProperty("--task-context-used", `${view.fill}`);
+    button.querySelector(".task-context-usage-fill").setAttribute("d", wedgePath(view.fill));
     button.setAttribute("aria-label", view.label);
     button.title = view.label;
     if (this.renderedKnown !== view.known) {
@@ -121,6 +121,29 @@ function contextView(context) {
     used: `${tokenCount.format(context.usedTokens)} tokens (${percent}%)`,
     window: `${tokenCount.format(context.windowTokens)} tokens`,
   };
+}
+
+// Filled clockwise from twelve o'clock. With the stylesheet's rounded 1.5
+// edge the wedge reaches 6, short of the ring's inner edge at 8.
+const WEDGE_RADIUS = 5.25;
+
+function wedgePath(percent) {
+  if (percent <= 0) {
+    return "";
+  }
+  const top = `12 ${12 - WEDGE_RADIUS}`;
+  const arc = `A${WEDGE_RADIUS} ${WEDGE_RADIUS} 0`;
+  if (percent >= 100) {
+    return `M${top}${arc} 1 1 12 ${12 + WEDGE_RADIUS}${arc} 1 1 ${top}Z`;
+  }
+  const angle = (percent / 100) * 2 * Math.PI;
+  const x = round(12 + WEDGE_RADIUS * Math.sin(angle));
+  const y = round(12 - WEDGE_RADIUS * Math.cos(angle));
+  return `M12 12L${top}${arc} ${percent > 50 ? 1 : 0} 1 ${x} ${y}Z`;
+}
+
+function round(value) {
+  return Math.round(value * 1000) / 1000;
 }
 
 function normalizedContext(context) {
