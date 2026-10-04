@@ -68,6 +68,10 @@ not use a second credit for it.
 
 ## About Caffold
 
-The version and build of Caffold and whether an update is ready. **Reload to
-update** loads a new version into this window, and **Copy diagnostics** copies
-the details to include in a bug report.
+**Updates** shows the version of Caffold, the newest release, and how the last
+update ended. **Update Caffold** starts an update; see
+[Updates](updates.md#caffold).
+
+**This window** shows the build this window runs. **Reload to update** loads a
+new version into this window, and **Copy diagnostics** copies the details to
+include in a bug report.

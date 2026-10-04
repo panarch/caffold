@@ -74,6 +74,10 @@ const ownership = new Map([
     ["caffold-task-workspace-navigation"],
   ],
   [
+    "pages/(task-workspace)/components/update-task-dialog.css",
+    ["caffold-update-task-dialog"],
+  ],
+  [
     "pages/(task-workspace)/components/workspace-brand.css",
     ["caffold-workspace-brand"],
   ],
@@ -479,6 +483,10 @@ const ownership = new Map([
     ["caffold-build-mismatch-alert"],
   ],
   ["pages/components/update-dialog.css", ["caffold-update-dialog"]],
+  [
+    "pages/components/update-result-dialog.css",
+    ["caffold-update-result-dialog"],
+  ],
   ["pages/layout.css", ["caffold-app-shell"]],
 ]);
 const componentChildren = new Map([
@@ -488,6 +496,7 @@ const componentChildren = new Map([
       "caffold-task-workspace",
       "caffold-build-mismatch-alert",
       "caffold-update-dialog",
+      "caffold-update-result-dialog",
     ],
   ],
   ["caffold-file-navigator", ["caffold-file-list"]],
@@ -508,6 +517,7 @@ const componentChildren = new Map([
       "caffold-task-archived-delete-dialog",
       "caffold-codex-runtime-restart-dialog",
       "caffold-codex-reset-credit-dialog",
+      "caffold-update-task-dialog",
       "caffold-action-hint-dialog",
     ],
   ],

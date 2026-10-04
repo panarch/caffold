@@ -2,20 +2,26 @@
 
 ## Caffold
 
-The menu-bar app looks for a new stable release when it starts and when you
-open its menu more than six hours after the last check. To install one:
+When a new version is out, a dot appears on **Settings**. Update Caffold one of
+these ways:
 
-1. Choose **Check for Updates…** from the menu-bar app.
-2. Approve the update. If Tasks are still working, Caffold asks you to confirm
-   first; see [Running work during an update](#running-work-during-an-update).
-3. Homebrew replaces the app and the `caffold` command. Caffold then relaunches
-   and waits until its server is ready again.
+- **At the Mac:** choose **Update to Caffold X…** in the menu-bar app.
+- **From another device:** choose **Update Caffold** in **Settings → About
+  Caffold**.
+- **From a terminal:** run `brew upgrade --cask panarch/tap/caffold`, then quit
+  and reopen Caffold Server.
 
-The same update from a terminal:
+The first two back up Caffold and restore it if the new version does not start.
 
-```sh
-brew upgrade --cask panarch/tap/caffold
-```
+**Update Caffold** starts a Task in which an agent runs the update and stays
+with it. Choose the mode that allows everything, **Full access** or **Allow
+all**, if the agent should recover Caffold even when the restore fails. Other
+modes can stop at the update command, and while Caffold restarts no one can
+answer approvals.
+
+If an update is rolled back, each browser says so once, the menu-bar app says
+so if you started it there, and **Settings → About Caffold** shows it under
+**Last update**. The dot stays, and you can try again.
 
 Open windows keep the version they loaded. When a new version is ready, a
 **Caffold update ready** dialog offers **Reload** or **Later**, and
@@ -30,6 +36,7 @@ An update restarts the Caffold server, not the agents:
 - **Claude Code** sessions keep running if the new server is back within ten
   minutes. Otherwise they stop, and each conversation resumes from Claude's
   own history when you open its Task again.
+- Open [terminals](../tasks/terminal.md) close.
 
 ## Codex
 

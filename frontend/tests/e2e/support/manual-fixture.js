@@ -1,6 +1,6 @@
 import { crc32, deflateSync } from "node:zlib";
 import { AGENT_CATALOG, agentPermissionModes } from "./agent-catalog-fixture.js";
-import { mockCodexStatus } from "./browser-defaults.js";
+import { mockCaffoldUpdate, mockCodexStatus } from "./browser-defaults.js";
 import {
   activeListTask,
   canonicalTaskState,
@@ -161,6 +161,10 @@ export async function installManualDefaults(page) {
   });
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({ json: manualCodexStatus() }),
+  );
+  // The manual shows a Caffold with nothing newer to install.
+  await page.route(/\/api\/caffold\/update(?:\?|$)/, (route) =>
+    route.fulfill({ json: mockCaffoldUpdate() }),
   );
 }
 

@@ -81,3 +81,31 @@ test("asks to open its section when its own button is clicked", () => {
   assert.equal(events[0].bubbles, true);
   assert.deepEqual(events[0].detail, { section: "keyboard" });
 });
+
+test("marks the About entry and its name while a newer Caffold exists", () => {
+  const attributes = new Map();
+  const button = {
+    ...control(),
+    getAttribute: (name) => attributes.get(name) ?? null,
+    setAttribute: (name, value) => attributes.set(name, value),
+    removeAttribute: (name) => attributes.delete(name),
+    toggleAttribute: (name, force) =>
+      force ? attributes.set(name, "") : attributes.delete(name),
+  };
+  const host = itemHost(
+    { section: "about", label: "About Caffold", icon: "Info" },
+    button,
+  );
+
+  host.setUpdateAvailable(true);
+  assert.equal(attributes.has("data-update-available"), true);
+  assert.equal(attributes.get("aria-label"), "About Caffold — update available");
+  assert.equal(
+    host.actionHintScope().targets[0].label,
+    "About Caffold — update available",
+  );
+
+  host.setUpdateAvailable(false);
+  assert.equal(attributes.has("data-update-available"), false);
+  assert.equal(attributes.has("aria-label"), false);
+});

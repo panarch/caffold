@@ -47,6 +47,7 @@ application, and mobile review workflows.
 - [Testing](development/testing.md)
 - [macOS Local Application Development](development/macos-local-app.md)
 - [Mobile and PWA Testing](development/mobile-pwa-testing.md)
+- [Application Update Testing](development/app-update-testing.md)
 
 ## Review
 

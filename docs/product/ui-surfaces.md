@@ -12,7 +12,9 @@ workspace navigation at the bottom of the navigation pane switches among Tasks,
 Notes, and Settings. Each returns to the screen it last showed, and browser Back
 leaves the current one for the previous one at its own depth. Choosing the one
 already shown keeps its route and brings its list back to the top, except
-while Notes is showing a pair.
+while Notes is showing a pair. While a newer Caffold release exists, Settings
+and its About Caffold entry carry a small static green dot on the icon's top
+right, in the color of a Task's unseen-completion dot.
 
 At workspace widths up to 640px, the navigation fills a separate bottom bar.
 At wider widths, the same three labeled buttons float at the bottom left of
@@ -504,11 +506,23 @@ Settings includes:
   as the leader confirms it, the leader on Caffold's socket with its own
   build, and the state of Caffold's connection, with a **Refresh** action;
   opening the page starts no leader, session, or turn;
-- About Caffold application and build information, including shared
-  checking/ready/settled update status and a **Reload to update** action while
-  a prepared PWA generation remains ready. Copied diagnostics also include the
-  private handoff node, target and observed worker builds, and navigation-attempt
-  count for stalled-update investigation.
+- About Caffold in two sections. **Updates** has the shape of Codex Settings'
+  Updates panel: the version the server runs, the newest release linked to its
+  page, the last update's outcome, and **Update Caffold**, which is enabled
+  only when the server offers an update Task and none is running. It opens a
+  dialog with the Start Task dialog's geometry that confirms the update and
+  chooses the agent; the Task starts in the update directory with the
+  directory's Section's last turn settings when the Task list knows that
+  Section. **This window** holds the build list, the shared
+  checking/ready/settled update status, and **Reload to update** while a
+  prepared PWA generation remains ready. Copied diagnostics also include the
+  Caffold version, newest release, last update, private handoff node, target
+  and observed worker builds, and navigation-attempt count for stalled-update
+  investigation.
+
+When the newest update attempt was rolled back or could not be restored, each
+browser shows an OK-only dialog once, remembering the attempt in its own
+storage.
 
 Normal update checking and readiness are distinct from the viewport-fixed red
 build-mismatch alert. That exceptional alert appears only after update checking

@@ -221,12 +221,17 @@ for (const [label, currentRoute, expected] of [
   [
     "keeps the Task list it opens over",
     { kind: "tasks" },
-    ["history-push:/tasks/thread-1", "workspace-open"],
+    ["history-push:/tasks/thread-1", "workspace-open", "update-status"],
   ],
   [
     "puts the Task list under the screen it interrupts",
     { kind: "settings", section: "appearance" },
-    ["history-push:/", "history-push:/tasks/thread-1", "workspace-open"],
+    [
+      "history-push:/",
+      "history-push:/tasks/thread-1",
+      "workspace-open",
+      "update-status",
+    ],
   ],
 ]) {
   test(`a notification route ${label}`, async () => {
@@ -245,6 +250,7 @@ for (const [label, currentRoute, expected] of [
         openRoute: async () => calls.push("workspace-open"),
         recoverForeground: async () => ({ recovered: true }),
       },
+      refreshCaffoldUpdate: () => calls.push("update-status"),
     };
     globalThis.window.location = {
       href: "https://caffold.test/tasks",
@@ -268,6 +274,41 @@ for (const [label, currentRoute, expected] of [
     assert.deepEqual(recovery, { recovered: true });
   });
 }
+
+test("asks for the update status only after a recovery that reached Caffold", async () => {
+  globalThis.window.location = {
+    href: "https://caffold.test/tasks",
+    origin: "https://caffold.test",
+    pathname: "/tasks",
+    search: "",
+  };
+  for (const [initialActivation, recovery, asks] of [
+    [false, { retry: false }, 1],
+    [true, { retry: false }, 0],
+    [false, { retry: true }, 0],
+    [false, { stale: true, retry: false }, 0],
+  ]) {
+    let asked = 0;
+    const owner = {
+      currentRoute: { kind: "tasks" },
+      taskWorkspace: { recoverForeground: async () => recovery },
+      refreshCaffoldUpdate: () => {
+        asked += 1;
+      },
+    };
+
+    assert.equal(
+      await appShell.recoverForeground.call(owner, {
+        activationRoute: null,
+        initialActivation,
+        isCurrent: () => true,
+        progress: { activatingRoute: () => {} },
+      }),
+      recovery,
+    );
+    assert.equal(asked, asks, JSON.stringify({ initialActivation, recovery }));
+  }
+});
 
 function button(label, calls) {
   return {

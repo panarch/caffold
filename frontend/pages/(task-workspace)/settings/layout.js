@@ -64,6 +64,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     this.rendered = true;
     this.section = "";
     this.codexStatusSnapshotValue = null;
+    this.caffoldUpdateValue = null;
     this.masterDetailMedia = window.matchMedia(
       SETTINGS_MASTER_DETAIL_MEDIA_QUERY,
     );
@@ -134,6 +135,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     this.connectedSettingsNavigator?.setCodexStatusSnapshot(
       this.codexStatusSnapshotValue,
     );
+    this.connectedSettingsNavigator?.setCaffoldUpdate(this.caffoldUpdateValue);
   }
 
   attachResponsiveListener() {
@@ -396,6 +398,13 @@ class CaffoldSettingsWorkspace extends HTMLElement {
   setUpdateStatus(status) {
     this.ensureRendered();
     this.querySelector("caffold-settings-about-page").setUpdateStatus(status);
+  }
+
+  setCaffoldUpdate(snapshot) {
+    this.ensureRendered();
+    this.caffoldUpdateValue = snapshot ?? null;
+    this.querySelector("caffold-settings-about-page").setCaffoldUpdate(snapshot);
+    this.connectedSettingsNavigator?.setCaffoldUpdate(snapshot);
   }
 }
 

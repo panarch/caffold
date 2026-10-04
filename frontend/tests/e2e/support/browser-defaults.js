@@ -117,6 +117,19 @@ export function mockCodexUpdates(overrides = {}) {
   };
 }
 
+/** Caffold's own update status: this server runs the newest release. */
+export function mockCaffoldUpdate(overrides = {}) {
+  return {
+    version: "0.18.2",
+    latestRelease: {
+      version: "0.18.2",
+      url: "https://github.com/panarch/caffold/releases/tag/v0.18.2",
+    },
+    updateAvailable: false,
+    ...overrides,
+  };
+}
+
 export function mockClaudeStatus(overrides = {}) {
   return {
     executable: {
@@ -220,6 +233,10 @@ export async function installBrowserDefaults(page) {
       contentType: "application/json",
       body: JSON.stringify(mockCodexUpdates()),
     }),
+  );
+
+  await page.route(/\/api\/caffold\/update(?:\?|$)/, (route) =>
+    route.fulfill({ json: mockCaffoldUpdate() }),
   );
 
   await page.route(/\/api\/claude\/status(?:\?|$)/, (route) =>

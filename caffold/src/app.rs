@@ -17,6 +17,7 @@ mod stall;
 mod tailscale;
 mod tasks;
 mod terminal;
+mod update;
 mod voice;
 mod workspace;
 
@@ -32,6 +33,8 @@ pub struct ServeConfig {
     pub root: Option<PathBuf>,
     pub data_dir: Option<PathBuf>,
     pub worktree_root: Option<PathBuf>,
+    /// The Caffold Server app that runs this server.
+    pub app_bundle: Option<PathBuf>,
 }
 
 pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
@@ -68,6 +71,18 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let codex_mcp = tasks::CodexMcpHost::new(&origin, mcp_signer.clone());
     let grok_mcp = tasks::GrokMcpHost::new(&origin, mcp_signer);
     let tailscale_router = tailscale::router(addr.port());
+    let updates = update::UpdateRoutes::new(
+        fs.clone(),
+        update::UpdateConfig {
+            data_dir: data_dir.clone(),
+            app_bundle: config.app_bundle,
+            port: addr.port(),
+        },
+    );
+    if let Some(directory) = updates.update_directory() {
+        std::fs::create_dir_all(directory)?;
+    }
+    updates.check_release_in_background();
     let terminals = terminal::Terminals::new();
     let terminal_router = terminals.router(fs.clone());
     let tasks = tasks::PersistentTasksGateway::new(
@@ -90,6 +105,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         voice_router,
         jev_router,
         tailscale_router,
+        updates.router(),
         terminal_router,
         codex_mcp.router(),
         grok_mcp.router(),
@@ -149,6 +165,15 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let voice_router = voice::router(&fs.root().join(".caffold-test"));
     let (jev_router, permission_reviewer) = jev::open(&fs.root().join(".caffold-test"));
     let tailscale_router = tailscale::router(5_178);
+    let update_router = update::UpdateRoutes::new(
+        fs.clone(),
+        update::UpdateConfig {
+            data_dir: fs.root().join(".caffold-test"),
+            app_bundle: None,
+            port: 5_178,
+        },
+    )
+    .router();
     let terminals = terminal::Terminals::new();
     let terminal_router = terminals.router(fs.clone());
     let origin = mcp_origin(SocketAddr::from((Ipv4Addr::LOCALHOST, 5_178)));
@@ -174,6 +199,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         voice_router,
         jev_router,
         tailscale_router,
+        update_router,
         terminal_router,
         codex_mcp.router(),
         grok_mcp.router(),
@@ -188,6 +214,7 @@ fn router_with_states(
     voice_router: Router,
     jev_router: Router,
     tailscale_router: Router,
+    update_router: Router,
     terminal_router: Router,
     codex_mcp_router: Router,
     grok_mcp_router: Router,
@@ -198,6 +225,7 @@ fn router_with_states(
         .merge(voice_router)
         .merge(jev_router)
         .merge(tailscale_router)
+        .merge(update_router)
         .merge(terminal_router)
         .merge(codex_mcp_router)
         .merge(grok_mcp_router)

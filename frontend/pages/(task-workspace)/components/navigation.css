@@ -91,8 +91,25 @@ caffold-task-workspace-navigation {
   }
 
   & [data-workspace-navigation-icon] {
+    position: relative;
     display: grid;
     place-items: center;
+  }
+
+  /* A newer Caffold: a green dot, the Task list's unseen-completion color
+     without its blink, on the icon's top right corner. The icon slot is re-rendered when
+     icons load, so the dot is drawn by the slot rather than placed in it. */
+  & button[data-update-available] [data-workspace-navigation-icon]::after {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: var(--interface-space-3);
+    height: var(--interface-space-3);
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 0 1.5px var(--surface);
+    content: "";
+    transform: translateY(-40%);
   }
 
   & .task-workspace-navigation-icon {

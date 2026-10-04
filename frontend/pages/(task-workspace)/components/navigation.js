@@ -38,6 +38,7 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
     this.rendered = true;
     this.mode = "tasks";
     this.codexStatusSnapshotValue = null;
+    this.updateAvailable = false;
     this.innerHTML = `
       <nav class="task-workspace-navigation" aria-label="Workspace">
         <button type="button" data-workspace-mode="tasks">
@@ -74,7 +75,7 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
     });
     this.renderIcons();
     this.setMode(this.mode);
-    this.syncCodexStatus();
+    this.syncSettingsStatus();
   }
 
   setMode(mode) {
@@ -91,7 +92,13 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
   setCodexStatusSnapshot(snapshot) {
     this.ensureRendered();
     this.codexStatusSnapshotValue = snapshot ?? null;
-    this.syncCodexStatus();
+    this.syncSettingsStatus();
+  }
+
+  setCaffoldUpdate(snapshot) {
+    this.ensureRendered();
+    this.updateAvailable = snapshot?.status?.updateAvailable === true;
+    this.syncSettingsStatus();
   }
 
   actionHintScope({ scopeId = "workspace", clipRoots = [] } = {}) {
@@ -133,19 +140,23 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
     };
   }
 
-  syncCodexStatus() {
+  syncSettingsStatus() {
     const button = this.querySelector('button[data-workspace-mode="settings"]');
     if (!button) {
       return;
     }
     const state = codexState(this.codexStatusSnapshotValue);
     const readiness = formatCodexReadiness(this.codexStatusSnapshotValue);
-    const label = state === "available"
+    const codexLabel = state === "available"
       ? "Settings — Codex ready"
       : state === "pending"
         ? "Settings — checking Codex readiness"
         : `Settings — Codex ${readiness.toLowerCase()}`;
+    const label = this.updateAvailable
+      ? `${codexLabel}, Caffold update available`
+      : codexLabel;
     button.dataset.codexState = state;
+    button.toggleAttribute("data-update-available", this.updateAvailable);
     button.title = label;
     button.setAttribute("aria-label", label);
   }

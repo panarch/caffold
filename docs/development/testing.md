@@ -208,6 +208,11 @@ Playwright lifecycle spec, and, when platform signals are affected, the
 installed-Android checks in `mobile-pwa-testing.md`. These are separate
 unit, browser-integration, and platform evidence.
 
+Application update changes require the `update` module's Rust tests and
+`desktop/macos/test-updater`. A change to how `caffold update` calls Homebrew or
+replaces, starts, or restores the app also requires the Homebrew checks in
+`app-update-testing.md` before it merges.
+
 PWA build-handoff changes require the adjacent unit tests,
 `frontend/tests/contracts/service-worker.test.mjs`, and
 `frontend/tests/e2e/app-shell-update.spec.js`. The loopback lifecycle server provides

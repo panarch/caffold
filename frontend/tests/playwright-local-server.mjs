@@ -53,6 +53,10 @@ export async function createRegularPlaywrightServer(
         ...environment,
         CAFFOLD_CODEX_BIN: fakeCodexBin,
         CODEX_HOME: fixtureCodexHome,
+        // The suite never depends on what GitHub has published: the server's
+        // release check reaches a closed port and reports that it could not
+        // check. Specs that show an update answer `/api/caffold/update`.
+        CAFFOLD_LATEST_RELEASE_URL: "http://127.0.0.1:9/",
         // Terminals start `$SHELL -l`; a plain shell keeps them independent of
         // the developer's own shell profile.
         SHELL: "/bin/sh",

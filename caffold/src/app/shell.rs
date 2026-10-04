@@ -37,6 +37,8 @@ struct UpdateServerSettingsRequest {
 #[serde(rename_all = "camelCase")]
 struct HealthResponse {
     status: &'static str,
+    /// The release version, which the build id does not carry.
+    version: &'static str,
     build_id: &'static str,
     build_label: &'static str,
     build_number: &'static str,
@@ -174,6 +176,7 @@ async fn asset(AxumPath(path): AxumPath<String>) -> Response {
 async fn health(State(state): State<ShellState>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
+        version: env!("CARGO_PKG_VERSION"),
         build_id: env!("CAFFOLD_BUILD_ID"),
         build_label: env!("CAFFOLD_BUILD_LABEL"),
         build_number: env!("CAFFOLD_BUILD_NUMBER"),
@@ -256,5 +259,23 @@ mod tests {
         assert_ne!(first, second);
         assert!(!first.contains("__CAFFOLD_BUILD_ID__"));
         assert!(!second.contains("__CAFFOLD_BUILD_ID__"));
+    }
+
+    #[tokio::test]
+    async fn health_names_the_release_version_beside_the_build() {
+        let root = tempfile::tempdir().unwrap();
+        let state = ShellState {
+            fs: Arc::new(RootedFs::new(root.path().to_path_buf()).unwrap()),
+            server_settings: Arc::new(ServerSettingsStore::memory()),
+            initial_path: String::new(),
+            home_path: None,
+        };
+
+        let Json(health) = health(State(state)).await;
+
+        let health = serde_json::to_value(health).unwrap();
+        assert_eq!(health["status"], "ok");
+        assert_eq!(health["version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(health["buildId"], env!("CAFFOLD_BUILD_ID"));
     }
 }

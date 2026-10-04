@@ -81,60 +81,111 @@ private func runTests() throws {
         // Expected.
     }
 
-    let taskData = Data(
-        #"{"sections":[{"tasks":[{"threadStatus":{"type":"idle"}},{"threadStatus":{"type":"active","activeFlags":[]}}]},{"tasks":[{"threadStatus":{"type":"notLoaded"}}]}],"unsectioned":[{"threadStatus":{"type":"active","activeFlags":[]}}]}"#.utf8
+    try require(
+        caffoldUpdateArguments(
+            bundleURL: URL(fileURLWithPath: "/Applications/Caffold Server.app"),
+            dataDirectory: URL(fileURLWithPath: "/Users/me/Library/Application Support/Caffold/data"),
+            port: 5178
+        ) == [
+            "update",
+            "--app", "/Applications/Caffold Server.app",
+            "--data-dir", "/Users/me/Library/Application Support/Caffold/data",
+            "--port", "5178",
+            "--from-menu-bar",
+        ],
+        "the menu bar must hand caffold update its app, data, and port"
     )
     try require(
-        try decodeActiveTaskCount(taskData) == 2,
-        "canonical active status must be counted across Sections and recovery Tasks"
-    )
-    let taskRequest = caffoldActiveTasksRequest(
-        baseURL: URL(string: "http://127.0.0.1:5178/")!
-    )
-    try require(
-        taskRequest.url?.absoluteString == "http://127.0.0.1:5178/api/tasks",
-        "active Task counts must use the complete Section projection endpoint"
-    )
-
-    try require(
-        homebrewUpgradeArguments() == ["upgrade", "--cask", "panarch/tap/caffold"],
-        "Homebrew must remain the only application replacement path"
+        updateConfirmationText(for: try version("0.18.3"))
+            == "Caffold backs up this version, installs 0.18.3 with Homebrew, and restarts. If 0.18.3 does not start, this version is restored. Running Tasks keep going; open terminals close.",
+        "the confirmation must say what the update does without counting Tasks"
     )
 
     let temporary = FileManager.default.temporaryDirectory
         .appendingPathComponent("caffold-updater-\(UUID().uuidString)", isDirectory: true)
-    let contents = temporary.appendingPathComponent("Contents", isDirectory: true)
-    try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: temporary) }
-    let plist: NSDictionary = ["CFBundleShortVersionString": "0.1.1"]
+    let records = temporary.appendingPathComponent("caffold-updates", isDirectory: true)
     try require(
-        plist.write(to: contents.appendingPathComponent("Info.plist"), atomically: true),
-        "test bundle plist must be written"
+        latestUpdateAttempt(in: records) == nil,
+        "no attempt is read before the first update"
     )
-    try require(
-        installedBundleVersion(at: temporary) == version("0.1.1"),
-        "the updated bundle version must be read from disk"
-    )
-    try validateHomebrewUpgrade(
-        CommandResult(status: 0, output: "Successfully installed"),
-        expectedVersion: try version("0.1.1"),
-        bundleURL: temporary
-    )
-    do {
-        try validateHomebrewUpgrade(
-            CommandResult(status: 1, output: "upgrade failed"),
-            expectedVersion: try version("0.1.1"),
-            bundleURL: temporary
-        )
-        throw TestFailure(description: "a failed Homebrew command must reject the update")
-    } catch ApplicationUpdateError.upgradeFailed {
-        // Expected.
+    func writeAttempt(_ id: String, _ json: String) throws {
+        let directory = records
+            .appendingPathComponent("attempts", isDirectory: true)
+            .appendingPathComponent(id, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(json.utf8).write(to: directory.appendingPathComponent("attempt.json"))
     }
+    try writeAttempt(
+        "20261004T100000.000Z",
+        #"{"id":"20261004T100000.000Z","startedAt":"2026-10-04T10:00:00Z","finishedAt":"2026-10-04T10:01:00Z","fromVersion":"0.18.2","toVersion":"0.18.3","startedFromMenuBar":true,"pid":1,"outcome":"succeeded","reason":null}"#
+    )
+    try writeAttempt(
+        "20261004T110000.000Z",
+        #"{"id":"20261004T110000.000Z","startedAt":"2026-10-04T11:00:00Z","finishedAt":"2026-10-04T11:02:00Z","fromVersion":"0.18.2","toVersion":"0.18.3","startedFromMenuBar":true,"pid":2,"outcome":"rolledBack","reason":"0.18.3 could not start"}"#
+    )
+    try writeAttempt("20261004T120000.000Z", "not a record")
+    let latest = latestUpdateAttempt(in: records)
+    try require(
+        latest == UpdateAttempt(
+            id: "20261004T110000.000Z",
+            fromVersion: "0.18.2",
+            toVersion: "0.18.3",
+            startedFromMenuBar: true,
+            outcome: .rolledBack,
+            reason: "0.18.3 could not start"
+        ),
+        "the newest readable attempt must be the result to show"
+    )
 
-    let relaunchScript = caffoldRelaunchScript()
-    try require(relaunchScript.contains("parent_pid=\"$1\""), "relaunch must wait for the app")
-    try require(relaunchScript.contains("server_pid=\"$2\""), "relaunch must wait for its server")
-    try require(relaunchScript.contains("/usr/bin/open \"$app_path\""), "relaunch must reopen the app")
+    let rolledBack = updateResultAlert(for: latest!, recordsDirectory: records)
+    try require(
+        rolledBack == UpdateResultAlert(
+            title: "Caffold update was rolled back",
+            detail: "0.18.3 could not start, so Caffold 0.18.2 was restored.\n\nThe records are in \(records.path).",
+            isWarning: true,
+            showsRecords: true
+        ),
+        "a rollback must say why and where its records are"
+    )
+    func alert(_ outcome: UpdateAttempt.Outcome, reason: String? = nil) -> UpdateResultAlert? {
+        updateResultAlert(
+            for: UpdateAttempt(
+                id: "id",
+                fromVersion: "0.18.2",
+                toVersion: "0.18.3",
+                startedFromMenuBar: true,
+                outcome: outcome,
+                reason: reason
+            ),
+            recordsDirectory: records
+        )
+    }
+    try require(alert(.running) == nil, "a running attempt has no result yet")
+    try require(
+        alert(.succeeded)?.title == "Caffold was updated"
+            && alert(.succeeded)?.detail == "Caffold 0.18.3 is running and the local server is ready."
+            && alert(.succeeded)?.showsRecords == false,
+        "a success must name the running version"
+    )
+    try require(
+        alert(.upToDate)?.title == "Caffold is up to date" && alert(.upToDate)?.isWarning == false,
+        "nothing newer is not a failure"
+    )
+    try require(
+        alert(.homebrewFailed, reason: "Error: Download failed")?.detail
+            == "Homebrew could not update Caffold, so Caffold 0.18.2 kept running.\n\nError: Download failed",
+        "a Homebrew failure must say Caffold kept running and what Homebrew said"
+    )
+    try require(
+        alert(.restoreFailed, reason: "0.18.3 could not start, and 0.18.2 could not be restored")?.title
+            == "Caffold update failed",
+        "a failed restore must say the update failed"
+    )
+    try require(
+        alert(.interrupted)?.showsRecords == true,
+        "an interrupted update must point at its records"
+    )
 
     let sessionConfiguration = URLSessionConfiguration.ephemeral
     sessionConfiguration.protocolClasses = [MockURLProtocol.self]
@@ -157,16 +208,16 @@ private func runTests() throws {
     let updater = ApplicationUpdater(
         currentVersion: "0.1.0",
         bundleURL: temporary,
+        dataDirectory: temporary,
         menuItem: menuItem,
         defaults: defaults,
         session: mockSession,
         executableResolver: { _ in nil },
         commandRunner: { _, _, _ in
-            fatalError("automatic release checks must not run Homebrew")
+            fatalError("automatic release checks must not run commands")
         },
-        runtimeState: { .stopped },
-        serverBaseURL: { URL(string: "http://127.0.0.1:5178/")! },
-        scheduleRelaunch: { _ in .success(()) },
+        serverIsExternal: { false },
+        serverPort: { 5178 },
         logger: { _ in }
     )
     try require(updater != nil, "a valid bundle version must create the updater")

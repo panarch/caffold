@@ -48,6 +48,142 @@ caffold-settings-about-page {
     height: 2.25rem;
   }
 
+  /* Both sections take the shape of their Settings → Codex peers: Updates
+     of its Updates panel, This window of its Agent section. */
+  & .settings-content-section > section {
+    margin-top: var(--interface-space-10);
+  }
+
+  & .settings-content-section > section > h3 {
+    margin: 0;
+    font-size: var(--settings-field-label-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-about-updates {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--interface-space-8);
+    padding: var(--interface-space-8);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--surface-subtle);
+  }
+
+  & .settings-about-updates > div {
+    display: grid;
+    flex: auto;
+    gap: var(--interface-space-2);
+    min-width: 0;
+  }
+
+  & .settings-about-updates h3,
+  & .settings-about-updates p,
+  & .settings-about-updates dl {
+    margin: 0;
+  }
+
+  & .settings-about-updates h3 {
+    font-size: var(--settings-field-label-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-about-updates p {
+    color: var(--muted);
+    font-size: var(--settings-small-text-size);
+    line-height: var(--interface-line-height);
+    white-space: pre-line;
+  }
+
+  & .settings-about-updates dl {
+    display: grid;
+  }
+
+  & .settings-about-updates dl > div {
+    display: grid;
+    grid-template-columns: minmax(8rem, 0.55fr) minmax(0, 1fr);
+    gap: var(--interface-space-7);
+    padding: var(--interface-space-4) 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  & .settings-about-updates dl > div[hidden] {
+    display: none;
+  }
+
+  & .settings-about-updates dt,
+  & .settings-about-updates dd {
+    font-size: var(--settings-small-text-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-about-updates dt {
+    color: var(--muted);
+  }
+
+  & .settings-about-updates dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  & .settings-about-updates dd[data-state="positive"] {
+    color: var(--success);
+  }
+
+  & .settings-about-updates dd[data-state="negative"] {
+    color: var(--danger);
+  }
+
+  & .settings-about-updates dd > a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+
+  & .settings-about-updates button {
+    position: relative;
+    isolation: isolate;
+    height: var(--settings-page-action-size);
+    min-height: var(--settings-page-action-size);
+    padding: 0 var(--interface-control-padding-inline);
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--settings-small-text-size);
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  & .settings-about-updates button::before {
+    position: absolute;
+    z-index: -1;
+    inset: var(--interface-control-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .settings-about-updates button:hover:not(:disabled),
+  & .settings-about-updates button:focus-visible {
+    outline: none;
+  }
+
+  & .settings-about-updates button:hover:not(:disabled)::before,
+  & .settings-about-updates button:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
+
+  & .settings-about-updates button:disabled {
+    color: var(--disabled-text);
+    cursor: default;
+  }
+
   & .settings-about-actions {
     display: flex;
     flex-wrap: wrap;
@@ -112,5 +248,22 @@ caffold-settings-about-page {
   & .settings-about-actions [data-action="reload-update"]:focus-visible::before {
     border-color: var(--border-strong);
     background: var(--primary-action-bg);
+  }
+}
+
+@container settings-about (max-width: 34rem) {
+  caffold-settings-about-page {
+    & .settings-about-updates {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    & .settings-about-updates button {
+      align-self: start;
+    }
+
+    & .settings-about-updates dl > div {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 }

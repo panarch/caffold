@@ -75,3 +75,24 @@ test("provides only its exact retained section list as a Scroll surface", () => 
   owner.hidden = true;
   assert.deepEqual(navigator.scrollSurfaceScope.call(owner).surfaces, []);
 });
+
+test("hands the update mark to the About entry only", () => {
+  const marks = new Map();
+  const items = ["codex", "about"].map((section) => ({
+    section,
+    setUpdateAvailable(available) {
+      marks.set(section, available);
+    },
+  }));
+  const owner = { items: () => items };
+  owner.syncUpdateAvailable = () => navigator.syncUpdateAvailable.call(owner);
+
+  navigator.setCaffoldUpdate.call(owner, {
+    checking: false,
+    status: { updateAvailable: true },
+  });
+  assert.deepEqual([...marks], [["about", true]]);
+
+  navigator.setCaffoldUpdate.call(owner, { checking: true, status: null });
+  assert.deepEqual([...marks], [["about", false]]);
+});
