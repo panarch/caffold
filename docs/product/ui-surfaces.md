@@ -294,9 +294,9 @@ small pie immediately left of the microphone, in the agent's own count (see
 [Agent Runtimes](../architecture/agent-runtimes.md#runtime-comparison)).
 Choosing it opens the used and window token counts above it in the same form as
 Task details, or `Not reported yet.` until the agent has reported one. The pie
-keeps its place whatever the model label says; in phone portrait it hides with
-**Attach files** and the approval-mode control while voice input runs. New Task
-has no pie.
+keeps its place whatever the model label says and hides while voice input runs;
+in phone portrait **Attach files** and the approval-mode control hide with it.
+New Task has no pie.
 
 In phone portrait every Composer's approval-mode control shows only a shield,
 in a circle the microphone's size, so the model label keeps its room. The shield

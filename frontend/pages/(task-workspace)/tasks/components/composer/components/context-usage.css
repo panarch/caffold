@@ -40,20 +40,20 @@ caffold-task-context-usage {
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
-    fill: none;
-    transform: rotate(-90deg);
   }
 
+  /* The microphone icon's stroke weight and color. */
   & .task-context-usage-outline {
-    stroke: var(--border-strong);
-    stroke-width: 1.5;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
   }
 
-  /* A stroke as wide as the circle's diameter fills it as a pie. */
   & .task-context-usage-fill {
+    fill: currentColor;
     stroke: currentColor;
-    stroke-width: 9;
-    stroke-dasharray: var(--task-context-used, 0) 100;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
   }
 
   /* The Task details popover's form, opened upward from the pie. */
