@@ -209,14 +209,19 @@ without inspecting service-worker state.
 
 The app shell also asks `GET /api/caffold/update` at bootstrap, whenever About
 opens, and after every foreground recovery that reached the server, so a window
-left open during an update learns how it ended. It merges concurrent requests,
-never holds recovery up for the answer, and passes the answer down through
-the task workspace to the navigation dot, the Settings navigator, and About.
-It alone decides to open `caffold-update-result-dialog` for a rolled-back or
-unrestored attempt this browser has not seen, which it records under
-`caffold:update-result-seen`. About emits an update request; the task
-workspace owns `caffold-update-task-dialog` and hands the Task it starts to the
-Tasks page's `startTaskCreation`, as Start Task does.
+left open during an update learns how it ended. About's **Check for Updates**
+emits a check request, for which the shell sends `POST
+/api/caffold/update/check` and republishes its last answer marked as checking
+until the server, having asked GitHub, replies. Concurrent reads merge, and a
+read that starts during a check waits for the check. Only the request started
+last is applied, so a read that left before a check cannot replace the
+check's answer. The shell never holds recovery up for an answer, and passes it
+down through the task workspace to the navigation dot, the Settings navigator,
+and About. It alone decides to open `caffold-update-result-dialog` for a
+rolled-back or unrestored attempt this browser has not seen, which it records
+under `caffold:update-result-seen`. About's update request goes to the task
+workspace, which owns `caffold-update-task-dialog` and hands the Task it starts
+to the Tasks page's `startTaskCreation`, as Start Task does.
 
 A replacement is `ready` only after its complete shell cache is available, and
 Reload explicitly transitions to that prepared generation. The viewport-fixed

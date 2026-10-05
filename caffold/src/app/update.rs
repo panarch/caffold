@@ -10,7 +10,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{
+    Json, Router,
+    extract::State,
+    routing::{get, post},
+};
 use semver::Version;
 use serde::Serialize;
 use tokio::sync::Mutex;
@@ -66,6 +70,7 @@ impl UpdateRoutes {
     pub(super) fn router(&self) -> Router {
         Router::new()
             .route("/api/caffold/update", get(update_status))
+            .route("/api/caffold/update/check", post(check_for_update))
             .with_state(self.service.clone())
     }
 
@@ -88,36 +93,15 @@ impl UpdateRoutes {
 }
 
 async fn update_status(State(service): State<UpdateService>) -> Json<UpdateStatusResponse> {
-    let version = Version::parse(env!("CARGO_PKG_VERSION")).expect("the package version is semver");
     let release = service.latest_release().await;
-    let update_available = release
-        .as_ref()
-        .is_ok_and(|release| release.version > version);
-    let (last_attempt, running_attempt) = service.attempts().await;
-    let update_task = if update_available {
-        service.update_task().await
-    } else {
-        None
-    };
-    let (latest_release, release_error) = match release {
-        Ok(release) => (
-            Some(ReleaseResponse {
-                version: release.version.to_string(),
-                url: release.url,
-            }),
-            None,
-        ),
-        Err(problem) => (None, Some(problem)),
-    };
-    Json(UpdateStatusResponse {
-        version: version.to_string(),
-        latest_release,
-        release_error,
-        update_available,
-        update_task,
-        last_attempt,
-        running_attempt,
-    })
+    Json(service.status(release).await)
+}
+
+/// Asks GitHub now, whatever the age of the last answer, for someone who
+/// chose to check.
+async fn check_for_update(State(service): State<UpdateService>) -> Json<UpdateStatusResponse> {
+    let release = service.current_release().await;
+    Json(service.status(release).await)
 }
 
 #[derive(Clone)]
@@ -137,6 +121,39 @@ struct ReleaseCheck {
 }
 
 impl UpdateService {
+    async fn status(&self, release: Result<LatestRelease, String>) -> UpdateStatusResponse {
+        let version =
+            Version::parse(env!("CARGO_PKG_VERSION")).expect("the package version is semver");
+        let update_available = release
+            .as_ref()
+            .is_ok_and(|release| release.version > version);
+        let (last_attempt, running_attempt) = self.attempts().await;
+        let update_task = if update_available {
+            self.update_task().await
+        } else {
+            None
+        };
+        let (latest_release, release_error) = match release {
+            Ok(release) => (
+                Some(ReleaseResponse {
+                    version: release.version.to_string(),
+                    url: release.url,
+                }),
+                None,
+            ),
+            Err(problem) => (None, Some(problem)),
+        };
+        UpdateStatusResponse {
+            version: version.to_string(),
+            latest_release,
+            release_error,
+            update_available,
+            update_task,
+            last_attempt,
+            running_attempt,
+        }
+    }
+
     /// The newest release, asking GitHub again once the last answer is old.
     /// Requests that arrive during a check wait for that check.
     async fn latest_release(&self) -> Result<LatestRelease, String> {
@@ -146,6 +163,24 @@ impl UpdateService {
         {
             return check.result.clone();
         }
+        self.ask_github(&mut check).await
+    }
+
+    /// The newest release as GitHub tells it after this request arrived. A
+    /// check that ends while this request waits for it answers this request
+    /// too.
+    async fn current_release(&self) -> Result<LatestRelease, String> {
+        let arrived_at = Instant::now();
+        let mut check = self.release.lock().await;
+        if let Some(check) = check.as_ref()
+            && check.checked_at > arrived_at
+        {
+            return check.result.clone();
+        }
+        self.ask_github(&mut check).await
+    }
+
+    async fn ask_github(&self, check: &mut Option<ReleaseCheck>) -> Result<LatestRelease, String> {
         let result = self.sources.latest_release().await;
         *check = Some(ReleaseCheck {
             checked_at: Instant::now(),
@@ -312,9 +347,15 @@ impl UpdateSources for MacSources {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{
+        RwLock,
+        atomic::{AtomicUsize, Ordering},
+    };
 
-    use axum::{body::Body, http::Request};
+    use axum::{
+        body::Body,
+        http::{Request, request::Builder},
+    };
     use tower::ServiceExt;
 
     use super::*;
@@ -322,7 +363,8 @@ mod tests {
     const APP: &str = "/Applications/Caffold Server.app";
 
     struct FakeSources {
-        release: Result<LatestRelease, String>,
+        /// What GitHub answers now.
+        release: RwLock<Result<LatestRelease, String>>,
         homebrew: HomebrewRecord,
         alive: bool,
         release_requests: AtomicUsize,
@@ -331,12 +373,7 @@ mod tests {
     impl FakeSources {
         fn new(release: Result<&str, &str>) -> Self {
             Self {
-                release: release
-                    .map(|version| LatestRelease {
-                        version: Version::parse(version).unwrap(),
-                        url: format!("https://github.com/panarch/caffold/releases/tag/v{version}"),
-                    })
-                    .map_err(str::to_string),
+                release: RwLock::new(release.map(published).map_err(str::to_string)),
                 homebrew: HomebrewRecord::Installed(None),
                 alive: true,
                 release_requests: AtomicUsize::new(0),
@@ -344,10 +381,17 @@ mod tests {
         }
     }
 
+    fn published(version: &str) -> LatestRelease {
+        LatestRelease {
+            version: Version::parse(version).unwrap(),
+            url: format!("https://github.com/panarch/caffold/releases/tag/v{version}"),
+        }
+    }
+
     impl UpdateSources for FakeSources {
         fn latest_release(&self) -> SourceFuture<Result<LatestRelease, String>> {
             self.release_requests.fetch_add(1, Ordering::SeqCst);
-            let release = self.release.clone();
+            let release = self.release.read().unwrap().clone();
             Box::pin(async move { release })
         }
 
@@ -391,14 +435,18 @@ mod tests {
     }
 
     async fn status(server: &Server) -> serde_json::Value {
+        answer(server, Request::get("/api/caffold/update")).await
+    }
+
+    async fn check(server: &Server) -> serde_json::Value {
+        answer(server, Request::post("/api/caffold/update/check")).await
+    }
+
+    async fn answer(server: &Server, request: Builder) -> serde_json::Value {
         let response = server
             .routes
             .router()
-            .oneshot(
-                Request::get("/api/caffold/update")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(request.body(Body::empty()).unwrap())
             .await
             .unwrap();
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -505,6 +553,49 @@ mod tests {
             .checked_at = Instant::now() - RELEASE_CHECK_INTERVAL;
         status(&server).await;
         assert_eq!(server.sources.release_requests.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn a_check_asks_github_at_once_for_a_release_the_last_answer_missed() {
+        let current = env!("CARGO_PKG_VERSION");
+        let server = server(FakeSources::new(Ok(current)), Some(APP));
+        assert_eq!(status(&server).await["updateAvailable"], false);
+
+        let newer = newer();
+        *server.sources.release.write().unwrap() = Ok(published(&newer));
+        assert_eq!(status(&server).await["updateAvailable"], false);
+        assert_eq!(server.sources.release_requests.load(Ordering::SeqCst), 1);
+
+        let checked = check(&server).await;
+        assert_eq!(server.sources.release_requests.load(Ordering::SeqCst), 2);
+        assert_eq!(checked["version"], current);
+        assert_eq!(checked["latestRelease"]["version"], newer);
+        assert_eq!(checked["updateAvailable"], true);
+        assert_eq!(checked["updateTask"]["cwd"], "data/caffold-updates");
+
+        // The check is the server's newest answer now.
+        assert_eq!(status(&server).await, checked);
+        assert_eq!(server.sources.release_requests.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn a_check_takes_an_answer_that_ended_after_it_arrived() {
+        let server = server(FakeSources::new(Ok(&newer())), Some(APP));
+        check(&server).await;
+        assert_eq!(server.sources.release_requests.load(Ordering::SeqCst), 1);
+
+        // As if a check this request waited for ended after it arrived.
+        server
+            .routes
+            .service
+            .release
+            .lock()
+            .await
+            .as_mut()
+            .unwrap()
+            .checked_at = Instant::now() + Duration::from_secs(1);
+        check(&server).await;
+        assert_eq!(server.sources.release_requests.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

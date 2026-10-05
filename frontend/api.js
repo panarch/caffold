@@ -9,6 +9,14 @@ export async function getCaffoldUpdate() {
   return requestJson("/api/caffold/update", {}, { timeoutMs: 20_000 });
 }
 
+/** Has the server ask GitHub now, and answers as `getCaffoldUpdate` does. */
+export async function checkCaffoldUpdate() {
+  return requestJson("/api/caffold/update/check", {}, {
+    method: "POST",
+    timeoutMs: 20_000,
+  });
+}
+
 export async function getCodexStatus() {
   return requestJson("/api/codex/status");
 }

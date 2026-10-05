@@ -102,19 +102,20 @@ test("About tells whether a newer Caffold exists and how the last update ended",
   await captureReviewScreenshot(page, testInfo, "about-updates-dark");
 });
 
-test("About says each update state and enables the update only when it can start", { tag: "@desktop" }, async ({ page }) => {
+test("About says each update state and offers the action that fits it", { tag: "@desktop" }, async ({ page }) => {
   const answer = await answerUpdates(page, mockCaffoldUpdate());
   await page.goto("/settings/about");
   const updates = updatesSection(page);
   const summary = updates.locator("[data-updates-summary]");
-  const button = updates.getByRole("button", { name: "Update Caffold" });
+  const button = updates.getByRole("button");
+  const check = ["Check for Updates", true];
 
-  for (const [status, expected, enabled] of [
-    [mockCaffoldUpdate(), "Caffold is up to date.", false],
+  for (const [status, expected, [action, enabled]] of [
+    [mockCaffoldUpdate(), "Caffold is up to date.", check],
     [
       { ...AVAILABLE, updateTask: undefined },
       "Caffold 0.18.3 is available. Install it from the release page.",
-      false,
+      check,
     ],
     [
       {
@@ -123,7 +124,7 @@ test("About says each update state and enables the update only when it can start
         updateAvailable: false,
       },
       "Caffold could not check for updates.\nGitHub answered HTTP 403 Forbidden.",
-      false,
+      check,
     ],
     [
       {
@@ -137,17 +138,18 @@ test("About says each update state and enables the update only when it can start
         },
       },
       "Updating to Caffold 0.18.3…",
-      false,
+      ["Update Caffold", false],
     ],
     [
       AVAILABLE,
       "Caffold 0.18.3 is available. The menu-bar app can also update it.",
-      true,
+      ["Update Caffold", true],
     ],
   ]) {
     answer.status = status;
     await page.reload();
     await expect(summary).toHaveText(expected);
+    await expect(button).toHaveText(action);
     if (enabled) {
       await expect(button).toBeEnabled();
     } else {
@@ -155,6 +157,64 @@ test("About says each update state and enables the update only when it can start
     }
   }
   await expect(updates.locator("[data-updates-last-row]")).toBeHidden();
+});
+
+test("Check for Updates asks GitHub now and offers the update it finds", { tag: "@desktop" }, async ({ page }) => {
+  const updated = mockCaffoldUpdate({
+    lastAttempt: {
+      id: "20261004T121000.000Z",
+      startedAt: "2026-10-04T12:08:00Z",
+      finishedAt: "2026-10-04T12:10:00Z",
+      fromVersion: "0.18.1",
+      toVersion: "0.18.2",
+      startedFromMenuBar: false,
+      outcome: "succeeded",
+    },
+  });
+  await answerUpdates(page, updated);
+  const checkStarted = Promise.withResolvers();
+  const githubAnswered = Promise.withResolvers();
+  let checks = 0;
+  await page.route(/\/api\/caffold\/update\/check(?:\?|$)/, async (route) => {
+    checks += 1;
+    expect(route.request().method()).toBe("POST");
+    checkStarted.resolve();
+    await githubAnswered.promise;
+    await route.fulfill({ json: { ...AVAILABLE, lastAttempt: updated.lastAttempt } });
+  });
+  await page.goto("/settings/about");
+
+  const updates = updatesSection(page);
+  const summary = updates.locator("[data-updates-summary]");
+  const button = updates.getByRole("button");
+  const settings = page.locator(
+    'caffold-task-workspace-navigation button[data-workspace-mode="settings"]',
+  );
+  const unclipped = () => button.evaluate((element) => element.scrollWidth <= element.clientWidth);
+  await expect(summary).toHaveText("Caffold is up to date.");
+  await expect(button).toHaveText("Check for Updates");
+  expect(await unclipped()).toBe(true);
+  await expect(settings).not.toHaveAttribute("data-update-available", "");
+
+  await button.click();
+  await checkStarted.promise;
+  // The last answer stays on show while GitHub is asked.
+  await expect(summary).toHaveText("Checking for updates…");
+  await expect(button).toHaveText("Check for Updates");
+  await expect(button).toBeDisabled();
+  await expect(updates.locator("[data-updates-latest]")).toHaveText("0.18.2");
+  await expect(updates.locator("[data-updates-last]")).toContainText("Updated to 0.18.2");
+
+  githubAnswered.resolve();
+  await expect(summary).toHaveText(
+    "Caffold 0.18.3 is available. The menu-bar app can also update it.",
+  );
+  await expect(button).toHaveText("Update Caffold");
+  await expect(button).toBeEnabled();
+  expect(await unclipped()).toBe(true);
+  await expect(updates.locator("[data-updates-latest]")).toHaveText("0.18.3");
+  await expect(settings).toHaveAttribute("data-update-available", "");
+  expect(checks).toBe(1);
 });
 
 test("marks Settings and About with the green dot while a newer Caffold exists", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
