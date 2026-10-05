@@ -87,3 +87,42 @@ test("merges responsive Back with only the presented direct page", () => {
   assert.deepEqual(workspace.actionHintScope.call(owner).targets, []);
   assert.deepEqual(workspace.scrollSurfaceScope.call(owner).surfaces, []);
 });
+
+test("hands a navigator that connects later the update states it missed", () => {
+  const received = [];
+  const about = {
+    setUpdateStatus: (status) => received.push(["about", status]),
+  };
+  const owner = {
+    section: "about",
+    codexStatusSnapshotValue: null,
+    caffoldUpdateValue: { checking: false, status: { updateAvailable: false } },
+    updateStatusValue: null,
+    connectedSettingsNavigator: null,
+    boundSettingsNavigatorIntent: () => {},
+    ensureRendered() {},
+    querySelector: () => about,
+  };
+  const status = { state: "ready", preparedUpdate: { ready: true, buildId: "next" } };
+
+  workspace.setUpdateStatus.call(owner, status);
+  assert.deepEqual(received, [["about", status]]);
+
+  const navigator = {
+    addEventListener() {},
+    removeEventListener() {},
+    setSelectedSection() {},
+    setCodexStatusSnapshot() {},
+    setCaffoldUpdate: (snapshot) => received.push(["navigator release", snapshot]),
+    setUpdateStatus: (value) => received.push(["navigator reload", value]),
+  };
+  workspace.connectSettingsNavigator.call(owner, navigator);
+  assert.deepEqual(received.slice(1), [
+    ["navigator release", owner.caffoldUpdateValue],
+    ["navigator reload", status],
+  ]);
+
+  const settled = { state: "settled", preparedUpdate: { ready: false, buildId: null } };
+  workspace.setUpdateStatus.call(owner, settled);
+  assert.deepEqual(received.slice(3), [["about", settled], ["navigator reload", settled]]);
+});

@@ -12,9 +12,10 @@ workspace navigation at the bottom of the navigation pane switches among Tasks,
 Notes, and Settings. Each returns to the screen it last showed, and browser Back
 leaves the current one for the previous one at its own depth. Choosing the one
 already shown keeps its route and brings its list back to the top, except
-while Notes is showing a pair. While a newer Caffold release exists, Settings
-and its About Caffold entry carry a small static green dot on the icon's top
-right, in the color of a Task's unseen-completion dot.
+while Notes is showing a pair. While a newer Caffold release exists, or this
+window has a new build ready to load, Settings and its About Caffold entry
+carry a small static green dot on the icon's top right, in the color of a
+Task's unseen-completion dot; their accessible names say which.
 
 At workspace widths up to 640px, the navigation fills a separate bottom bar.
 At wider widths, the same three labeled buttons float at the bottom left of

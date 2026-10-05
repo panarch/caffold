@@ -84,7 +84,8 @@ Point the tap at `working.zip`. On a phone connected over Tailscale:
    names itself **Update Caffold to NEXT**.
 3. Wait for Caffold to come back. Verify that the Task reports the result,
    that **Updates** shows `NEXT` with **Last update** reading **Updated to
-   NEXT**, that the dot is gone, and that the Mac shows no alert.
+   NEXT**, and that the Mac shows no alert. The open window offers the new
+   build; verify that the dot stays until you reload and is gone after.
 4. Verify that the new server did not inherit the agent's environment:
 
    ```sh

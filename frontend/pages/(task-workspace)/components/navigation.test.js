@@ -111,6 +111,7 @@ test("marks the Settings button and its name while a newer Caffold exists", () =
   const owner = {
     codexStatusSnapshotValue: { status: { readiness: { state: "ready" } } },
     updateAvailable: false,
+    reloadReady: false,
     ensureRendered() {},
     querySelector: () => button,
   };
@@ -138,4 +139,24 @@ test("marks the Settings button and its name while a newer Caffold exists", () =
 
   navigation.setCaffoldUpdate.call(owner, null);
   assert.equal(button.attributes.has("data-update-available"), false);
+
+  // A new build this window can load marks the same button.
+  navigation.setUpdateStatus.call(owner, { state: "ready", preparedUpdate: { ready: true } });
+  assert.equal(button.attributes.has("data-update-available"), true);
+  assert.equal(
+    button.attributes.get("aria-label"),
+    "Settings — Codex ready, reload to update",
+  );
+  navigation.setCaffoldUpdate.call(owner, {
+    checking: false,
+    status: { updateAvailable: true },
+  });
+  assert.equal(
+    button.attributes.get("aria-label"),
+    "Settings — Codex ready, Caffold update available, reload to update",
+  );
+  navigation.setCaffoldUpdate.call(owner, null);
+  navigation.setUpdateStatus.call(owner, { state: "settled", preparedUpdate: { ready: false } });
+  assert.equal(button.attributes.has("data-update-available"), false);
+  assert.equal(button.attributes.get("aria-label"), "Settings — Codex ready");
 });

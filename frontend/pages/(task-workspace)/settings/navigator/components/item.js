@@ -19,6 +19,7 @@ class CaffoldSettingsNavigatorItem extends HTMLElement {
     this.selected = false;
     this.codexStatusSnapshotValue = null;
     this.updateAvailable = false;
+    this.reloadReady = false;
     this.connected = false;
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.renderIcon();
@@ -62,7 +63,7 @@ class CaffoldSettingsNavigatorItem extends HTMLElement {
     `;
     this.renderIcon();
     this.syncSelected();
-    this.syncUpdateAvailable();
+    this.syncUpdateNotice();
   }
 
   setSelected(selected) {
@@ -76,10 +77,12 @@ class CaffoldSettingsNavigatorItem extends HTMLElement {
     this.syncCodexStatus();
   }
 
-  // Only the About entry shows that a newer Caffold exists.
-  setUpdateAvailable(available) {
-    this.updateAvailable = available === true;
-    this.syncUpdateAvailable();
+  // Only the About entry shows that Caffold has an update: a newer release, or
+  // a new build this window can load.
+  setUpdateNotice({ updateAvailable = false, reloadReady = false } = {}) {
+    this.updateAvailable = updateAvailable === true;
+    this.reloadReady = reloadReady === true;
+    this.syncUpdateNotice();
   }
 
   handleClick(event) {
@@ -159,14 +162,18 @@ class CaffoldSettingsNavigatorItem extends HTMLElement {
     button.setAttribute("aria-label", label);
   }
 
-  syncUpdateAvailable() {
+  syncUpdateNotice() {
     const button = this.button();
     if (!button || !this.entry) {
       return;
     }
-    button.toggleAttribute("data-update-available", this.updateAvailable);
-    if (this.updateAvailable) {
-      button.setAttribute("aria-label", `${this.entry.label} — update available`);
+    const notices = [
+      this.updateAvailable && "update available",
+      this.reloadReady && "reload to update",
+    ].filter(Boolean);
+    button.toggleAttribute("data-update-available", notices.length > 0);
+    if (notices.length > 0) {
+      button.setAttribute("aria-label", `${this.entry.label} — ${notices.join(", ")}`);
     } else if (this.entry.section !== "codex") {
       button.removeAttribute("aria-label");
     }

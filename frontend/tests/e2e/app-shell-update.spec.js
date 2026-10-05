@@ -355,8 +355,22 @@ test("keeps a dismissed update available and only reports a settled mismatch", {
   await expect(updateDialog).toBeHidden();
   await repeatServiceWorkerStateChange(page);
   await expect(updateDialog).toBeHidden();
+  // The window keeps its build, so Settings and About say a reload waits.
+  const settings = page.locator(
+    'caffold-task-workspace-navigation button[data-workspace-mode="settings"]',
+  );
+  const aboutEntry = page.locator(
+    'caffold-settings-navigator-item button[data-settings-section="about"]',
+  );
+  await expect(settings).toHaveAttribute("data-update-available", "");
+  await expect(settings).toHaveAttribute("aria-label", /, reload to update$/);
 
   await openAboutWithoutReload(page);
+  await expect(aboutEntry).toHaveAttribute("data-update-available", "");
+  await expect(aboutEntry).toHaveAttribute(
+    "aria-label",
+    "About Caffold — reload to update",
+  );
   const about = page.locator("caffold-settings-about-page");
   await expect(about).toBeVisible();
   await expect(about).toContainText("Prepared update");
@@ -380,6 +394,8 @@ test("keeps a dismissed update available and only reports a settled mismatch", {
 
   await retireLatestServiceWorker(page);
   await expect(about).not.toContainText("Prepared update");
+  await expect(settings).not.toHaveAttribute("data-update-available", "");
+  await expect(aboutEntry).not.toHaveAttribute("data-update-available", "");
   await page.locator("caffold-app-shell").evaluate((shell) => {
     shell.updateBuildStatus({
       buildId: "different-server-build",
@@ -391,6 +407,8 @@ test("keeps a dismissed update available and only reports a settled mismatch", {
   await expect(page.locator("caffold-build-mismatch-alert")).toContainText(
     "different-server-build",
   );
+  // The banner tells this one; About has no reload to offer.
+  await expect(settings).not.toHaveAttribute("data-update-available", "");
   await captureReviewScreenshot(page, testInfo, "pwa-exceptional-mismatch");
 });
 
@@ -904,8 +922,10 @@ test("prepares and reloads the latest consecutive replacement through the real b
     await expect(page.locator("caffold-build-mismatch-alert")).toBeHidden();
     await updateDialog.getByRole("button", { name: "Later" }).click();
     await expect(updateDialog).toBeHidden();
+    // Settings and About Caffold also name a waiting reload; only one control
+    // performs it.
     await expect(
-      page.getByRole("button", { name: "Reload to update" }),
+      page.getByRole("button", { name: "Reload to update", exact: true }),
     ).toHaveCount(1);
     await captureReviewScreenshot(page, testInfo, "pwa-update-about-latest-ready");
     await deferUpdateNavigation(page);

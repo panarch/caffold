@@ -677,6 +677,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   setUpdateStatus(status) {
     this.ensureRendered();
+    this.navigation.setUpdateStatus(status);
     this.settingsWorkspace.setUpdateStatus(status);
   }
 
