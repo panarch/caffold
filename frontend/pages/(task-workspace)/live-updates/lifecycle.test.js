@@ -21,6 +21,18 @@ const EXPECTED_EFFECT = Object.freeze({
   [LIVE_CONNECTION_EVENT.DISCONNECT]: LIVE_CONNECTION_EFFECT.CLOSE,
 });
 
+// An attempt's first silent connection is reopened; the second ends it.
+const EXPECTED_STALL_EFFECT = Object.freeze({
+  [LIVE_CONNECTION_NODE.CONNECTING]: LIVE_CONNECTION_EFFECT.REOPEN,
+  [LIVE_CONNECTION_NODE.REOPENED]: LIVE_CONNECTION_EFFECT.REPLACE_NOW,
+});
+
+function expectedEffect(node, event) {
+  return event === LIVE_CONNECTION_EVENT.STALL
+    ? EXPECTED_STALL_EFFECT[node]
+    : EXPECTED_EFFECT[event];
+}
+
 test("declares every allowed live connection edge and rejects every other event", () => {
   for (const node of Object.values(LIVE_CONNECTION_NODE)) {
     for (const event of Object.values(LIVE_CONNECTION_EVENT)) {
@@ -30,7 +42,7 @@ test("declares every allowed live connection edge and rejects every other event"
         assert.equal(transition.node, expectedNode, `${node} + ${event}`);
         assert.deepEqual(
           transition.effects,
-          [EXPECTED_EFFECT[event]],
+          [expectedEffect(node, event)],
           `${node} + ${event}`,
         );
       } else {
@@ -42,6 +54,31 @@ test("declares every allowed live connection edge and rejects every other event"
       }
     }
   }
+});
+
+test("only a connecting attempt or its reopened connection can go silent", () => {
+  const silentNodes = Object.values(LIVE_CONNECTION_NODE).filter((node) =>
+    Object.hasOwn(LIVE_CONNECTION_EDGES[node], LIVE_CONNECTION_EVENT.STALL)
+  );
+
+  assert.deepEqual(silentNodes, [
+    LIVE_CONNECTION_NODE.CONNECTING,
+    LIVE_CONNECTION_NODE.REOPENED,
+  ]);
+  assert.equal(
+    transitionLiveConnection(
+      LIVE_CONNECTION_NODE.CONNECTING,
+      LIVE_CONNECTION_EVENT.STALL,
+    ).node,
+    LIVE_CONNECTION_NODE.REOPENED,
+  );
+  assert.equal(
+    transitionLiveConnection(
+      LIVE_CONNECTION_NODE.REOPENED,
+      LIVE_CONNECTION_EVENT.STALL,
+    ).node,
+    LIVE_CONNECTION_NODE.RECONNECTING,
+  );
 });
 
 test("the declared graph reaches every live connection node", () => {

@@ -542,6 +542,113 @@ test("a return reconciles Tasks and asks Codex nothing", { tag: "@desktop" }, as
   codexAnswer.resolve();
 });
 
+test("a return whose live connection stays silent reopens a fresh one and records it", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  const registryKey = "__silentReturnSources";
+  await page.addInitScript(() => {
+    window.__caffoldVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => window.__caffoldVisibilityState,
+    });
+  });
+  await installEventSourceMock(page, {
+    registryKey,
+    autoOpen: true,
+    bootstrapFunctionKey: "__silentReturnBootstrap",
+  });
+  await mockAgentModels(page);
+  const threadId = "thread_silent_return";
+  const task = transportOverlayTask(threadId);
+  const detail = () => ({
+    threadId,
+    syncState: "ready",
+    revision: 1,
+    eventRevision: 1,
+    task,
+    events: [],
+    eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
+    pendingApprovals: [],
+  });
+  await page.exposeFunction("__silentReturnBootstrap", (requestedThreadId) =>
+    requestedThreadId === threadId ? detail() : null,
+  );
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) })
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ json: detail() }),
+  );
+  const records = [];
+  await page.route(/\/api\/diagnostics\/foreground-recovery(?:\?|$)/, (route) => {
+    records.push(...route.request().postDataJSON().records);
+    return route.fulfill({ status: 204 });
+  });
+  const physicalConnections = () =>
+    page.evaluate(() => window.__caffoldMockLiveEventSources.length);
+
+  await page.goto(`/tasks/${threadId}`);
+  await expect
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+
+  await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const beforeReturn = await physicalConnections();
+  await page.evaluate(() => {
+    window.__caffoldTaskSse.silenceNextConnection();
+    window.__caffoldVisibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(physicalConnections).toBe(beforeReturn + 1);
+
+  const notice = page.locator(".app-foreground-recovery");
+  await page.clock.runFor(7_900);
+  expect(await physicalConnections()).toBe(beforeReturn + 1);
+  await expect(notice).toBeHidden();
+
+  // At eight seconds the silent connection gives way to a fresh one at once,
+  // without waiting for a browser retry that is not happening.
+  await page.clock.runFor(100);
+  await expect.poll(physicalConnections).toBe(beforeReturn + 2);
+  await expect
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
+  await expect(notice).toBeHidden();
+
+  await expect.poll(() => records.length).toBe(1);
+  const [record] = records;
+  expect(record.end).toBe("settled");
+  expect(record.connections).toEqual([
+    {
+      id: expect.any(Number),
+      openedMs: 0,
+      answeredMs: null,
+      endedMs: 8_000,
+      end: "stalled",
+    },
+    {
+      id: expect.any(Number),
+      openedMs: 8_000,
+      answeredMs: 8_000,
+      endedMs: null,
+      end: null,
+    },
+  ]);
+  expect(record.notice.map(({ state }) => state)).toEqual([
+    "none",
+    "reconnecting",
+    "none",
+  ]);
+});
+
 test("BFCache pageshow and top-level focus use the shared foreground recovery", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {

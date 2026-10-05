@@ -164,6 +164,8 @@ The backend application is split by state and transport owner:
 caffold/src/app.rs                     dependency construction and router composition
 caffold/src/app/error.rs               shared JSON HTTP error contract
 caffold/src/app/shell.rs               shell, health, settings, manifest, static assets
+caffold/src/app/shell/foreground_recovery_diagnostics.rs
+                                      foreground recovery diagnostics for the server log
 caffold/src/app/workspace.rs           Files, current plan, images, Git, and GitHub adapters
 caffold/src/app/workspace/current_plan.rs
                                       read-only current-plan filesystem projection

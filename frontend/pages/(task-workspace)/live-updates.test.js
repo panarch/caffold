@@ -114,6 +114,7 @@ function harness(options = {}) {
       (async (connectionId, subscriptions) => {
         publications.push({ connectionId, subscriptions });
       }),
+    onConnectionReport: options.onConnectionReport,
   });
   return { documentTarget, liveUpdates, publications, sources, windowTarget };
 }
@@ -405,5 +406,109 @@ test("bounds physical replacements and waits for an explicit retry", async () =>
 
   extraBinding.close();
   binding.close();
+  browser.liveUpdates.disconnect();
+});
+
+test("a connection that gives no first answer is reopened at once", async () => {
+  const browser = harness();
+  const errors = [];
+  const binding = browser.liveUpdates.subscribeTaskList({
+    onError: (_error, metadata) => errors.push(metadata),
+  });
+  browser.liveUpdates.connect();
+
+  const silent = runNextTimer(browser.windowTarget);
+  assert.equal(silent.delay, 8_000);
+  assert.equal(browser.sources[0].closed, true);
+  assert.equal(browser.sources.length, 2, "nothing waits for a browser retry");
+  assert.equal(browser.liveUpdates.node, "reopened");
+  assert.deepEqual(errors, [{ closed: false, physical: true }]);
+
+  browser.sources[1].emit("gateway-ready", { connectionId: "connection-b" });
+  await settle();
+  assert.equal(browser.liveUpdates.node, "connected");
+  assert.equal(browser.publications.at(-1).connectionId, "connection-b");
+  assert.deepEqual(errors, [{ closed: false, physical: true }]);
+
+  binding.close();
+  browser.liveUpdates.disconnect();
+});
+
+test("a second silent connection ends the attempt and retry gives up after as many attempts", () => {
+  const browser = harness();
+  browser.liveUpdates.retryDelaysMs = [250];
+  const errors = [];
+  const binding = browser.liveUpdates.subscribeTaskList({
+    onError: (_error, metadata) => errors.push(metadata),
+  });
+  browser.liveUpdates.connect();
+
+  runNextTimer(browser.windowTarget);
+  runNextTimer(browser.windowTarget);
+  assert.equal(browser.liveUpdates.node, "reconnecting");
+  assert.equal(browser.sources[1].closed, true);
+  assert.equal(
+    [...browser.windowTarget.timers.values()][0].delay,
+    250,
+    "the next attempt follows the usual retry delay",
+  );
+  assert.equal(errors.length, 1, "consumers hear of the trouble once");
+
+  runNextTimer(browser.windowTarget);
+  assert.equal(browser.liveUpdates.node, "connecting");
+  assert.equal(browser.sources.length, 3);
+  runNextTimer(browser.windowTarget);
+  runNextTimer(browser.windowTarget);
+  assert.equal(browser.sources.length, 4);
+  assert.equal(browser.liveUpdates.node, "unavailable");
+  assert.equal(browser.windowTarget.timers.size, 0);
+  assert.deepEqual(errors.at(-1), {
+    closed: true,
+    exhausted: true,
+    physical: true,
+  });
+
+  binding.close();
+  browser.liveUpdates.disconnect();
+});
+
+test("a browser error while connecting still waits for the browser's own retry", () => {
+  const browser = harness();
+  browser.liveUpdates.connect();
+
+  browser.sources[0].emit("error");
+
+  assert.equal(browser.liveUpdates.node, "reconnecting");
+  assert.equal(browser.sources.length, 1);
+  assert.deepEqual(
+    [...browser.windowTarget.timers.values()].map(({ delay }) => delay),
+    [8_000],
+  );
+  browser.liveUpdates.disconnect();
+});
+
+test("reports each connection opening, answering, and ending by its number", async () => {
+  const reports = [];
+  const browser = harness({
+    onConnectionReport: (report) => reports.push(report),
+  });
+  browser.liveUpdates.connect();
+  browser.sources[0].emit("gateway-ready", { connectionId: "connection-a" });
+  await settle();
+  browser.documentTarget.setVisibility("hidden");
+  browser.documentTarget.setVisibility("visible");
+  runNextTimer(browser.windowTarget);
+  browser.sources[2].emit("error");
+
+  assert.deepEqual(reports, [
+    { kind: "opened", id: 1 },
+    { kind: "answered", id: 1 },
+    { kind: "closed", id: 1 },
+    { kind: "opened", id: 3 },
+    { kind: "stalled", id: 3 },
+    { kind: "closed", id: 3 },
+    { kind: "opened", id: 5 },
+    { kind: "failed", id: 5 },
+  ]);
   browser.liveUpdates.disconnect();
 });

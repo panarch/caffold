@@ -1,4 +1,5 @@
 import { ForegroundRecoveryRuntime } from "./foreground-recovery/lifecycle.js";
+import { ForegroundRecoveryDiagnostics } from "./foreground-recovery/diagnostics.js";
 import {
   FOREGROUND_RECOVERY_INTENT,
   FOREGROUND_RECOVERY_NODE,
@@ -19,23 +20,30 @@ export class ForegroundRecoveryLifecycle {
   constructor({
     onRecover = () => Promise.resolve(),
     onStateChange = () => {},
+    diagnostics = {},
     ...runtimeOptions
   } = {}) {
     this.onStateChange = onStateChange;
+    this.diagnostics = new ForegroundRecoveryDiagnostics(diagnostics);
     this.runtime = new ForegroundRecoveryRuntime({
       ...runtimeOptions,
       onRecover: (request) => onRecover(publicRecoveryRequest(request)),
-      onStateChange: (snapshot) =>
-        this.onStateChange(publicRecoverySnapshot(snapshot)),
+      onStateChange: (snapshot) => {
+        const publicSnapshot = publicRecoverySnapshot(snapshot);
+        this.diagnostics.observe(snapshot, publicSnapshot.presentation);
+        this.onStateChange(publicSnapshot);
+      },
     });
   }
 
   connect() {
+    this.diagnostics.connect();
     this.runtime.connect();
   }
 
   disconnect() {
     this.runtime.disconnect();
+    this.diagnostics.disconnect();
   }
 
   requestForegroundRecovery() {
@@ -59,6 +67,12 @@ export class ForegroundRecoveryLifecycle {
 
   reportOriginReachable() {
     return this.runtime.reportOriginReachable();
+  }
+
+  // One report from the workspace's live connection, timed for the
+  // diagnostics as it arrives.
+  reportLiveConnection(report) {
+    this.diagnostics.reportConnection(report);
   }
 
   setTargets(targets) {

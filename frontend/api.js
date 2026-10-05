@@ -17,6 +17,14 @@ export async function checkCaffoldUpdate() {
   });
 }
 
+/** Hands the server foreground recovery diagnostics, for its log. */
+export async function sendForegroundRecoveryDiagnostics(records) {
+  return requestJson("/api/diagnostics/foreground-recovery", {}, {
+    method: "POST",
+    body: { records },
+  });
+}
+
 export async function getCodexStatus() {
   return requestJson("/api/codex/status");
 }

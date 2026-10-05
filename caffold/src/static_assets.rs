@@ -166,6 +166,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/foreground-recovery/machine.js" => Some(js(include_str!(
             "../../frontend/pages/foreground-recovery/machine.js"
         ))),
+        "pages/foreground-recovery/diagnostics.js" => Some(js(include_str!(
+            "../../frontend/pages/foreground-recovery/diagnostics.js"
+        ))),
         "pages/pwa-update-lifecycle.js" => Some(js(include_str!(
             "../../frontend/pages/pwa-update-lifecycle.js"
         ))),
