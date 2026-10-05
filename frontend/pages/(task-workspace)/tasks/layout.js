@@ -11,16 +11,11 @@ import {
 import {
   mergeKeyboardNavigationContexts,
 } from "#app/keyboard-navigation.js";
-import {
-  INITIAL_CODEX_STATUS_SNAPSHOT,
-  codexBlocksTaskOperations,
-  codexSetupVisible,
-} from "../codex-status.js";
+import { INITIAL_CODEX_STATUS_SNAPSHOT } from "../codex-status.js";
 import {
   INITIAL_TASK_STORE_STATUS_SNAPSHOT,
   taskStoreBlocksTaskOperations,
 } from "../task-store-status.js";
-import "./components/codex-readiness-recovery.js";
 import "./components/task-store-recovery.js";
 import "./(detail)/layout.js";
 import { TERMINAL_PAGE_FOCUS_RELEASE_EVENT } from "./(detail)/terminal/page.js";
@@ -51,10 +46,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.adoptedThreadId = "";
     this.currentRoute = { kind: "tasks" };
     this.currentOpenOptions = {};
-    this.codexStatusSnapshotValue = INITIAL_CODEX_STATUS_SNAPSHOT;
     this.taskStoreStatusSnapshotValue = INITIAL_TASK_STORE_STATUS_SNAPSHOT;
-    this.codexRestartStateValue = { state: "idle", message: "" };
-    this.codexRuntimeActionValue = "idle";
     this.lastPublishedTransportTargets = "";
     this.pendingTaskCreation = null;
     this.liveUpdates = null;
@@ -104,7 +96,6 @@ class CaffoldTasksPage extends HTMLElement {
       <section class="tasks-surface" aria-label="Tasks">
         <div class="tasks-detail-pane" role="region" aria-label="Task content" tabindex="-1">
           <caffold-task-store-recovery hidden></caffold-task-store-recovery>
-          <caffold-codex-readiness-recovery hidden></caffold-codex-readiness-recovery>
           <caffold-task-new hidden></caffold-task-new>
           <caffold-detail-layout hidden></caffold-detail-layout>
           <caffold-task-recovery hidden></caffold-task-recovery>
@@ -523,10 +514,9 @@ class CaffoldTasksPage extends HTMLElement {
 
   setCodexStatusSnapshot(snapshot) {
     this.ensureRendered();
-    this.codexStatusSnapshotValue = snapshot ?? INITIAL_CODEX_STATUS_SNAPSHOT;
-    this.taskDetail()?.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
-    this.codexReadinessRecovery()?.setSnapshot(this.codexStatusSnapshotValue);
-    this.render();
+    this.taskDetail()?.setCodexStatusSnapshot(
+      snapshot ?? INITIAL_CODEX_STATUS_SNAPSHOT,
+    );
   }
 
   setTaskStoreStatusSnapshot(snapshot) {
@@ -554,22 +544,6 @@ class CaffoldTasksPage extends HTMLElement {
       });
     }
     this.render();
-  }
-
-  setCodexRestartState(state) {
-    this.ensureRendered();
-    this.codexRestartStateValue = state ?? { state: "idle", message: "" };
-    this.codexReadinessRecovery()?.setRestartState(this.codexRestartStateValue);
-  }
-
-  setCodexRuntimeAction(action) {
-    this.ensureRendered();
-    this.codexRuntimeActionValue = action ?? "idle";
-    this.codexReadinessRecovery()?.setRuntimeAction(this.codexRuntimeActionValue);
-  }
-
-  codexOperationsBlocked() {
-    return codexBlocksTaskOperations(this.codexStatusSnapshotValue.status);
   }
 
   taskStoreOperationsBlocked() {
@@ -644,7 +618,6 @@ class CaffoldTasksPage extends HTMLElement {
       const recovery = this.taskStoreRecovery();
       return recovery && !recovery.hidden ? [recovery] : [];
     }
-    const setup = this.codexReadinessRecovery();
     const owners = [];
     if ((this.view === "home" || this.view === "new") && !this.taskNew()?.hidden) {
       owners.push(this.taskNew());
@@ -652,9 +625,6 @@ class CaffoldTasksPage extends HTMLElement {
       owners.push(this.taskDetail());
     } else if (this.view === "recovery" && !this.taskRecovery()?.hidden) {
       owners.push(this.taskRecovery());
-    }
-    if (setup && !setup.hidden) {
-      owners.push(setup);
     }
     return owners.filter(Boolean);
   }
@@ -695,12 +665,6 @@ class CaffoldTasksPage extends HTMLElement {
 
   taskRecovery() {
     return this.querySelector(":scope > .tasks-surface caffold-task-recovery");
-  }
-
-  codexReadinessRecovery() {
-    return this.querySelector(
-      ":scope > .tasks-surface caffold-codex-readiness-recovery",
-    );
   }
 
   taskStoreRecovery() {
@@ -874,13 +838,8 @@ class CaffoldTasksPage extends HTMLElement {
     );
     const showNew = this.view === "new" || this.view === "home";
     // Only the store may take the Task surface over — it gates every agent.
-    // Codex setup shows beside the surface on the home views, never over an
-    // open Task: a Claude Task is not held hostage by Codex being unready.
     const takeover = this.taskStoreRecoveryVisible();
-    const setupBeside =
-      !takeover && showNew && codexSetupVisible(this.codexStatusSnapshotValue);
     this.taskStoreRecovery()?.toggleAttribute("hidden", !takeover);
-    this.codexReadinessRecovery()?.toggleAttribute("hidden", !setupBeside);
     this.taskNew()?.toggleAttribute("hidden", takeover || !showNew);
     this.taskDetail()?.toggleAttribute(
       "hidden",

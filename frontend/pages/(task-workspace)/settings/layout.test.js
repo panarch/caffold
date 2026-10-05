@@ -95,7 +95,6 @@ test("hands a navigator that connects later the update states it missed", () => 
   };
   const owner = {
     section: "about",
-    codexStatusSnapshotValue: null,
     caffoldUpdateValue: { checking: false, status: { updateAvailable: false } },
     updateStatusValue: null,
     connectedSettingsNavigator: null,
@@ -112,7 +111,6 @@ test("hands a navigator that connects later the update states it missed", () => 
     addEventListener() {},
     removeEventListener() {},
     setSelectedSection() {},
-    setCodexStatusSnapshot() {},
     setCaffoldUpdate: (snapshot) => received.push(["navigator release", snapshot]),
     setUpdateStatus: (value) => received.push(["navigator reload", value]),
   };

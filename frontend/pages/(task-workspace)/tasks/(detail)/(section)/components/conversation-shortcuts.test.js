@@ -37,3 +37,52 @@ test("provides the retained Fork opener only for the active Section context", ()
   assert.equal(target.isActionable(), false);
   control = null;
 });
+
+test("shows the Fork opener only once Codex is known to be installed", () => {
+  const button = { disabled: false, title: "" };
+  const reason = { textContent: "", hidden: true };
+  const owner = {
+    active: true,
+    hidden: false,
+    context: { sectionId: "section-a" },
+    transportAvailable: true,
+    taskStoreStatusSnapshot: null,
+    codexStatusSnapshot: { phase: "checking", status: null, error: "" },
+    toggleAttribute(name, force) {
+      assert.equal(name, "hidden");
+      this.hidden = force;
+    },
+    disabledReason: shortcuts.disabledReason,
+    querySelector: (selector) =>
+      selector.includes("fork-codex") ? button : reason,
+  };
+  const readiness = (state, diagnosticMessage = "") => ({
+    phase: "loaded",
+    status: {
+      readiness: {
+        state,
+        blocksTaskOperations: state !== "ready",
+        diagnosticMessage,
+      },
+    },
+    error: "",
+  });
+
+  shortcuts.patch.call(owner);
+  assert.equal(owner.hidden, true);
+
+  owner.codexStatusSnapshot = readiness("missing", "Install Codex.");
+  shortcuts.patch.call(owner);
+  assert.equal(owner.hidden, true);
+
+  owner.codexStatusSnapshot = readiness("signInRequired", "Sign in to Codex.");
+  shortcuts.patch.call(owner);
+  assert.equal(owner.hidden, false);
+  assert.equal(button.disabled, true);
+  assert.equal(reason.textContent, "Sign in to Codex.");
+
+  owner.codexStatusSnapshot = readiness("ready");
+  shortcuts.patch.call(owner);
+  assert.equal(owner.hidden, false);
+  assert.equal(button.disabled, false);
+});

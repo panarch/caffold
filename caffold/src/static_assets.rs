@@ -1077,16 +1077,6 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/recovery/page.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/recovery/page.js"
         ))),
-        "pages/(task-workspace)/tasks/components/codex-readiness-recovery.css" => {
-            Some(css(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/components/codex-readiness-recovery.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/codex-readiness-recovery.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/components/codex-readiness-recovery.js"
-            )))
-        }
         "pages/(task-workspace)/tasks/components/task-store-recovery.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/components/task-store-recovery.css"
@@ -2159,10 +2149,6 @@ mod tests {
                 b"caffold-task-image-preview-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/codex-readiness-recovery.js",
-                b"caffold-codex-readiness-recovery".as_slice(),
-            ),
-            (
                 "pages/(task-workspace)/tasks/components/task-store-recovery.js",
                 b"caffold-task-store-recovery".as_slice(),
             ),
@@ -2326,8 +2312,6 @@ mod tests {
             "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
             "/assets/pages/(task-workspace)/tasks/components/archived-task-list.css",
             "/assets/pages/(task-workspace)/tasks/components/archived-task-list.js",
-            "/assets/pages/(task-workspace)/tasks/components/codex-readiness-recovery.css",
-            "/assets/pages/(task-workspace)/tasks/components/codex-readiness-recovery.js",
             "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.css",
             "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.js",
             "/assets/pages/(task-workspace)/task-store-status.js",
@@ -2369,10 +2353,6 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
                 b"caffold-task-image-preview-dialog".as_slice(),
-            ),
-            (
-                "pages/(task-workspace)/tasks/components/codex-readiness-recovery.css",
-                b"caffold-codex-readiness-recovery".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/task-store-recovery.css",

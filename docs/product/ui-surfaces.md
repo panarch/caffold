@@ -157,17 +157,13 @@ A New Task intent from an existing Task starts at that Task's repository root,
 not its managed worktree root. The bootstrap initial path and `.` are later
 fallbacks. The current New Task owns directory selection and its route value.
 
-Codex readiness gates only Codex surfaces. A blocking canonical Codex
-readiness state shows the install, update, sign-in, restart, or recovery
-guidance card beside the New Task surface — never over an open Task. A
+Codex readiness gates only Codex surfaces. Its install, update, sign-in,
+restart, and recovery guidance lives in Codex Settings. The workspace
+navigation, the Settings list, the Tasks home, and New Task show no Codex
+state, and Settings opens on its usual first page whatever that state is. A
 Codex Task stays readable and its composer usable; a Codex-run submit is
 refused by the server with the blocking cause, shown in the composer. Claude
-and Grok Tasks, and their creation, never consult Codex readiness. A
-stale runtime exposes the same explicit restart confirmation available from
-Codex Settings; Retry rechecks the backend diagnosis and Settings stays
-available throughout setup. On compact viewports whose home shows the Task
-list, the workspace navigation's Codex attention state carries the signal and
-the card is read from the New Task surface.
+and Grok Tasks, and their creation, never consult Codex readiness.
 
 Only the Task store — shared by every agent — takes the Tasks surface over
 while its migration blocks operations, with its own retry lifecycle.
@@ -193,15 +189,15 @@ behavior. Section New fixes cwd to the Section's managed logical path, omits
 directory browsing and setup guidance, and preserves its draft across
 same-Section surface switches.
 
-Section New also presents an **Existing conversations** card after Codex
-capability is known. Its Codex row opens a native dialog that accepts a Thread
-ID or a copied `codex://threads/<id>` link only after an explicit **Preview
-thread** action. The preview reads the provider-owned name, summary, status,
-last activity, source cwd, and recent messages without resuming the thread or
-adding it to managed Tasks. Editing the ID invalidates that preview. Idle and
-not-loaded previews enable **Fork task**; the latter displays **Live status
-unavailable** rather than being presented as idle. Active, system-error, and
-unrecognized statuses keep the action disabled.
+Section New also presents an **Existing conversations** card once Codex
+capability is known and Codex is installed. Its Codex row opens a native dialog
+that accepts a Thread ID or a copied `codex://threads/<id>` link only after an
+explicit **Preview thread** action. The preview reads the provider-owned name,
+summary, status, last activity, source cwd, and recent messages without
+resuming the thread or adding it to managed Tasks. Editing the ID invalidates
+that preview. Idle and not-loaded previews enable **Fork task**; the latter
+displays **Live status unavailable** rather than being presented as idle.
+Active, system-error, and unrecognized statuses keep the action disabled.
 
 Forking uses Codex's native conversation fork and creates the managed child at
 the selected Section's project root. The source cwd is display-only. Files,
@@ -571,8 +567,7 @@ and after a restart or update. **Update Codex…** runs Codex's own updater once
 It is available under the same readiness as restart unless the check found
 Codex current, asks for its own confirmation, and reports what Codex says it
 did, including whether the runtime restarted. A restart and an update never run
-together: while one runs, the other is unavailable, including **Restart Codex**
-in Task setup.
+together: while one runs, the other is unavailable.
 [Codex App Server](../architecture/codex-app-server.md#explicit-update) owns
 the update contract.
 

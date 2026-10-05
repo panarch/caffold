@@ -80,7 +80,6 @@ test("combines Navigator with only the active direct-child surface", () => {
         scrollRoots: [],
       }),
     }),
-    codexReadinessRecovery: () => null,
     taskStoreRecoveryVisible: () => false,
     activeDirectSurfaceOwners() {
       return tasksPage.activeDirectSurfaceOwners.call(this);
@@ -169,7 +168,6 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
     }),
     taskNew: () => taskNew,
     taskRecovery: () => null,
-    codexReadinessRecovery: () => null,
     taskStoreRecoveryVisible: () => false,
     activeDirectSurfaceOwners() {
       return tasksPage.activeDirectSurfaceOwners.call(this);
@@ -205,11 +203,10 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
   );
 });
 
-test("selects the store takeover or visible page owners and merges setup-beside explicitly", () => {
+test("selects the store takeover or the visible page owner", () => {
   const taskNew = { hidden: false };
   const detail = { hidden: false };
   const recovery = { hidden: false };
-  const setup = { hidden: false };
   const storeRecovery = { hidden: false };
   const owner = {
     view: "new",
@@ -217,18 +214,17 @@ test("selects the store takeover or visible page owners and merges setup-beside 
     taskNew: () => taskNew,
     taskDetail: () => detail,
     taskRecovery: () => recovery,
-    codexReadinessRecovery: () => setup,
     taskStoreRecovery: () => storeRecovery,
     taskStoreRecoveryVisible() {
       return this.takeover;
     },
   };
 
-  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [taskNew, setup]);
+  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [taskNew]);
   owner.view = "detail";
-  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [detail, setup]);
+  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [detail]);
   owner.view = "recovery";
-  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [recovery, setup]);
+  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [recovery]);
   owner.takeover = true;
   assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [storeRecovery]);
   storeRecovery.hidden = true;
@@ -311,16 +307,10 @@ test("a Codex status change never takes the Task surface over or reopens Detail"
       calls.push("open");
     },
   };
-  const setup = {
-    setSnapshot(snapshot) {
-      calls.push(["setup", snapshot]);
-    },
-  };
   const snapshot = { phase: "loaded", status: {} };
   const owner = {
     ensureRendered() {},
     taskDetail: () => detail,
-    codexReadinessRecovery: () => setup,
     taskStoreRecoveryVisible: () => true,
     render() {
       calls.push("render");
@@ -329,7 +319,7 @@ test("a Codex status change never takes the Task surface over or reopens Detail"
 
   tasksPage.setCodexStatusSnapshot.call(owner, snapshot);
 
-  assert.deepEqual(calls, [["detail", snapshot], ["setup", snapshot], "render"]);
+  assert.deepEqual(calls, [["detail", snapshot]]);
 });
 
 test("the terminal toggle and its input belong to an open Task or Section", () => {

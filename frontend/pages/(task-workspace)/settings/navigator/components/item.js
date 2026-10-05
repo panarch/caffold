@@ -4,20 +4,15 @@ import {
   emptyActionHintScope,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import {
-  codexState,
-  formatCodexReadiness,
-} from "#app/pages/(task-workspace)/codex-status.js";
 
 // One Settings section in the Settings navigator. A late icon, the selection,
-// and Codex readiness patch this entry's own button, so the list around it
+// and an update notice patch this entry's own button, so the list around it
 // keeps its scroll position and focus.
 class CaffoldSettingsNavigatorItem extends HTMLElement {
   constructor() {
     super();
     this.entry = null;
     this.selected = false;
-    this.codexStatusSnapshotValue = null;
     this.updateAvailable = false;
     this.reloadReady = false;
     this.connected = false;
@@ -69,12 +64,6 @@ class CaffoldSettingsNavigatorItem extends HTMLElement {
   setSelected(selected) {
     this.selected = selected;
     this.syncSelected();
-  }
-
-  // Only the Codex entry shows readiness.
-  setCodexStatusSnapshot(snapshot) {
-    this.codexStatusSnapshotValue = snapshot ?? null;
-    this.syncCodexStatus();
   }
 
   // Only the About entry shows that Caffold has an update: a newer release, or
@@ -145,23 +134,6 @@ class CaffoldSettingsNavigatorItem extends HTMLElement {
     this.button()?.toggleAttribute("aria-current", this.selected);
   }
 
-  syncCodexStatus() {
-    const button = this.button();
-    if (!button) {
-      return;
-    }
-    const state = codexState(this.codexStatusSnapshotValue);
-    const readiness = formatCodexReadiness(this.codexStatusSnapshotValue);
-    const label = state === "available"
-      ? "Codex — ready"
-      : state === "pending"
-        ? "Codex — checking readiness"
-        : `Codex — ${readiness.toLowerCase()}`;
-    button.dataset.codexState = state;
-    button.title = label;
-    button.setAttribute("aria-label", label);
-  }
-
   syncUpdateNotice() {
     const button = this.button();
     if (!button || !this.entry) {
@@ -174,7 +146,7 @@ class CaffoldSettingsNavigatorItem extends HTMLElement {
     button.toggleAttribute("data-update-available", notices.length > 0);
     if (notices.length > 0) {
       button.setAttribute("aria-label", `${this.entry.label} — ${notices.join(", ")}`);
-    } else if (this.entry.section !== "codex") {
+    } else {
       button.removeAttribute("aria-label");
     }
   }

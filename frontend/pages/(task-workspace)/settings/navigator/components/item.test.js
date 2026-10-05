@@ -12,10 +12,10 @@ after(() => registry.restore());
 
 const KEYBOARD = { section: "keyboard", label: "Keyboard", icon: "Keyboard" };
 
-function control(ariaLabel = null) {
+function control() {
   return {
     disabled: false,
-    getAttribute: (name) => name === "aria-label" ? ariaLabel : null,
+    getAttribute: () => null,
     toggleAttribute() {},
     focus() {},
     click() {},
@@ -59,13 +59,14 @@ test("offers its Settings section as an Action Hint while it is not the current 
   assert.deepEqual(host.actionHintScope().targets, []);
 });
 
-test("names its Action Hint by the button's readiness label when it has one", () => {
-  const host = itemHost(
-    { section: "codex", label: "Codex", brand: "codex-template@2x.png" },
-    control("Codex — ready"),
-  );
+test("names the Codex entry like any other agent's", () => {
+  const host = itemHost({
+    section: "codex",
+    label: "Codex",
+    brand: "codex-template@2x.png",
+  });
 
-  assert.equal(host.actionHintScope().targets[0].label, "Codex — ready");
+  assert.equal(host.actionHintScope().targets[0].label, "Open Codex settings");
 });
 
 test("asks to open its section when its own button is clicked", () => {

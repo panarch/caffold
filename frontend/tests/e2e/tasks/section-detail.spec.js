@@ -734,7 +734,7 @@ test("keeps non-idle and unknown previews read-only and cancels an in-flight pre
   await slowPreviewFinished;
 });
 
-test("reveals the Codex row only after capability is known and explains disabled state", { tag: "@desktop" }, async ({
+test("reveals the Codex row only once an installed Codex is known and explains disabled state", { tag: "@desktop" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -770,9 +770,10 @@ test("reveals the Codex row only after capability is known and explains disabled
       diagnosticMessage: "Codex is reconnecting. Try again shortly.",
     },
   });
+  let currentStatus = blockedStatus;
   await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
     await statusGate;
-    await route.fulfill({ json: blockedStatus });
+    await route.fulfill({ json: currentStatus });
   });
 
   await page.goto("/?section=fixture-section-1");
@@ -787,6 +788,23 @@ test("reveals the Codex row only after capability is known and explains disabled
   await expect(shortcuts).toContainText("Codex is reconnecting. Try again shortly.");
   await expect(button).toHaveCSS("cursor", "not-allowed");
   await expect(shortcuts.getByText(/Claude/)).toHaveCount(0);
+
+  // Without Codex installed there is nothing to fork from.
+  currentStatus = mockCodexStatus({
+    readiness: {
+      ...mockCodexStatus().readiness,
+      state: "missing",
+      blocksTaskOperations: true,
+      reasonCode: "officialStandaloneNotFound",
+      diagnosticMessage: "Install Codex to use Codex models.",
+    },
+  });
+  await page.evaluate(() => {
+    document.querySelector("caffold-task-workspace").dispatchEvent(
+      new CustomEvent("caffold:refresh-codex-status", { bubbles: true }),
+    );
+  });
+  await expect(shortcuts).toBeHidden();
 });
 
 test("returns a missing Section route to Tasks home", { tag: "@all-viewports" }, async ({ page }) => {

@@ -363,7 +363,7 @@ test("keeps a dismissed update available and only reports a settled mismatch", {
     'caffold-settings-navigator-item button[data-settings-section="about"]',
   );
   await expect(settings).toHaveAttribute("data-update-available", "");
-  await expect(settings).toHaveAttribute("aria-label", /, reload to update$/);
+  await expect(settings).toHaveAttribute("aria-label", "Settings — reload to update");
 
   await openAboutWithoutReload(page);
   await expect(aboutEntry).toHaveAttribute("data-update-available", "");

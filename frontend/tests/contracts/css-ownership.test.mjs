@@ -267,10 +267,6 @@ const ownership = new Map([
     ["caffold-archived-task-list"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/codex-readiness-recovery.css",
-    ["caffold-codex-readiness-recovery"],
-  ],
-  [
     "pages/(task-workspace)/tasks/components/task-store-recovery.css",
     ["caffold-task-store-recovery"],
   ],
@@ -541,7 +537,6 @@ const componentChildren = new Map([
   [
     "caffold-tasks-page",
     [
-      "caffold-codex-readiness-recovery",
       "caffold-task-new",
       "caffold-detail-layout",
       "caffold-task-recovery",

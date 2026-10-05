@@ -1969,6 +1969,38 @@ test("explains missing app-server capabilities in Codex Settings", { tag: "@all-
   await popup.close();
 });
 
+test("copies the official install command from Codex Settings", { tag: "@desktop" }, async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await serveCodexStatus(page, () => mockCodexStatus({
+    readiness: {
+      ...mockCodexStatus().readiness,
+      state: "updateRequired",
+      blocksTaskOperations: true,
+      reasonCode: "versionBelowMinimum",
+      diagnosticMessage: "Codex 0.146.0 is below the minimum supported version.",
+    },
+  }));
+
+  await page.goto("/settings/codex");
+
+  const command = page.locator("caffold-settings-codex-page .settings-codex-command");
+  await expect(command).toContainText(
+    "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+  );
+  await revealActionTarget(
+    page,
+    command.getByRole("button", { name: "Copy command" }),
+  );
+  await activateActionHint(page, /Copy command$/);
+  await expect(command.getByRole("button", { name: "Copied" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+  );
+});
+
 test("returns from Settings to the canonical Tasks home", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {

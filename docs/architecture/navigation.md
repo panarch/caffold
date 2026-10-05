@@ -16,8 +16,8 @@ domain-local Back behavior.
 Readiness does not change the top-level route, and no readiness state causes
 a transient or automatic route switch. A blocking Task-store readiness state
 replaces the ordinary Tasks content with persistent retry guidance; a blocking
-Codex readiness state shows its setup guidance beside the New Task surface and
-holds only Codex surfaces. Settings remains reachable.
+Codex readiness state holds only Codex surfaces, and its guidance is in Codex
+Settings. Settings remains reachable.
 
 `/` is the canonical Tasks home. `/tasks` canonicalizes to `/` with history
 replacement. A selected Section also remains on the root path and uses a

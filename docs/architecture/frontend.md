@@ -772,20 +772,20 @@ stops rechecking until another check is requested, such as by foreground
 recovery.
 
 A separate workspace lifecycle owns backend-owned Codex readiness requests and
-forwards a request snapshot to Tasks, Settings, and the workspace navigation.
+forwards a request snapshot to Tasks and Settings.
 That snapshot keeps frontend request phase (`checking`, `loaded`, or `failed`)
 separate from the canonical backend status payload. A refresh may retain the
 previous status while the request is checking.
 
 Codex readiness gates only Codex surfaces and is consumed as derived
-presentation rather than routing state: the setup card renders beside the New
-Task surface, and routes always open — a Task's conversation stays readable
-from the store while its agent is unready. No surface pre-guesses an
-operation's fate from the snapshot: a Codex-run operation tried while Codex is
-unready is refused by the server, and the refusal is the answer shown. Claude
-and Grok surfaces never consult Codex readiness. Settings remains routable.
-Retry refreshes the canonical diagnosis; frontend code does not compare
-versions or classify stderr.
+presentation rather than routing state: Codex Settings presents it, Section
+New hides its Codex fork row while Codex is missing, and routes always open — a
+Task's conversation stays readable from the store while its agent is unready.
+No surface pre-guesses an operation's fate from the snapshot: a Codex-run
+operation tried while Codex is unready is refused by the server, and the
+refusal is the answer shown. Claude and Grok surfaces never consult Codex
+readiness. Refresh in Codex Settings rechecks the canonical diagnosis; frontend
+code does not compare versions or classify stderr.
 
 One workspace-scoped Codex status lifecycle owns that request, the confirmed
 runtime-restart and update mutations, their request generations, and the status
@@ -793,12 +793,10 @@ refresh after each. Restarting and updating both replace the shared runtime, so
 the lifecycle admits one at a time through a single runtime-action graph:
 `idle` to `restarting` or `updating`, and back to `idle` when that action
 settles or the lifecycle disconnects. A completion from before a disconnect
-changes nothing. Tasks and Settings emit the same restart intent; only Settings
-emits the update intent, and Task setup keeps Restart Codex unavailable while an
-update runs. The workspace mounts one long-lived native confirmation dialog for
-each action. A successful restart or update response does not release the
-Codex surfaces it holds; only the refreshed backend readiness snapshot can do
-that.
+changes nothing. Codex Settings emits both the restart and the update intent.
+The workspace mounts one long-lived native confirmation dialog for each action.
+A successful restart or update response does not release the Codex surfaces it
+holds; only the refreshed backend readiness snapshot can do that.
 
 The adjacent workspace-scoped live-update owner keeps one physical EventSource
 while the document is visible and injects logical Task List, Task Detail, and
@@ -848,9 +846,8 @@ Review, Git, GitHub, or their Summary controls.
 
 For keyboard navigation, each of these layout owners merges only the public
 scope of the child it currently presents. `caffold-tasks-page` composes Task
-Navigator with the visible New, Recovery, Task-store recovery, or Detail owner;
-the Codex setup card beside them is an independent sibling when it is actually
-visible. The common Detail layout delegates Action and Scroll scopes to
+Navigator with the visible New, Recovery, Task-store recovery, or Detail owner.
+The common Detail layout delegates Action and Scroll scopes to
 Conversation, Section New, Integrated Review, Git, GitHub, or the terminal
 without rebuilding child descriptors.
 
