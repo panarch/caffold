@@ -1,11 +1,38 @@
 use futures_util::{StreamExt, stream};
 use tokio::sync::broadcast;
 
-use super::{CodexConnection, TaskRuntime, TaskRuntimeSignal};
-use crate::agent::codex::{CodexRuntimeEvent, CodexThreadClient, session_events};
+use super::{TaskRuntime, TaskRuntimeSignal};
+use crate::agent::codex::{
+    CodexConnection, CodexConnectionObserver, CodexRuntimeEvent, CodexThreadClient, session_events,
+};
 use crate::agent::{SessionEvent, SessionEventKind, TurnStatus};
 use crate::app::tasks::events::now_ms;
 use crate::app::tasks::push;
+
+/// What every Codex session hears as the shared connection comes and goes.
+impl CodexConnectionObserver for TaskRuntime {
+    fn attach(&self, client: CodexThreadClient, generation: u64) {
+        self.spawn_bridge(client, generation, self.shutdown.subscribe());
+    }
+
+    fn connected(&self, connection: CodexConnection) {
+        self.restore_connection_state(connection);
+    }
+
+    async fn lost(&self, generation: u64, message: String) {
+        let affected = self
+            .sessions
+            .codex_connection_lost(generation, message.clone())
+            .await;
+        for thread_id in affected {
+            self.events.invalidate_continuity(&thread_id);
+            let _ = self.signals.send(TaskRuntimeSignal::SessionUnavailable {
+                thread_id,
+                message: message.clone(),
+            });
+        }
+    }
+}
 
 impl TaskRuntime {
     pub(super) fn spawn_bridge(
@@ -57,7 +84,7 @@ impl TaskRuntime {
                     message: connection_error.clone(),
                 });
             }
-            runtime.process.invalidate(generation).await;
+            runtime.codex.invalidate(generation).await;
         });
     }
 

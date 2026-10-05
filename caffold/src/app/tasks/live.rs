@@ -13,6 +13,7 @@ use super::{
     },
     detail::{DetailContext, DetailLiveStream},
     lifecycle::ActiveTaskTopPlacement,
+    runtime::TaskRuntime,
     sync::TaskSync,
 };
 use crate::{
@@ -37,7 +38,7 @@ impl TaskLiveSource {
     pub(super) fn new(state: &TaskState) -> Self {
         Self {
             list: TaskListLiveSource {
-                detail: state.detail.clone(),
+                runtime: state.task_runtime.clone(),
                 sessions: state.task_sessions.clone(),
                 sync: state.task_sync.clone(),
                 events: state.task_list_events.clone(),
@@ -186,7 +187,7 @@ impl TaskListEvents {
 
 #[derive(Clone)]
 struct TaskListLiveSource {
-    detail: DetailContext,
+    runtime: TaskRuntime,
     sessions: super::sessions::TaskSessions,
     sync: TaskSync<super::TaskDetailSync>,
     events: TaskListEvents,
@@ -199,18 +200,10 @@ struct TaskListLiveSource {
 impl TaskListLiveSource {
     async fn stream(&self) -> Result<TaskListLiveStream, ApiError> {
         let receivers = TaskListEventReceivers::subscribe(self);
-        // Asking for the connection also starts the runtime signal driver that
-        // every agent's row updates travel through, so it is asked even when
-        // Codex then turns out to be unavailable.
-        let codex = match self.detail.connection().await {
-            Ok(connection) => Some(connection),
-            Err(error) => {
-                eprintln!(
-                    "failed to reach Codex for the Task list; Codex Tasks keep their Caffold rows: {error}"
-                );
-                None
-            }
-        };
+        // The list answers from what each agent already has, the way Claude's
+        // and Grok's watched sessions do: Codex's connection only when one is
+        // usable now, never a check or a wait.
+        let codex = self.runtime.usable_codex_connection().await;
         let projection = super::active_list::load_runtime_snapshot(
             self.store.clone(),
             &self.sessions,
@@ -805,19 +798,61 @@ mod tests {
             "",
         );
         state.task_runtime.hold_codex_readiness_for_tests().await;
+        let _status_check = state.task_runtime.hold_codex_status_check().await;
 
-        let mut events = TaskLiveSource::new(&state)
-            .task_list()
-            .await
-            .expect("the Task list opens while Codex is held");
+        let mut events = tokio::time::timeout(
+            Duration::from_secs(1),
+            TaskLiveSource::new(&state).task_list(),
+        )
+        .await
+        .expect("the Task list does not wait for a Codex check in flight")
+        .expect("the Task list opens while Codex is held");
 
         assert_snapshot_without_rows(&mut events).await;
     }
 
     #[tokio::test]
+    async fn a_task_list_without_codex_tasks_does_not_ask_codex() {
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        state
+            .task_store
+            .claim(
+                ManagedThread::new(
+                    "claude-only",
+                    RunBy::Claude {
+                        cwd: root.path().display().to_string(),
+                    },
+                    Some(1_000),
+                    None,
+                    None,
+                ),
+                1_000,
+            )
+            .unwrap();
+
+        let mut events = TaskLiveSource::new(&state)
+            .task_list()
+            .await
+            .expect("the Task list opens");
+
+        assert!(matches!(
+            queued_event(&mut events).await,
+            Some(TaskListLiveEvent::Snapshot(_))
+        ));
+        assert!(
+            client.mock_requests().await.is_empty(),
+            "a list with no Codex Task asks Codex nothing"
+        );
+    }
+
+    #[tokio::test]
     async fn a_task_list_opened_without_codex_still_carries_a_claude_session_change() {
-        // Opening the list is what starts the driver that turns every agent's
-        // session changes into the publications this list carries.
+        // The driver that turns every agent's session changes into the
+        // publications this list carries runs from server start, not from any
+        // agent's connection.
         let root = tempfile::tempdir().unwrap();
         let cwd = root.path().display().to_string();
         let thread_id = "claude-while-codex-is-held";

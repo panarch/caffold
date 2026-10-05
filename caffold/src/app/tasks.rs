@@ -182,6 +182,7 @@ impl TaskState {
 pub(in crate::app) struct TasksApp {
     router: Router,
     runtime: TaskRuntime,
+    detail: DetailContext,
     push: PushRuntime,
 }
 
@@ -220,6 +221,7 @@ impl TasksApp {
             terminals,
         )?;
         let runtime = state.task_runtime.clone();
+        let detail = state.detail.clone();
         let live_source = TaskLiveSource::new(&state);
         codex_mcp.attach_runtime(runtime.clone());
         grok_mcp.attach_runtime(runtime.clone());
@@ -232,6 +234,7 @@ impl TasksApp {
                 ))
                 .merge(notes_router),
             runtime,
+            detail,
             push,
         })
     }
@@ -270,6 +273,7 @@ impl TasksApp {
             terminals,
         )?;
         app.runtime.startup();
+        app.detail.start_runtime_signal_driver();
         Ok(app)
     }
 
@@ -315,7 +319,7 @@ pub(in crate::app::tasks) use detail::TaskDetailResponse;
 pub(in crate::app::tasks) use events::{TaskEventRecord, accepted_user_message_event, now_ms};
 pub(in crate::app) use live::TaskLiveSource;
 pub(in crate::app::tasks) use projection::task_activity_ms;
-pub(in crate::app::tasks) use runtime::{ApprovalResolveError, CodexConnection, TaskAgent};
+pub(in crate::app::tasks) use runtime::{ApprovalResolveError, TaskAgent};
 
 #[cfg(test)]
 pub(in crate::app::tasks) mod test_support {
@@ -420,6 +424,7 @@ pub(in crate::app::tasks) mod test_support {
         )
         .expect("task state");
         state.task_runtime.install_test_client(1, client).await;
+        state.detail.start_runtime_signal_driver();
         (state, runner)
     }
 
@@ -461,6 +466,7 @@ pub(in crate::app::tasks) mod test_support {
         )
         .expect("task state");
         state.task_runtime.install_test_client(1, client).await;
+        state.detail.start_runtime_signal_driver();
         state.task_runtime.watch_grok();
         host.attach_runtime(state.task_runtime.clone());
         (state, leader, memory, host)

@@ -21,6 +21,11 @@ export async function getCodexStatus() {
   return requestJson("/api/codex/status");
 }
 
+/** What the server last found about Codex, without a check of its own. */
+export async function getCodexReadiness() {
+  return requestJson("/api/codex/readiness");
+}
+
 export async function consumeCodexResetCredit({ creditId = null, idempotencyKey }) {
   return requestJson("/api/codex/reset-credits/consume", {}, {
     method: "POST",

@@ -227,6 +227,9 @@ export async function installBrowserDefaults(page) {
       body: JSON.stringify(mockCodexStatus()),
     }),
   );
+  await page.route(/\/api\/codex\/readiness(?:\?|$)/, (route) =>
+    route.fulfill({ json: { readiness: mockCodexStatus().readiness } }),
+  );
 
   await page.route(/\/api\/codex\/updates(?:\?|$)/, (route) =>
     route.fulfill({

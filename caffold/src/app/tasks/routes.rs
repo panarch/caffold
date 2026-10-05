@@ -28,8 +28,8 @@ mod uploads;
 use agent::{agent_models, agent_permissions};
 use claude::{claude_restart, claude_status};
 use codex::{
-    codex_mcp_diagnostics, codex_reset_credit_consume, codex_restart, codex_status, codex_update,
-    codex_updates,
+    codex_mcp_diagnostics, codex_readiness, codex_reset_credit_consume, codex_restart,
+    codex_status, codex_update, codex_updates,
 };
 #[cfg(test)]
 use commands::managed_thread_from_task_record;
@@ -264,6 +264,7 @@ pub(super) fn router(state: TaskState) -> Router {
         .merge(super::push::router())
         .merge(fork::routes())
         .route("/api/codex/status", get(codex_status))
+        .route("/api/codex/readiness", get(codex_readiness))
         .route(
             "/api/codex/reset-credits/consume",
             post(codex_reset_credit_consume),

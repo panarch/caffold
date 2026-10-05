@@ -63,6 +63,8 @@ makes later control requests for that ID fail.
 
 ## Task channels
 
+Every agent's session changes reach the Task List and Task Detail channels
+through one driver that runs from server start, whichever agent is reachable.
 Task List subscribes to its event receivers before loading the canonical
 runtime snapshot. Its first domain event is `task-list-snapshot`, followed by
 Task update, removal, placement, Section composer-setting, refresh, and sync

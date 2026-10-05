@@ -7,14 +7,14 @@
 use crate::{
     agent::{
         Conversation, ThreadStatus, TurnPage,
-        codex::{CodexThreadClient, codex_mode_id},
+        codex::{CodexConnection, CodexThreadClient, codex_mode_id},
     },
     app::error::ApiError,
     task_store::{ManagedSection, ManagedThread, RunBy, TaskProvider},
 };
 
 use super::super::{
-    CodexConnection, TaskRecord,
+    TaskRecord,
     active_list::ActiveTask,
     projection::conversation_display_name,
     sessions::{ConversationSettings, INITIAL_TURNS_PAGE_SIZE},

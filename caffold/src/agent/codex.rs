@@ -12,6 +12,7 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt, stream::SplitSink, stream::SplitStream};
 mod clarification;
+mod client;
 mod contract;
 mod daemon_settings;
 mod mcp;
@@ -24,6 +25,7 @@ mod status;
 mod transport;
 mod update;
 
+pub(crate) use client::{CodexClient, CodexConnection, CodexConnectionObserver};
 pub(crate) use contract::{
     ApprovalKind, approval_request, approval_response, codex_mode_id, codex_models,
     codex_permission_modes, codex_turn_options, session_events,

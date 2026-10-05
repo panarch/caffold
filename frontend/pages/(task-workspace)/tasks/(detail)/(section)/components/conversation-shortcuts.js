@@ -1,6 +1,8 @@
+import { getCodexReadiness } from "#app/api.js";
 import {
   codexBlocksTaskOperations,
   codexState,
+  createCodexStatusSnapshot,
 } from "#app/pages/(task-workspace)/codex-status.js";
 import {
   taskStoreBlocksTaskOperations,
@@ -40,7 +42,10 @@ class CaffoldSectionConversationShortcuts extends HTMLElement {
     this.active = false;
     this.context = { key: "", sectionId: "", path: "" };
     this.transportAvailable = true;
-    this.codexStatusSnapshot = null;
+    // Asked for whenever the row is shown: whether Codex is installed, and why
+    // it is blocked. The previous answer stays on show while the next is asked.
+    this.codexReadiness = createCodexStatusSnapshot();
+    this.codexReadinessRequest = 0;
     this.taskStoreStatusSnapshot = null;
     this.listenersAttached = false;
     this.boundClick = (event) => this.handleClick(event);
@@ -86,19 +91,22 @@ class CaffoldSectionConversationShortcuts extends HTMLElement {
     };
     if (previousKey && previousKey !== this.context.key) {
       this.forkDialog()?.deactivate();
+      if (this.active) {
+        void this.askCodexReadiness();
+      }
     }
     this.patch();
   }
 
   setTransportAvailable(available) {
     this.ensureRendered();
+    const regained = Boolean(available) && !this.transportAvailable;
     this.transportAvailable = Boolean(available);
-    this.patch();
-  }
-
-  setCodexStatusSnapshot(snapshot) {
-    this.ensureRendered();
-    this.codexStatusSnapshot = snapshot ?? null;
+    // A question that failed while Caffold was out of reach is asked again
+    // once it is back; an answer already in hand stays.
+    if (regained && this.active && this.codexReadiness.phase === "failed") {
+      void this.askCodexReadiness();
+    }
     this.patch();
   }
 
@@ -110,13 +118,40 @@ class CaffoldSectionConversationShortcuts extends HTMLElement {
 
   activate() {
     this.ensureRendered();
+    const shown = !this.active;
     this.active = true;
+    if (shown) {
+      void this.askCodexReadiness();
+    }
     this.patch();
   }
 
   deactivate() {
     this.active = false;
+    this.codexReadinessRequest += 1;
     this.forkDialog()?.deactivate();
+    this.patch();
+  }
+
+  async askCodexReadiness() {
+    const request = ++this.codexReadinessRequest;
+    let answer;
+    try {
+      const { readiness } = await getCodexReadiness();
+      answer = createCodexStatusSnapshot({
+        phase: "loaded",
+        status: readiness ? { readiness } : null,
+      });
+    } catch (error) {
+      answer = createCodexStatusSnapshot({
+        phase: "failed",
+        error: error instanceof Error ? error.message : "Codex could not be asked.",
+      });
+    }
+    if (request !== this.codexReadinessRequest) {
+      return;
+    }
+    this.codexReadiness = answer;
     this.patch();
   }
 
@@ -171,10 +206,10 @@ class CaffoldSectionConversationShortcuts extends HTMLElement {
   }
 
   patch() {
-    const state = codexState(this.codexStatusSnapshot);
+    const state = codexState(this.codexReadiness);
     const known = state !== "pending";
     const installed =
-      this.codexStatusSnapshot?.status?.readiness?.state !== "missing";
+      this.codexReadiness.status?.readiness?.state !== "missing";
     this.toggleAttribute("hidden", !this.active || !known || !installed);
 
     const reason = this.disabledReason(state);
@@ -200,10 +235,10 @@ class CaffoldSectionConversationShortcuts extends HTMLElement {
       return this.taskStoreStatusSnapshot.readiness.diagnosticMessage ||
         "Tasks are temporarily unavailable.";
     }
-    const status = this.codexStatusSnapshot?.status;
+    const status = this.codexReadiness.status;
     if (state !== "available" || codexBlocksTaskOperations(status)) {
       return status?.readiness?.diagnosticMessage ||
-        this.codexStatusSnapshot?.error ||
+        this.codexReadiness.error ||
         "Codex is temporarily unavailable.";
     }
     return "";

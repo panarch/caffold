@@ -18,7 +18,7 @@ use super::{
         ResolvedTaskCwd, TaskRecord, apply_turn_states_projection, resolve_checkout_cwd,
         resolve_conversation_cwd, task_record_from_conversation,
     },
-    runtime::{CodexConnection, TaskAgent, TaskRuntime, TaskRuntimeSignal},
+    runtime::{TaskAgent, TaskRuntime, TaskRuntimeSignal},
     sync::TaskSync,
     worktrees::{ManagedWorktrees, inspect_ready_worktree},
 };
@@ -26,7 +26,7 @@ use crate::agent::AgentError;
 use crate::{
     agent::{
         ContextUsage, Conversation,
-        codex::{CodexThreadClient, CodexThreadError},
+        codex::{CodexConnection, CodexThreadClient, CodexThreadError},
     },
     app::error::{ApiError, ErrorBody},
     app::tasks::sessions::{SessionSnapshot, TaskSessions, ViewerLease},
@@ -201,14 +201,12 @@ impl DetailContext {
     }
 
     pub(in crate::app::tasks) async fn client(&self) -> Result<CodexThreadClient, ApiError> {
-        self.ensure_runtime_signal_driver().await;
         self.runtime.client().await.map_err(ApiError::from)
     }
 
     pub(in crate::app::tasks) async fn connection(
         &self,
     ) -> Result<CodexConnection, CodexThreadError> {
-        self.ensure_runtime_signal_driver().await;
         self.runtime.connection().await
     }
 
@@ -217,8 +215,15 @@ impl DetailContext {
         &self,
         thread_id: &str,
     ) -> Result<TaskAgent, AgentError> {
-        self.ensure_runtime_signal_driver().await;
         self.runtime.task_agent(thread_id).await
+    }
+
+    /// Turn every agent's session signals into the publications Task List and
+    /// Task Detail read. It runs from server start, whichever agent is
+    /// reachable, so no agent's connection is what switches it on.
+    pub(in crate::app::tasks) fn start_runtime_signal_driver(&self) {
+        let context = self.clone();
+        tokio::spawn(async move { context.ensure_runtime_signal_driver().await });
     }
 
     pub(in crate::app::tasks) async fn get(
@@ -1341,7 +1346,7 @@ mod request_tests {
     use tokio::sync::broadcast;
 
     use super::super::{
-        CodexConnection, TaskRuntime, TaskState,
+        TaskRuntime, TaskState,
         events::*,
         projection::*,
         routes::{
@@ -1457,7 +1462,6 @@ mod request_tests {
             .revision;
         let mut task_events = state.task_events.subscribe();
         let mut detail_syncs = state.task_sync.subscribe_updates();
-        state.detail.ensure_runtime_signal_driver().await;
         state.task_runtime.spawn_test_bridge(client.clone(), 1);
 
         client.mock_publish_event(CodexRuntimeEvent::Notification(
@@ -3567,7 +3571,6 @@ mod request_tests {
             .await
             .unwrap();
         let mut task_events = state.task_events.subscribe();
-        state.detail.ensure_runtime_signal_driver().await;
         state.task_runtime.spawn_test_bridge(client.clone(), 1);
 
         // Legacy history lists this live `msg_live` answer as `item-2`.

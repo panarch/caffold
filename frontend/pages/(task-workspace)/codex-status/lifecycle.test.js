@@ -51,6 +51,25 @@ function resetCreditStatus(count = 1) {
   };
 }
 
+test("connecting asks Codex nothing until a Codex surface asks", async () => {
+  let loads = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => {
+      loads += 1;
+      return codexStatus("ready", false);
+    },
+  });
+
+  lifecycle.connect();
+  await settle();
+  assert.equal(loads, 0);
+  assert.equal(lifecycle.snapshot().phase, "checking");
+
+  await lifecycle.refresh();
+  assert.equal(loads, 1);
+  lifecycle.disconnect();
+});
+
 test("reset credits are consumed only on request and ambiguous retries reuse the same key", async () => {
   const attempts = [];
   let count = 1;
@@ -64,7 +83,7 @@ test("reset credits are consumed only on request and ambiguous retries reuse the
     },
   });
   lifecycle.connect();
-  await settle();
+  await lifecycle.refresh();
   assert.equal(attempts.length, 0);
   assert.equal(lifecycle.canConsumeResetCredit("credit-1"), true);
 
@@ -92,7 +111,7 @@ test("a reset with no eligible window refreshes credits without reporting succes
     consumeResetCredit: async () => ({ outcome: "nothingToReset" }),
   });
   lifecycle.connect();
-  await settle();
+  await lifecycle.refresh();
 
   assert.deepEqual(await lifecycle.requestResetCredit("credit-1"), {
     outcome: "nothingToReset",
@@ -117,7 +136,7 @@ test("a completed reset reads status after an earlier in-flight status request",
     consumeResetCredit: () => consume.promise,
   });
   lifecycle.connect();
-  await settle();
+  await lifecycle.refresh();
 
   const reset = lifecycle.requestResetCredit("credit-1");
   const earlierRefresh = lifecycle.refresh();
@@ -150,7 +169,7 @@ test("a successful reset with a failed status refresh retries the same redemptio
     },
   });
   lifecycle.connect();
-  await settle();
+  await lifecycle.refresh();
 
   assert.equal(await lifecycle.requestResetCredit("credit-1"), null);
   assert.equal(lifecycle.resetCreditState().retryPending, true);
@@ -182,7 +201,8 @@ test("Codex status owns one ready-state restart request and refreshes canonical 
   });
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   assert.equal(snapshots.at(-1)?.status?.readiness?.state, "ready");
   assert.equal(lifecycle.canRestartRuntime(), true);
 
@@ -221,7 +241,8 @@ test("Codex status rejects manual restart without a supported restart target", a
     });
 
     lifecycle.connect();
-    await settle();
+
+    await lifecycle.refresh();
 
     assert.equal(lifecycle.canRestartRuntime(), false, state);
     assert.equal(await lifecycle.requestRuntimeRestart(), null, state);
@@ -246,7 +267,8 @@ test("a status refresh keeps the last canonical status while checking", async ()
   });
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   const refresh = lifecycle.refresh();
 
   assert.equal(lifecycle.snapshot().phase, "checking");
@@ -297,7 +319,8 @@ test("a failed foreground status refresh preserves the last useful readiness", a
   });
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   await assert.rejects(lifecycle.refresh(), /status unavailable/);
 
   assert.equal(lifecycle.snapshot().phase, "failed");
@@ -322,7 +345,8 @@ test("suspending status recovery invalidates work in flight", async () => {
   });
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   lifecycle.suspend();
   assert.equal(await lifecycle.refresh(), null);
   assert.equal(loadRequests, 1);
@@ -357,7 +381,8 @@ test("Codex restart reports a post-restart readiness refresh failure", async () 
   });
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   await lifecycle.requestRuntimeRestart();
 
   assert.equal(restartStates.at(-1)?.state, "failed");
@@ -379,7 +404,8 @@ test("a later runtime mismatch clears a stale restart success message", async ()
   });
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   await lifecycle.requestRuntimeRestart();
   assert.equal(lifecycle.restartSnapshot().state, "succeeded");
 
@@ -400,7 +426,8 @@ test("disconnect invalidates a pending Codex restart response", async () => {
   });
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   const request = lifecycle.requestRuntimeRestart();
   lifecycle.disconnect();
   restartGate.resolve();
@@ -427,7 +454,8 @@ test("restart and update each hold the one runtime slot and give it back", async
   });
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   const update = lifecycle.requestRuntimeUpdate();
   assert.equal(lifecycle.runtimeAction(), "updating");
   assert.equal(lifecycle.canUpdateRuntime(), false);
@@ -461,7 +489,8 @@ test("a restart is refused while an update runs, and an update while a restart r
   });
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   const update = lifecycle.requestRuntimeUpdate();
   assert.equal(await lifecycle.requestRuntimeRestart(), null);
   assert.equal(restartRequests, 0);
@@ -490,7 +519,8 @@ test("a repeated update request shares the update in flight", async () => {
   });
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   const first = lifecycle.requestRuntimeUpdate();
   const second = lifecycle.requestRuntimeUpdate();
   assert.strictEqual(first, second);
@@ -517,13 +547,15 @@ test("disconnect frees the runtime slot and a late update cannot take it back", 
   });
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   const update = lifecycle.requestRuntimeUpdate();
   lifecycle.disconnect();
   assert.equal(lifecycle.runtimeAction(), "idle");
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   const restart = lifecycle.requestRuntimeRestart();
   assert.equal(lifecycle.runtimeAction(), "restarting");
 
@@ -557,7 +589,8 @@ test("Codex status refuses an update without a supported target", async () => {
     });
 
     lifecycle.connect();
-    await settle();
+
+    await lifecycle.refresh();
 
     assert.equal(lifecycle.canUpdateRuntime(), false, state);
     assert.equal(await lifecycle.requestRuntimeUpdate(), null, state);
@@ -578,7 +611,8 @@ test("a later readiness change clears a finished update message", async () => {
   });
 
   lifecycle.connect();
-  await settle();
+
+  await lifecycle.refresh();
   await lifecycle.requestRuntimeUpdate();
   assert.equal(lifecycle.updateSnapshot().state, "succeeded");
 

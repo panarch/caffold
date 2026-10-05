@@ -1,7 +1,8 @@
 use super::{CodexStatusDiagnostics, CodexStatusPayload};
 use crate::agent::ApprovalDecision;
 use crate::agent::codex::{
-    CodexDaemonInfo, CodexUpdateOutcome, CodexUpdateReport, RateLimitResetCreditConsumeResponse,
+    CodexDaemonInfo, CodexReadiness, CodexUpdateOutcome, CodexUpdateReport,
+    RateLimitResetCreditConsumeResponse,
 };
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
@@ -41,6 +42,22 @@ struct CodexMcpThreadDiagnostics {
     available: bool,
     servers: Vec<CodexMcpServerDiagnostic>,
     error: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct CodexReadinessPayload {
+    readiness: Option<CodexReadiness>,
+}
+
+/// What Caffold last found about Codex, for a surface that only needs to know
+/// whether Codex is installed and why it is blocked. It checks nothing and asks
+/// Codex nothing, so it answers at once even while Codex hangs; `status` is the
+/// report that runs a check.
+pub(super) async fn codex_readiness(State(state): State<TaskState>) -> Json<CodexReadinessPayload> {
+    Json(CodexReadinessPayload {
+        readiness: state.task_runtime.remembered_codex_readiness().await,
+    })
 }
 
 pub(super) async fn codex_status(State(state): State<TaskState>) -> Json<CodexStatusPayload> {
@@ -249,22 +266,70 @@ pub(super) fn normalize_approval_decision(decision: &str) -> Result<ApprovalDeci
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::time::Duration;
 
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode, header};
     use serde_json::json;
     use tokio::sync::broadcast;
+    use tokio::time::timeout;
     use tower::ServiceExt;
 
     use super::*;
     use crate::{
         agent::{
             claude::ClaudeClient,
-            codex::{CodexThreadClient, CodexThreadError, MockCodexResponse},
+            codex::{CodexClient, CodexThreadClient, CodexThreadError, MockCodexResponse},
         },
         app::tasks::test_support::{manage_test_thread, task_state_with_codex_client},
         fs::RootedFs,
     };
+
+    #[tokio::test]
+    async fn readiness_answers_what_was_last_found_without_asking_codex() {
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        state.task_runtime.hold_codex_readiness_for_tests().await;
+        let _status_check = state.task_runtime.hold_codex_status_check().await;
+
+        let response = timeout(
+            Duration::from_secs(1),
+            super::super::router(state.clone()).oneshot(
+                Request::builder()
+                    .uri("/api/codex/readiness")
+                    .body(Body::empty())
+                    .unwrap(),
+            ),
+        )
+        .await
+        .expect("the remembered answer does not wait for a check in flight")
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        let payload = serde_json::from_slice::<serde_json::Value>(&body).unwrap();
+        assert_eq!(payload["readiness"]["state"], "error");
+        assert_eq!(payload["readiness"]["blocksTaskOperations"], true);
+        assert_eq!(
+            payload["readiness"]["diagnosticMessage"],
+            "Codex is held for this test."
+        );
+        assert!(client.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn readiness_is_null_before_any_check_finishes() {
+        let codex = CodexClient::default();
+
+        let payload = serde_json::to_value(CodexReadinessPayload {
+            readiness: codex.remembered_readiness().await,
+        })
+        .unwrap();
+
+        assert_eq!(payload, json!({ "readiness": null }));
+    }
 
     #[tokio::test]
     async fn reset_credit_consume_uses_the_selected_credit_and_idempotency_key() {

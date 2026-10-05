@@ -1253,8 +1253,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        agent::codex::{self, CodexThreadError, MockCodexResponse, session_events},
-        app::tasks::CodexConnection,
+        agent::codex::{
+            self, CodexConnection, CodexThreadError, MockCodexResponse, session_events,
+        },
         app::tasks::push::PushService,
         app::tasks::sessions::TaskSessions,
         app::tasks::worktrees::inspect_ready_worktree,

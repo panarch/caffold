@@ -530,10 +530,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
   } = {}) {
     this.taskStoreStatusLifecycle.resume();
     this.codexStatusLifecycle.resume();
-    // Codex status serves only Codex surfaces, so recovery never waits for it.
-    if (!initialActivation) {
-      void this.codexStatusLifecycle.refresh().catch(() => {});
-    }
     progress?.validatingStatus();
     let storeError = null;
     // Connecting already asked the store, so the initial activation reuses an
@@ -586,7 +582,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     const nextSnapshot = snapshot ?? this.codexStatusLifecycle.snapshot();
     const nextStatus = nextSnapshot.status;
     this.codexStatusSnapshotValue = nextSnapshot;
-    this.tasksPage.setCodexStatusSnapshot(nextSnapshot);
     this.settingsWorkspace.setCodexStatusSnapshot(nextSnapshot);
     if (
       nextStatus?.readiness &&

@@ -53,7 +53,6 @@ class CaffoldDetailLayout extends HTMLElement {
     this.reviewUseSequence = 0;
     this.activeReviewKey = "";
     this.transportAvailable = true;
-    this.codexStatusSnapshot = null;
     this.taskStoreStatusSnapshot = null;
     this.liveUpdates = null;
     // Where the terminal toggle returns to, per subject, and the subject whose
@@ -294,7 +293,6 @@ class CaffoldDetailLayout extends HTMLElement {
     this.activateSubject("section");
     this.sectionDetail()?.setSection(this.section);
     this.sectionDetail()?.setTransportAvailable(this.transportAvailable);
-    this.sectionDetail()?.setCodexStatusSnapshot(this.codexStatusSnapshot);
     this.sectionDetail()?.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
     this.syncSectionPresentation();
     return true;
@@ -456,11 +454,6 @@ class CaffoldDetailLayout extends HTMLElement {
   setTransportAvailable(available) {
     this.transportAvailable = Boolean(available);
     this.sectionDetail()?.setTransportAvailable(this.transportAvailable);
-  }
-
-  setCodexStatusSnapshot(snapshot) {
-    this.codexStatusSnapshot = snapshot ?? null;
-    this.sectionDetail()?.setCodexStatusSnapshot(this.codexStatusSnapshot);
   }
 
   setTaskStoreStatusSnapshot(snapshot) {
