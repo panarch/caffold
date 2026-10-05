@@ -43,9 +43,11 @@ test("provides current About actions and its exact scrollport", () => {
     scrollHeight: 240,
     getClientRects: () => [{}],
   };
+  const check = button("Check for Updates");
   const reload = button("Reload to update");
   const copy = button("Copy diagnostics");
   const controls = new Map([
+    ['button[data-action="check-for-updates"]', check],
     ['button[data-action="reload-update"]', reload],
     ['button[data-action="copy-diagnostics"]', copy],
   ]);
@@ -61,12 +63,22 @@ test("provides current About actions and its exact scrollport", () => {
 
   const scope = about.actionHintScope.call(owner);
   assert.deepEqual(scope.targets.map(({ id }) => id), [
+    "settings:about:check-for-updates",
     "settings:about:reload-update",
     "settings:about:copy-diagnostics",
   ]);
   assert.equal(about.scrollSurfaceScope.call(owner).surfaces[0].scrollport, scrollport);
   reload.disabled = true;
+  assert.equal(scope.targets[1].isActionable(), false);
+
+  // The same button turns into Update Caffold; its Check hint does nothing.
+  controls.delete('button[data-action="check-for-updates"]');
+  controls.set('button[data-action="update-caffold"]', check);
   assert.equal(scope.targets[0].isActionable(), false);
+  assert.deepEqual(
+    about.actionHintScope.call(owner).targets.map(({ id }) => id),
+    ["settings:about:update-caffold", "settings:about:copy-diagnostics"],
+  );
 });
 
 const { caffoldUpdatesView, lastUpdateValue } = await import("./page.js");
@@ -96,27 +108,31 @@ test("tells each update state in one sentence", () => {
       version: "0.18.2",
       latest: { text: "Checking…", url: null },
       lastUpdate: null,
-      canUpdate: false,
+      offersUpdate: false,
+      actionEnabled: false,
     },
   );
+  const action = ({ offersUpdate, actionEnabled }) => ({ offersUpdate, actionEnabled });
+  const check = { offersUpdate: false, actionEnabled: true };
+
+  const unreachable = view({ checking: false, status: null, error: "Request timed out." });
+  assert.equal(unreachable.summary, "Caffold could not check for updates.\nRequest timed out.");
+  assert.deepEqual(action(unreachable), check);
+  const githubFailed = view(answered({ version: "0.18.2", releaseError: "GitHub answered HTTP 403 Forbidden.", updateAvailable: false }));
   assert.equal(
-    view({ checking: false, status: null, error: "Request timed out." }).summary,
-    "Caffold could not check for updates.\nRequest timed out.",
-  );
-  assert.equal(
-    view(answered({ version: "0.18.2", releaseError: "GitHub answered HTTP 403 Forbidden.", updateAvailable: false })).summary,
+    githubFailed.summary,
     "Caffold could not check for updates.\nGitHub answered HTTP 403 Forbidden.",
   );
-  assert.equal(
-    view(answered({ ...NEWER, latestRelease: { ...NEWER.latestRelease, version: "0.18.2" }, updateAvailable: false, updateTask: undefined })).summary,
-    "Caffold is up to date.",
-  );
+  assert.deepEqual(action(githubFailed), check);
+  const upToDate = view(answered({ ...NEWER, latestRelease: { ...NEWER.latestRelease, version: "0.18.2" }, updateAvailable: false, updateTask: undefined }));
+  assert.equal(upToDate.summary, "Caffold is up to date.");
+  assert.deepEqual(action(upToDate), check);
   const available = view(answered(NEWER));
   assert.equal(
     available.summary,
     "Caffold 0.18.3 is available. The menu-bar app can also update it.",
   );
-  assert.equal(available.canUpdate, true);
+  assert.deepEqual(action(available), { offersUpdate: true, actionEnabled: true });
   assert.deepEqual(available.latest, {
     text: "0.18.3",
     url: "https://github.com/panarch/caffold/releases/tag/v0.18.3",
@@ -128,7 +144,7 @@ test("tells each update state in one sentence", () => {
     elsewhere.summary,
     "Caffold 0.18.3 is available. Install it from the release page.",
   );
-  assert.equal(elsewhere.canUpdate, false);
+  assert.deepEqual(action(elsewhere), check);
 
   const running = view(answered({
     ...NEWER,
@@ -136,7 +152,33 @@ test("tells each update state in one sentence", () => {
   }));
   assert.equal(running.summary, "Updating to Caffold 0.18.3…");
   assert.equal(running.checking, true);
-  assert.equal(running.canUpdate, false);
+  assert.deepEqual(action(running), { offersUpdate: true, actionEnabled: false });
+});
+
+test("keeps the last answer on show while a check runs", () => {
+  const last = answered({
+    ...NEWER,
+    latestRelease: { ...NEWER.latestRelease, version: "0.18.2" },
+    updateAvailable: false,
+    updateTask: undefined,
+    lastAttempt: {
+      id: "a",
+      fromVersion: "0.18.1",
+      toVersion: "0.18.2",
+      outcome: "succeeded",
+      finishedAt: "2026-10-04T12:10:00Z",
+    },
+  });
+  const settled = caffoldUpdatesView(last);
+  const checking = caffoldUpdatesView({ ...last, checking: true });
+
+  assert.equal(checking.summary, "Checking for updates…");
+  assert.equal(checking.checking, true);
+  assert.equal(checking.version, settled.version);
+  assert.deepEqual(checking.latest, settled.latest);
+  assert.deepEqual(checking.lastUpdate, settled.lastUpdate);
+  assert.equal(checking.offersUpdate, false);
+  assert.equal(checking.actionEnabled, false);
 });
 
 test("tells how the last update ended", () => {

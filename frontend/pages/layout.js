@@ -1,4 +1,4 @@
-import { getCaffoldUpdate, getHealth } from "../api.js";
+import { checkCaffoldUpdate, getCaffoldUpdate, getHealth } from "../api.js";
 import { BUILD_INFO } from "../build-info.js";
 import { busySpin } from "../component-styles.js";
 import { renderInlineIcon, warmIcons } from "../components/icons.js";
@@ -36,6 +36,7 @@ import {
   CAFFOLD_UPDATE_RELOAD_EVENT,
 } from "./components/update-dialog.js";
 import "./components/update-result-dialog.js";
+import { CAFFOLD_UPDATE_CHECK_REQUEST_EVENT } from "./(task-workspace)/settings/about/page.js";
 import "../keyboard-navigation/components/presentation.js";
 import "../keyboard-navigation/components/shortcut-dialog.js";
 import "./(task-workspace)/layout.js";
@@ -71,7 +72,10 @@ class CaffoldAppShell extends HTMLElement {
     this.initialPath = "";
     this.aboutHealthRequest = null;
     this.buildHealth = null;
-    this.caffoldUpdateRequest = null;
+    this.caffoldUpdate = null;
+    this.caffoldUpdateRead = null;
+    this.caffoldUpdateCheck = null;
+    this.caffoldUpdateGeneration = 0;
     this.presentedUpdateBuildIds = new Set();
     this.pwaUpdateStatus = {
       state: "checking",
@@ -177,6 +181,10 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener(CAFFOLD_UPDATE_LATER_EVENT, (event) => {
       event.stopPropagation();
     });
+    this.addEventListener(CAFFOLD_UPDATE_CHECK_REQUEST_EVENT, (event) => {
+      event.stopPropagation();
+      void this.checkCaffoldUpdate();
+    });
     this.addEventListener(CAFFOLD_BUILD_MISMATCH_RELOAD_EVENT, (event) => {
       event.stopPropagation();
       window.location.reload();
@@ -268,33 +276,63 @@ class CaffoldAppShell extends HTMLElement {
   /**
    * Asks whether a newer Caffold exists and how the last update ended. Both
    * opening Caffold and opening About ask; the server decides when to ask
-   * GitHub again.
+   * GitHub again. A check under way answers at least as recently, so a read
+   * that starts during one waits for it.
    */
   refreshCaffoldUpdate() {
-    if (this.caffoldUpdateRequest) {
-      return this.caffoldUpdateRequest;
+    if (this.caffoldUpdateCheck) {
+      return this.caffoldUpdateCheck;
     }
-    const request = getCaffoldUpdate()
-      .then((status) => {
-        this.applyCaffoldUpdate({ checking: false, status, error: null });
-      })
-      .catch((error) => {
-        this.applyCaffoldUpdate({
-          checking: false,
-          status: null,
-          error: error instanceof Error ? error.message : "Request failed.",
-        });
-      })
-      .finally(() => {
-        if (this.caffoldUpdateRequest === request) {
-          this.caffoldUpdateRequest = null;
+    if (!this.caffoldUpdateRead) {
+      const read = this.requestCaffoldUpdate(getCaffoldUpdate).finally(() => {
+        if (this.caffoldUpdateRead === read) {
+          this.caffoldUpdateRead = null;
         }
       });
-    this.caffoldUpdateRequest = request;
-    return request;
+      this.caffoldUpdateRead = read;
+    }
+    return this.caffoldUpdateRead;
+  }
+
+  /**
+   * Has the server ask GitHub now, for About's Check for Updates. The last
+   * answer stays on show while the check runs.
+   */
+  checkCaffoldUpdate() {
+    if (!this.caffoldUpdateCheck) {
+      this.applyCaffoldUpdate({ ...this.caffoldUpdate, checking: true });
+      const check = this.requestCaffoldUpdate(checkCaffoldUpdate).finally(() => {
+        if (this.caffoldUpdateCheck === check) {
+          this.caffoldUpdateCheck = null;
+        }
+      });
+      this.caffoldUpdateCheck = check;
+    }
+    return this.caffoldUpdateCheck;
+  }
+
+  /**
+   * Only the request started last is answered on screen, so a read that left
+   * before a check cannot replace the check's newer answer.
+   */
+  requestCaffoldUpdate(ask) {
+    const generation = ++this.caffoldUpdateGeneration;
+    return ask()
+      .then((status) => ({ checking: false, status, error: null }))
+      .catch((error) => ({
+        checking: false,
+        status: null,
+        error: error instanceof Error ? error.message : "Request failed.",
+      }))
+      .then((snapshot) => {
+        if (generation === this.caffoldUpdateGeneration) {
+          this.applyCaffoldUpdate(snapshot);
+        }
+      });
   }
 
   applyCaffoldUpdate(snapshot) {
+    this.caffoldUpdate = snapshot;
     this.taskWorkspace?.setCaffoldUpdate(snapshot);
     const attempt = snapshot.status?.lastAttempt;
     if (

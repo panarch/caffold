@@ -16,6 +16,9 @@ import {
 /** Asks the workspace to open the update Task dialog. */
 export const CAFFOLD_UPDATE_TASK_REQUEST_EVENT = "caffold:caffold-update-task-request";
 
+/** Asks the app shell to have the server ask GitHub now. */
+export const CAFFOLD_UPDATE_CHECK_REQUEST_EVENT = "caffold:caffold-update-check-request";
+
 class CaffoldSettingsAboutPage extends HTMLElement {
   connectedCallback() {
     if (this.initialized) {
@@ -41,6 +44,15 @@ class CaffoldSettingsAboutPage extends HTMLElement {
             bubbles: true,
             composed: true,
             detail: { opener: update },
+          }),
+        );
+      }
+      const check = event.target.closest('[data-action="check-for-updates"]');
+      if (check && !check.disabled) {
+        this.dispatchEvent(
+          new CustomEvent(CAFFOLD_UPDATE_CHECK_REQUEST_EVENT, {
+            bubbles: true,
+            composed: true,
           }),
         );
       }
@@ -166,6 +178,10 @@ class CaffoldSettingsAboutPage extends HTMLElement {
         selector: 'button[data-action="update-caffold"]',
       },
       {
+        id: "check-for-updates",
+        selector: 'button[data-action="check-for-updates"]',
+      },
+      {
         id: "reload-update",
         selector: 'button[data-action="reload-update"]',
       },
@@ -263,7 +279,7 @@ class CaffoldSettingsAboutPage extends HTMLElement {
                   <div data-updates-last-row hidden><dt>Last update</dt><dd data-updates-last></dd></div>
                 </dl>
               </div>
-              <button type="button" data-action="update-caffold" disabled>Update Caffold</button>
+              <button type="button" data-action="check-for-updates" disabled>Check for Updates</button>
             </section>
             <section aria-labelledby="settings-about-window-title">
               <h3 id="settings-about-window-title">This window</h3>
@@ -342,7 +358,13 @@ class CaffoldSettingsAboutPage extends HTMLElement {
     } else {
       delete last.dataset.state;
     }
-    this.querySelector('[data-action="update-caffold"]').disabled = !view.canUpdate;
+    const action = this.querySelector(".settings-about-updates > button");
+    const kind = view.offersUpdate ? "update-caffold" : "check-for-updates";
+    if (action.dataset.action !== kind) {
+      action.dataset.action = kind;
+      action.textContent = view.offersUpdate ? "Update Caffold" : "Check for Updates";
+    }
+    action.disabled = !view.actionEnabled;
   }
 }
 
@@ -352,18 +374,19 @@ class CaffoldSettingsAboutPage extends HTMLElement {
  */
 export function caffoldUpdatesView(snapshot, health = null) {
   const status = snapshot?.status ?? null;
-  const version = status?.version ?? health?.version ?? "Unavailable";
-  const lastUpdate = lastUpdateValue(status?.lastAttempt);
-  if (snapshot?.checking !== false) {
+  if (snapshot?.checking !== false && !status) {
     return {
       summary: "Checking for updates…",
       checking: true,
       version: health?.version ?? "Checking…",
       latest: { text: "Checking…", url: null },
       lastUpdate: null,
-      canUpdate: false,
+      offersUpdate: false,
+      actionEnabled: false,
     };
   }
+  const version = status?.version ?? health?.version ?? "Unavailable";
+  const lastUpdate = lastUpdateValue(status?.lastAttempt);
   if (!status) {
     return {
       summary: `Caffold could not check for updates.\n${snapshot.error ?? ""}`.trim(),
@@ -371,13 +394,30 @@ export function caffoldUpdatesView(snapshot, health = null) {
       version,
       latest: { text: "Unavailable", url: null },
       lastUpdate,
-      canUpdate: false,
+      offersUpdate: false,
+      actionEnabled: true,
     };
   }
   const latest = status.latestRelease
     ? { text: status.latestRelease.version, url: status.latestRelease.url }
     : { text: "Unavailable", url: null };
-  const view = { checking: false, version, latest, lastUpdate, canUpdate: false };
+  const view = {
+    checking: false,
+    version,
+    latest,
+    lastUpdate,
+    offersUpdate: false,
+    actionEnabled: true,
+  };
+  if (snapshot.checking) {
+    // A check someone asked for keeps the last answer on show.
+    return {
+      ...view,
+      summary: "Checking for updates…",
+      checking: true,
+      actionEnabled: false,
+    };
+  }
   const running = status.runningAttempt;
   if (running) {
     const target = running.toVersion ?? status.latestRelease?.version;
@@ -385,6 +425,8 @@ export function caffoldUpdatesView(snapshot, health = null) {
       ...view,
       summary: target ? `Updating to Caffold ${target}…` : "Updating Caffold…",
       checking: true,
+      offersUpdate: true,
+      actionEnabled: false,
     };
   }
   if (!status.latestRelease) {
@@ -405,7 +447,7 @@ export function caffoldUpdatesView(snapshot, health = null) {
   return {
     ...view,
     summary: `Caffold ${latest.text} is available. The menu-bar app can also update it.`,
-    canUpdate: true,
+    offersUpdate: true,
   };
 }
 

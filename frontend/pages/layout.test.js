@@ -310,6 +310,70 @@ test("asks for the update status only after a recovery that reached Caffold", as
   }
 });
 
+test("a check shows the last answer meanwhile and outranks a read that left before it", async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = (url, options) => {
+    const answer = Promise.withResolvers();
+    requests.push({
+      url: String(url),
+      method: options.method,
+      answer: (status) => answer.resolve({ ok: true, status: 200, json: async () => status }),
+    });
+    return answer.promise;
+  };
+  Object.assign(globalThis.window, {
+    location: { origin: "https://caffold.test" },
+    setTimeout,
+    clearTimeout,
+  });
+  const published = [];
+  const owner = {
+    caffoldUpdate: null,
+    caffoldUpdateRead: null,
+    caffoldUpdateCheck: null,
+    caffoldUpdateGeneration: 0,
+    requestCaffoldUpdate: appShell.requestCaffoldUpdate,
+    applyCaffoldUpdate(snapshot) {
+      this.caffoldUpdate = snapshot;
+      published.push(snapshot);
+    },
+  };
+  const upToDate = { version: "0.18.2", updateAvailable: false };
+  const available = { version: "0.18.2", updateAvailable: true };
+  try {
+    const first = appShell.refreshCaffoldUpdate.call(owner);
+    requests[0].answer(upToDate);
+    await first;
+    assert.deepEqual(published, [{ checking: false, status: upToDate, error: null }]);
+
+    const staleRead = appShell.refreshCaffoldUpdate.call(owner);
+    const check = appShell.checkCaffoldUpdate.call(owner);
+    assert.deepEqual(published.at(-1), { checking: true, status: upToDate, error: null });
+    assert.deepEqual(
+      requests.map(({ url, method }) => `${method} ${new URL(url).pathname}`),
+      ["GET /api/caffold/update", "GET /api/caffold/update", "POST /api/caffold/update/check"],
+    );
+
+    // Reads and checks that start during the check wait for it.
+    assert.equal(appShell.refreshCaffoldUpdate.call(owner), check);
+    assert.equal(appShell.checkCaffoldUpdate.call(owner), check);
+    assert.equal(requests.length, 3);
+
+    requests[2].answer(available);
+    await check;
+    requests[1].answer(upToDate);
+    await staleRead;
+    assert.deepEqual(published.at(-1), { checking: false, status: available, error: null });
+    assert.equal(published.length, 3);
+  } finally {
+    globalThis.fetch = previousFetch;
+    delete globalThis.window.location;
+    delete globalThis.window.setTimeout;
+    delete globalThis.window.clearTimeout;
+  }
+});
+
 function button(label, calls) {
   return {
     disabled: false,

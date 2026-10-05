@@ -508,10 +508,12 @@ Settings includes:
   opening the page starts no leader, session, or turn;
 - About Caffold in two sections. **Updates** has the shape of Codex Settings'
   Updates panel: the version the server runs, the newest release linked to its
-  page, the last update's outcome, and **Update Caffold**, which is enabled
-  only when the server offers an update Task and none is running. It opens a
-  dialog with the Start Task dialog's geometry that confirms the update and
-  chooses the agent; the Task starts in the update directory with the
+  page, the last update's outcome, and one button as wide as its label. The
+  button reads **Update Caffold** when the server offers an update Task, and
+  stays disabled while an update runs. Otherwise it reads **Check for
+  Updates**, which has the server ask GitHub at once and keeps the last answer
+  on show until it replies. **Update Caffold** opens a dialog with the Start
+  Task dialog's geometry that confirms the update and chooses the agent; the Task starts in the update directory with the
   directory's Section's last turn settings when the Task list knows that
   Section. **This window** holds the build list, the shared
   checking/ready/settled update status, and **Reload to update** while a

@@ -69,8 +69,9 @@ not use a second credit for it.
 ## About Caffold
 
 **Updates** shows the version of Caffold, the newest release, and how the last
-update ended. **Update Caffold** starts an update; see
-[Updates](updates.md#caffold).
+update ended. **Check for Updates** looks for a new release right away. When
+Caffold can install one, the button becomes **Update Caffold**, which starts an
+update; see [Updates](updates.md#caffold).
 
 **This window** shows the build this window runs. **Reload to update** loads a
 new version into this window, and **Copy diagnostics** copies the details to

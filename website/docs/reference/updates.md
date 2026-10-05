@@ -2,8 +2,9 @@
 
 ## Caffold
 
-When a new version is out, a dot appears on **Settings**. Update Caffold one of
-these ways:
+When a new version is out, a dot appears on **Settings**. To look for one right
+away, choose **Check for Updates** in **Settings → About Caffold**. Update
+Caffold one of these ways:
 
 - **At the Mac:** choose **Update to Caffold X…** in the menu-bar app.
 - **From another device:** choose **Update Caffold** in **Settings → About
