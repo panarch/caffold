@@ -11,6 +11,9 @@ export function installTaskSseControllerInBrowser() {
   const connections = new Map();
   const pendingDetailBootstraps = new Map();
   let connectionSequence = 0;
+  // Physical connections still to be created that never send their greeting,
+  // like a request stuck on a connection the network dropped.
+  let silentConnections = 0;
 
   const detailThreadId = (detail) =>
     detail?.threadId ?? detail?.task?.threadId ?? detail?.task?.id ?? "";
@@ -44,7 +47,7 @@ export function installTaskSseControllerInBrowser() {
   };
 
   const identify = (source) => {
-    if (source.connectionId || source.readyState === 2) {
+    if (source.silent || source.connectionId || source.readyState === 2) {
       return;
     }
     source.connectionId = `mock-live-${++connectionSequence}`;
@@ -56,7 +59,7 @@ export function installTaskSseControllerInBrowser() {
   };
 
   const openPhysical = (source) => {
-    if (source.readyState === 2) {
+    if (source.silent || source.readyState === 2) {
       return;
     }
     if (source.readyState !== 1) {
@@ -277,6 +280,9 @@ export function installTaskSseControllerInBrowser() {
     identify,
     nativeEmit,
     applySubscriptions,
+    silenceNextConnection() {
+      silentConnections += 1;
+    },
     forget(source) {
       if (source.connectionId) {
         connections.delete(source.connectionId);
@@ -302,6 +308,10 @@ export function installTaskSseControllerInBrowser() {
         }
       }
       source.registries = registries;
+      if (silentConnections > 0) {
+        silentConnections -= 1;
+        source.silent = true;
+      }
       if (!physicalRegistry.includes(source)) {
         physicalRegistry.push(source);
       }
@@ -402,7 +412,7 @@ export function installEventSourceMockInBrowser({
     }
 
     emitOpen() {
-      if (this.readyState === 2) {
+      if (this.readyState === 2 || this.silent) {
         return;
       }
       this.readyState = 1;

@@ -26,7 +26,10 @@ import {
   CODEX_RUNTIME_UPDATE_CONFIRMED_EVENT,
 } from "./codex-status/components/runtime-update-dialog.js";
 import { restartClaudeRuntime } from "../../api.js";
-import { WorkspaceLiveUpdates } from "./live-updates.js";
+import {
+  LIVE_CONNECTION_REPORT_EVENT,
+  WorkspaceLiveUpdates,
+} from "./live-updates.js";
 import {
   CLAUDE_RUNTIME_RESTART_REQUEST_EVENT,
 } from "./settings/claude/page.js";
@@ -110,7 +113,14 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.codexResetCreditStateValue = { state: "idle", message: "", retryPending: false };
     this.codexRuntimeActionValue = "idle";
     this.caffoldUpdateValue = null;
-    this.liveUpdates = new WorkspaceLiveUpdates();
+    this.liveUpdates = new WorkspaceLiveUpdates({
+      onConnectionReport: (report) => {
+        this.dispatchEvent(new CustomEvent(LIVE_CONNECTION_REPORT_EVENT, {
+          bubbles: true,
+          detail: report,
+        }));
+      },
+    });
     this.taskStoreStatusLifecycle = createTaskStoreStatusLifecycle({
       onSnapshotChange: (snapshot) => this.setTaskStoreStatusSnapshot(snapshot),
     });

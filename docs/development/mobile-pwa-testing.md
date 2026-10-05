@@ -67,6 +67,9 @@ PWA is backgrounded.
 4. Verify that the selected route, Composer draft, conversation scroll, and
    selected review state remain useful. A transient reconnecting notice must
    not clear the loaded list or detail.
+5. Read the return's `foreground recovery from` line in the server log. Its
+   `notice` steps show how long any reconnecting notice stayed, and its
+   `connections` show whether a fresh live connection answered at once.
 
 ### Offline and online
 

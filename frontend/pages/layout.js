@@ -1,4 +1,9 @@
-import { checkCaffoldUpdate, getCaffoldUpdate, getHealth } from "../api.js";
+import {
+  checkCaffoldUpdate,
+  getCaffoldUpdate,
+  getHealth,
+  sendForegroundRecoveryDiagnostics,
+} from "../api.js";
 import { BUILD_INFO } from "../build-info.js";
 import { busySpin } from "../component-styles.js";
 import { renderInlineIcon, warmIcons } from "../components/icons.js";
@@ -40,6 +45,7 @@ import { CAFFOLD_UPDATE_CHECK_REQUEST_EVENT } from "./(task-workspace)/settings/
 import "../keyboard-navigation/components/presentation.js";
 import "../keyboard-navigation/components/shortcut-dialog.js";
 import "./(task-workspace)/layout.js";
+import { LIVE_CONNECTION_REPORT_EVENT } from "./(task-workspace)/live-updates.js";
 
 class CaffoldAppShell extends HTMLElement {
   connectedCallback() {
@@ -122,6 +128,9 @@ class CaffoldAppShell extends HTMLElement {
       onStateChange: (snapshot) =>
         this.applyForegroundRecoverySnapshot(snapshot),
       onSuspend: () => this.taskWorkspace.suspendForeground(),
+      diagnostics: {
+        send: (records) => sendForegroundRecoveryDiagnostics(records),
+      },
     });
     window.addEventListener(
       CAFFOLD_ORIGIN_REACHABLE_EVENT,
@@ -192,6 +201,10 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:task-transport-status", (event) => {
       event.stopPropagation();
       this.foregroundRecoveryLifecycle?.setTargets(event.detail?.targets);
+    });
+    this.addEventListener(LIVE_CONNECTION_REPORT_EVENT, (event) => {
+      event.stopPropagation();
+      this.foregroundRecoveryLifecycle?.reportLiveConnection(event.detail);
     });
     void this.pwaUpdateLifecycle.start();
     void warmIcons();

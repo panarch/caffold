@@ -10,6 +10,10 @@ import {
   transitionLiveConnection,
 } from "./live-updates/lifecycle.js";
 
+// What the workspace raises for each connection report, for the App Shell's
+// foreground recovery diagnostics.
+export const LIVE_CONNECTION_REPORT_EVENT = "caffold:live-connection-report";
+
 const DEFAULT_CONNECTION_TIMEOUT_MS = 8_000;
 const DEFAULT_RECONNECT_TIMEOUT_MS = 8_000;
 const DEFAULT_RETRY_DELAYS_MS = Object.freeze([250, 1_000, 3_000]);
@@ -27,6 +31,8 @@ export class WorkspaceLiveUpdates {
       ((url) => new EventSource(url));
     this.publishSubscriptions = options.publishSubscriptions ??
       updateLiveSubscriptions;
+    // Hears each physical connection open, answer, and end, by its number.
+    this.onConnectionReport = options.onConnectionReport ?? (() => {});
     this.connectionTimeoutMs =
       options.connectionTimeoutMs ?? DEFAULT_CONNECTION_TIMEOUT_MS;
     this.reconnectTimeoutMs =
@@ -323,14 +329,19 @@ export class WorkspaceLiveUpdates {
       return;
     }
     if (effect === LIVE_CONNECTION_EFFECT.WAIT_TO_REPLACE) {
-      if (context.previousNode !== LIVE_CONNECTION_NODE.RECONNECTING) {
-        this.notifyBindings(
-          "onError",
-          new Error("Live updates are unavailable."),
-          { closed: false, physical: true },
-        );
-      }
+      this.reportConnectionTrouble(context.previousNode);
       this.waitToReplaceConnection();
+      return;
+    }
+    if (effect === LIVE_CONNECTION_EFFECT.REOPEN) {
+      this.reportConnectionTrouble(context.previousNode);
+      this.closeSource();
+      this.openConnection();
+      return;
+    }
+    if (effect === LIVE_CONNECTION_EFFECT.REPLACE_NOW) {
+      this.clearReconnectTimer();
+      this.replaceConnection();
       return;
     }
     if (effect === LIVE_CONNECTION_EFFECT.CLOSE) {
@@ -345,12 +356,31 @@ export class WorkspaceLiveUpdates {
     }
   }
 
+  // Consumers hear of trouble when an attempt's first connection fails or goes
+  // silent, not again while that attempt replaces it.
+  reportConnectionTrouble(previousNode) {
+    if (
+      [
+        LIVE_CONNECTION_NODE.REOPENED,
+        LIVE_CONNECTION_NODE.RECONNECTING,
+      ].includes(previousNode)
+    ) {
+      return;
+    }
+    this.notifyBindings(
+      "onError",
+      new Error("Live updates are unavailable."),
+      { closed: false, physical: true },
+    );
+  }
+
   openConnection() {
     if (
       this.source ||
       this.documentTarget.visibilityState !== "visible" ||
       ![
         LIVE_CONNECTION_NODE.CONNECTING,
+        LIVE_CONNECTION_NODE.REOPENED,
         LIVE_CONNECTION_NODE.RECONNECTING,
       ].includes(this.node)
     ) {
@@ -366,6 +396,7 @@ export class WorkspaceLiveUpdates {
     }
     this.source = source;
     this.connectionId = "";
+    this.onConnectionReport({ kind: "opened", id: generation });
     source.addEventListener("open", () => {
       if (this.isCurrentSource(source, generation)) {
         reportOriginReachable();
@@ -399,6 +430,7 @@ export class WorkspaceLiveUpdates {
     }
     this.connectionId = connectionId;
     this.controlDirty = true;
+    this.onConnectionReport({ kind: "answered", id: generation });
     this.dispatchConnection(LIVE_CONNECTION_EVENT.READY);
     void this.flushSubscriptions();
   }
@@ -444,11 +476,27 @@ export class WorkspaceLiveUpdates {
     ) {
       return;
     }
+    this.releaseConnection();
+    if (source) {
+      this.onConnectionReport({ kind: "failed", id: generation });
+    }
+    this.dispatchConnection(LIVE_CONNECTION_EVENT.ERROR);
+  }
+
+  connectionStalled(source, generation) {
+    if (!this.isCurrentSource(source, generation)) {
+      return;
+    }
+    this.releaseConnection();
+    this.onConnectionReport({ kind: "stalled", id: generation });
+    this.dispatchConnection(LIVE_CONNECTION_EVENT.STALL);
+  }
+
+  releaseConnection() {
     this.clearConnectionTimer();
     this.connectionId = "";
     this.controlPublication = null;
     this.controlDirty = true;
-    this.dispatchConnection(LIVE_CONNECTION_EVENT.ERROR);
   }
 
   waitToReplaceConnection() {
@@ -495,6 +543,9 @@ export class WorkspaceLiveUpdates {
     this.source = null;
     this.connectionId = "";
     this.controlPublication = null;
+    if (source) {
+      this.onConnectionReport({ kind: "closed", id: this.sourceGeneration });
+    }
     this.sourceGeneration += 1;
     source?.close();
   }
@@ -509,7 +560,7 @@ export class WorkspaceLiveUpdates {
         return;
       }
       this.connectionTimer = null;
-      this.connectionFailed(source, generation);
+      this.connectionStalled(source, generation);
     }, Math.max(0, this.connectionTimeoutMs));
   }
 

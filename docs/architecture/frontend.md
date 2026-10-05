@@ -182,10 +182,8 @@ Every completion still has to match the active recovery generation.
 
 Foreground recovery checks Task-store readiness first, after which the Tasks
 page asks its navigator and selected detail to reconcile their separately owned
-transports. Every recovery after the initial activation also starts a Codex
-status refresh without waiting for it; that answer serves only Codex surfaces,
-and its failure does not fail the recovery. The selected detail's transports
-are the Task stream and, while the terminal is shown, the terminal socket.
+transports. The selected detail's transports are the Task stream and, while the
+terminal is shown, the terminal socket.
 Parents call public child methods; the app shell does not inspect Task
 transport internals. Async completions must still match both the foreground
 generation and the active route.
@@ -200,6 +198,23 @@ readiness, pending-route, list, and detail recovery operation. Known offline
 state uses the same notice without a spinner or Retry action. Initial
 bootstrap and domain-specific requests such as older-history loading retain
 their separately scoped failure UI.
+
+The same boundary privately keeps foreground recovery diagnostics for the
+server log. A record starts when the page becomes visible after being hidden,
+so a recovery that only focus, `online`, or a notification starts is not
+recorded. It ends when recovery has run and no active Task transport is still
+connecting, validating, reconnecting, or unavailable, when the page hides
+again, or after two minutes. The record notes, in milliseconds from the start,
+how long the page was hidden, each recovery node, notice state, and Task
+transport state change, each physical live connection's opening, first answer,
+and end, and each completed same-origin API request other than the live stream
+and the diagnostics' own delivery, with its first byte and whether it opened a
+new network connection. Times come from the page's own clock as each thing
+happens, so a late delivery changes no value. Records wait in `localStorage`,
+at most twenty, and go to `POST /api/diagnostics/foreground-recovery` whenever
+a recovery completes or a record settles. The shell route checks their shape
+and writes one `caffold::foreground_recovery` log line per record; nothing in
+the interface reads them.
 
 The app shell owns one `PwaUpdateLifecycle` instance. That lifecycle is the
 single owner of service-worker registration and build handoff, and publishes

@@ -6,7 +6,7 @@ use axum::{
     extract::{Path as AxumPath, State},
     http::{HeaderName, HeaderValue, StatusCode, header},
     response::{Html, IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -17,6 +17,8 @@ use crate::{
     server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
     static_assets,
 };
+
+mod foreground_recovery_diagnostics;
 
 const SERVICE_WORKER_CACHE_NAME_PLACEHOLDER: &str = "\"caffold-shell-__CAFFOLD_BUILD_ID__\"";
 
@@ -64,6 +66,10 @@ pub(super) fn router(
     Router::new()
         .route("/", get(index))
         .route("/api/health", get(health))
+        .route(
+            "/api/diagnostics/foreground-recovery",
+            post(foreground_recovery_diagnostics::record_diagnostics),
+        )
         .route(
             "/api/server/settings",
             get(get_server_settings).patch(update_server_settings),

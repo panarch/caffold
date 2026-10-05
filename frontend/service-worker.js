@@ -68,6 +68,7 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/foreground-recovery/browser-signals.js",
   "/assets/pages/foreground-recovery/lifecycle.js",
   "/assets/pages/foreground-recovery/machine.js",
+  "/assets/pages/foreground-recovery/diagnostics.js",
   "/assets/pages/pwa-update-lifecycle.js",
   "/assets/pages/pwa-update-lifecycle/machine.js",
   "/assets/pages/pwa-update-lifecycle/runtime.js",

@@ -146,10 +146,23 @@ the subscription and invalidates pending reads.
 
 `frontend/pages/(task-workspace)/live-updates.js` is the workspace-scoped public
 owner. Its private lifecycle graph owns physical connection attachment,
-visibility suspension, native reconnection grace, bounded replacement, and
-exhaustion. The Task Workspace injects this capability into Task List, Task
-Detail, Integrated Review, and Git; no global store or browser-wide worker owns
-the connection.
+visibility suspension, native reconnection grace, silent-connection
+replacement, bounded replacement, and exhaustion. The Task Workspace injects
+this capability into Task List, Task Detail, Integrated Review, and Git; no
+global store or browser-wide worker owns the connection.
+
+A browser `error` on the physical connection waits eight seconds for the
+browser's own reconnection unless the source is already closed, then replaces
+it. A connection that sends no `gateway-ready` within its eight-second limit is
+silent instead: the browser is not reconnecting it, so it is closed and a fresh
+one opens at once. If that one is silent too, the attempt ends and the next
+attempt follows the bounded retry delays. Each attempt allows two silent
+connections, so the bounded retry gives up after the same number of attempts
+whether connections fail or stay silent. Logical consumers hear of the trouble
+once per attempt, when its first connection fails or goes silent. The owner
+also reports each physical connection's opening, first answer, and end; the
+Task Workspace raises those reports for the App Shell's foreground recovery
+diagnostics ([Frontend](frontend.md)).
 
 Task List and Task Detail keep their domain lifecycles. Shared
 `tasks/stream.js` adapts those lifecycles to logical gateway subscriptions,
