@@ -2,15 +2,23 @@ use std::{
     collections::{BTreeMap, HashMap},
     sync::{Arc, Mutex as StdMutex},
 };
+#[cfg(test)]
+use std::{future::Future, time::Duration};
 
 use serde::Serialize;
 use tokio::sync::{Mutex, broadcast};
+#[cfg(test)]
+use tokio::sync::{MutexGuard, oneshot};
 
 use super::{events::TaskEvents, lifecycle::TaskLifecycle, push::PushService};
 use crate::agent::AgentError;
 use crate::{
     agent::claude::ClaudeClient,
-    agent::codex::{CodexMcpBindings, CodexThreadClient, CodexThreadError},
+    agent::codex::{
+        CodexClient, CodexConnection, CodexDaemonInfo, CodexMcpBindings, CodexReadiness,
+        CodexStatusResponse, CodexThreadClient, CodexThreadError, CodexUpdateOutcome,
+        CodexUpdateReport,
+    },
     agent::grok::GrokClient,
     agent::{Driver, TokenUsage},
     app::jev::PermissionReviewer,
@@ -21,10 +29,8 @@ use crate::{
 mod bridge;
 mod claude_bridge;
 mod grok_bridge;
-mod process;
 mod server_requests;
 
-use process::CodexProcess;
 use server_requests::PendingApproval;
 
 /// One kept instruction, as it is stored and read.
@@ -43,15 +49,13 @@ fn permission_instruction_entry(recorded_ms: u64, prompt: &str) -> String {
 
 /// Everything a Task is run through, whichever agent runs it.
 ///
-/// It is not one agent's: it holds the Codex process and the Claude client
-/// side by side and hands out whichever a Task belongs to. The things inside it
-/// that are named after Codex really are Codex's — `CodexProcess` is the
-/// app-server proxy and nothing else has one, because Claude has no daemon to
-/// proxy.
+/// It is not one agent's: it holds the Codex, Claude, and Grok clients side by
+/// side and hands out whichever a Task belongs to. How each agent's process is
+/// reached stays inside that agent's client; this side decides what a session
+/// hears when a connection comes or goes.
 #[derive(Clone)]
 pub(in crate::app::tasks) struct TaskRuntime {
-    process: Arc<CodexProcess>,
-    codex_mcp: Option<CodexMcpBindings>,
+    codex: CodexClient,
     claude: ClaudeClient,
     grok: GrokClient,
     sessions: TaskSessions,
@@ -81,19 +85,6 @@ pub(in crate::app::tasks) struct CodexUsageDiagnostics {
 pub(in crate::app::tasks) struct ThreadUsageDiagnostics {
     pub(in crate::app::tasks) turn_id: String,
     pub(in crate::app::tasks) token_usage: TokenUsage,
-}
-
-#[derive(Clone)]
-pub(in crate::app::tasks) struct CodexConnection {
-    pub(in crate::app::tasks) client: CodexThreadClient,
-    pub(in crate::app::tasks) generation: u64,
-}
-
-impl CodexConnection {
-    /// This connection as the agent it reaches.
-    pub(in crate::app::tasks) fn driver(&self) -> Driver {
-        self.client.driver()
-    }
 }
 
 /// The agent that owns one Task, ready to be asked about it.
@@ -211,8 +202,7 @@ impl TaskRuntime {
     ) -> Self {
         let (signals, _) = broadcast::channel(64);
         Self {
-            process: Arc::new(CodexProcess::default()),
-            codex_mcp: None,
+            codex: CodexClient::default(),
             permission_reviewer: None,
             claude,
             grok,
@@ -230,8 +220,178 @@ impl TaskRuntime {
     }
 
     pub(super) fn with_codex_mcp(mut self, bindings: CodexMcpBindings) -> Self {
-        self.codex_mcp = Some(bindings);
+        self.codex = self.codex.with_mcp(bindings);
         self
+    }
+
+    pub(in crate::app::tasks) fn startup(&self) {
+        self.watch_claude();
+        self.watch_grok();
+        let runtime = self.clone();
+        tokio::spawn(async move {
+            let status = runtime.status().await;
+            if status.readiness.blocks_task_operations {
+                eprintln!(
+                    "Codex is not ready for Task operations: {}",
+                    status.readiness.diagnostic_message
+                );
+            }
+        });
+    }
+
+    /// Codex's shared connection, made when there is none and Codex is ready.
+    pub(in crate::app::tasks) async fn connection(
+        &self,
+    ) -> Result<CodexConnection, CodexThreadError> {
+        self.codex.connection(self).await
+    }
+
+    /// What Caffold last found about Codex's readiness, without checking again.
+    pub(in crate::app::tasks) async fn remembered_codex_readiness(&self) -> Option<CodexReadiness> {
+        self.codex.remembered_readiness().await
+    }
+
+    /// Codex's connection when one is already usable, without checking or
+    /// waiting for a check.
+    pub(in crate::app::tasks) async fn usable_codex_connection(&self) -> Option<CodexConnection> {
+        self.codex.usable_connection().await
+    }
+
+    pub(in crate::app::tasks) async fn client(
+        &self,
+    ) -> Result<CodexThreadClient, CodexThreadError> {
+        self.connection().await.map(|connection| connection.client)
+    }
+
+    pub(in crate::app::tasks) async fn status(&self) -> CodexStatusResponse {
+        self.status_with_diagnostics().await.0
+    }
+
+    pub(in crate::app::tasks) async fn status_with_diagnostics(
+        &self,
+    ) -> (CodexStatusResponse, u64, bool) {
+        self.codex.status_with_diagnostics(self).await
+    }
+
+    /// Observe the existing proxy without making a diagnostic request start one.
+    pub(in crate::app::tasks) async fn codex_diagnostic_connection(
+        &self,
+    ) -> Option<CodexConnection> {
+        self.codex.diagnostic_connection().await
+    }
+
+    pub(in crate::app::tasks) async fn restart_daemon(
+        &self,
+    ) -> Result<CodexDaemonInfo, CodexThreadError> {
+        self.codex
+            .restart_daemon_with(self, CodexThreadClient::restart_daemon)
+            .await
+    }
+
+    #[cfg(test)]
+    pub(super) async fn restart_daemon_with<Restart, RestartFuture>(
+        &self,
+        restart: Restart,
+    ) -> Result<CodexDaemonInfo, CodexThreadError>
+    where
+        Restart: FnOnce() -> RestartFuture,
+        RestartFuture: Future<Output = Result<CodexDaemonInfo, CodexThreadError>>,
+    {
+        self.codex.restart_daemon_with(self, restart).await
+    }
+
+    pub(in crate::app::tasks) async fn update_daemon(
+        &self,
+    ) -> Result<CodexUpdateOutcome, CodexThreadError> {
+        self.codex
+            .update_daemon_with(self, CodexThreadClient::update_daemon)
+            .await
+    }
+
+    #[cfg(test)]
+    pub(super) async fn update_daemon_with<Update, UpdateFuture>(
+        &self,
+        update: Update,
+    ) -> Result<CodexUpdateOutcome, CodexThreadError>
+    where
+        Update: FnOnce() -> UpdateFuture,
+        UpdateFuture: Future<Output = Result<CodexUpdateOutcome, CodexThreadError>>,
+    {
+        self.codex.update_daemon_with(self, update).await
+    }
+
+    /// What Settings shows about keeping Codex current. Asking starts no
+    /// Codex connection.
+    pub(in crate::app::tasks) async fn codex_update_report(&self) -> CodexUpdateReport {
+        self.codex.update_report().await
+    }
+
+    pub(in crate::app::tasks) async fn shutdown(&self) {
+        self.codex.shutdown().await;
+        // The bridge goes down with the backend; Grok's leader stays up.
+        self.grok.stop().await;
+    }
+
+    /// Tell the runtime a connection failed, when the agent has one to lose.
+    ///
+    /// A Claude session is its own process, and a failure reaching one says
+    /// nothing about the rest; Codex decides what a failure on its shared
+    /// connection means.
+    pub(in crate::app::tasks) async fn recover_connection_error_for(
+        &self,
+        agent: &TaskAgent,
+        error: &AgentError,
+    ) {
+        if let Some(connection) = agent.codex() {
+            self.codex.connection_failed(connection, error, self).await;
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::app::tasks) async fn install_test_client(
+        &self,
+        generation: u64,
+        client: CodexThreadClient,
+    ) {
+        self.codex.install_test_client(generation, client).await;
+    }
+
+    #[cfg(test)]
+    pub(in crate::app::tasks) async fn set_test_readiness(&self, readiness: CodexReadiness) {
+        self.codex.set_test_readiness(readiness).await;
+    }
+
+    /// Make Codex answer as blocked, so a test can watch what a held agent
+    /// costs at the boundary that consults it.
+    #[cfg(test)]
+    pub(in crate::app::tasks) async fn hold_codex_readiness_for_tests(&self) {
+        self.codex.hold_readiness_for_tests().await;
+    }
+
+    #[cfg(test)]
+    pub(in crate::app::tasks) async fn diagnostics(&self) -> (u64, bool) {
+        self.codex.diagnostics().await
+    }
+
+    #[cfg(test)]
+    pub(in crate::app::tasks) async fn hold_codex_status_check(&self) -> MutexGuard<'_, ()> {
+        self.codex.hold_status_check_for_test().await
+    }
+
+    #[cfg(test)]
+    pub(in crate::app::tasks) async fn hold_process_lock_for_test(
+        &self,
+        entered: oneshot::Sender<()>,
+        duration: Duration,
+    ) {
+        self.codex
+            .hold_process_lock_for_test(entered, duration)
+            .await;
+    }
+
+    #[cfg(test)]
+    pub(super) async fn codex_update_running_version(&self) -> Option<String> {
+        self.codex.running_version().await
     }
 
     /// Begin carrying what Claude sessions say into the Task application.
@@ -466,6 +626,7 @@ mod tests {
         CodexDaemonInfo, CodexReadiness, CodexReadinessReason, CodexReadinessState,
         CodexUpdateOutcome, MockCodexResponse,
     };
+    use crate::app::tasks::events::task_event_record;
     use crate::app::tasks::sessions::SessionLifecycle;
 
     fn test_runtime(store: TaskStore) -> TaskRuntime {
@@ -478,6 +639,71 @@ mod tests {
             store,
             shutdown,
         )
+    }
+
+    #[tokio::test]
+    async fn transport_failures_withdraw_live_turn_completeness() {
+        let runtime = test_runtime(TaskStore::memory().expect("in-memory task store"));
+        let thread_id = "thread-live-gap";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "thread": {
+                    "id": thread_id,
+                    "preview": "Live gap",
+                    "status": { "type": "active", "activeFlags": [] },
+                    "cwd": "/tmp",
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "turns": [{
+                        "id": "turn-live",
+                        "items": [],
+                        "status": "inProgress",
+                        "startedAt": 2.0
+                    }]
+                },
+                "cwd": "/tmp"
+            }),
+        )]);
+        runtime.install_test_client(10, client.clone()).await;
+        let _viewer = runtime
+            .sessions
+            .acquire_viewer(&client.driver(), 10, thread_id)
+            .await
+            .expect("the live thread is subscribed");
+        runtime.events.publish_provider_lifecycle(
+            task_event_record(
+                thread_id,
+                "turn-live:started",
+                "turn_started",
+                "Turn started",
+                Some(json!({
+                    "threadId": thread_id,
+                    "turnId": "turn-live",
+                })),
+                2_000,
+            ),
+            1,
+        );
+        assert_eq!(runtime.events.fully_observed_turns(thread_id).len(), 1);
+
+        let agent = TaskAgent::Codex(CodexConnection {
+            client,
+            generation: 10,
+        });
+        runtime
+            .recover_connection_error_for(
+                &agent,
+                &agent::AgentError::Unreachable("Codex app-server is unavailable.".to_string()),
+            )
+            .await;
+
+        assert!(runtime.events.fully_observed_turns(thread_id).is_empty());
+        assert_eq!(
+            runtime.events.for_thread(thread_id).len(),
+            1,
+            "the report stays visible even though it no longer proves a continuous journal"
+        );
     }
 
     #[tokio::test]

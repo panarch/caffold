@@ -18,16 +18,6 @@ import {
   taskDetailFixture,
 } from "../support/task-api-fixture.js";
 
-const BLOCKING_STATES = [
-  "missing",
-  "unsupportedInstall",
-  "updateRequired",
-  "signInRequired",
-  "restartRequired",
-  "incompatible",
-  "error",
-];
-
 const REASON_CODES = {
   missing: "officialStandaloneNotFound",
   unsupportedInstall: "unsupportedPathInstall",
@@ -95,42 +85,18 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-// Codex is one agent among several: being blocked marks no surface outside
-// its own Settings page and Tasks.
-for (const state of BLOCKING_STATES) {
-  test(`a ${state} Codex adds nothing to New Task or the navigation`, { tag: "@desktop" }, async ({
-    page,
-  }) => {
-    await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-      route.fulfill({ json: statusFor(state) }),
-    );
-
-    await page.goto("/tasks/new");
-    await codexStatusApplied(page, state);
-
-    await expect.poll(() => presentedTaskPaneChildren(page)).toEqual([
-      "caffold-task-new",
-    ]);
-    await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
-    const navigation = page.locator("caffold-task-workspace-navigation");
-    const settings = navigation.locator('button[data-workspace-mode="settings"]');
-    await expect(settings).toHaveAccessibleName("Settings");
-    await expectLooksLike(
-      settings,
-      navigation.locator('button[data-workspace-mode="notes"]'),
-    );
-  });
-}
-
-test("a blocked Codex holds nothing on the Tasks home", { tag: "@all-viewports" }, async ({ page }) => {
+// Codex is one agent among several: opening Tasks asks it nothing, and the
+// Tasks home is held by no agent.
+test("opening Tasks asks Codex nothing and holds nothing on the home", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  let statusRequests = 0;
   let taskRequests = 0;
   const cached = cachedTask();
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(statusFor("updateRequired")),
-    }),
-  );
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    statusRequests += 1;
+    return route.fulfill({ json: statusFor("updateRequired") });
+  });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     taskRequests += 1;
     return route.fulfill({ json: activeTaskProjection([cached]) });
@@ -147,25 +113,15 @@ test("a blocked Codex holds nothing on the Tasks home", { tag: "@all-viewports" 
   await expect(cachedRow).toContainText("Cached Task identity");
   await expect(cachedRow).toBeEnabled();
   await expect.poll(() => taskRequests).toBe(1);
+  expect(statusRequests).toBe(0);
 });
 
-test("keeps the stable Task shell while readiness is checking", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
-  let releaseStatus;
-  const statusGate = new Promise((resolve) => {
-    releaseStatus = resolve;
-  });
+test("keeps the stable Task shell while the Task list loads", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   let releaseTasks;
   const tasksGate = new Promise((resolve) => {
     releaseTasks = resolve;
   });
   let taskRequests = 0;
-  await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
-    await statusGate;
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(mockCodexStatus()),
-    });
-  });
   await page.route(/\/api\/tasks(?:\?|$)/, async (route) => {
     taskRequests += 1;
     await tasksGate;
@@ -185,24 +141,13 @@ test("keeps the stable Task shell while readiness is checking", { tag: "@all-vie
   );
   await expect(navigatorMessage).toHaveText("Loading...");
   const newTask = page.locator("caffold-task-navigator .task-list-new-task");
-  // A status nobody has loaded yet blocks nothing: the other agent is not
-  // Codex's to hold, and an operation tried too early is the server's to
-  // refuse.
   await expect(newTask).toBeEnabled();
   await expect(newTask).toHaveAttribute("title", "New Task");
   await expect.poll(() => taskRequests).toBe(1);
-  await captureReviewScreenshot(
-    page,
-    testInfo,
-    "codex-readiness-checking-task-shell",
-  );
-
-  releaseStatus();
-  await codexStatusApplied(page, "ready");
+  await captureReviewScreenshot(page, testInfo, "task-shell-while-list-loads");
   await expect.poll(() => presentedTaskPaneChildren(page)).toEqual([
     "caffold-task-new",
   ]);
-  await expect(navigatorMessage).toHaveText("Loading...");
 
   releaseTasks();
   await expect(navigatorMessage).toHaveText("No Caffold tasks yet.");
@@ -260,43 +205,6 @@ test("waits for explicit route activation when readiness settles first", { tag: 
     beforeActivation: 0,
     afterActivation: 1,
   });
-});
-
-test("a readiness load failure leaves the Tasks home as it is", { tag: "@all-viewports" }, async ({ page }) => {
-  let taskRequests = 0;
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: "text/plain",
-      body: "readiness unavailable",
-    }),
-  );
-  await page.route(/\/api\/tasks(?:\/archived)?(?:\?|$)/, (route) => {
-    taskRequests += 1;
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
-    });
-  });
-
-  await page.goto("/");
-
-  await expect.poll(() => page.evaluate(() =>
-    document.querySelector("caffold-task-workspace")
-      ?.codexStatusSnapshotValue?.phase ?? null,
-  )).toBe("failed");
-  await expect.poll(() => presentedTaskPaneChildren(page)).toEqual([
-    "caffold-task-new",
-  ]);
-  await expect(
-    page.locator("caffold-active-task-list .task-section-message"),
-  ).toHaveText("No Caffold tasks yet.");
-  const newTask = page.locator("caffold-task-navigator .task-list-new-task");
-  await expect(newTask).toBeEnabled();
-  await expect(newTask).toHaveAttribute("title", "New Task");
-  // The shell keeps retrying the failed status check, and each pass may
-  // reload the list — the list is no longer held while status is unknown.
-  await expect.poll(() => taskRequests).toBeGreaterThan(0);
 });
 
 test("a failed Task-store migration has its own explicit retry lifecycle", { tag: "@all-viewports" }, async ({
@@ -589,17 +497,13 @@ test("a Claude Task never looks at Codex readiness", { tag: "@all-viewports" }, 
   ).toHaveCount(0);
 });
 
-test("Settings opens its usual first page while Codex is blocked", { tag: "@all-viewports" }, async ({ page }) => {
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({ json: statusFor("signInRequired") }),
-  );
+test("Settings opens its usual first page", { tag: "@all-viewports" }, async ({ page }) => {
   // A listed Task keeps the phone home on the list, where the tabs are.
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: activeTaskProjection([cachedTask()]) }),
   );
 
   await page.goto("/");
-  await codexStatusApplied(page, "signInRequired");
   await page.locator(
     'caffold-task-workspace-navigation button[data-workspace-mode="settings"]',
   ).click();
@@ -610,18 +514,36 @@ test("Settings opens its usual first page while Codex is blocked", { tag: "@all-
   const codex = sections.locator('button[data-settings-section="codex"]');
   await expect(codex).toBeVisible();
   await expect(codex).toHaveAccessibleName("Codex");
+});
+
+test("a blocked Codex found by Codex Settings marks no navigation", { tag: "@desktop" }, async ({ page }) => {
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({ json: statusFor("signInRequired") }),
+  );
+
+  await page.goto("/settings/codex");
+  await expect.poll(() => page.evaluate(() =>
+    document.querySelector("caffold-task-workspace")
+      ?.codexStatusSnapshotValue?.status?.readiness?.state ?? null,
+  )).toBe("signInRequired");
+
+  const sections = page.locator("caffold-settings-navigator");
+  await sections.locator('button[data-settings-section="appearance"]').click();
   await expectLooksLike(
-    codex,
+    sections.locator('button[data-settings-section="codex"]'),
     sections.locator('button[data-settings-section="claude"]'),
+  );
+  const navigation = page.locator("caffold-task-workspace-navigation");
+  await navigation.locator('button[data-workspace-mode="tasks"]').click();
+  await expectLooksLike(
+    navigation.locator('button[data-workspace-mode="settings"]'),
+    navigation.locator('button[data-workspace-mode="notes"]'),
   );
 });
 
 test("consumes the real backend readiness contract and gates Task creation", { tag: "@all-viewports" }, async ({ page }) => {
-  await page.unroute(/\/api\/codex\/status(?:\?|$)/);
-
   await page.goto("/");
 
-  await codexStatusApplied(page, "error");
   await expect.poll(() => presentedTaskPaneChildren(page)).toEqual([
     "caffold-task-new",
   ]);
@@ -636,6 +558,17 @@ test("consumes the real backend readiness contract and gates Task creation", { t
     minimumSupportedVersion: "0.155.1",
   });
 
+  // The Section's fork row reads what that check found, without another.
+  const readinessResponse = await page.request.get("/api/codex/readiness");
+  expect(readinessResponse.status()).toBe(200);
+  await expect(readinessResponse.json()).resolves.toMatchObject({
+    readiness: {
+      state: "error",
+      blocksTaskOperations: true,
+      reasonCode: "appServerUnavailable",
+    },
+  });
+
   const taskResponse = await page.request.post("/api/tasks", {
     data: { titleSource: "must remain blocked" },
   });
@@ -644,15 +577,6 @@ test("consumes the real backend readiness contract and gates Task creation", { t
     error: { code: "codex_readiness_blocked" },
   });
 });
-
-// Codex changes nothing outside its own surfaces, so a test waits on the
-// workspace having taken the status in rather than on anything it shows.
-async function codexStatusApplied(page, state) {
-  await expect.poll(() => page.evaluate(() =>
-    document.querySelector("caffold-task-workspace")
-      ?.codexStatusSnapshotValue?.status?.readiness?.state ?? null,
-  )).toBe(state);
-}
 
 async function presentedTaskPaneChildren(page) {
   return page.locator("caffold-tasks-page .tasks-detail-pane").evaluate((pane) =>

@@ -11,7 +11,6 @@ import {
 import {
   mergeKeyboardNavigationContexts,
 } from "#app/keyboard-navigation.js";
-import { INITIAL_CODEX_STATUS_SNAPSHOT } from "../codex-status.js";
 import {
   INITIAL_TASK_STORE_STATUS_SNAPSHOT,
   taskStoreBlocksTaskOperations,
@@ -510,13 +509,6 @@ class CaffoldTasksPage extends HTMLElement {
       this.taskNavigator()?.removeTask(threadId);
       this.requestRoute({ kind: "tasks" }, { correction: true });
     }
-  }
-
-  setCodexStatusSnapshot(snapshot) {
-    this.ensureRendered();
-    this.taskDetail()?.setCodexStatusSnapshot(
-      snapshot ?? INITIAL_CODEX_STATUS_SNAPSHOT,
-    );
   }
 
   setTaskStoreStatusSnapshot(snapshot) {

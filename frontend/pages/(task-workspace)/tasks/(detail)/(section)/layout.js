@@ -17,7 +17,6 @@ class CaffoldSectionDetail extends HTMLElement {
     this.stateReady = true;
     this.section = null;
     this.transportAvailable = true;
-    this.codexStatusSnapshot = null;
     this.taskStoreStatusSnapshot = null;
   }
 
@@ -76,12 +75,6 @@ class CaffoldSectionDetail extends HTMLElement {
     this.transportAvailable = Boolean(available);
     this.taskCreate()?.setTransportAvailable(this.transportAvailable);
     this.conversationShortcuts()?.setTransportAvailable(this.transportAvailable);
-  }
-
-  setCodexStatusSnapshot(snapshot) {
-    this.ensureState();
-    this.codexStatusSnapshot = snapshot ?? null;
-    this.conversationShortcuts()?.setCodexStatusSnapshot(this.codexStatusSnapshot);
   }
 
   setTaskStoreStatusSnapshot(snapshot) {
@@ -218,7 +211,6 @@ class CaffoldSectionDetail extends HTMLElement {
       path: this.selectedContextPath(),
     });
     shortcuts.setTransportAvailable(this.transportAvailable);
-    shortcuts.setCodexStatusSnapshot(this.codexStatusSnapshot);
     shortcuts.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
   }
 }

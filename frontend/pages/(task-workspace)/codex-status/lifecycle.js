@@ -83,7 +83,6 @@ export class CodexStatusLifecycle {
     this.suspended = false;
     this.runtimeRestart.connect();
     this.runtimeUpdate.connect();
-    void this.refresh().catch(() => {});
   }
 
   disconnect() {

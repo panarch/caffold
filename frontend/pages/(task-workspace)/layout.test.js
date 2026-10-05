@@ -419,7 +419,6 @@ test("sends focus to the Task itself when no visible control opened it", () => {
 function recoveryOwner({
   storeCheck = async () => ({ state: "ready" }),
   storeAnswer = null,
-  codexRefresh = () => new Promise(() => {}),
   tasksRecovery = async () => ({ retry: false }),
   storeBlocked = false,
 } = {}) {
@@ -438,7 +437,7 @@ function recoveryOwner({
       resume: () => calls.push("codex:resume"),
       refresh: () => {
         calls.push("codex:refresh");
-        return codexRefresh();
+        return new Promise(() => {});
       },
     },
     tasksPage: {
@@ -457,7 +456,9 @@ function recoveryOwner({
   return { owner, calls };
 }
 
-test("foreground recovery reads the Task store first and never waits for Codex", async () => {
+test("foreground recovery reads the Task store first and asks Codex nothing", async () => {
+  // Codex status belongs to Codex Settings, which asks when it opens, the way
+  // Claude's and Grok's pages ask for theirs.
   let answerStore;
   const { owner, calls } = recoveryOwner({
     storeCheck: () => new Promise((resolve) => {
@@ -469,7 +470,6 @@ test("foreground recovery reads the Task store first and never waits for Codex",
   assert.deepEqual(calls, [
     "store:resume",
     "codex:resume",
-    "codex:refresh",
     "store:check",
   ]);
   await Promise.resolve();
@@ -477,18 +477,8 @@ test("foreground recovery reads the Task store first and never waits for Codex",
 
   answerStore({ state: "ready" });
   assert.deepEqual(await recovery, { retry: false, error: null });
-  assert.deepEqual(calls.slice(4), ["tasks:recover", "live:resume", "live:retry"]);
-});
-
-test("a Codex status failure stays out of the foreground recovery result", async () => {
-  const { owner } = recoveryOwner({
-    codexRefresh: () => Promise.reject(new TypeError("Failed to fetch")),
-  });
-
-  assert.deepEqual(await workspace.recoverForeground.call(owner), {
-    retry: false,
-    error: null,
-  });
+  assert.deepEqual(calls.slice(3), ["tasks:recover", "live:resume", "live:retry"]);
+  assert.equal(calls.includes("codex:refresh"), false);
 });
 
 test("a Task-store check failure asks recovery to retry with that error", async () => {

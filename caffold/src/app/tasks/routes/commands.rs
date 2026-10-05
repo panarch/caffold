@@ -9,7 +9,7 @@ use super::{
     TaskApprovalRequest, TaskInterruptResponse, TaskPromptOutcome, TaskPromptRequest,
     TaskPromptResponse, TasksQuery,
 };
-use crate::agent::codex::{CodexThreadClient, CodexThreadError};
+use crate::agent::codex::{CodexConnection, CodexThreadClient, CodexThreadError};
 use crate::agent::driver::REVIEWED_PERMISSION_MODE;
 use crate::agent::{AgentError, PromptImage, TurnOptions, TurnRejected};
 use crate::app::error::ApiError;
@@ -19,7 +19,7 @@ use crate::app::tasks::sessions::{PromptTarget, SessionSnapshot};
 use crate::app::tasks::task_activity_ms;
 use crate::app::tasks::worktrees::inspect_ready_worktree;
 use crate::app::tasks::{
-    ApprovalResolveError, CodexConnection, TaskAgent, TaskDetailResponse, TaskRecord, TaskState,
+    ApprovalResolveError, TaskAgent, TaskDetailResponse, TaskRecord, TaskState,
     accepted_user_message_event, now_ms,
 };
 use crate::fs::MAX_IMAGE_BYTES;

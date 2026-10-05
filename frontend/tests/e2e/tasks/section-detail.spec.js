@@ -756,30 +756,33 @@ test("reveals the Codex row only once an installed Codex is known and explains d
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: activeTaskProjection([task]) })
   );
-  await page.unroute(/\/api\/codex\/status(?:\?|$)/);
-  let releaseStatus;
-  const statusGate = new Promise((resolve) => {
-    releaseStatus = resolve;
-  });
-  const blockedStatus = mockCodexStatus({
-    readiness: {
-      ...mockCodexStatus().readiness,
-      state: "error",
-      blocksTaskOperations: true,
-      reasonCode: "runtimeUnavailable",
-      diagnosticMessage: "Codex is reconnecting. Try again shortly.",
-    },
-  });
-  let currentStatus = blockedStatus;
-  await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
-    await statusGate;
-    await route.fulfill({ json: currentStatus });
+  // The row asks what the server last found about Codex each time it is
+  // shown. Answers are held until the test lets them through: first the
+  // blocked answers, then the later ones.
+  const firstAnswers = Promise.withResolvers();
+  const laterAnswers = Promise.withResolvers();
+  let answering = firstAnswers;
+  let readinessRequests = 0;
+  let currentReadiness = {
+    ...mockCodexStatus().readiness,
+    state: "error",
+    blocksTaskOperations: true,
+    reasonCode: "runtimeUnavailable",
+    diagnosticMessage: "Codex is reconnecting. Try again shortly.",
+  };
+  await page.route(/\/api\/codex\/readiness(?:\?|$)/, async (route) => {
+    const readiness = currentReadiness;
+    const answer = answering;
+    readinessRequests += 1;
+    await answer.promise;
+    await route.fulfill({ json: { readiness } });
   });
 
   await page.goto("/?section=fixture-section-1");
   const shortcuts = page.locator("caffold-section-conversation-shortcuts");
+  await expect.poll(() => readinessRequests).toBeGreaterThan(0);
   await expect(shortcuts).toBeHidden();
-  releaseStatus();
+  firstAnswers.resolve();
   await expect(shortcuts).toBeVisible();
   const button = shortcuts.getByRole("button", {
     name: /Fork from Codex thread ID/,
@@ -789,21 +792,27 @@ test("reveals the Codex row only once an installed Codex is known and explains d
   await expect(button).toHaveCSS("cursor", "not-allowed");
   await expect(shortcuts.getByText(/Claude/)).toHaveCount(0);
 
-  // Without Codex installed there is nothing to fork from.
-  currentStatus = mockCodexStatus({
-    readiness: {
-      ...mockCodexStatus().readiness,
-      state: "missing",
-      blocksTaskOperations: true,
-      reasonCode: "officialStandaloneNotFound",
-      diagnosticMessage: "Install Codex to use Codex models.",
-    },
-  });
-  await page.evaluate(() => {
-    document.querySelector("caffold-task-workspace").dispatchEvent(
-      new CustomEvent("caffold:refresh-codex-status", { bubbles: true }),
-    );
-  });
+  // Shown again, the row asks again. Without Codex installed there is nothing
+  // to fork from.
+  currentReadiness = {
+    ...mockCodexStatus().readiness,
+    state: "missing",
+    blocksTaskOperations: true,
+    reasonCode: "officialStandaloneNotFound",
+    diagnosticMessage: "Install Codex to use Codex models.",
+  };
+  answering = laterAnswers;
+  const shownBefore = readinessRequests;
+  await page.locator("caffold-task-navigator .task-list-new-task").click();
+  await expect(page).not.toHaveURL(/section=/);
+  await page.locator(
+    'caffold-active-task-list .task-repository-select[data-section-id="fixture-section-1"]',
+  ).click();
+  await expect.poll(() => readinessRequests).toBeGreaterThan(shownBefore);
+  laterAnswers.resolve();
+  await expect.poll(() => shortcuts.evaluate((element) =>
+    element.codexReadiness.status?.readiness?.state ?? null,
+  )).toBe("missing");
   await expect(shortcuts).toBeHidden();
 });
 

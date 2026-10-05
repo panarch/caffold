@@ -178,8 +178,7 @@ caffold/src/app/tasks/detail.rs        canonical Task detail and history applica
 caffold/src/app/tasks/sessions.rs      ephemeral viewer, revision, and live-session state
 caffold/src/app/tasks/runtime.rs       per-Task driver routing and orchestration
 caffold/src/app/tasks/runtime/
-  process.rs                           Codex readiness, connection, generation, restart
-  bridge.rs                            Codex event bridge and managed-session recovery
+  bridge.rs                            Codex event bridge, connection reactions, managed-session recovery
   claude_bridge.rs                     Claude reports, approvals, and served-tool routing
   server_requests.rs                   Codex approvals and dynamic-tool requests
 caffold/src/app/tasks/sync.rs          revisioned Task Detail publication channel
@@ -189,6 +188,7 @@ caffold/src/agent.rs                   shared agent vocabulary
 caffold/src/agent/driver.rs            closed driver choice and shared operations
 caffold/src/agent/notes_tools.rs       Notes tool catalog and argument checks for every agent
 caffold/src/agent/codex.rs             Codex app-server boundary
+caffold/src/agent/codex/client.rs      Codex connection, generation, readiness answer, restart and update
 caffold/src/agent/claude.rs            Claude CLI boundary
 caffold/src/app/voice.rs               voice settings, Whisper lifecycle, WAV validation, provider routing
 caffold/src/app/tailscale.rs           status and constrained Serve orchestration

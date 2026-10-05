@@ -294,34 +294,6 @@ test("restores managed identity before reopening Detail after a store takeover",
   assert.deepEqual(calls, ["managed", "open"]);
 });
 
-test("a Codex status change never takes the Task surface over or reopens Detail", () => {
-  const calls = [];
-  const detail = {
-    setCodexStatusSnapshot(snapshot) {
-      calls.push(["detail", snapshot]);
-    },
-    deactivate() {
-      calls.push("deactivate");
-    },
-    open() {
-      calls.push("open");
-    },
-  };
-  const snapshot = { phase: "loaded", status: {} };
-  const owner = {
-    ensureRendered() {},
-    taskDetail: () => detail,
-    taskStoreRecoveryVisible: () => true,
-    render() {
-      calls.push("render");
-    },
-  };
-
-  tasksPage.setCodexStatusSnapshot.call(owner, snapshot);
-
-  assert.deepEqual(calls, [["detail", snapshot]]);
-});
-
 test("the terminal toggle and its input belong to an open Task or Section", () => {
   const input = {};
   let toggles = 0;

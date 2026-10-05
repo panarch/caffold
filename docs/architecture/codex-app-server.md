@@ -105,6 +105,14 @@ post-connection projection of account, managed runtime, and initialization
 results into the canonical Codex status response. Its classification tests live
 with that ownership rather than in the client transport module.
 
+`caffold/src/agent/codex/client.rs` owns Caffold's one shared connection,
+`CodexClient`: the current app-server proxy and its generation, the latest
+readiness answer, the readiness and lifecycle locks, and the restarts and
+updates that replace the proxy, the way Claude's and Grok's clients own their
+processes. It tells the Task application through `CodexConnectionObserver` when
+a connection is made or lost, at the same point and under the same locks as the
+change.
+
 Unsupported item payloads and new notifications are preserved or logged as
 unknown protocol values rather than crashing the process. Missing required
 response fields fail explicitly. JSON-RPC failures are classified from their
@@ -156,9 +164,10 @@ runtime shutdown lifecycle to `caffold/src/app.rs`.
   framing or `TaskState`. The application-level `live_updates.rs` owns the one
   SSE gateway, logical subscription control, per-channel generations, and
   framing shared with filesystem Watch.
-- `runtime.rs` owns per-Task driver routing. Its `process.rs`, `bridge.rs`, and
-  `server_requests.rs` children own the app-server proxy generation,
-  connection recovery, Codex event/server-request bridge, and pending approval
+- `runtime.rs` owns per-Task driver routing and holds Codex's, Claude's, and
+  Grok's clients side by side. Its `bridge.rs` and `server_requests.rs`
+  children own what a Codex connection change means for Tasks, connection
+  recovery, the Codex event/server-request bridge, and the pending approval
   lifecycle. Pending approvals remain JSON-RPC/card state and never become a
   thread-status writer.
 - `codex_mcp.rs` owns Codex's authenticated HTTP MCP route. MCP framing and
@@ -614,17 +623,21 @@ the list asks neither Git nor the agent for it. Branch, HEAD, and cwd belong to
 Task Detail.
 
 The Task List live channel complements that persisted identity with process-local
-runtime state. A new connection registers cached managed Codex threads before
-paging app-server's global state-DB-backed `thread/list`, and also projects the
-managed Claude and Grok conversations this process is watching. Only managed IDs
-are shown, and the browser receives one complete `task-list-snapshot` before
-queued steady-state events. Agent-owned names never replace Redb display names,
-and managed IDs missing from the live snapshot keep their cached not-loaded rows.
-Codex readiness does not gate the channel: when Codex cannot be asked or its
-`thread/list` does not come to an end, the snapshot leaves every Codex Task to
-its cached row and the server logs why, while the other agents' rows are still
-projected. The browser therefore renders the cached list immediately and upgrades
-the available status chips without opening Tasks one at a time. Steady-state
+runtime state. Every agent answers from what it already has: the managed Claude
+and Grok conversations this process is watching, and, when there are managed
+Codex Tasks and Codex's connection is already usable, the cached managed Codex
+threads registered before paging app-server's global state-DB-backed
+`thread/list`. The channel never starts a Codex check or waits for one, and asks
+Codex nothing when no managed Task is Codex's. Only managed IDs are shown, and
+the browser receives one complete `task-list-snapshot` before queued
+steady-state events. Agent-owned names never replace Redb display names, and
+managed IDs missing from the live snapshot keep their cached not-loaded rows.
+When Codex has no usable connection or its `thread/list` does not come to an
+end, the snapshot leaves every Codex Task to its cached row and the server logs
+why, while the other agents' rows are still projected; Codex sessions loaded in
+the daemon reach the list through `task-sync` once Codex connects. The browser
+therefore renders the cached list immediately and upgrades the available status
+chips without opening Tasks one at a time. Steady-state
 `task-sync` frames contain only the conversation ID, revision, and the nullable
 list row of the Task that Task Detail published. Transcript, history, approval,
 file-link, and Task-detail settings remain on the logical Task Detail channel.
@@ -668,10 +681,16 @@ agent status included, with 503 `task_store_migration_pending`, or
 status route answers `ready`. While Codex is unavailable or incompatible, the
 HTTP server remains available with explicit Codex readiness and retry
 controls; Codex-run operations answer with the blocking readiness, while Task
-reads and the other agent's operations continue. The Caffold-owned Archive
-escape hatch may still complete from the managed row after local worktree
-safety checks, without claiming that Codex was idle or successfully archived
-the thread.
+reads and the other agent's operations continue. A remembered blocking answer
+is checked again when a Codex operation or the model list asks, the way an agent
+without a remembered answer is asked afresh, so a Codex installed since is used
+without opening Codex Settings. A sign-in made outside Caffold still needs an
+[explicit runtime restart](#explicit-runtime-restart), because the running
+app-server keeps the account it started with. Requests that arrive while a check
+runs share that check's answer instead of each running one. The Caffold-owned
+Archive escape hatch may still complete from the managed row after local
+worktree safety checks, without claiming that Codex was idle or successfully
+archived the thread.
 
 Archived Tasks remain Caffold-owned and independent of Sections. Archived
 Codex Tasks continue to read 30 managed IDs at a time from the archived Redb
@@ -738,6 +757,10 @@ Settings → Codex shows whether the updater is on and updates Codex only on
 request; see [Explicit update](#explicit-update).
 
 ## Diagnostics
+
+`GET /api/codex/readiness` answers the latest readiness the server recorded,
+or `null` before any check has finished, without checking again or asking Codex;
+the Section's Existing conversations row reads it when shown.
 
 `GET /api/codex/status` owns one typed `readiness` state: `missing`,
 `unsupportedInstall`, `updateRequired`, `signInRequired`, `restartRequired`,

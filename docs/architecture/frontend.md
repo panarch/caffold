@@ -772,15 +772,19 @@ stops rechecking until another check is requested, such as by foreground
 recovery.
 
 A separate workspace lifecycle owns backend-owned Codex readiness requests and
-forwards a request snapshot to Tasks and Settings.
-That snapshot keeps frontend request phase (`checking`, `loaded`, or `failed`)
-separate from the canonical backend status payload. A refresh may retain the
-previous status while the request is checking.
+forwards a request snapshot to Settings. It asks when Codex Settings opens, on
+its Refresh, and after a restart or update, the way Claude's and Grok's pages
+ask for theirs; connecting the workspace and foreground recovery ask Codex
+nothing. That snapshot keeps frontend request phase (`checking`, `loaded`, or
+`failed`) separate from the canonical backend status payload. A refresh may
+retain the previous status while the request is checking.
 
 Codex readiness gates only Codex surfaces and is consumed as derived
-presentation rather than routing state: Codex Settings presents it, Section
-New hides its Codex fork row while Codex is missing, and routes always open — a
-Task's conversation stays readable from the store while its agent is unready.
+presentation rather than routing state: Codex Settings presents it, and routes
+always open — a Task's conversation stays readable from the store while its
+agent is unready. Section New's Codex fork row asks `GET /api/codex/readiness`
+for the server's remembered answer each time it is shown, under its own request
+generation, and hides while that answer is unknown or Codex is missing.
 No surface pre-guesses an operation's fate from the snapshot: a Codex-run
 operation tried while Codex is unready is refused by the server, and the
 refusal is the answer shown. Claude and Grok surfaces never consult Codex

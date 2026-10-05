@@ -294,7 +294,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
     conversationAvailable: true,
   };
   let foregroundState = false;
-  let statusReads = 0;
+  let storeReads = 0;
   let listReads = 0;
   let detailReads = 0;
   const detail = () => ({
@@ -326,9 +326,9 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
     requestedThreadId === threadId ? detail() : null,
   );
 
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
-    statusReads += 1;
-    return route.fulfill({ json: mockCodexStatus() });
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, (route) => {
+    storeReads += 1;
+    return route.fulfill({ json: mockTaskStoreStatus() });
   });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     listReads += 1;
@@ -367,7 +367,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
     .poll(() => activeLiveUpdateChannels(page, { registryKey }))
     .toEqual(["task-detail", "task-list", "watch"]);
 
-  const readsBeforeHide = { statusReads, listReads, detailReads };
+  const readsBeforeHide = { storeReads, listReads, detailReads };
   foregroundState = true;
   await page.evaluate(() => {
     window.__caffoldVisibilityState = "hidden";
@@ -383,7 +383,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
     )
     .toBe(true);
   await page.waitForTimeout(300);
-  expect({ statusReads, listReads, detailReads }).toEqual(readsBeforeHide);
+  expect({ storeReads, listReads, detailReads }).toEqual(readsBeforeHide);
   await expect(row).toHaveAttribute("data-task-status", "running");
   await expect(composer).toHaveValue("Keep this foreground recovery draft");
 
@@ -391,7 +391,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
     window.__caffoldVisibilityState = "visible";
     document.dispatchEvent(new Event("visibilitychange"));
   });
-  await expect.poll(() => statusReads).toBeGreaterThan(readsBeforeHide.statusReads);
+  await expect.poll(() => storeReads).toBeGreaterThan(readsBeforeHide.storeReads);
   await expect.poll(() => listReads).toBeGreaterThan(readsBeforeHide.listReads);
   expect(detailReads).toBe(readsBeforeHide.detailReads);
   await expect(row.locator(".task-row-title")).toHaveText(
@@ -426,7 +426,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
   );
 });
 
-test("a return reconciles Tasks while Codex status is still unanswered", { tag: "@desktop" }, async ({
+test("a return reconciles Tasks and asks Codex nothing", { tag: "@desktop" }, async ({
   page,
 }) => {
   const registryKey = "__codexHeldReturnSources";
@@ -480,7 +480,7 @@ test("a return reconciles Tasks while Codex status is still unanswered", { tag: 
       summary: "Assistant response",
       payload: {
         text: returned
-          ? "Detail reconciled while Codex status was unanswered."
+          ? "Detail reconciled after the return."
           : "Detail loaded before leaving.",
       },
       position: { anchorMs: now + (returned ? 2 : 1), index: 0 },
@@ -531,15 +531,14 @@ test("a return reconciles Tasks while Codex status is still unanswered", { tag: 
     document.dispatchEvent(new Event("visibilitychange"));
   });
 
-  // The Codex read stays unanswered to the end, so everything below finished
-  // without it.
-  await expect.poll(() => heldCodexReads).toBeGreaterThan(0);
+  // Codex status is Codex Settings' to ask, the way Claude's and Grok's are
+  // theirs, so the return reconciles everything without a Codex read. Any read
+  // would be held unanswered here.
   await expect(rowTitle).toHaveText("Renamed while away");
-  await expect(workspace).toContainText(
-    "Detail reconciled while Codex status was unanswered.",
-  );
+  await expect(workspace).toContainText("Detail reconciled after the return.");
   await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
   await expect(page.locator(".app-foreground-recovery")).toBeHidden();
+  expect(heldCodexReads).toBe(0);
   codexAnswer.resolve();
 });
 
@@ -567,11 +566,11 @@ test("BFCache pageshow and top-level focus use the shared foreground recovery", 
     recencyMs: 1_767_190_460_000,
     lastEventSummary: "Visible Task projection",
   };
-  let statusReads = 0;
+  let storeReads = 0;
   let listReads = 0;
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
-    statusReads += 1;
-    return route.fulfill({ json: mockCodexStatus() });
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, (route) => {
+    storeReads += 1;
+    return route.fulfill({ json: mockTaskStoreStatus() });
   });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     listReads += 1;
@@ -582,27 +581,27 @@ test("BFCache pageshow and top-level focus use the shared foreground recovery", 
   await expect(
     page.locator(`.task-row[data-thread-id="${threadId}"]`),
   ).toBeVisible();
-  expect(statusReads).toBe(1);
+  expect(storeReads).toBe(1);
   expect(listReads).toBe(1);
-  const beforePageShow = { statusReads, listReads };
+  const beforePageShow = { storeReads, listReads };
   await page.evaluate(() => {
     window.dispatchEvent(new PageTransitionEvent("pageshow", {
       persisted: true,
     }));
   });
-  await expect.poll(() => statusReads).toBeGreaterThan(beforePageShow.statusReads);
+  await expect.poll(() => storeReads).toBeGreaterThan(beforePageShow.storeReads);
   await expect.poll(() => listReads).toBeGreaterThan(beforePageShow.listReads);
   await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-foreground-recovery-trigger",
     "pageshow",
   );
 
-  const beforeFocus = { statusReads, listReads };
+  const beforeFocus = { storeReads, listReads };
   await page.evaluate(() => {
     window.dispatchEvent(new Event("blur"));
     window.dispatchEvent(new Event("focus"));
   });
-  await expect.poll(() => statusReads).toBeGreaterThan(beforeFocus.statusReads);
+  await expect.poll(() => storeReads).toBeGreaterThan(beforeFocus.storeReads);
   await expect.poll(() => listReads).toBeGreaterThan(beforeFocus.listReads);
   await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-foreground-recovery-trigger",
@@ -610,7 +609,7 @@ test("BFCache pageshow and top-level focus use the shared foreground recovery", 
   );
 });
 
-test("notification activation refreshes stale readiness and opens its Task route in place", { tag: "@desktop" }, async ({
+test("notification activation recovers and opens its Task route in place", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
   const registryKey = "__notificationRecoverySources";
@@ -637,17 +636,8 @@ test("notification activation refreshes stale readiness and opens its Task route
     recencyMs: now,
     conversationAvailable: false,
   };
-  const blockedStatus = mockCodexStatus({
-    readiness: {
-      ...mockCodexStatus().readiness,
-      state: "updateRequired",
-      blocksTaskOperations: true,
-      reasonCode: "versionBelowMinimum",
-      diagnosticMessage: "The visible readiness snapshot is stale.",
-    },
-  });
   let ready = false;
-  let statusReads = 0;
+  let storeReads = 0;
   const detail = {
     threadId,
     syncState: "ready",
@@ -675,9 +665,9 @@ test("notification activation refreshes stale readiness and opens its Task route
   await page.exposeFunction("__notificationRecoveryBootstrap", (requestedThreadId) =>
     ready && requestedThreadId === threadId ? detail : null,
   );
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
-    statusReads += 1;
-    return route.fulfill({ json: ready ? mockCodexStatus() : blockedStatus });
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, (route) => {
+    storeReads += 1;
+    return route.fulfill({ json: mockTaskStoreStatus() });
   });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: activeTaskProjection([task]) })
@@ -687,12 +677,12 @@ test("notification activation refreshes stale readiness and opens its Task route
   );
 
   await page.goto("/");
-  // A blocked Codex holds nothing: the list is live, and the notification
-  // below opens its Task route directly while refreshing readiness.
+  // The notification below opens its Task route directly while the return
+  // reconciles the Task store.
   await expect(
     page.locator(`caffold-active-task-list .task-row[data-thread-id="${threadId}"]`),
   ).toBeVisible();
-  const readsBeforeActivation = statusReads;
+  const readsBeforeActivation = storeReads;
 
   ready = true;
   await page.evaluate(() => {
@@ -707,8 +697,7 @@ test("notification activation refreshes stale readiness and opens its Task route
     }));
   }, `/tasks/${threadId}`);
 
-  await expect.poll(() => statusReads).toBeGreaterThan(readsBeforeActivation);
-  await expect(page.locator(".codex-readiness-surface")).toBeHidden();
+  await expect.poll(() => storeReads).toBeGreaterThan(readsBeforeActivation);
   await expect(page.locator("caffold-task-detail")).toContainText(
     "Pending Task opened after notification foreground recovery.",
   );
@@ -815,7 +804,6 @@ test("fresh origin reachability recovers a foreground offline pause without an o
   const task = transportOverlayTask(threadId);
   let recovered = false;
   let storeReads = 0;
-  let statusReads = 0;
   let listReads = 0;
   let detailReads = 0;
   const detail = () => ({
@@ -851,10 +839,6 @@ test("fresh origin reachability recovers a foreground offline pause without an o
     storeReads += 1;
     return route.fulfill({ json: mockTaskStoreStatus() });
   });
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
-    statusReads += 1;
-    return route.fulfill({ json: mockCodexStatus() });
-  });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     listReads += 1;
     return route.fulfill({ json: activeTaskProjection([task]) });
@@ -881,7 +865,6 @@ test("fresh origin reachability recovers a foreground offline pause without an o
   const reads = () => ({
     detail: detailReads,
     list: listReads,
-    status: statusReads,
     store: storeReads,
   });
   const readsBeforeOffline = reads();
@@ -929,7 +912,6 @@ test("fresh origin reachability recovers a foreground offline pause without an o
   );
   await expect(composer).toHaveValue("Keep this foreground offline draft");
   expect(storeReads).toBe(readsBeforeOffline.store + 1);
-  expect(statusReads).toBe(readsBeforeOffline.status + 1);
   expect(listReads).toBe(readsBeforeOffline.list + 1);
   expect(detailReads).toBe(readsBeforeOffline.detail);
 });
@@ -951,7 +933,6 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
   let disconnected = false;
   let recovered = false;
   let storeReads = 0;
-  let statusReads = 0;
   let listReads = 0;
   let detailReads = 0;
   const detail = () => ({
@@ -989,12 +970,6 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
       ? route.abort("internetdisconnected")
       : route.fulfill({ json: mockTaskStoreStatus() });
   });
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
-    statusReads += 1;
-    return disconnected
-      ? route.abort("internetdisconnected")
-      : route.fulfill({ json: mockCodexStatus() });
-  });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     listReads += 1;
     return disconnected
@@ -1021,7 +996,6 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
   const reads = () => ({
     detail: detailReads,
     list: listReads,
-    status: statusReads,
     store: storeReads,
   });
   const readsBeforeDisconnect = reads();
@@ -1061,7 +1035,6 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
   );
   await expect(composer).toHaveValue("Keep the connection-change draft");
   expect(storeReads).toBe(readsBeforeDisconnect.store + 1);
-  expect(statusReads).toBe(readsBeforeDisconnect.status + 1);
   expect(listReads).toBe(readsBeforeDisconnect.list + 1);
   expect(detailReads).toBe(readsBeforeDisconnect.detail);
 });
@@ -1793,10 +1766,10 @@ test("routes the single viewport Retry through app-shell foreground recovery", {
   const threadId = "thread_parent_owned_transport_retry";
   const registryKey = "__taskRetryEventSources";
   await installTransportOverlayFixture(page, threadId, registryKey);
-  let statusReads = 0;
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
-    statusReads += 1;
-    return route.fulfill({ json: mockCodexStatus() });
+  let storeReads = 0;
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, (route) => {
+    storeReads += 1;
+    return route.fulfill({ json: mockTaskStoreStatus() });
   });
   await page.goto(`/tasks/${threadId}`);
 
@@ -1839,7 +1812,7 @@ test("routes the single viewport Retry through app-shell foreground recovery", {
       .toEqual({ list: "ready", detail: "ready" });
 
   const before = await sourceCounts();
-  const statusBefore = statusReads;
+  const storeBefore = storeReads;
   await setStates("unavailable", "ready");
   const globalNotice = page.locator(
     '.app-foreground-recovery[data-recovery-state="unavailable"]',
@@ -1851,7 +1824,7 @@ test("routes the single viewport Retry through app-shell foreground recovery", {
     list: before.list + 1,
     detail: before.detail + 1,
   });
-  await expect.poll(() => statusReads).toBe(statusBefore + 1);
+  await expect.poll(() => storeReads).toBe(storeBefore + 1);
   await waitForReady();
   await expect(globalNotice).toBeHidden();
 });

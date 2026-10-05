@@ -1097,10 +1097,10 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   assert.match(storeRecovery, /TASK_STORE_RETRY_REQUEST_EVENT/);
   assert.doesNotMatch(storeRecovery, /codex/i);
 
-  for (const consumer of [tasks, settings]) {
-    assert.match(consumer, /codex-status\.js"/);
-    assert.doesNotMatch(consumer, /codex-status\//);
-  }
+  assert.match(settings, /codex-status\.js"/);
+  assert.doesNotMatch(settings, /codex-status\//);
+  // Tasks treats Codex like any other agent: it reads no Codex status.
+  assert.doesNotMatch(tasks, /codex-status/);
   assert.doesNotMatch(settings, /restartCodexRuntime|<dialog|runtime-restart-dialog/);
   assert.doesNotMatch(settings, /updateCodexRuntime|runtime-update-dialog/);
 

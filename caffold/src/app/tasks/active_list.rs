@@ -6,7 +6,12 @@ use std::{
 use serde::Serialize;
 
 use crate::{
-    agent::{ThreadStatus, claude::ClaudeClient, codex::CodexThread, grok::GrokClient},
+    agent::{
+        ThreadStatus,
+        claude::ClaudeClient,
+        codex::{CodexConnection, CodexThread},
+        grok::GrokClient,
+    },
     app::error::ApiError,
     app::tasks::sessions::TaskSessions,
     fs::RootedFs,
@@ -17,7 +22,7 @@ use crate::{
 };
 
 use super::{
-    CodexConnection, TaskRecord,
+    TaskRecord,
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason},
 };
 use crate::agent::Conversation;
@@ -206,6 +211,15 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
             snapshot: ActiveTaskRuntimeSnapshot { tasks: Vec::new() },
             observed_threads: Vec::new(),
         });
+    }
+    // Codex answers only for Codex's own Tasks, and only through a connection
+    // already in hand: the list waits for no agent.
+    let has_codex_tasks = managed
+        .values()
+        .any(|managed| matches!(managed.run_by, RunBy::Codex));
+    let codex = codex.filter(|_| has_codex_tasks);
+    if has_codex_tasks && codex.is_none() {
+        eprintln!("Codex is not connected for the Task list; Codex Tasks keep their Caffold rows");
     }
     if let Some(connection) = codex {
         for managed in managed.values() {

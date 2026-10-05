@@ -55,21 +55,31 @@ pub(super) async fn agent_models(
     let mut models = Vec::new();
     let mut unavailable = Vec::new();
 
-    match state.detail.connection().await {
-        Ok(connection) => match connection.driver().models().await {
-            Ok(offered) => extend(&mut models, TaskProvider::Codex, offered),
-            Err(error) => unavailable.push(UnavailableAgent {
-                provider: TaskProvider::Codex.as_str(),
-                message: error.to_string(),
-            }),
+    // Every agent is asked at once, so none waits its turn behind another.
+    let (codex, claude, grok) = tokio::join!(
+        async {
+            match state.detail.connection().await {
+                Ok(connection) => connection
+                    .driver()
+                    .models()
+                    .await
+                    .map_err(|error| error.to_string()),
+                Err(error) => Err(error.to_string()),
+            }
         },
-        Err(error) => unavailable.push(UnavailableAgent {
+        state.task_runtime.claude().models(),
+        state.task_runtime.grok().models(),
+    );
+
+    match codex {
+        Ok(offered) => extend(&mut models, TaskProvider::Codex, offered),
+        Err(message) => unavailable.push(UnavailableAgent {
             provider: TaskProvider::Codex.as_str(),
-            message: error.to_string(),
+            message,
         }),
     }
 
-    match state.task_runtime.claude().models().await {
+    match claude {
         Ok(offered) => extend(&mut models, TaskProvider::Claude, offered),
         Err(error) => unavailable.push(UnavailableAgent {
             provider: TaskProvider::Claude.as_str(),
@@ -77,7 +87,7 @@ pub(super) async fn agent_models(
         }),
     }
 
-    match state.task_runtime.grok().models().await {
+    match grok {
         Ok(offered) => extend(&mut models, TaskProvider::Grok, offered),
         Err(error) => unavailable.push(UnavailableAgent {
             provider: TaskProvider::Grok.as_str(),
