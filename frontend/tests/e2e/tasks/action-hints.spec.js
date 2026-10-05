@@ -604,19 +604,23 @@ test("hands create M to the native model popover and P to prompt editing", { tag
   await page.keyboard.type(highCode.toLowerCase());
   await expect(popoverHint).toBeHidden();
   await expect(modelPopover).toBeHidden();
-  await expect(
-    page.locator("caffold-task-new .task-model-button"),
-  ).toContainText("high");
+  await expect(modelButton).toContainText("high");
 
-  await page.locator("caffold-task-new .task-model-button").click();
+  const turnOptions = page.locator(
+    "caffold-task-new caffold-task-turn-options",
+  );
+  await modelButton.click();
   await expect(modelPopover).toBeVisible();
+  // Opening the menu asks for the models again, and the answer replaces the
+  // list, so the rename below waits for it.
+  await expect
+    .poll(() => turnOptions.evaluate((options) => options.modelLoading))
+    .toBe(false);
   await expect(popoverHint).toBeHidden();
   await expect(selectedModel).toBeFocused();
   await page.keyboard.press("f");
   await expect(popoverHint).toBeVisible();
-  const retained = await page.locator(
-    "caffold-task-new caffold-task-turn-options",
-  ).evaluate((options) => {
+  const retained = await turnOptions.evaluate((options) => {
     const root = options.modelPopover();
     const presentation = root.querySelector(
       ":scope > caffold-keyboard-navigation-presentation",
@@ -644,7 +648,6 @@ test("hands create M to the native model popover and P to prompt editing", { tag
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(popoverHint).toBeHidden();
-  await expect(modelPopover).toBeHidden();
   await expect(modelPopover).toBeHidden();
 
   await page.keyboard.press("f");

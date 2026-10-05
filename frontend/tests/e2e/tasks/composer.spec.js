@@ -362,7 +362,6 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
   await activateActionHint(page, /Send prompt$/);
   await expect.poll(() => submittedPrompts).toEqual(["Submitted by button"]);
   await expect(tasksPage).toContainText("Submitted by button");
-  await expect(tasksPage).toContainText("Submitted by button");
   await expect(form).toHaveAttribute("aria-busy", "false");
   await expect(prompt).not.toBeFocused();
 
