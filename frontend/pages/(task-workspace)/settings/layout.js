@@ -65,6 +65,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     this.section = "";
     this.codexStatusSnapshotValue = null;
     this.caffoldUpdateValue = null;
+    this.updateStatusValue = null;
     this.masterDetailMedia = window.matchMedia(
       SETTINGS_MASTER_DETAIL_MEDIA_QUERY,
     );
@@ -136,6 +137,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       this.codexStatusSnapshotValue,
     );
     this.connectedSettingsNavigator?.setCaffoldUpdate(this.caffoldUpdateValue);
+    this.connectedSettingsNavigator?.setUpdateStatus(this.updateStatusValue);
   }
 
   attachResponsiveListener() {
@@ -397,7 +399,9 @@ class CaffoldSettingsWorkspace extends HTMLElement {
 
   setUpdateStatus(status) {
     this.ensureRendered();
+    this.updateStatusValue = status ?? null;
     this.querySelector("caffold-settings-about-page").setUpdateStatus(status);
+    this.connectedSettingsNavigator?.setUpdateStatus(status);
   }
 
   setCaffoldUpdate(snapshot) {

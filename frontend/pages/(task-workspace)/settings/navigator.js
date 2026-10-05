@@ -35,6 +35,7 @@ class CaffoldSettingsNavigator extends HTMLElement {
     this.selectedSection = "";
     this.codexStatusSnapshotValue = null;
     this.updateAvailable = false;
+    this.reloadReady = false;
     this.render();
   }
 
@@ -50,7 +51,13 @@ class CaffoldSettingsNavigator extends HTMLElement {
 
   setCaffoldUpdate(snapshot) {
     this.updateAvailable = snapshot?.status?.updateAvailable === true;
-    this.syncUpdateAvailable();
+    this.syncUpdateNotice();
+  }
+
+  /** Whether this window has a new build ready to load. */
+  setUpdateStatus(status) {
+    this.reloadReady = status?.preparedUpdate?.ready === true;
+    this.syncUpdateNotice();
   }
 
   actionHintScope({ scopeId = "settings", clipRoots = [] } = {}) {
@@ -132,7 +139,7 @@ class CaffoldSettingsNavigator extends HTMLElement {
     );
     this.syncSelection();
     this.syncCodexStatus();
-    this.syncUpdateAvailable();
+    this.syncUpdateNotice();
   }
 
   syncSelection() {
@@ -147,11 +154,15 @@ class CaffoldSettingsNavigator extends HTMLElement {
       ?.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
   }
 
-  // Only the About entry shows that a newer Caffold exists.
-  syncUpdateAvailable() {
+  // Only the About entry shows that Caffold has an update: a newer release, or
+  // a new build this window can load.
+  syncUpdateNotice() {
     this.items()
       .find((item) => item.section === "about")
-      ?.setUpdateAvailable(this.updateAvailable);
+      ?.setUpdateNotice({
+        updateAvailable: this.updateAvailable,
+        reloadReady: this.reloadReady,
+      });
   }
 
   items() {

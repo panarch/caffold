@@ -204,7 +204,9 @@ their separately scoped failure UI.
 The app shell owns one `PwaUpdateLifecycle` instance. That lifecycle is the
 single owner of service-worker registration and build handoff, and publishes
 `checking`, `ready`, or `settled` state. The shell uses the same snapshot for
-the update dialog and About Caffold; presentation components emit user intent
+the update dialog and About Caffold, and the task workspace passes it to the
+navigation and the Settings navigator, which show the green dot while a
+prepared update waits for a reload; presentation components emit user intent
 without inspecting service-worker state.
 
 The app shell also asks `GET /api/caffold/update` at bootstrap, whenever About

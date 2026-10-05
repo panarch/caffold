@@ -76,23 +76,27 @@ test("provides only its exact retained section list as a Scroll surface", () => 
   assert.deepEqual(navigator.scrollSurfaceScope.call(owner).surfaces, []);
 });
 
-test("hands the update mark to the About entry only", () => {
+test("hands both update marks to the About entry only", () => {
   const marks = new Map();
   const items = ["codex", "about"].map((section) => ({
     section,
-    setUpdateAvailable(available) {
-      marks.set(section, available);
+    setUpdateNotice(notice) {
+      marks.set(section, notice);
     },
   }));
-  const owner = { items: () => items };
-  owner.syncUpdateAvailable = () => navigator.syncUpdateAvailable.call(owner);
+  const owner = { items: () => items, updateAvailable: false, reloadReady: false };
+  owner.syncUpdateNotice = () => navigator.syncUpdateNotice.call(owner);
 
   navigator.setCaffoldUpdate.call(owner, {
     checking: false,
     status: { updateAvailable: true },
   });
-  assert.deepEqual([...marks], [["about", true]]);
+  assert.deepEqual([...marks], [["about", { updateAvailable: true, reloadReady: false }]]);
+
+  navigator.setUpdateStatus.call(owner, { state: "ready", preparedUpdate: { ready: true } });
+  assert.deepEqual([...marks], [["about", { updateAvailable: true, reloadReady: true }]]);
 
   navigator.setCaffoldUpdate.call(owner, { checking: true, status: null });
-  assert.deepEqual([...marks], [["about", false]]);
+  navigator.setUpdateStatus.call(owner, null);
+  assert.deepEqual([...marks], [["about", { updateAvailable: false, reloadReady: false }]]);
 });

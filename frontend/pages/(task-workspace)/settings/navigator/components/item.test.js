@@ -82,7 +82,7 @@ test("asks to open its section when its own button is clicked", () => {
   assert.deepEqual(events[0].detail, { section: "keyboard" });
 });
 
-test("marks the About entry and its name while a newer Caffold exists", () => {
+test("marks the About entry and its name while Caffold has an update", () => {
   const attributes = new Map();
   const button = {
     ...control(),
@@ -97,7 +97,7 @@ test("marks the About entry and its name while a newer Caffold exists", () => {
     button,
   );
 
-  host.setUpdateAvailable(true);
+  host.setUpdateNotice({ updateAvailable: true });
   assert.equal(attributes.has("data-update-available"), true);
   assert.equal(attributes.get("aria-label"), "About Caffold — update available");
   assert.equal(
@@ -105,7 +105,17 @@ test("marks the About entry and its name while a newer Caffold exists", () => {
     "About Caffold — update available",
   );
 
-  host.setUpdateAvailable(false);
+  host.setUpdateNotice({ reloadReady: true });
+  assert.equal(attributes.has("data-update-available"), true);
+  assert.equal(attributes.get("aria-label"), "About Caffold — reload to update");
+
+  host.setUpdateNotice({ updateAvailable: true, reloadReady: true });
+  assert.equal(
+    attributes.get("aria-label"),
+    "About Caffold — update available, reload to update",
+  );
+
+  host.setUpdateNotice({});
   assert.equal(attributes.has("data-update-available"), false);
   assert.equal(attributes.has("aria-label"), false);
 });

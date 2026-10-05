@@ -25,8 +25,9 @@ so if you started it there, and **Settings → About Caffold** shows it under
 **Last update**. The dot stays, and you can try again.
 
 Open windows keep the version they loaded. When a new version is ready, a
-**Caffold update ready** dialog offers **Reload** or **Later**, and
-**Settings → About Caffold** keeps a **Reload to update** action until you do.
+**Caffold update ready** dialog offers **Reload** or **Later**. Until you
+reload, the dot stays on **Settings** and **Settings → About Caffold** keeps a
+**Reload to update** action.
 
 ## Running work during an update
 
