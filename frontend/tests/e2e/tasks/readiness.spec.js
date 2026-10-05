@@ -4,7 +4,6 @@ import { installAgentCatalog } from "../support/agent-catalog-fixture.js";
 import {
   installBrowserDefaults,
   mockCodexStatus,
-  mockCodexUpdates,
   mockTaskStoreStatus,
 } from "../support/browser-defaults.js";
 import {
@@ -20,17 +19,13 @@ import {
 } from "../support/task-api-fixture.js";
 
 const BLOCKING_STATES = [
-  ["missing", "Install Codex to use Codex models", "Codex setup required."],
-  [
-    "unsupportedInstall",
-    "Use the official standalone Codex",
-    "Codex setup required.",
-  ],
-  ["updateRequired", "Update Codex to continue", "Codex update required."],
-  ["signInRequired", "Sign in to Codex", "Codex sign-in required."],
-  ["restartRequired", "Restart the Codex runtime", "Codex restart required."],
-  ["incompatible", "Codex runtime is incompatible", "Codex unavailable."],
-  ["error", "Codex runtime is unavailable", "Codex unavailable."],
+  "missing",
+  "unsupportedInstall",
+  "updateRequired",
+  "signInRequired",
+  "restartRequired",
+  "incompatible",
+  "error",
 ];
 
 const REASON_CODES = {
@@ -92,8 +87,7 @@ function cachedTask(threadId = "thread_cached_while_blocked") {
   };
 }
 
-test.beforeEach(async ({ context, page }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
   await installEventSourceMock(page);
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
@@ -101,132 +95,32 @@ test.beforeEach(async ({ context, page }) => {
   );
 });
 
-for (const [state, heading] of BLOCKING_STATES) {
-  test(`shows the canonical ${state} Task setup surface`, { tag: "@all-viewports" }, async ({
-    context,
+// Codex is one agent among several: being blocked marks no surface outside
+// its own Settings page and Tasks.
+for (const state of BLOCKING_STATES) {
+  test(`a ${state} Codex adds nothing to New Task or the navigation`, { tag: "@desktop" }, async ({
     page,
   }) => {
-    if (state === "unsupportedInstall") {
-      await context.route("https://learn.chatgpt.com/docs/codex/cli", (route) =>
-        route.fulfill({
-          contentType: "text/html",
-          body: "<!doctype html><title>Official Codex CLI guide</title>",
-        }),
-      );
-    }
     await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-      route.fulfill({
-        contentType: "application/json",
-        body: JSON.stringify(statusFor(state)),
-      }),
+      route.fulfill({ json: statusFor(state) }),
     );
 
-    // The setup card sits beside the new-Task surface — over nothing, and
-    // however much it has to say, the composer below stays reachable.
     await page.goto("/tasks/new");
-    const setup = page.locator(`.codex-readiness-card[data-readiness-state="${state}"]`);
-    await expect(setup).toBeVisible();
-    await expect(setup.getByRole("heading", { name: heading })).toBeVisible();
-    await expect(setup.getByRole("button", { name: "Retry" })).toBeEnabled();
-    await expect(setup.getByRole("button", { name: "Open Settings" })).toBeEnabled();
-    const composerField = page.locator("caffold-task-new textarea");
-    await expect(composerField).toBeVisible();
-    await expect(composerField).toBeEnabled();
-    const viewport = page.viewportSize();
-    const composerBox = await composerField.boundingBox();
-    expect(composerBox.y + composerBox.height).toBeLessThanOrEqual(
-      viewport.height,
-    );
-    await expect
-      .poll(() => page.locator("caffold-task-navigator").evaluate(
-        (navigator) => navigator.listState().loading,
-      ))
-      .toBe(false);
+    await codexStatusApplied(page, state);
 
-    if (["missing", "unsupportedInstall", "updateRequired"].includes(state)) {
-      await expect(setup).toContainText("curl -fsSL https://chatgpt.com/codex/install.sh | sh");
-      await expect(setup).toContainText("0.147.0");
-      await expect(setup).toContainText("background app server");
-      await expect(setup).toContainText("without this app-server support");
-      await expect(setup).toContainText("Caffold manages the connection automatically");
-      await expect(setup).toContainText("Required official");
-      const guide = setup.getByRole("link", {
-        name: "Official Codex CLI guide",
-      });
-      await expect(guide).toBeVisible();
-      if (state === "unsupportedInstall") {
-        await revealActionTarget(page, guide);
-        const popupPromise = page.waitForEvent("popup");
-        await activateActionHint(
-          page,
-          /Open Official Codex CLI guide in a new tab$/,
-        );
-        const popup = await popupPromise;
-        await expect(popup).toHaveURL(
-          "https://learn.chatgpt.com/docs/codex/cli",
-        );
-        await popup.close();
-      }
-    }
-    if (state === "updateRequired") {
-      await expect(setup).toContainText("Required official update command");
-      const copy = setup.getByRole("button", { name: "Copy command" });
-      const copyNode = await copy.elementHandle();
-      await revealActionTarget(page, copy);
-      await activateActionHint(page, /Copy command$/);
-      await expect(setup.getByRole("button", { name: "Copied" })).toBeVisible();
-      expect(await copyNode.evaluate((element) => (
-        element.isConnected && document.activeElement === element
-      ))).toBe(true);
-      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
-        "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
-      );
-    }
-    if (state === "signInRequired") {
-      await expect(setup).toContainText("Run codex in a terminal");
-    }
-    if (state === "restartRequired") {
-      await expect(setup.getByRole("button", { name: "Restart Codex" })).toBeEnabled();
-      await expect(setup.getByRole("button", { name: "Open Settings" })).toBeEnabled();
-    }
-    if (state === "updateRequired") {
-      await verifyReadinessScrollIsolation(page);
-    }
+    await expect.poll(() => presentedTaskPaneChildren(page)).toEqual([
+      "caffold-task-new",
+    ]);
+    await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
+    const navigation = page.locator("caffold-task-workspace-navigation");
+    const settings = navigation.locator('button[data-workspace-mode="settings"]');
+    await expect(settings).toHaveAccessibleName("Settings");
+    await expectLooksLike(
+      settings,
+      navigation.locator('button[data-workspace-mode="notes"]'),
+    );
   });
 }
-
-test("keeps the Codex setup card below the compact Back on New Task", { tag: "@phone" }, async ({ page }, testInfo) => {
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(statusFor("missing")),
-    }),
-  );
-
-  await page.goto("/tasks/new");
-  const setup = page.locator("caffold-codex-readiness-recovery");
-  const back = page.locator("caffold-task-workspace .task-workspace-back");
-  await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
-    "data-tasks-view",
-    "new",
-  );
-  await expect(setup).toBeVisible();
-  await expect(back).toBeVisible();
-  const boxes = await page.evaluate(() => {
-    const box = (selector) => {
-      const rect = document.querySelector(selector).getBoundingClientRect();
-      return { top: rect.top, bottom: rect.bottom };
-    };
-    return {
-      back: box("caffold-task-workspace .task-workspace-back"),
-      setup: box("caffold-codex-readiness-recovery"),
-      newTask: box("caffold-task-new"),
-    };
-  });
-  expect(boxes.setup.top).toBeGreaterThanOrEqual(boxes.back.bottom);
-  expect(Math.abs(boxes.newTask.top - boxes.setup.bottom)).toBeLessThanOrEqual(0.5);
-  await captureReviewScreenshot(page, testInfo, "tasks-new-task-setup-compact-back");
-});
 
 test("a blocked Codex holds nothing on the Tasks home", { tag: "@all-viewports" }, async ({ page }) => {
   let taskRequests = 0;
@@ -253,31 +147,6 @@ test("a blocked Codex holds nothing on the Tasks home", { tag: "@all-viewports" 
   await expect(cachedRow).toContainText("Cached Task identity");
   await expect(cachedRow).toBeEnabled();
   await expect.poll(() => taskRequests).toBe(1);
-});
-
-test("identifies a standalone install without required daemon commands", { tag: "@all-viewports" }, async ({ page }) => {
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(statusFor("unsupportedInstall", {
-        reasonCode: "appServerCommandsUnavailable",
-        diagnosticMessage: "The required app-server daemon command is unavailable.",
-        detectedExecutable: {
-          path: "/Users/example/.local/bin/codex",
-          version: "0.147.0",
-        },
-      })),
-    }),
-  );
-
-  await page.goto("/");
-
-  const setup = page.locator('[data-readiness-state="unsupportedInstall"]');
-  await expect(setup.getByRole("heading", {
-    name: "Install a compatible Codex CLI",
-  })).toBeVisible();
-  await expect(setup).toContainText("does not include the runtime support");
-  await expect(setup).toContainText("official standalone Codex CLI");
 });
 
 test("keeps the stable Task shell while readiness is checking", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
@@ -307,10 +176,7 @@ test("keeps the stable Task shell while readiness is checking", { tag: "@all-vie
   });
 
   await page.goto("/");
-  const recovery = page.locator("caffold-codex-readiness-recovery");
-  await expect(recovery).toBeHidden();
   await expect(page.locator(".task-workspace-master-pane")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open Settings" })).toHaveCount(0);
   expect(await page.locator("caffold-task-new").evaluate(
     (element) => element.hidden,
   )).toBe(false);
@@ -324,9 +190,6 @@ test("keeps the stable Task shell while readiness is checking", { tag: "@all-vie
   // refuse.
   await expect(newTask).toBeEnabled();
   await expect(newTask).toHaveAttribute("title", "New Task");
-  await expect(
-    page.getByText("Codex setup required.", { exact: true }),
-  ).toHaveCount(0);
   await expect.poll(() => taskRequests).toBe(1);
   await captureReviewScreenshot(
     page,
@@ -335,7 +198,10 @@ test("keeps the stable Task shell while readiness is checking", { tag: "@all-vie
   );
 
   releaseStatus();
-  await expect(recovery).toBeHidden();
+  await codexStatusApplied(page, "ready");
+  await expect.poll(() => presentedTaskPaneChildren(page)).toEqual([
+    "caffold-task-new",
+  ]);
   await expect(navigatorMessage).toHaveText("Loading...");
 
   releaseTasks();
@@ -396,7 +262,7 @@ test("waits for explicit route activation when readiness settles first", { tag: 
   });
 });
 
-test("a readiness load failure is not presented as a setup requirement", { tag: "@all-viewports" }, async ({ page }) => {
+test("a readiness load failure leaves the Tasks home as it is", { tag: "@all-viewports" }, async ({ page }) => {
   let taskRequests = 0;
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
@@ -415,21 +281,19 @@ test("a readiness load failure is not presented as a setup requirement", { tag: 
 
   await page.goto("/");
 
-  await expect(
-    page.locator('[data-readiness-state="checkFailed"]'),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Codex readiness could not be checked" }),
-  ).toBeVisible();
+  await expect.poll(() => page.evaluate(() =>
+    document.querySelector("caffold-task-workspace")
+      ?.codexStatusSnapshotValue?.phase ?? null,
+  )).toBe("failed");
+  await expect.poll(() => presentedTaskPaneChildren(page)).toEqual([
+    "caffold-task-new",
+  ]);
   await expect(
     page.locator("caffold-active-task-list .task-section-message"),
   ).toHaveText("No Caffold tasks yet.");
   const newTask = page.locator("caffold-task-navigator .task-list-new-task");
   await expect(newTask).toBeEnabled();
   await expect(newTask).toHaveAttribute("title", "New Task");
-  await expect(
-    page.getByText("Codex setup required.", { exact: true }),
-  ).toHaveCount(0);
   // The shell keeps retrying the failed status check, and each pass may
   // reload the list — the list is no longer held while status is unknown.
   await expect.poll(() => taskRequests).toBeGreaterThan(0);
@@ -478,170 +342,6 @@ test("a failed Task-store migration has its own explicit retry lifecycle", { tag
   await expect.poll(() => retryRequests).toBe(1);
   await expect(page.locator("caffold-task-store-recovery")).toBeHidden();
   await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
-});
-
-test("Retry transitions from setup into the ready Task surface", { tag: "@all-viewports" }, async ({ page }) => {
-  let ready = false;
-  let taskRequests = 0;
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(ready ? mockCodexStatus() : statusFor("updateRequired")),
-    }),
-  );
-  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
-    taskRequests += 1;
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(activeTaskProjection()),
-    });
-  });
-
-  await page.goto("/");
-  await expect(page.locator('[data-readiness-state="updateRequired"]')).toBeVisible();
-  await expect.poll(() => taskRequests).toBeGreaterThan(0);
-
-  ready = true;
-  await revealActionTarget(
-    page,
-    page.getByRole("button", { name: "Retry" }),
-  );
-  await activateActionHint(page, /Retry$/);
-
-  await expect(page.locator(".codex-readiness-surface")).toBeHidden();
-  await expect(page.locator("caffold-task-new .task-new-form")).toBeVisible();
-  await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
-  await expect.poll(() => taskRequests).toBeGreaterThan(0);
-});
-
-test("restarts a stale Codex runtime directly from Task setup", { tag: "@all-viewports" }, async ({ page }) => {
-  let restarted = false;
-  let restartRequests = 0;
-  let taskRequests = 0;
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(
-        restarted ? mockCodexStatus() : statusFor("restartRequired"),
-      ),
-    }),
-  );
-  await page.route(/\/api\/codex\/restart(?:\?|$)/, (route) => {
-    restartRequests += 1;
-    restarted = true;
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ status: "restarted" }),
-    });
-  });
-  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
-    taskRequests += 1;
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(activeTaskProjection()),
-    });
-  });
-
-  await page.goto("/");
-  const setup = page.locator('[data-readiness-state="restartRequired"]');
-  const restart = setup.getByRole("button", { name: "Restart Codex" });
-  await expect(restart).toBeVisible();
-  const primaryColors = await restart.evaluate((element) => {
-    const style = getComputedStyle(element);
-    const probe = document.createElement("span");
-    probe.style.backgroundColor = "var(--primary-action-bg)";
-    probe.style.color = "var(--primary-action-fg)";
-    document.body.append(probe);
-    const expected = getComputedStyle(probe);
-    const value = {
-      expectedBackground: expected.backgroundColor,
-      expectedColor: expected.color,
-    };
-    probe.remove();
-    return {
-      background: style.backgroundColor,
-      color: style.color,
-      ...value,
-    };
-  });
-  expect(primaryColors.background).toBe(primaryColors.expectedBackground);
-  expect(primaryColors.color).toBe(primaryColors.expectedColor);
-
-  await revealActionTarget(page, restart);
-  await activateActionHint(page, /Restart Codex$/);
-  const dialog = page.getByRole("dialog", { name: "Restart Codex runtime?" });
-  await expect(dialog).toBeVisible();
-  await expect(page.locator(
-    "caffold-task-workspace > caffold-codex-runtime-restart-dialog",
-  )).toHaveCount(1);
-  await dialog.getByRole("button", { name: "Cancel" }).click();
-  expect(restartRequests).toBe(0);
-
-  await revealActionTarget(page, restart);
-  await activateActionHint(page, /Restart Codex$/);
-  await dialog.getByRole("button", { name: "Restart Codex" }).click();
-
-  await expect(page.locator(".codex-readiness-surface")).toBeHidden();
-  await expect(page.locator("caffold-task-new .task-new-form")).toBeVisible();
-  expect(restartRequests).toBe(1);
-  await expect.poll(() => taskRequests).toBeGreaterThan(0);
-});
-
-test("a Codex update in flight holds back Restart Codex in Task setup", { tag: "@desktop" }, async ({ page }) => {
-  let releaseUpdate;
-  const updateGate = new Promise((resolve) => {
-    releaseUpdate = resolve;
-  });
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(statusFor("restartRequired")),
-    }),
-  );
-  await page.route(/\/api\/codex\/updates(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(mockCodexUpdates({
-        installedVersion: "0.147.0",
-        runningVersion: "0.146.0",
-        latestVersion: "0.147.0",
-        update: "available",
-      })),
-    }),
-  );
-  await page.route(/\/api\/codex\/update(?:\?|$)/, async (route) => {
-    await updateGate;
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        status: "noUpdate",
-        installedVersion: "0.147.0",
-        runningVersion: "0.147.0",
-        message: "The managed installation is ready and the running daemon was restarted. Active or queued work may have been interrupted.",
-      }),
-    });
-  });
-
-  await page.goto("/");
-  const setup = page.locator('[data-readiness-state="restartRequired"]');
-  const restart = setup.getByRole("button", { name: "Restart Codex" });
-  await expect(restart).toBeEnabled();
-
-  await setup.getByRole("button", { name: "Open Settings" }).click();
-  const settings = page.locator("caffold-settings-codex-page");
-  await settings.getByRole("button", { name: "Update Codex…", exact: true }).click();
-  await page.getByRole("dialog", { name: "Update Codex?" })
-    .getByRole("button", { name: "Update Codex" })
-    .click();
-  await expect(settings.getByRole("button", { name: "Updating…" })).toBeDisabled();
-
-  await page.locator(
-    'caffold-task-workspace-navigation button[data-workspace-mode="tasks"]',
-  ).click();
-  await expect(restart).toBeDisabled();
-
-  releaseUpdate();
-  await expect(restart).toBeEnabled();
 });
 
 test("a blocking transition releases the Task list and disables existing actions", { tag: "@all-viewports" }, async ({
@@ -889,124 +589,31 @@ test("a Claude Task never looks at Codex readiness", { tag: "@all-viewports" }, 
   ).toHaveCount(0);
 });
 
-test("Settings stays reachable while Codex setup blocks Tasks", { tag: "@all-viewports" }, async ({ page }) => {
+test("Settings opens its usual first page while Codex is blocked", { tag: "@all-viewports" }, async ({ page }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(statusFor("signInRequired")),
-    }),
+    route.fulfill({ json: statusFor("signInRequired") }),
   );
-
-  await page.goto("/");
-  const openSettings = page.getByRole("button", { name: "Open Settings" });
-  await revealActionTarget(page, openSettings);
-  await activateActionHint(page, /Open Settings$/);
-
-  await expect(page).toHaveURL("/settings/codex");
-  await expect(page.locator("caffold-settings-codex-page")).toBeVisible();
-  await expect(page.locator("caffold-settings-codex-page")).toContainText("Sign-in required");
-});
-
-test("a backend-declared nonblocking restart state keeps Tasks usable", { tag: "@all-viewports" }, async ({ page }) => {
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(statusFor("restartRequired", {
-        blocksTaskOperations: false,
-        runningAppServerVersion: "0.147.0",
-      })),
-    }),
-  );
+  // A listed Task keeps the phone home on the list, where the tabs are.
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(activeTaskProjection()),
-    }),
+    route.fulfill({ json: activeTaskProjection([cachedTask()]) }),
   );
 
   await page.goto("/");
-
-  await expect(page.locator(".codex-readiness-surface")).toBeHidden();
-  await expect(page.locator("caffold-task-new .task-new-form")).toBeVisible();
-  await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
-  const workspaceSettings = page.locator(
+  await codexStatusApplied(page, "signInRequired");
+  await page.locator(
     'caffold-task-workspace-navigation button[data-workspace-mode="settings"]',
+  ).click();
+
+  await expect(page).toHaveURL("/settings");
+  await expect(page.locator("caffold-settings-codex-page")).toBeHidden();
+  const sections = page.locator("caffold-settings-navigator");
+  const codex = sections.locator('button[data-settings-section="codex"]');
+  await expect(codex).toBeVisible();
+  await expect(codex).toHaveAccessibleName("Codex");
+  await expectLooksLike(
+    codex,
+    sections.locator('button[data-settings-section="claude"]'),
   );
-  await expect(workspaceSettings).toHaveAttribute(
-    "data-codex-state",
-    "attention",
-  );
-  await expect.poll(() => workspaceSettings.evaluate(
-    (button) => getComputedStyle(button).animationName,
-  )).toBe("codex-attention-pulse");
-
-  await page.goto("/settings");
-
-  const settingsCodex = page.locator(
-    'caffold-settings-navigator button[data-settings-section="codex"]',
-  );
-  await expect.poll(() => workspaceSettings.evaluate(
-    (button) => getComputedStyle(button).animationName,
-  )).toBe("none");
-  await expect(settingsCodex).toHaveAttribute("data-codex-state", "attention");
-  await expect.poll(() => settingsCodex.evaluate(
-    (button) => getComputedStyle(button).animationName,
-  )).toBe("codex-attention-pulse");
-
-  await settingsCodex.click();
-
-  await expect(settingsCodex).toHaveAttribute("aria-current", "");
-  await expect.poll(() => settingsCodex.evaluate(
-    (button) => getComputedStyle(button).animationName,
-  )).toBe("none");
-});
-
-test("Codex attention remains visible without motion", { tag: "@all-viewports" }, async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(statusFor("restartRequired", {
-        blocksTaskOperations: false,
-        runningAppServerVersion: "0.147.0",
-      })),
-    }),
-  );
-
-  await page.goto("/");
-
-  const workspaceSettings = page.locator(
-    'caffold-task-workspace-navigation button[data-workspace-mode="settings"]',
-  );
-  await expect.poll(() => workspaceSettings.evaluate((button) => {
-    const style = getComputedStyle(button);
-    return {
-      animationName: style.animationName,
-      boxShadow: style.boxShadow,
-    };
-  })).toEqual({
-    animationName: "none",
-    boxShadow: expect.not.stringMatching(/^none$/),
-  });
-});
-
-test("the setup card reflows without horizontal overflow", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(statusFor("updateRequired")),
-    }),
-  );
-
-  await page.goto("/");
-  const surface = page.locator(".codex-readiness-surface");
-  await expect(surface).toBeVisible();
-  const metrics = await surface.evaluate((element) => ({
-    scrollWidth: element.scrollWidth,
-    clientWidth: element.clientWidth,
-  }));
-  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth);
-  await captureReviewScreenshot(page, testInfo, "codex-readiness-update-required");
 });
 
 test("consumes the real backend readiness contract and gates Task creation", { tag: "@all-viewports" }, async ({ page }) => {
@@ -1014,9 +621,10 @@ test("consumes the real backend readiness contract and gates Task creation", { t
 
   await page.goto("/");
 
-  const setup = page.locator('.codex-readiness-card[data-readiness-state="error"]');
-  await expect(setup).toBeVisible();
-  await expect(setup).toContainText("fake Codex does not start an app-server");
+  await codexStatusApplied(page, "error");
+  await expect.poll(() => presentedTaskPaneChildren(page)).toEqual([
+    "caffold-task-new",
+  ]);
 
   const statusResponse = await page.request.get("/api/codex/status");
   expect(statusResponse.status()).toBe(200);
@@ -1037,10 +645,35 @@ test("consumes the real backend readiness contract and gates Task creation", { t
   });
 });
 
-async function verifyReadinessScrollIsolation(page, {
-  scrollport = "caffold-codex-readiness-recovery:not([hidden]) > .codex-readiness-surface",
-  label = "Codex readiness",
-} = {}) {
+// Codex changes nothing outside its own surfaces, so a test waits on the
+// workspace having taken the status in rather than on anything it shows.
+async function codexStatusApplied(page, state) {
+  await expect.poll(() => page.evaluate(() =>
+    document.querySelector("caffold-task-workspace")
+      ?.codexStatusSnapshotValue?.status?.readiness?.state ?? null,
+  )).toBe(state);
+}
+
+async function presentedTaskPaneChildren(page) {
+  return page.locator("caffold-tasks-page .tasks-detail-pane").evaluate((pane) =>
+    [...pane.children]
+      .filter((child) => !child.hidden)
+      .map((child) => child.localName),
+  );
+}
+
+// Same color and no motion as a control Codex has nothing to do with.
+async function expectLooksLike(control, peer) {
+  const look = (element) => {
+    const style = getComputedStyle(element);
+    return { color: style.color, animationName: style.animationName };
+  };
+  const expected = await peer.evaluate(look);
+  expect(expected.animationName).toBe("none");
+  await expect.poll(() => control.evaluate(look)).toEqual(expected);
+}
+
+async function verifyReadinessScrollIsolation(page, { scrollport, label }) {
   const readinessScroll = page.locator(scrollport);
   await readinessScroll.evaluate((element) => {
     element.style.height = "120px";

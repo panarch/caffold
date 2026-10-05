@@ -1005,7 +1005,7 @@ test("archived task deletion dialog owns its modal state and markup", () => {
   assert.match(deleteDialog, /TASK_ARCHIVED_DELETE_CONFIRMED_EVENT/);
 });
 
-test("Codex status, Task-store status, and their cards keep explicit lifecycle and UI owners", () => {
+test("Codex status, Task-store status, and the Task-store card keep explicit lifecycle and UI owners", () => {
   const workspace = readFrontend("pages/(task-workspace)/layout.js");
   const owner = readFrontend("pages/(task-workspace)/codex-status.js");
   const model = readFrontend("pages/(task-workspace)/codex-status/model.js");
@@ -1035,9 +1035,6 @@ test("Codex status, Task-store status, and their cards keep explicit lifecycle a
     "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
   );
   const tasks = readFrontend("pages/(task-workspace)/tasks/layout.js");
-  const taskRecovery = readFrontend(
-    "pages/(task-workspace)/tasks/components/codex-readiness-recovery.js",
-  );
   const settings = readFrontend(
     "pages/(task-workspace)/settings/codex/page.js",
   );
@@ -1068,7 +1065,6 @@ test("Codex status, Task-store status, and their cards keep explicit lifecycle a
   assert.doesNotMatch(owner, /class CodexStatusLifecycle/);
   assert.doesNotMatch(owner, /export \*/);
   assert.match(model, /function codexBlocksTaskOperations/);
-  assert.match(model, /function codexSetupVisible/);
   for (const codexSource of [owner, model, lifecycle]) {
     assert.doesNotMatch(codexSource, /taskStore|TaskStore/);
   }
@@ -1094,15 +1090,7 @@ test("Codex status, Task-store status, and their cards keep explicit lifecycle a
   assert.match(restartDialog, /customElements\.define\(/);
   assert.match(updateDialog, /<dialog/);
   assert.match(updateDialog, /customElements\.define\(/);
-  assert.match(tasks, /import "\.\/components\/codex-readiness-recovery\.js"/);
-  assert.match(tasks, /<caffold-codex-readiness-recovery hidden>/);
   assert.doesNotMatch(tasks, /codex-readiness-card|CODEX_INSTALL_COMMAND/);
-  assert.match(taskRecovery, /class CaffoldCodexReadinessRecovery/);
-  assert.match(taskRecovery, /codex-readiness-card/);
-  assert.match(taskRecovery, /CODEX_STATUS_REFRESH_REQUEST_EVENT/);
-  assert.match(taskRecovery, /CODEX_RUNTIME_RESTART_REQUEST_EVENT/);
-  assert.doesNotMatch(taskRecovery, /CODEX_RUNTIME_UPDATE_REQUEST_EVENT/);
-  assert.doesNotMatch(taskRecovery, /taskStore|Task setup/);
   assert.match(tasks, /import "\.\/components\/task-store-recovery\.js"/);
   assert.match(tasks, /<caffold-task-store-recovery hidden>/);
   assert.match(storeRecovery, /class CaffoldTaskStoreRecovery/);

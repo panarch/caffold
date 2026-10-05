@@ -1,9 +1,5 @@
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import {
-  codexState,
-  formatCodexReadiness,
-} from "../codex-status.js";
-import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "#app/action-hint-scope.js";
@@ -37,7 +33,6 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
 
     this.rendered = true;
     this.mode = "tasks";
-    this.codexStatusSnapshotValue = null;
     this.updateAvailable = false;
     this.reloadReady = false;
     this.innerHTML = `
@@ -88,12 +83,6 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
         button.dataset.workspaceMode === this.mode,
       );
     });
-  }
-
-  setCodexStatusSnapshot(snapshot) {
-    this.ensureRendered();
-    this.codexStatusSnapshotValue = snapshot ?? null;
-    this.syncSettingsStatus();
   }
 
   setCaffoldUpdate(snapshot) {
@@ -153,25 +142,16 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
     if (!button) {
       return;
     }
-    const state = codexState(this.codexStatusSnapshotValue);
-    const readiness = formatCodexReadiness(this.codexStatusSnapshotValue);
-    const codexLabel = state === "available"
-      ? "Settings — Codex ready"
-      : state === "pending"
-        ? "Settings — checking Codex readiness"
-        : `Settings — Codex ${readiness.toLowerCase()}`;
-    const label = [
-      codexLabel,
+    const notices = [
       this.updateAvailable && "Caffold update available",
       this.reloadReady && "reload to update",
-    ].filter(Boolean).join(", ");
-    button.dataset.codexState = state;
-    button.toggleAttribute(
-      "data-update-available",
-      this.updateAvailable || this.reloadReady,
-    );
-    button.title = label;
-    button.setAttribute("aria-label", label);
+    ].filter(Boolean);
+    button.toggleAttribute("data-update-available", notices.length > 0);
+    if (notices.length > 0) {
+      button.setAttribute("aria-label", `Settings — ${notices.join(", ")}`);
+    } else {
+      button.removeAttribute("aria-label");
+    }
   }
 
   renderIcons() {

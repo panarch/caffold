@@ -301,8 +301,6 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/components/archived-task-list.js",
   "/assets/pages/(task-workspace)/tasks/recovery/page.css",
   "/assets/pages/(task-workspace)/tasks/recovery/page.js",
-  "/assets/pages/(task-workspace)/tasks/components/codex-readiness-recovery.css",
-  "/assets/pages/(task-workspace)/tasks/components/codex-readiness-recovery.js",
   "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.css",
   "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.js",
   "/assets/pages/(task-workspace)/tasks/components/navigator.css",

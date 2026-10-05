@@ -227,7 +227,7 @@ test("marks Settings and About with the green dot while a newer Caffold exists",
   await expect(settings).toHaveAttribute("data-update-available", "");
   await expect(settings).toHaveAttribute(
     "aria-label",
-    /, Caffold update available$/,
+    "Settings — Caffold update available",
   );
   const about = page.locator(
     'caffold-settings-navigator-item button[data-settings-section="about"]',

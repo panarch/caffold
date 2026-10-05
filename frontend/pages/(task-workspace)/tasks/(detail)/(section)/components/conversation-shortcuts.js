@@ -173,7 +173,9 @@ class CaffoldSectionConversationShortcuts extends HTMLElement {
   patch() {
     const state = codexState(this.codexStatusSnapshot);
     const known = state !== "pending";
-    this.toggleAttribute("hidden", !this.active || !known);
+    const installed =
+      this.codexStatusSnapshot?.status?.readiness?.state !== "missing";
+    this.toggleAttribute("hidden", !this.active || !known || !installed);
 
     const reason = this.disabledReason(state);
     const button = this.querySelector("[data-section-conversation-action='fork-codex']");

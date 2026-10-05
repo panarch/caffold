@@ -33,7 +33,6 @@ class CaffoldSettingsNavigator extends HTMLElement {
     }
     this.initialized = true;
     this.selectedSection = "";
-    this.codexStatusSnapshotValue = null;
     this.updateAvailable = false;
     this.reloadReady = false;
     this.render();
@@ -42,11 +41,6 @@ class CaffoldSettingsNavigator extends HTMLElement {
   setSelectedSection(section) {
     this.selectedSection = section ?? "";
     this.syncSelection();
-  }
-
-  setCodexStatusSnapshot(snapshot) {
-    this.codexStatusSnapshotValue = snapshot ?? null;
-    this.syncCodexStatus();
   }
 
   setCaffoldUpdate(snapshot) {
@@ -138,7 +132,6 @@ class CaffoldSettingsNavigator extends HTMLElement {
       }),
     );
     this.syncSelection();
-    this.syncCodexStatus();
     this.syncUpdateNotice();
   }
 
@@ -146,12 +139,6 @@ class CaffoldSettingsNavigator extends HTMLElement {
     for (const item of this.items()) {
       item.setSelected(item.section === this.selectedSection);
     }
-  }
-
-  syncCodexStatus() {
-    this.items()
-      .find((item) => item.section === "codex")
-      ?.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
   }
 
   // Only the About entry shows that Caffold has an update: a newer release, or

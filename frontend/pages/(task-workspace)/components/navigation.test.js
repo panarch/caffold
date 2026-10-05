@@ -17,7 +17,7 @@ test("provides only the non-current workspace routes through their owned buttons
     notes: { disabled: false, getAttribute: () => null, focus() {}, click() {} },
     settings: {
       disabled: false,
-      getAttribute: () => "Settings — Codex ready",
+      getAttribute: () => "Settings — Caffold update available",
       focus() {},
       click() {
         clicks += 1;
@@ -49,7 +49,7 @@ test("provides only the non-current workspace routes through their owned buttons
       {
         id: "workspace:mode:settings",
         actionId: "navigation.workspace.select",
-        label: "Settings — Codex ready",
+        label: "Settings — Caffold update available",
       },
     ],
   );
@@ -96,9 +96,11 @@ test("marks the Settings button and its name while a newer Caffold exists", () =
   const button = {
     dataset: {},
     attributes: new Map(),
-    title: "",
     setAttribute(name, value) {
       this.attributes.set(name, value);
+    },
+    removeAttribute(name) {
+      this.attributes.delete(name);
     },
     toggleAttribute(name, force) {
       if (force) {
@@ -109,7 +111,6 @@ test("marks the Settings button and its name while a newer Caffold exists", () =
     },
   };
   const owner = {
-    codexStatusSnapshotValue: { status: { readiness: { state: "ready" } } },
     updateAvailable: false,
     reloadReady: false,
     ensureRendered() {},
@@ -125,17 +126,15 @@ test("marks the Settings button and its name while a newer Caffold exists", () =
   assert.equal(button.attributes.has("data-update-available"), true);
   assert.equal(
     button.attributes.get("aria-label"),
-    "Settings — Codex ready, Caffold update available",
+    "Settings — Caffold update available",
   );
-  assert.equal(button.title, "Settings — Codex ready, Caffold update available");
-  assert.equal(button.dataset.codexState, "available");
 
   navigation.setCaffoldUpdate.call(owner, {
     checking: false,
     status: { updateAvailable: false },
   });
   assert.equal(button.attributes.has("data-update-available"), false);
-  assert.equal(button.attributes.get("aria-label"), "Settings — Codex ready");
+  assert.equal(button.attributes.has("aria-label"), false);
 
   navigation.setCaffoldUpdate.call(owner, null);
   assert.equal(button.attributes.has("data-update-available"), false);
@@ -145,7 +144,7 @@ test("marks the Settings button and its name while a newer Caffold exists", () =
   assert.equal(button.attributes.has("data-update-available"), true);
   assert.equal(
     button.attributes.get("aria-label"),
-    "Settings — Codex ready, reload to update",
+    "Settings — reload to update",
   );
   navigation.setCaffoldUpdate.call(owner, {
     checking: false,
@@ -153,10 +152,11 @@ test("marks the Settings button and its name while a newer Caffold exists", () =
   });
   assert.equal(
     button.attributes.get("aria-label"),
-    "Settings — Codex ready, Caffold update available, reload to update",
+    "Settings — Caffold update available, reload to update",
   );
   navigation.setCaffoldUpdate.call(owner, null);
   navigation.setUpdateStatus.call(owner, { state: "settled", preparedUpdate: { ready: false } });
   assert.equal(button.attributes.has("data-update-available"), false);
-  assert.equal(button.attributes.get("aria-label"), "Settings — Codex ready");
+  assert.equal(button.attributes.has("aria-label"), false);
+  assert.deepEqual(button.dataset, {});
 });

@@ -5,7 +5,6 @@ import {
   codexRateWindows,
   codexResetCredits,
   codexRuntimeRestartAvailable,
-  codexSetupVisible,
   createCodexStatusSnapshot,
   formatRateReset,
   formatRateWindowLabel,
@@ -71,12 +70,6 @@ test("Codex readiness gates only Codex surfaces, and unknown is not blocked", ()
     [initial, failed, blockingSnapshot, readySnapshot, inconsistentSnapshot]
       .map((snapshot) => codexBlocksTaskOperations(snapshot.status)),
     [false, false, true, false, true],
-  );
-  assert.deepEqual(
-    [initial, failed, blockingSnapshot, readySnapshot, inconsistentSnapshot]
-      .map(codexSetupVisible),
-    [false, true, true, false, true],
-    "the setup card shows for a blocked Codex or a status nobody could load",
   );
 });
 

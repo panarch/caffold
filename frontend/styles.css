@@ -69,7 +69,6 @@
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css";
 @import "./pages/(task-workspace)/tasks/recovery/page.css";
-@import "./pages/(task-workspace)/tasks/components/codex-readiness-recovery.css";
 @import "./pages/(task-workspace)/tasks/components/task-store-recovery.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css";
 @import "./pages/(task-workspace)/tasks/(detail)/components/git-menu.css";
@@ -128,19 +127,6 @@
 @import "./pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css";
 @import "./components/code-viewer.css";
 @import "./components/diff-viewer.css";
-
-@keyframes codex-attention-pulse {
-  0%,
-  100% {
-    background-color: transparent;
-    box-shadow: inset 0 0 0 0 transparent;
-  }
-
-  50% {
-    background-color: transparent;
-    box-shadow: inset 0 0 1.25rem var(--warning-border);
-  }
-}
 
 @font-face {
   font-family: "Caffold Geist Sans";

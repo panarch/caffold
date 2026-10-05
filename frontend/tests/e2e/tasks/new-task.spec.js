@@ -262,7 +262,7 @@ test("creates a task with responsive composer controls and canonical approval st
       ).toBeHidden();
       return;
     }
-    await expect(settingsNavigation).toHaveAccessibleName("Settings — Codex ready");
+    await expect(settingsNavigation).toHaveAccessibleName("Settings");
     await expect(settingsNavigation.locator("svg")).toBeVisible();
     const rootFontSize = await page.evaluate(() =>
       Number.parseFloat(getComputedStyle(document.documentElement).fontSize)

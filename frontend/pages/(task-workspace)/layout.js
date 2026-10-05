@@ -236,8 +236,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.settingsWorkspace.connectSettingsNavigator(this.settingsNavigator);
     this.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshotValue);
     this.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
-    this.tasksPage.setCodexRestartState(this.codexRestartStateValue);
-    this.tasksPage.setCodexRuntimeAction(this.codexRuntimeActionValue);
     this.settingsWorkspace.setCodexRestartState(this.codexRestartStateValue);
     this.settingsWorkspace.setCodexUpdateState(this.codexUpdateStateValue);
     this.settingsWorkspace.setCodexResetCreditState(this.codexResetCreditStateValue);
@@ -452,16 +450,13 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   // Where a tab opens the first time it is used, before it has a route to
-  // return to. Blocked Codex operations send Settings to their repair page.
+  // return to.
   firstRouteForTab(tab) {
     if (tab === "notes") {
       return { kind: "notes", noteId: "" };
     }
     if (tab === "settings") {
-      return {
-        kind: "settings",
-        section: this.tasksPage.codexOperationsBlocked() ? "codex" : "",
-      };
+      return { kind: "settings", section: "" };
     }
 
     return { kind: "tasks" };
@@ -593,7 +588,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.codexStatusSnapshotValue = nextSnapshot;
     this.tasksPage.setCodexStatusSnapshot(nextSnapshot);
     this.settingsWorkspace.setCodexStatusSnapshot(nextSnapshot);
-    this.navigation.setCodexStatusSnapshot(nextSnapshot);
     if (
       nextStatus?.readiness &&
       nextStatus.readiness.state !== "restartRequired"
@@ -647,7 +641,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
   setCodexRestartState(state) {
     this.ensureRendered();
     this.codexRestartStateValue = state ?? { state: "idle", message: "" };
-    this.tasksPage.setCodexRestartState(this.codexRestartStateValue);
     this.settingsWorkspace.setCodexRestartState(this.codexRestartStateValue);
   }
 
@@ -666,7 +659,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
   setCodexRuntimeAction(action) {
     this.ensureRendered();
     this.codexRuntimeActionValue = action ?? "idle";
-    this.tasksPage.setCodexRuntimeAction(this.codexRuntimeActionValue);
     this.settingsWorkspace.setCodexRuntimeAction(this.codexRuntimeActionValue);
   }
 

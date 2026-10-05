@@ -102,16 +102,6 @@ export function codexRuntimeUpdateAvailable(status) {
   return ["ready", "restartRequired"].includes(status?.readiness?.state);
 }
 
-/// Whether the Codex setup card has something to say — shown beside the Task
-/// surface, never over it: Codex blocked, or a status nobody could load.
-export function codexSetupVisible(snapshot) {
-  if (snapshot?.phase === "failed" && !snapshot?.status) {
-    return true;
-  }
-  const status = snapshot?.status;
-  return Boolean(status?.readiness && codexBlocksTaskOperations(status));
-}
-
 export function formatCodexReadiness(snapshot) {
   const status = snapshot?.status;
   const state = status?.readiness?.state;
