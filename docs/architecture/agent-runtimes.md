@@ -150,7 +150,7 @@ per-directory prompt history. None of these paths deletes a Git branch.
 | Caffold-served tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized | Caffold-owned HTTP MCP server declared on session start and load, bound to the Task before its session exists |
 | Current-plan instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions | `_meta.rules` on a new session and the MCP `initialize` instructions on every load |
 | Prompt pictures | A `localImage` input naming the uploaded file, which Codex opens | A base64 image block the driver reads from the uploaded file | An ACP image block the driver reads from the uploaded file |
-| Context usage | `thread/tokenUsage/updated`: the last model request's `totalTokens` against `modelContextWindow`, on every request and again when a thread is resumed | `get_context_usage` after every result and when an existing conversation's session is opened: the last response's input, cached or not, against `maxTokens`, as Claude's own status line counts it | `_x.ai/session/info`: `context.used` against `context.total`, or the model list's window, on every load and after every turn |
+| Context usage | `thread/tokenUsage/updated`: the last model request's `totalTokens` against `modelContextWindow`, on every request and again when a thread is resumed | `get_context_usage` after every assistant message the agent streams outside a subagent, after every result, and when an existing conversation's session is opened: the last response's input, cached or not, against `maxTokens`, as Claude's own status line counts it | `_x.ai/session/info`: `context.used` against `context.total`, or the model list's window, on every load and after every turn |
 | Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure | Diagnostic status; an attempted operation reports its own failure |
 | Idle release | A thread subscription may be dropped when no viewer, request, or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation | The session stays loaded on the bridge; the leader is not asked to unload |
 
@@ -205,6 +205,15 @@ share one identity. A prompt's turn opens, and the prompt request answers with
 that identity, when the runner has accepted the frame. A user-role frame without tool results is
 not drawn; the transcript reader applies the same rule to user rows. Prompt
 echoes from sessions started with `--replay-user-messages` are such frames.
+
+Claude reports compacting its context only on the stream: a `status` frame says
+`compacting`, and a later one clears the status with the compaction's result.
+The driver draws that span as the "Compacting context" tool activity that
+Codex's compaction also produces, identified by the starting frame's `uuid`,
+and finishes it as completed or failed when the status clears. A turn that ends
+first closes it with the tool calls it left open. The transcript keeps the
+summary a compaction leaves but no record of the compaction itself, so the item
+exists only in a live journal and a history read does not bring it back.
 
 A Claude child's exit ends its open turn: interrupted when Caffold asked the
 session to end, failed otherwise. A runner lost under a session Caffold did not

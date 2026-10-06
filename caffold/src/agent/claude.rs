@@ -287,6 +287,8 @@ struct SessionState {
     retold_once_ended: Option<String>,
     /// The turns this session has run while Caffold watched.
     turns: Vec<Turn>,
+    /// The compaction the agent is running, by the item it is drawn as.
+    compacting: Option<String>,
     /// Tool calls a person refused.
     ///
     /// The agent reports a refusal as a failed tool result, which is what it is
@@ -1553,10 +1555,14 @@ fn end_active_turn(
         .retold_once_ended
         .take()
         .is_some_and(|retold| retold == turn_id);
-    let abandoned = state.calls.abandon(match status {
+    let left_open = match status {
         TurnStatus::Completed => ActivityStatus::Completed,
         _ => ActivityStatus::Failed,
-    });
+    };
+    let mut abandoned = state.calls.abandon(left_open);
+    if let Some(compaction) = state.compacting.take() {
+        abandoned.push(compaction_item(compaction, left_open));
+    }
     state.pending_approvals.clear();
     state.declined.clear();
     let turn = state.turns.iter_mut().find(|turn| turn.id == turn_id)?;
@@ -1572,6 +1578,18 @@ fn end_active_turn(
         abandoned,
         retold,
     })
+}
+
+/// The agent compacting its context, drawn the way Codex's compaction is.
+fn compaction_item(id: String, status: ActivityStatus) -> ConversationItem {
+    ConversationItem {
+        id,
+        observed_at_ms: None,
+        status,
+        kind: ItemKind::ToolCall {
+            name: "Compacting context".to_string(),
+        },
+    }
 }
 
 /// Put an item into a turn this session holds, and note that the conversation

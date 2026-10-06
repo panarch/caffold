@@ -154,7 +154,7 @@ impl ClaudeClient {
             SessionStart::Resume => {
                 self.take_up_what_was_already_happening(&session).await;
                 // A conversation with a past already fills some of its
-                // context. A fresh one is first counted when its turn ends.
+                // context. A fresh one is first counted at its first response.
                 self.ask_how_full_the_context_is(&session);
             }
         }
