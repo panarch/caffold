@@ -145,6 +145,15 @@ pub(crate) struct SystemFrame {
     /// Whether a `task_started` task runs on past the turn that started it.
     #[serde(default)]
     pub(crate) is_backgrounded: bool,
+    #[serde(default)]
+    pub(crate) uuid: Option<String>,
+    /// Present on `status`: what the agent is busy with, and nothing once it
+    /// no longer is.
+    #[serde(default)]
+    pub(crate) status: Option<String>,
+    /// How a compaction went, on the `status` that ends it.
+    #[serde(default)]
+    pub(crate) compact_result: Option<String>,
 }
 
 /// One API message, as the agent produced it.

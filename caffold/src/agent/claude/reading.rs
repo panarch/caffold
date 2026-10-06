@@ -19,8 +19,9 @@ use super::{
     ClaudeRuntimeEvent, ControlRequestFrame, ConversationItem, Introduction, ItemKind,
     MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame, PendingApproval, ResultFrame, Session,
     SessionActivity, SessionEventKind, StreamFrame, SystemFrame, ThreadStatus, TokenCount,
-    TokenUsage, TurnStatus, UnownedTurn, UnownedTurnEvent, end_active_turn, move_unowned_turn,
-    now_ms, parse_timestamp_ms, place_item, protocol, status_of, take_up_turn, turn_status_of,
+    TokenUsage, TurnStatus, UnownedTurn, UnownedTurnEvent, compaction_item, end_active_turn,
+    move_unowned_turn, now_ms, parse_timestamp_ms, place_item, protocol, status_of, take_up_turn,
+    turn_status_of,
 };
 
 impl ClaudeClient {
@@ -128,6 +129,7 @@ impl ClaudeClient {
                 self.notice_a_turn_beginning(session).await;
             }
             Some("session_state_changed") => self.handle_session_activity(session, system).await,
+            Some("status") => self.handle_status(session, system).await,
             Some("task_started") => {
                 if system.is_backgrounded
                     && let Some(task_id) = system.task_id
@@ -283,6 +285,72 @@ impl ClaudeClient {
         self.report_activity(session).await;
     }
 
+    /// Draw the compaction the agent says it is running, and finish it when
+    /// the agent says it has stopped.
+    ///
+    /// Only the stream says so. The transcript keeps the summary a compaction
+    /// leaves but nothing of the wait, and no identity ties the two, so the
+    /// item stays with the live turn and a reading of the transcript does not
+    /// bring it back.
+    async fn handle_status(&self, session: &Arc<Session>, system: SystemFrame) {
+        let started = match system.status.as_deref() {
+            Some("compacting") => {
+                let Some(id) = system.uuid else {
+                    self.publish(ClaudeRuntimeEvent::Diagnostic {
+                        message: format!(
+                            "claude {} reported compacting without naming it",
+                            session.id
+                        ),
+                    });
+                    return;
+                };
+                Some(id)
+            }
+            None => None,
+            // Other work the agent names here is not drawn.
+            Some(_) => return,
+        };
+        let at_ms = now_ms();
+        let (turn_id, item) = {
+            let mut state = session.state.lock().await;
+            let Some(turn_id) = state.active_turn.clone() else {
+                return;
+            };
+            let mut item = match started {
+                Some(id) => {
+                    // The turn read at hello may be the one before, until the
+                    // agent's first word confirms it.
+                    if state.turn_read_at_hello || state.compacting.is_some() {
+                        return;
+                    }
+                    state.compacting = Some(id.clone());
+                    compaction_item(id, ActivityStatus::InProgress)
+                }
+                None => {
+                    let Some(id) = state.compacting.take() else {
+                        return;
+                    };
+                    let status = match system.compact_result.as_deref() {
+                        Some("failed") => ActivityStatus::Failed,
+                        _ => ActivityStatus::Completed,
+                    };
+                    compaction_item(id, status)
+                }
+            };
+            item.observed_at_ms = Some(at_ms);
+            place_item(&mut state, &turn_id, item.clone());
+            (turn_id, item)
+        };
+        self.report(
+            &session.id,
+            SessionEventKind::ItemChanged {
+                turn_id,
+                item,
+                at_ms,
+            },
+        );
+    }
+
     async fn handle_message(
         &self,
         session: &Arc<Session>,
@@ -302,6 +370,11 @@ impl ClaudeClient {
         // tool results it carries, and this is the same row read live.
         if spoken_by_user && !answers_tool_calls(&frame.message) {
             return;
+        }
+        if !spoken_by_user {
+            // Every response fills the context further, and the agent says
+            // how full it is only when asked.
+            self.ask_how_full_the_context_is(session);
         }
         self.take_up_the_turn_the_file_names(session).await;
         self.name_unowned_turn(session, true).await;
@@ -2066,6 +2139,192 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn a_compaction_is_drawn_while_the_agent_runs_it() {
+        let (client, _runner, mut events) = watching().await;
+        let turn = running_turn(&client, &mut events, "/compact").await;
+        let session = client.session(SESSION).await.unwrap();
+
+        client
+            .handle_line(&session, &compacting_frame().to_string())
+            .await;
+        let SessionEventKind::ItemChanged { turn_id, item, .. } =
+            next_session_event(&mut events, "item").await
+        else {
+            unreachable!("asked for an item");
+        };
+        assert_eq!(turn_id, turn.id);
+        assert_eq!(item.id, COMPACTING);
+        assert_eq!(item.status, ActivityStatus::InProgress);
+        assert_eq!(
+            item.kind,
+            ItemKind::ToolCall {
+                name: "Compacting context".to_string()
+            }
+        );
+
+        client
+            .handle_line(&session, &compacted_frame("success").to_string())
+            .await;
+        let SessionEventKind::ItemChanged { item, .. } =
+            next_session_event(&mut events, "item").await
+        else {
+            unreachable!("asked for an item");
+        };
+        assert_eq!(item.id, COMPACTING, "the same item, finished");
+        assert_eq!(item.status, ActivityStatus::Completed);
+
+        // What the agent says after a compaction is the summary it continues
+        // from, which is no more the conversation than the wait was.
+        for frame in [
+            json!({
+                "type":"system", "subtype":"compact_boundary",
+                "uuid":"42ee1102-57e2-49d6-a881-d8c373470e70",
+                "compact_metadata":{"trigger":"manual","pre_tokens":23700,"post_tokens":2116}
+            }),
+            json!({
+                "type":"user", "uuid":"db9f7dcf-9592-4c4f-a397-ee192949ba6f", "isSynthetic":true,
+                "message":{"role":"user","content":[{"type":"text","text":"This session is being continued…"}]}
+            }),
+            json!({
+                "type":"user", "uuid":"91c7f39c-aead-4a56-9d33-38982d2466d6", "isReplay":true,
+                "message":{"role":"user","content":"<local-command-stdout>Compacted </local-command-stdout>"}
+            }),
+        ] {
+            client.handle_line(&session, &frame.to_string()).await;
+        }
+        assert_no_item_reported(&mut events);
+    }
+
+    #[tokio::test]
+    async fn a_compaction_the_agent_gives_up_on_ends_as_failed() {
+        let (client, _runner, mut events) = watching().await;
+        running_turn(&client, &mut events, "keep going").await;
+        let session = client.session(SESSION).await.unwrap();
+
+        client
+            .handle_line(&session, &compacting_frame().to_string())
+            .await;
+        next_session_event(&mut events, "item").await;
+        client
+            .handle_line(&session, &compacted_frame("failed").to_string())
+            .await;
+
+        let SessionEventKind::ItemChanged { item, .. } =
+            next_session_event(&mut events, "item").await
+        else {
+            unreachable!("asked for an item");
+        };
+        assert_eq!(item.id, COMPACTING);
+        assert_eq!(item.status, ActivityStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn a_turn_that_ends_mid_compaction_closes_it() {
+        let (client, _runner, mut events) = watching().await;
+        let turn = running_turn(&client, &mut events, "/compact").await;
+        let session = client.session(SESSION).await.unwrap();
+        client
+            .handle_line(&session, &compacting_frame().to_string())
+            .await;
+        next_session_event(&mut events, "item").await;
+
+        client
+            .handle_line(&session, &result_frame(None).to_string())
+            .await;
+
+        let SessionEventKind::ItemChanged { turn_id, item, .. } =
+            next_session_event(&mut events, "item").await
+        else {
+            unreachable!("asked for an item");
+        };
+        assert_eq!(turn_id, turn.id);
+        assert_eq!(item.id, COMPACTING);
+        assert_eq!(item.status, ActivityStatus::Completed);
+        next_session_event(&mut events, "turn end").await;
+
+        client
+            .handle_line(&session, &compacted_frame("success").to_string())
+            .await;
+        assert_no_item_reported(&mut events);
+    }
+
+    #[tokio::test]
+    async fn nothing_but_one_named_compaction_in_an_open_turn_is_drawn() {
+        let (client, _runner, mut events) = watching().await;
+        let session = client.session(SESSION).await.unwrap();
+        client
+            .handle_line(&session, &compacting_frame().to_string())
+            .await;
+        client
+            .handle_line(&session, &compacted_frame("success").to_string())
+            .await;
+        assert_no_item_reported(&mut events);
+
+        running_turn(&client, &mut events, "keep going").await;
+        let mut unnamed = compacting_frame();
+        unnamed.as_object_mut().unwrap().remove("uuid");
+        for frame in [
+            json!({ "type":"system", "subtype":"status", "status":"requesting", "uuid":"r-1" }),
+            unnamed,
+            compacted_frame("success"),
+        ] {
+            client.handle_line(&session, &frame.to_string()).await;
+        }
+        let mut diagnostics = Vec::new();
+        while let Ok(event) = events.try_recv() {
+            match event {
+                ClaudeRuntimeEvent::Diagnostic { message } => diagnostics.push(message),
+                ClaudeRuntimeEvent::Session(event) => assert!(
+                    !matches!(event.kind, SessionEventKind::ItemChanged { .. }),
+                    "drew {:?}",
+                    event.kind
+                ),
+                _ => {}
+            }
+        }
+        assert_eq!(
+            diagnostics,
+            vec![format!(
+                "claude {SESSION} reported compacting without naming it"
+            )]
+        );
+
+        client
+            .handle_line(&session, &compacting_frame().to_string())
+            .await;
+        next_session_event(&mut events, "item").await;
+        let mut again = compacting_frame();
+        again["uuid"] = json!("another-start");
+        client.handle_line(&session, &again.to_string()).await;
+        assert_no_item_reported(&mut events);
+    }
+
+    const COMPACTING: &str = "de2c21a2-6377-4d8e-91c5-e1f46d2743bc";
+
+    fn compacting_frame() -> Value {
+        json!({ "type":"system", "subtype":"status", "status":"compacting", "uuid":COMPACTING })
+    }
+
+    fn compacted_frame(result: &str) -> Value {
+        json!({
+            "type":"system", "subtype":"status", "status":null, "compact_result":result,
+            "uuid":"14484315-1c90-4107-9645-cecea9814f7d"
+        })
+    }
+
+    fn assert_no_item_reported(events: &mut Receiver<ClaudeRuntimeEvent>) {
+        while let Ok(event) = events.try_recv() {
+            if let ClaudeRuntimeEvent::Session(event) = event {
+                assert!(
+                    !matches!(event.kind, SessionEventKind::ItemChanged { .. }),
+                    "drew {:?}",
+                    event.kind
+                );
+            }
+        }
+    }
+
     const EARLIER_TURN: &str = concat!(
         r#"{"type":"user","uuid":"turn-a","timestamp":"2026-09-05T10:00:00.000Z","promptSource":"sdk","message":{"role":"user","content":[{"type":"text","text":"first"}]}}"#,
         "\n",
@@ -2150,6 +2409,34 @@ mod tests {
         );
         let session = client.session(SESSION).await.expect("the session");
         assert!(!session.state.lock().await.turn_read_at_hello);
+    }
+
+    #[tokio::test]
+    async fn a_compaction_is_not_drawn_in_a_taken_up_turn_nothing_has_confirmed() {
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, _runner, mut events) = taken_up_over(&projects).await;
+        let session = client.session(SESSION).await.expect("the session");
+
+        client
+            .handle_line(&session, &compacting_frame().to_string())
+            .await;
+
+        while let Ok(event) = events.try_recv() {
+            if let ClaudeRuntimeEvent::Session(event) = event
+                && let SessionEventKind::ItemChanged { item, .. } = event.kind
+            {
+                assert_ne!(
+                    item.id, COMPACTING,
+                    "drawn in a turn that may be the one before"
+                );
+            }
+        }
+        let state = session.state.lock().await;
+        assert!(state.compacting.is_none());
+        assert!(
+            state.turn_read_at_hello,
+            "the agent's first word still reads the turn again"
+        );
     }
 
     #[tokio::test]
@@ -2799,6 +3086,75 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(asks.len(), 2);
         assert!(asks.iter().all(|ask| ask["request"]["detail"] == "summary"));
+    }
+
+    #[tokio::test]
+    async fn every_response_the_agent_streams_asks_how_full_the_context_is() {
+        let (client, runner, mut events) = watching().await;
+        let counted = next_session_event(&mut events, "context").await;
+        running_turn(&client, &mut events, "run it").await;
+        let session = client.session(SESSION).await.unwrap();
+        let asked = || session.context_asks.load(Ordering::Relaxed);
+        assert_eq!(asked(), 1, "the open's own ask");
+
+        runner
+            .say(
+                SESSION,
+                assistant_frame(
+                    "msg_1",
+                    json!([{ "type": "tool_use", "id": "toolu_7", "name": "Bash",
+                            "input": { "command": "ls" } }]),
+                ),
+            )
+            .await;
+        next_session_event(&mut events, "item").await;
+        assert_eq!(asked(), 2, "a response asks while the turn runs");
+        assert_eq!(next_session_event(&mut events, "context").await, counted);
+
+        runner
+            .say(
+                SESSION,
+                json!({
+                    "type": "user",
+                    "uuid": "frame-result",
+                    "message": {
+                        "role": "user",
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_7",
+                            "content": "src",
+                        }],
+                    },
+                }),
+            )
+            .await;
+        let mut nested =
+            assistant_frame("msg_nested", json!([{ "type": "text", "text": "inner" }]));
+        nested["parent_tool_use_id"] = json!("toolu_task");
+        runner.say(SESSION, nested).await;
+        runner
+            .say(
+                SESSION,
+                assistant_frame("msg_2", json!([{ "type": "text", "text": "done" }])),
+            )
+            .await;
+        let SessionEventKind::ItemChanged { item, .. } =
+            next_session_event(&mut events, "item").await
+        else {
+            unreachable!("asked for an item");
+        };
+        assert_eq!(item.id, "toolu_7", "the tool's result, read in order");
+        let SessionEventKind::ItemChanged { item, .. } =
+            next_session_event(&mut events, "item").await
+        else {
+            unreachable!("asked for an item");
+        };
+        assert!(matches!(item.kind, ItemKind::AssistantMessage { .. }));
+        assert_eq!(
+            asked(),
+            3,
+            "a tool's result and a subagent's response are not the agent answering"
+        );
     }
 
     #[tokio::test]
