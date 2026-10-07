@@ -213,8 +213,8 @@ new network connection. Times come from the page's own clock as each thing
 happens, so a late delivery changes no value. Records wait in `localStorage`,
 at most twenty, and go to `POST /api/diagnostics/foreground-recovery` whenever
 a recovery completes or a record settles. The shell route checks their shape
-and writes one `caffold::foreground_recovery` log line per record; nothing in
-the interface reads them.
+and writes one `caffold::foreground_recovery` log line per record, naming the
+browser by its shortened `User-Agent`; nothing in the interface reads them.
 
 The app shell owns one `PwaUpdateLifecycle` instance. That lifecycle is the
 single owner of service-worker registration and build handoff, and publishes

@@ -163,6 +163,7 @@ The backend application is split by state and transport owner:
 ```text
 caffold/src/app.rs                     dependency construction and router composition
 caffold/src/app/error.rs               shared JSON HTTP error contract
+caffold/src/app/user_agent.rs          browser names shared by server log lines
 caffold/src/app/shell.rs               shell, health, settings, manifest, static assets
 caffold/src/app/shell/foreground_recovery_diagnostics.rs
                                       foreground recovery diagnostics for the server log
