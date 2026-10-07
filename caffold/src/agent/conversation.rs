@@ -282,6 +282,9 @@ pub(crate) enum ItemKind {
         /// Absent when the agent does not say, which is common enough that the
         /// conversation has to read as complete without it.
         phase: Option<MessagePhase>,
+        /// Requests the agent offered for the person to send next, in the order
+        /// it wrote them. They are not part of `text`.
+        suggested_prompts: Vec<SuggestedPrompt>,
     },
     Reasoning {
         summary: Vec<String>,
@@ -354,6 +357,15 @@ impl GeneratedImage {
     pub(crate) fn is_available(&self) -> bool {
         self.saved_path.is_some() || self.encoded.is_some()
     }
+}
+
+/// A request the agent offered for the person to send next.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SuggestedPrompt {
+    /// The agent's short name for it.
+    pub(crate) label: String,
+    /// The whole request, as it would be sent.
+    pub(crate) prompt: String,
 }
 
 /// What a prompt carried besides its text.

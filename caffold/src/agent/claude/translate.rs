@@ -89,6 +89,9 @@ pub(crate) fn message_items(
                         // a guess here would put the wrong message in the
                         // place the interface reserves for one.
                         phase: None,
+                        // Claude suggests a next prompt only when a session
+                        // turns `promptSuggestions` on, which Caffold does not.
+                        suggested_prompts: Vec::new(),
                     }
                 },
             }),
@@ -109,6 +112,7 @@ pub(crate) fn message_items(
                     ItemKind::AssistantMessage {
                         text: thinking.clone(),
                         phase: None,
+                        suggested_prompts: Vec::new(),
                     }
                 },
             }),
@@ -595,7 +599,7 @@ mod tests {
             ItemKind::Reasoning { summary, content }
                 if summary.is_empty() && content == &[String::new()]
         ));
-        let ItemKind::AssistantMessage { text, phase } = &items[1].kind else {
+        let ItemKind::AssistantMessage { text, phase, .. } = &items[1].kind else {
             panic!("a progress note is the agent talking: {:?}", items[1].kind);
         };
         assert_eq!(text, "Found the mapping. Checking its callers next.");

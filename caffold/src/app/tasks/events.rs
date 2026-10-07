@@ -10,8 +10,8 @@ use tokio::sync::broadcast;
 
 use crate::agent::{
     ActivityStatus, ApprovalOutcome, ApprovalRequest, BackgroundTask, Conversation,
-    ConversationItem, ItemKind, MessageContent, SessionEvent, SessionEventKind, ThreadStatus,
-    TurnOrigin, TurnPage, TurnState, TurnStatus,
+    ConversationItem, ItemKind, MessageContent, SessionEvent, SessionEventKind, SuggestedPrompt,
+    ThreadStatus, TurnOrigin, TurnPage, TurnState, TurnStatus,
 };
 
 use super::generated_images::{GeneratedImageObservation, GeneratedImageStore};
@@ -719,14 +719,22 @@ pub(in crate::app::tasks) fn task_event_from_item(
                 None,
             )
         }
-        ItemKind::AssistantMessage { text, phase } => {
-            if text.trim().is_empty() {
+        ItemKind::AssistantMessage {
+            text,
+            phase,
+            suggested_prompts,
+        } => {
+            if text.trim().is_empty() && suggested_prompts.is_empty() {
                 return None;
             }
             (
                 "assistant_message",
                 "Assistant response".to_string(),
-                json!({ "text": text, "phase": phase }),
+                json!({
+                    "text": text,
+                    "phase": phase,
+                    "suggestedPrompts": suggested_prompts_payload(suggested_prompts),
+                }),
                 None,
             )
         }
@@ -1026,6 +1034,13 @@ fn message_content_payload(content: &[MessageContent]) -> Vec<JsonValue> {
         .collect()
 }
 
+fn suggested_prompts_payload(prompts: &[SuggestedPrompt]) -> Vec<JsonValue> {
+    prompts
+        .iter()
+        .map(|prompt| json!({ "label": prompt.label, "prompt": prompt.prompt }))
+        .collect()
+}
+
 /// The identity every item event carries, plus what its own kind adds.
 fn merged_payload(mut identity: JsonValue, extra: JsonValue) -> JsonValue {
     if let (Some(identity), JsonValue::Object(extra)) = (identity.as_object_mut(), extra) {
@@ -1178,6 +1193,60 @@ mod tests {
     ) -> Option<TaskEventRecord> {
         let item = response_item(&item)?;
         task_event_from_item("thread_1", turn_id, anchor_ms, &item)
+    }
+
+    #[test]
+    fn a_message_carries_the_prompts_its_agent_suggested() {
+        let answer = codex_item_event(
+            "turn_1",
+            100,
+            ActivityStatus::Completed,
+            json!({
+                "type": "agentMessage",
+                "id": "answer",
+                "text": "Done.\n\n- :codex-followup[Next]{prompt=\"Do the next thing.\"}",
+            }),
+        )
+        .expect("an answer is an event");
+        let payload = answer.payload.expect("an answer has a payload");
+        assert_eq!(payload["text"], "Done.");
+        assert_eq!(
+            payload["suggestedPrompts"],
+            json!([{ "label": "Next", "prompt": "Do the next thing." }])
+        );
+
+        let suggestions_only = codex_item_event(
+            "turn_1",
+            100,
+            ActivityStatus::Completed,
+            json!({
+                "type": "agentMessage",
+                "id": "suggestions",
+                "text": "- :codex-followup[Next]{prompt=\"Do the next thing.\"}",
+            }),
+        )
+        .expect("a message of suggestions alone still has something to show");
+        assert_eq!(suggestions_only.payload.as_ref().unwrap()["text"], "");
+
+        let plain = codex_item_event(
+            "turn_1",
+            100,
+            ActivityStatus::Completed,
+            json!({ "type": "agentMessage", "id": "plain", "text": "Done." }),
+        )
+        .expect("an answer is an event");
+        assert_eq!(plain.payload.unwrap()["suggestedPrompts"], json!([]));
+
+        assert!(
+            codex_item_event(
+                "turn_1",
+                100,
+                ActivityStatus::InProgress,
+                json!({ "type": "agentMessage", "id": "empty", "text": "" }),
+            )
+            .is_none(),
+            "a message with nothing to show is not drawn yet"
+        );
     }
 
     #[test]

@@ -1087,6 +1087,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-composer-attachment-remove::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/task-turn-options.css", ".task-model-button::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/task-turn-options.css", ".task-permission-button::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css", ".task-suggested-prompt::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-reset-all::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-inline-reset::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/settings/components/refresh-button.css", "& > button::before", "--interface-control-hit-outset"],
@@ -1121,6 +1122,11 @@ test("contextual and inline actions stay compact while page and primary actions 
     [
       "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css",
       ".task-approval-actions .task-secondary-button",
+      "--interface-compact-visual-size",
+    ],
+    [
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css",
+      "& > .task-suggested-prompt {",
       "--interface-compact-visual-size",
     ],
     [

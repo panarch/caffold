@@ -187,6 +187,8 @@ class CaffoldTaskDetail extends HTMLElement {
         );
       } else if (event.detail?.type === "command-output") {
         this.commandDialog()?.openCommand(event.detail.command);
+      } else if (event.detail?.type === "suggested-prompt") {
+        this.followUpComposer()?.appendSuggestedPrompt(event.detail.prompt);
       }
     });
     this.addEventListener("caffold:task-markdown-preview-intent", (event) => {

@@ -1,0 +1,78 @@
+caffold-task-assistant-message-suggested-prompts {
+  /* One button per line, as the agent listed them. Each is as wide as its
+     name and stays at the start of the line; a name wider than the message
+     wraps inside its button so none of it is cut. */
+  display: grid;
+  justify-items: start;
+  gap: max(0.375rem, calc(var(--interface-compact-hit-outset) * 2));
+  width: min(100%, 850px);
+  min-width: 0;
+  max-width: 100%;
+  margin-top: var(--interface-space-2);
+  font-size: var(--interface-font-size);
+  line-height: var(--interface-line-height);
+
+  /* The button an approval card offers in the same conversation, with an
+     arrow before the name. Small corners keep every wrapped line inside. */
+  & > .task-suggested-prompt {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--interface-icon-small-size) minmax(0, 1fr);
+    align-items: start;
+    column-gap: var(--interface-space-3);
+    box-sizing: border-box;
+    width: fit-content;
+    max-width: 100%;
+    min-height: var(--interface-compact-visual-size);
+    padding: 0.3125rem var(--interface-space-5);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    text-align: left;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+  }
+
+  & > .task-suggested-prompt::before {
+    position: absolute;
+    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
+    content: "";
+  }
+
+  & > .task-suggested-prompt:hover,
+  & > .task-suggested-prompt:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+  }
+
+  & > .task-suggested-prompt:disabled {
+    border-color: var(--border);
+    cursor: default;
+    opacity: 0.55;
+  }
+
+  /* The arrow sits on the first line of the name, however many lines follow. */
+  & .task-suggested-prompt-icon {
+    display: block;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+    margin-top: calc(
+      (1em * var(--interface-line-height) - var(--interface-icon-small-size)) / 2
+    );
+    color: var(--muted);
+  }
+
+  & .task-suggested-prompt-icon-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    stroke-width: 1.75;
+  }
+
+  & .task-suggested-prompt-label {
+    min-width: 0;
+  }
+}

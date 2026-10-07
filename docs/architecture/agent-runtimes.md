@@ -365,7 +365,8 @@ listening.
 Caffold's normalized conversation is a projection, not a second transcript.
 It contains only what the interface and Task lifecycle consume:
 
-- user and agent messages;
+- user and agent messages, with any requests an agent offers for the person to
+  send next;
 - reasoning and tool activity;
 - commands, output, and changed paths;
 - turn and conversation status;
@@ -388,8 +389,15 @@ skills write into an agent message, `:codex-file-citation{path="…" …}`, read
 as a Markdown link to the cited file under its file name, so it opens in
 Integrated Review like any link to a local file; its other attributes, such as
 purpose and page, are dropped. A citation inside code, or one without a path
-closed on its own line, stays as written. Unknown optional events may be
-ignored or presented as generic tool activity; missing load-bearing fields fail
+closed on its own line, stays as written. The same skills end an answer with
+suggested next requests, one per line as
+`- :codex-followup[Short action]{prompt="…"}`; a line holding one whole
+suggestion outside code leaves the message text and becomes one of the
+message's suggested prompts, its short name and its `prompt` as written, while
+the syntax inside a sentence stays in the text. Claude and Grok can each
+suggest a next prompt only when a client asks for it, which Caffold does not,
+so their messages carry none. Unknown optional events may be ignored or
+presented as generic tool activity; missing load-bearing fields fail
 explicitly. The provider's raw protocol does not escape into Task or frontend
 state.
 

@@ -11,13 +11,16 @@ await import("./assistant-message.js");
 const message = registry.element("caffold-task-assistant-message").prototype;
 after(() => registry.restore());
 
-function messageOwner({ copyButton, markdown } = {}) {
+function messageOwner({ copyButton, markdown, suggestedPrompts } = {}) {
   return Object.assign(Object.create(message), {
     hidden: false,
     isConnected: true,
     querySelector(selector) {
       if (selector.includes("copy-button")) {
         return copyButton ?? null;
+      }
+      if (selector.includes("suggested-prompts")) {
+        return suggestedPrompts ?? null;
       }
       return selector.includes("caffold-task-markdown")
         ? markdown ?? null
@@ -41,23 +44,29 @@ function presentationOf(snapshot) {
   return owner.presentation;
 }
 
-test("merges only the Copy and Markdown children it mounts", () => {
+test("merges only the Copy, Markdown, and suggested prompt children it mounts", () => {
   const copyTarget = { id: "message:a:copy-button:copy" };
   const markdownTarget = { id: "message:a:markdown:link:1" };
+  const promptTarget = { id: "message:a:suggested-prompts:prompt:1" };
   const copyButton = childScope(copyTarget);
   const markdown = childScope(markdownTarget);
-  const owner = messageOwner({ copyButton, markdown });
+  const suggestedPrompts = childScope(promptTarget);
+  const owner = messageOwner({ copyButton, markdown, suggestedPrompts });
   const conversation = { id: "conversation" };
 
   const scope = owner.actionHintScope({
     scopeId: "message:a",
     clipRoots: [conversation],
   });
-  assert.deepEqual(scope.targets, [copyTarget, markdownTarget]);
-  assert.deepEqual(scope.mutationRoots, [copyButton, markdown]);
+  assert.deepEqual(scope.targets, [copyTarget, markdownTarget, promptTarget]);
+  assert.deepEqual(scope.mutationRoots, [copyButton, markdown, suggestedPrompts]);
   assert.equal(copyButton.options.scopeId, "message:a:copy-button");
   assert.equal(markdown.options.scopeId, "message:a:markdown");
-  for (const child of [copyButton, markdown]) {
+  assert.equal(
+    suggestedPrompts.options.scopeId,
+    "message:a:suggested-prompts",
+  );
+  for (const child of [copyButton, markdown, suggestedPrompts]) {
     assert.deepEqual(child.options.clipRoots, [owner, conversation]);
   }
 
@@ -121,4 +130,35 @@ test("shows the turn's time only on an answer the provider did not time", () => 
     "",
     "a turn without a completion time of its own leaves the slot empty",
   );
+});
+
+test("hands its suggested prompts on and redraws when they or their lock change", () => {
+  const suggested = [{ label: "Next", prompt: "Do the next thing." }];
+  const answer = {
+    id: "message-1",
+    type: "assistant_message",
+    payload: { text: "Done.", suggestedPrompts: suggested },
+  };
+  const owner = Object.create(message);
+
+  assert.equal(owner.setSnapshot({ event: answer }), true);
+  assert.deepEqual(owner.presentation.suggestedPrompts, suggested);
+  assert.equal(owner.presentation.controlsDisabled, false);
+  assert.equal(owner.presentation.text, "Done.", "Copy takes the text alone");
+  assert.equal(
+    owner.setSnapshot({
+      event: { ...answer, payload: { ...answer.payload, suggestedPrompts: [...suggested] } },
+    }),
+    false,
+  );
+  assert.equal(owner.setSnapshot({ event: answer, controlsDisabled: true }), true);
+  assert.equal(owner.presentation.controlsDisabled, true);
+  assert.equal(
+    owner.setSnapshot({
+      event: { ...answer, payload: { text: "Done.", suggestedPrompts: [] } },
+      controlsDisabled: true,
+    }),
+    true,
+  );
+  assert.deepEqual(owner.presentation.suggestedPrompts, []);
 });

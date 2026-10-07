@@ -2,6 +2,7 @@ import { assistantMessagePhase } from "#tasks/task-events.js";
 import { formatDate, taskEventObservedMs } from "#tasks/task-format.js";
 import "./markdown.js";
 import "./assistant-message/components/copy-button.js";
+import "./assistant-message/components/suggested-prompts.js";
 import {
   emptyActionHintScope,
   mergeActionHintScopes,
@@ -54,18 +55,34 @@ class CaffoldTaskAssistantMessage extends HTMLElement {
       <div class="task-assistant-message-body">
         <caffold-task-markdown></caffold-task-markdown>
       </div>
+      <caffold-task-assistant-message-suggested-prompts></caffold-task-assistant-message-suggested-prompts>
     `;
     this.update();
   }
 
   update() {
-    const { text, time, threadId, fileLinks, phase } = this.presentation;
+    const {
+      text,
+      time,
+      threadId,
+      fileLinks,
+      phase,
+      suggestedPrompts,
+      controlsDisabled,
+    } = this.presentation;
     syncAttribute(this, "data-message-phase", phase);
     patchText(
       this.querySelector(":scope > .task-assistant-message-header > time"),
       time,
     );
     this.copyButton().setText(text);
+    // A message of suggestions alone has no text to copy.
+    this.copyButton().hidden = !text.trim();
+    this.suggestedPrompts().setSnapshot({
+      threadId,
+      prompts: suggestedPrompts,
+      disabled: controlsDisabled,
+    });
 
     // The markdown element reads these while it parses, so a change to any of
     // them has to reach it before the text does.
@@ -94,6 +111,10 @@ class CaffoldTaskAssistantMessage extends HTMLElement {
       }),
       this.markdown()?.actionHintScope?.({
         scopeId: `${scopeId}:markdown`,
+        clipRoots: childClipRoots,
+      }),
+      this.suggestedPrompts()?.actionHintScope?.({
+        scopeId: `${scopeId}:suggested-prompts`,
         clipRoots: childClipRoots,
       }),
     );
@@ -129,6 +150,12 @@ class CaffoldTaskAssistantMessage extends HTMLElement {
     );
   }
 
+  suggestedPrompts() {
+    return this.querySelector(
+      ":scope > caffold-task-assistant-message-suggested-prompts",
+    );
+  }
+
   ensureState() {
     if (this.stateReady) {
       return;
@@ -153,6 +180,10 @@ function messagePresentation(snapshot = {}) {
     threadId: `${event.threadId ?? payload.threadId ?? ""}`.trim(),
     fileLinks: fileLinks.length ? JSON.stringify(fileLinks) : "",
     phase: assistantMessagePhase(snapshot.phase ?? payload.phase) ?? "",
+    suggestedPrompts: Array.isArray(payload.suggestedPrompts)
+      ? payload.suggestedPrompts
+      : [],
+    controlsDisabled: Boolean(snapshot.controlsDisabled),
   };
 }
 
@@ -164,7 +195,10 @@ function sameMessagePresentation(left, right) {
       left.time === right.time &&
       left.threadId === right.threadId &&
       left.fileLinks === right.fileLinks &&
-      left.phase === right.phase,
+      left.phase === right.phase &&
+      JSON.stringify(left.suggestedPrompts) ===
+        JSON.stringify(right.suggestedPrompts) &&
+      left.controlsDisabled === right.controlsDisabled,
   );
 }
 

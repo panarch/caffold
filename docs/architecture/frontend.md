@@ -505,7 +505,8 @@ dependencies.
 Custom children retain their own action knowledge. Work Details merges its own
 summary with its direct retained children. Command declares active disclosure
 or terminal View output from the same provider, Assistant Message Copy declares
-its one button, Message Attachments declares one Preview per picture it can
+its one button, Suggested Prompts declares one action per request that can be
+chosen, Message Attachments declares one Preview per picture it can
 open, Markdown Code Block declares Wrap, Copy, and Preview, and Conversation
 merges those public scopes through its retained Assistant Message, User
 Message, Message Attachments, Markdown, and Work Details children. Reusable
@@ -1057,7 +1058,16 @@ Assistant Message mounts its Copy control as a component of its own and
 hands it only the text to place on the clipboard. That component owns the
 button, the outcome it reports, and the timer that clears it. It copies the
 message snapshot's text rather than the rendered Markdown, and text arriving
-for a different message retires a copy still in flight. Thinking Markdown
+for a different message retires a copy still in flight. A message without text,
+as one holding only suggested requests is, hides Copy. Assistant Message
+also mounts Suggested Prompts below its body with the message's suggested
+requests and Conversation's controls-disabled state. That component owns one
+button per request and never writes to the Composer: choosing a request emits
+an intent that Conversation accepts only from a message it shows, for the
+current Task, while the Task can be reached, and forwards to Task Detail, which
+hands the request to its follow-up Composer. The Composer owns the draft and
+appends the request after it only while its prompt field takes text, so voice
+input filling the field is never overwritten. Thinking Markdown
 intentionally remains outside code-block controls.
 User Message draws a prompt from a snapshot of its text, pictures, delivery
 state, time, and uploading file lines, and mounts Message Attachments for the

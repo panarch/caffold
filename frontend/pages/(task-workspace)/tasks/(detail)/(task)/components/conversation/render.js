@@ -537,7 +537,11 @@ function renderAssistantMessageEvent(
   messages = new Map(),
   turnCompletedMs = null,
 ) {
-  if (!`${event.payload?.text ?? ""}`.trim()) {
+  const suggestedPrompts = event.payload?.suggestedPrompts;
+  if (
+    !`${event.payload?.text ?? ""}`.trim() &&
+    !(Array.isArray(suggestedPrompts) && suggestedPrompts.length)
+  ) {
     return renderStatusEvent(event);
   }
   const identity = eventIdentityKey(event) || `${event?.id ?? ""}`;

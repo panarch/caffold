@@ -325,6 +325,35 @@ class CaffoldTaskComposer extends HTMLElement {
     return true;
   }
 
+  // A request the agent suggested goes after whatever is being written, so
+  // nothing typed is lost, and waits there to be read and sent.
+  appendSuggestedPrompt(prompt) {
+    this.ensureState();
+    const request = `${prompt ?? ""}`;
+    if (!request.trim() || this.promptFieldLocked()) {
+      return false;
+    }
+    this.captureCurrentState();
+    const state = this.stateFor();
+    const draft = state.prompt.trimEnd();
+    state.prompt = draft ? `${draft}\n\n${request}` : request;
+    state.selectionStart = state.prompt.length;
+    state.selectionEnd = state.prompt.length;
+    this.render();
+    this.focus();
+    return true;
+  }
+
+  // Whether the prompt field takes no text now: the Task cannot be reached,
+  // voice input is filling it, or a new Task is being created from it.
+  promptFieldLocked() {
+    return (
+      this.context.disabled ||
+      ["requesting", "recording", "transcribing"].includes(this.voice.phase) ||
+      (Boolean(this.activeSubmissionFor()) && this.context.mode === "create")
+    );
+  }
+
   // Messages that never reached the agent go back in the order they were
   // sent, ahead of whatever was written since.
   restoreAheadOfDraft(prompts, attachments) {
@@ -1309,7 +1338,7 @@ class CaffoldTaskComposer extends HTMLElement {
     );
     const interrupting = Boolean(this.context.interrupting);
     const creating = submitting && this.context.mode === "create";
-    const fieldDisabled = this.context.disabled || voiceBusy || creating;
+    const fieldDisabled = this.promptFieldLocked();
     const requestLocked =
       submitting || this.context.disabled || voiceBusy || interrupting;
     const settingsLocked = requestLocked || this.context.settingsLocked;
