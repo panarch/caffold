@@ -16,6 +16,7 @@ export const LIVE_CONNECTION_REPORT_EVENT = "caffold:live-connection-report";
 
 const DEFAULT_CONNECTION_TIMEOUT_MS = 8_000;
 const DEFAULT_RECONNECT_TIMEOUT_MS = 8_000;
+const DEFAULT_CHANNEL_OPEN_TIMEOUT_MS = 8_000;
 const DEFAULT_RETRY_DELAYS_MS = Object.freeze([250, 1_000, 3_000]);
 const LIVE_CHANNELS = Object.freeze([
   "task-list",
@@ -37,6 +38,8 @@ export class WorkspaceLiveUpdates {
       options.connectionTimeoutMs ?? DEFAULT_CONNECTION_TIMEOUT_MS;
     this.reconnectTimeoutMs =
       options.reconnectTimeoutMs ?? DEFAULT_RECONNECT_TIMEOUT_MS;
+    this.channelOpenTimeoutMs =
+      options.channelOpenTimeoutMs ?? DEFAULT_CHANNEL_OPEN_TIMEOUT_MS;
     this.retryDelaysMs = [
       ...(options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS),
     ];
@@ -48,9 +51,15 @@ export class WorkspaceLiveUpdates {
     this.reconnectTimer = null;
     this.retryTimer = null;
     this.retryAttempt = 0;
+    // Set when a connection stopped delivering: the next greeting does not show
+    // channels open again, so the attempt ends only when one does.
+    this.deliveryPending = false;
     this.controlRevision = 0;
     this.controlDirty = false;
     this.controlPublication = null;
+    // Each subscription a publication carried that has not opened yet on this
+    // connection, with its deadline.
+    this.openChecks = new Map();
     this.channelGenerations = new Map(
       LIVE_CHANNELS.map((channel) => [channel, 0]),
     );
@@ -94,6 +103,7 @@ export class WorkspaceLiveUpdates {
       return false;
     }
     this.retryAttempt = 0;
+    this.deliveryPending = false;
     return this.dispatchConnection(LIVE_CONNECTION_EVENT.RETRY);
   }
 
@@ -113,6 +123,7 @@ export class WorkspaceLiveUpdates {
       return false;
     }
     this.retryAttempt = 0;
+    this.deliveryPending = false;
     const resumed = this.dispatchConnection(LIVE_CONNECTION_EVENT.RESUME);
     if (resumed) {
       this.notifyBindings("onResume");
@@ -156,6 +167,7 @@ export class WorkspaceLiveUpdates {
     const previous = this.bindings.get(channel);
     if (previous) {
       previous.closed = true;
+      this.clearOpenCheck(previous);
       previous.listener.onInvalidated?.();
     }
     const binding = {
@@ -178,6 +190,7 @@ export class WorkspaceLiveUpdates {
       return;
     }
     binding.closed = true;
+    this.clearOpenCheck(binding);
     if (binding.channel === "watch") {
       if (this.watchBindings.get(binding.subscriptionId) !== binding) {
         return;
@@ -273,6 +286,7 @@ export class WorkspaceLiveUpdates {
         // gateway-ready included, takes a new revision.
         this.controlRevision += 1;
         const subscriptions = this.desiredSubscriptions();
+        const published = this.publishedBindings();
         try {
           await this.publishSubscriptions(connectionId, subscriptions);
         } catch (error) {
@@ -281,6 +295,9 @@ export class WorkspaceLiveUpdates {
             this.connectionFailed(this.source, sourceGeneration, error);
           }
           return;
+        }
+        if (this.isCurrentConnection(sourceGeneration, connectionId)) {
+          this.expectChannelsOpen(published, sourceGeneration, connectionId);
         }
       }
     })().finally(() => {
@@ -293,6 +310,58 @@ export class WorkspaceLiveUpdates {
     });
     this.controlPublication = publication;
     return publication;
+  }
+
+  // Each subscription the snapshot about to be sent carries, with the generation
+  // it asks for.
+  publishedBindings() {
+    return [...this.bindings.values(), ...this.watchBindings.values()]
+      .filter((binding) => !binding.closed)
+      .map((binding) => ({ binding, generation: binding.generation }));
+  }
+
+  // The server opens every channel it is given before sending anything else on
+  // it, so one that stays unopened means the connection has stopped delivering.
+  expectChannelsOpen(published, sourceGeneration, connectionId) {
+    if (!Number.isFinite(this.channelOpenTimeoutMs)) {
+      return;
+    }
+    for (const { binding, generation } of published) {
+      if (
+        channelOpened(binding, generation, connectionId) ||
+        this.openChecks.get(binding)?.generation === generation
+      ) {
+        continue;
+      }
+      this.clearOpenCheck(binding);
+      const timer = this.windowTarget.setTimeout(() => {
+        this.openChecks.delete(binding);
+        if (
+          !binding.closed &&
+          binding.generation === generation &&
+          !channelOpened(binding, generation, connectionId) &&
+          this.isCurrentConnection(sourceGeneration, connectionId)
+        ) {
+          this.connectionUndelivered(this.source, sourceGeneration);
+        }
+      }, Math.max(0, this.channelOpenTimeoutMs));
+      this.openChecks.set(binding, { generation, timer });
+    }
+  }
+
+  clearOpenCheck(binding) {
+    const check = this.openChecks.get(binding);
+    if (check) {
+      this.windowTarget.clearTimeout(check.timer);
+      this.openChecks.delete(binding);
+    }
+  }
+
+  clearOpenChecks() {
+    for (const check of this.openChecks.values()) {
+      this.windowTarget.clearTimeout(check.timer);
+    }
+    this.openChecks.clear();
   }
 
   handleVisibilityChange() {
@@ -325,7 +394,9 @@ export class WorkspaceLiveUpdates {
       this.clearConnectionTimer();
       this.clearReconnectTimer();
       this.clearRetryTimer();
-      this.retryAttempt = 0;
+      if (!this.deliveryPending) {
+        this.retryAttempt = 0;
+      }
       return;
     }
     if (effect === LIVE_CONNECTION_EFFECT.WAIT_TO_REPLACE) {
@@ -340,6 +411,7 @@ export class WorkspaceLiveUpdates {
       return;
     }
     if (effect === LIVE_CONNECTION_EFFECT.REPLACE_NOW) {
+      this.reportConnectionTrouble(context.previousNode);
       this.clearReconnectTimer();
       this.replaceConnection();
       return;
@@ -453,6 +525,15 @@ export class WorkspaceLiveUpdates {
       return;
     }
     if (message.type === "channel-open") {
+      binding.openedOn = {
+        connectionId: this.connectionId,
+        generation: message.generation,
+      };
+      this.clearOpenCheck(binding);
+      if (this.deliveryPending) {
+        this.deliveryPending = false;
+        this.retryAttempt = 0;
+      }
       binding.listener.onOpen?.();
       return;
     }
@@ -492,8 +573,19 @@ export class WorkspaceLiveUpdates {
     this.dispatchConnection(LIVE_CONNECTION_EVENT.STALL);
   }
 
+  connectionUndelivered(source, generation) {
+    if (!this.isCurrentSource(source, generation)) {
+      return;
+    }
+    this.releaseConnection();
+    this.deliveryPending = true;
+    this.onConnectionReport({ kind: "stalled", id: generation });
+    this.dispatchConnection(LIVE_CONNECTION_EVENT.UNDELIVERED);
+  }
+
   releaseConnection() {
     this.clearConnectionTimer();
+    this.clearOpenChecks();
     this.connectionId = "";
     this.controlPublication = null;
     this.controlDirty = true;
@@ -541,6 +633,7 @@ export class WorkspaceLiveUpdates {
   closeSource() {
     const source = this.source;
     this.source = null;
+    this.clearOpenChecks();
     this.connectionId = "";
     this.controlPublication = null;
     if (source) {
@@ -601,6 +694,13 @@ export class WorkspaceLiveUpdates {
       }
     }
   }
+}
+
+function channelOpened(binding, generation, connectionId) {
+  return (
+    binding.openedOn?.connectionId === connectionId &&
+    binding.openedOn.generation === generation
+  );
 }
 
 function parsePayload(event) {

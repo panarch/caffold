@@ -434,6 +434,108 @@ test("a connection that gives no first answer is reopened at once", async () => 
   browser.liveUpdates.disconnect();
 });
 
+test("replaces a connection whose sent channel does not open, within the bounded retry", async () => {
+  const reports = [];
+  const browser = harness({
+    onConnectionReport: (report) => reports.push(report.kind),
+  });
+  const errors = [];
+  const binding = browser.liveUpdates.subscribeTaskList({
+    onError: (_error, metadata) => errors.push(metadata),
+  });
+  browser.liveUpdates.connect();
+  browser.sources[0].emit("gateway-ready", { connectionId: "connection-a" });
+  await settle();
+  assert.equal(browser.publications.length, 1);
+
+  const check = runNextTimer(browser.windowTarget);
+  assert.equal(check.delay, 8_000);
+  assert.equal(browser.sources[0].closed, true);
+  assert.equal(browser.liveUpdates.node, "reconnecting");
+  assert.deepEqual(errors, [{ closed: false, physical: true }]);
+  assert.deepEqual(reports, ["opened", "answered", "stalled", "closed"]);
+
+  const retry = runNextTimer(browser.windowTarget);
+  assert.equal(retry.delay, 250);
+  assert.equal(browser.sources.length, 2);
+  browser.sources[1].emit("gateway-ready", { connectionId: "connection-b" });
+  await settle();
+  browser.sources[1].emit("live-update", {
+    channel: "task-list",
+    generation: binding.generation,
+    type: "channel-open",
+  });
+  assert.equal(browser.liveUpdates.node, "connected");
+  assert.equal(browser.liveUpdates.retryAttempt, 0, "a delivered channel ends the attempt");
+  assert.deepEqual(errors, [{ closed: false, physical: true }]);
+
+  binding.close();
+  browser.liveUpdates.disconnect();
+});
+
+test("runs out of retries when greeted connections never open their channels", async () => {
+  const browser = harness();
+  const errors = [];
+  const binding = browser.liveUpdates.subscribeTaskList({
+    onError: (_error, metadata) => errors.push(metadata),
+  });
+  browser.liveUpdates.connect();
+
+  // Every connection answers its greeting, but no channel ever opens.
+  for (let attempt = 0; attempt < 10 && browser.liveUpdates.node !== "unavailable"; attempt += 1) {
+    const source = browser.sources.at(-1);
+    if (!source.closed && browser.liveUpdates.node !== "connected") {
+      source.emit("gateway-ready", { connectionId: `connection-${attempt}` });
+      await settle();
+    }
+    runNextTimer(browser.windowTarget);
+  }
+
+  assert.equal(browser.liveUpdates.node, "unavailable");
+  assert.equal(browser.sources.length, 4, "a first connection and three replacements");
+  assert.deepEqual(errors.at(-1), { closed: true, exhausted: true, physical: true });
+
+  binding.close();
+  browser.liveUpdates.disconnect();
+});
+
+test("expects nothing more of a channel that opened, even before its subscription answered", async () => {
+  let source = null;
+  const browser = harness({
+    publishSubscriptions: async (_connectionId, subscriptions) => {
+      if (subscriptions.taskList) {
+        source.emit("live-update", {
+          channel: "task-list",
+          generation: subscriptions.taskList.generation,
+          type: "channel-open",
+        });
+      }
+    },
+  });
+  const list = browser.liveUpdates.subscribeTaskList({});
+  browser.liveUpdates.connect();
+  source = browser.sources[0];
+  source.emit("gateway-ready", { connectionId: "connection-a" });
+  await settle();
+  assert.equal(browser.windowTarget.timers.size, 0);
+
+  const watch = browser.liveUpdates.subscribeWatch("repo", {});
+  await settle();
+  assert.equal(browser.windowTarget.timers.size, 1, "only the new Watch waits");
+  source.emit("live-update", {
+    channel: "watch",
+    subscriptionId: watch.subscriptionId,
+    generation: watch.generation,
+    type: "channel-open",
+  });
+  assert.equal(browser.windowTarget.timers.size, 0);
+  assert.equal(browser.liveUpdates.node, "connected");
+
+  watch.close();
+  list.close();
+  browser.liveUpdates.disconnect();
+});
+
 test("a second silent connection ends the attempt and retry gives up after as many attempts", () => {
   const browser = harness();
   browser.liveUpdates.retryDelaysMs = [250];

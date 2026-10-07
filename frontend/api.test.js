@@ -11,6 +11,8 @@ import {
   getNote,
   getNotes,
   getTask,
+  getTaskStoreStatus,
+  getTasks,
   killTerminal,
   liveUpdatesUrl,
   openTerminal,
@@ -159,6 +161,32 @@ test("a current-plan read honors both its caller cancellation and its timeout", 
     name: "AbortError",
   });
   assert.deepEqual(cleared, [1, 2, 3]);
+});
+
+test("the Task list and Task-store readiness give up after eight seconds without an answer", async () => {
+  for (const read of [getTasks, getTaskStoreStatus]) {
+    const timers = [];
+    const windowTarget = installBrowserHarness((_url, options) =>
+      new Promise((_resolve, reject) => {
+        options.signal.addEventListener(
+          "abort",
+          () => reject(new DOMException("aborted", "AbortError")),
+          { once: true },
+        );
+      })
+    );
+    windowTarget.setTimeout = (callback, delay) => {
+      timers.push({ callback, delay });
+      return timers.length;
+    };
+    windowTarget.clearTimeout = () => {};
+
+    const pending = read();
+    assert.equal(timers.length, 1);
+    assert.equal(timers[0].delay, 8_000);
+    timers[0].callback();
+    await assert.rejects(pending, { code: "request_timeout", status: 0 });
+  }
 });
 
 test("reports origin reachability for a received API response", async () => {

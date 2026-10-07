@@ -908,11 +908,9 @@ class CaffoldActiveTaskList extends HTMLElement {
     });
   }
 
-  async loadTasks({
-    force = false,
-    requireFresh = false,
-    isCurrent = () => true,
-  } = {}) {
+  // Callers that join a load in flight share its canonical answer; each judges
+  // for itself whether it still wants it.
+  async loadTasks({ force = false, requireFresh = false } = {}) {
     if (this.taskListLoaded && !force) {
       return {
         sections: this.sections,
@@ -926,7 +924,7 @@ class CaffoldActiveTaskList extends HTMLElement {
       return await this.taskListLoadPromise;
     }
 
-    const request = this.performLoadTasks({ isCurrent });
+    const request = this.performLoadTasks();
     this.taskListLoadPromise = request;
     try {
       return await request;
@@ -941,7 +939,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     }
   }
 
-  async performLoadTasks({ isCurrent }) {
+  async performLoadTasks() {
     const requestId = ++this.taskListRequestId;
     this.taskListLoading = true;
     this.taskListError = null;
@@ -954,10 +952,6 @@ class CaffoldActiveTaskList extends HTMLElement {
     try {
       const response = await getTasks();
       if (requestId !== this.taskListRequestId) {
-        return null;
-      }
-      if (!isCurrent()) {
-        this.taskListLoading = false;
         return null;
       }
       const runtimeByThread = new Map(
@@ -999,10 +993,6 @@ class CaffoldActiveTaskList extends HTMLElement {
       return response;
     } catch (error) {
       if (requestId !== this.taskListRequestId) {
-        return null;
-      }
-      if (!isCurrent()) {
-        this.taskListLoading = false;
         return null;
       }
       this.taskListLoading = false;
@@ -1165,7 +1155,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     if (recovery && isCurrent()) {
       this.revisionByThread.clear();
     }
-    const response = await this.loadTasks({ force: true, isCurrent });
+    const response = await this.loadTasks({ force: true });
     if (!isCurrent()) {
       return null;
     }
@@ -1210,10 +1200,6 @@ class CaffoldActiveTaskList extends HTMLElement {
 
   get streamState() {
     return this.taskListStream?.state ?? TASK_TRANSPORT_STATE.IDLE;
-  }
-
-  setStreamState(state) {
-    this.taskListStream.setState(state);
   }
 
   retryStream() {

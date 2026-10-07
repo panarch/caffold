@@ -71,7 +71,7 @@ export async function updateCodexRuntime() {
 }
 
 export async function getTaskStoreStatus() {
-  return requestJson("/api/task-store/status");
+  return requestJson("/api/task-store/status", {}, { timeoutMs: 8_000 });
 }
 
 export async function retryTaskStoreMigration() {
@@ -215,7 +215,7 @@ export async function transcribeVoice(recording, signal) {
 }
 
 export async function getTasks() {
-  return requestJson("/api/tasks");
+  return requestJson("/api/tasks", {}, { timeoutMs: 8_000 });
 }
 
 export async function getArchivedTasks(cursor = null) {

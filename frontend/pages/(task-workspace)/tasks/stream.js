@@ -1,8 +1,21 @@
 import { TASK_TRANSPORT_STATE } from "./runtime-state.js";
+import {
+  TASK_STREAM_EVENT,
+  TASK_STREAM_NODE,
+  presentTaskStream,
+  transitionTaskStream,
+} from "./stream/machine.js";
 
-const DEFAULT_RECONNECT_TIMEOUT_MS = 8_000;
 const DEFAULT_RETRY_DELAYS_MS = Object.freeze([250, 1_000, 3_000]);
 
+const NODE = TASK_STREAM_NODE;
+const EVENT = TASK_STREAM_EVENT;
+
+// One owner's Task stream on the workspace gateway; Task List and Task Detail
+// each keep one. Owner calls, gateway reports, readiness, reconciliation, and
+// timers all enter one control graph (stream/machine.js). This class runs the
+// effects of each accepted transition and publishes the derived transport
+// state.
 export class TaskStreamLifecycle {
   constructor(options = {}) {
     this.subscribe = options.subscribe ?? null;
@@ -13,157 +26,237 @@ export class TaskStreamLifecycle {
     this.onConnectionInvalidated =
       options.onConnectionInvalidated ?? (() => {});
     this.connectionTimeoutMs = options.connectionTimeoutMs ?? null;
-    this.reconnectTimeoutMs =
-      options.reconnectTimeoutMs ?? DEFAULT_RECONNECT_TIMEOUT_MS;
     this.retryDelaysMs = [
       ...(options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS),
     ];
+    this.node = NODE.INACTIVE;
+    this.state = TASK_TRANSPORT_STATE.IDLE;
     this.contextKey = "";
     this.source = null;
-    this.state = TASK_TRANSPORT_STATE.IDLE;
     this.generation = 0;
-    this.reconcileGeneration = 0;
-    this.reconciliation = null;
-    this.connectionTimer = null;
-    this.reconnectTimer = null;
-    this.retryTimer = null;
     this.retryAttempt = 0;
     this.hasConnected = false;
     this.needsReconcile = false;
-    this.skipNextReconciliation = false;
+    this.skipReconcile = false;
     this.validating = false;
+    this.reconciliation = null;
+    this.reconcileToken = 0;
+    this.prepareToken = 0;
+    this.openTimer = null;
+    this.retryTimer = null;
+    this.queue = [];
+    this.dispatching = false;
   }
 
   activate(contextKey, { force = false, validating = false } = {}) {
     const nextContextKey = `${contextKey ?? ""}`.trim();
-    const sameContext = this.contextKey === nextContextKey;
-    if (
-      !force &&
-      sameContext &&
-      (this.source ||
-        this.retryTimer !== null ||
-        document.visibilityState !== "visible")
-    ) {
-      return;
-    }
-
-    const recovering =
-      sameContext &&
-      Boolean(nextContextKey) &&
-      (force || this.hasConnected || this.needsReconcile);
-    this.resetConnection();
-    this.validating = Boolean(validating && sameContext && nextContextKey);
-    this.contextKey = nextContextKey;
-    this.retryAttempt = 0;
-    if (!sameContext) {
-      this.hasConnected = false;
-      this.needsReconcile = false;
-    } else if (recovering) {
-      this.needsReconcile = true;
-    }
-
     if (!nextContextKey) {
+      this.deactivate();
       return;
     }
-    if (document.visibilityState === "visible") {
-      this.openConnection(nextContextKey, this.generation);
-    }
+    const sameContext = this.contextKey === nextContextKey;
+    this.dispatch({
+      type: EVENT.ACTIVATE,
+      contextKey: nextContextKey,
+      sameContext,
+      forced: force,
+      validating: Boolean(validating && sameContext),
+    });
   }
 
   retry({ reconcile = true } = {}) {
     if (this.contextKey) {
-      this.skipNextReconciliation = !reconcile;
-      this.activate(this.contextKey, { force: true });
+      this.dispatch({ type: EVENT.RETRY, reconcile });
     }
   }
 
   suspend() {
-    if (!this.contextKey) {
-      return;
+    if (this.contextKey) {
+      this.dispatch({ type: EVENT.SUSPEND });
     }
-    this.skipNextReconciliation = false;
-    this.needsReconcile = true;
-    this.clearConnectionTimer();
-    this.clearReconnectTimer();
-    this.clearRetryTimer();
-    this.validating = false;
-    this.invalidateReconciliation();
-    this.state = TASK_TRANSPORT_STATE.IDLE;
   }
 
-  async recover(contextKey = this.contextKey) {
+  // Replaces the subscription and reads canonical state alongside it. The
+  // answer is that reading's outcome; a later context, hide, or replacement
+  // makes it stale.
+  recover(contextKey = this.contextKey) {
     const nextContextKey = `${contextKey ?? ""}`.trim();
-    if (!nextContextKey || document.visibilityState !== "visible") {
-      return { ok: false, stale: true };
+    if (!nextContextKey || !isVisible()) {
+      return Promise.resolve({ ok: false, stale: true });
     }
-    this.skipNextReconciliation = false;
-    this.activate(nextContextKey, { force: true, validating: true });
-    const generation = this.generation;
-    const reconcileGeneration = this.reconcileGeneration;
-    const outcome = await this.requestReconciliation(
-      nextContextKey,
-      generation,
-      reconcileGeneration,
-      { recovery: true },
-    );
-    if (
-      outcome.ok &&
-      this.isCurrentReconciliation(
-        nextContextKey,
-        generation,
-        reconcileGeneration,
-      )
-    ) {
-      this.needsReconcile = false;
-    } else if (
-      !outcome.ok &&
-      this.isCurrentReconciliation(
-        nextContextKey,
-        generation,
-        reconcileGeneration,
-      )
-    ) {
-      this.validating = false;
-      this.setState(TASK_TRANSPORT_STATE.RECONNECTING);
-    }
-    return outcome;
+    const accepted = this.dispatch({
+      type: EVENT.RECOVER,
+      contextKey: nextContextKey,
+      sameContext: this.contextKey === nextContextKey,
+    });
+    return accepted && this.reconciliation
+      ? this.reconciliation.promise
+      : Promise.resolve({ ok: false, stale: true });
   }
 
   deactivate() {
-    this.resetConnection();
-    this.contextKey = "";
-    this.hasConnected = false;
-    this.needsReconcile = false;
-    this.retryAttempt = 0;
-    this.skipNextReconciliation = false;
-    this.validating = false;
+    this.dispatch({ type: EVENT.DEACTIVATE });
   }
 
-  openConnection(contextKey, generation) {
-    if (
-      this.source ||
-      this.retryTimer !== null ||
-      document.visibilityState !== "visible" ||
-      !this.isCurrentGeneration(contextKey, generation)
-    ) {
-      return;
+  // Events raised while a transition runs its effects wait for it to finish,
+  // so every node change passes through one transition at a time.
+  dispatch(event) {
+    if (this.dispatching) {
+      this.queue.push(event);
+      return false;
     }
-    if (!this.subscribe) {
-      this.setState(TASK_TRANSPORT_STATE.UNAVAILABLE);
-      return;
+    this.dispatching = true;
+    let accepted = false;
+    try {
+      accepted = this.apply(event);
+      while (this.queue.length) {
+        this.apply(this.queue.shift());
+      }
+    } finally {
+      this.dispatching = false;
     }
+    return accepted;
+  }
 
-    let source;
+  apply(event) {
+    const previous = this.node;
+    const next = transitionTaskStream(previous, event, {
+      visible: isVisible(),
+      prepares: Boolean(this.waitUntilReady),
+      reconcilePending: this.needsReconcile && !this.skipReconcile,
+      retryBudgetLeft: Number.isFinite(this.retryDelaysMs[this.retryAttempt]),
+    });
+    if (next === null) {
+      return false;
+    }
+    this.node = next;
+    this.runEffects(previous, event, next);
+    this.publish(event, next);
+    return true;
+  }
+
+  runEffects(previous, event, next) {
+    switch (event.type) {
+      case EVENT.ACTIVATE:
+      case EVENT.RETRY:
+      case EVENT.RECOVER:
+      case EVENT.RETRY_DUE:
+        this.resubscribe(event, next);
+        return;
+      case EVENT.SUSPEND:
+        this.stopWaiting();
+        this.needsReconcile = true;
+        this.skipReconcile = false;
+        this.validating = false;
+        return;
+      case EVENT.DEACTIVATE:
+        this.release();
+        this.stopWaiting();
+        this.contextKey = "";
+        this.hasConnected = false;
+        this.needsReconcile = false;
+        this.skipReconcile = false;
+        this.validating = false;
+        this.retryAttempt = 0;
+        return;
+      case EVENT.CHANNEL_OPENED:
+      case EVENT.PREPARED:
+        this.clearOpenTimer();
+        this.hasConnected = true;
+        this.enterOpened(next);
+        return;
+      case EVENT.RECONCILED:
+        this.needsReconcile = false;
+        if (next === NODE.READY) {
+          this.settleReady();
+        }
+        return;
+      case EVENT.RECONCILE_FAILED:
+        this.validating = false;
+        if (next !== previous) {
+          this.fail(next);
+        }
+        return;
+      case EVENT.CHANNEL_FAILED:
+      case EVENT.OPEN_TIMED_OUT:
+      case EVENT.PREPARE_FAILED:
+        this.fail(next);
+        return;
+      case EVENT.GATEWAY_TROUBLE:
+      case EVENT.GATEWAY_EXHAUSTED:
+        // The gateway keeps the subscription and reopens it on a fresh
+        // connection, so it is not released here.
+        this.stopWaiting();
+        this.needsReconcile = true;
+        this.validating = false;
+        return;
+      default:
+    }
+  }
+
+  resubscribe(event, next) {
+    this.release();
+    this.stopWaiting();
+    if (event.type === EVENT.RETRY) {
+      this.needsReconcile = true;
+      this.skipReconcile = !event.reconcile;
+      this.validating = false;
+      this.retryAttempt = 0;
+    } else if (event.type !== EVENT.RETRY_DUE) {
+      this.chooseContext(event);
+    }
+    if (next === NODE.SUBSCRIBING) {
+      this.openSubscription();
+    }
+    if (event.type === EVENT.RECOVER) {
+      this.reconcile();
+    }
+  }
+
+  chooseContext({ type, contextKey, sameContext, forced, validating }) {
+    const recovery = type === EVENT.RECOVER;
+    if (!sameContext) {
+      this.contextKey = contextKey;
+      this.hasConnected = false;
+      this.needsReconcile = false;
+    } else if (recovery || forced || this.hasConnected || this.needsReconcile) {
+      this.needsReconcile = true;
+    }
+    if (recovery) {
+      this.skipReconcile = false;
+    }
+    this.validating = recovery ? sameContext : Boolean(validating);
+    this.retryAttempt = 0;
+  }
+
+  openSubscription() {
+    const generation = this.generation;
+    const contextKey = this.contextKey;
+    if (!this.subscribe) {
+      // Without a gateway nothing can ever open, which is the gateway's own
+      // exhaustion rather than a failure worth retrying.
+      this.queue.push({ type: EVENT.GATEWAY_EXHAUSTED });
+      return;
+    }
+    let source = null;
     try {
       source = this.subscribe(contextKey, {
         onOpen: () => {
-          void this.opened(source, contextKey, generation);
+          this.fromGateway(source, generation, EVENT.CHANNEL_OPENED);
         },
-        onError: (_error, metadata = {}) => {
-          this.errored(source, contextKey, generation, metadata);
+        onError: (_error, { exhausted = false, physical = false } = {}) => {
+          this.fromGateway(
+            source,
+            generation,
+            !physical
+              ? EVENT.CHANNEL_FAILED
+              : exhausted
+                ? EVENT.GATEWAY_EXHAUSTED
+                : EVENT.GATEWAY_TROUBLE,
+          );
         },
         onEvent: (type, payload) => {
-          if (this.isCurrent(source, contextKey, generation)) {
+          if (this.isCurrent(source, generation)) {
             this.onEvent(
               type,
               { data: JSON.stringify(payload ?? null) },
@@ -173,341 +266,201 @@ export class TaskStreamLifecycle {
           }
         },
         onInvalidated: () => {
-          this.errored(source, contextKey, generation, { closed: true });
+          this.fromGateway(source, generation, EVENT.CHANNEL_FAILED);
         },
       });
       if (!source?.close || !source?.retry) {
         throw new Error("Live subscription did not provide a lifecycle handle.");
       }
     } catch {
-      this.needsReconcile = true;
-      this.replaceAfterFailure(null, contextKey, generation);
+      this.queue.push({ type: EVENT.CHANNEL_FAILED });
       return;
     }
-
     this.source = source;
-    this.setState(
-      this.validating
-        ? TASK_TRANSPORT_STATE.VALIDATING
-        : this.needsReconcile
-          ? TASK_TRANSPORT_STATE.RECONNECTING
-          : TASK_TRANSPORT_STATE.CONNECTING,
-    );
-    this.startConnectionTimer(source, contextKey, generation);
+    this.startOpenTimer(generation);
   }
 
-  async opened(source, contextKey, generation) {
-    if (!this.isCurrent(source, contextKey, generation)) {
-      return;
+  enterOpened(next) {
+    if (next === NODE.PREPARING) {
+      this.prepare();
+    } else if (next === NODE.RECONCILING) {
+      this.reconcile();
+    } else if (next === NODE.READY) {
+      this.settleReady();
     }
-    this.clearConnectionTimer();
-    this.clearReconnectTimer();
-    this.hasConnected = true;
-    const recovery = this.needsReconcile;
-    this.setState(
-      this.validating
-        ? TASK_TRANSPORT_STATE.VALIDATING
-        : recovery
-          ? TASK_TRANSPORT_STATE.RECONNECTING
-          : TASK_TRANSPORT_STATE.CONNECTING,
-    );
+  }
 
-    if (this.waitUntilReady) {
-      let ready = false;
-      try {
-        ready = await this.waitUntilReady(
-          contextKey,
-          () => this.isCurrent(source, contextKey, generation),
-          { recovery, source },
-        );
-      } catch {
-        if (this.isCurrent(source, contextKey, generation)) {
-          this.replaceAfterFailure(source, contextKey, generation);
+  prepare() {
+    const token = ++this.prepareToken;
+    const source = this.source;
+    const generation = this.generation;
+    const isCurrent = () =>
+      this.prepareToken === token && this.isCurrent(source, generation);
+    let readiness;
+    try {
+      readiness = this.waitUntilReady(this.contextKey, isCurrent, {
+        recovery: this.needsReconcile,
+        source,
+      });
+    } catch (error) {
+      readiness = Promise.reject(error);
+    }
+    Promise.resolve(readiness).then(
+      (ready) => {
+        if (isCurrent()) {
+          this.dispatch({
+            type: ready === false ? EVENT.PREPARE_FAILED : EVENT.PREPARED,
+          });
         }
-        return;
-      }
-      if (ready === false) {
-        if (this.isCurrent(source, contextKey, generation)) {
-          this.replaceAfterFailure(source, contextKey, generation);
+      },
+      () => {
+        if (isCurrent()) {
+          this.dispatch({ type: EVENT.PREPARE_FAILED });
         }
-        return;
-      }
-      if (!this.isCurrent(source, contextKey, generation)) {
-        return;
-      }
-    }
-
-    if (!recovery) {
-      this.retryAttempt = 0;
-      this.validating = false;
-      this.setState(TASK_TRANSPORT_STATE.READY);
-      return;
-    }
-    if (this.skipNextReconciliation) {
-      this.skipNextReconciliation = false;
-      this.needsReconcile = false;
-      this.retryAttempt = 0;
-      this.validating = false;
-      this.setState(TASK_TRANSPORT_STATE.READY);
-      return;
-    }
-
-    const reconcileGeneration = this.reconcileGeneration;
-    const outcome = await this.requestReconciliation(
-      contextKey,
-      generation,
-      reconcileGeneration,
-      { recovery: true },
+      },
     );
+  }
+
+  // One reading of canonical state per subscription: the one recovery starts
+  // alongside the subscription is shared with the opened channel.
+  reconcile() {
     if (
-      !this.isCurrent(source, contextKey, generation) ||
-      reconcileGeneration !== this.reconcileGeneration
+      this.reconciliation?.generation === this.generation &&
+      !this.reconciliation.settled
     ) {
       return;
     }
-    if (!outcome.ok) {
-      this.validating = false;
-      this.replaceAfterFailure(source, contextKey, generation);
-      return;
-    }
-
-    this.needsReconcile = false;
-    this.validating = false;
-    this.retryAttempt = 0;
-    this.setState(TASK_TRANSPORT_STATE.READY);
-  }
-
-  errored(
-    source,
-    contextKey,
-    generation,
-    { closed = false, exhausted = false, physical = false } = {},
-  ) {
-    if (!this.isCurrent(source, contextKey, generation)) {
-      return;
-    }
-    this.clearConnectionTimer();
-    this.needsReconcile = true;
-    this.validating = false;
-    this.invalidateReconciliation();
-    if (physical) {
-      this.setState(
-        exhausted
-          ? TASK_TRANSPORT_STATE.UNAVAILABLE
-          : TASK_TRANSPORT_STATE.RECONNECTING,
+    const token = ++this.reconcileToken;
+    const generation = this.generation;
+    const isCurrent = () =>
+      this.reconcileToken === token && this.generation === generation;
+    let pending;
+    try {
+      pending = Promise.resolve(
+        this.onReconcile(this.contextKey, isCurrent, { recovery: true }),
       );
-      return;
+    } catch (error) {
+      pending = Promise.reject(error);
     }
-    if (closed) {
-      this.replaceAfterFailure(source, contextKey, generation);
-      return;
-    }
-
-    this.setState(TASK_TRANSPORT_STATE.RECONNECTING);
-    if (this.reconnectTimer !== null) {
-      return;
-    }
-    this.reconnectTimer = window.setTimeout(() => {
-      if (!this.isCurrent(source, contextKey, generation)) {
-        return;
-      }
-      this.reconnectTimer = null;
-      this.replaceAfterFailure(source, contextKey, generation);
-    }, this.reconnectTimeoutMs);
+    const reconciliation = { generation, settled: false, promise: null };
+    reconciliation.promise = pending
+      .then(
+        (result) =>
+          result === false
+            ? { ok: false, error: new Error("Task stream reconciliation failed.") }
+            : { ok: true, result },
+        (error) => ({ ok: false, error }),
+      )
+      .then((outcome) => {
+        if (!isCurrent()) {
+          return { ok: false, stale: true };
+        }
+        reconciliation.settled = true;
+        this.dispatch({
+          type: outcome.ok ? EVENT.RECONCILED : EVENT.RECONCILE_FAILED,
+        });
+        return outcome;
+      });
+    this.reconciliation = reconciliation;
   }
 
-  replaceAfterFailure(source, contextKey, generation) {
-    if (
-      source
-        ? !this.isCurrent(source, contextKey, generation)
-        : !this.isCurrentGeneration(contextKey, generation)
-    ) {
-      return;
-    }
+  settleReady() {
+    this.retryAttempt = 0;
+    this.needsReconcile = false;
+    this.skipReconcile = false;
+    this.validating = false;
+  }
+
+  fail(next) {
+    this.release();
+    this.stopWaiting();
     this.needsReconcile = true;
     this.validating = false;
-    this.invalidateSource();
-    this.scheduleRetry(contextKey, this.generation);
-  }
-
-  scheduleRetry(contextKey, generation) {
-    const delayMs = this.retryDelaysMs[this.retryAttempt];
-    if (!Number.isFinite(delayMs)) {
-      this.setState(TASK_TRANSPORT_STATE.UNAVAILABLE);
+    if (next !== NODE.BACKING_OFF) {
       return;
     }
+    const delayMs = this.retryDelaysMs[this.retryAttempt];
     this.retryAttempt += 1;
-    this.setState(TASK_TRANSPORT_STATE.RECONNECTING);
+    const generation = this.generation;
     this.retryTimer = window.setTimeout(() => {
-      if (!this.isCurrentGeneration(contextKey, generation)) {
-        return;
-      }
       this.retryTimer = null;
-      this.openConnection(contextKey, generation);
+      if (this.generation === generation) {
+        this.dispatch({ type: EVENT.RETRY_DUE });
+      }
     }, Math.max(0, delayMs));
   }
 
-  requestReconciliation(
-    contextKey = this.contextKey,
-    generation = this.generation,
-    reconcileGeneration = this.reconcileGeneration,
-    { recovery = false } = {},
-  ) {
-    if (
-      !contextKey ||
-      !this.isCurrentReconciliation(
-        contextKey,
-        generation,
-        reconcileGeneration,
-      )
-    ) {
-      return Promise.resolve({ ok: false, stale: true });
-    }
-    if (
-      this.reconciliation?.contextKey === contextKey &&
-      this.reconciliation?.generation === generation &&
-      this.reconciliation?.reconcileGeneration === reconcileGeneration
-    ) {
-      const alreadyRecovering = this.reconciliation.recovery;
-      this.reconciliation.recovery ||= recovery;
-      if (!alreadyRecovering || !recovery) {
-        this.reconciliation.dirty = true;
-      }
-      return this.reconciliation.promise;
-    }
-
-    const reconciliation = {
-      contextKey,
-      generation,
-      reconcileGeneration,
-      recovery,
-      dirty: false,
-      promise: null,
-    };
-    reconciliation.promise = (async () => {
-      let result = null;
-      do {
-        reconciliation.dirty = false;
-        try {
-          result = await this.onReconcile(
-            contextKey,
-            () =>
-              this.isCurrentReconciliation(
-                contextKey,
-                generation,
-                reconcileGeneration,
-              ),
-            { recovery: reconciliation.recovery },
-          );
-          if (result === false) {
-            return {
-              ok: false,
-              error: new Error("Task stream reconciliation failed."),
-            };
-          }
-        } catch (error) {
-          return { ok: false, error };
-        }
-      } while (
-        reconciliation.dirty &&
-        this.isCurrentReconciliation(
-          contextKey,
-          generation,
-          reconcileGeneration,
-        )
-      );
-      return { ok: true, result };
-    })().finally(() => {
-      if (this.reconciliation === reconciliation) {
-        this.reconciliation = null;
-      }
-    });
-    this.reconciliation = reconciliation;
-    return reconciliation.promise;
-  }
-
-  resetConnection() {
-    this.clearConnectionTimer();
-    this.clearReconnectTimer();
-    this.clearRetryTimer();
-    this.invalidateSource();
-    this.validating = false;
-    this.state = TASK_TRANSPORT_STATE.IDLE;
-  }
-
-  invalidateSource() {
-    this.clearConnectionTimer();
-    this.clearReconnectTimer();
+  // Releases the current subscription; anything it still delivers is stale.
+  release() {
     const source = this.source;
-    source?.close();
     this.source = null;
+    this.generation += 1;
     if (source) {
+      source.close();
       this.onConnectionInvalidated(source);
     }
-    this.generation += 1;
-    this.invalidateReconciliation();
   }
 
-  invalidateReconciliation() {
-    this.reconcileGeneration += 1;
+  // Stops timers and makes in-flight reconciliation and preparation stale.
+  stopWaiting() {
+    this.clearOpenTimer();
+    window.clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.reconcileToken += 1;
+    this.prepareToken += 1;
     this.reconciliation = null;
   }
 
-  clearReconnectTimer() {
-    window.clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = null;
-  }
-
-  startConnectionTimer(source, contextKey, generation) {
-    this.clearConnectionTimer();
+  startOpenTimer(generation) {
     if (!Number.isFinite(this.connectionTimeoutMs)) {
       return;
     }
-    this.connectionTimer = window.setTimeout(() => {
-      if (!this.isCurrent(source, contextKey, generation)) {
-        return;
+    this.openTimer = window.setTimeout(() => {
+      this.openTimer = null;
+      if (this.generation === generation) {
+        this.dispatch({ type: EVENT.OPEN_TIMED_OUT });
       }
-      this.connectionTimer = null;
-      this.replaceAfterFailure(source, contextKey, generation);
     }, Math.max(0, this.connectionTimeoutMs));
   }
 
-  clearConnectionTimer() {
-    window.clearTimeout(this.connectionTimer);
-    this.connectionTimer = null;
+  clearOpenTimer() {
+    window.clearTimeout(this.openTimer);
+    this.openTimer = null;
   }
 
-  clearRetryTimer() {
-    window.clearTimeout(this.retryTimer);
-    this.retryTimer = null;
+  fromGateway(source, generation, type) {
+    if (this.isCurrent(source, generation)) {
+      this.dispatch({ type });
+    }
   }
 
-  isCurrent(source, contextKey, generation) {
-    return (
-      this.source === source &&
-      this.isCurrentGeneration(contextKey, generation)
-    );
+  isCurrent(source, generation) {
+    return this.source === source && this.generation === generation;
   }
 
-  isCurrentGeneration(contextKey, generation) {
-    return this.contextKey === contextKey && this.generation === generation;
-  }
-
-  isCurrentReconciliation(contextKey, generation, reconcileGeneration) {
-    return (
-      this.isCurrentGeneration(contextKey, generation) &&
-      this.reconcileGeneration === reconcileGeneration
-    );
-  }
-
-  setState(state, { notify = true } = {}) {
-    if (this.state === state) {
+  // An owner that suspends or deactivates its own stream already knows; the
+  // idle state is recorded without telling it again.
+  publish(event, next) {
+    const state = presentTaskStream(next, {
+      validating: this.validating,
+      needsReconcile: this.needsReconcile,
+    });
+    if (state === this.state) {
       return;
     }
     const previousState = this.state;
     this.state = state;
-    if (notify) {
+    const ownerIdled =
+      state === TASK_TRANSPORT_STATE.IDLE &&
+      [EVENT.SUSPEND, EVENT.DEACTIVATE, EVENT.ACTIVATE, EVENT.RETRY].includes(
+        event.type,
+      );
+    if (!ownerIdled) {
       this.onStateChange(state, previousState);
     }
   }
+}
+
+function isVisible() {
+  return document.visibilityState === "visible";
 }

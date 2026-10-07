@@ -153,7 +153,8 @@ the subscription and invalidates pending reads.
 `frontend/pages/(task-workspace)/live-updates.js` is the workspace-scoped public
 owner. Its private lifecycle graph owns physical connection attachment,
 visibility suspension, native reconnection grace, silent-connection
-replacement, bounded replacement, and exhaustion. The Task Workspace injects
+replacement, replacement of a connection that stopped delivering, bounded
+replacement, and exhaustion. The Task Workspace injects
 this capability into Task List, Task Detail, Integrated Review, and Git; no
 global store or browser-wide worker owns the connection.
 
@@ -170,11 +171,23 @@ also reports each physical connection's opening, first answer, and end; the
 Task Workspace raises those reports for the App Shell's foreground recovery
 diagnostics ([Frontend](frontend.md)).
 
-Task List and Task Detail keep their domain lifecycles. Shared
-`tasks/stream.js` adapts those lifecycles to logical gateway subscriptions,
-including bootstrap timeout, canonical reconciliation, and stale-generation
-rejection. `frontend/watch.js` reference-counts listeners by gateway and
-logical scope, then maps each scope to one Watch subscription.
+A subscription snapshot that gets no answer within eight seconds fails its
+connection like any other failed snapshot. Once a snapshot is accepted, every
+channel it carries must open within eight seconds. The server opens each
+channel it is given before sending anything else on it, so a channel that
+stays unopened means the connection has stopped delivering while requests
+still succeed. That connection is closed and replaced through the bounded
+retry delays, and logical consumers hear of the trouble. A replacement's
+greeting does not show that channels open again, so that attempt ends only
+when one does; a server that greets every connection but never opens a channel
+uses up the retries and leaves the connection unavailable.
+
+Task List and Task Detail keep their domain lifecycles. Shared `tasks/stream.js`
+adapts those lifecycles to logical gateway subscriptions through a control graph
+in which every wait ends on its own ([Frontend](frontend.md)), including
+canonical reconciliation and stale-generation rejection. `frontend/watch.js`
+reference-counts listeners by gateway and logical scope, then maps each scope to
+one Watch subscription.
 
 Hiding the document or entering the App Shell's definite offline suspension
 closes the physical SSE while retaining desired logical subscriptions.

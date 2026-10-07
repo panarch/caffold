@@ -19,6 +19,9 @@ export const LIVE_CONNECTION_EVENT = Object.freeze({
   ERROR: "error",
   // The current connection gave no first answer within its time limit.
   STALL: "stall",
+  // A channel sent on the connected source did not open in time, so the
+  // connection is no longer delivering.
+  UNDELIVERED: "undelivered",
   REPLACE: "replace",
   EXHAUST: "exhaust",
   RETRY: "retry",
@@ -65,6 +68,7 @@ export const LIVE_CONNECTION_EDGES = Object.freeze({
   [LIVE_CONNECTION_NODE.CONNECTED]: Object.freeze({
     [LIVE_CONNECTION_EVENT.READY]: LIVE_CONNECTION_NODE.CONNECTED,
     [LIVE_CONNECTION_EVENT.ERROR]: LIVE_CONNECTION_NODE.RECONNECTING,
+    [LIVE_CONNECTION_EVENT.UNDELIVERED]: LIVE_CONNECTION_NODE.RECONNECTING,
     [LIVE_CONNECTION_EVENT.SUSPEND]: LIVE_CONNECTION_NODE.SUSPENDED,
     [LIVE_CONNECTION_EVENT.DISCONNECT]: LIVE_CONNECTION_NODE.DETACHED,
   }),
@@ -118,6 +122,11 @@ function effectsFor(node, event) {
     return node === LIVE_CONNECTION_NODE.CONNECTING
       ? [LIVE_CONNECTION_EFFECT.REOPEN]
       : [LIVE_CONNECTION_EFFECT.REPLACE_NOW];
+  }
+  // A connection that stopped delivering is not retried by the browser either,
+  // so it is replaced within the bounded retry.
+  if (event === LIVE_CONNECTION_EVENT.UNDELIVERED) {
+    return [LIVE_CONNECTION_EFFECT.REPLACE_NOW];
   }
   if (
     [

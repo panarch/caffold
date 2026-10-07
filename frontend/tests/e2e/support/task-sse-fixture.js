@@ -14,6 +14,9 @@ export function installTaskSseControllerInBrowser() {
   // Physical connections still to be created that never send their greeting,
   // like a request stuck on a connection the network dropped.
   let silentConnections = 0;
+  // While set, every new physical connection fails before its greeting, like a
+  // server that refuses connections.
+  let refusingConnections = false;
 
   const detailThreadId = (detail) =>
     detail?.threadId ?? detail?.task?.threadId ?? detail?.task?.id ?? "";
@@ -37,6 +40,11 @@ export function installTaskSseControllerInBrowser() {
   };
 
   const nativeEmit = (source, type, payload = null) => {
+    // A connection that stopped delivering still looks open but passes nothing
+    // on, while subscription requests keep succeeding.
+    if (source.undelivering && type !== "error") {
+      return;
+    }
     const registered = source.listeners?.get(type);
     const listeners = typeof registered === "function"
       ? [registered]
@@ -283,6 +291,16 @@ export function installTaskSseControllerInBrowser() {
     silenceNextConnection() {
       silentConnections += 1;
     },
+    refuseConnections(refused = true) {
+      refusingConnections = refused;
+    },
+    stopDelivering() {
+      for (const source of physicalRegistry) {
+        if (source.readyState !== 2) {
+          source.undelivering = true;
+        }
+      }
+    },
     forget(source) {
       if (source.connectionId) {
         connections.delete(source.connectionId);
@@ -314,6 +332,13 @@ export function installTaskSseControllerInBrowser() {
       }
       if (!physicalRegistry.includes(source)) {
         physicalRegistry.push(source);
+      }
+      if (refusingConnections) {
+        queueMicrotask(() => {
+          source.readyState = 2;
+          nativeEmit(source, "error");
+        });
+        return;
       }
       queueMicrotask(() => identify(source));
     },

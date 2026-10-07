@@ -473,6 +473,28 @@ test("a network exception pauses without consuming server retry budget", async (
   lifecycle.disconnect();
 });
 
+test("a request that ran out of time backs off instead of pausing offline", async () => {
+  const browser = harness();
+  const timedOut = Object.assign(new Error("Request timed out."), {
+    code: "request_timeout",
+    status: 0,
+  });
+  const lifecycle = new ForegroundRecoveryRuntime({
+    ...browser,
+    onRecover: async () => ({ retry: true, error: timedOut }),
+    retryDelaysMs: [60_000],
+  });
+  lifecycle.connect();
+
+  await lifecycle.requestForegroundRecovery();
+
+  assert.equal(
+    lifecycle.snapshot().node.type,
+    FOREGROUND_RECOVERY_NODE.BACKING_OFF,
+  );
+  lifecycle.disconnect();
+});
+
 test("a thrown server failure uses the same bounded retry path", async () => {
   const browser = harness();
   let attempts = 0;
