@@ -18,6 +18,7 @@
 //! scoped allowances apply the grant Codex itself proposed rather than one
 //! Caffold composed.
 
+mod file_citations;
 mod mcp_approval;
 
 use serde_json::{Value, json};
@@ -37,6 +38,7 @@ use crate::agent::{
     MessagePhase, PermissionRow, SessionEvent, SessionEventKind, TokenCount, TokenUsage, Turn,
     TurnOrigin, TurnPage, TurnState,
 };
+use file_citations::link_cited_files;
 
 /// Full reads and partial notifications have different contracts, entirely
 /// inside the Codex adapter. Never present a summary as a complete shared Turn.
@@ -404,7 +406,7 @@ pub(crate) fn conversation_item(
             content: message_content(item),
         },
         "agentMessage" => ItemKind::AssistantMessage {
-            text: text_field(item, "text").unwrap_or_default(),
+            text: link_cited_files(text_field(item, "text").unwrap_or_default()),
             phase: message_phase(item),
         },
         "reasoning" => ItemKind::Reasoning {
@@ -454,7 +456,7 @@ pub(crate) fn response_item(item: &Value) -> Option<ConversationItem> {
     let kind = match item.get("type").and_then(Value::as_str)? {
         "message" if item.get("role").and_then(Value::as_str) == Some("assistant") => {
             ItemKind::AssistantMessage {
-                text: response_text(item.get("content")),
+                text: link_cited_files(response_text(item.get("content"))),
                 phase: message_phase(item),
             }
         }
@@ -1559,6 +1561,29 @@ mod tests {
 
         assert!(matches!(decoded.kind, ItemKind::CommandExecution(_)));
         assert_eq!(decoded.status, ActivityStatus::Declined);
+    }
+
+    #[test]
+    fn a_cited_file_is_the_same_link_in_both_shapes_an_answer_arrives_in() {
+        // Codex reports a finished answer as a thread item and again in the
+        // model's own output shape, under one id. Linking only one would flip
+        // the answer's text between the two reports.
+        let text = r#"Read :codex-file-citation{path="/abs/path/source.pdf" purpose="source"}."#;
+        let thread_item = json!({ "id": "item_1", "type": "agentMessage", "text": text });
+        let model_output = json!({
+            "id": "item_1",
+            "type": "message",
+            "role": "assistant",
+            "content": [{ "type": "output_text", "text": text }]
+        });
+        let linked = ItemKind::AssistantMessage {
+            text: "Read [source.pdf](/abs/path/source.pdf).".to_string(),
+            phase: None,
+        };
+
+        let thread_item = conversation_item(&thread_item, ActivityStatus::Completed).unwrap();
+        assert_eq!(thread_item.kind, linked);
+        assert_eq!(response_item(&model_output).unwrap().kind, linked);
     }
 
     #[test]

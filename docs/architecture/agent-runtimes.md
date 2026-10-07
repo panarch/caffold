@@ -383,8 +383,13 @@ content blocks. The Grok driver translates session updates — live, replayed,
 and stored — and `_x.ai` notifications; a frame marked as a replay is not a
 new event. A Claude `thinking` block that carries text is the agent's
 progress note between tool calls and reads as an agent message; an empty one
-reads as reasoning with nothing to show. Unknown optional events may be ignored
-or presented as generic tool activity; missing load-bearing fields fail
+reads as reasoning with nothing to show. A file citation that Codex's document
+skills write into an agent message, `:codex-file-citation{path="…" …}`, reads
+as a Markdown link to the cited file under its file name, so it opens in
+Integrated Review like any link to a local file; its other attributes, such as
+purpose and page, are dropped. A citation inside code, or one without a path
+closed on its own line, stays as written. Unknown optional events may be
+ignored or presented as generic tool activity; missing load-bearing fields fail
 explicitly. The provider's raw protocol does not escape into Task or frontend
 state.
 

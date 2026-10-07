@@ -665,9 +665,12 @@ mod tests {
 
     use super::*;
     use crate::{
-        agent::codex::CodexThreadClient,
+        agent::{
+            ActivityStatus,
+            codex::{CodexThreadClient, conversation_item},
+        },
         app::tasks::{
-            events::task_event_record,
+            events::{task_event_from_item, task_event_record},
             test_support::{cache_and_manage_test_thread, task_state_with_codex_client},
         },
     };
@@ -992,6 +995,53 @@ mod tests {
                 path: "task/owned.rs".to_string(),
                 task_relative_path: "owned.rs".to_string(),
                 line: Some(7),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_file_codex_cites_opens_like_any_linked_file() {
+        let root = tempdir().unwrap();
+        let task = root.path().join("task");
+        let cited = task.join("deliverables/06. architecture (v2).pdf");
+        fs::create_dir_all(cited.parent().unwrap()).unwrap();
+        fs::write(&cited, "%PDF-1.7").unwrap();
+        let resolver = TaskFileLinkResolver::new(Arc::new(RootedFs::new(root.path()).unwrap()));
+        let answer = format!(
+            r#"Read the architecture document. :codex-file-citation{{path="{}" purpose="source"}} An older file is gone. :codex-file-citation{{path="{}" purpose="source"}}"#,
+            cited.display(),
+            task.join("gone.pdf").display(),
+        );
+        let item = conversation_item(
+            &json!({ "id": "answer", "type": "agentMessage", "text": answer }),
+            ActivityStatus::Completed,
+        )
+        .unwrap();
+        let event = task_event_from_item("thread", "turn", 1, &item).unwrap();
+
+        let (events, links) = resolver.project("task".to_string(), &[event]).await;
+
+        let target = canonical_link_target("deliverables/06. architecture (v2).pdf", None);
+        assert_eq!(
+            events[0].payload.as_ref().unwrap()["text"],
+            format!(
+                "Read the architecture document. [06. architecture (v2).pdf]({target}) An older file is gone. gone.pdf"
+            )
+        );
+        assert_eq!(links.len(), 2);
+        assert_eq!(links[0].target, target);
+        assert_eq!(
+            links[0].outcome,
+            TaskFileLinkOutcome::Resolved {
+                path: "task/deliverables/06. architecture (v2).pdf".to_string(),
+                task_relative_path: "deliverables/06. architecture (v2).pdf".to_string(),
+                line: None,
+            }
+        );
+        assert_eq!(
+            links[1].outcome,
+            TaskFileLinkOutcome::Rejected {
+                reason: TaskFileLinkRejection::NotFound,
             }
         );
     }
