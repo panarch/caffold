@@ -723,6 +723,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.js"
             )))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout/upload-discards.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/upload-discards.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/session.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/session.js"
         ))),
@@ -2101,6 +2106,7 @@ mod tests {
             "pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js",
             "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.js",
             "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/layout/upload-discards.js",
         ] {
             let asset = get(path).expect("task conversation owner asset");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");

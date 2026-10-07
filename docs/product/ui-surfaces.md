@@ -274,7 +274,7 @@ the selected voice provider is not ready, its voice action opens
 not interrupt the selected Task's stream.
 
 The Composer takes files from **Attach files**, from pasted files, and from
-files dropped on its panel, up to ten per message and 100 MB each; it refuses
+files dropped on its panel, up to ten per message and 5 GB each; it refuses
 folders. A picture an agent is shown as an image
 ([Send files with a prompt](workflows.md#send-files-with-a-prompt)) appears as
 a thumbnail that opens a preview. Every other file appears as a one-line chip

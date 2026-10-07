@@ -27,7 +27,7 @@ agent, for example `Rename this task to Dark theme`.
 ## Attach files
 
 Every Composer takes files: New Task, a Task's next prompt, and a prompt you
-send into a running turn. Attach up to ten files of up to 100 MB each:
+send into a running turn. Attach up to ten files of up to 5 GB each:
 
 - choose **Attach files**, the paper clip, and pick them;
 - paste files or screenshots into the prompt; or
@@ -53,11 +53,10 @@ A PNG, JPEG, GIF, WebP, or AVIF picture of up to 10 MB also reaches the agent
 as an image; whether the agent reads it depends on the model you chose. Any
 other file reaches the agent through its path.
 
-Files the agent received stay in the working directory, and Caffold does not
-change Git tracking for `.caffold/`. Unless the repository ignores
-`.caffold/uploads/`, they show in [Working Tree](../review/changes.md) like any
-new file, and in a Caffold worktree they keep the Task from being
-[archived](archive-and-delete.md#archive) until you remove them.
+Files the agent received stay in the working directory. Caffold keeps them out
+of Git, so they do not show in [Working Tree](../review/changes.md), and
+[archiving](archive-and-delete.md#archive) a Task in a Caffold worktree removes
+them with the worktree.
 
 ## The model chooses the agent
 

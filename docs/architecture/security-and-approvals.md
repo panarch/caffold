@@ -476,8 +476,13 @@ directory; that directory and its layout are described in
   control characters, not `.` or `..`, and at most 255 bytes.
 - Every directory on the way must be a real directory; a symbolic link is
   refused rather than followed. A file is always created new and never
-  replaces one already there. A body over 100 MB, or one the browser abandons,
-  leaves no partial file. A discard removes only one send's folder.
+  replaces one already there, and the `.gitignore` in `.caffold/uploads/` is
+  written only when nothing by that name exists. A body over 5 GB, one the
+  browser abandons, or one still arriving when the server stops leaves no
+  partial file. A discard removes only one send's folder.
+- Before writing, Caffold refuses an upload that would leave less than 10 GB
+  free on the disk holding the working directory. A body that does not declare
+  its length counts as 5 GB.
 - A prompt names a picture for the agent to see only by its upload path.
   Caffold refuses anything that is not a plain uploaded file, and reads its
   first bytes to confirm a PNG, JPEG, GIF, WebP, or AVIF picture of at most

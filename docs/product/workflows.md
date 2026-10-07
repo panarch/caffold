@@ -181,7 +181,9 @@ ordinary files in Files.
    `.caffold/uploads/<YYYYMMDD-HHMMSS-xxxx>/<name>`. The folder is named by when
    the prompt was sent and four random characters. A name that repeats within
    one send is numbered before its extension, as `log.txt` and `log-2.txt`.
-   An uploaded file is never replaced.
+   An uploaded file is never replaced. `.caffold/uploads/` holds a
+   `.gitignore` that ignores everything in it, so uploads stay out of Git;
+   Caffold writes it when nothing by that name is there.
 3. Once every file is up, the prompt is sent with an `Attached files:` list of
    their paths, relative to the working directory, after its words. The list is
    part of the message: the agent reads it, and the conversation shows it as
@@ -192,11 +194,13 @@ ordinary files in Files.
    in another format, reaches the agent only through its path.
 5. Caffold deletes a send's folder only when the agent certainly did not
    receive the prompt: an upload failed or was cancelled, or the server
-   definitively rejected the prompt. A prompt whose delivery is unconfirmed
-   keeps its files, and so does a message that a stop returns to the Composer,
-   whose words still name them. Caffold removes uploaded files in no other case,
-   including when a Task is deleted, and does not change Git tracking for
-   `.caffold/`.
+   definitively rejected the prompt. The browser asks for that deletion; when
+   the request cannot reach Caffold, it asks again the next time Caffold
+   answers, as long as it stays on the Tasks pages. A prompt whose delivery is
+   unconfirmed keeps its files, and so does a message that a stop returns to
+   the Composer, whose words still name them. Archiving a Task whose Caffold
+   worktree holds uploads removes them with the worktree. Caffold removes
+   uploaded files in no other case, including when a Task is deleted.
 
 ### Keep Notes through a Task
 

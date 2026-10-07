@@ -13,6 +13,7 @@ import {
 import { escapeHtml } from "#components/dom.js";
 import "#components/loading-text.js";
 import { routeDomain } from "#app/navigation-routes.js";
+import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -48,6 +49,7 @@ import {
   PROMPT_SUBMISSION_NODE,
   nextPromptSubmissionNode,
 } from "./layout/prompt-submission.js";
+import { UploadDiscards } from "./layout/upload-discards.js";
 import {
   PROMPT_SUBMISSION_STATE,
   TASK_TRANSPORT_STATE,
@@ -79,6 +81,7 @@ class CaffoldTaskDetail extends HTMLElement {
   connectedCallback() {
     const reconnecting = Boolean(this.rendered);
     this.ensureRendered();
+    window.addEventListener(CAFFOLD_ORIGIN_REACHABLE_EVENT, this.boundOriginReachable);
     if (reconnecting) {
       this.render();
     }
@@ -141,6 +144,8 @@ class CaffoldTaskDetail extends HTMLElement {
     this.conversationUpdateKind = null;
     this.initialConversationLoad = null;
     this.followUpRequests = new Map();
+    this.uploadDiscards = new UploadDiscards({ discard: discardTaskUploads });
+    this.boundOriginReachable = () => this.uploadDiscards.reachable();
     this.followUpComposers = new Map();
     this.followUpComposerLastUsed = new Map();
     this.followUpComposerUseSequence = 0;
@@ -254,6 +259,7 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   disconnectedCallback() {
+    window.removeEventListener(CAFFOLD_ORIGIN_REACHABLE_EVENT, this.boundOriginReachable);
     this.deactivate();
     this.disposeFollowUpComposers();
   }
@@ -1300,7 +1306,7 @@ class CaffoldTaskDetail extends HTMLElement {
         request.optimisticEventId,
         null,
       );
-      void discardTaskUploads(threadId, request.upload.folder).catch(() => {});
+      this.uploadDiscards.discard(threadId, request.upload.folder);
     }
     this.setThreadEvents(
       threadId,

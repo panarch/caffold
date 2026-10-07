@@ -219,6 +219,43 @@ test("returns a message whose upload failed, naming the file, and removes what w
   expect(prompts).toEqual([]);
 });
 
+test("removes the files of a send cut off by a stopping server once Caffold answers again", { tag: "@desktop" }, async ({ page }) => {
+  const { form, prompt, message } = await openFollowUp(page);
+  let stopping = true;
+  const sent = await routeTaskUploads(page, {
+    respond: () =>
+      stopping
+        ? {
+            status: 503,
+            contentType: "application/json",
+            body: JSON.stringify({
+              error: { code: "server_stopping", message: "Caffold is stopping" },
+            }),
+          }
+        : null,
+    unreachable: () => stopping,
+  });
+  const prompts = await routePrompts(page);
+
+  await prompt.fill("Look at this");
+  await attach(form, [{ name: "server.log", mimeType: "text/plain", buffer: LOG }]);
+  const discardFailed = page.waitForEvent("requestfailed", (request) => request.method() === "DELETE");
+  await prompt.press("Enter");
+
+  await expect(form).toContainText("Could not upload server.log: Caffold is stopping");
+  await discardFailed;
+  expect(sent.discarded).toEqual([]);
+  const cutOff = sent.uploads[0].folder;
+
+  stopping = false;
+  await prompt.press("Enter");
+
+  await expect.poll(() => prompts.length).toBe(1);
+  await expect(message).toHaveCount(1);
+  await expect.poll(() => sent.discarded).toEqual([cutOff]);
+  expect(sent.uploads.at(-1).folder).not.toBe(cutOff);
+});
+
 test("Cancel upload takes back a message when no turn is running", { tag: "@desktop" }, async ({ page }) => {
   const { form, prompt, message } = await openFollowUp(page);
   const gate = deferred();

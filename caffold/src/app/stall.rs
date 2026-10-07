@@ -2,7 +2,9 @@
 //! that began, how many files the process holds open, and which requests were
 //! still waiting, so a freeze leaves evidence in the server log. It also logs
 //! each request whose handler has gone too long without answering, so requests
-//! that pile up before a freeze leave evidence as they go.
+//! that pile up before a freeze leave evidence as they go. A request's wait
+//! starts again each time its body delivers bytes: while the body is still
+//! arriving, the wait is on the client.
 //!
 //! The monitor runs on its own thread outside the Tokio runtime, so it keeps
 //! running when every worker is held up. At a fixed interval it hands the
@@ -28,11 +30,13 @@ use std::{
 
 use axum::{
     Router,
+    body::Body,
     extract::{Request, State},
     http::Method,
     middleware::{self, Next},
     response::Response,
 };
+use futures_util::TryStreamExt;
 use rustix::process::{Resource, getrlimit};
 use tokio::runtime::Handle;
 use tracing::warn;
@@ -275,8 +279,19 @@ struct Waiting {
     method: Method,
     path: String,
     started: Instant,
+    /// When the body last delivered bytes, as nanoseconds after `started`;
+    /// zero until it has.
+    body_arrived: Arc<AtomicU64>,
     /// Whether the monitor has reported this request as unanswered.
     reported: bool,
+}
+
+impl Waiting {
+    /// How long the request has waited since its body last arrived.
+    fn age(&self, now: Instant) -> Duration {
+        let arrived = Duration::from_nanos(self.body_arrived.load(Ordering::Acquire));
+        now.saturating_duration_since(self.started + arrived)
+    }
 }
 
 struct WaitingRequest {
@@ -294,18 +309,23 @@ impl RequestsInFlight {
 
     fn enter(&self, method: &Method, path: &str) -> RequestEntry {
         let id = self.inner.next.fetch_add(1, Ordering::Relaxed);
+        let started = Instant::now();
+        let body_arrived = Arc::new(AtomicU64::new(0));
         self.lock().insert(
             id,
             Waiting {
                 method: method.clone(),
                 path: path.to_string(),
-                started: Instant::now(),
+                started,
+                body_arrived: body_arrived.clone(),
                 reported: false,
             },
         );
         RequestEntry {
             requests: self.clone(),
             id,
+            started,
+            body_arrived,
         }
     }
 
@@ -318,7 +338,7 @@ impl RequestsInFlight {
             .map(|waiting| WaitingRequest {
                 method: waiting.method.clone(),
                 path: waiting.path.clone(),
-                age: now.saturating_duration_since(waiting.started),
+                age: waiting.age(now),
             })
             .collect::<Vec<_>>();
         let waiting = listed.len();
@@ -339,7 +359,7 @@ impl RequestsInFlight {
             Err(TryLockError::WouldBlock) => return unanswered,
         };
         for waiting in requests.values_mut() {
-            let age = now.saturating_duration_since(waiting.started);
+            let age = waiting.age(now);
             if waiting.reported || age < after {
                 continue;
             }
@@ -367,7 +387,8 @@ async fn track_request(
     request: Request,
     next: Next,
 ) -> Response {
-    let _entry = requests.enter(request.method(), request.uri().path());
+    let entry = requests.enter(request.method(), request.uri().path());
+    let request = request.map(|body| entry.watch(body));
     next.run(request).await
 }
 
@@ -375,6 +396,19 @@ async fn track_request(
 struct RequestEntry {
     requests: RequestsInFlight,
     id: u64,
+    started: Instant,
+    body_arrived: Arc<AtomicU64>,
+}
+
+impl RequestEntry {
+    /// The same body, noting each time it delivers bytes.
+    fn watch(&self, body: Body) -> Body {
+        let started = self.started;
+        let arrived = self.body_arrived.clone();
+        Body::from_stream(body.into_data_stream().inspect_ok(move |_| {
+            arrived.store(nanos(started.elapsed()), Ordering::Release);
+        }))
+    }
 }
 
 impl Drop for RequestEntry {
@@ -385,11 +419,14 @@ impl Drop for RequestEntry {
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+
     use axum::{
-        body::Body,
+        body::{Body, Bytes},
         http::{Request, StatusCode},
-        routing::get,
+        routing::{get, put},
     };
+    use futures_util::{StreamExt, stream};
     use tokio::{
         runtime::{Builder, Runtime},
         sync::{mpsc as async_mpsc, oneshot},
@@ -805,5 +842,52 @@ mod tests {
                 .newly_unanswered(Instant::now() + after, after)
                 .is_empty()
         );
+    }
+
+    #[tokio::test]
+    async fn a_request_waits_from_when_its_body_last_arrived() {
+        let requests = RequestsInFlight::default();
+        let (read, mut parts_read) = async_mpsc::unbounded_channel::<()>();
+        let router = requests.track(Router::new().route(
+            "/upload",
+            put(move |body: Body| {
+                let read = read.clone();
+                async move {
+                    let mut parts = body.into_data_stream();
+                    while parts.next().await.is_some() {
+                        let _ = read.send(());
+                    }
+                    "done"
+                }
+            }),
+        ));
+        let (parts, received) = async_mpsc::unbounded_channel::<Result<Bytes, io::Error>>();
+        let body = Body::from_stream(stream::unfold(received, |mut received| async move {
+            received.recv().await.map(|part| (part, received))
+        }));
+        let pending = tokio::spawn(router.oneshot(Request::put("/upload").body(body).unwrap()));
+        // A request timed from its start would be due 100 ms before one timed
+        // from its body's part, so the checks below tell the two apart.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let sent = Instant::now();
+        parts.send(Ok(Bytes::from_static(b"part"))).unwrap();
+        timeout(WAIT, parts_read.recv()).await.unwrap();
+
+        let after = Duration::from_secs(60);
+        let due = sent + after;
+        assert!(
+            requests
+                .newly_unanswered(due - Duration::from_millis(1), after)
+                .is_empty()
+        );
+        assert!(requests.waiting(due).0[0].age <= after);
+        let silent = requests.newly_unanswered(Instant::now() + after, after);
+        assert_eq!(silent.len(), 1);
+        assert_eq!(silent[0].path, "/upload");
+
+        drop(parts);
+        let response = timeout(WAIT, pending).await.unwrap().unwrap().unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(requests.waiting(Instant::now()).1, 0);
     }
 }

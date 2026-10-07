@@ -259,7 +259,9 @@ which HTTP requests are still waiting for their handlers. It writes that again
 every minute while the stall lasts, and once more when work runs again. It
 also writes one line for each HTTP request whose handler has gone a minute
 without answering, once per request, so requests that pile up before a stall
-leave a trail. The thread ends with the backend.
+leave a trail. A request's wait starts again each time its body delivers
+bytes, so an upload still arriving is not waiting on its handler. The thread
+ends with the backend.
 
 On macOS, the first detected runtime stall starts `/usr/bin/sample` on a
 separate thread to collect three seconds of this backend's thread stacks.

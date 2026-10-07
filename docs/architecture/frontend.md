@@ -898,6 +898,11 @@ its header and file-list bars in place instead of rendering the list again. A
 stop while uploading aborts the upload,
 discards the send's folder, and returns the message to the Composer,
 separately from the interrupt request the same stop makes for a running turn.
+Discards belong to the private `layout/upload-discards.js`, where each folder
+is sending, waiting, or settled. Any answer from Caffold settles it; a discard
+that cannot reach Caffold waits and is sent again on
+`caffold:origin-reachable`, which any request that Caffold answers raises. A
+waiting folder is sent once per answer, never twice at the same time.
 
 Detail shows every prompt optimistically. The prompt response returns the
 user-item identity established by the agent adapter; only a backend Detail or
