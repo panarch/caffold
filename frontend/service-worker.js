@@ -263,6 +263,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.css",

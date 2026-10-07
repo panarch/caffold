@@ -54,6 +54,10 @@ class CaffoldTaskConversation extends HTMLElement {
       "caffold:task-command-disclosure-intent",
       this.boundCommandDisclosureIntent,
     );
+    this.addEventListener(
+      "caffold:task-suggested-prompt-intent",
+      this.boundSuggestedPromptIntent,
+    );
     this.render();
   }
 
@@ -81,6 +85,10 @@ class CaffoldTaskConversation extends HTMLElement {
     this.removeEventListener(
       "caffold:task-command-disclosure-intent",
       this.boundCommandDisclosureIntent,
+    );
+    this.removeEventListener(
+      "caffold:task-suggested-prompt-intent",
+      this.boundSuggestedPromptIntent,
     );
     this.disconnectResizeObserver();
   }
@@ -122,6 +130,8 @@ class CaffoldTaskConversation extends HTMLElement {
     this.boundCommandIntent = (event) => this.handleCommandIntent(event);
     this.boundCommandDisclosureIntent = (event) =>
       this.handleCommandDisclosureIntent(event);
+    this.boundSuggestedPromptIntent = (event) =>
+      this.handleSuggestedPromptIntent(event);
   }
 
   setSnapshot(snapshot = {}) {
@@ -597,6 +607,7 @@ class CaffoldTaskConversation extends HTMLElement {
       view.messages,
       this.active,
       { requests: approvals, threadId: this.snapshot.threadId, disabled: controlsDisabled },
+      controlsDisabled,
     );
     const threadId = this.snapshot.threadId;
     const hasPendingMarkdown = this.hasPendingMarkdownRender();
@@ -699,6 +710,27 @@ class CaffoldTaskConversation extends HTMLElement {
       threadId !== this.snapshot.threadId || owner.approvalId !== approvalId
     ) return;
     this.dispatchIntent("approval", { approvalId, decision });
+  }
+
+  // A suggested request goes to the Composer only while one could be sent from
+  // there, and only from a message this conversation is showing.
+  handleSuggestedPromptIntent(event) {
+    const owner = event.target;
+    if (
+      owner?.localName !== "caffold-task-assistant-message-suggested-prompts" ||
+      !this.conversationList()?.contains(owner)
+    ) {
+      return;
+    }
+    event.stopPropagation();
+    const { threadId, prompt } = event.detail ?? {};
+    if (
+      !this.active || isTaskTransportStale(this.snapshot.transportState) ||
+      threadId !== this.snapshot.threadId || !`${prompt ?? ""}`.trim()
+    ) {
+      return;
+    }
+    this.dispatchIntent("suggested-prompt", { prompt });
   }
 
   handleOlderHistoryIntent(event) {
@@ -1200,6 +1232,7 @@ function reconcileConversationList(
   messages = new Map(),
   active = true,
   approvalState = {},
+  controlsDisabled = false,
 ) {
   if (!list) {
     return;
@@ -1381,7 +1414,7 @@ function reconcileConversationList(
     const messageSnapshot = messages.get(key);
     const messageOwner = entry.querySelector(MESSAGE_OWNERS);
     if (messageOwner && messageSnapshot) {
-      messageOwner.setSnapshot(messageSnapshot);
+      messageOwner.setSnapshot({ ...messageSnapshot, controlsDisabled });
     }
   }
 }

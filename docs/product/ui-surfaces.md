@@ -250,8 +250,16 @@ Every agent response carries a **Copy** action beside its time: the answer of
 a finished turn, a message shown inline while a turn is in progress, and a
 message folded into a finished turn's work details. Copy places the response's
 Markdown source on the clipboard exactly as the conversation holds it and shows
-the outcome beside the action for a moment. Prompts and reasoning summaries have
-no Copy action.
+the outcome beside the action for a moment. Prompts, reasoning summaries, and a
+message that holds only suggested requests have no Copy action.
+
+A message whose agent offered requests to send next shows each one as a button
+of its own below the message: an arrow and the name the agent gave it, in the
+bordered style of the conversation's other buttons. Choosing one puts its
+request in the Composer after anything already written there, ready to read and
+send; nothing is sent until the person sends it. The buttons are unavailable
+while the Task cannot be reached, as the Composer is, and choosing one adds
+nothing while voice input is filling the Composer. Copy leaves them out.
 
 A Task opened straight from creation is a valid zero-turn conversation. It
 shows the retained initial submission optimistically while the ordinary prompt

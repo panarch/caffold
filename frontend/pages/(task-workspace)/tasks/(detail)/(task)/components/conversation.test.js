@@ -401,6 +401,42 @@ test("provides only direct owner-known Thinking disclosures with inner Markdown"
   assert.equal(collapsed.targets[0].isActionable(), false);
 });
 
+test("forwards a suggested prompt only from a message it shows, while it can be sent", () => {
+  const chips = { localName: "caffold-task-assistant-message-suggested-prompts" };
+  const stray = { localName: "caffold-task-assistant-message-suggested-prompts" };
+  const intents = [];
+  const owner = {
+    active: true,
+    snapshot: { threadId: "thread-a", transportState: "live" },
+    conversationList: () => ({ contains: (node) => node === chips }),
+    dispatchIntent: (...intent) => intents.push(intent),
+  };
+  let stopped = 0;
+  const emit = (target, threadId, prompt = "Do the next thing.") =>
+    conversation.handleSuggestedPromptIntent.call(owner, {
+      target,
+      detail: { threadId, prompt },
+      stopPropagation() {
+        stopped += 1;
+      },
+    });
+
+  emit(stray, "thread-a");
+  emit({ localName: "div" }, "thread-a");
+  assert.equal(stopped, 0, "an intent from elsewhere passes through untouched");
+  emit(chips, "old-thread");
+  emit(chips, "thread-a", " ");
+  assert.deepEqual(intents, []);
+  emit(chips, "thread-a");
+  assert.deepEqual(intents, [["suggested-prompt", { prompt: "Do the next thing." }]]);
+  owner.snapshot.transportState = "reconnecting";
+  emit(chips, "thread-a");
+  owner.snapshot.transportState = "live";
+  owner.active = false;
+  emit(chips, "thread-a");
+  assert.equal(intents.length, 1);
+});
+
 test("forwards approval intent only from the current Task's mounted card", () => {
   const card = { approvalId: 'mcp:"42"' };
   const intents = [];

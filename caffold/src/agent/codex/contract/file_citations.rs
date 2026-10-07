@@ -9,10 +9,11 @@
 //! pages and slides a citation can name are in Word and PowerPoint files
 //! Integrated Review cannot show.
 
-use std::{ops::Range, path::Path};
+use std::path::Path;
 
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
-use pulldown_cmark::{Event, Options, Parser, Tag};
+
+use super::code_ranges;
 
 const OPENING: &str = ":codex-file-citation{";
 
@@ -31,7 +32,6 @@ pub(super) fn link_cited_files(markdown: String) -> String {
     if !markdown.contains(OPENING) {
         return markdown;
     }
-    // A citation inside code is being shown rather than made.
     let code = code_ranges(&markdown);
     let mut linked = String::with_capacity(markdown.len());
     let mut copied = 0;
@@ -77,16 +77,6 @@ fn citation(markdown: &str, start: usize) -> Option<(&str, usize)> {
     }
 }
 
-fn code_ranges(markdown: &str) -> Vec<Range<usize>> {
-    Parser::new_ext(markdown, Options::ENABLE_GFM)
-        .into_offset_iter()
-        .filter_map(|(event, range)| match event {
-            Event::Code(_) | Event::Start(Tag::CodeBlock(_)) => Some(range),
-            _ => None,
-        })
-        .collect()
-}
-
 fn file_link(path: &str) -> String {
     let name = Path::new(path)
         .file_name()
@@ -108,7 +98,7 @@ fn file_link(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use percent_encoding::percent_decode_str;
-    use pulldown_cmark::TagEnd;
+    use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
     use super::*;
 

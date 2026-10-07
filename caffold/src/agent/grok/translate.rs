@@ -266,6 +266,9 @@ pub(super) fn assistant_message_item(
         kind: ItemKind::AssistantMessage {
             text: text.to_string(),
             phase: None,
+            // Grok suggests a next prompt only when asked through
+            // `x.ai/suggestPrompt`, which Caffold does not send.
+            suggested_prompts: Vec::new(),
         },
     }
 }

@@ -290,6 +290,7 @@ test("renders Send after the turn options take the new context", () => {
         return this.state;
       },
       activeSubmissionFor: () => null,
+      promptFieldLocked: composer.promptFieldLocked,
       acceptsAttachments: composer.acceptsAttachments,
       primaryActionView: composer.primaryActionView,
       querySelector: (selector) => nodes[selector],
@@ -337,6 +338,66 @@ test("stops an upload in place of the disabled Send, and names what it stops", (
   assert.deepEqual(action(), { kind: "send", label: "Send prompt", disabled: true });
   owner.context = { mode: "follow-up", submitLabel: "Send prompt" };
   assert.deepEqual(action(), { kind: "send", label: "Send prompt", disabled: true });
+});
+
+test("puts a suggested request after what is being written, ready to read and send", () => {
+  const focused = [];
+  let locked = false;
+  const owner = {
+    state: { prompt: "", selectionStart: 0, selectionEnd: 0 },
+    ensureState() {},
+    promptFieldLocked: () => locked,
+    stateFor() {
+      return this.state;
+    },
+    captureCurrentState() {},
+    render() {},
+    focus() {
+      focused.push({ ...this.state });
+    },
+  };
+  const append = (prompt) => composer.appendSuggestedPrompt.call(owner, prompt);
+
+  assert.equal(append("Compare the two vendors."), true);
+  assert.equal(owner.state.prompt, "Compare the two vendors.");
+
+  owner.state.prompt = "Also check this \n\n";
+  assert.equal(append("Explain the card approval flow."), true);
+  assert.equal(
+    owner.state.prompt,
+    "Also check this\n\nExplain the card approval flow.",
+  );
+  assert.equal(owner.state.selectionStart, owner.state.prompt.length);
+  assert.equal(owner.state.selectionEnd, owner.state.prompt.length);
+  assert.deepEqual(
+    focused.map(({ selectionStart }) => selectionStart),
+    [24, owner.state.prompt.length],
+    "focus lands after each request",
+  );
+
+  const before = owner.state.prompt;
+  assert.equal(append("  "), false);
+  locked = true;
+  assert.equal(append("Summarize the failed cases."), false);
+  assert.equal(owner.state.prompt, before);
+  assert.equal(focused.length, 2);
+});
+
+test("takes no text in its prompt field while unreachable, dictating, or creating", () => {
+  const owner = (phase, { disabled = false, mode = "follow-up", submitting = false } = {}) => ({
+    context: { disabled, mode },
+    voice: { phase },
+    activeSubmissionFor: () => (submitting ? { id: "submission" } : null),
+  });
+  const locked = (state) => composer.promptFieldLocked.call(state);
+
+  assert.equal(locked(owner("idle")), false);
+  assert.equal(locked(owner("idle", { submitting: true })), false);
+  assert.equal(locked(owner("idle", { disabled: true })), true);
+  for (const phase of ["requesting", "recording", "transcribing"]) {
+    assert.equal(locked(owner(phase)), true, phase);
+  }
+  assert.equal(locked(owner("idle", { mode: "create", submitting: true })), true);
 });
 
 test("puts messages that never reached the agent ahead of what was written since", () => {
@@ -485,6 +546,7 @@ test("shows the context pie only in a Task's follow-up Composer", () => {
         return this.state;
       },
       activeSubmissionFor: () => null,
+      promptFieldLocked: composer.promptFieldLocked,
       acceptsAttachments: composer.acceptsAttachments,
       primaryActionView: composer.primaryActionView,
       querySelector: (selector) => ({
