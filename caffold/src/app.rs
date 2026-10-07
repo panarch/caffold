@@ -18,6 +18,7 @@ mod tailscale;
 mod tasks;
 mod terminal;
 mod update;
+mod user_agent;
 mod voice;
 mod workspace;
 

@@ -55,6 +55,12 @@ The physical stream sends one comment heartbeat every 15 seconds. Replay and
 the full subscription snapshot and each domain's initial snapshot or ready
 event.
 
+The server writes one `caffold::live_updates` log line as each physical stream
+arrives, naming its `connectionId` and the browser by its shortened
+`User-Agent`. The `caffold::foreground_recovery` line names the browser the
+same way ([Frontend](frontend.md)), so the streams of a slow return can be
+matched with its diagnostics.
+
 The backend owns one independently cancellable producer and bounded queue per
 logical subscription. A changed descriptor replaces only its producer; an
 unrelated producer error does not end the physical stream. Dropping the SSE

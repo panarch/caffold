@@ -69,7 +69,14 @@ PWA is backgrounded.
    not clear the loaded list or detail.
 5. Read the return's `foreground recovery from` line in the server log. Its
    `notice` steps show how long any reconnecting notice stayed, and its
-   `connections` show whether a fresh live connection answered at once.
+   `connections` show whether a fresh live connection answered at once. A
+   record whose `end` is `settled` goes out as it ends unless its delivery
+   fails or another delivery is under way. When it went out at once, the
+   return began at the line's time minus its `endedMs`, and the
+   `live connection` lines from the same browser after that moment show when
+   each of its live connections reached the server. A
+   `/api/live/<connectionId>/subscriptions` path in its `requests` names the
+   line of a connection that answered.
 
 ### Offline and online
 

@@ -5,17 +5,16 @@
 
 use axum::{
     Json,
-    http::{HeaderMap, StatusCode, header},
+    http::{HeaderMap, StatusCode},
 };
 use serde::{Deserialize, Serialize};
 
-use crate::app::error::ApiError;
+use crate::app::{error::ApiError, user_agent::browser_name};
 
 const RECORD_LIMIT: usize = 20;
 const LIST_LIMIT: usize = 64;
 const TOKEN_LIMIT: usize = 40;
 const PATH_LIMIT: usize = 200;
-const BROWSER_LIMIT: usize = 160;
 
 pub(super) async fn record_diagnostics(
     headers: HeaderMap,
@@ -168,14 +167,6 @@ fn log_line(record: &RecoveryRecord, browser: &str) -> Result<String, ApiError> 
         ))
     })?;
     Ok(format!("foreground recovery from {browser}: {json}"))
-}
-
-fn browser_name(headers: &HeaderMap) -> String {
-    headers
-        .get(header::USER_AGENT)
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value.chars().take(BROWSER_LIMIT).collect())
-        .unwrap_or_else(|| "an unnamed browser".to_string())
 }
 
 fn is_name(value: &str) -> bool {

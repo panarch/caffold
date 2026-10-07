@@ -24,7 +24,7 @@ use tokio::{
 use url::Url;
 use uuid::Uuid;
 
-use super::{error::ApiError, tasks::TaskLiveSource};
+use super::{error::ApiError, tasks::TaskLiveSource, user_agent::browser_name};
 use crate::watch::{WatchChange, WatchHub, WatchMessage, WatchReady};
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
@@ -60,7 +60,10 @@ pub(in crate::app) fn router(
         .with_state(state)
 }
 
-async fn live_stream(State(state): State<LiveUpdatesState>) -> Result<Response, ApiError> {
+async fn live_stream(
+    State(state): State<LiveUpdatesState>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
     let connection_id = Uuid::new_v4();
     let (control, controls) = mpsc::channel(CONTROL_QUEUE_CAPACITY);
     state
@@ -68,7 +71,19 @@ async fn live_stream(State(state): State<LiveUpdatesState>) -> Result<Response, 
         .lock()
         .map_err(|_| ApiError::Internal("live session registry is unavailable".to_string()))?
         .insert(connection_id, control);
+    tracing::info!(
+        target: "caffold::live_updates",
+        "{}",
+        arrival_log_line(connection_id, &headers)
+    );
     Ok(LiveSession::new(connection_id, controls, state).response())
+}
+
+fn arrival_log_line(connection_id: Uuid, headers: &HeaderMap) -> String {
+    format!(
+        "live connection {connection_id} from {}",
+        browser_name(headers)
+    )
 }
 
 async fn update_subscriptions(
@@ -951,6 +966,19 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(gone.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn a_live_connection_is_logged_with_its_id_and_browser() {
+        let connection_id = Uuid::new_v4();
+        let user_agent = "Mozilla/5.0 (Linux; Android 10; K) Chrome/154.0.0.0 Mobile";
+        let mut headers = HeaderMap::new();
+        headers.insert(header::USER_AGENT, HeaderValue::from_static(user_agent));
+
+        assert_eq!(
+            arrival_log_line(connection_id, &headers),
+            format!("live connection {connection_id} from {user_agent}")
+        );
     }
 
     #[tokio::test]
