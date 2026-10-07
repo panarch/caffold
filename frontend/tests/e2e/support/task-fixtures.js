@@ -152,8 +152,9 @@ export async function pasteImage(locator, name = "clipboard-image.png") {
 export const UPLOAD_FOLDER_PATTERN = "\\d{8}-\\d{6}-[0-9a-z]{4}";
 
 // Answers a Task's file uploads the way Caffold does, and keeps what arrived:
-// each file's upload path and bytes, and each send folder discarded.
-export async function routeTaskUploads(page, { respond } = {}) {
+// each file's upload path and bytes, and each send folder discarded. A discard
+// that `unreachable` answers true for fails as if Caffold were gone.
+export async function routeTaskUploads(page, { respond, unreachable } = {}) {
   const record = { uploads: [], discarded: [] };
   await page.route(/\/api\/tasks\/[^/]+\/uploads\//, async (route) => {
     const request = route.request();
@@ -162,6 +163,9 @@ export async function routeTaskUploads(page, { respond } = {}) {
       .filter(Boolean)
       .map(decodeURIComponent);
     if (request.method() === "DELETE") {
+      if (unreachable?.(folder)) {
+        return route.abort("connectionrefused");
+      }
       record.discarded.push(folder);
       return route.fulfill({ status: 204 });
     }

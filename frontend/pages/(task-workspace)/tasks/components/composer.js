@@ -20,7 +20,7 @@ import {
 } from "./voice-recorder.js";
 
 const MAX_ATTACHMENTS = 10;
-const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024 * 1024;
 const MAX_IMAGE_INPUT_BYTES = 10 * 1024 * 1024;
 const TOO_MANY_ATTACHMENTS = `Attach up to ${MAX_ATTACHMENTS} files.`;
 const drawnIcons = new WeakMap();
@@ -1175,7 +1175,7 @@ class CaffoldTaskComposer extends HTMLElement {
         break;
       }
       if (file.size > MAX_ATTACHMENT_BYTES) {
-        error = `${file.name || "A file"} is larger than 100 MB.`;
+        error = `${file.name || "A file"} is larger than 5 GB.`;
         continue;
       }
       const imageInput = IMAGE_INPUT_TYPES.has(file.type) &&

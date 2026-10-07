@@ -391,9 +391,9 @@ test("attaches any file, showing only pictures every agent reads as thumbnails",
     await composer.addAttachments.call(owner, [
       file("shot.png", "image/png"),
       file("photo.heic", "image/heic"),
-      file("server.log", "text/plain"),
+      file("server.log", "text/plain", 5 * 1024 * 1024 * 1024),
       file("huge.png", "image/png", 11 * 1024 * 1024),
-      file("too-big.zip", "application/zip", 100 * 1024 * 1024 + 1),
+      file("too-big.zip", "application/zip", 5 * 1024 * 1024 * 1024 + 1),
     ]);
 
     assert.deepEqual(
@@ -405,7 +405,7 @@ test("attaches any file, showing only pictures every agent reads as thumbnails",
         { name: "huge.png", imageInput: false, dataUrl: "" },
       ],
     );
-    assert.equal(owner.state.attachmentError, "too-big.zip is larger than 100 MB.");
+    assert.equal(owner.state.attachmentError, "too-big.zip is larger than 5 GB.");
 
     await composer.addAttachments.call(owner, [file("", "image/png")], { pasted: true });
     assert.equal(owner.state.attachments.at(-1).name, "clipboard-image-5.png");

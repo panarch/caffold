@@ -2,9 +2,10 @@
 //!
 //! Each send gets its own folder, `.caffold/uploads/<folder>/`, named by the
 //! browser when the person sends. The prompt names every file by its path
-//! under the agent's working directory.
+//! under the agent's working directory. A `.gitignore` in `.caffold/uploads/`
+//! keeps every upload out of Git.
 
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 use axum::Json;
@@ -12,8 +13,10 @@ use axum::body::Body;
 use axum::extract::{Path as AxumPath, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use futures_util::StreamExt;
+use rustix::fs::statvfs;
 use serde::Serialize;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::broadcast;
 
 use super::commands::{managed_prompt_cwd, working_directory};
 use super::conversation::task_not_managed_error;
@@ -21,7 +24,11 @@ use super::store::{task_store_get, task_store_worktree_for_thread};
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
 
-const MAX_UPLOAD_BYTES: u64 = 100 * 1024 * 1024;
+const GIGABYTE: u64 = 1024 * 1024 * 1024;
+const MAX_UPLOAD_BYTES: u64 = 5 * GIGABYTE;
+/// What an upload must leave free on its disk, so a large send cannot fill the
+/// disk under everything else that writes there.
+const KEEP_FREE_BYTES: u64 = 10 * GIGABYTE;
 const UPLOADS_DIRECTORY: [&str; 2] = [".caffold", "uploads"];
 const MAX_NAME_BYTES: usize = 255;
 
@@ -41,13 +48,17 @@ pub(super) async fn task_upload(
     headers: HeaderMap,
     body: Body,
 ) -> Result<(StatusCode, Json<UploadedFileResponse>), ApiError> {
+    let stopping = state.shutdown.subscribe();
     validate_folder(&folder)?;
     validate_name(&name)?;
-    if declared_length(&headers).is_some_and(|length| length > MAX_UPLOAD_BYTES) {
+    let length = declared_length(&headers);
+    if length.is_some_and(|length| length > MAX_UPLOAD_BYTES) {
         return Err(upload_too_large());
     }
     let working_directory = task_working_directory(&state, &thread_id).await?;
-    let uploads = uploads_directory(state.fs.root(), &working_directory, true)?
+    let base = task_directory(state.fs.root(), &working_directory)?;
+    ensure_room(&base, length)?;
+    let uploads = uploads_directory(&base, true)?
         .ok_or_else(|| ApiError::Internal("the uploads directory was not created".to_string()))?;
     let folder_path = uploads.join(&folder);
     if !real_directory(&folder_path)? {
@@ -67,7 +78,7 @@ pub(super) async fn task_upload(
             _ => ApiError::Internal(format!("could not create {name}: {error}")),
         })?;
     let partial = PartialUpload::new(path);
-    write_body(file, body, &name, MAX_UPLOAD_BYTES).await?;
+    write_body(file, body, &name, MAX_UPLOAD_BYTES, stopping).await?;
     partial.keep();
     Ok((
         StatusCode::CREATED,
@@ -84,7 +95,8 @@ pub(super) async fn task_upload_discard(
 ) -> Result<StatusCode, ApiError> {
     validate_folder(&folder)?;
     let working_directory = task_working_directory(&state, &thread_id).await?;
-    let Some(uploads) = uploads_directory(state.fs.root(), &working_directory, false)? else {
+    let base = task_directory(state.fs.root(), &working_directory)?;
+    let Some(uploads) = uploads_directory(&base, false)? else {
         return Ok(StatusCode::NO_CONTENT);
     };
     let folder_path = uploads.join(&folder);
@@ -108,7 +120,8 @@ pub(super) fn uploaded_file(
         code: "upload_missing",
         message: format!("{relative} was not uploaded"),
     };
-    let uploads = uploads_directory(root, working_directory, false)?.ok_or_else(missing)?;
+    let uploads =
+        uploads_directory(&task_directory(root, working_directory)?, false)?.ok_or_else(missing)?;
     let folder_path = uploads.join(folder);
     if !real_directory(&folder_path)? {
         return Err(missing());
@@ -156,10 +169,20 @@ async fn write_body(
     body: Body,
     name: &str,
     limit: u64,
+    mut stopping: broadcast::Receiver<()>,
 ) -> Result<(), ApiError> {
     let mut written = 0u64;
     let mut stream = body.into_data_stream();
-    while let Some(chunk) = stream.next().await {
+    loop {
+        let chunk = tokio::select! {
+            chunk = stream.next() => chunk,
+            // A stopping server waits for every request it is answering, so
+            // an upload that went on would hold it until it is killed.
+            _ = stopping.recv() => return Err(server_stopping()),
+        };
+        let Some(chunk) = chunk else {
+            break;
+        };
         let chunk = chunk.map_err(|error| ApiError::BadRequest {
             code: "upload_interrupted",
             message: format!("{name} did not finish uploading: {error}"),
@@ -177,13 +200,9 @@ async fn write_body(
         .map_err(|error| ApiError::Internal(format!("could not write {name}: {error}")))
 }
 
-/// `<working directory>/.caffold/uploads`, with every step a real directory
-/// inside the server root. `None` when it does not exist and was not asked for.
-fn uploads_directory(
-    root: &Path,
-    working_directory: &str,
-    create: bool,
-) -> Result<Option<PathBuf>, ApiError> {
+/// The working directory as it really is, which must lie inside the server
+/// root.
+fn task_directory(root: &Path, working_directory: &str) -> Result<PathBuf, ApiError> {
     let unavailable = |error: std::io::Error| ApiError::Conflict {
         code: "task_directory_unavailable",
         message: format!(
@@ -202,7 +221,14 @@ fn uploads_directory(
             ),
         });
     }
-    let mut directory = base;
+    Ok(base)
+}
+
+/// `.caffold/uploads` below the task directory, with every step a real
+/// directory. `None` when it does not exist and was not asked for. When asked
+/// for, it also gets the `.gitignore` that keeps uploads out of Git.
+fn uploads_directory(base: &Path, create: bool) -> Result<Option<PathBuf>, ApiError> {
+    let mut directory = base.to_path_buf();
     for step in UPLOADS_DIRECTORY {
         directory.push(step);
         if real_directory(&directory)? {
@@ -213,7 +239,63 @@ fn uploads_directory(
         }
         create_directory(&directory)?;
     }
+    if create {
+        ignore_uploads(&directory)?;
+    }
     Ok(Some(directory))
+}
+
+/// Leave a `.gitignore` that ignores everything beside it, unless something by
+/// that name is already there.
+fn ignore_uploads(uploads: &Path) -> Result<(), ApiError> {
+    let path = uploads.join(".gitignore");
+    let failed = |error: std::io::Error| {
+        ApiError::Internal(format!("could not create {}: {error}", path.display()))
+    };
+    let mut file = match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => return Ok(()),
+        Err(error) => return Err(failed(error)),
+    };
+    file.write_all(b"*\n").map_err(|error| {
+        // An empty file left behind would count as already there next time.
+        let _ = std::fs::remove_file(&path);
+        failed(error)
+    })
+}
+
+/// Refuse an upload that would leave less than [`KEEP_FREE_BYTES`] free on the
+/// disk holding the task directory.
+fn ensure_room(base: &Path, declared_length: Option<u64>) -> Result<(), ApiError> {
+    let space = statvfs(base).map_err(|error| {
+        ApiError::Internal(format!(
+            "could not read the free space of {}: {error}",
+            base.display()
+        ))
+    })?;
+    let free = space.f_bavail.saturating_mul(space.f_frsize);
+    if leaves_room(free, declared_length) {
+        return Ok(());
+    }
+    Err(ApiError::Conflict {
+        code: "upload_no_space",
+        message: format!(
+            "the disk has {:.1} GB free, and an upload must leave {} GB free",
+            free as f64 / GIGABYTE as f64,
+            KEEP_FREE_BYTES / GIGABYTE
+        ),
+    })
+}
+
+/// Whether `free` bytes still leave [`KEEP_FREE_BYTES`] once the upload is in.
+/// An upload that does not declare its length may grow to the limit.
+fn leaves_room(free: u64, declared_length: Option<u64>) -> bool {
+    free.checked_sub(declared_length.unwrap_or(MAX_UPLOAD_BYTES))
+        .is_some_and(|left| left >= KEEP_FREE_BYTES)
 }
 
 /// Whether a directory is there, refusing anything that only stands in for
@@ -302,6 +384,13 @@ fn upload_too_large() -> ApiError {
     }
 }
 
+fn server_stopping() -> ApiError {
+    ApiError::Unavailable {
+        code: "server_stopping",
+        message: "Caffold is stopping".to_string(),
+    }
+}
+
 fn not_plain(path: &str) -> ApiError {
     ApiError::Forbidden {
         code: "upload_path_not_plain",
@@ -336,11 +425,15 @@ impl Drop for PartialUpload {
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+    use std::process::Command;
+    use std::time::Duration;
 
     use axum::body::{Body, Bytes, to_bytes};
     use axum::http::{Request, StatusCode};
     use futures_util::stream;
     use serde_json::Value;
+    use tokio::sync::mpsc;
+    use tokio::time::timeout;
     use tower::ServiceExt;
 
     use super::super::router;
@@ -353,6 +446,25 @@ mod tests {
 
     const THREAD: &str = "thread-uploads";
     const FOLDER: &str = "20260926-153012-a1b2";
+    const WAIT: Duration = Duration::from_secs(10);
+
+    /// Git without the machine's own settings, whose global ignore file may
+    /// already cover `.caffold/`.
+    fn git(path: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    }
 
     async fn task_in(root: &Path) -> axum::Router {
         let state = task_state_with_codex_client(
@@ -406,6 +518,77 @@ mod tests {
             .unwrap(),
             "line one\n"
         );
+    }
+
+    #[tokio::test]
+    async fn uploads_stay_out_of_git_through_their_own_ignore_file() {
+        let root = tempfile::tempdir().unwrap();
+        git(root.path(), &["init", "-q"]);
+        let app = task_in(root.path()).await;
+
+        let (status, uploaded) = send(&app, put(FOLDER, "log.txt", "line one\n")).await;
+
+        assert_eq!(status, StatusCode::CREATED, "{uploaded}");
+        assert_eq!(
+            std::fs::read_to_string(root.path().join(".caffold/uploads/.gitignore")).unwrap(),
+            "*\n"
+        );
+        assert_eq!(
+            git(
+                root.path(),
+                &["status", "--porcelain", "--untracked-files=all"]
+            ),
+            ""
+        );
+        assert_eq!(
+            git(
+                root.path(),
+                &[
+                    "check-ignore",
+                    "-v",
+                    &format!(".caffold/uploads/{FOLDER}/log.txt")
+                ]
+            ),
+            format!(".caffold/uploads/.gitignore:1:*\t.caffold/uploads/{FOLDER}/log.txt\n")
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_ignore_file_already_there_is_left_as_it_is() {
+        let root = tempfile::tempdir().unwrap();
+        let app = task_in(root.path()).await;
+        let uploads = root.path().join(".caffold/uploads");
+        std::fs::create_dir_all(&uploads).unwrap();
+        std::fs::write(uploads.join(".gitignore"), "!keep.txt\n").unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let target = elsewhere.path().join("rules");
+        std::fs::write(&target, "mine\n").unwrap();
+        let linked = root.path().join("linked");
+        std::fs::create_dir_all(linked.join(".caffold/uploads")).unwrap();
+        std::os::unix::fs::symlink(&target, linked.join(".caffold/uploads/.gitignore")).unwrap();
+        let linked_app = task_in(&linked).await;
+
+        let (written, _) = send(&app, put(FOLDER, "a.txt", "a")).await;
+        let (linked_written, _) = send(&linked_app, put(FOLDER, "b.txt", "b")).await;
+
+        assert_eq!(written, StatusCode::CREATED);
+        assert_eq!(linked_written, StatusCode::CREATED);
+        assert_eq!(
+            std::fs::read_to_string(uploads.join(".gitignore")).unwrap(),
+            "!keep.txt\n"
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "mine\n");
+    }
+
+    #[test]
+    fn an_upload_must_leave_ten_gigabytes_free() {
+        assert!(leaves_room(KEEP_FREE_BYTES + 100, Some(100)));
+        assert!(!leaves_room(KEEP_FREE_BYTES + 99, Some(100)));
+        assert!(!leaves_room(50, Some(100)));
+        assert!(leaves_room(KEEP_FREE_BYTES, Some(0)));
+        assert!(leaves_room(KEEP_FREE_BYTES + MAX_UPLOAD_BYTES, None));
+        assert!(!leaves_room(KEEP_FREE_BYTES + MAX_UPLOAD_BYTES - 1, None));
     }
 
     #[tokio::test]
@@ -477,8 +660,9 @@ mod tests {
         let path = root.path().join("growing.bin");
         let file = tokio::fs::File::create(&path).await.unwrap();
         let partial = PartialUpload::new(path.clone());
+        let (_running, stopping) = broadcast::channel(1);
 
-        let result = write_body(file, Body::from("12345"), "growing.bin", 4).await;
+        let result = write_body(file, Body::from("12345"), "growing.bin", 4, stopping).await;
         drop(partial);
 
         assert!(matches!(
@@ -489,6 +673,49 @@ mod tests {
             })
         ));
         assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn stopping_the_server_ends_an_upload_and_removes_its_file() {
+        let root = tempfile::tempdir().unwrap();
+        let state = task_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        cache_and_manage_test_thread(&state, THREAD, root.path()).await;
+        let shutdown = state.shutdown.clone();
+        let app = router(state);
+        // The browser sends one part and then nothing, as if more were on the way.
+        let (parts, received) = mpsc::unbounded_channel::<Result<Bytes, std::io::Error>>();
+        parts.send(Ok(Bytes::from_static(b"first part"))).unwrap();
+        let body = Body::from_stream(stream::unfold(received, |mut received| async move {
+            received.recv().await.map(|part| (part, received))
+        }));
+        let pending = tokio::spawn({
+            let app = app.clone();
+            async move { send(&app, put(FOLDER, "big.bin", body)).await }
+        });
+        let path = root
+            .path()
+            .join(".caffold/uploads")
+            .join(FOLDER)
+            .join("big.bin");
+        timeout(WAIT, async {
+            while !path.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the upload never started writing");
+
+        shutdown.send(()).unwrap();
+        let (status, refused) = timeout(WAIT, pending).await.unwrap().unwrap();
+
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
+        assert_eq!(refused["error"]["code"], "server_stopping");
+        assert!(!path.exists());
+        drop(parts);
     }
 
     #[tokio::test]
