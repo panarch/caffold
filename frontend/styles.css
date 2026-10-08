@@ -9,6 +9,8 @@
 @import "./components/markdown-preview.css";
 @import "./components/pdf-viewer.css";
 @import "./components/docx-viewer.css";
+@import "./components/pptx-viewer.css";
+@import "./components/xlsx-viewer.css";
 @import "./components/pane-resizer.css";
 @import "./components/segmented-control.css";
 @import "./components/loading-text.css";
@@ -313,6 +315,11 @@
   --code-font-size: 13px;
   --code-line-height: 1.55;
   --qr-background: #ffffff;
+  /* A drawn document is paper in every theme. */
+  --document-paper: #ffffff;
+  --document-ink: #000000;
+  --document-gridline: #e1e1e1;
+  --document-link: #0563c1;
 
   --line-gutter-width: calc(var(--code-font-size) * 4.9);
   --file-tree-font-size: 0.8125rem;

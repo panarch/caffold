@@ -35,10 +35,10 @@ function loadedViewer(url, revision = 1700) {
 }
 
 test("keeps the open document while its file is unchanged", () => {
-  const { owner, opened } = loadedViewer("/api/pdf?path=manual.pdf");
+  const { owner, opened } = loadedViewer("/api/document?path=manual.pdf");
 
   pdfViewer.setSource.call(owner, {
-    url: "/api/pdf?path=manual.pdf",
+    url: "/api/document?path=manual.pdf",
     revision: 1700,
   });
 
@@ -47,61 +47,61 @@ test("keeps the open document while its file is unchanged", () => {
 });
 
 test("reopens the document when the file changed on disk", () => {
-  const { owner, opened } = loadedViewer("/api/pdf?path=manual.pdf");
+  const { owner, opened } = loadedViewer("/api/document?path=manual.pdf");
 
   pdfViewer.setSource.call(owner, {
-    url: "/api/pdf?path=manual.pdf",
+    url: "/api/document?path=manual.pdf",
     revision: 1800,
   });
 
-  assert.deepEqual(opened, ["/api/pdf?path=manual.pdf"]);
+  assert.deepEqual(opened, ["/api/document?path=manual.pdf"]);
   assert.equal(owner.dataset.renderState, "loading");
   assert.equal(owner.revision, 1800);
 });
 
 test("reopens the document when another file is selected", () => {
-  const { owner, opened } = loadedViewer("/api/pdf?path=manual.pdf");
+  const { owner, opened } = loadedViewer("/api/document?path=manual.pdf");
 
   pdfViewer.setSource.call(owner, {
-    url: "/api/pdf?path=other.pdf",
+    url: "/api/document?path=other.pdf",
     revision: 1700,
   });
 
-  assert.deepEqual(opened, ["/api/pdf?path=other.pdf"]);
+  assert.deepEqual(opened, ["/api/document?path=other.pdf"]);
 });
 
 test("reads the file again once its modification time becomes known", () => {
   // Only a refresh intent delivers a modification time the viewer did not have,
   // so treating it as unchanged would leave a replaced document on screen.
-  const { owner, opened } = loadedViewer("/api/pdf?path=manual.pdf", null);
+  const { owner, opened } = loadedViewer("/api/document?path=manual.pdf", null);
 
   pdfViewer.setSource.call(owner, {
-    url: "/api/pdf?path=manual.pdf",
+    url: "/api/document?path=manual.pdf",
     revision: 1800,
   });
 
-  assert.deepEqual(opened, ["/api/pdf?path=manual.pdf"]);
+  assert.deepEqual(opened, ["/api/document?path=manual.pdf"]);
   assert.equal(owner.revision, 1800);
 });
 
 test("keeps the open document across a re-render with no modification time", () => {
-  const { owner, opened } = loadedViewer("/api/pdf?path=manual.pdf", null);
+  const { owner, opened } = loadedViewer("/api/document?path=manual.pdf", null);
 
-  pdfViewer.setSource.call(owner, { url: "/api/pdf?path=manual.pdf" });
+  pdfViewer.setSource.call(owner, { url: "/api/document?path=manual.pdf" });
 
   assert.deepEqual(opened, []);
 });
 
 test("retries the same source after a failed load", () => {
-  const { owner, opened } = loadedViewer("/api/pdf?path=manual.pdf");
+  const { owner, opened } = loadedViewer("/api/document?path=manual.pdf");
   owner.dataset.renderState = "error";
 
   pdfViewer.setSource.call(owner, {
-    url: "/api/pdf?path=manual.pdf",
+    url: "/api/document?path=manual.pdf",
     revision: 1700,
   });
 
-  assert.deepEqual(opened, ["/api/pdf?path=manual.pdf"]);
+  assert.deepEqual(opened, ["/api/document?path=manual.pdf"]);
 });
 
 test("publishes only the axis a scaled page can overflow", () => {
@@ -140,7 +140,7 @@ test("cancels page renders and tears down the loading task when released", () =>
   let destroyed = 0;
   const owner = {
     generation: 2,
-    url: "/api/pdf?path=manual.pdf",
+    url: "/api/document?path=manual.pdf",
     pages: [
       { task: { cancel: () => cancelled.push("first") } },
       { task: null },

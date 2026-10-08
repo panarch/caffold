@@ -524,6 +524,22 @@ table-scroll wrappers are explicit per-link clip and scroll dependencies, and
 GitHub Markdown publishes both its host and Shadow root as mutation
 dependencies.
 
+Document viewers find their links when a session is captured, among the slides
+or cells they have drawn at that moment, since both draw only what is near the
+viewport. The PowerPoint viewer enumerates the anchors and `role="link"`
+elements in its own open Shadow DOM and publishes its host and Shadow root as
+mutation dependencies. Its renderer draws a link to another slide as a
+focusable span with no `href`, and a link on a whole shape or picture as an
+element that only a click reaches; as such an element is drawn, the viewer
+gives it the `link` role, a tab stop, and activation by Enter and Space. The
+viewer names these targets itself from the title the renderer gives them:
+`Go to <text> (slide N)` for a link to another slide, `Open <text or address>`
+for a link out of the deck, and `Go to <text>` when the deck gives the link a
+tooltip. The Excel viewer enumerates the anchors of its drawn cells and merges
+its sheet tabs through the segmented control's scope, labelled `Show sheet
+<name>`. The file viewer merges the current document viewer's scope, passing
+Integrated Review's `link.open` and `button.activate` actions.
+
 Custom children retain their own action knowledge. Work Details merges its own
 summary with its direct retained children. Command declares active disclosure
 or terminal View output from the same provider, Assistant Message Copy declares
@@ -699,13 +715,14 @@ Conversation, Integrated Review, Git, or GitHub domain. Integrated Review, Git
 Compare and Commit, and GitHub Pull Files merge their simultaneously visible
 tree and viewer leaves on desktop and omit the tree on single-pane layouts and
 while it is collapsed. File tree, source, diff, Markdown preview, image stage,
-PDF and Word document previews, and scrollable notice owners publish their
-actual retained leaf rather than having a screen parent reach into their DOM.
-File tree, source, diff, Markdown preview hosts, GitHub Issue Markdown hosts,
-and image stages declare both axes; one element that overflows in both
-directions remains one surface with one selection code. PDF and Word document
-previews fit each page to the width they have, so they declare only their
-vertical axis.
+PDF, Word, PowerPoint, and Excel previews, and scrollable notice owners publish
+their actual retained leaf rather than having a screen parent reach into their
+DOM. File tree, source, diff, Markdown preview hosts, GitHub Issue Markdown
+hosts, image stages, and the Excel sheet declare both axes; one element that
+overflows in both directions remains one surface with one selection code. PDF,
+Word, and PowerPoint previews fit each page or slide to the width they have, so
+they declare only their vertical axis. The Excel sheet tabs, shown when a
+workbook has more than one visible sheet, declare their horizontal axis.
 
 Git Log, GitHub Issue and Pull lists, GitHub Issue Markdown or raw body, and
 Pull Request detail publish their exact vertical scrollports. Markdown owners
@@ -1202,8 +1219,9 @@ review. It owns:
 
 The Integrated Review owner resolves file-open intents to a path and supported
 representation together. Text files support Source, Markdown adds text-only
-Preview, raster images use Preview, PDFs and Word documents (`.docx`) use
-Preview alone, and SVG supports both its source text and image Preview. The
+Preview, raster images use Preview, PDFs, Word documents (`.docx`), PowerPoint
+decks (`.pptx`), and Excel workbooks (`.xlsx`, `.xlsm`) use Preview alone, and
+SVG supports both its source text and image Preview. The
 file viewer owns representation chrome and image rendering, and delegates
 Markdown rendering, sanitization, fallback, and local scroll to the shared
 `caffold-markdown-preview` component also used by the current-plan dialog.
@@ -1213,12 +1231,13 @@ without the viewers' size limits or text checks, so a file no viewer can show
 can still be saved. A diff shows a change rather than a file on disk and offers
 no Download.
 
-PDFs and Word documents share one document state in the file viewer, which
-mounts the viewer for the document's kind and hands it that kind's route
-(`/api/pdf` or `/api/docx`). The viewer owns page rendering, document lifetime,
-and local scroll, and keeps one open document per selected file and
-modification time. `caffold-pdf-viewer` imports its pinned pdf.js release at
-first use and draws a page as it approaches the viewport.
+PDFs, Word documents, PowerPoint decks, and Excel workbooks share one document
+state in the file viewer, which mounts the viewer for the document's kind and
+hands it `/api/document`. That route answers each kind with its own content
+type, up to 100 MiB, and refuses any other extension. The viewer owns
+rendering, document lifetime, and local scroll, and keeps one open document per
+selected file and modification time. `caffold-pdf-viewer` imports its pinned
+pdf.js release at first use and draws a page as it approaches the viewport.
 `caffold-docx-viewer` imports its pinned docx-preview release at first use and
 draws the whole document inside a shadow root of its own, so the document's
 styles and the app's stylesheet do not reach each other; embedded fonts are not
@@ -1234,6 +1253,37 @@ its document declares, which CSS cannot scale to the space available, so the
 viewer zooms each wider page down to its own width from JavaScript when the
 document is mounted and whenever the viewer's width changes.
 
+`caffold-pptx-viewer` imports its pinned pptx-renderer release at first use,
+parses the deck, and then draws its slides inside a shadow root of its own,
+only those near the viewport. A slide fits the viewer's width; the renderer
+scales a slide to its container, so the container is no wider than the slide
+and a wide panel does not enlarge it. Only http, https, and mailto links become
+links out of the deck, opening in a new tab, and a link to another slide
+scrolls the viewer to it, whether the link is on text or on a whole shape or
+picture. Video and audio never play: as the renderer adds a video it becomes
+its poster, an audio clip leaves only the picture the deck gives it, and media
+without a picture becomes a notice. The renderer registers embedded fonts under
+names of its own, so they cannot replace the app's fonts. Its PDF fallback for
+SmartArt and EMF pictures is off.
+
+`caffold-xlsx-viewer` imports its pinned SheetJS release at first use and
+turns the workbook into a drawing model (`xlsx-viewer/workbook.js`): each
+sheet's track sizes, hidden rows and columns, merges, frozen panes, cell text
+as Excel displays it, links, and the CSS declarations of every cell style.
+SheetJS reads values, sizes, merges, fills, fonts, and alignment; which style
+each cell uses, the borders, and the frozen panes come from the workbook's own
+XML, which SheetJS hands over unread. The viewer draws the sheet itself, in
+Light DOM with CSS grid. Column letters, row numbers, and frozen rows and
+columns stay in place with `position: sticky`, and only the rows and columns
+near the viewport are drawn. Track sizes come from the workbook, and a sheet
+can have 1,048,576 rows, more than WebKit lays out in one grid, so JavaScript
+computes the visible range and sizes the tracks of each drawn block; CSS cannot
+do either. Cell text is inserted as text and clipped at its cell's edge, and
+only http, https, and mailto cell links become links. A sheet is paper in every
+theme while its headers and the sheet tabs below it are Interface. Hidden
+sheets have no tab, and a newer copy of the same file keeps the sheet being
+read.
+
 A load request leaves the file viewer's shown content, header included, in
 place until the next state arrives, and only a wait longer than 180 ms turns it
 into the loading state. A viewer with nothing shown enters the loading state at
@@ -1243,10 +1293,10 @@ screens that host the viewer keep choosing which response it accepts.
 The shared file stack owns keyboard surfaces at the same boundaries. File List
 merges its Refresh button with the public file-tree selection and directory
 disclosure scope, File Navigator forwards caller semantics, and File Viewer
-publishes its current source, diff, Markdown, image, PDF, Word document, or
-notice leaf plus its existing Back, Details, Source/Preview, and conditional
-Refresh actions, and the File details popover context with its conditional
-Download.
+publishes its current source, diff, Markdown, image, PDF, Word, PowerPoint,
+Excel, or notice leaf plus its existing Back, Details, Source/Preview, and
+conditional Refresh actions, and the File details popover context with its
+conditional Download.
 Integrated Review chooses the current navigator and viewer roles and merges
 those public scopes; it never queries a child's `.file-tree-scroll`,
 `.code-lines`, `.diff-lines`, or directory buttons.
@@ -1403,14 +1453,15 @@ Reusable RootedFs capabilities remain shared:
 
 - `caffold-file-navigator` and its list leaf;
 - `caffold-review-file-viewer`;
-- source, text, diff, supported image, PDF, and Word document presentation;
+- source, text, diff, supported image, PDF, Word, PowerPoint, and Excel
+  presentation;
 - shared watch subscription primitives;
 - New Task Directory Picker;
 - Integrated Review Files navigation;
 - Git Compare/Log and GitHub PR Files leaves.
 
 `caffold-review-file-viewer` hosts the reusable source, diff, text, image,
-PDF, and Word document leaves used by review surfaces. Navigation,
+PDF, Word, PowerPoint, and Excel leaves used by review surfaces. Navigation,
 presentation, and filesystem-watch primitives stay shared while each active
 surface owns its selection and request lifetime.
 
@@ -1707,6 +1758,10 @@ frontend/
     |-- pagination.js
     |-- pdf-viewer.js
     |-- docx-viewer.js
+    |-- pptx-viewer.js
+    |-- xlsx-viewer.js
+    |-- xlsx-viewer/workbook.js
+    |-- xlsx-viewer/window.js
     |-- pane-resizer.js
     |-- segmented-control.js
     `-- terminal-view.js
@@ -1837,12 +1892,15 @@ Every production JavaScript/CSS asset must be registered consistently in:
 - static asset and CSS ownership tests.
 
 The service-worker cache and Rust static-asset table are exact manifests of the
-assets imported by the active application hierarchy. pdf.js, docx-preview, and
-xterm.js with its fit addon are the exceptions: their owners import pinned
-jsDelivr releases at first use, and the browser suite answers those URLs from
-the same versions in `node_modules`. docx-preview loads as jsDelivr's `+esm`
-module, whose jszip import jsDelivr resolves, so the suite builds that module
-from the installed docx-preview and jszip.
+assets imported by the active application hierarchy. pdf.js, docx-preview,
+pptx-renderer, SheetJS, and xterm.js with its fit addon are the exceptions:
+their owners import pinned releases at first use, and the browser suite answers
+those URLs from the same versions in `node_modules`. SheetJS comes from its own
+CDN, which publishes its current releases there rather than on npm, and the
+package is installed from the same release's tarball; the others come from
+jsDelivr. docx-preview loads as jsDelivr's `+esm` module, whose jszip import
+jsDelivr resolves, so the suite builds that module from the installed
+docx-preview and jszip.
 
 ## Test ownership
 

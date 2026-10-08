@@ -353,6 +353,8 @@ test("delegates document scrolling to the retained viewer of its kind", () => {
   for (const { kind, tagName, title } of [
     { kind: "pdf", tagName: "caffold-pdf-viewer", title: "manual.pdf" },
     { kind: "docx", tagName: "caffold-docx-viewer", title: "report.docx" },
+    { kind: "pptx", tagName: "caffold-pptx-viewer", title: "deck.pptx" },
+    { kind: "xlsx", tagName: "caffold-xlsx-viewer", title: "budget.xlsm" },
   ]) {
     const state = {
       status: "document",
@@ -393,6 +395,69 @@ test("delegates document scrolling to the retained viewer of its kind", () => {
     assert.deepEqual(fileViewer.scrollSurfaceScope.call(owner, {
       scopeId: "review:viewer",
     }).surfaces, []);
+  }
+});
+
+test("merges the Action Hint scope of the retained viewer of the document's kind", () => {
+  for (const { kind, tagName } of [
+    { kind: "pdf", tagName: "caffold-pdf-viewer" },
+    { kind: "docx", tagName: "caffold-docx-viewer" },
+    { kind: "pptx", tagName: "caffold-pptx-viewer" },
+    { kind: "xlsx", tagName: "caffold-xlsx-viewer" },
+  ]) {
+    const state = { status: "document", document: { kind } };
+    const documentTarget = { id: `${kind}-link` };
+    let received;
+    let selector;
+    let preview = {
+      actionHintScope(options) {
+        received = options;
+        return {
+          blocked: false,
+          targets: [documentTarget],
+          mutationRoots: [this],
+          scrollRoots: [],
+        };
+      },
+    };
+    const owner = {
+      state,
+      hidden: false,
+      isConnected: true,
+      querySelector(query) {
+        if (query.includes(".document-panel")) {
+          selector = query;
+          return preview;
+        }
+        return null;
+      },
+      documentActionHintScope(...args) {
+        return fileViewer.documentActionHintScope.call(this, ...args);
+      },
+    };
+
+    const scope = fileViewer.actionHintScope.call(owner, {
+      scopeId: "review:viewer",
+      linkActionId: "link.open",
+      buttonActionId: "button.activate",
+      clipRoots: [{ id: "layout" }],
+    });
+
+    assert.deepEqual(scope.targets, [documentTarget]);
+    assert.equal(selector, `:scope > .document-panel > ${tagName}`);
+    assert.equal(received.scopeId, "review:viewer:document");
+    assert.equal(received.linkActionId, "link.open");
+    assert.equal(received.buttonActionId, "button.activate");
+    assert.deepEqual(received.clipRoots, [owner, { id: "layout" }]);
+    assert.equal(received.isCurrent(), true);
+    owner.state = { ...state };
+    assert.equal(received.isCurrent(), false);
+    owner.state = state;
+    preview = null;
+    assert.equal(received.isCurrent(), false);
+    assert.deepEqual(fileViewer.actionHintScope.call(owner, {
+      scopeId: "review:viewer",
+    }).targets, []);
   }
 });
 

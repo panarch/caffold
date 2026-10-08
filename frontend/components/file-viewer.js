@@ -16,7 +16,7 @@ import {
   sourceViewerPresentation,
 } from "./file-viewer-presentation.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
-import { docxUrl, downloadUrl, imageUrl, pdfUrl } from "../api.js";
+import { documentUrl, downloadUrl, imageUrl } from "../api.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
@@ -29,16 +29,19 @@ import "./docx-viewer.js";
 import "./loading-text.js";
 import "./markdown-preview.js";
 import "./pdf-viewer.js";
+import "./pptx-viewer.js";
+import "./xlsx-viewer.js";
 
 // How long switching to another file keeps showing the previous one before
 // the loading state replaces it.
 const RETAINED_CONTENT_MS = 180;
 
-// A document preview hands its file to the viewer of its kind, which reads it
-// from the kind's route.
+// A document preview hands its file to the viewer of its kind.
 const DOCUMENT_VIEWERS = {
-  pdf: { tagName: "caffold-pdf-viewer", sourceUrl: pdfUrl },
-  docx: { tagName: "caffold-docx-viewer", sourceUrl: docxUrl },
+  pdf: "caffold-pdf-viewer",
+  docx: "caffold-docx-viewer",
+  pptx: "caffold-pptx-viewer",
+  xlsx: "caffold-xlsx-viewer",
 };
 
 let viewerInstanceId = 0;
@@ -271,6 +274,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     detailsActionId = "",
     refreshActionId = "",
     linkActionId = "",
+    buttonActionId = "",
     clipRoots = [],
   } = {}) {
     const control = this.querySelector(
@@ -388,6 +392,17 @@ class CaffoldReviewFileViewer extends HTMLElement {
       scrollRoots: [],
     };
     const state = this.state;
+    if (state?.status === "document") {
+      return mergeActionHintScopes(
+        ownScope,
+        this.documentActionHintScope(state, {
+          scopeId,
+          linkActionId,
+          buttonActionId,
+          clipRoots,
+        }),
+      );
+    }
     if (state?.status !== "markdown") {
       return ownScope;
     }
@@ -409,6 +424,24 @@ class CaffoldReviewFileViewer extends HTMLElement {
           ) === preview,
       }),
     );
+  }
+
+  // Links and controls inside a drawn document belong to the viewer of its
+  // kind; a viewer with nothing to press publishes no scope.
+  documentActionHintScope(state, { scopeId, linkActionId, buttonActionId, clipRoots }) {
+    const selector = `:scope > .document-panel > ${DOCUMENT_VIEWERS[state.document.kind]}`;
+    const viewer = this.querySelector(selector);
+    return viewer?.actionHintScope?.({
+      scopeId: `${scopeId}:document`,
+      linkActionId,
+      buttonActionId,
+      clipRoots: [this, ...clipRoots].filter(Boolean),
+      isCurrent: () =>
+        this.isConnected &&
+        !this.hidden &&
+        this.state === state &&
+        this.querySelector(selector) === viewer,
+    }) ?? emptyActionHintScope();
   }
 
   scrollSurfaceScope({
@@ -454,7 +487,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     if (state.status === "document") {
       const { kind } = state.document;
       return this.querySelector(
-        `:scope > .document-panel > ${DOCUMENT_VIEWERS[kind].tagName}`,
+        `:scope > .document-panel > ${DOCUMENT_VIEWERS[kind]}`,
       )?.scrollSurfaceScope(childOptions(
         kind,
         `${state.presentation?.title || label} preview`,
@@ -721,9 +754,9 @@ class CaffoldReviewFileViewer extends HTMLElement {
 
   renderDocument() {
     const { document: previewDocument, presentation } = this.state;
-    const { tagName, sourceUrl } = DOCUMENT_VIEWERS[previewDocument.kind];
+    const tagName = DOCUMENT_VIEWERS[previewDocument.kind];
     const source = {
-      url: sourceUrl(previewDocument.path),
+      url: documentUrl(previewDocument.path),
       revision: previewDocument.revision,
     };
     const panel = this.querySelector(":scope > .document-panel");

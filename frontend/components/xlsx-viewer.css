@@ -1,0 +1,173 @@
+/* The workbook fills the viewer: the sheet takes the height left after the
+   tab strip, scrolls on both axes, and keeps its headers and frozen tracks in
+   view. A sheet is white paper in every theme, like a document page; its
+   headers and tabs are Interface. */
+caffold-xlsx-viewer {
+  --xlsx-column-header-height: var(--interface-compact-visual-size);
+
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface-muted);
+
+  &[hidden] {
+    display: none;
+  }
+
+  & .xlsx-viewer-body {
+    display: grid;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  &[data-render-state="loading"] > .xlsx-viewer-body {
+    align-content: center;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .xlsx-viewer-message {
+    margin: 0;
+    padding: 1rem;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  & .xlsx-viewer-workbook {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  & .xlsx-viewer-sheet {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background: var(--document-paper);
+  }
+
+  /* The sheet sets its row-number digits on the space, which is where a
+     custom property reading them has to be declared. */
+  & .xlsx-viewer-space {
+    --xlsx-row-header-width: calc(var(--xlsx-row-number-digits, 2) * 1ch + 1rem);
+
+    display: grid;
+    width: max-content;
+    min-width: 100%;
+  }
+
+  & .xlsx-viewer-corner {
+    position: sticky;
+    top: 0;
+    left: 0;
+    z-index: 3;
+    grid-area: 1 / 1;
+  }
+
+  & .xlsx-viewer-layer {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  & .xlsx-viewer-top {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    grid-area: 1 / 2;
+  }
+
+  & .xlsx-viewer-left {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    grid-area: 2 / 1;
+  }
+
+  & .xlsx-viewer-main {
+    grid-area: 2 / 2;
+  }
+
+  & .xlsx-viewer-layer > .xlsx-viewer-block {
+    position: absolute;
+  }
+
+  & .xlsx-viewer-block {
+    display: grid;
+    background: var(--document-paper);
+  }
+
+  & .xlsx-viewer-header {
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    box-shadow: inset -1px -1px 0 var(--border);
+    background: var(--surface-muted);
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: var(--interface-meta-font-size);
+    white-space: nowrap;
+  }
+
+  /* Excel's defaults for a cell the workbook leaves unstyled: bottom-aligned
+     11pt text on gridlines, clipped at the cell's edge. */
+  & .xlsx-viewer-cell {
+    display: flex;
+    align-items: end;
+    justify-content: start;
+    min-width: 0;
+    overflow: hidden;
+    box-sizing: border-box;
+    padding: 0 var(--interface-space-1);
+    box-shadow: inset -1px -1px 0 var(--document-gridline);
+    color: var(--document-ink);
+    font-family: Calibri, Carlito, sans-serif;
+    font-size: 11pt;
+    line-height: 1.2;
+    white-space: pre;
+  }
+
+  & .xlsx-viewer-cell[data-kind="n"],
+  & .xlsx-viewer-cell[data-kind="d"] {
+    justify-content: end;
+    text-align: end;
+  }
+
+  & .xlsx-viewer-cell[data-kind="b"],
+  & .xlsx-viewer-cell[data-kind="e"] {
+    justify-content: center;
+    text-align: center;
+  }
+
+  & .xlsx-viewer-cell > * {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  & .xlsx-viewer-cell > a {
+    color: var(--document-link);
+    text-decoration: underline;
+  }
+
+  /* The tabs take the height of their control and scroll sideways when the
+     workbook has more sheets than fit. */
+  & .xlsx-viewer-tabs {
+    display: flex;
+    overflow-x: auto;
+    padding: var(--interface-space-2) var(--interface-space-3);
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+
+    &[hidden] {
+      display: none;
+    }
+  }
+
+  & .xlsx-viewer-tabs > caffold-segmented-control {
+    flex: none;
+  }
+}

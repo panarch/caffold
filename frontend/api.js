@@ -503,14 +503,8 @@ export function imageUrl(path) {
   return url.toString();
 }
 
-export function pdfUrl(path) {
-  const url = new URL("/api/pdf", window.location.origin);
-  url.searchParams.set("path", path);
-  return url.toString();
-}
-
-export function docxUrl(path) {
-  const url = new URL("/api/docx", window.location.origin);
+export function documentUrl(path) {
+  const url = new URL("/api/document", window.location.origin);
   url.searchParams.set("path", path);
   return url.toString();
 }

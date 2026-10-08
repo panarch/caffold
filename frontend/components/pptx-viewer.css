@@ -1,0 +1,37 @@
+caffold-pptx-viewer {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 1rem;
+  background: var(--surface-muted);
+
+  &[hidden] {
+    display: none;
+  }
+
+  & .pptx-viewer-body {
+    display: grid;
+    min-width: 0;
+  }
+
+  &[data-render-state="loading"] > .pptx-viewer-body {
+    min-height: 100%;
+    align-content: center;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .pptx-viewer-document {
+    display: block;
+    min-width: 0;
+  }
+
+  & .pptx-viewer-message {
+    margin: 0;
+    padding: 1rem;
+    color: var(--muted);
+    text-align: center;
+  }
+}
