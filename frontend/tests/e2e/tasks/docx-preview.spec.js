@@ -277,6 +277,14 @@ test("reads the newly selected Word document into the retained panel", { tag: "@
 }, testInfo) => {
   const first = documentRequests(page, testInfo);
   const second = documentRequests(page, testInfo, "-second");
+  const reads = [];
+  page.on("request", (request) => {
+    if (first.pattern.test(request.url())) {
+      reads.push("first");
+    } else if (second.pattern.test(request.url())) {
+      reads.push("second");
+    }
+  });
   await writeDocument(testInfo, "-second", {
     body: "<w:p><w:r><w:t>Second document</w:t></w:r></w:p>",
   });
@@ -294,8 +302,14 @@ test("reads the newly selected Word document into the retained panel", { tag: "@
     // replace the document it holds.
     await expect(viewer.getByText("Second document")).toBeVisible();
     await expect(viewer).toHaveAttribute("data-retained-viewer", "true");
-    expect(first.requests).toHaveLength(1);
-    expect(second.requests).toHaveLength(1);
+
+    // The first document is read again if its modification time arrives after
+    // it opened, so only the reads from the selection on are fixed: a viewer
+    // load can read the first document only while it is selected, and the
+    // second, chosen from a listing that knows its modification time, once.
+    const selectedAt = reads.indexOf("second");
+    expect(reads[0]).toBe("first");
+    expect(reads.slice(selectedAt)).toEqual(["second"]);
   } finally {
     await rm(documentPath(testInfo, "-second"), { force: true });
   }
