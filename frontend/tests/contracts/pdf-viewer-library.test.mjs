@@ -28,7 +28,7 @@ test("the browser suite serves pdf.js from the installed package", () => {
   assert.match(defaults, /node_modules\/\$\{name\}\//);
   assert.match(
     defaults,
-    /require\(`\$\{name\}\/package\.json`\)\.version/,
+    /readFileSync\(`\$\{installedPackageRoot\(name\)\}package\.json`/,
     "the fulfilled version must follow the installed package rather than a second literal",
   );
   assert.match(

@@ -20,6 +20,8 @@ use crate::{
 };
 
 const LIST_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(5);
+const DOCX_CONTENT_TYPE: &str =
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 #[derive(Debug, Deserialize)]
 struct TaskImageQuery {
@@ -32,6 +34,7 @@ pub(super) fn router() -> Router<WorkspaceState> {
         .route("/api/file", get(file))
         .route("/api/image", get(image))
         .route("/api/pdf", get(pdf))
+        .route("/api/docx", get(docx))
         .route("/api/download", get(download))
         .route("/api/task-image", get(task_image))
 }
@@ -74,14 +77,7 @@ async fn image(
     Query(query): Query<PathQuery>,
 ) -> Result<Response, ApiError> {
     let image = state.fs.read_image(&query.path)?;
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(image.content_type),
-    );
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-
-    Ok((headers, image.bytes).into_response())
+    Ok(viewer_bytes(image.content_type, image.bytes))
 }
 
 async fn pdf(
@@ -89,14 +85,15 @@ async fn pdf(
     Query(query): Query<PathQuery>,
 ) -> Result<Response, ApiError> {
     let bytes = state.fs.read_pdf(&query.path)?;
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/pdf"),
-    );
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok(viewer_bytes("application/pdf", bytes))
+}
 
-    Ok((headers, bytes).into_response())
+async fn docx(
+    State(state): State<WorkspaceState>,
+    Query(query): Query<PathQuery>,
+) -> Result<Response, ApiError> {
+    let bytes = state.fs.read_docx(&query.path)?;
+    Ok(viewer_bytes(DOCX_CONTENT_TYPE, bytes))
 }
 
 async fn task_image(
@@ -105,14 +102,15 @@ async fn task_image(
 ) -> Result<Response, ApiError> {
     let logical_path = task_image_logical_path(&state.fs, Path::new(&query.path))?;
     let image = state.fs.read_image(&logical_path)?;
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(image.content_type),
-    );
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok(viewer_bytes(image.content_type, image.bytes))
+}
 
-    Ok((headers, image.bytes).into_response())
+// A viewer shows the file as it is on disk now, so no response is reused.
+fn viewer_bytes(content_type: &'static str, bytes: Vec<u8>) -> Response {
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    (headers, bytes).into_response()
 }
 
 fn task_image_logical_path(fs: &RootedFs, path: &Path) -> Result<String, FsError> {
@@ -121,7 +119,54 @@ fn task_image_logical_path(fs: &RootedFs, path: &Path) -> Result<String, FsError
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode},
+    };
+    use serde_json::Value;
+    use tower::ServiceExt;
+
     use super::*;
+
+    fn app(root: &Path) -> Router {
+        router().with_state(WorkspaceState::new(Arc::new(RootedFs::new(root).unwrap())))
+    }
+
+    async fn request(app: Router, uri: &str) -> Response {
+        app.oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn word_documents_are_answered_as_their_own_bytes() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("report.docx"), b"PK\x03\x04report").unwrap();
+
+        let response = request(app(root.path()), "/api/docx?path=report.docx").await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let headers = response.headers();
+        assert_eq!(headers[header::CONTENT_TYPE], DOCX_CONTENT_TYPE);
+        assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(body, &b"PK\x03\x04report"[..]);
+    }
+
+    #[tokio::test]
+    async fn another_file_type_is_refused_as_a_word_document() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("report.doc"), b"legacy").unwrap();
+
+        let response = request(app(root.path()), "/api/docx?path=report.doc").await;
+
+        assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["error"]["code"], "unsupported_docx");
+    }
 
     #[test]
     fn task_images_must_stay_inside_the_browsing_root() {

@@ -36,6 +36,7 @@ const ownership = new Map([
     ["caffold-git-diff-changes-tree"],
   ],
   ["components/pdf-viewer.css", ["caffold-pdf-viewer"]],
+  ["components/docx-viewer.css", ["caffold-docx-viewer"]],
   ["components/pagination.css", ["caffold-pagination"]],
   [
     "components/pane-resizer.css",

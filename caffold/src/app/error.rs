@@ -203,6 +203,11 @@ impl ApiError {
                 "unsupported_pdf",
                 format!("PDF preview is not supported for this file type: {path}"),
             ),
+            ApiError::Fs(FsError::UnsupportedDocx { path }) => (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "unsupported_docx",
+                format!("Word document preview is not supported for this file type: {path}"),
+            ),
             ApiError::Fs(FsError::GitRepositoryNotFound { path }) => (
                 StatusCode::BAD_REQUEST,
                 "git_repository_not_found",

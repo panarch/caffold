@@ -509,6 +509,12 @@ export function pdfUrl(path) {
   return url.toString();
 }
 
+export function docxUrl(path) {
+  const url = new URL("/api/docx", window.location.origin);
+  url.searchParams.set("path", path);
+  return url.toString();
+}
+
 export function downloadUrl(path) {
   const url = new URL("/api/download", window.location.origin);
   url.searchParams.set("path", path);

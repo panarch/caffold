@@ -16,7 +16,7 @@ import {
   sourceViewerPresentation,
 } from "./file-viewer-presentation.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
-import { downloadUrl, imageUrl, pdfUrl } from "../api.js";
+import { docxUrl, downloadUrl, imageUrl, pdfUrl } from "../api.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
@@ -25,6 +25,7 @@ import {
 import "../keyboard-navigation/components/presentation.js";
 import "./code-viewer.js";
 import "./diff-viewer.js";
+import "./docx-viewer.js";
 import "./loading-text.js";
 import "./markdown-preview.js";
 import "./pdf-viewer.js";
@@ -32,6 +33,13 @@ import "./pdf-viewer.js";
 // How long switching to another file keeps showing the previous one before
 // the loading state replaces it.
 const RETAINED_CONTENT_MS = 180;
+
+// A document preview hands its file to the viewer of its kind, which reads it
+// from the kind's route.
+const DOCUMENT_VIEWERS = {
+  pdf: { tagName: "caffold-pdf-viewer", sourceUrl: pdfUrl },
+  docx: { tagName: "caffold-docx-viewer", sourceUrl: docxUrl },
+};
 
 let viewerInstanceId = 0;
 
@@ -178,12 +186,12 @@ class CaffoldReviewFileViewer extends HTMLElement {
     this.render();
   }
 
-  setPdf(pdf) {
+  setDocument(previewDocument) {
     this.cancelRetainedContent();
     this.state = {
-      status: "pdf",
-      pdf,
-      presentation: sourceViewerPresentation(pdf),
+      status: "document",
+      document: previewDocument,
+      presentation: sourceViewerPresentation(previewDocument),
     };
     this.render();
   }
@@ -443,11 +451,12 @@ class CaffoldReviewFileViewer extends HTMLElement {
         `${state.presentation?.title || label} preview`,
       )) ?? emptyScrollSurfaceScope();
     }
-    if (state.status === "pdf") {
+    if (state.status === "document") {
+      const { kind } = state.document;
       return this.querySelector(
-        ":scope > .pdf-panel > caffold-pdf-viewer",
+        `:scope > .document-panel > ${DOCUMENT_VIEWERS[kind].tagName}`,
       )?.scrollSurfaceScope(childOptions(
-        "pdf",
+        kind,
         `${state.presentation?.title || label} preview`,
       )) ?? emptyScrollSurfaceScope();
     }
@@ -647,8 +656,8 @@ class CaffoldReviewFileViewer extends HTMLElement {
       return;
     }
 
-    if (this.state.status === "pdf") {
-      this.renderPdf();
+    if (this.state.status === "document") {
+      this.renderDocument();
       return;
     }
 
@@ -710,11 +719,15 @@ class CaffoldReviewFileViewer extends HTMLElement {
       ?.setMarkdown(file.content, previewOptions);
   }
 
-  renderPdf() {
-    const { pdf, presentation } = this.state;
-    const source = { url: pdfUrl(pdf.path), revision: pdf.revision };
-    const panel = this.querySelector(":scope > .pdf-panel");
-    const viewer = panel?.querySelector(":scope > caffold-pdf-viewer");
+  renderDocument() {
+    const { document: previewDocument, presentation } = this.state;
+    const { tagName, sourceUrl } = DOCUMENT_VIEWERS[previewDocument.kind];
+    const source = {
+      url: sourceUrl(previewDocument.path),
+      revision: previewDocument.revision,
+    };
+    const panel = this.querySelector(":scope > .document-panel");
+    const viewer = panel?.querySelector(`:scope > ${tagName}`);
     if (panel && viewer) {
       this.replacePresentationHeader(panel, presentation);
       viewer.setSource(source);
@@ -722,12 +735,12 @@ class CaffoldReviewFileViewer extends HTMLElement {
     }
 
     this.innerHTML = `
-      <section class="viewer-panel file-panel pdf-panel">
+      <section class="viewer-panel file-panel document-panel">
         ${this.renderPresentationHeader(presentation)}
-        <caffold-pdf-viewer></caffold-pdf-viewer>
+        <${tagName}></${tagName}>
       </section>
     `;
-    this.querySelector("caffold-pdf-viewer")?.setSource(source);
+    this.querySelector(`:scope > .document-panel > ${tagName}`)?.setSource(source);
   }
 
   replacePresentationHeader(panel, presentation) {
