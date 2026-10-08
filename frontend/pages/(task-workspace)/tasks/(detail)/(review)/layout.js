@@ -17,9 +17,9 @@ import { fileStatusPresentation } from "#app/file-status.js";
 import "#components/git-compare-browser/compare-tree.js";
 import "./components/changes-tree.js";
 import {
+  documentPreviewKind,
   fileNameFromPath,
   imageTypeLabel,
-  isPdfPath,
   isPreviewableImagePath,
 } from "#components/dom.js";
 import "#components/pane-resizer.js";
@@ -716,9 +716,10 @@ class CaffoldTaskReview extends HTMLElement {
       );
       return;
     }
-    if (previewMode && representations.previewKind === "pdf") {
+    if (previewMode && representations.previewKind === "document") {
       const entry = this.fileNavigator()?.entryForPath(selectedPath);
-      this.viewer()?.setPdf({
+      this.viewer()?.setDocument({
+        kind: representations.documentKind,
         path: selectedPath,
         name: fileNameFromPath(selectedPath),
         size: entry?.size,
@@ -1311,8 +1312,9 @@ function representationForFile(viewer, path) {
 }
 
 function fileRepresentationCapabilities(path) {
-  if (isPdfPath(path)) {
-    return { source: false, previewKind: "pdf" };
+  const documentKind = documentPreviewKind(path);
+  if (documentKind) {
+    return { source: false, previewKind: "document", documentKind };
   }
   const imagePreview = isPreviewableImagePath(path);
   return {

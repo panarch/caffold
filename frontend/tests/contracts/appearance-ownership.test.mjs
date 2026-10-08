@@ -49,6 +49,7 @@ const typefaceOwners = new Set([
   "action-hints/components/dialog.css",
   "components/code-viewer.css",
   "components/diff-viewer.css",
+  "components/docx-viewer.js",
   "components/file-tree.css",
   "components/markdown-preview.css",
   "components/terminal-view.js",

@@ -8,6 +8,7 @@
 @import "./components/file-viewer.css";
 @import "./components/markdown-preview.css";
 @import "./components/pdf-viewer.css";
+@import "./components/docx-viewer.css";
 @import "./components/pane-resizer.css";
 @import "./components/segmented-control.css";
 @import "./components/loading-text.css";

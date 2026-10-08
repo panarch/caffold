@@ -699,12 +699,13 @@ Conversation, Integrated Review, Git, or GitHub domain. Integrated Review, Git
 Compare and Commit, and GitHub Pull Files merge their simultaneously visible
 tree and viewer leaves on desktop and omit the tree on single-pane layouts and
 while it is collapsed. File tree, source, diff, Markdown preview, image stage,
-PDF preview, and scrollable notice owners publish their actual retained leaf
-rather than having a screen parent reach into their DOM. File tree, source,
-diff, Markdown preview hosts, GitHub Issue Markdown hosts, and image stages
-declare both axes; one element that overflows in both directions remains one
-surface with one selection code. A PDF preview scales each page to the width it
-has, so it declares only its vertical axis.
+PDF and Word document previews, and scrollable notice owners publish their
+actual retained leaf rather than having a screen parent reach into their DOM.
+File tree, source, diff, Markdown preview hosts, GitHub Issue Markdown hosts,
+and image stages declare both axes; one element that overflows in both
+directions remains one surface with one selection code. PDF and Word document
+previews fit each page to the width they have, so they declare only their
+vertical axis.
 
 Git Log, GitHub Issue and Pull lists, GitHub Issue Markdown or raw body, and
 Pull Request detail publish their exact vertical scrollports. Markdown owners
@@ -1201,18 +1202,37 @@ review. It owns:
 
 The Integrated Review owner resolves file-open intents to a path and supported
 representation together. Text files support Source, Markdown adds text-only
-Preview, raster images use Preview, PDFs use Preview alone, and SVG supports
-both its source text and image Preview. The file viewer owns representation
-chrome and image rendering, and delegates Markdown rendering, sanitization,
-fallback, and local scroll to the shared `caffold-markdown-preview` component
-also used by the current-plan dialog. It delegates PDF page rendering, document
-lifetime, and local scroll to `caffold-pdf-viewer`, which imports its pinned
-pdf.js release at first use, keeps one open document per selected file, and
-draws a page as it approaches the viewport. Source and Preview show the file
-on disk, so their File details offer Download, a link to `/api/download`. That
-route streams the file's bytes as an attachment without the viewers' size
-limits or text checks, so a file no viewer can show can still be saved. A diff
-shows a change rather than a file on disk and offers no Download.
+Preview, raster images use Preview, PDFs and Word documents (`.docx`) use
+Preview alone, and SVG supports both its source text and image Preview. The
+file viewer owns representation chrome and image rendering, and delegates
+Markdown rendering, sanitization, fallback, and local scroll to the shared
+`caffold-markdown-preview` component also used by the current-plan dialog.
+Source and Preview show the file on disk, so their File details offer Download,
+a link to `/api/download`. That route streams the file's bytes as an attachment
+without the viewers' size limits or text checks, so a file no viewer can show
+can still be saved. A diff shows a change rather than a file on disk and offers
+no Download.
+
+PDFs and Word documents share one document state in the file viewer, which
+mounts the viewer for the document's kind and hands it that kind's route
+(`/api/pdf` or `/api/docx`). The viewer owns page rendering, document lifetime,
+and local scroll, and keeps one open document per selected file and
+modification time. `caffold-pdf-viewer` imports its pinned pdf.js release at
+first use and draws a page as it approaches the viewport.
+`caffold-docx-viewer` imports its pinned docx-preview release at first use and
+draws the whole document inside a shadow root of its own, so the document's
+styles and the app's stylesheet do not reach each other; embedded fonts are not
+loaded. Before the document is attached, embedded HTML (`altChunk`), which the
+library would run in an iframe of the app's origin, becomes a notice, and links
+keep only their text. Pages split at the document's own page breaks and changes
+of page size and where Word last broke a page when it saved the document, but
+not inside a table, so a table that ran across pages stays on one longer page.
+Word also marks the first line of a page that the document's own page break
+already started, which leaves an empty page between the two; a page after the
+first whose body is empty is therefore not shown. A Word page keeps the width
+its document declares, which CSS cannot scale to the space available, so the
+viewer zooms each wider page down to its own width from JavaScript when the
+document is mounted and whenever the viewer's width changes.
 
 A load request leaves the file viewer's shown content, header included, in
 place until the next state arrives, and only a wait longer than 180 ms turns it
@@ -1223,9 +1243,10 @@ screens that host the viewer keep choosing which response it accepts.
 The shared file stack owns keyboard surfaces at the same boundaries. File List
 merges its Refresh button with the public file-tree selection and directory
 disclosure scope, File Navigator forwards caller semantics, and File Viewer
-publishes its current source, diff, Markdown, image, PDF, or notice leaf plus
-its existing Back, Details, Source/Preview, and conditional Refresh actions,
-and the File details popover context with its conditional Download.
+publishes its current source, diff, Markdown, image, PDF, Word document, or
+notice leaf plus its existing Back, Details, Source/Preview, and conditional
+Refresh actions, and the File details popover context with its conditional
+Download.
 Integrated Review chooses the current navigator and viewer roles and merges
 those public scopes; it never queries a child's `.file-tree-scroll`,
 `.code-lines`, `.diff-lines`, or directory buttons.
@@ -1382,16 +1403,16 @@ Reusable RootedFs capabilities remain shared:
 
 - `caffold-file-navigator` and its list leaf;
 - `caffold-review-file-viewer`;
-- source, text, diff, supported image, and PDF presentation;
+- source, text, diff, supported image, PDF, and Word document presentation;
 - shared watch subscription primitives;
 - New Task Directory Picker;
 - Integrated Review Files navigation;
 - Git Compare/Log and GitHub PR Files leaves.
 
-`caffold-review-file-viewer` hosts the reusable source, diff, text, image, and
-PDF leaves used by review surfaces. Navigation, presentation, and
-filesystem-watch primitives stay shared while each active surface owns its
-selection and request lifetime.
+`caffold-review-file-viewer` hosts the reusable source, diff, text, image,
+PDF, and Word document leaves used by review surfaces. Navigation,
+presentation, and filesystem-watch primitives stay shared while each active
+surface owns its selection and request lifetime.
 
 ## Notes
 
@@ -1685,6 +1706,7 @@ frontend/
     |-- markdown-preview.js
     |-- pagination.js
     |-- pdf-viewer.js
+    |-- docx-viewer.js
     |-- pane-resizer.js
     |-- segmented-control.js
     `-- terminal-view.js
@@ -1815,10 +1837,12 @@ Every production JavaScript/CSS asset must be registered consistently in:
 - static asset and CSS ownership tests.
 
 The service-worker cache and Rust static-asset table are exact manifests of the
-assets imported by the active application hierarchy. pdf.js and xterm.js with
-its fit addon are the exceptions: their owners import pinned jsDelivr releases
-at first use, and the browser suite answers those URLs from the same versions
-in `node_modules`.
+assets imported by the active application hierarchy. pdf.js, docx-preview, and
+xterm.js with its fit addon are the exceptions: their owners import pinned
+jsDelivr releases at first use, and the browser suite answers those URLs from
+the same versions in `node_modules`. docx-preview loads as jsDelivr's `+esm`
+module, whose jszip import jsDelivr resolves, so the suite builds that module
+from the installed docx-preview and jszip.
 
 ## Test ownership
 

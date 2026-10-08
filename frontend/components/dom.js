@@ -82,8 +82,14 @@ export function isPreviewableImagePath(path) {
   return Boolean(imageExtension(path));
 }
 
-export function isPdfPath(path) {
-  return fileNameFromPath(path).toLowerCase().endsWith(".pdf");
+// The kind of document a library-backed viewer draws, or null for any other
+// file.
+export function documentPreviewKind(path) {
+  const name = fileNameFromPath(path).toLowerCase();
+  if (name.endsWith(".pdf")) {
+    return "pdf";
+  }
+  return name.endsWith(".docx") ? "docx" : null;
 }
 
 export function imageTypeLabel(path) {

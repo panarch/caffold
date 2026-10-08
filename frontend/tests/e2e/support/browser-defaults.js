@@ -1,20 +1,15 @@
-import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { installTaskSseControllerInBrowser } from "./task-sse-fixture.js";
 
-const require = createRequire(import.meta.url);
 // The suite runs the real libraries the app loads from jsDelivr rather than
-// stand-ins: a PDF or terminal that fails to render produces no fallback
+// stand-ins: a document or terminal that fails to render produces no fallback
 // content to assert against.
 const CDN_PACKAGES = ["pdfjs-dist", "@xterm/xterm", "@xterm/addon-fit"].map(
   (name) => ({
-    root: fileURLToPath(
-      new URL(`../../../node_modules/${name}/`, import.meta.url),
-    ),
-    prefix:
-      `https://cdn.jsdelivr.net/npm/${name}@${require(`${name}/package.json`).version}/`,
+    root: installedPackageRoot(name),
+    prefix: `${cdnPackageUrl(name)}/`,
   }),
 );
 const CDN_CONTENT_TYPES = {
@@ -22,6 +17,13 @@ const CDN_CONTENT_TYPES = {
   ".mjs": "text/javascript",
   ".wasm": "application/wasm",
 };
+// jsDelivr's `+esm` URL serves a package as one module whose bare imports it
+// has rewritten to other `+esm` URLs. The suite builds the same module graph
+// from the installed packages.
+const CDN_ESM_MODULES = new Map([
+  [`${cdnPackageUrl("docx-preview")}/+esm`, docxPreviewModule],
+  [`${cdnPackageUrl("jszip")}/+esm`, jszipModule],
+]);
 
 export function mockTaskStoreStatus(overrides = {}) {
   return {
@@ -303,7 +305,12 @@ export async function installBrowserDefaults(page) {
 
 export async function installExternalModuleDefaults(page) {
   await page.route("https://cdn.jsdelivr.net/**", (route) => {
-    const file = cdnAssetPath(route.request().url());
+    const url = route.request().url();
+    const esmModule = CDN_ESM_MODULES.get(url);
+    if (esmModule) {
+      return route.fulfill({ contentType: "text/javascript", body: esmModule() });
+    }
+    const file = cdnAssetPath(url);
     if (!file) {
       return route.abort();
     }
@@ -574,4 +581,46 @@ function cdnAssetPath(url) {
 function cdnContentType(file) {
   const extension = file.slice(file.lastIndexOf("."));
   return CDN_CONTENT_TYPES[extension] ?? "application/octet-stream";
+}
+
+function docxPreviewModule() {
+  const source = readFileSync(
+    `${installedPackageRoot("docx-preview")}dist/docx-preview.mjs`,
+    "utf8",
+  );
+  const jszipImport = "import JSZip from 'jszip';";
+  if (!source.includes(jszipImport)) {
+    throw new Error("docx-preview no longer imports jszip the way jsDelivr's module is rebuilt here");
+  }
+  return source.replace(
+    jszipImport,
+    `import JSZip from "${cdnPackageUrl("jszip")}/+esm";`,
+  );
+}
+
+// jszip ships only CommonJS and a UMD bundle, so its module default-exports
+// what the bundle assigns to `module.exports`.
+function jszipModule() {
+  const bundle = readFileSync(`${installedPackageRoot("jszip")}dist/jszip.min.js`, "utf8");
+  return [
+    "const module = { exports: {} };",
+    "const exports = module.exports;",
+    bundle,
+    "export default module.exports;",
+  ].join("\n");
+}
+
+function installedPackageRoot(name) {
+  return fileURLToPath(
+    new URL(`../../../node_modules/${name}/`, import.meta.url),
+  );
+}
+
+// The manifest is read from disk because a package's `exports` may not expose
+// it to `require`.
+function cdnPackageUrl(name) {
+  const manifest = JSON.parse(
+    readFileSync(`${installedPackageRoot(name)}package.json`, "utf8"),
+  );
+  return `https://cdn.jsdelivr.net/npm/${name}@${manifest.version}`;
 }

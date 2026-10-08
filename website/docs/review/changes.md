@@ -36,7 +36,7 @@ allows:
 
 - **Diff**, the unified diff of the change, with line numbers on both sides;
 - **Source**, the whole file as text;
-- **Preview**, for Markdown, images, and PDF files.
+- **Preview**, for Markdown, images, PDF files, and Word documents (`.docx`).
 
 In **Source** and **Preview**, **Show details** at the top right of the file
 has **Download**, which saves the file to your device, including a large or

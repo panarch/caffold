@@ -1,0 +1,37 @@
+caffold-docx-viewer {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 1rem;
+  background: var(--surface-muted);
+
+  &[hidden] {
+    display: none;
+  }
+
+  & .docx-viewer-body {
+    display: grid;
+    min-width: 0;
+  }
+
+  &[data-render-state="loading"] > .docx-viewer-body {
+    min-height: 100%;
+    align-content: center;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .docx-viewer-document {
+    display: block;
+    min-width: 0;
+  }
+
+  & .docx-viewer-message {
+    margin: 0;
+    padding: 1rem;
+    color: var(--muted);
+    text-align: center;
+  }
+}

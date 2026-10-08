@@ -1350,6 +1350,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/pdf-viewer.js" => {
             Some(js(include_str!("../../frontend/components/pdf-viewer.js")))
         }
+        "components/docx-viewer.css" => Some(css(include_str!(
+            "../../frontend/components/docx-viewer.css"
+        ))),
+        "components/docx-viewer.js" => {
+            Some(js(include_str!("../../frontend/components/docx-viewer.js")))
+        }
         "components/file-viewer-presentation.js" => Some(js(include_str!(
             "../../frontend/components/file-viewer-presentation.js"
         ))),
