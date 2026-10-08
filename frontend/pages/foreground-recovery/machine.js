@@ -623,6 +623,11 @@ function requiredTargetHasTransport(targets, transport) {
   );
 }
 
+// A request that ran out of time got no answer, which does not show the network
+// is gone, so it fails like any other attempt instead of pausing offline.
 export function isNetworkFailure(error) {
-  return error instanceof TypeError || error?.status === 0;
+  return (
+    error instanceof TypeError ||
+    (error?.status === 0 && error?.code !== "request_timeout")
+  );
 }

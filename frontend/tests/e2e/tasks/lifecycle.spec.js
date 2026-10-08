@@ -27,14 +27,14 @@ async function advanceClockUntil(page, predicate, {
   stepMs = 50,
 }) {
   let elapsedMs = 0;
-  while (!predicate() && elapsedMs < budgetMs) {
+  while (!(await predicate()) && elapsedMs < budgetMs) {
     const advanceMs = Math.min(stepMs, budgetMs - elapsedMs);
     await page.clock.runFor(advanceMs);
     elapsedMs += advanceMs;
     await page.evaluate(() => Promise.resolve());
   }
   expect(
-    predicate(),
+    await predicate(),
     `Condition was not reached within ${budgetMs}ms of virtual time`,
   ).toBe(true);
 }
@@ -1773,15 +1773,195 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
   await expect(newTaskForm.getByRole("button", { name: "Start task" })).toBeEnabled();
 });
 
+test("replaces a connection that stopped delivering instead of leaving the Task list reconnecting", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  const threadId = "thread_undelivered_connection";
+  const registryKey = "__undeliveredSources";
+  await installTransportOverlayFixture(page, threadId, registryKey);
+  const physicalConnections = () =>
+    page.evaluate(() => window.__caffoldMockLiveEventSources.length);
+  const listSubscriptions = () =>
+    page.evaluate(
+      (key) =>
+        window[key].filter(({ url }) => url.startsWith("/api/tasks/stream"))
+          .length,
+      registryKey,
+    );
+  const listState = () =>
+    page.evaluate(
+      () => document.querySelector("caffold-task-workspace").taskNavigator.streamState,
+    );
+  const notice = page.locator(".app-foreground-recovery");
+
+  await page.goto(`/tasks/${threadId}`);
+  await expect
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
+  const connectionsBefore = await physicalConnections();
+  const subscriptionsBefore = await listSubscriptions();
+
+  // The list's channel fails, then the connection stops delivering: the list's
+  // next subscription is accepted, but its channel never opens.
+  await page.evaluate(() => {
+    window.__taskListSource.emitChannelError();
+    window.__caffoldTaskSse.stopDelivering();
+  });
+  await page.clock.runFor(250);
+  await expect.poll(listSubscriptions).toBe(subscriptionsBefore + 1);
+  await expect(notice).toHaveAttribute("data-recovery-state", "reconnecting");
+
+  await page.clock.runFor(7_900);
+  expect(await physicalConnections()).toBe(connectionsBefore);
+  expect(await listState()).toBe("reconnecting");
+
+  // Eight seconds after the subscription was accepted, the connection gives way
+  // to a fresh one after the first retry delay, which opens every channel again.
+  await page.clock.runFor(100);
+  await expect
+    .poll(() => page.evaluate(() =>
+      window.__caffoldMockLiveEventSources.at(-1).readyState))
+    .toBe(2);
+  await page.clock.runFor(250);
+  await expect.poll(physicalConnections).toBe(connectionsBefore + 1);
+  await expect.poll(listState).toBe("ready");
+  await expect(notice).toBeHidden();
+});
+
+test("gives up on a Task list reading that never answers and reads again", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  const threadId = "thread_unanswered_list_read";
+  const registryKey = "__unansweredListSources";
+  await installTransportOverlayFixture(page, threadId, registryKey);
+  let holdListReads = false;
+  const heldListReads = [];
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    if (holdListReads) {
+      heldListReads.push(route);
+      return undefined;
+    }
+    return route.fallback();
+  });
+  const listState = () =>
+    page.evaluate(
+      () => document.querySelector("caffold-task-workspace").taskNavigator.streamState,
+    );
+  const notice = page.locator(".app-foreground-recovery");
+
+  await page.goto(`/tasks/${threadId}`);
+  await expect
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
+
+  holdListReads = true;
+  await page.evaluate(() => window.__taskListSource.emitChannelError());
+  await page.clock.runFor(250);
+  await expect.poll(() => heldListReads.length).toBe(1);
+  holdListReads = false;
+  await expect(notice).toHaveAttribute("data-recovery-state", "reconnecting");
+
+  // The held reading gives up after eight seconds, and the list reads again.
+  await advanceClockUntil(page, async () => (await listState()) === "ready", {
+    budgetMs: 10_000,
+    stepMs: 250,
+  });
+  await expect(notice).toBeHidden();
+});
+
+test("backs off instead of waiting or pausing offline when a return's Task-store check never answers", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.addInitScript(() => {
+    window.__caffoldVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => window.__caffoldVisibilityState,
+    });
+  });
+  const threadId = "thread_unanswered_store_check";
+  const registryKey = "__unansweredStoreSources";
+  await installTransportOverlayFixture(page, threadId, registryKey);
+  let holdStoreReads = false;
+  const heldStoreReads = [];
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, (route) => {
+    if (holdStoreReads) {
+      heldStoreReads.push(route);
+      return undefined;
+    }
+    return route.fulfill({ json: mockTaskStoreStatus() });
+  });
+  const notice = page.locator(".app-foreground-recovery");
+
+  await page.goto(`/tasks/${threadId}`);
+  await expect
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
+
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  holdStoreReads = true;
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => heldStoreReads.length).toBe(1);
+  holdStoreReads = false;
+
+  // Running out of time is no proof that the network is gone, so the return
+  // backs off and checks again rather than pausing offline.
+  await advanceClockUntil(
+    page,
+    async () => (await notice.getAttribute("data-recovery-state")) === "reconnecting",
+    { budgetMs: 8_500, stepMs: 250 },
+  );
+  await advanceClockUntil(page, () => foregroundRecoverySettled(page), {
+    budgetMs: 2_000,
+    stepMs: 250,
+  });
+  await expect(notice).toBeHidden();
+});
+
 test("shows one viewport recovery notice without moving Task surfaces", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   const threadId = "thread_transport_overlay_geometry";
   await installTransportOverlayFixture(
     page,
     threadId,
     "__taskOverlayEventSources",
   );
+  const notice = page.locator("caffold-app-shell > .app-foreground-recovery");
+  const noticeState = () => notice.getAttribute("data-recovery-state");
+  // A physical error the browser keeps retrying leaves every Task stream
+  // reconnecting. While connections are refused, its replacements run out of
+  // retries and leave the streams unavailable until Retry.
+  const loseConnection = (sourceKey) =>
+    page.evaluate((key) => {
+      window.__caffoldTaskSse.refuseConnections();
+      window[key].emitError();
+    }, sourceKey);
+  const runUntilUnavailable = () =>
+    advanceClockUntil(page, async () => (await noticeState()) === "unavailable", {
+      budgetMs: 15_000,
+      stepMs: 250,
+    });
+  const retryConnection = async () => {
+    await page.evaluate(() => window.__caffoldTaskSse.refuseConnections(false));
+    await notice.getByRole("button", { name: "Retry" }).click();
+  };
 
   await page.goto("/tasks");
   const navigator = page.locator("caffold-task-navigator");
@@ -1790,45 +1970,46 @@ test("shows one viewport recovery notice without moving Task surfaces", { tag: "
   const taskRow = navigator.locator(`.task-row[data-thread-id="${threadId}"]`);
   const initialHeader = await elementGeometry(primaryHeader);
   const initialTaskRow = await elementGeometry(taskRow);
-  const notice = page.locator("caffold-app-shell > .app-foreground-recovery");
   await expect(notice).toHaveCount(1);
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
 
-  for (const state of ["reconnecting", "unavailable"]) {
-    await navigator.evaluate((element, nextState) => {
-      element.setStreamState(nextState);
-    }, state);
-    await expect(notice).toBeVisible();
-    await expect(notice).toHaveAttribute("data-recovery-state", state);
-    await expect(notice).toHaveCSS("position", "fixed");
-    if (state === "unavailable") {
-      const retry = notice.getByRole("button", { name: "Retry" });
-      await expect(retry).toBeVisible();
-      await retry.focus();
-      await expect(retry).toBeFocused();
-      const initialNotice = await elementGeometry(notice);
-      await scroller.evaluate((element) => {
-        element.scrollTop = element.scrollHeight;
-      });
-      await expect
-        .poll(() => scroller.evaluate((element) => element.scrollTop))
-        .toBeGreaterThan(0);
-      expect(await elementGeometry(primaryHeader)).toEqual(initialHeader);
-      expect(await elementGeometry(notice)).toEqual(initialNotice);
-      await captureReviewScreenshot(
-        page,
-        testInfo,
-        "tasks-global-list-transport-unavailable",
-      );
-      await scroller.evaluate((element) => {
-        element.scrollTop = 0;
-      });
-    }
-    expect(await elementGeometry(taskRow)).toEqual(initialTaskRow);
-  }
-  await navigator.evaluate((element) => element.setStreamState("ready"));
+  await loseConnection("__taskListSource");
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveAttribute("data-recovery-state", "reconnecting");
+  await expect(notice).toHaveCSS("position", "fixed");
+  expect(await elementGeometry(taskRow)).toEqual(initialTaskRow);
+
+  await runUntilUnavailable();
+  await expect(notice).toHaveCSS("position", "fixed");
+  const listRetry = notice.getByRole("button", { name: "Retry" });
+  await expect(listRetry).toBeVisible();
+  await listRetry.focus();
+  await expect(listRetry).toBeFocused();
+  const initialNotice = await elementGeometry(notice);
+  await scroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect
+    .poll(() => scroller.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  expect(await elementGeometry(primaryHeader)).toEqual(initialHeader);
+  expect(await elementGeometry(notice)).toEqual(initialNotice);
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-global-list-transport-unavailable",
+  );
+  await scroller.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  expect(await elementGeometry(taskRow)).toEqual(initialTaskRow);
+
+  await retryConnection();
   await expect(notice).toBeHidden();
   expect(await elementGeometry(taskRow)).toEqual(initialTaskRow);
 
+  await page.clock.resume();
   await page.goto(`/tasks/${threadId}`);
   const tasksPage = page.locator("caffold-tasks-page");
   const conversation = tasksPage.locator("caffold-task-conversation");
@@ -1837,31 +2018,31 @@ test("shows one viewport recovery notice without moving Task surfaces", { tag: "
   );
   const initialConversation = await elementGeometry(conversation);
   const initialComposer = await elementGeometry(composer);
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  await page.clock.pauseAt(new Date("2026-01-01T00:05:00Z"));
 
-  for (const state of ["reconnecting", "unavailable"]) {
-    await tasksPage.evaluate((element, nextState) => {
-      element.taskDetail().taskDetail().detailSession.transport.setState(nextState);
-    }, state);
-    await expect(notice).toBeVisible();
-    await expect(notice).toHaveAttribute("data-recovery-state", state);
-    await expect(notice).toHaveCSS("position", "fixed");
-    if (state === "unavailable") {
-      const retry = notice.getByRole("button", { name: "Retry" });
-      await expect(retry).toBeVisible();
-      await retry.focus();
-      await expect(retry).toBeFocused();
-      await captureReviewScreenshot(
-        page,
-        testInfo,
-        "tasks-global-detail-transport-unavailable",
-      );
-    }
-    expect(await elementGeometry(conversation)).toEqual(initialConversation);
-    expect(await elementGeometry(composer)).toEqual(initialComposer);
-  }
-  await tasksPage.evaluate((element) => {
-    element.taskDetail().taskDetail().detailSession.transport.setState("ready");
-  });
+  await loseConnection("__taskDetailSource");
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveAttribute("data-recovery-state", "reconnecting");
+  await expect(notice).toHaveCSS("position", "fixed");
+  expect(await elementGeometry(conversation)).toEqual(initialConversation);
+  expect(await elementGeometry(composer)).toEqual(initialComposer);
+
+  await runUntilUnavailable();
+  await expect(notice).toHaveCSS("position", "fixed");
+  const detailRetry = notice.getByRole("button", { name: "Retry" });
+  await expect(detailRetry).toBeVisible();
+  await detailRetry.focus();
+  await expect(detailRetry).toBeFocused();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-global-detail-transport-unavailable",
+  );
+  expect(await elementGeometry(conversation)).toEqual(initialConversation);
+  expect(await elementGeometry(composer)).toEqual(initialComposer);
+
+  await retryConnection();
   await expect(notice).toBeHidden();
   expect(await elementGeometry(conversation)).toEqual(initialConversation);
   expect(await elementGeometry(composer)).toEqual(initialComposer);
@@ -1870,6 +2051,7 @@ test("shows one viewport recovery notice without moving Task surfaces", { tag: "
 test("routes the single viewport Retry through app-shell foreground recovery", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   const threadId = "thread_parent_owned_transport_retry";
   const registryKey = "__taskRetryEventSources";
   await installTransportOverlayFixture(page, threadId, registryKey);
@@ -1878,11 +2060,22 @@ test("routes the single viewport Retry through app-shell foreground recovery", {
     storeReads += 1;
     return route.fulfill({ json: mockTaskStoreStatus() });
   });
+  // While set, Task list reads fail, so only the list stream spends its retries.
+  let listReadsFail = false;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    listReadsFail
+      ? route.fulfill({
+          status: 500,
+          json: { error: { message: "Task list unavailable." } },
+        })
+      : route.fallback(),
+  );
   await page.goto(`/tasks/${threadId}`);
 
   await expect
     .poll(() => activeLiveUpdateChannels(page, { registryKey }))
     .toEqual(["task-detail", "task-list", "watch"]);
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
 
   const sourceCounts = () =>
     page.evaluate(
@@ -1896,35 +2089,34 @@ test("routes the single viewport Retry through app-shell foreground recovery", {
       }),
       { key: registryKey, threadId },
     );
-  const setStates = (list, detail) =>
-    page.evaluate(
-      ({ listState, detailState }) => {
-        const workspace = document.querySelector("caffold-task-workspace");
-        workspace.taskNavigator.taskListStream.setState(listState);
-        workspace.tasksPage.taskDetail().taskDetail().detailSession.transport.setState(detailState);
-      },
-      { listState: list, detailState: detail },
-    );
+  const streamStates = () =>
+    page.evaluate(() => {
+      const workspace = document.querySelector("caffold-task-workspace");
+      return {
+        list: workspace.taskNavigator.streamState,
+        detail: workspace.tasksPage.taskDetail().streamState,
+      };
+    });
   const waitForReady = () =>
-    expect
-      .poll(() =>
-        page.evaluate(() => {
-          const workspace = document.querySelector("caffold-task-workspace");
-          return {
-            list: workspace.taskNavigator.streamState,
-            detail: workspace.tasksPage.taskDetail().streamState,
-          };
-        }),
-      )
-      .toEqual({ list: "ready", detail: "ready" });
-
-  const before = await sourceCounts();
-  const storeBefore = storeReads;
-  await setStates("unavailable", "ready");
+    expect.poll(streamStates).toEqual({ list: "ready", detail: "ready" });
   const globalNotice = page.locator(
     '.app-foreground-recovery[data-recovery-state="unavailable"]',
   );
+
+  await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
+  listReadsFail = true;
+  await page.evaluate(() => window.__taskListSource.emitChannelError());
+  await advanceClockUntil(
+    page,
+    async () => (await streamStates()).list === "unavailable",
+    { budgetMs: 15_000, stepMs: 250 },
+  );
+  expect(await streamStates()).toEqual({ list: "unavailable", detail: "ready" });
   await expect(globalNotice).toBeVisible();
+
+  const before = await sourceCounts();
+  const storeBefore = storeReads;
+  listReadsFail = false;
   await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(1);
   await globalNotice.getByRole("button", { name: "Retry" }).click();
   await expect.poll(sourceCounts).toEqual({

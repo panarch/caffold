@@ -19,6 +19,7 @@ const EXPECTED_EFFECT = Object.freeze({
   [LIVE_CONNECTION_EVENT.SUSPEND]: LIVE_CONNECTION_EFFECT.CLOSE,
   [LIVE_CONNECTION_EVENT.RESUME]: LIVE_CONNECTION_EFFECT.OPEN,
   [LIVE_CONNECTION_EVENT.DISCONNECT]: LIVE_CONNECTION_EFFECT.CLOSE,
+  [LIVE_CONNECTION_EVENT.UNDELIVERED]: LIVE_CONNECTION_EFFECT.REPLACE_NOW,
 });
 
 // An attempt's first silent connection is reopened; the second ends it.
@@ -78,6 +79,24 @@ test("only a connecting attempt or its reopened connection can go silent", () =>
       LIVE_CONNECTION_EVENT.STALL,
     ).node,
     LIVE_CONNECTION_NODE.RECONNECTING,
+  );
+});
+
+test("only a connected gateway can find a connection that stopped delivering", () => {
+  const undeliveredNodes = Object.values(LIVE_CONNECTION_NODE).filter((node) =>
+    Object.hasOwn(LIVE_CONNECTION_EDGES[node], LIVE_CONNECTION_EVENT.UNDELIVERED)
+  );
+
+  assert.deepEqual(undeliveredNodes, [LIVE_CONNECTION_NODE.CONNECTED]);
+  assert.deepEqual(
+    transitionLiveConnection(
+      LIVE_CONNECTION_NODE.CONNECTED,
+      LIVE_CONNECTION_EVENT.UNDELIVERED,
+    ),
+    {
+      node: LIVE_CONNECTION_NODE.RECONNECTING,
+      effects: [LIVE_CONNECTION_EFFECT.REPLACE_NOW],
+    },
   );
 });
 

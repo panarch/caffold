@@ -552,11 +552,6 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.activeTaskList.retryStream();
   }
 
-  setStreamState(state) {
-    this.ensureChildren();
-    this.activeTaskList.setStreamState(state);
-  }
-
   closeStream() {
     this.activeTaskList?.closeStream();
   }

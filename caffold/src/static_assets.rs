@@ -611,6 +611,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/stream.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/stream.js"
         ))),
+        "pages/(task-workspace)/tasks/stream/machine.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/tasks/stream/machine.js"
+        ))),
         "pages/(task-workspace)/tasks/task-events.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/task-events.js"
         ))),
@@ -2133,15 +2136,25 @@ mod tests {
                 .windows(b"TaskDetailSession".len())
                 .any(|window| window == b"TaskDetailSession")
         );
-        let task_stream =
-            get("pages/(task-workspace)/tasks/stream.js").expect("shared task stream js");
-        assert_eq!(task_stream.content_type, "text/javascript; charset=utf-8");
-        assert!(
-            task_stream
-                .body
-                .windows(b"TaskStreamLifecycle".len())
-                .any(|window| window == b"TaskStreamLifecycle")
-        );
+        for (path, marker) in [
+            (
+                "pages/(task-workspace)/tasks/stream.js",
+                b"TaskStreamLifecycle".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/stream/machine.js",
+                b"TASK_STREAM_NODE".as_slice(),
+            ),
+        ] {
+            let asset = get(path).expect("shared task stream js");
+            assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
+            assert!(
+                asset
+                    .body
+                    .windows(marker.len())
+                    .any(|window| window == marker)
+            );
+        }
         for (path, tag) in [
             (
                 "pages/(task-workspace)/tasks/components/composer.js",
@@ -2327,6 +2340,7 @@ mod tests {
             "/assets/pages/(task-workspace)/live-updates.js",
             "/assets/pages/(task-workspace)/live-updates/lifecycle.js",
             "/assets/pages/(task-workspace)/tasks/stream.js",
+            "/assets/pages/(task-workspace)/tasks/stream/machine.js",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.css",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.js",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section.css",

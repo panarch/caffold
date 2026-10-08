@@ -41,8 +41,8 @@ function installBrowserHarness() {
       this.listener.onOpen?.();
     }
 
-    emitError({ closed = false } = {}) {
-      this.listener.onError?.(new Error("unavailable"), { closed });
+    emitError({ closed = false, physical = false } = {}) {
+      this.listener.onError?.(new Error("unavailable"), { closed, physical });
     }
 
     close() {
@@ -310,7 +310,6 @@ test("requires a new bootstrap on reconnect and accepts its lower baseline", asy
   const session = new TaskDetailSession({
     subscribe: browser.subscribe,
     onTaskSync: (message) => syncs.push(message),
-    reconnectTimeoutMs: 1_000,
   });
 
   session.open("thread-a");
@@ -319,7 +318,7 @@ test("requires a new bootstrap on reconnect and accepts its lower baseline", asy
   source.emit("task-sync", syncMessage("thread-a", 40));
   await nextTask();
 
-  source.emitError();
+  source.emitError({ physical: true });
   assert.equal(session.state, TASK_TRANSPORT_STATE.RECONNECTING);
   assert.equal(session.phase, "waiting-bootstrap");
   source.emitOpen();

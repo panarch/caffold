@@ -101,7 +101,6 @@ export class TaskDetailSession {
         this.handleTransportStateChange(state, previousState),
       connectionTimeoutMs:
         callbacks.connectionTimeoutMs ?? this.bootstrapTimeoutMs,
-      reconnectTimeoutMs: callbacks.reconnectTimeoutMs,
       retryDelaysMs: callbacks.retryDelaysMs,
     });
   }

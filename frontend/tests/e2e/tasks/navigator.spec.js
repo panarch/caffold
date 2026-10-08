@@ -3113,11 +3113,6 @@ test("patches Task rows in place without reordering and preserves a running spin
     });
     listSource.emit("task-updated", row);
   }, { task: runningTask, row: activeListTask(runningTask) });
-  await tasksPage.evaluate((element) => {
-    const navigator = element.querySelector("caffold-task-navigator");
-    navigator.setStreamState("connecting");
-    navigator.setStreamState("ready");
-  });
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
 
   expect(

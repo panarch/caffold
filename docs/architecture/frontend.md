@@ -174,6 +174,11 @@ evidence and re-enters that same sequence even when the browser omits an
 readiness, list, and detail still validate through the current foreground
 generation.
 
+A recovery attempt that fails with no response from Caffold, as a network
+exception does, takes the same pause. An attempt whose request ran out of time
+does not: getting no answer is no proof that the network is gone, so the attempt
+fails into the bounded retry.
+
 Browser-specific connectivity APIs such as `navigator.connection` are optional
 hints rather than a second connectivity owner. Definite offline state takes the
 same pause path, restoration requests the same canonical recovery, and
@@ -187,6 +192,23 @@ terminal is shown, the terminal socket.
 Parents call public child methods; the app shell does not inspect Task
 transport internals. Async completions must still match both the foreground
 generation and the active route.
+
+Task List and Task Detail each keep one Task stream through shared
+`tasks/stream.js`. Its private graph separates inactive, suspended,
+subscribing, preparing, reconciling, ready, waiting for the gateway, backing
+off, and unavailable, and every node a stream can wait in ends on its own.
+Subscribing ends through the live gateway's open check and Detail's
+eight-second open limit, preparing through Detail's eight-second bootstrap
+limit, reconciling through the eight-second limit on reading the Task list,
+waiting for the gateway through the gateway's own retry budget, and backing off
+through its timer. A channel that fails, does not open, cannot be prepared, or
+cannot be reconciled backs off for 250 ms, 1 s, and then 3 s before
+subscribing again; after that the stream is unavailable until Retry, recovery,
+or a new activation. Physical trouble keeps the subscription for the gateway to
+reopen, and the reopened stream reconciles before it is ready. Owners read only
+the derived transport state: idle, connecting, validating, reconnecting, ready,
+or unavailable. Callers that join a Task list read in flight share its canonical
+answer and each decide for itself whether it still wants it.
 
 The app shell also owns the single viewport-level recovery notice. Task list
 and detail expose whether an active transport needs recovery; they do not render
@@ -783,9 +805,9 @@ every agent shares the store — and alone presents the takeover recovery surfac
 while it blocks; an answer not yet loaded blocks nothing. Its control graph
 separates attachment and suspension, a check in flight, a migrating store
 rechecked on a timer, a failed store waiting for **Retry Task setup**, and that
-retry in flight. A check that cannot reach the store keeps the last answer and
-stops rechecking until another check is requested, such as by foreground
-recovery.
+retry in flight. A check that cannot reach the store, or gets no answer within
+eight seconds, keeps the last answer and stops rechecking until another check
+is requested, such as by foreground recovery.
 
 A separate workspace lifecycle owns backend-owned Codex readiness requests and
 forwards a request snapshot to Settings. It asks when Codex Settings opens, on
@@ -978,8 +1000,8 @@ identities only; optimistic submissions remain local overlays.
 
 The session phases are inactive, waiting for bootstrap, waiting for readable
 sync, streaming, REST fallback, and unavailable. It alone transitions the
-active attempt, while shared `tasks/stream.js` owns logical subscription
-generations, bootstrap timers, reconciliation, and transport presentation. The
+active attempt, while its Task stream owns logical subscription generations,
+the open limit, reconciliation, and transport presentation. The
 workspace live-update owner separately owns the physical EventSource. Cursor
 pagination stays outside the session, and a Task switch replaces the attempt
 before a late response can update Detail. Provider transport and history
@@ -1599,6 +1621,7 @@ frontend/
 |       `-- tasks/
 |           |-- layout.js
 |           |-- stream.js
+|           |-- stream/machine.js
 |           |-- new/
 |           |   |-- page.js
 |           |   `-- components/directory-picker.js
