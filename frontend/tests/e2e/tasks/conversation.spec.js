@@ -553,7 +553,10 @@ test("loads older collapsed work without a scrollbar and waits for each requeste
     await expect(loadOlder).toBeEnabled();
     await expect(loading).toHaveCount(0);
     expect(await historyLayout()).toEqual(readyLayout);
-    await expect(conversation.locator('.task-work-details-item[data-event-type="command_execution"]')).toHaveCount(99);
+    // The turn's commands ran one after another, so they are rows of one group.
+    await expect(
+      conversation.locator(".task-work-details-command-group .task-command-group-item"),
+    ).toHaveCount(99);
     await expectNoOverflow();
     expect(cursors).toEqual(["older-1"]);
     await activateActionHint(page, /Load older messages$/);

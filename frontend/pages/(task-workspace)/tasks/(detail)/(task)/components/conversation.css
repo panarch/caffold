@@ -116,6 +116,7 @@ caffold-task-conversation {
   & .task-turn-work,
   & .task-thinking details,
   & .task-command,
+  & .task-command-group,
   & .task-tool-card,
   & .task-file-change article {
     min-width: 0;

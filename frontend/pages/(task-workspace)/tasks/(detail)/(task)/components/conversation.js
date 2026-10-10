@@ -23,6 +23,7 @@ import "./conversation/components/approval.js";
 import "./conversation/components/assistant-message.js";
 import "./conversation/components/changed-files.js";
 import "./conversation/components/command.js";
+import "./conversation/components/command-group.js";
 import "./conversation/components/markdown.js";
 import "./conversation/components/message-attachments.js";
 import "./conversation/components/older-history.js";
@@ -55,6 +56,10 @@ class CaffoldTaskConversation extends HTMLElement {
       this.boundCommandDisclosureIntent,
     );
     this.addEventListener(
+      "caffold:task-command-group-disclosure-intent",
+      this.boundCommandGroupDisclosureIntent,
+    );
+    this.addEventListener(
       "caffold:task-suggested-prompt-intent",
       this.boundSuggestedPromptIntent,
     );
@@ -85,6 +90,10 @@ class CaffoldTaskConversation extends HTMLElement {
     this.removeEventListener(
       "caffold:task-command-disclosure-intent",
       this.boundCommandDisclosureIntent,
+    );
+    this.removeEventListener(
+      "caffold:task-command-group-disclosure-intent",
+      this.boundCommandGroupDisclosureIntent,
     );
     this.removeEventListener(
       "caffold:task-suggested-prompt-intent",
@@ -130,6 +139,8 @@ class CaffoldTaskConversation extends HTMLElement {
     this.boundCommandIntent = (event) => this.handleCommandIntent(event);
     this.boundCommandDisclosureIntent = (event) =>
       this.handleCommandDisclosureIntent(event);
+    this.boundCommandGroupDisclosureIntent = (event) =>
+      this.handleCommandGroupDisclosureIntent(event);
     this.boundSuggestedPromptIntent = (event) =>
       this.handleSuggestedPromptIntent(event);
   }
@@ -316,6 +327,14 @@ class CaffoldTaskConversation extends HTMLElement {
       const command = entry.querySelector(":scope > caffold-task-command");
       if (command) {
         childScopes.push(command.actionHintScope?.(childOptions("command")));
+      }
+      const commandGroup = entry.querySelector(
+        ":scope > caffold-task-command-group",
+      );
+      if (commandGroup) {
+        childScopes.push(
+          commandGroup.actionHintScope?.(childOptions("command-group")),
+        );
       }
       const message = entry.querySelector(
         ":scope > caffold-task-assistant-message, :scope > caffold-task-user-message",
@@ -604,6 +623,7 @@ class CaffoldTaskConversation extends HTMLElement {
       view.workDetails,
       view.changedFiles,
       view.commands,
+      view.commandGroups,
       view.messages,
       this.active,
       { requests: approvals, threadId: this.snapshot.threadId, disabled: controlsDisabled },
@@ -790,6 +810,27 @@ class CaffoldTaskConversation extends HTMLElement {
     );
   }
 
+  handleCommandGroupDisclosureIntent(event) {
+    const owner = event.target;
+    if (
+      !(owner instanceof HTMLElement) ||
+      owner.localName !== "caffold-task-command-group" ||
+      !this.contains(owner)
+    ) {
+      return;
+    }
+    event.stopPropagation();
+    const identity = `${event.detail?.identity ?? ""}`;
+    if (!identity) {
+      return;
+    }
+    this.captureCommandGroupAnchor(
+      owner,
+      identity,
+      Boolean(event.detail?.open),
+    );
+  }
+
   handleWorkDetailsDisclosureIntent(event) {
     const owner = event.target;
     if (
@@ -926,7 +967,7 @@ class CaffoldTaskConversation extends HTMLElement {
       ...scroller.querySelectorAll(".task-event[data-event-id]"),
     ].find(
       (event) => event.dataset.eventId === previousScroll.anchorEventId,
-    );
+    ) ?? this.commandGroupEntryHolding(previousScroll.anchorEventId);
     if (!anchor) {
       return false;
     }
@@ -943,6 +984,16 @@ class CaffoldTaskConversation extends HTMLElement {
       maxScrollTop(scroller),
     );
     return true;
+  }
+
+  // The entry a reader was anchored on may have folded into a group since;
+  // the group's entry then stands where the reader was looking.
+  commandGroupEntryHolding(eventId) {
+    return Array.from(this.conversationList()?.children ?? []).find((entry) =>
+      entry
+        .querySelector(":scope > caffold-task-command-group")
+        ?.holdsEvent(eventId),
+    ) ?? null;
   }
 
   captureDisclosureAnchor(key, summary, open) {
@@ -1032,6 +1083,36 @@ class CaffoldTaskConversation extends HTMLElement {
     });
   }
 
+  captureCommandGroupAnchor(owner, identity, open) {
+    const scroller = this.scroller();
+    const threadId = this.snapshot.threadId;
+    const anchorTop = owner.disclosureAnchorTop();
+    if (
+      !scroller ||
+      !threadId ||
+      !scroller.contains(owner) ||
+      !Number.isFinite(anchorTop)
+    ) {
+      return;
+    }
+    const offset = anchorTop - scroller.getBoundingClientRect().top;
+    this.pendingDisclosureAnchorByThread.set(threadId, {
+      owner: "command-group",
+      identity,
+      open,
+      offset,
+    });
+    window.requestAnimationFrame(() => {
+      const currentScroller = this.scroller();
+      if (
+        this.snapshot.threadId === threadId &&
+        this.restorePendingDisclosureAnchor(currentScroller, threadId)
+      ) {
+        this.rememberScroll(threadId);
+      }
+    });
+  }
+
   restorePendingDisclosureAnchor(scroller, threadId) {
     const pending = this.pendingDisclosureAnchorByThread.get(threadId);
     if (!scroller || !pending) {
@@ -1053,6 +1134,16 @@ class CaffoldTaskConversation extends HTMLElement {
       const owner = [...scroller.querySelectorAll("caffold-task-command")].find(
         (entry) => entry.commandKey === pending.commandKey,
       );
+      if (!owner) {
+        this.pendingDisclosureAnchorByThread.delete(threadId);
+        return false;
+      }
+      currentOpen = owner.disclosureOpen();
+      currentTop = owner.disclosureAnchorTop();
+    } else if (pending.owner === "command-group") {
+      const owner = [
+        ...scroller.querySelectorAll("caffold-task-command-group"),
+      ].find((entry) => entry.identity === pending.identity);
       if (!owner) {
         this.pendingDisclosureAnchorByThread.delete(threadId);
         return false;
@@ -1229,6 +1320,7 @@ function reconcileConversationList(
   workDetails,
   changedFiles = new Map(),
   commands = new Map(),
+  commandGroups = new Map(),
   messages = new Map(),
   active = true,
   approvalState = {},
@@ -1267,6 +1359,13 @@ function reconcileConversationList(
     [...list.children]
       .filter((entry) =>
         entry.matches(".task-command[data-conversation-entry-key]"),
+      )
+      .map((entry) => [entry.dataset.conversationEntryKey, entry]),
+  );
+  const existingCommandGroupEntries = new Map(
+    [...list.children]
+      .filter((entry) =>
+        entry.matches(".task-command-group[data-conversation-entry-key]"),
       )
       .map((entry) => [entry.dataset.conversationEntryKey, entry]),
   );
@@ -1351,6 +1450,15 @@ function reconcileConversationList(
     ) {
       return existingCommand;
     }
+    const commandGroupSnapshot = commandGroups.get(key);
+    const existingCommandGroup = existingCommandGroupEntries.get(key);
+    if (
+      commandGroupSnapshot &&
+      existingCommandGroup &&
+      patchCommandGroupEntry(existingCommandGroup, entry)
+    ) {
+      return existingCommandGroup;
+    }
     const changedFileSnapshot = changedFiles.get(key);
     const existingFileChange = existingFileChangeEntries.get(key);
     if (
@@ -1411,6 +1519,13 @@ function reconcileConversationList(
     if (commandOwner && commandSnapshot) {
       commandOwner.setSnapshot(commandSnapshot);
     }
+    const commandGroupSnapshot = commandGroups.get(key);
+    const commandGroupOwner = entry.querySelector(
+      ":scope > caffold-task-command-group",
+    );
+    if (commandGroupOwner && commandGroupSnapshot) {
+      commandGroupOwner.setSnapshot(commandGroupSnapshot);
+    }
     const messageSnapshot = messages.get(key);
     const messageOwner = entry.querySelector(MESSAGE_OWNERS);
     if (messageOwner && messageSnapshot) {
@@ -1444,6 +1559,20 @@ function patchMessageEntry(current, desired) {
 
 function patchCommandEntry(current, desired) {
   const owner = current.querySelector(":scope > caffold-task-command");
+  if (!owner) {
+    return false;
+  }
+  syncElementAttributes(current, desired, [
+    "class",
+    "data-event-id",
+    "data-conversation-entry-key",
+    "data-event-type",
+  ]);
+  return true;
+}
+
+function patchCommandGroupEntry(current, desired) {
+  const owner = current.querySelector(":scope > caffold-task-command-group");
   if (!owner) {
     return false;
   }

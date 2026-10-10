@@ -919,7 +919,8 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     "I am checking the planner diff",
   );
   await expect(tasksPage.locator(".task-turn-work")).toContainText("Worked for");
-  await expect(tasksPage.locator(".task-turn-work")).toContainText("7 updates");
+  // The two commands in a row fold into one group, which counts as one.
+  await expect(tasksPage.locator(".task-turn-work")).toContainText("6 updates");
   await expect(
     tasksPage.locator("caffold-task-work-details > details"),
   ).not.toHaveAttribute("open", "");
@@ -933,7 +934,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       }),
     )
     .toBe(true);
-  await expect(tasksPage.locator(".task-work-details-item")).toHaveCount(7);
+  await expect(tasksPage.locator(".task-work-details-item")).toHaveCount(6);
   await expect(tasksPage.locator(".task-work-details-item").first()).not.toBeVisible();
   const workDetails = tasksPage.locator("caffold-task-work-details > details");
   const workSummary = workDetails.locator(":scope > summary");
@@ -961,8 +962,13 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   await expect(tasksPage.locator('.task-work-details-item[data-event-type="plan"]')).toContainText(
     "Run focused tests",
   );
-  const completedCommand = tasksPage.locator(
-    '.task-work-details-item[data-event-type="command_execution"]:has(> caffold-task-command[data-command-status="completed"])',
+  const commandGroup = tasksPage.locator(
+    ".task-work-details-command-group > caffold-task-command-group > details",
+  );
+  await commandGroup.locator(":scope > summary").click();
+  await expect(commandGroup).toHaveAttribute("open", "");
+  const completedCommand = commandGroup.locator(
+    '.task-command-group-item:has(> caffold-task-command[data-command-status="completed"])',
   );
   const completedCommandRow = completedCommand.locator(
     "caffold-task-command",
@@ -1092,8 +1098,8 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     await commandDialogClose.click();
   });
 
-  const failedCommand = tasksPage.locator(
-    '.task-work-details-item[data-event-type="command_execution"]:has(> caffold-task-command[data-command-status="failed"])',
+  const failedCommand = commandGroup.locator(
+    '.task-command-group-item:has(> caffold-task-command[data-command-status="failed"])',
   );
   const failedCommandRow = failedCommand.locator(
     "caffold-task-command",
@@ -1137,7 +1143,6 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     "approval_resolved",
     "reasoning",
     "plan",
-    "command_execution",
     "command_execution",
     "file_change",
     "assistant_message",

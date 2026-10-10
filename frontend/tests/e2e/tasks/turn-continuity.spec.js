@@ -244,6 +244,18 @@ test("automatic gap repair preserves selection, scroll anchor, and the composer 
   await started.promise;
   try {
     await page.locator("caffold-task-work-details > details > summary").click();
+    // The long turn is one run of commands; folded, it would fit the viewport
+    // and leave no scroll offset to preserve.
+    const commandRun = page.locator(
+      "caffold-task-work-details caffold-task-command-group > details",
+    );
+    await commandRun.locator(":scope > summary").click();
+    await expect(commandRun).toHaveAttribute("open", "");
+    // Opening a disclosure keeps its summary in place on the next frame; let
+    // that land before placing the reader, or it would move them afterwards.
+    await page.evaluate(() => new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    ));
     const anchor = page.getByText("Question for turn 3", { exact: true });
     await composer.focus();
     // Put a retained row at a real, non-clamped scroll offset before prepending.
@@ -272,6 +284,11 @@ test("automatic gap repair preserves selection, scroll anchor, and the composer 
     historyGate.resolve();
     await response;
     await expectAllTurns(page);
+    // The repair gives the run its first commands, and the run stays open.
+    await expect(commandRun).toHaveAttribute("open", "");
+    await expect(
+      commandRun.locator(".task-command-group-item"),
+    ).toHaveCount(100);
     await expect(composer).toHaveValue("Draft survives automatic repair");
     await expect(composer).toBeFocused();
     expect(await page.evaluate(() => window.getSelection().toString())).toBe(selected);

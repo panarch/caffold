@@ -17,6 +17,11 @@ caffold-task-command {
     background: var(--warning-subtle);
   }
 
+  &[data-command-grouped] {
+    border: 0;
+    border-radius: 0;
+  }
+
   & > .task-command-active {
     min-width: 0;
     max-width: 100%;
@@ -133,7 +138,10 @@ caffold-task-command {
     color: var(--muted);
   }
 
+  /* The last column even when the row has no duration to show, so every
+     View output ends at the row's edge. */
   & .task-command-summary-action {
+    grid-column: -2 / -1;
     height: var(--interface-control-size);
     margin-block: -0.4375rem;
     padding: 0;

@@ -104,7 +104,14 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
         },
       ),
     ),
+    // The running turn's commands stay apart, each on its own row, while the
+    // finished turn folds its two into a group: both row shapes are checked.
     command("active_turn_success", now + 13_000, activeTurnId, "completed"),
+    event("active_between", "assistant_message", now + 13_500, activeTurnId, {
+      itemId: "active_between",
+      phase: "progress",
+      text: "Checking the failing package next.",
+    }),
     command("active_turn_failure", now + 14_000, activeTurnId, "failed"),
   ];
   const detail = {
@@ -139,6 +146,11 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
   await expect(workDetails).toHaveCount(1);
   await workDetails.locator(":scope > summary").click();
   await expect(workDetails).toHaveAttribute("open", "");
+  const workCommandGroup = workDetails.locator(
+    ".task-work-details-command-group > caffold-task-command-group > details",
+  );
+  await workCommandGroup.locator(":scope > summary").click();
+  await expect(workCommandGroup).toHaveAttribute("open", "");
 
   const dialog = tasksPage.locator("caffold-task-command-dialog > dialog");
   const surfaces = [
@@ -157,7 +169,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
     ),
     commandSurface(
       "work details",
-      workDetails.locator(".task-work-details-command"),
+      workCommandGroup.locator(".task-command-group-item"),
       {
         action: ".task-command-summary-action",
         label: ".task-command-summary-label",

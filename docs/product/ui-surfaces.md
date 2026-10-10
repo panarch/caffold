@@ -243,6 +243,14 @@ Conversation renders the canonical agent conversation as a review timeline:
 - interruption, failure, reconnect, completion, and unavailable states;
 - follow-up Start or Steer behavior derived from canonical conversation state.
 
+Finished commands that ran one after another fold into one **Ran N commands**
+card that counts the failed and declined ones; opening it shows each command's
+row with its **View output**. The empty thinking an agent records around its
+commands folds in with them, as a **Thinking** row holding only its time. A
+command still running stays on its own with its live output and joins the card
+when it ends. A finished turn's work details fold their commands the same way,
+and a card stays open or closed as it was left.
+
 A prompt reads as the characters typed into the Composer, so Markdown syntax in
 it stays literal. Agent responses and reasoning summaries render as Markdown.
 

@@ -209,7 +209,16 @@ test("merges owned Conversation actions with direct retained child providers", (
   const entry = {
     dataset: { conversationEntryKey: "command-a" },
     querySelector(selector) {
-      return selector.includes("caffold-task-command") ? command : null;
+      return selector === ":scope > caffold-task-command" ? command : null;
+    },
+  };
+  const commandGroup = childProvider("command-group-toggle");
+  const commandGroupEntry = {
+    dataset: { conversationEntryKey: "command-group:command-b" },
+    querySelector(selector) {
+      return selector === ":scope > caffold-task-command-group"
+        ? commandGroup
+        : null;
     },
   };
   const prompt = childProvider("prompt-preview");
@@ -228,7 +237,9 @@ test("merges owned Conversation actions with direct retained child providers", (
         : null;
     },
   };
-  const list = { children: [entry, promptEntry, pictureEntry] };
+  const list = {
+    children: [entry, commandGroupEntry, promptEntry, pictureEntry],
+  };
   const scrollport = {};
   let controls = [detailButton];
   const owner = {
@@ -256,12 +267,17 @@ test("merges owned Conversation actions with direct retained child providers", (
     "older-page",
     "approval-choice",
     "command-output",
+    "command-group-toggle",
     "prompt-preview",
     "generated-preview",
   ]);
   assert.deepEqual(scope.targets.map(({ invalidationOwner }) =>
     invalidationOwner
-  ), [owner, olderHistory, approvalCard, command, prompt, picture]);
+  ), [owner, olderHistory, approvalCard, command, commandGroup, prompt, picture]);
+  assert.equal(
+    commandGroup.options.scopeId,
+    "task:thread-a:conversation:command-group:command-group:command-b",
+  );
   assert.equal(
     prompt.options.scopeId,
     "task:thread-a:conversation:message:prompt-a",

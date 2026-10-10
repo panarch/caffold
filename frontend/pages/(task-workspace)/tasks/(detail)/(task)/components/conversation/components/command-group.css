@@ -1,0 +1,121 @@
+caffold-task-command-group {
+  /* A command card that holds several rows. Its frame, header height, and
+     padding match a single command card, so a card folding into a group
+     changes only the frame around it. Every row is as tall as a command row,
+     whose command line is set in code type. */
+  --task-command-group-row-size: max(
+    var(--interface-control-size),
+    calc(var(--code-font-size) * var(--code-line-height) + 2 * 0.4375rem)
+  );
+
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  color: var(--text);
+
+  & > details {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  & .task-command-group-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--interface-space-4);
+    min-width: 0;
+    min-height: var(--task-command-group-row-size);
+    padding: 0.4375rem 0.6875rem;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    cursor: pointer;
+  }
+
+  & > details[open] > .task-command-group-summary {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  & .task-command-group-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  & .task-command-group-chevron {
+    display: inline-grid;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+    flex: 0 0 var(--interface-icon-small-size);
+    place-items: center;
+  }
+
+  & .task-command-group-chevron-icon {
+    grid-area: 1 / 1;
+    display: block;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+    stroke-width: 2.2;
+  }
+
+  & .task-command-group-chevron-expanded,
+  & > details[open] .task-command-group-chevron-collapsed {
+    display: none;
+  }
+
+  & > details[open] .task-command-group-chevron-expanded {
+    display: block;
+  }
+
+  & .task-command-group-results {
+    display: inline-flex;
+    gap: var(--interface-space-4);
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  & .task-command-group-failed {
+    color: var(--danger);
+  }
+
+  & .task-command-group-list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  & .task-command-group-item {
+    min-width: 0;
+  }
+
+  & .task-command-group-item + .task-command-group-item {
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  & .task-command-group-thinking-row {
+    display: flex;
+    align-items: center;
+    gap: var(--interface-space-4);
+    min-height: var(--task-command-group-row-size);
+    padding: 0.4375rem 0.6875rem;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-command-group-thinking-row > time {
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  /* A failed row's tint reaches the card's rounded bottom corners. */
+  & .task-command-group-item:last-child {
+    overflow: hidden;
+    border-radius: 0 0 9px 9px;
+  }
+}

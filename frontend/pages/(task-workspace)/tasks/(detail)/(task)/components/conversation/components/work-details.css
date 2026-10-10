@@ -77,12 +77,14 @@ caffold-task-work-details {
   }
 
   & .task-work-details-command,
+  & .task-work-details-command-group,
   & .task-work-details-message {
     border: 0;
     background: transparent;
   }
 
   & .task-work-details-command > caffold-task-command,
+  & .task-work-details-command-group > caffold-task-command-group,
   & .task-work-details-message > caffold-task-assistant-message {
     min-width: 0;
     max-width: 100%;
