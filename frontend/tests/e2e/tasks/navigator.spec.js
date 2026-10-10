@@ -285,7 +285,7 @@ test("shows active Tasks first and appends a settled Archived section without re
   )).toBe(true);
 });
 
-test("subscribes to Task list updates once active Tasks settle, before Archived", { tag: "@desktop" }, async ({
+test("subscribes to Task list updates once active Tasks settle, before Archived", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -907,7 +907,7 @@ test("shows relative age from the latest completion instead of thread recency", 
   await expect(time).toHaveAttribute("datetime", new Date(lastCompletedMs).toISOString());
 });
 
-test("shows the worktree mark from the first Task list response", { tag: "@desktop" }, async ({
+test("shows the worktree mark from the first Task list response", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);

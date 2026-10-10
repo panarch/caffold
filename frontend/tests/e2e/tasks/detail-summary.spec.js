@@ -438,7 +438,7 @@ test("keeps fork disabled for Claude Tasks and reports why", { tag: "@all-viewpo
   );
 });
 
-test("keeps the source selected and shows a fork failure inline", { tag: "@desktop" }, async ({
+test("keeps the source selected and shows a fork failure inline", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const threadId = "thread_summary_fork_failure";
@@ -840,7 +840,7 @@ test("keeps canonical task status stable while the detail transport reconnects",
   await expect(infoButton).toHaveAttribute("title", "Status: idle");
 });
 
-test("draws the task info status chip without the pill border, like the Task list", { tag: "@desktop" }, async ({
+test("draws the task info status chip without the pill border, like the Task list", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const states = {

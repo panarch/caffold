@@ -43,7 +43,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("the reviewed mode is offered and withheld with its reason until Jev is set up", { tag: "@desktop" }, async ({
+test("the reviewed mode is offered and withheld with its reason until Jev is set up", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page, { permissions: permissionsOffering(false) });
@@ -65,7 +65,7 @@ test("the reviewed mode is offered and withheld with its reason until Jev is set
   ).toHaveAttribute("data-permission-mode", "fullAccess");
 });
 
-test("the reviewed mode can be chosen once Jev is set up", { tag: "@desktop" }, async ({
+test("the reviewed mode can be chosen once Jev is set up", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page, { permissions: permissionsOffering(true) });
@@ -85,7 +85,7 @@ test("the reviewed mode can be chosen once Jev is set up", { tag: "@desktop" }, 
   await expect(picker).toContainText("Ask Jev first");
 });
 
-test("saving Jev settings offers the mode without reloading the page", { tag: "@desktop" }, async ({
+test("saving Jev settings offers the mode without reloading the page", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let available = false;
@@ -144,7 +144,7 @@ test("saving Jev settings offers the mode without reloading the page", { tag: "@
   await expect(picker).toContainText("Ask Jev first");
 });
 
-test("a Task's kept permission instructions are read and forgotten from its details", { tag: "@desktop" }, async ({
+test("a Task's kept permission instructions are read and forgotten from its details", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let instructions = "[2026-09-21 03:14 UTC]\ntarget 밑은 지워도 돼";
@@ -188,7 +188,7 @@ test("a Task's kept permission instructions are read and forgotten from its deta
   expect(requests).toEqual(["GET", "DELETE"]);
 });
 
-test("offers what the prompts settled to Action Hints as the details open", { tag: "@desktop" }, async ({
+test("offers what the prompts settled to Action Hints as the details open", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page, { permissions: permissionsOffering(true) });
@@ -215,7 +215,7 @@ test("offers what the prompts settled to Action Hints as the details open", { ta
   ).toBeVisible();
 });
 
-test("a Task under another approval mode offers nothing to read", { tag: "@desktop" }, async ({
+test("a Task under another approval mode offers nothing to read", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page, { permissions: permissionsOffering(true) });

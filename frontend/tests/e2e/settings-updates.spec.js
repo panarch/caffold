@@ -102,7 +102,7 @@ test("About tells whether a newer Caffold exists and how the last update ended",
   await captureReviewScreenshot(page, testInfo, "about-updates-dark");
 });
 
-test("About says each update state and offers the action that fits it", { tag: "@desktop" }, async ({ page }) => {
+test("About says each update state and offers the action that fits it", { tag: "@viewport-independent" }, async ({ page }) => {
   const answer = await answerUpdates(page, mockCaffoldUpdate());
   await page.goto("/settings/about");
   const updates = updatesSection(page);

@@ -47,7 +47,7 @@ test("raw active flags prioritize approval over user input", { tag: "@all-viewpo
   );
 });
 
-test("work details show only direct item times instead of repeating the turn anchor", { tag: "@desktop" }, async ({
+test("work details show only direct item times instead of repeating the turn anchor", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -186,7 +186,7 @@ test("active task without a canonical turn offers the composer Stop action", { t
   await expect.poll(() => interruptRequests).toBe(1);
 });
 
-test("keeps the composer Stop action stable while an interrupt request is pending", { tag: "@desktop" }, async ({
+test("keeps the composer Stop action stable while an interrupt request is pending", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -232,7 +232,7 @@ test("keeps the composer Stop action stable while an interrupt request is pendin
   await expect(primaryAction).toBeEnabled();
 });
 
-test("returns the messages a stop cancelled to the composer ahead of the draft", { tag: "@desktop" }, async ({
+test("returns the messages a stop cancelled to the composer ahead of the draft", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -584,7 +584,7 @@ test("updates stable detail regions and preserves an active IME composition", { 
     .toBe(true);
 });
 
-test("keeps a growing agent message inside the element already rendering it", { tag: "@desktop" }, async ({
+test("keeps a growing agent message inside the element already rendering it", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -655,7 +655,7 @@ test("keeps a growing agent message inside the element already rendering it", { 
   ).toEqual({ rowPreserved: true, markdownPreserved: true });
 });
 
-test("keeps a folded agent message inside the element already rendering it", { tag: "@desktop" }, async ({
+test("keeps a folded agent message inside the element already rendering it", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1202,7 +1202,7 @@ test("keeps task context and retries after an initial detail timeout", { tag: "@
   await expect(tasksPage).toContainText("Recovered canonical response.");
   await expect(tasksPage.locator(".task-detail-load-error")).toHaveCount(0);
 });
-test("preserves stable detail children through another task load failure", { tag: "@desktop" }, async ({
+test("preserves stable detail children through another task load failure", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -1376,7 +1376,7 @@ test("preserves stable detail children through another task load failure", { tag
     tasksPage.locator('[data-stable-child="composer"]'),
   ).toHaveCount(1);
 });
-test("keeps one Composer and its image draft per thread with a bounded clean inactive cache", { tag: "@desktop" }, async ({
+test("keeps one Composer and its image draft per thread with a bounded clean inactive cache", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -1761,7 +1761,7 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
   });
 });
 
-test("canonical stream sync clears errors but waits for the prompt response identity", { tag: "@desktop" }, async ({
+test("canonical stream sync clears errors but waits for the prompt response identity", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -1925,7 +1925,7 @@ test("canonical stream sync clears errors but waits for the prompt response iden
     .toEqual({ requests: 0, submissions: 0 });
 });
 
-test("canonical action responses reject foreign tasks and preserve history cursors", { tag: "@desktop" }, async ({
+test("canonical action responses reject foreign tasks and preserve history cursors", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);

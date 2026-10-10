@@ -221,7 +221,7 @@ test("reaches a link on a whole picture from the keyboard", { tag: "@desktop" },
   })).toBe(true);
 });
 
-test("shows a deck's media as its pictures without playing it", { tag: "@desktop" }, async ({
+test("shows a deck's media as its pictures without playing it", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -241,7 +241,7 @@ test("shows a deck's media as its pictures without playing it", { tag: "@desktop
   await expect(viewer.getByText("Media is not played in this preview.")).toHaveCount(0);
 });
 
-test("reports an unavailable deck without replacing the review surface", { tag: "@desktop" }, async ({
+test("reports an unavailable deck without replacing the review surface", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await page.route(/\/api\/document\?path=/, (route) =>

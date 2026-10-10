@@ -226,7 +226,7 @@ test("keeps the Settings list's scroll and focus when its icons arrive", { tag: 
   await expect(about).toBeFocused();
 });
 
-test("collects MCP status only when About diagnostics are copied", { tag: "@desktop" }, async ({
+test("collects MCP status only when About diagnostics are copied", { tag: "@viewport-independent" }, async ({
   context,
   page,
 }) => {
@@ -289,7 +289,7 @@ test("collects MCP status only when About diagnostics are copied", { tag: "@desk
   expect(diagnostics).not.toContain("private.example");
 });
 
-test("copies the base About diagnostics when MCP collection is unavailable", { tag: "@desktop" }, async ({
+test("copies the base About diagnostics when MCP collection is unavailable", { tag: "@viewport-independent" }, async ({
   context,
   page,
 }) => {
@@ -716,7 +716,7 @@ test("shows the newest Codex and updates it through its own confirmation", { tag
   expect(updateRequests).toBe(1);
 });
 
-test("keeps Update off for a current Codex and on when the newest release is unknown", { tag: "@desktop" }, async ({
+test("keeps Update off for a current Codex and on when the newest release is unknown", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let channelAnswers = true;
@@ -754,7 +754,7 @@ test("keeps Update off for a current Codex and on when the newest release is unk
   await expect(update).toBeEnabled();
 });
 
-test("names the installed Codex when the running version is unknown", { tag: "@desktop" }, async ({
+test("names the installed Codex when the running version is unknown", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await serveCodexStatus(page, () => codexStatusOn("0.155.1"));
@@ -772,7 +772,7 @@ test("names the installed Codex when the running version is unknown", { tag: "@d
   );
 });
 
-test("keeps Codex Settings usable when an update fails", { tag: "@desktop" }, async ({
+test("keeps Codex Settings usable when an update fails", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await serveCodexStatus(page, () => codexStatusOn("0.155.1"));
@@ -810,7 +810,7 @@ test("keeps Codex Settings usable when an update fails", { tag: "@desktop" }, as
   await expect(settings.getByRole("button", { name: "Restart runtime…" })).toBeEnabled();
 });
 
-test("a Codex restart in flight holds the update back", { tag: "@desktop" }, async ({
+test("a Codex restart in flight holds the update back", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let releaseRestart;
@@ -1019,7 +1019,7 @@ test("a Grok source that could not answer costs its block and no more", { tag: "
   await captureReviewScreenshot(page, testInfo, "settings-grok-unavailable");
 });
 
-test("refreshing the Grok report reads the leader that appeared and names a build behind the installed one", { tag: "@desktop" }, async ({
+test("refreshing the Grok report reads the leader that appeared and names a build behind the installed one", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let reports = 0;
@@ -1117,7 +1117,7 @@ test("holds the Codex rows while its first readiness check is still running", { 
   );
 });
 
-test("disables Codex Refresh and turns its icon while the readiness check runs", { tag: "@desktop" }, async ({
+test("disables Codex Refresh and turns its icon while the readiness check runs", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let holdStatus = false;
@@ -1348,7 +1348,7 @@ test("lists every reported available reset without provider descriptions", { tag
   expect(consumeRequests).toBe(0);
 });
 
-test("offers a generic reset when Codex omits individual credit details", { tag: "@desktop" }, async ({
+test("offers a generic reset when Codex omits individual credit details", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let consumeRequests = 0;
@@ -1384,7 +1384,7 @@ test("offers a generic reset when Codex omits individual credit details", { tag:
   expect(consumeRequests).toBe(0);
 });
 
-test("retries an uncertain reset only after confirming the same request", { tag: "@desktop" }, async ({
+test("retries an uncertain reset only after confirming the same request", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let availableCount = 1;
@@ -1432,7 +1432,7 @@ test("retries an uncertain reset only after confirming the same request", { tag:
   await expect(credits.getByText("This reset request was already completed.")).toBeVisible();
 });
 
-test("does not present a stale reset credit as available after a failed refresh", { tag: "@desktop" }, async ({
+test("does not present a stale reset credit as available after a failed refresh", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let failStatus = false;
@@ -1467,7 +1467,7 @@ test("does not present a stale reset credit as available after a failed refresh"
   await expect(credits.getByRole("button", { name: "Use this reset" })).toHaveCount(0);
 });
 
-test("holds the Claude agent rows while its first report is still loading", { tag: "@desktop" }, async ({
+test("holds the Claude agent rows while its first report is still loading", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let releaseStatus;
@@ -1507,7 +1507,7 @@ test("holds the Claude agent rows while its first report is still loading", { ta
   await expect(agent.locator("dl")).not.toHaveAttribute("aria-busy", "true");
 });
 
-test("rewrites only the Claude row whose value changed", { tag: "@desktop" }, async ({
+test("rewrites only the Claude row whose value changed", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let pid = 4242;
@@ -1562,7 +1562,7 @@ test("rewrites only the Claude row whose value changed", { tag: "@desktop" }, as
   ).toEqual({ childList: 0, attributes: 0, characterData: 1 });
 });
 
-test("refreshing the Claude report keeps its rows and disables Refresh until the new report lands", { tag: "@desktop" }, async ({
+test("refreshing the Claude report keeps its rows and disables Refresh until the new report lands", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let reports = 0;
@@ -1710,7 +1710,7 @@ test("keeps the Claude Settings item actionable when the restart fails", { tag: 
   await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
 });
 
-test("shows the Grok brand mark and tints it with the theme", { tag: "@desktop" }, async ({
+test("shows the Grok brand mark and tints it with the theme", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.goto("/settings/appearance");
@@ -1733,7 +1733,7 @@ test("shows the Grok brand mark and tints it with the theme", { tag: "@desktop" 
   await expect(grokMark).toHaveCSS("filter", "invert(1)");
 });
 
-test("shows the Claude brand mark and tints it with the theme", { tag: "@desktop" }, async ({
+test("shows the Claude brand mark and tints it with the theme", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.goto("/settings/appearance");
@@ -1969,7 +1969,7 @@ test("explains missing app-server capabilities in Codex Settings", { tag: "@all-
   await popup.close();
 });
 
-test("copies the official install command from Codex Settings", { tag: "@desktop" }, async ({
+test("copies the official install command from Codex Settings", { tag: "@viewport-independent" }, async ({
   context,
   page,
 }) => {
@@ -3022,7 +3022,7 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
     .toMatchObject({ codeTypefacePreset: "geist-mono-nerd-font" });
 });
 
-test("loads the bundled face a typeface preset names", { tag: "@desktop" }, async ({ page }) => {
+test("loads the bundled face a typeface preset names", { tag: "@viewport-independent" }, async ({ page }) => {
   await page.goto("/settings/appearance");
 
   await page
@@ -3057,7 +3057,7 @@ test("loads the bundled face a typeface preset names", { tag: "@desktop" }, asyn
     .toBe(true);
 });
 
-test("draws Nerd Fonts Powerline symbols and icons inside the code cell", { tag: "@desktop" }, async ({
+test("draws Nerd Fonts Powerline symbols and icons inside the code cell", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.goto("/settings/appearance");

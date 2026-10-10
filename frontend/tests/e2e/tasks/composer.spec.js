@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("starts a completed task follow-up clock only from canonical turn metadata", { tag: "@desktop" }, async ({
+test("starts a completed task follow-up clock only from canonical turn metadata", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {
@@ -492,7 +492,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
     }),
   ).toHaveAttribute("data-delivery-state", "outcomeUnknown");
 });
-test("keeps exact prompt order when Detail or live content arrives before the prompt response", { tag: "@desktop" }, async ({
+test("keeps exact prompt order when Detail or live content arrives before the prompt response", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {
@@ -1072,7 +1072,7 @@ test("attaches files from the picker, the clipboard, and a drop onto the Compose
   await expect(files).toHaveCount(2);
 });
 
-test("stops at ten attachments and says so", { tag: "@desktop" }, async ({ page }) => {
+test("stops at ten attachments and says so", { tag: "@viewport-independent" }, async ({ page }) => {
   const scenario = await installTaskLoopFixture(page);
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
   const form = page.locator('form[data-task-form="create"]');

@@ -91,7 +91,7 @@ test("saves rules and a key, and never shows the key again", { tag: "@all-viewpo
   ]);
 });
 
-test("a key that did not work says so instead of looking configured", { tag: "@desktop" }, async ({
+test("a key that did not work says so instead of looking configured", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installJevSettings(page, {
@@ -113,7 +113,7 @@ test("a key that did not work says so instead of looking configured", { tag: "@d
   );
 });
 
-test("rules the server refuses are reported without losing what was typed", { tag: "@desktop" }, async ({
+test("rules the server refuses are reported without losing what was typed", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installJevSettings(page);
@@ -142,7 +142,7 @@ test("rules the server refuses are reported without losing what was typed", { ta
   await expect(jevPage.getByRole("button", { name: "Retry" })).toBeHidden();
 });
 
-test("unreadable settings offer a retry instead of an empty page", { tag: "@desktop" }, async ({
+test("unreadable settings offer a retry instead of an empty page", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let attempts = 0;

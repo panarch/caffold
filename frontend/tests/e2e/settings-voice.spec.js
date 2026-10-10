@@ -153,7 +153,7 @@ test("chooses Grok, shows its model inside the page, and keeps its key write-onl
   ]);
 });
 
-test("starts, cancels, and deletes the Whisper model from the server's download state", { tag: "@desktop" }, async ({
+test("starts, cancels, and deletes the Whisper model from the server's download state", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { state, requests } = await installVoiceSettings(page);
@@ -195,7 +195,7 @@ test("starts, cancels, and deletes the Whisper model from the server's download 
   ]);
 });
 
-test("retries settings that could not be loaded and then shows the last download failure", { tag: "@desktop" }, async ({
+test("retries settings that could not be loaded and then shows the last download failure", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installVoiceSettings(page, {
@@ -239,7 +239,7 @@ test("retries settings that could not be loaded and then shows the last download
   );
 });
 
-test("keeps settings current after a rejected key but asks to retry after a failed provider change", { tag: "@desktop" }, async ({
+test("keeps settings current after a rejected key but asks to retry after a failed provider change", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installVoiceSettings(page);

@@ -755,7 +755,7 @@ test("runs a minimal task from creation through follow-up", { tag: "@all-viewpor
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("shows the retained initial prompt until the ordinary prompt request is accepted", { tag: "@desktop" }, async ({ page }) => {
+test("shows the retained initial prompt until the ordinary prompt request is accepted", { tag: "@viewport-independent" }, async ({ page }) => {
   const scenario = await installTaskLoopFixture(page, { deferInitialPrompt: true });
   const tasksPage = page.locator("caffold-tasks-page");
   await startTaskFromNewSurface(page, scenario);
@@ -787,7 +787,7 @@ test("shows the retained initial prompt until the ordinary prompt request is acc
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("prevents a duplicate while create then ordinary prompt is in progress", { tag: "@desktop" }, async ({ page }) => {
+test("prevents a duplicate while create then ordinary prompt is in progress", { tag: "@viewport-independent" }, async ({ page }) => {
   const scenario = await installTaskLoopFixture(page, { deferInitialPrompt: true });
   const tasksPage = page.locator("caffold-tasks-page");
   await startTaskFromNewSurface(page, scenario);
@@ -813,7 +813,7 @@ test("prevents a duplicate while create then ordinary prompt is in progress", { 
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("keeps the empty Task and restores its composer when the initial prompt is rejected", { tag: "@desktop" }, async ({ page }) => {
+test("keeps the empty Task and restores its composer when the initial prompt is rejected", { tag: "@viewport-independent" }, async ({ page }) => {
   const scenario = await installTaskLoopFixture(page, { deferInitialPrompt: true });
   const tasksPage = page.locator("caffold-tasks-page");
   await startTaskFromNewSurface(page, scenario, {

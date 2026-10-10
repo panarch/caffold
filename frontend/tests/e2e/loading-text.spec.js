@@ -54,7 +54,7 @@ function themeColors(page) {
   });
 }
 
-test("waits 180 ms, fades in, and runs a highlight between the theme's text colors", { tag: "@desktop" }, async ({
+test("waits 180 ms, fades in, and runs a highlight between the theme's text colors", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   for (const colorScheme of ["light", "dark"]) {
@@ -86,7 +86,7 @@ test("waits 180 ms, fades in, and runs a highlight between the theme's text colo
   }
 });
 
-test("keeps the wait but drops the highlight and fade for reduced motion", { tag: "@desktop" }, async ({
+test("keeps the wait but drops the highlight and fade for reduced motion", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });

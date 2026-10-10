@@ -153,7 +153,7 @@ test("opens the agent's numbers above the pie in the Task details form", { tag: 
   }
 });
 
-test("opens from Action Hints like the Composer's other buttons", { tag: "@desktop" }, async ({
+test("opens from Action Hints like the Composer's other buttons", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { form } = await openTask(page);
@@ -163,7 +163,7 @@ test("opens from Action Hints like the Composer's other buttons", { tag: "@deskt
   await expect(form.locator(".task-context-usage-popover")).toBeVisible();
 });
 
-test("takes a new count while its numbers are open", { tag: "@desktop" }, async ({
+test("takes a new count while its numbers are open", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { detail, form } = await openTask(page);
@@ -186,7 +186,7 @@ test("takes a new count while its numbers are open", { tag: "@desktop" }, async 
   await expect(popover).toBeVisible();
 });
 
-test("says so when the agent has not counted yet", { tag: "@desktop" }, async ({
+test("says so when the agent has not counted yet", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { form } = await openTask(page, null);
@@ -200,7 +200,7 @@ test("says so when the agent has not counted yet", { tag: "@desktop" }, async ({
   );
 });
 
-test("has no pie before a Task has a conversation", { tag: "@desktop" }, async ({
+test("has no pie before a Task has a conversation", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);

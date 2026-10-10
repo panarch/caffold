@@ -28,7 +28,7 @@ test.afterEach(async ({ request, baseURL }, testInfo) => {
   }
 });
 
-test("the header button opens the Task's terminal and returns to the conversation", { tag: "@desktop" }, async ({
+test("the header button opens the Task's terminal and returns to the conversation", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const threadId = terminalTaskId("header");
@@ -58,7 +58,7 @@ test("the header button opens the Task's terminal and returns to the conversatio
   expect(await page.evaluate(() => history.length)).toBe(historyLength);
 });
 
-test("a terminal screen opened by link resumes the running shell with its output", { tag: "@desktop" }, async ({
+test("a terminal screen opened by link resumes the running shell with its output", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const threadId = terminalTaskId("resume");
@@ -86,7 +86,7 @@ test("a terminal screen opened by link resumes the running shell with its output
   await expect(terminalInput(page)).not.toBeFocused();
 });
 
-test("Ctrl+` and ⌘J move in and out of the terminal even with keyboard navigation off", { tag: "@desktop" }, async ({
+test("Ctrl+` and ⌘J move in and out of the terminal even with keyboard navigation off", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const threadId = terminalTaskId("keyboard");
@@ -176,7 +176,7 @@ test("the terminal takes the full width, and the side panel keys never reach its
   await expect(toggle).toBeEnabled();
 });
 
-test("a terminal that ends goes back to the screen before it and hands focus to the Detail pane", { tag: "@desktop" }, async ({
+test("a terminal that ends goes back to the screen before it and hands focus to the Detail pane", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const threadId = terminalTaskId("ended");
@@ -204,7 +204,7 @@ test("a terminal that ends goes back to the screen before it and hands focus to 
   await expect(page.locator(".tasks-detail-pane")).toBeFocused();
 });
 
-test("opening the terminal on another screen takes it, and the screen that lost it leaves with the toggle", { tag: "@desktop" }, async ({
+test("opening the terminal on another screen takes it, and the screen that lost it leaves with the toggle", { tag: "@viewport-independent" }, async ({
   page,
   context,
 }) => {
@@ -245,7 +245,7 @@ test("opening the terminal on another screen takes it, and the screen that lost 
   await other.close();
 });
 
-test("a terminal screen shows nothing of another Task's terminal while its own connects", { tag: "@desktop" }, async ({
+test("a terminal screen shows nothing of another Task's terminal while its own connects", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const first = terminalDetail(terminalTaskId("before-first"), { title: "First terminal task" });
@@ -291,7 +291,7 @@ test("a terminal screen shows nothing of another Task's terminal while its own c
   await expect(terminalRows(page)).not.toContainText("first-screen");
 });
 
-test("a Task's terminal starts in the Task's working directory", { tag: "@desktop" }, async ({
+test("a Task's terminal starts in the Task's working directory", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const threadId = terminalTaskId("task-directory");
@@ -307,7 +307,7 @@ test("a Task's terminal starts in the Task's working directory", { tag: "@deskto
   await expect(terminalRows(page)).toContainText("in-home-src");
 });
 
-test("a Section's terminal starts in the Section's directory", { tag: "@desktop" }, async ({
+test("a Section's terminal starts in the Section's directory", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const sectionId = terminalTaskId("section-directory");
@@ -328,7 +328,7 @@ test("a Section's terminal starts in the Section's directory", { tag: "@desktop"
   await expect(terminalRows(page)).toContainText("in-src-planner");
 });
 
-test("a lost terminal connection shows the recovery notice, and Retry reattaches", { tag: "@desktop" }, async ({
+test("a lost terminal connection shows the recovery notice, and Retry reattaches", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const threadId = terminalTaskId("lost");
@@ -371,7 +371,7 @@ test("a lost terminal connection shows the recovery notice, and Retry reattaches
   expect(sockets).toHaveLength(2);
 });
 
-test("a connection the network dropped is replaced when the same tab comes back", { tag: "@desktop" }, async ({
+test("a connection the network dropped is replaced when the same tab comes back", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const threadId = terminalTaskId("dropped");
@@ -404,7 +404,7 @@ test("a connection the network dropped is replaced when the same tab comes back"
   expect(sockets).toHaveLength(2);
 });
 
-test("a terminal whose library failed to load can open after recovery", { tag: "@desktop" }, async ({
+test("a terminal whose library failed to load can open after recovery", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const threadId = terminalTaskId("library");
@@ -430,7 +430,7 @@ test("a terminal whose library failed to load can open after recovery", { tag: "
   await expectPrompt(page);
 });
 
-test("⇧⌘F and Ctrl+Shift+F reach the terminal's own buttons from inside it", { tag: "@desktop" }, async ({
+test("⇧⌘F and Ctrl+Shift+F reach the terminal's own buttons from inside it", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const threadId = terminalTaskId("hint-keys");
@@ -457,7 +457,7 @@ test("⇧⌘F and Ctrl+Shift+F reach the terminal's own buttons from inside it",
   await expect(page.locator("caffold-terminal-page")).toBeHidden();
 });
 
-test("F offers the terminal button and the terminal itself", { tag: "@desktop" }, async ({
+test("F offers the terminal button and the terminal itself", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const threadId = terminalTaskId("hints");

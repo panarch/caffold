@@ -602,7 +602,7 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   expect(forkRequests).toBe(1);
 });
 
-test("keeps non-idle and unknown previews read-only and cancels an in-flight preview", { tag: "@desktop" }, async ({
+test("keeps non-idle and unknown previews read-only and cancels an in-flight preview", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -734,7 +734,7 @@ test("keeps non-idle and unknown previews read-only and cancels an in-flight pre
   await slowPreviewFinished;
 });
 
-test("reveals the Codex row only once an installed Codex is known and explains disabled state", { tag: "@desktop" }, async ({
+test("reveals the Codex row only once an installed Codex is known and explains disabled state", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -1285,7 +1285,7 @@ test("replaces the New Task context when a selected Section path changes", { tag
   );
 });
 
-test("uses the Section's last composer settings for its next Task request", { tag: "@desktop" }, async ({ page }) => {
+test("uses the Section's last composer settings for its next Task request", { tag: "@viewport-independent" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
   const sectionId = "section-composer-seed";
@@ -1375,7 +1375,7 @@ test("uses the Section's last composer settings for its next Task request", { ta
   });
 });
 
-test("keeps the first prompt when the created Task opens before creation answers", { tag: "@desktop" }, async ({
+test("keeps the first prompt when the created Task opens before creation answers", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, {
@@ -1523,7 +1523,7 @@ test("keeps the first prompt when the created Task opens before creation answers
   });
 });
 
-test("falls back stale Section settings and applies targeted updates without reloading", { tag: "@desktop" }, async ({
+test("falls back stale Section settings and applies targeted updates without reloading", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { registryKey: "__sectionComposerSources" });
@@ -1598,7 +1598,7 @@ test("falls back stale Section settings and applies targeted updates without rel
   expect(taskListReads).toBe(1);
 });
 
-test("moves Section New to the agent whose model a Section update names", { tag: "@desktop" }, async ({
+test("moves Section New to the agent whose model a Section update names", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { registryKey: "__sectionAgentSwitchSources" });

@@ -213,7 +213,7 @@ test("opens global shortcut help from Normal and replaces Action Hints", { tag: 
   await expect(opener).toBeFocused();
 });
 
-test("⇧⌘F and Ctrl+Shift+F show actions from the prompt, even with keyboard navigation off", { tag: "@desktop" }, async ({
+test("⇧⌘F and Ctrl+Shift+F show actions from the prompt, even with keyboard navigation off", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, actionHintTasks(2));
@@ -529,7 +529,7 @@ test("keeps keyboard navigation available after opening New Task", { tag: "@all-
   await expect(prompt).toHaveValue("");
 });
 
-test("does not enter while a Task route is still loading", { tag: "@desktop" }, async ({
+test("does not enter while a Task route is still loading", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const tasks = actionHintTasks(1);

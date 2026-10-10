@@ -498,10 +498,13 @@ retries, repeated execution, or favorable scheduler timing; those are test
 defects, not evidence that the behavior is covered.
 
 Each browser test must declare its minimum viewport coverage with the native
-Playwright tags `@desktop`, `@foldable`, `@phone`, or `@all-viewports`. Multiple
-project tags are valid when exactly those projects own the behavior. Review
-should reject both untagged tests and `@all-viewports` coverage that does not
-exercise a viewport-dependent production path or observable result.
+Playwright tags `@desktop`, `@foldable`, `@phone`, `@all-viewports`, or
+`@viewport-independent`. Multiple project tags are valid when exactly those
+projects own the behavior; `@all-viewports` and `@viewport-independent` stand
+alone. Review should reject untagged tests, `@all-viewports` coverage that does
+not exercise a viewport-dependent production path or observable result, and
+`@desktop` alone on behavior that neither the desktop layout nor mouse input
+owns, which belongs under `@viewport-independent`.
 
 When an expected result depends on the order of independently delivered events
 or asynchronous completions, the test must gate the exact boundary the

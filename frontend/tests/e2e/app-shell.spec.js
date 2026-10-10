@@ -152,7 +152,7 @@ test("merges foreground Retry with normal workspace targets", { tag: "@all-viewp
   )).toBe(1);
 });
 
-test("returns a workspace tab to the screen it last showed", { tag: "@desktop" }, async ({
+test("returns a workspace tab to the screen it last showed", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.goto("/");
@@ -179,7 +179,7 @@ test("returns a workspace tab to the screen it last showed", { tag: "@desktop" }
   await expect(page).toHaveURL("/");
 });
 
-test("puts the screens under a request into another tab's page", { tag: "@desktop" }, async ({
+test("puts the screens under a request into another tab's page", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const stylesRequested = Promise.withResolvers();
@@ -236,7 +236,7 @@ test("puts the screens under a request into another tab's page", { tag: "@deskto
 
 // iOS Safari and the home-screen application have no Navigation API, so the
 // shell keeps a History fallback that the default browser never exercises.
-test("keeps tab depth and Back on the History fallback path", { tag: "@desktop" }, async ({
+test("keeps tab depth and Back on the History fallback path", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -281,7 +281,7 @@ for (const [label, prepare] of [
     });
   }],
 ]) {
-  test(`puts the screens under an address-entered route into history${label}`, { tag: "@desktop" }, async ({
+  test(`puts the screens under an address-entered route into history${label}`, { tag: "@viewport-independent" }, async ({
     page,
   }) => {
     await prepare(page);
@@ -301,7 +301,7 @@ for (const [label, prepare] of [
 // A native link inside a tab is a step in that tab's flow, so Back returns to
 // the screen it was followed from. A link into another tab is an arrival, and
 // that tab's own screens go in beneath it.
-test("puts the screens under a link that crosses into another tab", { tag: "@desktop" }, async ({
+test("puts the screens under a link that crosses into another tab", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.goto("/settings/keyboard");

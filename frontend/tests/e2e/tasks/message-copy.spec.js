@@ -127,7 +127,7 @@ test("offers Copy beside every agent message time without growing the meta line"
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("copies each message's Markdown source exactly with bounded success and retryable failure", { tag: "@desktop" }, async ({
+test("copies each message's Markdown source exactly with bounded success and retryable failure", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const scenario = await seedMessageCopyTask(page, "thread_message_copy");

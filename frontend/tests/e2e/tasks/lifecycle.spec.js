@@ -156,7 +156,7 @@ function foregroundRecoverySettled(page) {
   });
 }
 
-test("background Task tabs release list and detail streams", { tag: "@desktop" }, async ({
+test("background Task tabs release list and detail streams", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const registryKey = "__taskLifecycleEventSources";
@@ -253,7 +253,7 @@ test("background Task tabs release list and detail streams", { tag: "@desktop" }
   expect(detailReads).toBe(0);
 });
 
-test("foreground recovery refreshes status and reconciles the Task ledger and transports", { tag: "@desktop" }, async ({
+test("foreground recovery refreshes status and reconciles the Task ledger and transports", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const registryKey = "__foregroundRecoverySources";
@@ -426,7 +426,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
   );
 });
 
-test("a return reconciles Tasks and asks Codex nothing", { tag: "@desktop" }, async ({
+test("a return reconciles Tasks and asks Codex nothing", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const registryKey = "__codexHeldReturnSources";
@@ -542,7 +542,7 @@ test("a return reconciles Tasks and asks Codex nothing", { tag: "@desktop" }, as
   codexAnswer.resolve();
 });
 
-test("a return whose live connection stays silent reopens a fresh one and records it", { tag: "@desktop" }, async ({
+test("a return whose live connection stays silent reopens a fresh one and records it", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -649,7 +649,7 @@ test("a return whose live connection stays silent reopens a fresh one and record
   ]);
 });
 
-test("BFCache pageshow and top-level focus use the shared foreground recovery", { tag: "@desktop" }, async ({
+test("BFCache pageshow and top-level focus use the shared foreground recovery", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {
@@ -716,7 +716,7 @@ test("BFCache pageshow and top-level focus use the shared foreground recovery", 
   );
 });
 
-test("notification activation recovers and opens its Task route in place", { tag: "@desktop" }, async ({
+test("notification activation recovers and opens its Task route in place", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const registryKey = "__notificationRecoverySources";
@@ -826,7 +826,7 @@ test("notification activation recovers and opens its Task route in place", { tag
   await expect(notifiedRow).not.toHaveAttribute("aria-current", "true");
 });
 
-test("foreground recovery retries a blocking Task-store snapshot with bounded backoff", { tag: "@desktop" }, async ({
+test("foreground recovery retries a blocking Task-store snapshot with bounded backoff", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {
@@ -1416,7 +1416,7 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
   await expect(composer).toHaveValue("Keep this offline recovery draft");
 });
 
-test("reopened Task detail waits for a readable stream bootstrap", { tag: "@desktop" }, async ({
+test("reopened Task detail waits for a readable stream bootstrap", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const registryKey = "__taskDetailReconnectSources";
@@ -1497,7 +1497,7 @@ test("reopened Task detail waits for a readable stream bootstrap", { tag: "@desk
   expect(detailReads).toBe(0);
 });
 
-test("replaces terminal Task streams and reconciles list and detail", { tag: "@desktop" }, async ({
+test("replaces terminal Task streams and reconciles list and detail", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const registryKey = "__taskRecoveryEventSources";
@@ -1773,7 +1773,7 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
   await expect(newTaskForm.getByRole("button", { name: "Start task" })).toBeEnabled();
 });
 
-test("replaces a connection that stopped delivering instead of leaving the Task list reconnecting", { tag: "@desktop" }, async ({
+test("replaces a connection that stopped delivering instead of leaving the Task list reconnecting", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -1831,7 +1831,7 @@ test("replaces a connection that stopped delivering instead of leaving the Task 
   await expect(notice).toBeHidden();
 });
 
-test("gives up on a Task list reading that never answers and reads again", { tag: "@desktop" }, async ({
+test("gives up on a Task list reading that never answers and reads again", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -1875,7 +1875,7 @@ test("gives up on a Task list reading that never answers and reads again", { tag
   await expect(notice).toBeHidden();
 });
 
-test("backs off instead of waiting or pausing offline when a return's Task-store check never answers", { tag: "@desktop" }, async ({
+test("backs off instead of waiting or pausing offline when a return's Task-store check never answers", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -2048,7 +2048,7 @@ test("shows one viewport recovery notice without moving Task surfaces", { tag: "
   expect(await elementGeometry(composer)).toEqual(initialComposer);
 });
 
-test("routes the single viewport Retry through app-shell foreground recovery", { tag: "@desktop" }, async ({
+test("routes the single viewport Retry through app-shell foreground recovery", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -2128,7 +2128,7 @@ test("routes the single viewport Retry through app-shell foreground recovery", {
   await expect(globalNotice).toBeHidden();
 });
 
-test("reattaches Tasks component lifecycles without rebuilding stable children", { tag: "@desktop" }, async ({
+test("reattaches Tasks component lifecycles without rebuilding stable children", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -2212,7 +2212,7 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     settledTurnOptionsNotAskedAgain: true,
   });
 });
-test("keeps task list and detail revisions independent", { tag: "@desktop" }, async ({ page }, testInfo) => {
+test("keeps task list and detail revisions independent", { tag: "@viewport-independent" }, async ({ page }, testInfo) => {
   await installEventSourceMock(page, {
     registryKey: "__taskEventSources",
   });

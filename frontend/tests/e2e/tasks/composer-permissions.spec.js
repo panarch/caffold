@@ -610,7 +610,7 @@ test("preserves and clears New Task options with their meaningful draft", { tag:
   });
 });
 
-test("reconciles an option-only follow-up to canonical Normal after Task switching", { tag: "@desktop" }, async ({
+test("reconciles an option-only follow-up to canonical Normal after Task switching", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -874,7 +874,7 @@ test("approval modes follow the model, not only the agent", { tag: "@all-viewpor
   await expect(auto).toBeDisabled();
 });
 
-test("the mode a new task starts under follows the model, not the agent's own default", { tag: "@desktop" }, async ({
+test("the mode a new task starts under follows the model, not the agent's own default", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   // The agent withholds its preferred mode from a model that cannot work under
@@ -955,7 +955,7 @@ test("an unreadable mode list reads as unavailable and holds the prompt", { tag:
   expect(created.body).toBeNull();
 });
 
-test("a new task waits for the chosen model's mode list before it starts", { tag: "@desktop" }, async ({
+test("a new task waits for the chosen model's mode list before it starts", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   // A list in flight describes the model chosen before this one. The task
@@ -1356,7 +1356,7 @@ test("a Claude follow-up can still change approval mode between turns", { tag: "
   });
 });
 
-test("a remembered mode the chosen model cannot use is replaced rather than sent", { tag: "@desktop" }, async ({
+test("a remembered mode the chosen model cannot use is replaced rather than sent", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   // A Task remembers the mode it last ran under, and a model change can leave
@@ -1413,7 +1413,7 @@ test("a remembered mode the chosen model cannot use is replaced rather than sent
   });
 });
 
-test("a follow-up waits for the chosen model's mode list before it is sent", { tag: "@desktop" }, async ({
+test("a follow-up waits for the chosen model's mode list before it is sent", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1487,7 +1487,7 @@ test("a follow-up waits for the chosen model's mode list before it is sent", { t
   });
 });
 
-test("a New Task picker detached while its mode list is on its way asks for it again when it returns", { tag: "@desktop" }, async ({
+test("a New Task picker detached while its mode list is on its way asks for it again when it returns", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);

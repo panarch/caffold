@@ -335,7 +335,7 @@ test("draws only the cells near the viewport of a large sheet", { tag: "@desktop
   })).toBe(true);
 });
 
-test("switches sheets with the tabs and keeps the sheet when its file changes", { tag: "@desktop" }, async ({
+test("switches sheets with the tabs and keeps the sheet when its file changes", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo, "preview", {
@@ -369,7 +369,7 @@ test("switches sheets with the tabs and keeps the sheet when its file changes", 
   await expect(sheetTab(viewer, "Ledger")).toHaveAttribute("aria-pressed", "true");
 });
 
-test("links a cell only to a web or mail address", { tag: "@desktop" }, async ({
+test("links a cell only to a web or mail address", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { taskReview } = await openDocument(page, testInfo);
@@ -390,7 +390,7 @@ test("links a cell only to a web or mail address", { tag: "@desktop" }, async ({
   expect(await page.evaluate(() => window.__xlsxLinkRan)).toBeUndefined();
 });
 
-test("reports an unavailable workbook without replacing the review surface", { tag: "@desktop" }, async ({
+test("reports an unavailable workbook without replacing the review surface", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await page.route(/\/api\/document\?path=/, (route) =>

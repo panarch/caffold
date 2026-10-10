@@ -679,7 +679,7 @@ test("keeps paused plan updates visible after Refresh until the Watch recovers",
   ).toBeFocused();
 });
 
-test("clears a failed plan read after Refresh succeeds", { tag: "@desktop" }, async ({
+test("clears a failed plan read after Refresh succeeds", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -742,7 +742,7 @@ test("clears a failed plan read after Refresh succeeds", { tag: "@desktop" }, as
   ).toBeFocused();
 });
 
-test("keeps a Task without a plan free of the strip while its updates pause", { tag: "@desktop" }, async ({
+test("keeps a Task without a plan free of the strip while its updates pause", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -777,7 +777,7 @@ test("keeps a Task without a plan free of the strip while its updates pause", { 
   await expect(currentPlan.locator('[data-current-plan-action="status"]')).toBeHidden();
 });
 
-test("rereads a plan whose first read failed once the Task cwd Watch is ready", { tag: "@desktop" }, async ({
+test("rereads a plan whose first read failed once the Task cwd Watch is ready", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -822,7 +822,7 @@ test("rereads a plan whose first read failed once the Task cwd Watch is ready", 
   await expect(currentPlan.locator('[data-current-plan-action="status"]')).toBeHidden();
 });
 
-test("uses the Task cwd instead of its managed worktree root", { tag: "@desktop" }, async ({
+test("uses the Task cwd instead of its managed worktree root", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
@@ -872,7 +872,7 @@ test("uses the Task cwd instead of its managed worktree root", { tag: "@desktop"
   );
 });
 
-test("rejects a stale plan refresh when Task context changes", { tag: "@desktop" }, async ({
+test("rejects a stale plan refresh when Task context changes", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);

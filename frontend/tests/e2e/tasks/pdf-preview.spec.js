@@ -138,7 +138,7 @@ test("renders a PDF as the only representation its file supports", { tag: "@all-
   await captureReviewScreenshot(page, testInfo, "tasks-pdf-preview");
 });
 
-test("reads the document again after the file changes", { tag: "@desktop" }, async ({
+test("reads the document again after the file changes", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { pattern, requests } = documentRequests(page, testInfo);
@@ -180,7 +180,7 @@ test("reads the document again after the file changes", { tag: "@desktop" }, asy
   expect(requests).toHaveLength(2);
 });
 
-test("keeps the open document while the review switches representations", { tag: "@desktop" }, async ({
+test("keeps the open document while the review switches representations", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { requests } = documentRequests(page, testInfo);
@@ -202,7 +202,7 @@ test("keeps the open document while the review switches representations", { tag:
   expect(requests[0]).toEqual(requests[1]);
 });
 
-test("reads the newly selected document into the retained PDF panel", { tag: "@desktop" }, async ({
+test("reads the newly selected document into the retained PDF panel", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const first = documentRequests(page, testInfo);
@@ -233,7 +233,7 @@ test("reads the newly selected document into the retained PDF panel", { tag: "@d
   }
 });
 
-test("reports an unavailable PDF without replacing the review surface", { tag: "@desktop" }, async ({
+test("reports an unavailable PDF without replacing the review surface", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const { pattern } = documentRequests(page, testInfo);
