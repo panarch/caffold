@@ -1,5 +1,5 @@
 export const DEFAULT_UI_TYPEFACE_PRESET = "geist-sans";
-export const DEFAULT_CODE_TYPEFACE_PRESET = "geist-mono";
+export const DEFAULT_CODE_TYPEFACE_PRESET = "geist-mono-nerd-font";
 
 const SYSTEM_SANS_STACK = "system-ui, sans-serif";
 const SYSTEM_MONO_STACK = "ui-monospace, monospace";
@@ -39,6 +39,30 @@ export const CODE_TYPEFACE_PRESETS = Object.freeze({
     label: "System Mono",
     stack: SYSTEM_MONO_STACK,
   }),
+  "d2-koding-ligature-nerd-font": nerdFontTypeface(
+    "d2-koding-ligature-nerd-font",
+    "D2KodingLigature Nerd Font",
+  ),
+  "0xproto-nerd-font": nerdFontTypeface(
+    "0xproto-nerd-font",
+    "0xProto Nerd Font",
+  ),
+  "geist-mono-nerd-font": nerdFontTypeface(
+    "geist-mono-nerd-font",
+    "GeistMono Nerd Font",
+  ),
+  "blex-mono-nerd-font": nerdFontTypeface(
+    "blex-mono-nerd-font",
+    "BlexMono Nerd Font",
+  ),
+  "jetbrains-mono-nerd-font": nerdFontTypeface(
+    "jetbrains-mono-nerd-font",
+    "JetBrainsMono Nerd Font",
+  ),
+  "monaspice-ne-nerd-font": nerdFontTypeface(
+    "monaspice-ne-nerd-font",
+    "MonaspiceNe Nerd Font",
+  ),
 });
 
 export function normalizeUiTypefacePreset(value) {
@@ -83,5 +107,13 @@ function bundledTypeface(id, label, systemFallback) {
     id,
     label,
     stack: `"Caffold ${label}", ${systemFallback}`,
+  });
+}
+
+// A Nerd Fonts build adds the icons and Powerline symbols of terminal prompts.
+function nerdFontTypeface(id, label) {
+  return Object.freeze({
+    ...bundledTypeface(id, label, SYSTEM_MONO_STACK),
+    nerdFont: true,
   });
 }

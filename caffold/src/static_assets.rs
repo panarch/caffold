@@ -104,6 +104,60 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "fonts/MonaspaceNeon-OFL.txt" => Some(plain_text(include_str!(
             "../../frontend/assets/fonts/MonaspaceNeon-OFL.txt"
         ))),
+        "fonts/D2KodingLigatureNerdFontMono-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/D2KodingLigatureNerdFontMono-Regular.woff2"
+        ))),
+        "fonts/D2KodingLigatureNerdFontMono-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/D2KodingLigatureNerdFontMono-Bold.woff2"
+        ))),
+        "fonts/D2KodingLigatureNerdFont-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/D2KodingLigatureNerdFont-OFL.txt"
+        ))),
+        "fonts/0xProtoNerdFontMono-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/0xProtoNerdFontMono-Regular.woff2"
+        ))),
+        "fonts/0xProtoNerdFontMono-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/0xProtoNerdFontMono-Bold.woff2"
+        ))),
+        "fonts/0xProtoNerdFont-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/0xProtoNerdFont-OFL.txt"
+        ))),
+        "fonts/GeistMonoNerdFontMono-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/GeistMonoNerdFontMono-Regular.woff2"
+        ))),
+        "fonts/GeistMonoNerdFontMono-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/GeistMonoNerdFontMono-Bold.woff2"
+        ))),
+        "fonts/GeistMonoNerdFont-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/GeistMonoNerdFont-OFL.txt"
+        ))),
+        "fonts/BlexMonoNerdFontMono-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/BlexMonoNerdFontMono-Regular.woff2"
+        ))),
+        "fonts/BlexMonoNerdFontMono-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/BlexMonoNerdFontMono-Bold.woff2"
+        ))),
+        "fonts/BlexMonoNerdFont-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/BlexMonoNerdFont-OFL.txt"
+        ))),
+        "fonts/JetBrainsMonoNerdFontMono-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/JetBrainsMonoNerdFontMono-Regular.woff2"
+        ))),
+        "fonts/JetBrainsMonoNerdFontMono-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/JetBrainsMonoNerdFontMono-Bold.woff2"
+        ))),
+        "fonts/JetBrainsMonoNerdFont-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/JetBrainsMonoNerdFont-OFL.txt"
+        ))),
+        "fonts/MonaspiceNeNerdFontMono-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/MonaspiceNeNerdFontMono-Regular.woff2"
+        ))),
+        "fonts/MonaspiceNeNerdFontMono-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/MonaspiceNeNerdFontMono-Bold.woff2"
+        ))),
+        "fonts/MonaspiceNeNerdFont-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/MonaspiceNeNerdFont-OFL.txt"
+        ))),
         "icons/caffold.png" => Some(png(include_bytes!(
             "../../frontend/assets/icons/caffold.png"
         ))),
@@ -1692,6 +1746,30 @@ mod tests {
             let license = get(&path).unwrap_or_else(|| panic!("{path} license asset"));
             assert_eq!(license.content_type, "text/plain; charset=utf-8");
             assert!(license.body.starts_with(b"Copyright"));
+        }
+
+        for family in [
+            "D2KodingLigature",
+            "0xProto",
+            "GeistMono",
+            "BlexMono",
+            "JetBrainsMono",
+            "MonaspiceNe",
+        ] {
+            for weight in ["Regular", "Bold"] {
+                let path = format!("fonts/{family}NerdFontMono-{weight}.woff2");
+                let font = get(&path).unwrap_or_else(|| panic!("{path} font asset"));
+                assert_eq!(font.content_type, "font/woff2");
+                assert!(font.body.starts_with(b"wOF2"));
+            }
+
+            let path = format!("fonts/{family}NerdFont-OFL.txt");
+            let license = get(&path).unwrap_or_else(|| panic!("{path} license asset"));
+            assert_eq!(license.content_type, "text/plain; charset=utf-8");
+            assert!(
+                String::from_utf8_lossy(license.body).contains("SIL Open Font License"),
+                "{path} carries the OFL text"
+            );
         }
 
         let settings_page = get("pages/(task-workspace)/settings/appearance/page.js")

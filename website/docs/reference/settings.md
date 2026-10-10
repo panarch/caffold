@@ -9,7 +9,9 @@ everything else is saved on the Mac.
 ## Appearance
 
 **Theme** is **System**, **Light**, or **Dark**. **Interface font**
-and **Code font** choose the typefaces, with a sample below them.
+and **Code font** choose the typefaces, with a sample below them. The code
+fonts under **Nerd Fonts** also draw the icons and Powerline symbols that
+terminal prompts use.
 **Interface size** scales controls and interface text, while
 **Conversation text** and **Code text** set the size of conversations and of
 code, diffs, and command output. **Reset all** returns to the defaults.

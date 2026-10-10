@@ -1861,6 +1861,15 @@ Interface faces are bundled as one variable file each and declare a weight
 range, which is what lets interface weights between Regular and Bold render as
 themselves; code faces are bundled as static Regular and Bold.
 
+The Code typeface select lists the bundled code faces, System Mono, and then a
+Nerd Fonts group: the Nerd Fonts `Nerd Font Mono` build of each bundled code
+face, which adds the icons and Powerline symbols terminal prompts draw, each
+fitted to that face's cell. The terminal's DOM renderer draws every character
+from the font as it is, so that fit comes from the build alone. GeistMono Nerd
+Font is the default Code typeface.
+[Bundled fonts](../../frontend/assets/fonts/README.md) records where each file
+comes from.
+
 `caffold-segmented-control` is the shared compact single-choice presentation
 owner. It patches value-keyed buttons from a choices snapshot, owns pressed
 semantics and visual separators, and emits value intent. Task Detail and

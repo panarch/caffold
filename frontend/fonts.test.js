@@ -43,7 +43,7 @@ test("defines an interface and a code registry with separate defaults", async ()
   } = await importFreshFonts("registry");
 
   assert.equal(DEFAULT_UI_TYPEFACE_PRESET, "geist-sans");
-  assert.equal(DEFAULT_CODE_TYPEFACE_PRESET, "geist-mono");
+  assert.equal(DEFAULT_CODE_TYPEFACE_PRESET, "geist-mono-nerd-font");
   assert.deepEqual(Object.keys(UI_TYPEFACE_PRESETS), [
     "geist-sans",
     "inter",
@@ -58,7 +58,30 @@ test("defines an interface and a code registry with separate defaults", async ()
     "jetbrains-mono",
     "monaspace-neon",
     "system-mono",
+    "d2-koding-ligature-nerd-font",
+    "0xproto-nerd-font",
+    "geist-mono-nerd-font",
+    "blex-mono-nerd-font",
+    "jetbrains-mono-nerd-font",
+    "monaspice-ne-nerd-font",
   ]);
+  assert.deepEqual(
+    Object.values(CODE_TYPEFACE_PRESETS)
+      .filter((preset) => preset.nerdFont)
+      .map((preset) => preset.label),
+    [
+      "D2KodingLigature Nerd Font",
+      "0xProto Nerd Font",
+      "GeistMono Nerd Font",
+      "BlexMono Nerd Font",
+      "JetBrainsMono Nerd Font",
+      "MonaspiceNe Nerd Font",
+    ],
+  );
+  assert.equal(
+    Object.values(UI_TYPEFACE_PRESETS).some((preset) => preset.nerdFont),
+    false,
+  );
   assert.equal(UI_TYPEFACE_PRESETS["system"].stack, "system-ui, sans-serif");
   assert.equal(
     CODE_TYPEFACE_PRESETS["system-mono"].stack,
@@ -77,10 +100,14 @@ test("normalizes each axis to its own registry", async () => {
 
   assert.equal(normalizeUiTypefacePreset("pretendard"), "pretendard");
   assert.equal(normalizeCodeTypefacePreset("d2-coding"), "d2-coding");
+  assert.equal(normalizeCodeTypefacePreset("geist-mono"), "geist-mono");
   assert.equal(normalizeUiTypefacePreset("unknown"), "geist-sans");
-  assert.equal(normalizeCodeTypefacePreset("unknown"), "geist-mono");
+  assert.equal(normalizeCodeTypefacePreset("unknown"), "geist-mono-nerd-font");
   assert.equal(normalizeUiTypefacePreset("d2-coding"), "geist-sans");
-  assert.equal(normalizeCodeTypefacePreset("pretendard"), "geist-mono");
+  assert.equal(
+    normalizeCodeTypefacePreset("pretendard"),
+    "geist-mono-nerd-font",
+  );
 });
 
 test("backs every bundled interface preset with one variable face", async () => {

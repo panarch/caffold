@@ -2429,7 +2429,7 @@ test("persists file ordering and keeps it across appearance reset", { tag: "@all
     .toEqual({
       themeMode: "system",
       uiTypefacePreset: "geist-sans",
-      codeTypefacePreset: "geist-mono",
+      codeTypefacePreset: "geist-mono-nerd-font",
       interfaceScalePercent: 100,
       conversationTextPx: 14,
       codeTextPx: 13,
@@ -2550,7 +2550,7 @@ test("hands Action Hints off to native Appearance controls", { tag: "@all-viewpo
     hint.getByLabel(/ — Choose interface font \(current Geist Sans\)$/),
   ).toBeVisible();
   await expect(
-    hint.getByLabel(/ — Choose code font \(current Geist Mono\)$/),
+    hint.getByLabel(/ — Choose code font \(current GeistMono Nerd Font\)$/),
   ).toBeVisible();
   await captureReviewScreenshot(
     page,
@@ -2888,7 +2888,8 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
     "Pretendard",
     "System",
   ]);
-  await expect(codeSelect.locator("option")).toHaveText([
+  await expect(uiSelect.locator("optgroup")).toHaveCount(0);
+  await expect(codeSelect.locator(":scope > option")).toHaveText([
     "D2 Coding",
     "0xProto",
     "Geist Mono",
@@ -2897,12 +2898,23 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
     "Monaspace Neon",
     "System Mono",
   ]);
+  await expect(codeSelect.locator("optgroup")).toHaveCount(1);
+  await expect(
+    codeSelect.locator('optgroup[label="Nerd Fonts"] > option'),
+  ).toHaveText([
+    "D2KodingLigature Nerd Font",
+    "0xProto Nerd Font",
+    "GeistMono Nerd Font",
+    "BlexMono Nerd Font",
+    "JetBrainsMono Nerd Font",
+    "MonaspiceNe Nerd Font",
+  ]);
   await expect(uiSelect).not.toContainText("Mono");
   await expect(codeSelect).not.toContainText("Noto Sans Mono CJK KR");
   await expect(codeSelect).not.toContainText("Included");
   await expect(codeSelect).not.toContainText("No download");
   await expect(uiSelect).toHaveValue("geist-sans");
-  await expect(codeSelect).toHaveValue("geist-mono");
+  await expect(codeSelect).toHaveValue("geist-mono-nerd-font");
   await expect(uiSelect).not.toHaveAttribute("aria-describedby", /.+/);
   await expect(settingsPage.locator("[data-typeface-description]")).toHaveCount(
     0,
@@ -2936,7 +2948,7 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
   );
   await expect(page.locator("html")).toHaveAttribute(
     "data-code-typeface-preset",
-    "geist-mono",
+    "geist-mono-nerd-font",
   );
 
   await uiSelect.selectOption("pretendard");
@@ -2951,7 +2963,7 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
   );
   await expect(page.locator("html")).toHaveAttribute(
     "data-code-typeface-preset",
-    "geist-mono",
+    "geist-mono-nerd-font",
   );
 
   await codeSelect.selectOption("d2-coding");
@@ -2987,6 +2999,27 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
       uiTypefacePreset: "geist-sans",
       codeTypefacePreset: "d2-coding",
     });
+
+  await codeSelect.selectOption("blex-mono-nerd-font");
+  await expect(codeSelect).toHaveValue("blex-mono-nerd-font");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-code-typeface-preset",
+    "blex-mono-nerd-font",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate((key) => JSON.parse(localStorage.getItem(key)), SETTINGS_KEY),
+    )
+    .toMatchObject({ codeTypefacePreset: "blex-mono-nerd-font" });
+
+  await settingsPage.getByRole("button", { name: "Reset code font" }).click();
+  await expect(codeSelect).toHaveValue("geist-mono-nerd-font");
+  await expect(resetCodeFont).toBeHidden();
+  await expect
+    .poll(() =>
+      page.evaluate((key) => JSON.parse(localStorage.getItem(key)), SETTINGS_KEY),
+    )
+    .toMatchObject({ codeTypefacePreset: "geist-mono-nerd-font" });
 });
 
 test("loads the bundled face a typeface preset names", { tag: "@desktop" }, async ({ page }) => {
@@ -3022,6 +3055,57 @@ test("loads the bundled face a typeface preset names", { tag: "@desktop" }, asyn
       }),
     )
     .toBe(true);
+});
+
+test("draws Nerd Fonts Powerline symbols and icons inside the code cell", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/appearance");
+
+  for (const family of [
+    "D2KodingLigature Nerd Font",
+    "0xProto Nerd Font",
+    "GeistMono Nerd Font",
+    "BlexMono Nerd Font",
+    "JetBrainsMono Nerd Font",
+    "MonaspiceNe Nerd Font",
+  ]) {
+    const glyphs = await page.evaluate(async (family) => {
+      const font = `400 40px "Caffold ${family}"`;
+      await document.fonts.load(font, "M");
+      const context = document.createElement("canvas").getContext("2d");
+      context.font = font;
+      const letter = context.measureText("M");
+      const arrow = context.measureText("");
+      const folder = context.measureText("");
+      return {
+        cellWidth: letter.width,
+        lineAscent: letter.fontBoundingBoxAscent,
+        lineDescent: letter.fontBoundingBoxDescent,
+        arrowWidth: arrow.width,
+        arrowAscent: arrow.actualBoundingBoxAscent,
+        arrowDescent: arrow.actualBoundingBoxDescent,
+        folderWidth: folder.width,
+        folderLeft: -folder.actualBoundingBoxLeft,
+        folderRight: folder.actualBoundingBoxRight,
+      };
+    }, family);
+
+    // The Powerline arrow fills the line box so adjacent segments join, and
+    // the icon stays within one cell of the terminal grid. Chromium rounds the
+    // line box to whole pixels and on Linux may move a pixel from its ascent to
+    // its descent, so each edge is allowed one pixel.
+    expect(glyphs.arrowWidth, family).toBe(glyphs.cellWidth);
+    expect(glyphs.arrowAscent, family).toBeGreaterThanOrEqual(
+      glyphs.lineAscent - 1,
+    );
+    expect(glyphs.arrowDescent, family).toBeGreaterThanOrEqual(
+      glyphs.lineDescent - 1,
+    );
+    expect(glyphs.folderWidth, family).toBe(glyphs.cellWidth);
+    expect(glyphs.folderLeft, family).toBeGreaterThanOrEqual(-0.5);
+    expect(glyphs.folderRight, family).toBeLessThanOrEqual(glyphs.cellWidth + 0.5);
+  }
 });
 
 test("applies extreme values to the retained Review code viewer", { tag: "@all-viewports" }, async ({

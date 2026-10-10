@@ -252,6 +252,102 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "Caffold D2KodingLigature Nerd Font";
+  src: url("./fonts/D2KodingLigatureNerdFontMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold D2KodingLigature Nerd Font";
+  src: url("./fonts/D2KodingLigatureNerdFontMono-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold 0xProto Nerd Font";
+  src: url("./fonts/0xProtoNerdFontMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold 0xProto Nerd Font";
+  src: url("./fonts/0xProtoNerdFontMono-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold GeistMono Nerd Font";
+  src: url("./fonts/GeistMonoNerdFontMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold GeistMono Nerd Font";
+  src: url("./fonts/GeistMonoNerdFontMono-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold BlexMono Nerd Font";
+  src: url("./fonts/BlexMonoNerdFontMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold BlexMono Nerd Font";
+  src: url("./fonts/BlexMonoNerdFontMono-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold JetBrainsMono Nerd Font";
+  src: url("./fonts/JetBrainsMonoNerdFontMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold JetBrainsMono Nerd Font";
+  src: url("./fonts/JetBrainsMonoNerdFontMono-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold MonaspiceNe Nerd Font";
+  src: url("./fonts/MonaspiceNeNerdFontMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold MonaspiceNe Nerd Font";
+  src: url("./fonts/MonaspiceNeNerdFontMono-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
   --interface-scale: 1;
   --interface-base-font-size: 16px;
