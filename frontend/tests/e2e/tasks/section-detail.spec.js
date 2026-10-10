@@ -93,9 +93,12 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
   );
   expect(selectionPresentation.borderLeftWidth).toBe("0px");
   const detail = page.locator("caffold-detail-layout");
-  await expect(detail.locator("caffold-section-detail-summary h2")).toHaveText(
-    "frontend/tests/e2e/fixtures/home",
-  );
+  const sectionTitle = detail.locator("caffold-section-detail-summary h2");
+  await expect(sectionTitle).toHaveText("home");
+  await expect(sectionTitle).toHaveAttribute("title", "frontend/tests/e2e/fixtures/home");
+  expect(
+    await sectionTitle.evaluate((element) => element.scrollWidth > element.clientWidth),
+  ).toBe(false);
   await expect(detail.locator("caffold-section-detail textarea[name=prompt]")).toBeVisible();
   await expect(detail.locator("caffold-section-detail")).toContainText(
     "frontend/tests/e2e/fixtures/home",
@@ -1101,7 +1104,7 @@ test("offers one compact Back to Tasks from every Section surface root", { tag: 
       page.getByRole("button", { name: /^Back( |$)/ }),
       url,
     ).toHaveCount(1);
-    await expect(title).toHaveText(rootPath);
+    await expect(title).toHaveText("home");
     const backBox = await back.boundingBox();
     const titleBox = await title.boundingBox();
     expect(titleBox.x, url).toBeGreaterThanOrEqual(backBox.x + backBox.width);

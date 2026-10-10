@@ -252,6 +252,51 @@ test("a failed Task-store migration has its own explicit retry lifecycle", { tag
   await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
 });
 
+test("keeps the Task-store takeover on New Task below the compact Back", { tag: "@phone" }, async ({
+  page,
+}) => {
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: mockTaskStoreStatus({
+        state: "failed",
+        blocksTaskOperations: true,
+        diagnosticMessage: "Staged v5 validation failed.",
+      }),
+    })
+  );
+
+  await page.goto("/tasks/new");
+
+  await expect(
+    page.locator('.task-store-recovery-card[data-task-store-state="failed"]'),
+  ).toBeVisible();
+  await expect(page.locator("caffold-task-workspace .task-workspace-back")).toBeVisible();
+  const layout = await page.evaluate(() => {
+    const workspace = document.querySelector("caffold-task-workspace");
+    const probe = document.createElement("div");
+    probe.style.position = "absolute";
+    probe.style.height = "var(--task-workspace-header-size)";
+    workspace.append(probe);
+    const headerSize = probe.getBoundingClientRect().height;
+    probe.remove();
+    const pane = document
+      .querySelector("caffold-tasks-page .tasks-detail-pane")
+      .getBoundingClientRect();
+    const takeover = document
+      .querySelector("caffold-task-store-recovery")
+      .getBoundingClientRect();
+    const back = workspace.querySelector(".task-workspace-back").getBoundingClientRect();
+    return {
+      headerSize,
+      band: takeover.top - pane.top,
+      takeoverTop: takeover.top,
+      backBottom: back.bottom,
+    };
+  });
+  expect(Math.abs(layout.band - layout.headerSize)).toBeLessThanOrEqual(0.5);
+  expect(layout.takeoverTop).toBeGreaterThanOrEqual(layout.backBottom);
+});
+
 test("a blocking transition releases the Task list and disables existing actions", { tag: "@all-viewports" }, async ({
   page,
 }) => {

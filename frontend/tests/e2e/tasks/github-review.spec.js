@@ -1923,7 +1923,7 @@ test("starts a Task from a Section-scoped GitHub Issue", { tag: "@viewport-indep
 
   await expect(
     page.locator("caffold-section-detail-summary h2"),
-  ).toHaveText(WORKTREE_ROOT);
+  ).toHaveText(WORKTREE_ROOT.split("/").at(-1));
   const issueDetail = page.locator("caffold-github-issue-detail-page");
   await expect(issueDetail).toContainText("Fresh Task-owned Issue detail");
   const opener = issueDetail.getByRole("button", {

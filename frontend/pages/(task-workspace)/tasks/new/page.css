@@ -1,5 +1,8 @@
 caffold-task-new {
-  display: block;
+  --task-new-header-padding-inline: var(--interface-space-7);
+
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   height: 100%;
 
@@ -8,11 +11,39 @@ caffold-task-new {
     display: none;
   }
 
+  /* Shaped like the other Tasks headers, so the corner controls sit in it. */
+  & > .task-new-header {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    min-height: var(--task-workspace-header-size);
+    padding:
+      var(--interface-space-4)
+      var(--task-new-header-padding-inline)
+      var(--interface-space-4)
+      calc(
+        var(--task-new-header-padding-inline) +
+          var(--task-header-leading-space, 0rem)
+      );
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--structural-shadow-block-end);
+  }
+
+  & > .task-new-header > h2 {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--workspace-header-title-size);
+    line-height: var(--interface-line-height);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   & .task-new-workspace {
     display: grid;
     align-content: start;
     gap: 0.75rem;
-    height: 100%;
+    min-height: 0;
     overflow: auto;
     padding-top: clamp(1.125rem, 6vh, 4.5rem);
   }
@@ -84,5 +115,11 @@ caffold-task-new {
       width: calc(100% - 1.25rem);
       padding-inline: var(--interface-space-8);
     }
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-task-new {
+    --task-new-header-padding-inline: var(--interface-space-4);
   }
 }
