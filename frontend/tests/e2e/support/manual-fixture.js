@@ -140,7 +140,7 @@ export async function installManualDefaults(page) {
       JSON.stringify({
         themeMode: "light",
         uiTypefacePreset: "geist-sans",
-        codeTypefacePreset: "geist-mono",
+        codeTypefacePreset: "geist-mono-nerd-font",
         interfaceScalePercent: 100,
         conversationTextPx: 14,
         codeTextPx: 13,

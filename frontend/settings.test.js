@@ -36,7 +36,7 @@ test("normalizes settings, malformed input, ranges, steps, and file order", asyn
     {
       themeMode: "dark",
       uiTypefacePreset: "pretendard",
-      codeTypefacePreset: "geist-mono",
+      codeTypefacePreset: "geist-mono-nerd-font",
       interfaceScalePercent: 115,
       conversationTextPx: 13,
       codeTextPx: 20,
@@ -113,7 +113,7 @@ test("initial load rewrites obsolete state without publishing a change", async (
       {
         themeMode: "system",
         uiTypefacePreset: "geist-sans",
-        codeTypefacePreset: "geist-mono",
+        codeTypefacePreset: "geist-mono-nerd-font",
         interfaceScalePercent: 100,
         conversationTextPx: 14,
         codeTextPx: 13,
@@ -126,7 +126,7 @@ test("initial load rewrites obsolete state without publishing a change", async (
   assert.equal(properties.get("--conversation-font-size"), "14px");
   assert.equal(properties.get("--code-font-size"), "13px");
   assert.match(properties.get("--font-ui"), /Caffold Geist Sans/);
-  assert.match(properties.get("--font-code"), /Caffold Geist Mono/);
+  assert.match(properties.get("--font-code"), /Caffold GeistMono Nerd Font/);
 });
 
 test("malformed storage resets and persists the defaults silently", async () => {
@@ -154,7 +154,7 @@ test("malformed storage resets and persists the defaults silently", async () => 
       {
         themeMode: "system",
         uiTypefacePreset: "geist-sans",
-        codeTypefacePreset: "geist-mono",
+        codeTypefacePreset: "geist-mono-nerd-font",
         interfaceScalePercent: 100,
         conversationTextPx: 14,
         codeTextPx: 13,
@@ -197,7 +197,7 @@ test("appearance reset preserves global file ordering and Action Hint preference
   assert.deepEqual(events[0].detail.settings, {
     themeMode: "system",
     uiTypefacePreset: "geist-sans",
-    codeTypefacePreset: "geist-mono",
+    codeTypefacePreset: "geist-mono-nerd-font",
     interfaceScalePercent: 100,
     conversationTextPx: 14,
     codeTextPx: 13,
@@ -341,9 +341,12 @@ test("changes one typeface axis without disturbing the other", async () => {
 
       settings.setUiTypefacePreset("pretendard");
       assert.equal(settings.getSettings().uiTypefacePreset, "pretendard");
-      assert.equal(settings.getSettings().codeTypefacePreset, "geist-mono");
+      assert.equal(
+        settings.getSettings().codeTypefacePreset,
+        "geist-mono-nerd-font",
+      );
       assert.match(properties.get("--font-ui"), /Caffold Pretendard/);
-      assert.match(properties.get("--font-code"), /Caffold Geist Mono/);
+      assert.match(properties.get("--font-code"), /Caffold GeistMono Nerd Font/);
 
       settings.setCodeTypefacePreset("d2-coding");
       assert.equal(settings.getSettings().uiTypefacePreset, "pretendard");

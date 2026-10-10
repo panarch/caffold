@@ -486,15 +486,18 @@ function renderTypefaceSetting() {
 function renderTypefaceField(setting) {
   const definition = TYPEFACE_SETTINGS[setting];
   const id = `settings-${toKebabCase(setting)}`;
-  const options = Object.values(definition.presets)
-    .map(
-      (preset) => `
-        <option value="${preset.id}">
-          ${preset.label}
-        </option>
-      `,
-    )
-    .join("");
+  const presets = Object.values(definition.presets);
+  const nerdFonts = presets.filter((preset) => preset.nerdFont);
+  const options = `
+    ${renderTypefaceOptions(presets.filter((preset) => !preset.nerdFont))}
+    ${nerdFonts.length > 0
+      ? `
+        <optgroup label="Nerd Fonts">
+          ${renderTypefaceOptions(nerdFonts)}
+        </optgroup>
+      `
+      : ""}
+  `;
 
   return `
     <div class="settings-field">
@@ -513,6 +516,18 @@ function renderTypefaceField(setting) {
       </div>
     </div>
   `;
+}
+
+function renderTypefaceOptions(presets) {
+  return presets
+    .map(
+      (preset) => `
+        <option value="${preset.id}">
+          ${preset.label}
+        </option>
+      `,
+    )
+    .join("");
 }
 
 function renderRangeSetting(name, className = "") {
