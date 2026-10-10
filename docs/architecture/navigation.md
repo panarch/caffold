@@ -115,10 +115,12 @@ Task owns that selected directory. Its precedence is:
 3. the bootstrap `initialPath` snapshot;
 4. `.`.
 
-The Directory Picker owns only its transient traversal while open. Cancel does
-not change New Task; `Use This Folder` updates New Task and its route.
+The directory field owns only its folder list and typed path. Choosing a folder
+updates New Task and its route; a route that differs only in `cwd` stays at the
+same place, so it replaces the entry and Back still leaves New Task. Typing does
+not change the route.
 
-Section New never routes `cwd` and exposes no Directory Picker. Its fixed cwd is
+Section New never routes `cwd` and offers no directory field. Its fixed cwd is
 the managed Section logical path. The Section's local repository capability
 determines whether Working Tree, Branch, Git, and GitHub controls are available.
 

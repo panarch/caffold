@@ -72,7 +72,7 @@ caffold-app-shell
 |   |-- Task navigator
 |   |-- Tasks
 |   |   |-- Global New Task
-|   |   |   `-- Directory Picker
+|   |   |   `-- Directory field
 |   |   `-- Detail Layout
 |   |       |-- Task subject
 |   |       |   |-- Conversation
@@ -481,8 +481,9 @@ not become targets. Arrow, Shift+Arrow, Home, and End remain component-owned.
 
 Product-owned disclosure uses the same one-shot flow through a distinct
 `disclosure.toggle` action and `disclosure` control kind. The shared File Tree
-declares only expandable directory buttons; non-expandable Directory Picker rows
-keep their existing navigation meaning. Work Details declares its root summary,
+declares only expandable directory buttons; the New Task directory field's
+folder rows are not expandable and keep their meaning of opening that folder.
+Work Details declares its root summary,
 Command Group declares its summary,
 active Command declares its summary while terminal Command keeps View output,
 Conversation declares only the exact Thinking summaries it rendered, Git Log
@@ -586,11 +587,11 @@ do not enumerate or reach through descendant DOM. A retained pane with no
 layout box is omitted before merge, so its hidden mutation and scroll
 dependencies cannot invalidate the visible pane's session.
 
-The twelve registered Task Workspace product dialogs follow the same
+The eleven registered Task Workspace product dialogs follow the same
 owner-first contract: Codex restart, Codex update, Claude restart,
-archived-task deletion, Task switcher, image preview, directory picker,
-Conversation fork, command output, code-block Markdown preview, Current Plan
-document, and GitHub Task Start. Every currently visible and enabled button has
+archived-task deletion, Task switcher, image preview, Conversation fork,
+command output, code-block Markdown preview, Current Plan document, and GitHub
+Task Start. Every currently visible and enabled button has
 an owner declaration, without semantic deduplication, and controls owned by a
 direct child compose through the same public scope interface. Fork additionally
 declares its Thread-ID textbox, while the Task Start issue child declares its
@@ -739,10 +740,10 @@ retained Assistant Message,
 Thinking, active Command, expanded Work Details, tool-output, and approval
 command scopes. Collapsed disclosures publish no inner surface.
 
-Six registered product dialogs publish their exact parent surface: directory
-picker `.file-tree-scroll`, Conversation fork body, command-output body,
-code-block Markdown preview, Current Plan Markdown preview, and Task Start
-body. Command Output additionally publishes its output `pre`; the code-block
+Five registered product dialogs publish their exact parent surface:
+Conversation fork body, command-output body, code-block Markdown preview,
+Current Plan Markdown preview, and Task Start body. Command Output additionally
+publishes its output `pre`; the code-block
 and Current Plan Markdown previews delegate the shared preview's code and table
 scopes; and Pull Task Start merges its base/head relationship `dl`. A modal may
 therefore select among parent and nested surfaces. Each
@@ -1436,18 +1437,32 @@ repository context from the navigator projection. See
 
 ## New Task and directories
 
-Global New owns its editable cwd and Directory Picker. Section New owns a fixed
-cwd and exposes no picker. Both mount the same Tasks-owned Task Create behavior,
-which owns the Composer and its creation-rejection presentation. On submit, Task
-Create passes an exact submission snapshot to the persistent Tasks page without
-removing the Composer's local in-flight state. The page owns the creation
-request across Task and Section route changes, so replacing a Section Task
-Create cannot abandon the first prompt. When the empty Task answer arrives, the
-page gives its snapshot to Detail before navigation; Detail then sends it
+Global New owns its editable cwd, and Section New owns a fixed cwd. Both mount
+the same Tasks-owned Task Create behavior, which draws the directory above the
+Composer and owns the Composer and its creation-rejection presentation. On
+submit, Task Create passes an exact submission snapshot to the persistent Tasks
+page without removing the Composer's local in-flight state. The page owns the
+creation request across Task and Section route changes, so replacing a Section
+Task Create cannot abandon the first prompt. When the empty Task answer arrives,
+the page gives its snapshot to Detail before navigation; Detail then sends it
 through the ordinary prompt API. A definitive creation rejection resolves the
 source Composer's existing submission and restores its draft when that surface
 is still present. Only Global New represents its selected directory in
 `/tasks/new?cwd=...`.
+
+Where the surface lets the cwd change, Task Create mounts the directory field;
+otherwise it draws the fixed path in the same place with the same insets. The
+field owns its folder list, typed path, and the listing requests behind them.
+One transition function in `task-create/components/directory-field/control.js`
+decides its closed, browsing, and editing states, so a listing answer counts
+only for the request in flight. A chosen folder leaves the field as a
+`choose-cwd` Task Create intent, and Global New updates its cwd and route. The
+field reads paths through the server's `root` and `homePath` from health, which
+the app shell hands down the Tasks surfaces. It publishes its toggle, edit
+button, and folder rows as Action Hints and its list as a scroll surface
+through Task Create's scopes. Escape in its path input belongs to the field:
+the workspace gives that input no editing escape target, as it does for the
+terminal, and the field steps back to its list.
 
 The Section-owned Existing conversations card is adjacent to, but independent
 of, Task Create. Its external Codex preview and native fork requests do not
@@ -1461,7 +1476,7 @@ Reusable RootedFs capabilities remain shared:
 - source, text, diff, supported image, PDF, Word, PowerPoint, and Excel
   presentation;
 - shared watch subscription primitives;
-- New Task Directory Picker;
+- the New Task directory field;
 - Integrated Review Files navigation;
 - Git Compare/Log and GitHub PR Files leaves.
 
@@ -1699,9 +1714,7 @@ frontend/
 |           |-- layout.js
 |           |-- stream.js
 |           |-- stream/machine.js
-|           |-- new/
-|           |   |-- page.js
-|           |   `-- components/directory-picker.js
+|           |-- new/page.js
 |           |-- recovery/page.js
 |           |-- components/
 |           |   |-- navigator.js
@@ -1711,6 +1724,7 @@ frontend/
 |           |   |       |-- section.js
 |           |   |       `-- section/components/row.js
 |           |   |-- task-create.js
+|           |   |-- task-create/components/directory-field.js
 |           |   |-- task-turn-options.js
 |           |   |-- composer.js
 |           |   |-- composer/action-hints.js

@@ -144,7 +144,6 @@ class CaffoldTaskComposer extends HTMLElement {
     this.context = {
       mode: "create",
       cwd: ".",
-      browseCwd: true,
       placeholder: "",
       ariaLabel: "Task prompt",
       submitLabel: "Send prompt",
@@ -253,9 +252,6 @@ class CaffoldTaskComposer extends HTMLElement {
       mode: nextMode,
       threadId: nextThreadId,
       cwd: cleanLogicalPath(context.cwd ?? this.context.cwd ?? "."),
-      browseCwd: Object.hasOwn(context, "browseCwd")
-        ? Boolean(context.browseCwd)
-        : this.context.browseCwd,
       disabled: Boolean(context.disabled),
       settingsLocked: Boolean(context.settingsLocked),
       turnActive: Boolean(context.turnActive),
@@ -562,7 +558,6 @@ class CaffoldTaskComposer extends HTMLElement {
     const definitions = [];
     for (const [id, selector] of [
       ["attach", 'button[data-composer-action="attach"]'],
-      ["browse-cwd", 'button[data-composer-action="browse-cwd"]'],
       ["voice", 'button[data-composer-action="voice"]'],
       ["cancel-voice", 'button[data-composer-action="cancel-voice"]'],
       ["cancel", 'button[data-composer-action="cancel"]'],
@@ -873,7 +868,7 @@ class CaffoldTaskComposer extends HTMLElement {
       void this.cancelVoiceInput();
       return;
     }
-    if (type === "browse-cwd" || type === "cancel") {
+    if (type === "cancel") {
       this.dispatchIntent(type);
       return;
     }
@@ -1352,18 +1347,6 @@ class CaffoldTaskComposer extends HTMLElement {
     );
     setOptionalAttribute(form, "data-thread-id", this.context.threadId);
 
-    this.setRegion(
-      "context",
-      this.context.mode === "create"
-        ? `<div class="task-composer-context">
-            ${renderInlineIcon("Folder", "Working directory", "task-composer-context-icon")}
-            <span title="${escapeHtml(this.context.cwd)}">${escapeHtml(this.context.cwd)}</span>
-            ${this.context.browseCwd
-              ? '<button type="button" data-composer-action="browse-cwd">Browse Files</button>'
-              : ""}
-          </div>`
-        : "",
-    );
     this.setRegion("attachments", renderAttachments(state.attachments));
     const attach = this.querySelector('button[data-composer-action="attach"]');
     attach.disabled = fieldDisabled || !this.acceptsAttachments();
@@ -1451,7 +1434,6 @@ class CaffoldTaskComposer extends HTMLElement {
     this.innerHTML = `
       <form class="task-composer" data-task-form="create">
         <div class="task-composer-panel">
-          <div class="task-composer-render-region" data-composer-region="context"></div>
           <div class="task-composer-render-region" data-composer-region="attachments"></div>
           <textarea name="prompt" rows="1"></textarea>
           <div class="task-composer-render-region" data-composer-region="create-status"></div>

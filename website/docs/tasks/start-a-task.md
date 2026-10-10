@@ -8,9 +8,9 @@ a model, and a first prompt.
 ## Start from New Task
 
 1. Choose **New Task** (+) at the top of the Task list.
-2. Check the directory at the top of the Composer; the Task works there. To
-   change it, choose **Browse Files**, pick a folder, and choose
-   **Use This Folder**.
+2. Check the directory above the prompt; the Task works there. To change it,
+   select the directory and choose a folder from the list, or choose the pencil
+   button, type or paste a path, and press Enter.
 3. Open the model menu, which shows the current model. Under **Provider**,
    choose the agent, then choose one of its models under **Model**. When the
    model offers them, the same menu also sets the **Reasoning level** and

@@ -15,9 +15,9 @@ test("combines New Task actions with direct Section shortcuts", () => {
   const conversationTarget = { id: "fork-conversation" };
   const githubTarget = { id: "github-issues" };
   const taskCreate = {
-    actionHintTargets(options) {
+    actionHintScope(options) {
       assert.equal(options.scopeId, "section:section-a");
-      return [taskTarget];
+      return { targets: [taskTarget], mutationRoots: [taskCreate] };
     },
   };
   const github = {

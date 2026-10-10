@@ -10,8 +10,8 @@ Caffold is [installed](install.md) and at least one
 
 1. Choose **Open Caffold** from the menu-bar app.
 2. Choose **New Task** (+) at the top of the Task list.
-3. Choose **Browse Files**, select the repository you want to work in, and
-   choose **Use This Folder**.
+3. Select the directory above the prompt and choose the repository you want to
+   work in from the list, or choose the pencil button and type its path.
 4. Open the model menu and choose a model. The agent that offers it will run
    the Task.
 5. Describe the change, for example:

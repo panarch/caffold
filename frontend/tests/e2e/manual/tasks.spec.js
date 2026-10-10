@@ -67,8 +67,9 @@ test("work details list the command and the changed files", { tag: "@desktop" },
 test("New Task shows the worktree guide", { tag: "@desktop" }, async ({ page }, testInfo) => {
   await page.goto("/tasks/new?cwd=Workspace%2Flumen");
 
-  const form = page.locator('.task-new-form[data-task-form="create"]');
-  await expect(form).toContainText("Workspace/lumen");
+  await expect(
+    page.locator("caffold-task-new caffold-task-directory-field .task-directory-field-path"),
+  ).toHaveText("Workspace/lumen");
   await expect(page.getByText("Prepare this task in an isolated worktree.", { exact: false })).toBeVisible();
   await expect(page.getByText("Now review PR #123.")).toBeVisible();
   await captureReviewScreenshot(page, testInfo, "new-task");

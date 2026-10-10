@@ -171,14 +171,11 @@ class CaffoldSettingsFilesPage extends HTMLElement {
           </header>
           <fieldset
             class="settings-files-options"
-            aria-describedby="settings-files-description settings-files-picker-note"
+            aria-describedby="settings-files-description"
           >
             <legend class="sr-only">File tree ordering</legend>
             ${options}
           </fieldset>
-          <p class="settings-files-note" id="settings-files-picker-note">
-            The Working Directory Picker always keeps folders first.
-          </p>
         </section>
       </div>
     `;

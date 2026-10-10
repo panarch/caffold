@@ -256,7 +256,7 @@ test("registered dialog contexts stay owned and compose through public providers
     "pages/(task-workspace)/tasks/(detail)/(github)/layout.js",
   );
 
-  for (const source of [appShell, workspace, tasks, taskNew, section, task, github]) {
+  for (const source of [appShell, workspace, tasks, section, task, github]) {
     assert.match(source, /mergeKeyboardNavigationContexts\(/);
   }
   assert.match(appShell, /this\.updateDialog\?\.keyboardNavigationContexts/);
@@ -266,7 +266,7 @@ test("registered dialog contexts stay owned and compose through public providers
   assert.match(workspace, /this\.archivedDeleteDialog\?\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.taskSwitcherDialog\?\.keyboardNavigationContexts/);
   assert.match(tasks, /this\.imagePreviewDialog\?\.\(\)\?\.keyboardNavigationContexts/);
-  assert.match(taskNew, /this\.directoryPicker\(\)\?\.keyboardNavigationContexts/);
+  assert.match(taskNew, /this\.taskCreate\(\)\?\.keyboardNavigationContexts/);
   assert.match(section, /this\.conversationShortcuts\(\)\?\.keyboardNavigationContexts/);
   assert.match(task, /this\.currentPlanComponent\(\)\?\.keyboardNavigationContexts/);
   assert.match(task, /this\.commandDialog\(\)\?\.keyboardNavigationContexts/);
@@ -290,7 +290,6 @@ test("registered product dialogs retain one context-local keyboard presentation"
     "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
     "pages/(task-workspace)/tasks/components/task-switcher-dialog.js",
     "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
-    "pages/(task-workspace)/tasks/new/components/directory-picker.js",
     "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js",
@@ -321,7 +320,6 @@ test("product dialog CSS does not style nested keyboard presentation dialogs", (
     "pages/(task-workspace)/components/update-task-dialog.css",
     "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
     "pages/(task-workspace)/tasks/components/task-switcher-dialog.css",
-    "pages/(task-workspace)/tasks/new/components/directory-picker.css",
     "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css",

@@ -1,7 +1,11 @@
+import { mergeActionHintScopes } from "#app/action-hints.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import { taskStoreBlocksTaskOperations } from "../../task-store-status.js";
 import { cleanLogicalPath } from "../task-format.js";
+import { DIRECTORY_CHOSEN_EVENT } from "./task-create/components/directory-field.js";
+import { directoryPathDisplay } from "./task-create/directory-path.js";
 import "./composer.js";
 
 class CaffoldTaskCreate extends HTMLElement {
@@ -15,6 +19,7 @@ class CaffoldTaskCreate extends HTMLElement {
       "caffold:task-composer-submit",
       this.boundComposerSubmit,
     );
+    this.addEventListener(DIRECTORY_CHOSEN_EVENT, this.boundDirectoryChosen);
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.ensureRendered();
   }
@@ -28,6 +33,7 @@ class CaffoldTaskCreate extends HTMLElement {
       "caffold:task-composer-submit",
       this.boundComposerSubmit,
     );
+    this.removeEventListener(DIRECTORY_CHOSEN_EVENT, this.boundDirectoryChosen);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
@@ -37,7 +43,8 @@ class CaffoldTaskCreate extends HTMLElement {
     }
     this.stateReady = true;
     this.cwd = ".";
-    this.browseCwd = true;
+    this.browseCwd = false;
+    this.server = {};
     this.composerSettings = null;
     this.transportAvailable = true;
     this.taskOperationsBlocked = false;
@@ -48,11 +55,14 @@ class CaffoldTaskCreate extends HTMLElement {
     this.boundComposerSubmit = (event) => {
       void this.handleComposerSubmit(event);
     };
+    this.boundDirectoryChosen = (event) => this.handleDirectoryChosen(event);
     this.boundIconsReady = () => {
-      // The error card gains its icon once the icon set loads, which the key
-      // below cannot see.
+      // The error card and the fixed directory gain their icons once the icon
+      // set loads, which the keys below cannot see.
       this.renderedStatus = null;
+      this.renderedFixedDirectory = null;
       this.renderStatus();
+      this.syncDirectory();
     };
     warmIcons();
   }
@@ -63,11 +73,14 @@ class CaffoldTaskCreate extends HTMLElement {
       return;
     }
     this.innerHTML = `
+      <div class="task-create-directory"></div>
       <div class="task-create-status-region"></div>
       <caffold-task-composer></caffold-task-composer>
     `;
     this.renderedStatus = null;
+    this.renderedFixedDirectory = null;
     this.renderStatus();
+    this.syncDirectory();
     this.syncComposer();
   }
 
@@ -92,8 +105,18 @@ class CaffoldTaskCreate extends HTMLElement {
       this.error = null;
     }
     this.renderStatus();
+    this.syncDirectory();
     this.syncComposer();
     return changed;
+  }
+
+  // Where the server's root and home directory are, which decide how a
+  // directory reads.
+  setServerPaths({ root = "", homePath = null } = {}) {
+    this.ensureState();
+    this.server = { root: `${root ?? ""}`, homePath: homePath ?? null };
+    this.ensureRendered();
+    this.syncDirectory();
   }
 
   activate() {
@@ -104,6 +127,7 @@ class CaffoldTaskCreate extends HTMLElement {
   }
 
   deactivate() {
+    this.directoryField()?.deactivate();
     this.composer()?.endEditingLifetime();
   }
 
@@ -138,9 +162,33 @@ class CaffoldTaskCreate extends HTMLElement {
     return this.querySelector(":scope > caffold-task-composer");
   }
 
-  actionHintTargets(options = {}) {
+  directoryField() {
+    return this.querySelector(
+      ":scope > .task-create-directory > caffold-task-directory-field",
+    );
+  }
+
+  actionHintScope(options = {}) {
     this.ensureRendered();
-    return this.composer()?.actionHintTargets(options) ?? [];
+    return mergeActionHintScopes(
+      this.directoryField()?.actionHintScope(options),
+      {
+        blocked: false,
+        targets: this.composer()?.actionHintTargets(options) ?? [],
+        mutationRoots: [this],
+        scrollRoots: [],
+      },
+    );
+  }
+
+  scrollSurfaceScope(options = {}) {
+    this.ensureRendered();
+    return this.directoryField()?.scrollSurfaceScope(options) ??
+      emptyScrollSurfaceScope();
+  }
+
+  ownsEditingEscape(element) {
+    return Boolean(this.directoryField()?.ownsEditingEscape(element));
   }
 
   keyboardNavigationContexts(options = {}) {
@@ -153,16 +201,23 @@ class CaffoldTaskCreate extends HTMLElement {
       return;
     }
     event.stopPropagation();
-    if (event.detail?.type !== "browse-cwd" || !this.browseCwd) {
+  }
+
+  handleDirectoryChosen(event) {
+    if (event.target !== this.directoryField()) {
       return;
     }
+    event.stopPropagation();
     this.dispatchEvent(
       new CustomEvent("caffold:task-create-intent", {
         bubbles: true,
         composed: true,
-        detail: { type: "browse-cwd" },
+        detail: { type: "choose-cwd", path: `${event.detail?.path ?? ""}` },
       }),
     );
+    if (event.detail?.returnFocus) {
+      this.composer()?.focus();
+    }
   }
 
   async handleComposerSubmit(event) {
@@ -176,6 +231,7 @@ class CaffoldTaskCreate extends HTMLElement {
     }
     this.activeSubmissionId = submissionId;
     this.error = null;
+    this.syncDirectory();
     this.syncComposer();
     this.renderStatus();
     try {
@@ -213,10 +269,12 @@ class CaffoldTaskCreate extends HTMLElement {
       // surface starts from canonical defaults instead of inheriting it.
       this.composer()?.endEditingLifetime();
       this.activeSubmissionId = "";
+      this.syncDirectory();
       this.syncComposer();
     } catch (error) {
       this.activeSubmissionId = "";
       this.error = error instanceof Error ? error : new Error(`${error}`);
+      this.syncDirectory();
       this.syncComposer();
       this.composer()?.resolveSubmission(submissionId, {
         status: "rejected",
@@ -226,13 +284,48 @@ class CaffoldTaskCreate extends HTMLElement {
     }
   }
 
+  // The directory above the Composer: a field to choose it where the surface
+  // lets you, and the fixed path where it does not.
+  syncDirectory() {
+    const region = this.querySelector(":scope > .task-create-directory");
+    if (!region) {
+      return;
+    }
+    const path = this.selectedContextPath();
+    if (this.browseCwd) {
+      let field = this.directoryField();
+      if (!field) {
+        field = document.createElement("caffold-task-directory-field");
+        region.replaceChildren(field);
+        this.renderedFixedDirectory = null;
+      }
+      field.setContext({
+        path,
+        server: this.server,
+        locked: Boolean(this.activeSubmissionId),
+      });
+      return;
+    }
+    this.directoryField()?.deactivate();
+    const shown = directoryPathDisplay(path, this.server);
+    if (this.renderedFixedDirectory === shown) {
+      return;
+    }
+    this.renderedFixedDirectory = shown;
+    region.innerHTML = `
+      <p class="task-create-fixed-directory">
+        ${renderInlineIcon("Folder", "Working directory", "task-create-fixed-directory-icon")}
+        <span class="task-create-fixed-directory-path" title="${escapeHtml(shown)}"><span dir="ltr">${escapeHtml(shown)}</span></span>
+      </p>
+    `;
+  }
+
   syncComposer() {
     const settings = this.composerSettings ?? {};
     this.composer()?.setContext({
       mode: "create",
       className: "task-new-form",
       cwd: this.selectedContextPath(),
-      browseCwd: this.browseCwd,
       placeholder: "Ask an agent to work from the current directory",
       ariaLabel: "New task prompt",
       submitLabel: "Start task",

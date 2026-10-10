@@ -22,7 +22,7 @@ test("native import aliases share module identity with asset URLs and register t
       return { alias, sameModule: aliased === direct };
     }));
     const consumers = [
-      ["#tasks/new/components/directory-picker.js", "caffold-task-directory-picker"],
+      ["#tasks/components/task-create/components/directory-field.js", "caffold-task-directory-field"],
       ["#tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js", "caffold-conversation-fork-dialog"],
       ["#tasks/(detail)/(github)/components/task-start-dialog.js", "caffold-github-task-start-dialog"],
     ];
