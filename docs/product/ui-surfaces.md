@@ -499,8 +499,7 @@ Settings includes:
 - Keyboard, which turns [keyboard navigation](#keyboard-navigation) on or off
   and lists the shortcuts it provides;
 - Files, which orders shared file trees either folders first or with every
-  entry by name; the New Task directory field lists only folders, hidden ones
-  last;
+  entry by name;
 - Notifications controls for the current browser's permission and subscription,
   plus the active browser-installation count, labels, short IDs, and removal;
 - Remote Access status and constrained Tailscale Serve controls, with the ready
