@@ -483,6 +483,7 @@ Product-owned disclosure uses the same one-shot flow through a distinct
 `disclosure.toggle` action and `disclosure` control kind. The shared File Tree
 declares only expandable directory buttons; non-expandable Directory Picker rows
 keep their existing navigation meaning. Work Details declares its root summary,
+Command Group declares its summary,
 active Command declares its summary while terminal Command keeps View output,
 Conversation declares only the exact Thinking summaries it rendered, Git Log
 declares its commit-body toggle, and GitHub Markdown declares the `summary` of
@@ -541,13 +542,16 @@ its sheet tabs through the segmented control's scope, labelled `Show sheet
 Integrated Review's `link.open` and `button.activate` actions.
 
 Custom children retain their own action knowledge. Work Details merges its own
-summary with its direct retained children. Command declares active disclosure
+summary with its direct retained children. Command Group merges its summary
+with its commands' scopes only while it is open, since a folded group's rows
+are not on screen. Command declares active disclosure
 or terminal View output from the same provider, Assistant Message Copy declares
 its one button, Suggested Prompts declares one action per request that can be
 chosen, Message Attachments declares one Preview per picture it can
 open, Markdown Code Block declares Wrap, Copy, and Preview, and Conversation
 merges those public scopes through its retained Assistant Message, User
-Message, Message Attachments, Markdown, and Work Details children. Reusable
+Message, Message Attachments, Markdown, Command Group, and Work Details
+children. Reusable
 controls such as the segmented
 control, file tree, pagination, file navigator, and file viewer expose public
 scope providers; their screen owner supplies the semantic action and scope
@@ -1088,7 +1092,8 @@ Conversation also owns its Detail retry and exact rendered Thinking disclosure
 controls. Detail retry uses Conversation's coarse owner; each Thinking
 disclosure uses the exact retained timeline entry that contains it. A custom
 child owns its own controls: Approval owns its offered decisions, Command owns
-its active disclosure or terminal View output, Work Details owns its root
+its active disclosure or terminal View output, Command Group owns its
+disclosure, Work Details owns its root
 disclosure, Message Attachments owns each picture's preview, and Markdown Code
 Block owns Wrap, Copy, and Preview. Preview appears only on a `markdown` or `md`
 fence and asks
@@ -1114,9 +1119,9 @@ state, time, and uploading file lines, and mounts Message Attachments for the
 pictures; a generated picture's entry mounts the same list directly.
 Conversation retains a prompt's entry by identity, so a delivery change or an
 upload's progress patches the message already on screen.
-Assistant Message, User Message, Markdown, and Work Details merge only the
-direct retained children they mount. A stream patch can therefore retire only
-the replaced
+Assistant Message, User Message, Markdown, Command Group, and Work Details
+merge only the direct retained children they mount. A stream patch can
+therefore retire only the replaced
 entry, approval card, or child owner while unaffected sibling, App Shell, and
 Composer codes remain frozen, without introducing a descendant-DOM scan.
 

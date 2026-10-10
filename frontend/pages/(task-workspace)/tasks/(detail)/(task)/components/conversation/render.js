@@ -30,11 +30,13 @@ import {
   toolCallPresentation,
 } from "#tasks/task-format.js";
 import { activeTurnPresentation } from "./components/active-turn/model.js";
+import { commandGroupIdentity, groupFinishedCommands } from "./command-runs.js";
 export function renderConversation(events, task, approvals = [], options = {}) {
   const activeTurns = new Map();
   const workDetails = new Map();
   const changedFiles = new Map();
   const commands = new Map();
+  const commandGroups = new Map();
   const messages = new Map();
   const filePathPresentationBase = effectiveTaskFileRoot(task);
   const conversationEvents = sortEventsChronologically(
@@ -69,6 +71,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
           workDetails,
           changedFiles,
           commands,
+          commandGroups,
           messages,
           filePathPresentationBase,
         });
@@ -117,7 +120,15 @@ export function renderConversation(events, task, approvals = [], options = {}) {
       activeTurns,
     );
   }
-  return { html, activeTurns, workDetails, changedFiles, commands, messages };
+  return {
+    html,
+    activeTurns,
+    workDetails,
+    changedFiles,
+    commands,
+    commandGroups,
+    messages,
+  };
 }
 
 function renderedTimelineEntry(events, html, eventOrder) {
@@ -194,21 +205,30 @@ function renderTurnGroupEntries(group, task, options = {}) {
     );
   }
 
-  return group.events
-    .map((event) =>
-      renderedTimelineEntry(
-        [event],
-        renderActiveTurnTimelineEvent(
-          event,
-          task,
-          options.pendingApprovalIds,
-          options.filePathPresentationBase,
-          options.changedFiles,
-          options.commands,
-          options.messages,
-        ),
-        options.eventOrder,
-      ),
+  const pendingApprovalIds = options.pendingApprovalIds ?? new Set();
+  return groupFinishedCommands(group.events, (event) =>
+    isShownWhileTurnRuns(event, pendingApprovalIds),
+  )
+    .map((segment) =>
+      segment.group
+        ? renderedTimelineEntry(
+            segment.group,
+            renderCommandGroupEvent(segment.group, options.commandGroups),
+            options.eventOrder,
+          )
+        : renderedTimelineEntry(
+            [segment.event],
+            renderActiveTurnTimelineEvent(
+              segment.event,
+              task,
+              pendingApprovalIds,
+              options.filePathPresentationBase,
+              options.changedFiles,
+              options.commands,
+              options.messages,
+            ),
+            options.eventOrder,
+          ),
     )
     .filter(Boolean);
 }
@@ -334,13 +354,28 @@ function renderActiveTurnTimelineEvent(
   commands = new Map(),
   messages = new Map(),
 ) {
-  if (
-    event.type === "approval_requested" &&
-    pendingApprovalIds.has(event.payload?.approvalId)
-  ) {
+  if (!isShownWhileTurnRuns(event, pendingApprovalIds)) {
+    return "";
+  }
+  if (event.type === "approval_requested") {
     return renderApprovalFlow([event]);
   }
-  if (
+  return renderConversationEvent(event, task, {
+    active: isWorkEvent(event),
+    changedFiles,
+    commands,
+    messages,
+    filePathPresentationBase,
+  });
+}
+
+// Whether an event of a turn not yet folded into work details is drawn as an
+// entry of its own.
+function isShownWhileTurnRuns(event, pendingApprovalIds) {
+  if (event.type === "approval_requested") {
+    return pendingApprovalIds.has(event.payload?.approvalId);
+  }
+  return (
     event.type === "user_message" ||
     event.type === "assistant_message" ||
     event.type === "generated_image" ||
@@ -348,16 +383,7 @@ function renderActiveTurnTimelineEvent(
     // details: it is why nothing happened, and must not need expanding.
     event.type === "agent_failure" ||
     isWorkEvent(event)
-  ) {
-    return renderConversationEvent(event, task, {
-      active: isWorkEvent(event),
-      changedFiles,
-      commands,
-      messages,
-      filePathPresentationBase,
-    });
-  }
-  return "";
+  );
 }
 
 function renderActiveTurnStatus(group, task, activeTurns) {
@@ -786,11 +812,12 @@ function renderTurnWorkSummary(
 function turnWorkItemCount(events) {
   let count = 0;
   let combinedType = "";
-  for (const event of events) {
-    if (["reasoning", "file_change"].includes(event.type)) {
-      if (combinedType !== event.type) {
+  for (const segment of groupFinishedCommands(events)) {
+    const type = segment.event?.type;
+    if (["reasoning", "file_change"].includes(type)) {
+      if (combinedType !== type) {
         count += 1;
-        combinedType = event.type;
+        combinedType = type;
       }
       continue;
     }
@@ -839,6 +866,19 @@ function renderCommandEvent(event, commands = new Map()) {
   return `
     <li class="task-event task-command"${eventIdentityAttribute(event)} data-conversation-entry-key="${escapeHtml(identity)}" data-event-type="${escapeHtml(event.type)}">
       <caffold-task-command></caffold-task-command>
+    </li>
+  `;
+}
+
+// The entry stands where the group's first entry stood, under that entry's
+// event id, so a reader anchored on it keeps their place when the next command
+// finishes beside it.
+function renderCommandGroupEvent(events, commandGroups = new Map()) {
+  const identity = commandGroupIdentity(events);
+  commandGroups.set(identity, { identity, events });
+  return `
+    <li class="task-event task-command-group"${eventIdentityAttribute(events[0])} data-conversation-entry-key="${escapeHtml(identity)}" data-event-type="command_execution">
+      <caffold-task-command-group></caffold-task-command-group>
     </li>
   `;
 }

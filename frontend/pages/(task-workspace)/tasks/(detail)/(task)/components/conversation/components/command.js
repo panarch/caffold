@@ -85,6 +85,12 @@ class CaffoldTaskCommand extends HTMLElement {
     return true;
   }
 
+  // Inside a group of commands the group draws the frame, and the row keeps
+  // everything else.
+  setGrouped(grouped) {
+    this.toggleAttribute("data-command-grouped", Boolean(grouped));
+  }
+
   get commandKey() {
     this.ensureState();
     return this.presentation.commandKey;

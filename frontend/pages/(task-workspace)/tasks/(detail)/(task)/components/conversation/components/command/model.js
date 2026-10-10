@@ -5,6 +5,7 @@ import {
   formatStatus,
   taskEventObservedMs,
 } from "#tasks/task-format.js";
+import { commandResult, isFinishedCommand } from "../../command-runs.js";
 
 export function commandPresentation(event = {}) {
   const payload = event.payload ?? {};
@@ -15,15 +16,8 @@ export function commandPresentation(event = {}) {
   const output = `${payload.output ?? ""}`.trim();
   const exitCode = finiteNumber(payload.exitCode);
   const duration = finiteNumber(payload.durationMs);
-  const terminal = ["completed", "failed", "declined"].includes(rawStatus);
-  // A declined command did not fail; nobody let it run. An exit code decides
-  // only for a command that actually ran.
-  const result =
-    rawStatus === "declined"
-      ? "declined"
-      : rawStatus === "failed" || (exitCode !== null && exitCode !== 0)
-        ? "failed"
-        : "completed";
+  const terminal = isFinishedCommand(event);
+  const result = commandResult(event);
   const metadata = terminal
     ? [
         duration !== null ? formatDuration(duration) : "",

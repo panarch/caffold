@@ -408,6 +408,203 @@ test("hands the final answer the turn's own completion time", () => {
   );
 });
 
+test("a running turn folds finished commands in a row into one entry", () => {
+  const first = commandEvent("a", 2, "completed");
+  const hidden = turnEvent("thread-1:turn-1:started", "turn_started", 3, {
+    status: "inProgress",
+  });
+  const second = commandEvent("b", 4, "failed");
+  const running = commandEvent("c", 5, "inProgress");
+  const message = turnEvent("thread-1:turn-1:message", "assistant_message", 6, {
+    itemId: "message",
+    phase: "progress",
+    text: "Checking one more thing.",
+  });
+  const lone = commandEvent("d", 7, "completed");
+
+  const view = renderConversation(
+    [first, hidden, second, running, message, lone],
+    activeTask(),
+  );
+  const identity = "command-group:item:thread-1:turn-1:a";
+
+  assert.deepEqual(
+    [...view.html.matchAll(/class="task-event ([^"]+)"/g)].map(
+      ([, kind]) => kind,
+    ),
+    [
+      "task-command-group",
+      "task-command",
+      "task-assistant-message",
+      "task-command",
+      "task-turn-active",
+    ],
+  );
+  assert.match(
+    view.html,
+    new RegExp(
+      `<li class="task-event task-command-group" data-event-id="a" data-conversation-entry-key="${identity}"`,
+    ),
+  );
+  assert.deepEqual(view.commandGroups.get(identity), {
+    identity,
+    events: [first, second],
+  });
+  assert.deepEqual([...view.commands.keys()], [
+    "item:thread-1:turn-1:c",
+    "item:thread-1:turn-1:d",
+  ]);
+});
+
+test("a pending approval keeps the commands on either side apart", () => {
+  const before = commandEvent("a", 2, "completed");
+  const approval = turnEvent("approval_requested:401", "approval_requested", 3, {
+    itemId: "b",
+    threadId: "thread-1",
+    approvalId: "401",
+    title: "Command approval requested",
+    command: "rm -rf build",
+    decisions: ["allow", "denyAndStop"],
+  });
+  const after = commandEvent("c", 4, "completed");
+
+  const view = renderConversation(
+    [before, approval, after],
+    activeTask(),
+    [approval],
+  );
+
+  assert.equal(view.commandGroups.size, 0);
+  assert.equal(view.commands.size, 2);
+});
+
+test("a finished turn counts a folded group of commands as one update", () => {
+  const idleTask = {
+    id: "thread-1",
+    threadId: "thread-1",
+    threadStatus: { type: "idle" },
+  };
+  const events = [
+    turnEvent("thread-1:turn-1:prompt", "user_message", 1, {
+      itemId: "prompt",
+      text: "Run the checks.",
+    }),
+    commandEvent("a", 2, "completed"),
+    commandEvent("b", 3, "completed"),
+    commandEvent("c", 4, "failed"),
+    turnEvent("thread-1:turn-1:thinking", "reasoning", 5, {
+      itemId: "thinking",
+      summary: ["The last check failed."],
+    }),
+    commandEvent("d", 6, "completed"),
+    turnEvent("thread-1:turn-1:final", "assistant_message", 7, {
+      itemId: "final",
+      phase: "final",
+      text: "One check failed.",
+    }),
+    turnEvent("thread-1:turn-1:end", "turn_completed", 8, {
+      status: "completed",
+    }),
+  ];
+
+  const { workDetails } = renderConversation(events, idleTask);
+
+  assert.deepEqual(
+    [...workDetails.values()].map(({ updateText }) => updateText),
+    ["3 updates"],
+  );
+});
+
+test("a running turn folds the empty thinking between its commands into the group", () => {
+  // How a Claude turn arrives: an empty thinking block before each command.
+  const opening = emptyThinking("t1", 2);
+  const first = commandEvent("a", 3, "completed");
+  const between = emptyThinking("t2", 4);
+  const second = commandEvent("b", 5, "completed");
+  const closing = emptyThinking("t3", 6);
+  const running = commandEvent("c", 7, "inProgress");
+
+  const view = renderConversation(
+    [opening, first, between, second, closing, running],
+    activeTask(),
+  );
+  const identity = "command-group:item:thread-1:turn-1:a";
+
+  assert.deepEqual(
+    [...view.html.matchAll(/class="task-event ([^"]+)"/g)].map(
+      ([, kind]) => kind,
+    ),
+    ["task-command-group", "task-command", "task-turn-active"],
+  );
+  // The group stands where its first entry stood, under that entry's id.
+  assert.match(
+    view.html,
+    new RegExp(
+      `<li class="task-event task-command-group" data-event-id="t1" data-conversation-entry-key="${identity}"`,
+    ),
+  );
+  assert.deepEqual(view.commandGroups.get(identity).events, [
+    opening,
+    first,
+    between,
+    second,
+    closing,
+  ]);
+});
+
+test("a finished Claude turn of commands and empty thinking is one update", () => {
+  const idleTask = {
+    id: "thread-1",
+    threadId: "thread-1",
+    threadStatus: { type: "idle" },
+  };
+  const events = [
+    turnEvent("thread-1:turn-1:prompt", "user_message", 1, {
+      itemId: "prompt",
+      text: "Run the checks.",
+    }),
+    emptyThinking("t1", 2),
+    commandEvent("a", 3, "completed"),
+    emptyThinking("t2", 4),
+    commandEvent("b", 5, "failed"),
+    emptyThinking("t3", 6),
+    turnEvent("thread-1:turn-1:final", "assistant_message", 7, {
+      itemId: "final",
+      phase: "final",
+      text: "One check failed.",
+    }),
+    turnEvent("thread-1:turn-1:end", "turn_completed", 8, {
+      status: "completed",
+    }),
+  ];
+
+  const { workDetails } = renderConversation(events, idleTask);
+
+  assert.deepEqual(
+    [...workDetails.values()].map(({ updateText }) => updateText),
+    ["1 update"],
+  );
+});
+
+function emptyThinking(itemId, anchorMs) {
+  return turnEvent(itemId, "reasoning", anchorMs, {
+    itemId,
+    summary: [],
+    content: [""],
+  });
+}
+
+function commandEvent(itemId, anchorMs, status) {
+  return {
+    ...turnEvent(itemId, "command_execution", anchorMs, {
+      itemId,
+      command: `check ${itemId}`,
+      status,
+    }),
+    threadId: "thread-1",
+  };
+}
+
 function activeTask() {
   return {
     id: "thread-1",

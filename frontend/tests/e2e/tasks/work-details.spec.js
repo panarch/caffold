@@ -118,13 +118,15 @@ test("owns disclosure presentation and preserves its identity across canonical u
   );
   await page.keyboard.press("Escape");
 
-  const childAction = owner.getByRole("button", { name: "View output" }).first();
-  await childAction.scrollIntoViewIfNeeded();
+  // The turn's two commands ran one after another, so the retained child that
+  // offers an action is their folded group.
+  const childGroup = owner.locator("caffold-task-command-group");
+  await childGroup.scrollIntoViewIfNeeded();
   await page.evaluate(() => new Promise((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(resolve))
   ));
   hintDialog = await enterActionHints(page);
-  await expect(hintDialog.getByLabel(/View output/).first()).toBeVisible();
+  await expect(hintDialog.getByLabel("Expand Ran 2 commands")).toBeVisible();
   await page.keyboard.press("Escape");
   await captureReviewScreenshot(page, testInfo, "task-work-details-expanded");
 

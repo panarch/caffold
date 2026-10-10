@@ -19,6 +19,11 @@ import {
 import "./assistant-message.js";
 import "./changed-files.js";
 import "./command.js";
+import "./command-group.js";
+import {
+  commandGroupIdentity,
+  groupFinishedCommands,
+} from "../command-runs.js";
 import {
   ACTION_HINT_ACTION,
   disclosureActionHintTarget,
@@ -158,6 +163,7 @@ class CaffoldTaskWorkDetails extends HTMLElement {
       view.html,
       view.changedFiles,
       view.commands,
+      view.commandGroups,
       view.messages,
     );
     this.scrollSurfaceRecords = collectRawScrollSurfaceRecords(body);
@@ -279,6 +285,16 @@ class CaffoldTaskWorkDetails extends HTMLElement {
       if (command) {
         scopes.push(command.actionHintScope?.({
           scopeId: `${scopeId}:command:${commandIdentity}`,
+          clipRoots: [this, body, ...clipRoots].filter(Boolean),
+        }));
+      }
+      const groupIdentity = `${item.dataset.commandGroupWorkIdentity ?? ""}`;
+      const commandGroup = groupIdentity
+        ? item.querySelector(":scope > caffold-task-command-group")
+        : null;
+      if (commandGroup) {
+        scopes.push(commandGroup.actionHintScope?.({
+          scopeId: `${scopeId}:command-group:${groupIdentity}`,
           clipRoots: [this, body, ...clipRoots].filter(Boolean),
         }));
       }
@@ -431,6 +447,7 @@ function renderWorkItems(events, filePathPresentationBase) {
   const output = [];
   const changedFiles = new Map();
   const commands = new Map();
+  const commandGroups = new Map();
   const messages = new Map();
   let combinedEvents = [];
   let combinedType = "";
@@ -450,7 +467,13 @@ function renderWorkItems(events, filePathPresentationBase) {
     combinedType = "";
   };
 
-  for (const event of events) {
+  for (const segment of groupFinishedCommands(events)) {
+    if (segment.group) {
+      flushCombinedEvents();
+      output.push(renderCommandGroupWorkItem(segment.group, commandGroups));
+      continue;
+    }
+    const { event } = segment;
     if (["reasoning", "file_change"].includes(event.type)) {
       if (combinedType && combinedType !== event.type) {
         flushCombinedEvents();
@@ -475,6 +498,7 @@ function renderWorkItems(events, filePathPresentationBase) {
     html: output.filter(Boolean).join(""),
     changedFiles,
     commands,
+    commandGroups,
     messages,
   };
 }
@@ -629,6 +653,16 @@ function renderCommandWorkItem(event, commands) {
   `;
 }
 
+function renderCommandGroupWorkItem(events, commandGroups) {
+  const identity = commandGroupIdentity(events);
+  commandGroups.set(identity, { identity, events });
+  return `
+    <article class="task-work-details-item task-work-details-command-group" data-event-type="command_execution" data-command-group-work-identity="${escapeHtml(identity)}">
+      <caffold-task-command-group></caffold-task-command-group>
+    </article>
+  `;
+}
+
 function renderWorkItemShell(event, label, text, tone = "neutral") {
   const value = `${text ?? ""}`.trim();
   return `
@@ -675,7 +709,14 @@ function fileChangeWorkIdentity(events) {
   }`;
 }
 
-function reconcileWorkItems(body, html, changedFiles, commands, messages) {
+function reconcileWorkItems(
+  body,
+  html,
+  changedFiles,
+  commands,
+  commandGroups,
+  messages,
+) {
   const template = document.createElement("template");
   template.innerHTML = html;
   const existingFileChangeItems = new Map(
@@ -687,6 +728,11 @@ function reconcileWorkItems(body, html, changedFiles, commands, messages) {
     [...body.children]
       .filter((item) => item.hasAttribute("data-command-work-identity"))
       .map((item) => [item.dataset.commandWorkIdentity, item]),
+  );
+  const existingCommandGroupItems = new Map(
+    [...body.children]
+      .filter((item) => item.hasAttribute("data-command-group-work-identity"))
+      .map((item) => [item.dataset.commandGroupWorkIdentity, item]),
   );
   const existingMessageItems = new Map(
     [...body.children]
@@ -703,6 +749,11 @@ function reconcileWorkItems(body, html, changedFiles, commands, messages) {
     const existingCommand = existingCommandItems.get(commandIdentity);
     if (commandIdentity && existingCommand) {
       return existingCommand;
+    }
+    const groupIdentity = `${item.dataset.commandGroupWorkIdentity ?? ""}`;
+    const existingGroup = existingCommandGroupItems.get(groupIdentity);
+    if (groupIdentity && existingGroup) {
+      return existingGroup;
     }
     const identity = `${item.dataset.fileChangeWorkIdentity ?? ""}`;
     const existing = existingFileChangeItems.get(identity);
@@ -724,6 +775,12 @@ function reconcileWorkItems(body, html, changedFiles, commands, messages) {
     const commandSnapshot = commands.get(commandIdentity);
     if (commandOwner && commandSnapshot) {
       commandOwner.setSnapshot(commandSnapshot);
+    }
+    const groupIdentity = `${item.dataset.commandGroupWorkIdentity ?? ""}`;
+    const groupOwner = item.querySelector(":scope > caffold-task-command-group");
+    const groupSnapshot = commandGroups.get(groupIdentity);
+    if (groupOwner && groupSnapshot) {
+      groupOwner.setSnapshot(groupSnapshot);
     }
     const messageIdentity = `${item.dataset.messageWorkIdentity ?? ""}`;
     const messageOwner = item.querySelector(

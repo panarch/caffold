@@ -166,6 +166,24 @@ test("provides active output only while its exact disclosure is expanded", () =>
   assert.equal(surface.isEligible(), false);
 });
 
+test("marks itself as a row of a group so the group draws the frame", () => {
+  const attributes = new Set();
+  const owner = {
+    toggleAttribute(name, force) {
+      if (force) {
+        attributes.add(name);
+      } else {
+        attributes.delete(name);
+      }
+    },
+  };
+
+  command.setGrouped.call(owner, true);
+  assert.deepEqual([...attributes], ["data-command-grouped"]);
+  command.setGrouped.call(owner, false);
+  assert.deepEqual([...attributes], []);
+});
+
 function layoutElement(properties = {}) {
   return { getClientRects: () => [{}], ...properties };
 }
