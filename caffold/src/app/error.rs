@@ -198,15 +198,10 @@ impl ApiError {
                 "unsupported_image",
                 format!("image preview is not supported for this file type: {path}"),
             ),
-            ApiError::Fs(FsError::UnsupportedPdf { path }) => (
+            ApiError::Fs(FsError::UnsupportedDocument { path }) => (
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                "unsupported_pdf",
-                format!("PDF preview is not supported for this file type: {path}"),
-            ),
-            ApiError::Fs(FsError::UnsupportedDocx { path }) => (
-                StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                "unsupported_docx",
-                format!("Word document preview is not supported for this file type: {path}"),
+                "unsupported_document",
+                format!("document preview is not supported for this file type: {path}"),
             ),
             ApiError::Fs(FsError::GitRepositoryNotFound { path }) => (
                 StatusCode::BAD_REQUEST,

@@ -88,7 +88,7 @@ function documentPath(testInfo, suffix, extension) {
 
 function documentRequests(page, testInfo, suffix = "") {
   const pattern = new RegExp(
-    `/api/docx\\?path=${encodeURIComponent(`src/${documentRoute(testInfo, suffix)}`)
+    `/api/document\\?path=${encodeURIComponent(`src/${documentRoute(testInfo, suffix)}`)
       .replace(".", "\\.")}`,
   );
   const requests = [];

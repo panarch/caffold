@@ -6,14 +6,21 @@ import { installTaskSseControllerInBrowser } from "./task-sse-fixture.js";
 // The suite runs the real libraries the app loads from jsDelivr rather than
 // stand-ins: a document or terminal that fails to render produces no fallback
 // content to assert against.
-const CDN_PACKAGES = ["pdfjs-dist", "@xterm/xterm", "@xterm/addon-fit"].map(
+const CDN_PACKAGES = ["pdfjs-dist", "@aiden0z/pptx-renderer", "@xterm/xterm", "@xterm/addon-fit"].map(
   (name) => ({
     root: installedPackageRoot(name),
     prefix: `${cdnPackageUrl(name)}/`,
   }),
 );
+// SheetJS publishes its current releases on its own CDN rather than npm, and
+// the package is installed from the same release's tarball.
+const SHEETJS_PACKAGE = {
+  root: installedPackageRoot("xlsx"),
+  prefix: `https://cdn.sheetjs.com/xlsx-${installedPackageVersion("xlsx")}/package/`,
+};
 const CDN_CONTENT_TYPES = {
   ".css": "text/css",
+  ".js": "text/javascript",
   ".mjs": "text/javascript",
   ".wasm": "application/wasm",
 };
@@ -310,7 +317,15 @@ export async function installExternalModuleDefaults(page) {
     if (esmModule) {
       return route.fulfill({ contentType: "text/javascript", body: esmModule() });
     }
-    const file = cdnAssetPath(url);
+    const file = packageAssetPath(CDN_PACKAGES, url);
+    if (!file) {
+      return route.abort();
+    }
+    return route.fulfill({ path: file, contentType: cdnContentType(file) });
+  });
+
+  await page.route("https://cdn.sheetjs.com/**", (route) => {
+    const file = packageAssetPath([SHEETJS_PACKAGE], route.request().url());
     if (!file) {
       return route.abort();
     }
@@ -561,9 +576,9 @@ export async function installExternalModuleDefaults(page) {
   });
 }
 
-// Answers a pinned jsDelivr URL from the installed package of the same version.
-function cdnAssetPath(url) {
-  const cdnPackage = CDN_PACKAGES.find(({ prefix }) => url.startsWith(prefix));
+// Answers a pinned CDN URL from the installed package of the same version.
+function packageAssetPath(packages, url) {
+  const cdnPackage = packages.find(({ prefix }) => url.startsWith(prefix));
   if (!cdnPackage) {
     return null;
   }
@@ -616,11 +631,15 @@ function installedPackageRoot(name) {
   );
 }
 
+function cdnPackageUrl(name) {
+  return `https://cdn.jsdelivr.net/npm/${name}@${installedPackageVersion(name)}`;
+}
+
 // The manifest is read from disk because a package's `exports` may not expose
 // it to `require`.
-function cdnPackageUrl(name) {
+function installedPackageVersion(name) {
   const manifest = JSON.parse(
     readFileSync(`${installedPackageRoot(name)}package.json`, "utf8"),
   );
-  return `https://cdn.jsdelivr.net/npm/${name}@${manifest.version}`;
+  return manifest.version;
 }

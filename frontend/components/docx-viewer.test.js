@@ -51,10 +51,10 @@ function fittingViewer(clientWidth, pages) {
 }
 
 test("keeps the open document while its file is unchanged", () => {
-  const { owner, opened } = loadedViewer("/api/docx?path=report.docx");
+  const { owner, opened } = loadedViewer("/api/document?path=report.docx");
 
   docxViewer.setSource.call(owner, {
-    url: "/api/docx?path=report.docx",
+    url: "/api/document?path=report.docx",
     revision: 1700,
   });
 
@@ -63,50 +63,50 @@ test("keeps the open document while its file is unchanged", () => {
 });
 
 test("reopens the document when the file changed on disk", () => {
-  const { owner, opened } = loadedViewer("/api/docx?path=report.docx");
+  const { owner, opened } = loadedViewer("/api/document?path=report.docx");
 
   docxViewer.setSource.call(owner, {
-    url: "/api/docx?path=report.docx",
+    url: "/api/document?path=report.docx",
     revision: 1800,
   });
 
-  assert.deepEqual(opened, ["/api/docx?path=report.docx"]);
+  assert.deepEqual(opened, ["/api/document?path=report.docx"]);
   assert.equal(owner.dataset.renderState, "loading");
   assert.equal(owner.revision, 1800);
 });
 
 test("reopens the document when another file is selected", () => {
-  const { owner, opened } = loadedViewer("/api/docx?path=report.docx");
+  const { owner, opened } = loadedViewer("/api/document?path=report.docx");
 
   docxViewer.setSource.call(owner, {
-    url: "/api/docx?path=minutes.docx",
+    url: "/api/document?path=minutes.docx",
     revision: 1700,
   });
 
-  assert.deepEqual(opened, ["/api/docx?path=minutes.docx"]);
+  assert.deepEqual(opened, ["/api/document?path=minutes.docx"]);
 });
 
 test("reads the file again once its modification time becomes known", () => {
-  const { owner, opened } = loadedViewer("/api/docx?path=report.docx", null);
+  const { owner, opened } = loadedViewer("/api/document?path=report.docx", null);
 
   docxViewer.setSource.call(owner, {
-    url: "/api/docx?path=report.docx",
+    url: "/api/document?path=report.docx",
     revision: 1800,
   });
 
-  assert.deepEqual(opened, ["/api/docx?path=report.docx"]);
+  assert.deepEqual(opened, ["/api/document?path=report.docx"]);
 });
 
 test("retries the same source after a failed load", () => {
-  const { owner, opened } = loadedViewer("/api/docx?path=report.docx");
+  const { owner, opened } = loadedViewer("/api/document?path=report.docx");
   owner.dataset.renderState = "error";
 
   docxViewer.setSource.call(owner, {
-    url: "/api/docx?path=report.docx",
+    url: "/api/document?path=report.docx",
     revision: 1700,
   });
 
-  assert.deepEqual(opened, ["/api/docx?path=report.docx"]);
+  assert.deepEqual(opened, ["/api/document?path=report.docx"]);
 });
 
 test("publishes only the vertical axis of a page fitted to its width", () => {
@@ -140,7 +140,7 @@ test("stops reading and fitting the document when released", () => {
   const events = [];
   const owner = {
     generation: 2,
-    url: "/api/docx?path=report.docx",
+    url: "/api/document?path=report.docx",
     revision: 1700,
     reading: { abort: () => events.push("abort") },
     widthObserver: { disconnect: () => events.push("disconnect") },

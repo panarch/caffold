@@ -1356,6 +1356,24 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/docx-viewer.js" => {
             Some(js(include_str!("../../frontend/components/docx-viewer.js")))
         }
+        "components/pptx-viewer.css" => Some(css(include_str!(
+            "../../frontend/components/pptx-viewer.css"
+        ))),
+        "components/pptx-viewer.js" => {
+            Some(js(include_str!("../../frontend/components/pptx-viewer.js")))
+        }
+        "components/xlsx-viewer.css" => Some(css(include_str!(
+            "../../frontend/components/xlsx-viewer.css"
+        ))),
+        "components/xlsx-viewer.js" => {
+            Some(js(include_str!("../../frontend/components/xlsx-viewer.js")))
+        }
+        "components/xlsx-viewer/window.js" => Some(js(include_str!(
+            "../../frontend/components/xlsx-viewer/window.js"
+        ))),
+        "components/xlsx-viewer/workbook.js" => Some(js(include_str!(
+            "../../frontend/components/xlsx-viewer/workbook.js"
+        ))),
         "components/file-viewer-presentation.js" => Some(js(include_str!(
             "../../frontend/components/file-viewer-presentation.js"
         ))),

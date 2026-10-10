@@ -475,10 +475,8 @@ pub enum FsError {
     InvalidUtf8 { path: String },
     #[error("image preview is not supported for this file type: {path}")]
     UnsupportedImage { path: String },
-    #[error("PDF preview is not supported for this file type: {path}")]
-    UnsupportedPdf { path: String },
-    #[error("Word document preview is not supported for this file type: {path}")]
-    UnsupportedDocx { path: String },
+    #[error("document preview is not supported for this file type: {path}")]
+    UnsupportedDocument { path: String },
     #[error("path is not inside a Git repository: {path}")]
     GitRepositoryNotFound { path: String },
     #[error("git command failed while trying to {action}: {path}")]

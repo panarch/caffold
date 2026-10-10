@@ -10,8 +10,7 @@ use super::{FsError, ResolvedPath, RootedFs, modified_ms, relative_path_string};
 
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 pub const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
-const MAX_PDF_BYTES: u64 = 100 * 1024 * 1024;
-const MAX_DOCX_BYTES: u64 = 100 * 1024 * 1024;
+const MAX_DOCUMENT_BYTES: u64 = 100 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +21,14 @@ pub struct FileResponse {
     pub modified_ms: Option<u64>,
     pub language_hint: Option<String>,
     pub content: String,
+}
+
+/// A file a library-backed document viewer draws, with the Content-Type its
+/// extension names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentFile {
+    pub content_type: &'static str,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,24 +84,18 @@ impl RootedFs {
         })
     }
 
-    pub fn read_pdf(&self, requested_path: &str) -> Result<Vec<u8>, FsError> {
+    pub fn read_document(&self, requested_path: &str) -> Result<DocumentFile, FsError> {
         let resolved = self.resolve_existing(requested_path)?;
-        if !has_extension(&resolved.logical, "pdf") {
-            return Err(FsError::UnsupportedPdf {
+        let content_type = document_content_type(&resolved.logical).ok_or_else(|| {
+            FsError::UnsupportedDocument {
                 path: requested_path.to_string(),
-            });
-        }
-        Ok(read_bounded(&resolved, requested_path, MAX_PDF_BYTES)?.bytes)
-    }
-
-    pub fn read_docx(&self, requested_path: &str) -> Result<Vec<u8>, FsError> {
-        let resolved = self.resolve_existing(requested_path)?;
-        if !has_extension(&resolved.logical, "docx") {
-            return Err(FsError::UnsupportedDocx {
-                path: requested_path.to_string(),
-            });
-        }
-        Ok(read_bounded(&resolved, requested_path, MAX_DOCX_BYTES)?.bytes)
+            }
+        })?;
+        let file = read_bounded(&resolved, requested_path, MAX_DOCUMENT_BYTES)?;
+        Ok(DocumentFile {
+            content_type,
+            bytes: file.bytes,
+        })
     }
 }
 
@@ -170,9 +171,16 @@ fn display_name(resolved: &ResolvedPath) -> String {
         .unwrap_or_else(|| relative_path_string(&resolved.logical))
 }
 
-fn has_extension(path: &Path, expected: &str) -> bool {
-    path.extension()
-        .is_some_and(|extension| extension.to_string_lossy().to_lowercase() == expected)
+fn document_content_type(path: &Path) -> Option<&'static str> {
+    let extension = path.extension()?.to_string_lossy().to_lowercase();
+    match extension.as_str() {
+        "pdf" => Some("application/pdf"),
+        "docx" => Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        "pptx" => Some("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+        "xlsx" => Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        "xlsm" => Some("application/vnd.ms-excel.sheet.macroEnabled.12"),
+        _ => None,
+    }
 }
 
 fn language_hint(path: &Path) -> Option<String> {
@@ -366,160 +374,130 @@ mod tests {
     }
 
     #[test]
-    fn reads_pdf_bytes() {
+    fn reads_each_document_kind_with_its_content_type() {
         let temp = tempfile::tempdir().unwrap();
-        fs::write(
-            temp.path().join("manual.pdf"),
-            b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n",
-        )
-        .unwrap();
-
-        let rooted = RootedFs::new(temp.path()).unwrap();
-        let bytes = rooted.read_pdf("manual.pdf").unwrap();
-
-        assert!(bytes.starts_with(b"%PDF-"));
-    }
-
-    #[test]
-    fn reads_pdf_with_uppercase_extension() {
-        let temp = tempfile::tempdir().unwrap();
-        fs::write(temp.path().join("Manual.PDF"), b"%PDF-1.7\n").unwrap();
-
-        let rooted = RootedFs::new(temp.path()).unwrap();
-
-        assert!(rooted.read_pdf("Manual.PDF").unwrap().starts_with(b"%PDF-"));
-    }
-
-    #[test]
-    fn rejects_pdf_read_for_another_file_type() {
-        let temp = tempfile::tempdir().unwrap();
-        fs::write(temp.path().join("notes.txt"), "hello").unwrap();
+        let documents = [
+            ("manual.pdf", "application/pdf"),
+            (
+                "Minutes.DOCX",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ),
+            (
+                "deck.pptx",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ),
+            (
+                "budget.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ),
+            (
+                "macros.xlsm",
+                "application/vnd.ms-excel.sheet.macroEnabled.12",
+            ),
+        ];
+        for (name, _) in documents {
+            fs::write(temp.path().join(name), name.as_bytes()).unwrap();
+        }
 
         let rooted = RootedFs::new(temp.path()).unwrap();
 
-        assert!(matches!(
-            rooted.read_pdf("notes.txt"),
-            Err(FsError::UnsupportedPdf { .. })
-        ));
+        for (name, content_type) in documents {
+            assert_eq!(
+                rooted.read_document(name).unwrap(),
+                DocumentFile {
+                    content_type,
+                    bytes: name.as_bytes().to_vec(),
+                },
+                "{name}"
+            );
+        }
     }
 
     #[test]
-    fn rejects_pdf_read_for_a_directory() {
+    fn refuses_a_file_no_document_viewer_draws() {
+        let temp = tempfile::tempdir().unwrap();
+        let names = [
+            "report.doc",
+            "deck.ppt",
+            "budget.xls",
+            "notes.txt",
+            "archive",
+        ];
+        for name in names {
+            fs::write(temp.path().join(name), b"legacy").unwrap();
+        }
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+
+        for name in names {
+            assert!(
+                matches!(
+                    rooted.read_document(name),
+                    Err(FsError::UnsupportedDocument { .. })
+                ),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn refuses_a_directory_named_like_a_document() {
         let temp = tempfile::tempdir().unwrap();
         fs::create_dir(temp.path().join("bundle.pdf")).unwrap();
 
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert!(matches!(
-            rooted.read_pdf("bundle.pdf"),
+            rooted.read_document("bundle.pdf"),
             Err(FsError::IsDirectory { .. })
         ));
     }
 
     #[test]
-    fn reads_a_pdf_of_100_mib_and_refuses_a_larger_one() {
+    fn reads_a_document_of_100_mib_and_refuses_a_larger_one_of_every_kind() {
         let temp = tempfile::tempdir().unwrap();
-        sparse_file(&temp.path().join("limit.pdf"), 100 * 1024 * 1024);
-        sparse_file(&temp.path().join("large.pdf"), 100 * 1024 * 1024 + 1);
+        sparse_file(&temp.path().join("limit.xlsx"), 100 * 1024 * 1024);
+        for extension in ["pdf", "docx", "pptx", "xlsx", "xlsm"] {
+            sparse_file(
+                &temp.path().join(format!("large.{extension}")),
+                100 * 1024 * 1024 + 1,
+            );
+        }
 
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert_eq!(
-            rooted.read_pdf("limit.pdf").unwrap().len(),
+            rooted.read_document("limit.xlsx").unwrap().bytes.len(),
             100 * 1024 * 1024
         );
-        assert!(matches!(
-            rooted.read_pdf("large.pdf"),
-            Err(FsError::FileTooLarge { .. })
-        ));
+        for extension in ["pdf", "docx", "pptx", "xlsx", "xlsm"] {
+            assert!(
+                matches!(
+                    rooted.read_document(&format!("large.{extension}")),
+                    Err(FsError::FileTooLarge { .. })
+                ),
+                "{extension}"
+            );
+        }
     }
 
     #[test]
-    fn rejects_pdf_read_outside_the_browsing_root() {
+    fn refuses_a_document_outside_the_browsing_root() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("root");
         fs::create_dir(&root).unwrap();
-        fs::write(temp.path().join("outside.pdf"), b"%PDF-1.7\n").unwrap();
-
-        let rooted = RootedFs::new(&root).unwrap();
-
-        assert!(matches!(
-            rooted.read_pdf("../outside.pdf"),
-            Err(FsError::PathEscapesRoot)
-        ));
-    }
-
-    #[test]
-    fn reads_docx_bytes_with_any_extension_case() {
-        let temp = tempfile::tempdir().unwrap();
-        fs::write(temp.path().join("report.docx"), b"PK\x03\x04report").unwrap();
-        fs::write(temp.path().join("Minutes.DOCX"), b"PK\x03\x04minutes").unwrap();
-
-        let rooted = RootedFs::new(temp.path()).unwrap();
-
-        assert_eq!(
-            rooted.read_docx("report.docx").unwrap(),
-            b"PK\x03\x04report"
-        );
-        assert_eq!(
-            rooted.read_docx("Minutes.DOCX").unwrap(),
-            b"PK\x03\x04minutes"
-        );
-    }
-
-    #[test]
-    fn rejects_docx_read_for_another_file_type() {
-        let temp = tempfile::tempdir().unwrap();
-        fs::write(temp.path().join("report.doc"), b"legacy").unwrap();
-        fs::write(temp.path().join("report.pdf"), b"%PDF-1.7\n").unwrap();
-
-        let rooted = RootedFs::new(temp.path()).unwrap();
-
-        assert!(matches!(
-            rooted.read_docx("report.doc"),
-            Err(FsError::UnsupportedDocx { .. })
-        ));
-        assert!(matches!(
-            rooted.read_docx("report.pdf"),
-            Err(FsError::UnsupportedDocx { .. })
-        ));
-    }
-
-    #[test]
-    fn reads_a_docx_of_100_mib_and_refuses_a_larger_one() {
-        let temp = tempfile::tempdir().unwrap();
-        sparse_file(&temp.path().join("limit.docx"), 100 * 1024 * 1024);
-        sparse_file(&temp.path().join("large.docx"), 100 * 1024 * 1024 + 1);
-
-        let rooted = RootedFs::new(temp.path()).unwrap();
-
-        assert_eq!(
-            rooted.read_docx("limit.docx").unwrap().len(),
-            100 * 1024 * 1024
-        );
-        assert!(matches!(
-            rooted.read_docx("large.docx"),
-            Err(FsError::FileTooLarge { .. })
-        ));
-    }
-
-    #[test]
-    fn rejects_docx_read_outside_the_browsing_root() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join("root");
-        fs::create_dir(&root).unwrap();
-        fs::write(temp.path().join("outside.docx"), b"PK\x03\x04").unwrap();
-        std::os::unix::fs::symlink(temp.path().join("outside.docx"), root.join("link.docx"))
+        fs::write(temp.path().join("outside.pptx"), b"PK\x03\x04").unwrap();
+        std::os::unix::fs::symlink(temp.path().join("outside.pptx"), root.join("link.pptx"))
             .unwrap();
 
         let rooted = RootedFs::new(&root).unwrap();
 
         assert!(matches!(
-            rooted.read_docx("../outside.docx"),
+            rooted.read_document("../outside.pptx"),
             Err(FsError::PathEscapesRoot)
         ));
         assert!(matches!(
-            rooted.read_docx("link.docx"),
+            rooted.read_document("link.pptx"),
             Err(FsError::PathEscapesRoot)
         ));
     }

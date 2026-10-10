@@ -20,8 +20,6 @@ use crate::{
 };
 
 const LIST_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(5);
-const DOCX_CONTENT_TYPE: &str =
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 #[derive(Debug, Deserialize)]
 struct TaskImageQuery {
@@ -33,8 +31,7 @@ pub(super) fn router() -> Router<WorkspaceState> {
         .route("/api/list", get(list))
         .route("/api/file", get(file))
         .route("/api/image", get(image))
-        .route("/api/pdf", get(pdf))
-        .route("/api/docx", get(docx))
+        .route("/api/document", get(document))
         .route("/api/download", get(download))
         .route("/api/task-image", get(task_image))
 }
@@ -80,20 +77,12 @@ async fn image(
     Ok(viewer_bytes(image.content_type, image.bytes))
 }
 
-async fn pdf(
+async fn document(
     State(state): State<WorkspaceState>,
     Query(query): Query<PathQuery>,
 ) -> Result<Response, ApiError> {
-    let bytes = state.fs.read_pdf(&query.path)?;
-    Ok(viewer_bytes("application/pdf", bytes))
-}
-
-async fn docx(
-    State(state): State<WorkspaceState>,
-    Query(query): Query<PathQuery>,
-) -> Result<Response, ApiError> {
-    let bytes = state.fs.read_docx(&query.path)?;
-    Ok(viewer_bytes(DOCX_CONTENT_TYPE, bytes))
+    let document = state.fs.read_document(&query.path)?;
+    Ok(viewer_bytes(document.content_type, document.bytes))
 }
 
 async fn task_image(
@@ -141,31 +130,59 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn word_documents_are_answered_as_their_own_bytes() {
+    async fn documents_are_answered_as_their_own_bytes_and_type() {
         let root = tempfile::tempdir().unwrap();
-        std::fs::write(root.path().join("report.docx"), b"PK\x03\x04report").unwrap();
+        for name in [
+            "manual.pdf",
+            "report.docx",
+            "deck.pptx",
+            "budget.xlsx",
+            "macros.xlsm",
+        ] {
+            std::fs::write(root.path().join(name), name.as_bytes()).unwrap();
+        }
 
-        let response = request(app(root.path()), "/api/docx?path=report.docx").await;
+        for (name, content_type) in [
+            ("manual.pdf", "application/pdf"),
+            (
+                "report.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ),
+            (
+                "deck.pptx",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ),
+            (
+                "budget.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ),
+            (
+                "macros.xlsm",
+                "application/vnd.ms-excel.sheet.macroEnabled.12",
+            ),
+        ] {
+            let response = request(app(root.path()), &format!("/api/document?path={name}")).await;
 
-        assert_eq!(response.status(), StatusCode::OK);
-        let headers = response.headers();
-        assert_eq!(headers[header::CONTENT_TYPE], DOCX_CONTENT_TYPE);
-        assert_eq!(headers[header::CACHE_CONTROL], "no-store");
-        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        assert_eq!(body, &b"PK\x03\x04report"[..]);
+            assert_eq!(response.status(), StatusCode::OK, "{name}");
+            let headers = response.headers();
+            assert_eq!(headers[header::CONTENT_TYPE], content_type, "{name}");
+            assert_eq!(headers[header::CACHE_CONTROL], "no-store", "{name}");
+            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            assert_eq!(body, name.as_bytes(), "{name}");
+        }
     }
 
     #[tokio::test]
-    async fn another_file_type_is_refused_as_a_word_document() {
+    async fn another_file_type_is_refused_as_a_document() {
         let root = tempfile::tempdir().unwrap();
         std::fs::write(root.path().join("report.doc"), b"legacy").unwrap();
 
-        let response = request(app(root.path()), "/api/docx?path=report.doc").await;
+        let response = request(app(root.path()), "/api/document?path=report.doc").await;
 
         assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
         let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
         let body: Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(body["error"]["code"], "unsupported_docx");
+        assert_eq!(body["error"]["code"], "unsupported_document");
     }
 
     #[test]

@@ -37,6 +37,8 @@ const ownership = new Map([
   ],
   ["components/pdf-viewer.css", ["caffold-pdf-viewer"]],
   ["components/docx-viewer.css", ["caffold-docx-viewer"]],
+  ["components/pptx-viewer.css", ["caffold-pptx-viewer"]],
+  ["components/xlsx-viewer.css", ["caffold-xlsx-viewer"]],
   ["components/pagination.css", ["caffold-pagination"]],
   [
     "components/pane-resizer.css",

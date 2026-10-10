@@ -38,6 +38,15 @@ const IMAGE_TYPES = {
   webp: "WebP image",
 };
 
+// The documents a library-backed viewer draws, by file extension.
+const DOCUMENT_KINDS = new Map([
+  ["docx", "docx"],
+  ["pdf", "pdf"],
+  ["pptx", "pptx"],
+  ["xlsm", "xlsx"],
+  ["xlsx", "xlsx"],
+]);
+
 export function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => HTML_ESCAPE[character]);
 }
@@ -85,11 +94,8 @@ export function isPreviewableImagePath(path) {
 // The kind of document a library-backed viewer draws, or null for any other
 // file.
 export function documentPreviewKind(path) {
-  const name = fileNameFromPath(path).toLowerCase();
-  if (name.endsWith(".pdf")) {
-    return "pdf";
-  }
-  return name.endsWith(".docx") ? "docx" : null;
+  const extension = fileNameFromPath(path).toLowerCase().match(/\.([^.]+)$/)?.[1];
+  return DOCUMENT_KINDS.get(extension) ?? null;
 }
 
 export function imageTypeLabel(path) {

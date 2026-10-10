@@ -53,7 +53,7 @@ test.afterEach(async ({}, testInfo) => {
 
 function documentRequests(page, testInfo, suffix = "") {
   const pattern = new RegExp(
-    `/api/pdf\\?path=${encodeURIComponent(`src/${documentRoute(testInfo, suffix)}`)
+    `/api/document\\?path=${encodeURIComponent(`src/${documentRoute(testInfo, suffix)}`)
       .replace(".", "\\.")}`,
   );
   const requests = [];
