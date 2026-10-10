@@ -20,11 +20,11 @@ caffold-tasks-page {
     overflow: hidden;
   }
 
-  /* New Task has no header row for the corner controls to sit in, so the pane
-     leaves a header-high band above everything it shows. */
-  &[data-tasks-view="new"] .tasks-detail-pane,
-  &[data-tasks-view="home"] .tasks-detail-pane {
-    padding-top: var(--task-header-block-space, 0rem);
+  /* The Task store takeover has no header row for the corner controls to sit
+     in, so it leaves a header-high band above itself. */
+  &[data-tasks-view="new"] .tasks-detail-pane > caffold-task-store-recovery,
+  &[data-tasks-view="home"] .tasks-detail-pane > caffold-task-store-recovery {
+    margin-top: var(--task-header-block-space, 0rem);
   }
 
   /* One child fills the pane. */

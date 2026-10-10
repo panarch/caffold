@@ -151,7 +151,7 @@ test("opens home and New Task without focusing the prompt", { tag: "@all-viewpor
   await expect(prompt).toBeFocused();
 });
 
-test("keeps New Task below the compact Back to Tasks", { tag: "@phone" }, async ({ page }, testInfo) => {
+test("puts the compact Back to Tasks in the New Task header", { tag: "@phone" }, async ({ page }, testInfo) => {
   await installTaskLoopFixture(page);
   const tasksPage = page.locator("caffold-tasks-page");
   const back = page.locator("caffold-task-workspace .task-workspace-back");
@@ -163,37 +163,50 @@ test("keeps New Task below the compact Back to Tasks", { tag: "@phone" }, async 
     workspace.append(probe);
     const headerSize = probe.getBoundingClientRect().height;
     probe.remove();
-    const pane = document
-      .querySelector("caffold-tasks-page .tasks-detail-pane")
-      .getBoundingClientRect();
-    const scroller = document
-      .querySelector("caffold-task-new > .task-new-workspace")
-      .getBoundingClientRect();
-    const backBox = document
-      .querySelector("caffold-task-workspace .task-workspace-back")
-      .getBoundingClientRect();
+    const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
+    const pane = rect("caffold-tasks-page .tasks-detail-pane");
+    const header = rect("caffold-task-new > .task-new-header");
+    const title = rect("caffold-task-new > .task-new-header > h2");
+    const scroller = rect("caffold-task-new > .task-new-workspace");
+    const controls = [".task-workspace-back", ".task-workspace-switcher"]
+      .map((selector) => workspace.querySelector(selector))
+      .filter((control) => control.getClientRects().length)
+      .map((control) => control.getBoundingClientRect());
     return {
       headerSize,
-      band: scroller.top - pane.top,
-      scrollerTop: scroller.top,
-      backBottom: backBox.bottom,
+      headerTop: header.top - pane.top,
+      headerHeight: header.height,
+      scrollerGap: scroller.top - header.bottom,
+      titleLeft: title.left,
+      titleMiddle: title.top + title.height / 2,
+      controlsRight: Math.max(pane.left, ...controls.map(({ right }) => right)),
+      controlMiddles: controls.map(({ top, height }) => top + height / 2),
     };
   });
+  const expectHeaderOnTop = (layout) => {
+    expect(Math.abs(layout.headerTop)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(layout.headerHeight - layout.headerSize)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(layout.scrollerGap)).toBeLessThanOrEqual(0.5);
+  };
 
   await page.goto("/");
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
   await expect(tasksPage).toHaveAttribute("data-task-list-state", "empty");
   await expect(tasksPage.locator(".task-new-form")).toBeVisible();
   await expect(back).toBeHidden();
-  expect(Math.abs((await newTaskLayout()).band)).toBeLessThanOrEqual(0.5);
+  expectHeaderOnTop(await newTaskLayout());
 
   await page.goto("/tasks/new");
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "new");
   await expect(back).toBeVisible();
   await expect(back).toHaveAttribute("aria-label", "Back to tasks");
   const layout = await newTaskLayout();
-  expect(Math.abs(layout.band - layout.headerSize)).toBeLessThanOrEqual(0.5);
-  expect(layout.scrollerTop).toBeGreaterThanOrEqual(layout.backBottom);
+  expectHeaderOnTop(layout);
+  expect(layout.controlMiddles).toHaveLength(2);
+  expect(layout.titleLeft).toBeGreaterThanOrEqual(layout.controlsRight);
+  for (const middle of layout.controlMiddles) {
+    expect(Math.abs(middle - layout.titleMiddle)).toBeLessThanOrEqual(2);
+  }
   await captureReviewScreenshot(page, testInfo, "tasks-new-task-compact-back");
 
   const historyLength = await page.evaluate(() => window.history.length);
@@ -201,10 +214,128 @@ test("keeps New Task below the compact Back to Tasks", { tag: "@phone" }, async 
   await expect(page).toHaveURL("/");
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
   await expect(back).toBeHidden();
-  expect(Math.abs((await newTaskLayout()).band)).toBeLessThanOrEqual(0.5);
+  expectHeaderOnTop(await newTaskLayout());
   await expect
     .poll(() => page.evaluate(() => window.history.length))
     .toBe(historyLength);
+});
+
+test("titles New Task in a header shaped like the Section header", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const task = {
+    id: "thread_new_task_header",
+    threadId: "thread_new_task_header",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "New Task header Task",
+    cwd: "frontend/tests/e2e/fixtures/home",
+    cwdPath: "frontend/tests/e2e/fixtures/home",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: Date.now(),
+    updatedMs: Date.now(),
+    lastEventSummary: "New Task header summary",
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) })
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: [], nextCursor: null } })
+  );
+  const measure = (selectors) => page.evaluate(([headerSelector, titleSelector, directorySelector]) => {
+    const workspace = document.querySelector("caffold-task-workspace");
+    const probe = document.createElement("div");
+    probe.style.position = "absolute";
+    probe.style.height = "var(--task-workspace-header-size)";
+    workspace.append(probe);
+    const headerSize = probe.getBoundingClientRect().height;
+    probe.remove();
+    const pane = document.querySelector("caffold-tasks-page .tasks-detail-pane").getBoundingClientRect();
+    const header = document.querySelector(headerSelector);
+    const title = document.querySelector(titleSelector);
+    const directory = document.querySelector(directorySelector).getBoundingClientRect();
+    const listHeader = document.querySelector(".task-workspace-master-pane .task-list-primary-header");
+    return {
+      headerSize,
+      headerTop: header.getBoundingClientRect().top - pane.top,
+      headerHeight: header.getBoundingClientRect().height,
+      headerBorder: getComputedStyle(header).borderBottomWidth,
+      listHeaderHeight: listHeader?.getClientRects().length
+        ? listHeader.getBoundingClientRect().height
+        : null,
+      titleLeft: title.getBoundingClientRect().left - pane.left,
+      titleFontSize: getComputedStyle(title).fontSize,
+      titleClipped: title.scrollWidth > title.clientWidth,
+      directoryGap: directory.top - header.getBoundingClientRect().bottom,
+    };
+  }, selectors);
+
+  await page.goto("/tasks/new");
+  const title = page.locator("caffold-task-new > .task-new-header > h2");
+  await expect(title).toHaveText("New Task");
+  await expect(page.getByRole("heading", { name: "New Task", exact: true })).toBeVisible();
+  await expect(page.locator("caffold-task-new caffold-task-directory-field")).toBeVisible();
+  const global = await measure([
+    "caffold-task-new > .task-new-header",
+    "caffold-task-new > .task-new-header > h2",
+    "caffold-task-new caffold-task-directory-field",
+  ]);
+  await captureReviewScreenshot(page, testInfo, "tasks-new-task-header");
+
+  await page.goto("/?section=fixture-section-1");
+  await expect(page.locator("caffold-section-detail-summary h2")).toHaveText("home");
+  await expect(page.locator("caffold-section-detail .task-create-fixed-directory")).toBeVisible();
+  const section = await measure([
+    "caffold-detail-layout .detail-layout-summary",
+    "caffold-section-detail-summary h2",
+    "caffold-section-detail .task-create-fixed-directory",
+  ]);
+
+  expect(Math.abs(global.headerTop)).toBeLessThanOrEqual(0.5);
+  expect(global.titleClipped).toBe(false);
+  expect(global.headerBorder).toBe(section.headerBorder);
+  expect(global.titleFontSize).toBe(section.titleFontSize);
+  expect(global.titleLeft).toBeCloseTo(section.titleLeft, 0);
+  expect(global.directoryGap).toBeCloseTo(section.directoryGap, 0);
+  if (testInfo.project.name === "phone") {
+    expect(global.headerHeight).toBeCloseTo(global.headerSize, 0);
+  } else {
+    expect(global.headerHeight).toBeCloseTo(section.headerHeight, 0);
+    expect(global.headerHeight).toBeCloseTo(global.listHeaderHeight, 0);
+  }
+});
+
+test("makes room in the New Task header for the side pane toggle", { tag: ["@desktop", "@foldable"] }, async ({ page }, testInfo) => {
+  await installTaskLoopFixture(page);
+  await page.goto("/tasks/new");
+  const toggle = page.locator("caffold-task-workspace .task-workspace-side-pane-toggle");
+  const navigator = page.locator("caffold-task-workspace .task-workspace-master-pane");
+  await expect(navigator).toBeVisible();
+  await toggle.click();
+  await expect(navigator).toBeHidden();
+  await expect(toggle).toBeVisible();
+
+  const layout = await page.evaluate(() => {
+    const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
+    const pane = rect("caffold-tasks-page .tasks-detail-pane");
+    const header = rect("caffold-task-new > .task-new-header");
+    const title = rect("caffold-task-new > .task-new-header > h2");
+    const scroller = rect("caffold-task-new > .task-new-workspace");
+    const control = rect("caffold-task-workspace .task-workspace-side-pane-toggle");
+    return {
+      headerTop: header.top - pane.top,
+      scrollerGap: scroller.top - header.bottom,
+      titleLeft: title.left,
+      titleMiddle: title.top + title.height / 2,
+      toggleRight: control.right,
+      toggleMiddle: control.top + control.height / 2,
+    };
+  });
+  expect(Math.abs(layout.headerTop)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(layout.scrollerGap)).toBeLessThanOrEqual(0.5);
+  expect(layout.titleLeft).toBeGreaterThanOrEqual(layout.toggleRight);
+  expect(Math.abs(layout.toggleMiddle - layout.titleMiddle)).toBeLessThanOrEqual(2);
+  await captureReviewScreenshot(page, testInfo, "tasks-new-task-header-collapsed-list");
 });
 
 test("creates a task with responsive composer controls and canonical approval state", { tag: "@all-viewports" }, async ({

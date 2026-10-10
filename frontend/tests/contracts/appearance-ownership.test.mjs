@@ -325,6 +325,7 @@ test("structural shadows separate fixed regions from floating elevation", () => 
       "pages/(task-workspace)/settings/navigator.css",
       "pages/(task-workspace)/tasks/(detail)/layout.css",
       "pages/(task-workspace)/tasks/components/navigator.css",
+      "pages/(task-workspace)/tasks/new/page.css",
       "pages/(task-workspace)/tasks/recovery/page.css",
     ],
   );
