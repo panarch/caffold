@@ -1,0 +1,166 @@
+caffold-task-directory-field {
+  --task-directory-field-height: max(2.5rem, var(--interface-target-floor));
+  --task-directory-field-edge: var(--border);
+  display: block;
+  min-width: 0;
+  /* Rounded like the Composer card below it. The focus ring goes around the
+     element, so it takes in the list joined to the box. */
+  border-radius: 14px;
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+
+  & [hidden] {
+    display: none;
+  }
+
+  &:has(> .task-directory-field-box > .task-directory-field-toggle:focus-visible),
+  &[data-node="editing"] {
+    --task-directory-field-edge: var(--border-strong);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+
+  & > .task-directory-field-box {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 0.4375rem;
+    min-height: var(--task-directory-field-height);
+    padding: 0 var(--interface-space-5);
+    border: 1px solid var(--task-directory-field-edge);
+    border-radius: 14px;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  &[data-node="editing"] > .task-directory-field-box {
+    cursor: text;
+  }
+
+  /* An open list joins the box into one card, parted by a light line. */
+  &:has(> .task-directory-field-panel:not([hidden])) > .task-directory-field-box {
+    border-bottom-color: var(--border-subtle);
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  & .task-directory-field-icon,
+  & .task-directory-field-chevron {
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+  }
+
+  & .task-directory-field-glyph {
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+  }
+
+  & .task-directory-field-chevron {
+    width: 1rem;
+  }
+
+  & .task-directory-field-chevron-glyph {
+    display: block;
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  & .task-directory-field-toggle {
+    align-self: stretch;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: inherit;
+  }
+
+  & .task-directory-field-toggle:focus-visible {
+    outline: none;
+  }
+
+  /* A long path keeps its end, the folder it names, and loses its start. */
+  & .task-directory-field-path {
+    display: block;
+    overflow: hidden;
+    direction: rtl;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-directory-field-input {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+  }
+
+  /* Smaller than the box by an even gap, so its pressed background keeps
+     clear of the border. */
+  & .task-directory-field-edit {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: calc(var(--task-directory-field-height) - 2px - 2 * var(--interface-space-2));
+    height: calc(var(--task-directory-field-height) - 2px - 2 * var(--interface-space-2));
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--control-fg);
+    cursor: pointer;
+  }
+
+  & .task-directory-field-edit::before {
+    position: absolute;
+    inset: calc(0px - var(--interface-compact-hit-outset));
+    content: "";
+  }
+
+  & .task-directory-field-edit:hover,
+  & .task-directory-field-edit:focus-visible,
+  & .task-directory-field-edit[aria-pressed="true"] {
+    background: var(--control-active-bg);
+    outline: none;
+  }
+
+  & .task-directory-field-edit:disabled {
+    color: var(--disabled-text);
+    cursor: not-allowed;
+  }
+
+  & > .task-directory-field-panel {
+    overflow: hidden;
+    border: 1px solid var(--task-directory-field-edge);
+    border-top: 0;
+    border-radius: 0 0 14px 14px;
+    background: var(--surface);
+  }
+
+  & > .task-directory-field-panel > .task-directory-field-error {
+    margin: 0;
+    padding: var(--interface-space-3) var(--interface-space-5);
+    color: var(--danger-strong);
+    overflow-wrap: anywhere;
+  }
+
+  & > .task-directory-field-panel > caffold-file-tree {
+    --file-tree-height: auto;
+    --file-tree-max-height: 15rem;
+  }
+}
+
+@media (max-width: 620px) {
+  caffold-task-directory-field > .task-directory-field-panel > caffold-file-tree {
+    --file-tree-max-height: 40dvh;
+  }
+}

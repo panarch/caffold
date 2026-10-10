@@ -155,7 +155,6 @@ function composerButton({ action = "", primaryAction = "", imageId = "", fileId 
 
 test("provides the current Composer button catalog without retargeting it", () => {
   const attach = composerButton({ action: "attach" });
-  const browse = composerButton({ action: "browse-cwd" });
   const voice = composerButton({ action: "voice" });
   const cancelVoice = composerButton({ action: "cancel-voice" });
   const cancel = composerButton({ action: "cancel" });
@@ -165,7 +164,6 @@ test("provides the current Composer button catalog without retargeting it", () =
   const removeFile = composerButton({ action: "remove-file", fileId: "file-b" });
   let controls = [
     attach,
-    browse,
     voice,
     cancelVoice,
     cancel,
@@ -209,7 +207,6 @@ test("provides the current Composer button catalog without retargeting it", () =
   });
   assert.deepEqual(targets.map(({ id }) => id), [
     "task-composer:new:attach",
-    "task-composer:new:browse-cwd",
     "task-composer:new:voice",
     "task-composer:new:cancel-voice",
     "task-composer:new:cancel",
@@ -221,18 +218,18 @@ test("provides the current Composer button catalog without retargeting it", () =
   targets.forEach((target) => target.activate());
   assert.deepEqual(
     controls.map(({ clicks }) => clicks),
-    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1],
   );
 
   owner.state.attachments = [{ id: "image-a" }];
-  assert.equal(targets[6].isActionable(), true);
-  assert.equal(targets[8].isActionable(), false);
+  assert.equal(targets[5].isActionable(), true);
+  assert.equal(targets[7].isActionable(), false);
   owner.state.attachments = [];
-  assert.equal(targets[6].isActionable(), false);
+  assert.equal(targets[5].isActionable(), false);
   owner.state.activeSubmissionId = "submission-a";
-  assert.equal(targets[1].isActionable(), false);
+  assert.equal(targets[0].isActionable(), false);
   controls = controls.filter((control) => control !== voice);
-  assert.equal(targets[2].isActionable(), false);
+  assert.equal(targets[1].isActionable(), false);
 });
 
 test("offers Send once the turn options have settled what the turn runs under", () => {

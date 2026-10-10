@@ -503,6 +503,10 @@ class CaffoldAppShell extends HTMLElement {
     try {
       const health = await getHealth();
       this.initialPath = health.initialPath ?? "";
+      this.taskWorkspace.setServerPaths({
+        root: health.root ?? "",
+        homePath: health.homePath ?? null,
+      });
       this.updateBuildStatus(health);
       void this.refreshCaffoldUpdate();
       const route = parseRoute(window.location.href);

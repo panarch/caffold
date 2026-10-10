@@ -451,6 +451,10 @@ class CaffoldDetailLayout extends HTMLElement {
     return this.taskDetail()?.streamState;
   }
 
+  setServerPaths(server) {
+    this.sectionDetail()?.setServerPaths(server);
+  }
+
   setTransportAvailable(available) {
     this.transportAvailable = Boolean(available);
     this.sectionDetail()?.setTransportAvailable(this.transportAvailable);

@@ -64,7 +64,6 @@
 @import "./pages/(task-workspace)/tasks/components/composer/components/context-usage.css";
 @import "./pages/(task-workspace)/tasks/components/task-turn-options.css";
 @import "./pages/(task-workspace)/tasks/components/voice-level-meter.css";
-@import "./pages/(task-workspace)/tasks/new/components/directory-picker.css";
 @import "./pages/(task-workspace)/tasks/components/archived-delete-dialog.css";
 @import "./pages/(task-workspace)/tasks/components/task-switcher-dialog.css";
 @import "./pages/(task-workspace)/tasks/components/image-preview-dialog.css";
@@ -104,6 +103,7 @@
 @import "./pages/(task-workspace)/tasks/components/active-task-list/components/section.css";
 @import "./pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css";
 @import "./pages/(task-workspace)/tasks/components/archived-task-list.css";
+@import "./pages/(task-workspace)/tasks/components/task-create/components/directory-field.css";
 @import "./pages/(task-workspace)/tasks/components/task-create.css";
 @import "./pages/(task-workspace)/tasks/new/page.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(git)/layout.css";

@@ -248,7 +248,7 @@ test("creates a task with responsive composer controls and canonical approval st
   const newTaskComposer = page.locator("caffold-tasks-page .task-new-form");
   await expect(newTaskComposer).toBeVisible();
   await expect(
-    newTaskComposer.locator(".task-composer-context span:not(.sr-only)"),
+    page.locator("caffold-tasks-page caffold-task-directory-field .task-directory-field-path"),
   ).toHaveText(contextPath);
   await expect(newTaskComposer.getByRole("button", { name: "Cancel" })).toHaveCount(0);
 

@@ -7,6 +7,7 @@ import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
 } from "#app/scroll-scope.js";
 
 class CaffoldSectionDetail extends HTMLElement {
@@ -16,6 +17,7 @@ class CaffoldSectionDetail extends HTMLElement {
     }
     this.stateReady = true;
     this.section = null;
+    this.server = {};
     this.transportAvailable = true;
     this.taskStoreStatusSnapshot = null;
   }
@@ -70,6 +72,12 @@ class CaffoldSectionDetail extends HTMLElement {
     this.section = null;
   }
 
+  setServerPaths(server) {
+    this.ensureState();
+    this.server = { ...server };
+    this.taskCreate()?.setServerPaths(this.server);
+  }
+
   setTransportAvailable(available) {
     this.ensureState();
     this.transportAvailable = Boolean(available);
@@ -96,16 +104,10 @@ class CaffoldSectionDetail extends HTMLElement {
     const sectionId = `${this.section?.id ?? ""}`;
     const scopeId = `section:${sectionId}`;
     return mergeActionHintScopes(
-      {
-        targets: sectionId
-          ? taskCreate?.actionHintTargets({
-              scopeId,
-              clipRoots: [this],
-            }) ?? []
-          : [],
-        mutationRoots: [taskCreate].filter(Boolean),
-        scrollRoots: [this],
-      },
+      sectionId
+        ? taskCreate?.actionHintScope({ scopeId, clipRoots: [this] })
+        : null,
+      { targets: [], mutationRoots: [], scrollRoots: [this] },
       this.conversationShortcuts()?.actionHintScope({
         scopeId,
         clipRoots: [this],
@@ -123,7 +125,7 @@ class CaffoldSectionDetail extends HTMLElement {
     if (this.hidden || !sectionId) {
       return emptyScrollSurfaceScope();
     }
-    return {
+    const section = {
       blocked: false,
       surfaces: [{
         id: `section:${sectionId}:scroll`,
@@ -142,6 +144,13 @@ class CaffoldSectionDetail extends HTMLElement {
       resizeElements: [this],
       scrollRoots: [this],
     };
+    return mergeScrollSurfaceScopes(
+      section,
+      this.taskCreate()?.scrollSurfaceScope({
+        scopeId: `section:${sectionId}`,
+        clipRoots: [this],
+      }),
+    );
   }
 
   keyboardNavigationContexts() {
@@ -188,6 +197,7 @@ class CaffoldSectionDetail extends HTMLElement {
       browseCwd: false,
       composerSettings: this.section?.composerSettings ?? null,
     });
+    taskCreate.setServerPaths(this.server);
     taskCreate.setTransportAvailable(this.transportAvailable);
     taskCreate.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
   }

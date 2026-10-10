@@ -815,9 +815,18 @@ class CaffoldTaskWorkspace extends HTMLElement {
     );
   }
 
+  setServerPaths(server) {
+    this.ensureRendered();
+    this.tasksPage?.setServerPaths(server);
+  }
+
   actionHintEditingEscapeTarget(editable) {
-    // Escape in a terminal belongs to the program running there.
-    if (this.tasksPage?.ownsTerminalInput(editable)) {
+    // Escape in a terminal belongs to the program running there, and Escape
+    // in New Task's directory path returns to its folder list.
+    if (
+      this.tasksPage?.ownsTerminalInput(editable) ||
+      this.tasksPage?.ownsEditingEscape(editable)
+    ) {
       return null;
     }
     if (this.tasksPage?.contains(editable)) {

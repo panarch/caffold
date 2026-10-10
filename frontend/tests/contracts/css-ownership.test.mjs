@@ -185,8 +185,8 @@ const ownership = new Map([
     ["caffold-task-work-details"],
   ],
   [
-    "pages/(task-workspace)/tasks/new/components/directory-picker.css",
-    ["caffold-task-directory-picker"],
+    "pages/(task-workspace)/tasks/components/task-create/components/directory-field.css",
+    ["caffold-task-directory-field"],
   ],
   [
     "pages/(task-workspace)/tasks/components/archived-delete-dialog.css",
@@ -575,11 +575,8 @@ const componentChildren = new Map([
     ["caffold-terminal-view", "caffold-terminal-special-keys"],
   ],
   ["caffold-section-detail", ["caffold-task-create"]],
-  [
-    "caffold-task-new",
-    ["caffold-task-create", "caffold-task-directory-picker"],
-  ],
-  ["caffold-task-create", ["caffold-task-composer"]],
+  ["caffold-task-new", ["caffold-task-create"]],
+  ["caffold-task-create", ["caffold-task-composer", "caffold-task-directory-field"]],
   [
     "caffold-task-navigator",
     [
@@ -593,7 +590,7 @@ const componentChildren = new Map([
     ["caffold-active-task-section"],
   ],
   ["caffold-active-task-section", ["caffold-active-task-row"]],
-  ["caffold-task-directory-picker", ["caffold-file-tree"]],
+  ["caffold-task-directory-field", ["caffold-file-tree"]],
   [
     "caffold-task-detail",
     [

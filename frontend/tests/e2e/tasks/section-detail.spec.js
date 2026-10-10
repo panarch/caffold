@@ -101,7 +101,10 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
     "frontend/tests/e2e/fixtures/home",
   );
   await expect(
-    detail.locator('caffold-section-detail [data-composer-action="browse-cwd"]'),
+    detail.locator("caffold-section-detail .task-create-fixed-directory-path"),
+  ).toHaveText("frontend/tests/e2e/fixtures/home");
+  await expect(
+    detail.locator("caffold-section-detail caffold-task-directory-field"),
   ).toHaveCount(0);
   await expect(
     detail.locator("caffold-section-github-shortcuts"),

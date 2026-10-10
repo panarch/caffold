@@ -54,6 +54,8 @@ class CaffoldFileTree extends HTMLElement {
     this.expandedKeys = new Set();
     this.knownDirectoryKeys = new Set();
     this.selectedKey = "";
+    this.hiddenEntriesLast = false;
+    this.listboxLabel = "";
     this.globalFileSortMode = getSettings().fileSortMode;
     this.innerHTML = `
       <div class="file-tree-scroll">
@@ -138,6 +140,11 @@ class CaffoldFileTree extends HTMLElement {
     this.nodeByKey = index.nodeByKey;
     this.knownDirectoryKeys = index.directoryKeys;
     this.selectedKey = `${model.selectedKey ?? ""}`;
+    this.hiddenEntriesLast = Boolean(model.hiddenEntriesLast);
+    // With a label the rows are the options of a listbox whose owner keeps
+    // focus in a text field, so they leave the Tab order. An owner keeps one
+    // way for the tree's whole life.
+    this.listboxLabel = `${model.listboxLabel ?? ""}`;
     this.dataset.statusColumn = model.statusColumn ? "true" : "false";
     this.reconcileRows();
     this.finishPendingReveal();
@@ -181,6 +188,12 @@ class CaffoldFileTree extends HTMLElement {
 
   hasKey(key) {
     return this.nodeByKey.has(`${key ?? ""}`);
+  }
+
+  optionIdForKey(key) {
+    return this.listboxLabel && this.rowForKey(key)
+      ? optionId(this, `${key ?? ""}`)
+      : "";
   }
 
   captureScroll() {
@@ -512,10 +525,15 @@ class CaffoldFileTree extends HTMLElement {
     if (!list) {
       return;
     }
+    if (this.listboxLabel) {
+      list.setAttribute("role", "listbox");
+      list.setAttribute("aria-label", this.listboxLabel);
+    }
     const rows = visibleRows(
       this.nodes,
       this.expandedKeys,
       this.fileSortMode(),
+      this.hiddenEntriesLast,
     );
     const currentRows = new Map(
       Array.from(list.children).map((row) => [row.dataset.fileTreeRowKey, row]),
@@ -546,6 +564,9 @@ class CaffoldFileTree extends HTMLElement {
   patchRow(row, descriptor) {
     const { node, depth, parentKey } = descriptor;
     row.dataset.fileTreeRowKey = descriptor.key;
+    if (this.listboxLabel) {
+      row.setAttribute("role", "none");
+    }
     if (parentKey) {
       row.dataset.fileTreeParentKey = parentKey;
     } else {
@@ -631,7 +652,14 @@ class CaffoldFileTree extends HTMLElement {
       statusVisible ? `${status.label}. ${ariaLabel}` : ariaLabel,
     );
 
-    if (node.kind === "directory" && isExpandable(node)) {
+    if (this.listboxLabel) {
+      button.setAttribute("role", "option");
+      button.id = optionId(this, node.key);
+      button.tabIndex = -1;
+      button.setAttribute("aria-selected", node.key === this.selectedKey ? "true" : "false");
+      button.removeAttribute("aria-expanded");
+      button.removeAttribute("aria-current");
+    } else if (node.kind === "directory" && isExpandable(node)) {
       button.setAttribute("aria-expanded", expanded ? "true" : "false");
       button.removeAttribute("aria-current");
     } else {
@@ -694,7 +722,9 @@ class CaffoldFileTree extends HTMLElement {
     const row = this.rowForKey(key);
     const button = row?.querySelector(":scope > button.file-tree-entry");
     const node = this.nodeByKey.get(key);
-    if (button && node?.selection !== false && !isExpandable(node)) {
+    if (button && this.listboxLabel) {
+      button.setAttribute("aria-selected", key === this.selectedKey ? "true" : "false");
+    } else if (button && node?.selection !== false && !isExpandable(node)) {
       button.setAttribute("aria-current", key === this.selectedKey ? "true" : "false");
     }
   }
@@ -831,10 +861,10 @@ function defaultExpandedKeys(nodeByKey) {
     .map((node) => node.key);
 }
 
-function visibleRows(nodes, expandedKeys, fileSortMode) {
+function visibleRows(nodes, expandedKeys, fileSortMode, hiddenEntriesLast) {
   const rows = [];
   const visit = (items, depth = 0, parentKey = "", passingGuideDepths = []) => {
-    const siblings = sortedNodes(items, fileSortMode);
+    const siblings = sortedNodes(items, fileSortMode, hiddenEntriesLast);
     for (const [index, node] of siblings.entries()) {
       if (node.kind === "group") {
         rows.push({ key: node.key, node, depth: 0, parentKey: "" });
@@ -879,7 +909,7 @@ function visibleRows(nodes, expandedKeys, fileSortMode) {
   return rows;
 }
 
-function sortedNodes(nodes, fileSortMode) {
+function sortedNodes(nodes, fileSortMode, hiddenEntriesLast = false) {
   return [...(nodes ?? [])].sort((left, right) => {
     if (left.variant === "parent" || right.variant === "parent") {
       return left.variant === right.variant
@@ -896,6 +926,9 @@ function sortedNodes(nodes, fileSortMode) {
       left.kind !== right.kind
     ) {
       return left.kind === "directory" ? -1 : right.kind === "directory" ? 1 : 0;
+    }
+    if (hiddenEntriesLast && Boolean(left.hidden) !== Boolean(right.hidden)) {
+      return left.hidden ? 1 : -1;
     }
     const nameOrder = compareNamesIgnoringCase(left.name, right.name);
     if (nameOrder !== 0 || fileSortMode !== FILE_SORT_MODES.NAME) {
@@ -960,6 +993,10 @@ function cleanTreePath(path) {
     .split("/")
     .filter((segment) => segment && segment !== "." && segment !== "..")
     .join("/");
+}
+
+function optionId(tree, key) {
+  return `${tree.id || "file-tree"}-option-${encodeURIComponent(key)}`;
 }
 
 function nextAnimationFrame() {

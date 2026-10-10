@@ -704,14 +704,24 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/task-turn-options.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/task-turn-options.js"
         ))),
-        "pages/(task-workspace)/tasks/new/components/directory-picker.css" => {
+        "pages/(task-workspace)/tasks/components/task-create/components/directory-field.css" => {
             Some(css(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/new/components/directory-picker.css"
+                "../../frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field.css"
             )))
         }
-        "pages/(task-workspace)/tasks/new/components/directory-picker.js" => {
+        "pages/(task-workspace)/tasks/components/task-create/components/directory-field.js" => {
             Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/new/components/directory-picker.js"
+                "../../frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/task-create/directory-path.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/components/task-create/directory-path.js"
             )))
         }
         "pages/(task-workspace)/tasks/components/archived-delete-dialog.css" => {
@@ -1842,6 +1852,8 @@ mod tests {
             "pages/(task-workspace)/settings/grok/display.js",
             "pages/(task-workspace)/settings/about/page.js",
             "pages/(task-workspace)/tasks/components/composer/action-hints.js",
+            "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js",
+            "pages/(task-workspace)/tasks/components/task-create/directory-path.js",
         ] {
             let asset = get(path).unwrap_or_else(|| panic!("missing frontend asset {path}"));
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
@@ -2287,8 +2299,8 @@ mod tests {
                 b"caffold-task-turn-options".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/new/components/directory-picker.js",
-                b"caffold-task-directory-picker".as_slice(),
+                "pages/(task-workspace)/tasks/components/task-create/components/directory-field.js",
+                b"caffold-task-directory-field".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
@@ -2502,8 +2514,8 @@ mod tests {
                 b"caffold-task-composer".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/new/components/directory-picker.css",
-                b"caffold-task-directory-picker".as_slice(),
+                "pages/(task-workspace)/tasks/components/task-create/components/directory-field.css",
+                b"caffold-task-directory-field".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/archived-delete-dialog.css",

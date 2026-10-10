@@ -150,12 +150,27 @@ Global New owns:
 - its selected cwd and route representation;
 - model and agent selection, reasoning or effort, speed, and approval choices;
 - the prompt draft, attachments, and voice input;
-- its scoped Directory Picker;
+- the directory field above the Composer;
 - the setup-only isolated-worktree guide.
 
 A New Task intent from an existing Task starts at that Task's repository root,
 not its managed worktree root. The bootstrap initial path and `.` are later
 fallbacks. The current New Task owns directory selection and its route value.
+
+The directory field shows the chosen directory: an absolute path, written with
+`~` below the home directory, on a server rooted at `/`, and the path below the
+root on a server started with `--root`. A long path keeps its end in view.
+Selecting the field lists the folders directly inside the chosen directory: `..`
+first except at the root, then folders by name, then hidden folders, and no
+files. Choosing a folder makes it the directory at once and lists what is inside
+it. The pencil button types a path instead. The list follows what is typed,
+keeping the names that start with the text after the last `/`, so typing `.`
+shows the hidden folders. The arrows move the highlight, Tab completes the
+highlighted name, and Enter chooses the highlighted folder or the typed path and
+returns to the prompt. A path that cannot be listed shows why below the field
+and leaves the directory as it was. Escape steps back from typing to the list
+and from the list to the closed field, and leaving the field drops a typed path.
+The field is locked while the Task starts.
 
 Codex readiness gates only Codex surfaces. Its install, update, sign-in,
 restart, and recovery guidance lives in Codex Settings. The workspace
@@ -185,9 +200,10 @@ Managed-worktree preparation happens explicitly from the resulting Task; it
 is not an implicit side effect of task creation.
 
 Global New and Section New provide the same Composer, turn options, and error
-behavior. Section New fixes cwd to the Section's managed logical path, omits
-directory browsing and setup guidance, and preserves its draft across
-same-Section surface switches.
+behavior. Section New fixes cwd to the Section's managed logical path and shows
+it where Global New shows the directory field, without the field's controls. It
+omits setup guidance and preserves its draft across same-Section surface
+switches.
 
 Section New also presents an **Existing conversations** card once Codex
 capability is known and Codex is installed. Its Codex row opens a native dialog
@@ -483,7 +499,8 @@ Settings includes:
 - Keyboard, which turns [keyboard navigation](#keyboard-navigation) on or off
   and lists the shortcuts it provides;
 - Files, which orders shared file trees either folders first or with every
-  entry by name; the Working Directory Picker always keeps folders first;
+  entry by name; the New Task directory field lists only folders, hidden ones
+  last;
 - Notifications controls for the current browser's permission and subscription,
   plus the active browser-installation count, labels, short IDs, and removal;
 - Remote Access status and constrained Tailscale Serve controls, with the ready

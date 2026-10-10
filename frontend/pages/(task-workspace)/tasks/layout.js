@@ -243,6 +243,17 @@ class CaffoldTasksPage extends HTMLElement {
       Boolean(this.taskDetail()?.ownsTerminalInput(element));
   }
 
+  ownsEditingEscape(element) {
+    return (this.view === "home" || this.view === "new") &&
+      Boolean(this.taskNew()?.ownsEditingEscape(element));
+  }
+
+  setServerPaths(server) {
+    this.ensureRendered();
+    this.taskNew()?.setServerPaths(server);
+    this.taskDetail()?.setServerPaths(server);
+  }
+
   async recoverForeground({
     initialActivation = false,
     isCurrent = () => true,

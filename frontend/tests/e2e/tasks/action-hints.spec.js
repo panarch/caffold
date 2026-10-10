@@ -77,11 +77,11 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   if (await createPrompt.isVisible()) {
     await expect(dialog.locator('[data-action-hint-code="M"]')).toBeVisible();
     await expect(dialog.locator('[data-action-hint-code="P"]')).toBeVisible();
-    await expect(dialog.getByLabel(/Browse Files/)).toBeVisible();
+    await expect(dialog.getByLabel(/Show folders/)).toBeVisible();
   } else {
     await expect(dialog.locator('[data-action-hint-code="M"]')).toHaveCount(0);
     await expect(dialog.locator('[data-action-hint-code="P"]')).toHaveCount(0);
-    await expect(dialog.getByLabel(/Browse Files/)).toHaveCount(0);
+    await expect(dialog.getByLabel(/Show folders/)).toHaveCount(0);
   }
 
   const anchored = await page.evaluate(() => {
@@ -2003,7 +2003,7 @@ async function captureActionHintVisualState(page) {
       );
     }
     for (const control of taskNew?.querySelectorAll(
-      'button[data-composer-action="attach"], button[data-composer-action="browse-cwd"], button[data-composer-action="voice"]',
+      'button[data-composer-action="attach"], .task-directory-field-toggle, .task-directory-field-edit, button[data-composer-action="voice"]',
     ) ?? []) {
       if (control.disabled) {
         continue;

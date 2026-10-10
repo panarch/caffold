@@ -342,19 +342,22 @@ test("the side pane key combination acts only where the corner button would", ()
   }
 });
 
-test("Escape in a terminal gets no editing destination", () => {
+test("Escape in a terminal or New Task's directory path gets no editing destination", () => {
   const pane = { id: "detail-pane" };
   const terminalInput = { id: "terminal-input" };
+  const directoryInput = { id: "directory-input" };
   const composer = { id: "composer" };
   const owner = {
     tasksPage: {
       ownsTerminalInput: (element) => element === terminalInput,
+      ownsEditingEscape: (element) => element === directoryInput,
       contains: () => true,
       querySelector: () => pane,
     },
   };
 
   assert.equal(workspace.actionHintEditingEscapeTarget.call(owner, terminalInput), null);
+  assert.equal(workspace.actionHintEditingEscapeTarget.call(owner, directoryInput), null);
   assert.equal(workspace.actionHintEditingEscapeTarget.call(owner, composer), pane);
 });
 

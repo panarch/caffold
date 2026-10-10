@@ -24,8 +24,8 @@ Turns **Keyboard navigation** on or off and lists its shortcuts. See
 ## Files
 
 Orders the file trees in Working Tree, Branch, Git, and GitHub: **Folders first**,
-or **All entries by name**. The folder picker of New Task always lists folders
-first.
+or **All entries by name**. The folder list of New Task shows only folders, with
+hidden folders last.
 
 ## Notifications, Remote Access, and Voice Input
 

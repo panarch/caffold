@@ -791,7 +791,7 @@ test("routes dialog and About reload intents through the app shell", { tag: "@al
     };
   });
 
-  await waitForActionHintTarget(page, "Browse Files");
+  await waitForActionHintTarget(page, "Show folders");
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("f");
   const backgroundHint = page.locator(

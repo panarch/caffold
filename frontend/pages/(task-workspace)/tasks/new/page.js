@@ -1,17 +1,16 @@
 import { cleanLogicalPath } from "../task-format.js";
-import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
+import { mergeActionHintScopes } from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
 } from "#app/scroll-scope.js";
-import "./components/directory-picker.js";
 import "../components/task-create.js";
 
 class CaffoldTaskNew extends HTMLElement {
   connectedCallback() {
     this.ensureState();
     this.addEventListener("caffold:task-create-intent", this.boundCreateIntent);
-    this.addEventListener("caffold:directory-picked", this.boundDirectoryPicked);
     this.ensureRendered();
   }
 
@@ -19,10 +18,6 @@ class CaffoldTaskNew extends HTMLElement {
     this.removeEventListener(
       "caffold:task-create-intent",
       this.boundCreateIntent,
-    );
-    this.removeEventListener(
-      "caffold:directory-picked",
-      this.boundDirectoryPicked,
     );
     this.taskCreate()?.deactivate();
   }
@@ -33,10 +28,10 @@ class CaffoldTaskNew extends HTMLElement {
     }
     this.stateReady = true;
     this.cwd = ".";
+    this.server = {};
     this.transportAvailable = true;
     this.taskStoreStatusSnapshot = null;
     this.boundCreateIntent = (event) => this.handleCreateIntent(event);
-    this.boundDirectoryPicked = (event) => this.handleDirectoryPicked(event);
   }
 
   ensureRendered() {
@@ -63,7 +58,6 @@ class CaffoldTaskNew extends HTMLElement {
           <p class="task-new-worktree-note">Need the current changes too? Say “Move this task and my current changes into an isolated worktree.”</p>
         </section>
       </section>
-      <caffold-task-directory-picker></caffold-task-directory-picker>
     `;
     this.syncTaskCreate();
   }
@@ -72,7 +66,6 @@ class CaffoldTaskNew extends HTMLElement {
     this.ensureState();
     this.cwd = cleanLogicalPath(cwd || defaultCwdPath || ".");
     this.ensureRendered();
-    this.directoryPicker()?.dismiss();
     this.syncTaskCreate();
   }
 
@@ -86,7 +79,12 @@ class CaffoldTaskNew extends HTMLElement {
   deactivate() {
     this.taskCreate()?.deactivate();
     this.hidden = true;
-    this.directoryPicker()?.dismiss();
+  }
+
+  setServerPaths(server) {
+    this.ensureState();
+    this.server = { ...server };
+    this.taskCreate()?.setServerPaths(this.server);
   }
 
   setTransportAvailable(available) {
@@ -109,15 +107,13 @@ class CaffoldTaskNew extends HTMLElement {
   actionHintScope() {
     this.ensureRendered();
     const scrollRoot = this.querySelector(":scope > .task-new-workspace");
-    const taskCreate = this.taskCreate();
-    return {
-      targets: taskCreate?.actionHintTargets({
+    return mergeActionHintScopes(
+      this.taskCreate()?.actionHintScope({
         scopeId: "new",
         clipRoots: [this, scrollRoot].filter(Boolean),
-      }) ?? [],
-      mutationRoots: [taskCreate].filter(Boolean),
-      scrollRoots: [scrollRoot].filter(Boolean),
-    };
+      }),
+      { targets: [], mutationRoots: [], scrollRoots: [scrollRoot].filter(Boolean) },
+    );
   }
 
   scrollSurfaceScope() {
@@ -127,7 +123,7 @@ class CaffoldTaskNew extends HTMLElement {
     if (this.hidden || !scrollport) {
       return emptyScrollSurfaceScope();
     }
-    return {
+    const page = {
       blocked: false,
       surfaces: [{
         id: `new:${cwd}:scroll`,
@@ -146,6 +142,13 @@ class CaffoldTaskNew extends HTMLElement {
       resizeElements: [this, scrollport],
       scrollRoots: [scrollport],
     };
+    return mergeScrollSurfaceScopes(
+      page,
+      this.taskCreate()?.scrollSurfaceScope({
+        scopeId: "new",
+        clipRoots: [this, scrollport],
+      }),
+    );
   }
 
   keyboardNavigationContexts() {
@@ -153,10 +156,11 @@ class CaffoldTaskNew extends HTMLElement {
     if (this.hidden) {
       return [];
     }
-    return mergeKeyboardNavigationContexts(
-      this.taskCreate()?.keyboardNavigationContexts({ scopeId: "new" }) ?? [],
-      this.directoryPicker()?.keyboardNavigationContexts?.() ?? [],
-    );
+    return this.taskCreate()?.keyboardNavigationContexts({ scopeId: "new" }) ?? [];
+  }
+
+  ownsEditingEscape(element) {
+    return !this.hidden && Boolean(this.taskCreate()?.ownsEditingEscape(element));
   }
 
   taskCreate() {
@@ -165,28 +169,11 @@ class CaffoldTaskNew extends HTMLElement {
     );
   }
 
-  directoryPicker() {
-    return this.querySelector(":scope > caffold-task-directory-picker");
-  }
-
   handleCreateIntent(event) {
     if (
       event.target !== this.taskCreate() ||
-      event.detail?.type !== "browse-cwd"
+      event.detail?.type !== "choose-cwd"
     ) {
-      return;
-    }
-    event.stopPropagation();
-    this.directoryPicker()?.open(this.selectedContextPath(), {
-      opener:
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null,
-    });
-  }
-
-  handleDirectoryPicked(event) {
-    if (event.target !== this.directoryPicker()) {
       return;
     }
     event.stopPropagation();
@@ -201,6 +188,7 @@ class CaffoldTaskNew extends HTMLElement {
       return;
     }
     taskCreate.setContext({ cwd: this.selectedContextPath(), browseCwd: true });
+    taskCreate.setServerPaths(this.server);
     taskCreate.setTransportAvailable(this.transportAvailable);
     taskCreate.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
   }

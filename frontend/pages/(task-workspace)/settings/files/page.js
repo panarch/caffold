@@ -177,7 +177,7 @@ class CaffoldSettingsFilesPage extends HTMLElement {
             ${options}
           </fieldset>
           <p class="settings-files-note" id="settings-files-picker-note">
-            The Working Directory Picker always keeps folders first.
+            The New Task folder list shows only folders, with hidden ones last.
           </p>
         </section>
       </div>
