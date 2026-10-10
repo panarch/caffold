@@ -357,7 +357,7 @@ test("selects nested Conversation code and table scrollports and cancels a lost 
   await page.keyboard.press("Escape");
 });
 
-test("cancels the frozen selector when Task list topology loses eligibility", { tag: "@desktop" }, async ({
+test("cancels the frozen selector when Task list topology loses eligibility", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { detail, tasks } = await installScrollFixture(page);
@@ -477,7 +477,7 @@ test("keeps active Scroll on S when only the current surface remains", { tag: "@
     .toBeLessThan(before.conversation);
 });
 
-test("switches active Scroll to fresh Action Hints with F", { tag: "@desktop" }, async ({
+test("switches active Scroll to fresh Action Hints with F", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { detail } = await installScrollFixture(page);

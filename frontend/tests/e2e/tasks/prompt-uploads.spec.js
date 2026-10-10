@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("uploads each attached file in turn before the prompt that names them", { tag: "@desktop" }, async ({ page }) => {
+test("uploads each attached file in turn before the prompt that names them", { tag: "@viewport-independent" }, async ({ page }) => {
   const { form, prompt, message } = await openFollowUp(page);
   const gates = { "server.log": deferred(), "shot.png": deferred() };
   const sent = await routeTaskUploads(page, {
@@ -84,7 +84,7 @@ test("uploads each attached file in turn before the prompt that names them", { t
   expect(sent.discarded).toEqual([]);
 });
 
-test("paints how far each file has gone without drawing the message again", { tag: "@desktop" }, async ({ page }) => {
+test("paints how far each file has gone without drawing the message again", { tag: "@viewport-independent" }, async ({ page }) => {
   const { form, prompt, message } = await openFollowUp(page);
   const gate = deferred();
   await routeTaskUploads(page, { respond: () => gate.promise });
@@ -185,7 +185,7 @@ test("keeps every line where it is while bars go and the message is confirmed", 
   expect({ width, height }).toEqual({ width: uploading.width, height: uploading.height });
 });
 
-test("returns a message whose upload failed, naming the file, and removes what went up", { tag: "@desktop" }, async ({ page }) => {
+test("returns a message whose upload failed, naming the file, and removes what went up", { tag: "@viewport-independent" }, async ({ page }) => {
   const { form, prompt, message } = await openFollowUp(page);
   const sent = await routeTaskUploads(page, {
     respond: (upload) =>
@@ -219,7 +219,7 @@ test("returns a message whose upload failed, naming the file, and removes what w
   expect(prompts).toEqual([]);
 });
 
-test("removes the files of a send cut off by a stopping server once Caffold answers again", { tag: "@desktop" }, async ({ page }) => {
+test("removes the files of a send cut off by a stopping server once Caffold answers again", { tag: "@viewport-independent" }, async ({ page }) => {
   const { form, prompt, message } = await openFollowUp(page);
   let stopping = true;
   const sent = await routeTaskUploads(page, {
@@ -256,7 +256,7 @@ test("removes the files of a send cut off by a stopping server once Caffold answ
   expect(sent.uploads.at(-1).folder).not.toBe(cutOff);
 });
 
-test("Cancel upload takes back a message when no turn is running", { tag: "@desktop" }, async ({ page }) => {
+test("Cancel upload takes back a message when no turn is running", { tag: "@viewport-independent" }, async ({ page }) => {
   const { form, prompt, message } = await openFollowUp(page);
   const gate = deferred();
   const sent = await routeTaskUploads(page, { respond: () => gate.promise });
@@ -286,7 +286,7 @@ test("Cancel upload takes back a message when no turn is running", { tag: "@desk
   gate.resolve();
 });
 
-test("Stop during an upload stops the turn and returns messages in the order they were sent", { tag: "@desktop" }, async ({ page }) => {
+test("Stop during an upload stops the turn and returns messages in the order they were sent", { tag: "@viewport-independent" }, async ({ page }) => {
   const { form, prompt, message } = await openFollowUp(page, { running: true });
   const gate = deferred();
   const sent = await routeTaskUploads(page, { respond: () => gate.promise });

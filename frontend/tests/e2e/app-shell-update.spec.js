@@ -96,7 +96,7 @@ test("tells each browser once that an update of Caffold was rolled back", { tag:
   }
 });
 
-test("asks again once Caffold answers after a reconnection", { tag: "@desktop" }, async ({
+test("asks again once Caffold answers after a reconnection", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -144,7 +144,7 @@ test("asks again once Caffold answers after a reconnection", { tag: "@desktop" }
   expect(reads).toBe(2);
 });
 
-test("tells a failed restore and leaves a successful update to the reload dialog", { tag: "@desktop" }, async ({
+test("tells a failed restore and leaves a successful update to the reload dialog", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const answer = {
@@ -188,7 +188,7 @@ test("tells a failed restore and leaves a successful update to the reload dialog
   await expect(page.locator("caffold-update-result-dialog > dialog")).toBeHidden();
 });
 
-test("waits for update registration while component styles are pending", { tag: "@desktop" }, async ({ page }) => {
+test("waits for update registration while component styles are pending", { tag: "@viewport-independent" }, async ({ page }) => {
   const requested = Promise.withResolvers();
   const release = Promise.withResolvers();
   await page.route("**/assets/component-styles/compact-icon-button.css", async (route) => {

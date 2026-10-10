@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import { installTaskLoopFixture } from "./support/task-loop-fixture.js";
 
-test("native import aliases share module identity with asset URLs and register their consumers", { tag: "@desktop" }, async ({ page }) => {
+test("native import aliases share module identity with asset URLs and register their consumers", { tag: "@viewport-independent" }, async ({ page }) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await installBrowserDefaults(page);

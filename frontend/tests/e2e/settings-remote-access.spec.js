@@ -278,7 +278,7 @@ test("hands off one exact private URL while remote management stays read-only", 
   expect(serveUpdates).toBe(0);
 });
 
-test("keeps canonical local status when a refresh request fails", { tag: "@desktop" }, async ({
+test("keeps canonical local status when a refresh request fails", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let requestCount = 0;
@@ -315,7 +315,7 @@ test("keeps canonical local status when a refresh request fails", { tag: "@deskt
   await expect(remoteAccess.getByRole("button", { name: "Retry" })).toBeEnabled();
 });
 
-test("presents an initial status request failure without inventing read-only state", { tag: "@desktop" }, async ({
+test("presents an initial status request failure without inventing read-only state", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.route(/\/api\/tailscale\/status(?:\?|$)/, (route) =>

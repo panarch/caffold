@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
   await mockAgentModels(page);
 });
 
-test("shows context compaction only while its lifecycle item is active", { tag: "@desktop" }, async ({
+test("shows context compaction only while its lifecycle item is active", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const threadId = "thread_context_compaction_status";

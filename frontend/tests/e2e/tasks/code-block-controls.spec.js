@@ -280,7 +280,7 @@ test("copies each block exactly with bounded success and retryable failure", { t
   expect(testInfo.project.name).toBe("desktop");
 });
 
-test("keeps excluded conversation surfaces plain", { tag: "@desktop" }, async ({
+test("keeps excluded conversation surfaces plain", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const scenario = await seedCodeBlockTask(page, "thread_code_exclusions", {
@@ -327,7 +327,7 @@ async function activateFirstActionHint(page, accessibleName) {
   await expect(dialog).toBeHidden();
 }
 
-test("keeps Markdown fallback text plain", { tag: "@desktop" }, async ({ page }) => {
+test("keeps Markdown fallback text plain", { tag: "@viewport-independent" }, async ({ page }) => {
   const scenario = await seedCodeBlockTask(page, "thread_code_fallback");
   await page.evaluate(() => {
     const fallback = document.createElement("caffold-task-markdown");

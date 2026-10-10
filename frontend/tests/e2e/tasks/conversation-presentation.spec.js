@@ -1481,7 +1481,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   await captureReviewScreenshot(page, testInfo, "tasks-conversation");
 });
 
-test("shows the turn's time on an answer the provider did not time", { tag: "@desktop" }, async ({
+test("shows the turn's time on an answer the provider did not time", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   // Codex times items while it reports them live and stops timing them in the

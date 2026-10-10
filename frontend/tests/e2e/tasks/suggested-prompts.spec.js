@@ -132,7 +132,7 @@ test("offers each suggested request as a button of its own under the answer", { 
   expect(long.height).toBeGreaterThan(short.height + 4);
 });
 
-test("fills the Composer with the chosen request after what is being written", { tag: "@desktop" }, async ({
+test("fills the Composer with the chosen request after what is being written", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await seedSuggestedPromptTask(page, "thread_suggested_fill");
@@ -156,7 +156,7 @@ test("fills the Composer with the chosen request after what is being written", {
   expect(await caretAtEnd(prompt)).toBe(true);
 });
 
-test("locks the buttons while the Task cannot be reached", { tag: "@desktop" }, async ({
+test("locks the buttons while the Task cannot be reached", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await seedSuggestedPromptTask(page, "thread_suggested_locked");
@@ -182,7 +182,7 @@ test("locks the buttons while the Task cannot be reached", { tag: "@desktop" }, 
   }
 });
 
-test("keeps a message that holds only suggestions", { tag: "@desktop" }, async ({
+test("keeps a message that holds only suggestions", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await seedSuggestedPromptTask(page, "thread_suggested_only", { text: "" });

@@ -741,7 +741,7 @@ test("opens direct and rendered Issue links through the Issue owner", { tag: "@a
   );
 });
 
-test("a folded section of GitHub content opens with F, and its links then get codes", { tag: "@desktop" }, async ({
+test("a folded section of GitHub content opens with F, and its links then get codes", { tag: "@viewport-independent" }, async ({
   context,
   page,
 }) => {
@@ -1664,7 +1664,7 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
-test("holds Start Task while the chosen model's permission modes are still arriving", { tag: "@desktop" }, async ({ page }) => {
+test("holds Start Task while the chosen model's permission modes are still arriving", { tag: "@viewport-independent" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   const secondModel = {
     ...AGENT_MODELS_FIXTURE.models[0],
@@ -1909,7 +1909,7 @@ test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll cont
   await expect(opener).toBeFocused();
 });
 
-test("starts a Task from a Section-scoped GitHub Issue", { tag: "@desktop" }, async ({ page }) => {
+test("starts a Task from a Section-scoped GitHub Issue", { tag: "@viewport-independent" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page, {
     sectionComposerSettings: {
       model: "gpt-5.6-sol",
@@ -1961,7 +1961,7 @@ test("starts a Task from a Section-scoped GitHub Issue", { tag: "@desktop" }, as
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
-test("names the tools a Claude Task actually has in its issue setup prompt", { tag: "@desktop" }, async ({ page }) => {
+test("names the tools a Claude Task actually has in its issue setup prompt", { tag: "@viewport-independent" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page, {
     sectionComposerSettings: { model: "claude-opus-5" },
   });
@@ -2027,7 +2027,7 @@ test("names the tools a Claude Task actually has in its issue setup prompt", { t
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
-test("names the tools a Grok Task actually has in its issue setup prompt", { tag: "@desktop" }, async ({ page }) => {
+test("names the tools a Grok Task actually has in its issue setup prompt", { tag: "@viewport-independent" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page, {
     sectionComposerSettings: { model: "grok-4.5" },
   });

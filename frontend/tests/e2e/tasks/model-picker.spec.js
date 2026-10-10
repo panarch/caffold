@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installTaskApiFixture, taskDetailFixture } from "../support/task-api-fixture.js";
 import { captureReviewScreenshot, emitTaskDetailBootstrap } from "../support/task-fixtures.js";
 
-test("browses providers without changing the selected model or requesting its permissions", { tag: "@desktop" }, async ({ page }) => {
+test("browses providers without changing the selected model or requesting its permissions", { tag: "@viewport-independent" }, async ({ page }) => {
   const requests = await installCatalog(page);
   await page.goto("/tasks/new?cwd=src");
   const form = page.locator(".task-new-form");
@@ -28,7 +28,7 @@ test("browses providers without changing the selected model or requesting its pe
   await expect(menu.locator('[data-model="shared"]')).toBeFocused();
 });
 
-test("chooses a model before exposing only that model's settings", { tag: "@desktop" }, async ({ page }) => {
+test("chooses a model before exposing only that model's settings", { tag: "@viewport-independent" }, async ({ page }) => {
   const requests = await installCatalog(page);
   await page.goto("/tasks/new?cwd=src");
   const picker = page.locator(".task-new-form caffold-task-turn-options");
@@ -163,7 +163,7 @@ test("fits a narrow phone with enlarged Interface text", { tag: "@phone" }, asyn
   await captureReviewScreenshot(page, testInfo, "model-picker-narrow-large");
 });
 
-test("opening the menu again offers the models the agents answer now", { tag: "@desktop" }, async ({ page }) => {
+test("opening the menu again offers the models the agents answer now", { tag: "@viewport-independent" }, async ({ page }) => {
   const agents = { models: catalog() };
   const asked = await answerModelsFrom(page, agents);
   await page.goto("/tasks/new?cwd=src");
@@ -184,7 +184,7 @@ test("opening the menu again offers the models the agents answer now", { tag: "@
   await expect(menu.locator('[data-model="shared"]')).toHaveAttribute("aria-pressed", "true");
 });
 
-test("a list that cannot be read again leaves the model unavailable", { tag: "@desktop" }, async ({ page }) => {
+test("a list that cannot be read again leaves the model unavailable", { tag: "@viewport-independent" }, async ({ page }) => {
   const agents = { models: catalog() };
   const asked = await answerModelsFrom(page, agents);
   await page.goto("/tasks/new?cwd=src");
@@ -204,7 +204,7 @@ test("a list that cannot be read again leaves the model unavailable", { tag: "@d
   await expect(picker.locator(".task-permission-picker")).toBeHidden();
 });
 
-test("offers only the existing Task's provider", { tag: "@desktop" }, async ({ page }) => {
+test("offers only the existing Task's provider", { tag: "@viewport-independent" }, async ({ page }) => {
   await installCatalog(page);
   const detail = taskDetailFixture({ model: "shared", reasoningEffort: "xhigh" });
   await page.route("**/api/tasks/thread-1", (route) => route.fulfill({ json: detail }));

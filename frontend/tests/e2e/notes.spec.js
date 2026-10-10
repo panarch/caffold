@@ -203,7 +203,7 @@ test("Note details keeps compact paint, touch targets and native keyboard disclo
   await captureReviewScreenshot(page, testInfo, "notes-compact-button");
 });
 
-test("the Notes tab sits between Tasks and Settings and reads the server's empty store", { tag: "@desktop" }, async ({
+test("the Notes tab sits between Tasks and Settings and reads the server's empty store", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.goto("/");
@@ -292,7 +292,7 @@ test("the tree opens one directory at a time, directories first, beside the open
   await captureReviewScreenshot(page, testInfo, "notes-long-names");
 });
 
-test("an archived Task that wrote a Note is named without a link", { tag: "@desktop" }, async ({
+test("an archived Task that wrote a Note is named without a link", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await stubNotes(page, {
@@ -314,7 +314,7 @@ test("an archived Task that wrote a Note is named without a link", { tag: "@desk
   await expect(details.getByRole("link")).toHaveText(["Write storage notes"]);
 });
 
-test("Action Hints open Note details and continue inside them until Escape closes them", { tag: "@desktop" }, async ({
+test("Action Hints open Note details and continue inside them until Escape closes them", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await stubNotes(page);
@@ -332,7 +332,7 @@ test("Action Hints open Note details and continue inside them until Escape close
   await expect(details).toBeHidden();
 });
 
-test("Note details copies the Note's path and its Markdown, and has no Markdown to copy for an empty Note", { tag: "@desktop" }, async ({
+test("Note details copies the Note's path and its Markdown, and has no Markdown to copy for an empty Note", { tag: "@viewport-independent" }, async ({
   context,
   page,
 }) => {
@@ -375,7 +375,7 @@ test("Note details copies the Note's path and its Markdown, and has no Markdown 
   await expect(copyPath).toBeEnabled();
 });
 
-test("Action Hints copy the Note path from inside Note details", { tag: "@desktop" }, async ({
+test("Action Hints copy the Note path from inside Note details", { tag: "@viewport-independent" }, async ({
   context,
   page,
 }) => {
@@ -446,7 +446,7 @@ test("Note details actions measure the same as the Task details actions", { tag:
   expect(copyMarkdown).toEqual(task);
 });
 
-test("a Note address opens the directories that hold it", { tag: "@desktop" }, async ({
+test("a Note address opens the directories that hold it", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await stubNotes(page);
@@ -464,7 +464,7 @@ test("a Note address opens the directories that hold it", { tag: "@desktop" }, a
   await expect(treeEntry(page, "Storage decision")).toHaveAttribute("aria-current", "true");
 });
 
-test("a directory that fails to load says so and loads again when it is opened again", { tag: "@desktop" }, async ({
+test("a directory that fails to load says so and loads again when it is opened again", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let failures = 1;
@@ -685,7 +685,7 @@ test("choosing the Notes tab again brings the tree back to the top", { tag: "@ph
   await expect(page).toHaveURL(/\/notes$/);
 });
 
-test("a Note URL survives reload and browser history", { tag: "@desktop" }, async ({
+test("a Note URL survives reload and browser history", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await stubNotes(page);
@@ -714,7 +714,7 @@ test("a Note URL survives reload and browser history", { tag: "@desktop" }, asyn
   await expect(title).toHaveText("Storage decision");
 });
 
-test("a missing Note and an empty Note each say what they are", { tag: "@desktop" }, async ({
+test("a missing Note and an empty Note each say what they are", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await stubNotes(page);
@@ -732,7 +732,7 @@ test("a missing Note and an empty Note each say what they are", { tag: "@desktop
   await expect(workspace.locator("caffold-markdown-preview")).toBeHidden();
 });
 
-test("an answer for a Note that was left never replaces the Note picked after it", { tag: "@desktop" }, async ({
+test("an answer for a Note that was left never replaces the Note picked after it", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let release;
@@ -765,7 +765,7 @@ test("an answer for a Note that was left never replaces the Note picked after it
   await expect(primaryDocument(page).locator("caffold-markdown-preview h1")).toHaveText("Inbox");
 });
 
-test("Notes reads again and opens Notes after the app is attached again", { tag: "@desktop" }, async ({
+test("Notes reads again and opens Notes after the app is attached again", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await stubNotes(page);
@@ -790,7 +790,7 @@ test("Notes reads again and opens Notes after the app is attached again", { tag:
   await expect(primaryDocument(page).locator("caffold-markdown-preview h1")).toHaveText("Inbox");
 });
 
-test("coming back to Notes reads the top and every opened directory again", { tag: "@desktop" }, async ({
+test("coming back to Notes reads the top and every opened directory again", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let tree = TREE;

@@ -249,7 +249,7 @@ test("browses source through the shared Files navigator and one root watch", { t
     .toBe(true);
 });
 
-test("downloads a file Source cannot show from inside File details", { tag: "@desktop" }, async ({
+test("downloads a file Source cannot show from inside File details", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const name = `download-${testInfo.project.name}.bin`;
@@ -736,7 +736,7 @@ test("keeps browser Back aligned with the semantic Review parent", { tag: ["@des
   await expect(page).toHaveURL("/");
 });
 
-test("keeps the open file shown while the next one loads and names a longer wait", { tag: "@desktop" }, async ({
+test("keeps the open file shown while the next one loads and names a longer wait", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { reviewScenario, tasksPage, taskReview } =

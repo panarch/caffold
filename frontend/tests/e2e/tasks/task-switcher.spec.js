@@ -57,7 +57,7 @@ test("opens the recent Task list from a Task and moves to the chosen one", { tag
   await expect(page.locator(".tasks-detail-pane")).toBeFocused();
 });
 
-test("keeps the order it opened with while Tasks keep moving", { tag: "@desktop" }, async ({
+test("keeps the order it opened with while Tasks keep moving", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const tasks = switcherTasks();
@@ -92,7 +92,7 @@ test("keeps the order it opened with while Tasks keep moving", { tag: "@desktop"
   ]);
 });
 
-test("stays out of Settings, which never loads the Task list", { tag: "@desktop" }, async ({
+test("stays out of Settings, which never loads the Task list", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   let taskListRequests = 0;
@@ -113,7 +113,7 @@ test("stays out of Settings, which never loads the Task list", { tag: "@desktop"
     .toBeHidden();
 });
 
-test("reports an unloaded Task list instead of calling it empty", { tag: "@desktop" }, async ({
+test("reports an unloaded Task list instead of calling it empty", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const release = deferredTaskList();
@@ -157,7 +157,7 @@ test("reopens at the newest Task after being scrolled and closed", { tag: "@desk
   expect(await scrollport.evaluate((element) => element.scrollTop)).toBe(0);
 });
 
-test("closes the whole surface on one Escape and returns focus", { tag: "@desktop" }, async ({
+test("closes the whole surface on one Escape and returns focus", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installSwitcherFixture(page, switcherTasks());
@@ -171,7 +171,7 @@ test("closes the whole surface on one Escape and returns focus", { tag: "@deskto
   await expect(page.locator(".task-workspace-surface")).toBeFocused();
 });
 
-test("says an empty active list is empty instead of doing nothing", { tag: "@desktop" }, async ({
+test("says an empty active list is empty instead of doing nothing", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installSwitcherFixture(page, []);
@@ -307,7 +307,7 @@ test("brings the chosen Task into view in the Task list", { tag: "@desktop" }, a
   })).toBe(true);
 });
 
-test("shows each row the time the list is ordered by", { tag: "@desktop" }, async ({
+test("shows each row the time the list is ordered by", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   // Opening a Task moves its recency to now, so recency must not decide this.
@@ -337,7 +337,7 @@ test("shows each row the time the list is ordered by", { tag: "@desktop" }, asyn
     .toBeGreaterThan(new Date(times[1]).getTime());
 });
 
-test("opens from the Task list header by pointer and closes with its X", { tag: "@desktop" }, async ({
+test("opens from the Task list header by pointer and closes with its X", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installSwitcherFixture(page, switcherTasks());
@@ -363,7 +363,7 @@ test("opens from the Task list header by pointer and closes with its X", { tag: 
   await expect(opener).toBeFocused();
 });
 
-test("hands the Hint session to the switcher when its opener is chosen by Hint", { tag: "@desktop" }, async ({
+test("hands the Hint session to the switcher when its opener is chosen by Hint", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const tasks = switcherTasks();

@@ -943,7 +943,7 @@ test("says that a new task is starting until creation is answered", { tag: "@all
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("restores the exact new task draft when creation is rejected", { tag: "@desktop" }, async ({
+test("restores the exact new task draft when creation is rejected", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page, {

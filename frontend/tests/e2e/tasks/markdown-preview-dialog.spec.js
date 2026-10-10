@@ -126,7 +126,7 @@ test("previews a Markdown fence in a modal and returns focus to its Preview butt
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("keeps the preview through a detail rerender and closes it when the Task changes or its detail is left", { tag: "@desktop" }, async ({
+test("keeps the preview through a detail rerender and closes it when the Task changes or its detail is left", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const scenario = await seedPreviewTask(

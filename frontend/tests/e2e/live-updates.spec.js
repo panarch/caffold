@@ -4,7 +4,7 @@ import { installBrowserDefaults } from "./support/browser-defaults.js";
 
 test(
   "multiplexes three logical channels per tab without blocking REST fetches",
-  { tag: "@desktop" },
+  { tag: "@viewport-independent" },
   async ({ context, page }) => {
     const secondPage = await context.newPage();
     await installBrowserDefaults(page);

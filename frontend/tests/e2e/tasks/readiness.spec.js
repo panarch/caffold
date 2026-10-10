@@ -516,7 +516,7 @@ test("Settings opens its usual first page", { tag: "@all-viewports" }, async ({ 
   await expect(codex).toHaveAccessibleName("Codex");
 });
 
-test("a blocked Codex found by Codex Settings marks no navigation", { tag: "@desktop" }, async ({ page }) => {
+test("a blocked Codex found by Codex Settings marks no navigation", { tag: "@viewport-independent" }, async ({ page }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({ json: statusFor("signInRequired") }),
   );

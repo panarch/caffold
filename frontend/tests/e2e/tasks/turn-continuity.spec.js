@@ -9,7 +9,7 @@ import {
 import { emitTaskDetailBootstrap } from "../support/task-fixtures.js";
 
 // Regressions exercise real Detail delivery and rendering through fixed wire pages.
-test("a reconnect containing all three short turns restores continuity", { tag: "@desktop" }, async ({ page }) => {
+test("a reconnect containing all three short turns restores continuity", { tag: "@viewport-independent" }, async ({ page }) => {
   const fixture = turnGapFixture();
   const client = await installTurnGapFixture(page, fixture);
   await page.goto(`/tasks/${fixture.threadId}?cwd=src`);
@@ -21,7 +21,7 @@ test("a reconnect containing all three short turns restores continuity", { tag: 
   expect(client.reads, "a complete bootstrap needs no extra Detail/history GET").toEqual([]);
 });
 
-test("a Detail channel error resubscribes and restores turns on the same physical connection", { tag: "@desktop" }, async ({ page }) => {
+test("a Detail channel error resubscribes and restores turns on the same physical connection", { tag: "@viewport-independent" }, async ({ page }) => {
   const fixture = turnGapFixture();
   const client = await installTurnGapFixture(page, fixture);
   await page.goto(`/tasks/${fixture.threadId}?cwd=src`);
@@ -54,7 +54,7 @@ test("a Detail channel error resubscribes and restores turns on the same physica
 });
 
 for (const initial of ["authoritative", "unscoped"]) {
-  test(`a bounded reconnect fills the gap after an ${initial} first response without scrolling`, { tag: "@desktop" }, async ({ page }) => {
+  test(`a bounded reconnect fills the gap after an ${initial} first response without scrolling`, { tag: "@viewport-independent" }, async ({ page }) => {
     const fixture = turnGapFixture({ longThirdTurn: true });
     const client = await installTurnGapFixture(page, fixture);
     await page.goto(`/tasks/${fixture.threadId}?cwd=src`);
@@ -75,7 +75,7 @@ for (const initial of ["authoritative", "unscoped"]) {
 
 }
 
-test("two clients converge when a bounded snapshot overtakes queued turn events", { tag: "@desktop" }, async ({ page, browser, baseURL }) => {
+test("two clients converge when a bounded snapshot overtakes queued turn events", { tag: "@viewport-independent" }, async ({ page, browser, baseURL }) => {
   const fixture = turnGapFixture({ longThirdTurn: true });
   const otherContext = await browser.newContext({
     baseURL,
@@ -104,7 +104,7 @@ test("two clients converge when a bounded snapshot overtakes queued turn events"
   }
 });
 
-test("a new live turn cannot discard the missing turn in a delayed recovery snapshot", { tag: "@desktop" }, async ({ page }) => {
+test("a new live turn cannot discard the missing turn in a delayed recovery snapshot", { tag: "@viewport-independent" }, async ({ page }) => {
   const fixture = turnGapFixture();
   const client = await installTurnGapFixture(page, fixture);
   await page.goto(`/tasks/${fixture.threadId}?cwd=src`);
@@ -122,7 +122,7 @@ test("a new live turn cannot discard the missing turn in a delayed recovery snap
   await expectAllTurns(page);
 });
 
-test("an in-flight history page survives a newer task revision", { tag: "@desktop" }, async ({ page }) => {
+test("an in-flight history page survives a newer task revision", { tag: "@viewport-independent" }, async ({ page }) => {
   const fixture = turnGapFixture({ longThirdTurn: true });
   const client = await installTurnGapFixture(page, fixture);
   let releaseHistory;
@@ -209,7 +209,7 @@ for (const earlierEntry of [false, true]) {
   });
 }
 
-test("reloading recovers a client that missed the middle turn", { tag: "@desktop" }, async ({ page }) => {
+test("reloading recovers a client that missed the middle turn", { tag: "@viewport-independent" }, async ({ page }) => {
   const fixture = turnGapFixture();
   const client = await installTurnGapFixture(page, fixture);
   await page.goto(`/tasks/${fixture.threadId}?cwd=src`);
@@ -283,7 +283,7 @@ test("automatic gap repair preserves selection, scroll anchor, and the composer 
   }
 });
 
-test("a page with a new cursor but no new history stops and retries the original cursor", { tag: "@desktop" }, async ({ page }) => {
+test("a page with a new cursor but no new history stops and retries the original cursor", { tag: "@viewport-independent" }, async ({ page }) => {
   const fixture = turnGapFixture({ longThirdTurn: true });
   const client = await installTurnGapFixture(page, fixture);
   client.setHistoryResponse(async () => ({
@@ -321,7 +321,7 @@ async function expectAllTurns(page) {
   ]);
 }
 
-test("opening an idle Task clears first-load progress when resumed history arrives first", { tag: "@desktop" }, async ({ page }) => {
+test("opening an idle Task clears first-load progress when resumed history arrives first", { tag: "@viewport-independent" }, async ({ page }) => {
   const fixture = turnGapFixture({ longThirdTurn: true });
   fixture.task.threadStatus = { type: "idle" };
   fixture.task.activeTurn = null;
@@ -371,7 +371,7 @@ test("idle entry shows an incomplete initial history even when no continuation w
   await page.screenshot({ path: testInfo.outputPath("idle-entry-history-error.png") });
 });
 
-test("backgrounding during idle entry retires its first history request before reentry", { tag: "@desktop" }, async ({ page }) => {
+test("backgrounding during idle entry retires its first history request before reentry", { tag: "@viewport-independent" }, async ({ page }) => {
   await page.addInitScript(() => {
     window.__entryVisibility = "visible";
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => window.__entryVisibility });

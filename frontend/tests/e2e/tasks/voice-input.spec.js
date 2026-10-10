@@ -283,7 +283,7 @@ test("records without focusing the prompt and inserts a host transcript at the s
   expect(scenario.createTaskRequests).toBe(0);
 });
 
-test("keeps live input feedback visible without transitions in reduced motion", { tag: "@desktop" }, async ({
+test("keeps live input feedback visible without transitions in reduced motion", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -322,7 +322,7 @@ test("keeps live input feedback visible without transitions in reduced motion", 
   await expect(meter).toHaveCount(0);
 });
 
-test("mounts the level meter only after microphone permission resolves", { tag: "@desktop" }, async ({
+test("mounts the level meter only after microphone permission resolves", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -359,7 +359,7 @@ test("mounts the level meter only after microphone permission resolves", { tag: 
   await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
 });
 
-test("does not render a stale meter when microphone capture is unavailable", { tag: "@desktop" }, async ({
+test("does not render a stale meter when microphone capture is unavailable", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -378,7 +378,7 @@ test("does not render a stale meter when microphone capture is unavailable", { t
   await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
 });
 
-test("shows the elapsed duration and automatically transcribes at the recording limit", { tag: "@desktop" }, async ({
+test("shows the elapsed duration and automatically transcribes at the recording limit", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installTaskLoopFixture(page);
@@ -424,7 +424,7 @@ test("shows the elapsed duration and automatically transcribes at the recording 
   expect(transcriptionRequests).toBe(1);
 });
 
-test("sends voice input that is not ready to Voice Input settings without downloading anything", { tag: "@desktop" }, async ({
+test("sends voice input that is not ready to Voice Input settings without downloading anything", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskLoopFixture(page);
@@ -453,7 +453,7 @@ test("sends voice input that is not ready to Voice Input settings without downlo
   expect(installRequests).toBe(0);
 });
 
-test("returns to Voice Input settings when the provider rejects its setup during transcription", { tag: "@desktop" }, async ({
+test("returns to Voice Input settings when the provider rejects its setup during transcription", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskLoopFixture(page);
@@ -498,7 +498,7 @@ test("returns to Voice Input settings when the provider rejects its setup during
   await expect(page).toHaveURL(/\/settings\/voice$/);
 });
 
-test("offers voice input again once Voice Input settings finish its setup", { tag: "@desktop" }, async ({
+test("offers voice input again once Voice Input settings finish its setup", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskLoopFixture(page);
@@ -637,7 +637,7 @@ test("finishes transcription before sending when Send is tapped during recording
   expect(scenario.createTaskRequests).toBe(0);
 });
 
-test("keeps recording Stop separate while voice steers an active turn", { tag: "@desktop" }, async ({
+test("keeps recording Stop separate while voice steers an active turn", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -701,7 +701,7 @@ test("keeps recording Stop separate while voice steers an active turn", { tag: "
   await expect(primaryAction).toHaveAccessibleName("Stop current turn");
 });
 
-test("keeps the draft unsent when send-triggered transcription fails", { tag: "@desktop" }, async ({
+test("keeps the draft unsent when send-triggered transcription fails", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   const scenario = await installTaskLoopFixture(page);
@@ -758,7 +758,7 @@ test("keeps the draft unsent when send-triggered transcription fails", { tag: "@
   expect(scenario.createTaskRequests).toBe(0);
 });
 
-test("keeps a follow-up draft and releases microphone tracks when recording is cancelled", { tag: "@desktop" }, async ({
+test("keeps a follow-up draft and releases microphone tracks when recording is cancelled", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -803,7 +803,7 @@ test("keeps a follow-up draft and releases microphone tracks when recording is c
   expect(scenario.followUpRequests).toBe(0);
 });
 
-test("reads voice status again when Voice Input settings change, but not while recording", { tag: "@desktop" }, async ({
+test("reads voice status again when Voice Input settings change, but not while recording", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await installTaskLoopFixture(page);
@@ -865,7 +865,7 @@ test("reads voice status again when Voice Input settings change, but not while r
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
 });
 
-test("cancels voice input while microphone permission is still pending", { tag: "@desktop" }, async ({
+test("cancels voice input while microphone permission is still pending", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -912,7 +912,7 @@ test("cancels voice input while microphone permission is still pending", { tag: 
   await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
 });
 
-test("returns to idle and releases the microphone when the composer is moved while recording", { tag: "@desktop" }, async ({
+test("returns to idle and releases the microphone when the composer is moved while recording", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -953,7 +953,7 @@ test("returns to idle and releases the microphone when the composer is moved whi
   ).toBeEnabled();
 });
 
-test("reports microphone permission denial without changing the draft and records once access is allowed", { tag: "@desktop" }, async ({
+test("reports microphone permission denial without changing the draft and records once access is allowed", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {

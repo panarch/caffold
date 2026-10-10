@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("components wait for shared CSS and share one request per stylesheet", { tag: "@desktop" }, async ({ page }) => {
+test("components wait for shared CSS and share one request per stylesheet", { tag: "@viewport-independent" }, async ({ page }) => {
   const started = Promise.withResolvers();
   const release = Promise.withResolvers();
   const requests = [];
@@ -93,7 +93,7 @@ test("new consumers declare their own scope, retain local overrides and reconnec
   expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(originalSheets + 1);
 });
 
-test("a busy spin turns only its owner's busy element and stops for reduced motion", { tag: "@desktop" }, async ({ page }) => {
+test("a busy spin turns only its owner's busy element and stops for reduced motion", { tag: "@viewport-independent" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await page.evaluate(async () => {

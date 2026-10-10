@@ -708,7 +708,7 @@ test("hands the Branch comparison base Hint to its retained native select", { ta
   ).toBeAttached();
 });
 
-test("retires the Branch base owner when its select binding is replaced", { tag: "@desktop" }, async ({
+test("retires the Branch base owner when its select binding is replaced", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
@@ -743,7 +743,7 @@ test("retires the Branch base owner when its select binding is replaced", { tag:
   await page.keyboard.press("Escape");
 });
 
-test("keeps the Branch base Hint available without ready compared files", { tag: "@desktop" }, async ({
+test("keeps the Branch base Hint available without ready compared files", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { reviewScenario, tasksPage, taskReview } =
@@ -840,7 +840,7 @@ test("keeps equivalent Branch header refreshes mutation-free", { tag: "@all-view
   ).toEqual({ sameSelect: true, mutations: 0 });
 });
 
-test("refreshes Branch after returning from the background", { tag: "@desktop" }, async ({
+test("refreshes Branch after returning from the background", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {

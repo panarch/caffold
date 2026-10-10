@@ -9,6 +9,10 @@ const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 
 const localServer = await createRegularPlaywrightServer();
 
+const desktopBrowser = {
+  viewport: { width: 1280, height: 800 },
+};
+
 export default defineConfig({
   testDir: "./tests/e2e",
   outputDir: join(repositoryRoot, "test-results"),
@@ -37,9 +41,13 @@ export default defineConfig({
     {
       name: "desktop",
       grep: viewportCoveragePattern("desktop"),
-      use: {
-        viewport: { width: 1280, height: 800 },
-      },
+      use: desktopBrowser,
+    },
+    {
+      // Behavior no viewport owns runs once, in the desktop browser.
+      name: "viewport-independent",
+      grep: viewportCoveragePattern("viewport-independent"),
+      use: desktopBrowser,
     },
     {
       name: "foldable",
