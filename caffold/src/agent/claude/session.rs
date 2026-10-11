@@ -652,12 +652,12 @@ mod tests {
         let hello = heard.first().expect("the greeting is the first word");
         assert_eq!(hello["request"]["subtype"], "initialize");
         assert_eq!(hello["request"]["sdkMcpServers"], json!(["caffold"]));
-        // The optional plan convention is refreshed, but the new-Task naming
+        // The session instructions are refreshed, but the new-Task naming
         // setup is not: this conversation's first turn has long since happened.
         let setup = hello["request"]["appendSystemPrompt"]
             .as_str()
-            .expect("reattachment refreshes the plan convention");
-        assert_eq!(setup, crate::agent::CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS);
+            .expect("reattachment refreshes the session instructions");
+        assert_eq!(setup, crate::agent::CAFFOLD_SESSION_INSTRUCTIONS);
         assert!(!setup.contains("newly created Caffold task"));
     }
 

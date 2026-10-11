@@ -158,7 +158,7 @@ per-directory prompt history. None of these paths deletes a Git branch.
 | Active-turn survival across backend replacement | The daemon owns the turn; a new proxy reconnects | The runner owns the child; a new backend reattaches and asks the session for current state | The leader owns the turn; a new bridge loads the session and reads the record for the turn's end |
 | Working directory | Reported and owned by the Codex thread | Persisted with the Caffold Task and supplied whenever the Claude session starts or resumes | Persisted with the Task; the driver's binding names the native session that runs there, and a worktree move forks the session |
 | Caffold-served tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized | Caffold-owned HTTP MCP server declared on session start and load, bound to the Task before its session exists |
-| Current-plan instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions | `_meta.rules` on a new session and the MCP `initialize` instructions on every load |
+| Session instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions | `_meta.rules` on a new session and the MCP `initialize` instructions on every load |
 | Prompt pictures | A `localImage` input naming the uploaded file, which Codex opens | A base64 image block the driver reads from the uploaded file | An ACP image block the driver reads from the uploaded file |
 | Context usage | `thread/tokenUsage/updated`: the last model request's `totalTokens` against `modelContextWindow`, on every request and again when a thread is resumed | `get_context_usage` after every assistant message the agent streams outside a subagent, after every result, and when an existing conversation's session is opened: the last response's input, cached or not, against `maxTokens`, as Claude's own status line counts it | `_x.ai/session/info`: `context.used` against `context.total`, or the model list's window, on every load and after every turn |
 | Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure | Diagnostic status; an attempted operation reports its own failure |
@@ -537,28 +537,40 @@ vocabulary—allow, allow always, deny, and deny and stop—and each driver offe
 only decisions its agent can carry out. See
 [Security and Approvals](security-and-approvals.md) for the exact mappings.
 
-## Current plan document convention
+## Session instructions
 
-Caffold owns one provider-neutral instruction describing the optional
+Caffold owns one provider-neutral instruction that every managed agent session
+receives, in two paragraphs.
+
+The first describes the optional
 [current plan document pair](../product/workflows.md#current-plan-documents).
 It tells an agent when and how to maintain the two ordinary Markdown files but
 does not require every Task to create them. Filesystem content remains the
 source of truth; the shared agent vocabulary has no plan entity, lifecycle, or
 progress writer.
 
-Each driver carries that same meaning through its native initialization
+The second tells an agent to point the person at a Note with a Markdown link
+whose text is the Note's name and whose target is its path, `/notes/<noteId>`,
+or `/notes/<noteId>?beside=<otherNoteId>` for two Notes side by side, with no
+scheme or host. The agent cannot know which address the person reaches Caffold
+at, and Caffold's rendered Markdown opens such a link in place
+([Notes](frontend.md#notes)) but leaves a bare path as text. The Notes tools'
+descriptions and answers carry no links.
+
+Each driver carries that same text through its native initialization
 boundary. Codex returns it as the Caffold MCP server's `instructions` on MCP
 initialization for thread start and resume. This leaves the project's Codex
 `developer_instructions` and Caffold's separately recorded first-turn naming policy
 unchanged. Claude supplies it through `appendSystemPrompt` on every session
 initialize; only a fresh Task appends the one-time naming instructions, while
-a resumed or reattached session receives the plan convention alone. Grok
+a resumed or reattached session receives the session instructions alone. Grok
 receives it as `_meta.rules` when a session is created, with the one-time
 naming instructions appended for a new Task, and as the Caffold MCP server's
 `instructions` on every load.
 
 No driver enables a native Plan or collaboration mode, translates native
-plan events, or exposes structured clarification questions for this feature.
+plan events, or exposes structured clarification questions for the plan
+convention.
 Planning decisions remain normal conversation, and the browser projects only
 the filesystem pair. Provider-specific transport tests verify both fresh and
 resume carriers without promoting their wire fields into the Tasks
@@ -668,7 +680,7 @@ schema by default.
 ## Code and verification map
 
 ```text
-caffold/src/agent.rs                    shared agent vocabulary and plan convention
+caffold/src/agent.rs                    shared agent vocabulary and session instructions
 caffold/src/agent/driver.rs             closed driver choice and shared Task operations
 caffold/src/agent/codex.rs              Codex entry point
 caffold/src/agent/codex/                app-server transport, protocol, readiness, contract, MCP bindings

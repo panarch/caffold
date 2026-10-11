@@ -39,12 +39,15 @@ pub(crate) const CAFFOLD_CLARIFICATION_FEEDBACK: &str = concat!(
     "Do not treat this feedback or an empty structured response as the user's choice."
 );
 
-/// The provider-neutral convention Caffold gives every managed agent session.
+/// The provider-neutral conventions Caffold gives every managed agent session:
+/// the optional current plan, then how to point the person at a Note.
 ///
-/// The files remain optional filesystem state: the instruction explains how
-/// to participate when a written plan is useful without turning every Task
-/// into a planning workflow or giving Caffold another plan ledger.
-pub(crate) const CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS: &str = concat!(
+/// The plan files remain optional filesystem state: the instruction explains
+/// how to participate when a written plan is useful without turning every Task
+/// into a planning workflow or giving Caffold another plan ledger. A Note link
+/// carries no host because the agent cannot know which address the person
+/// reaches Caffold at.
+pub(crate) const CAFFOLD_SESSION_INSTRUCTIONS: &str = concat!(
     "Caffold supports an optional current plan through two ordinary Markdown files relative ",
     "to the current working directory: .caffold/plans/current/PLAN.md and ",
     ".caffold/plans/current/CHECKLIST.md. When the work benefits from a durable written plan, ",
@@ -58,7 +61,14 @@ pub(crate) const CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS: &str = concat!(
     "questions and decisions through the normal conversation. Checked items do not by themselves ",
     "resolve or archive the plan. Do not change Git tracking or .gitignore for these files unless ",
     "the user asks. When the plan is no longer current, move or delete both files together; any ",
-    "history layout is the user's choice."
+    "history layout is the user's choice.",
+    "\n\n",
+    "Caffold Notes open for the person at Caffold paths. When you point the person at a Note, ",
+    "in your reply or in Note content, write a Markdown link whose text is the Note's name, such ",
+    "as [Release checklist](/notes/<noteId>) for one Note, or ",
+    "[Theme tokens beside Release checklist](/notes/<noteId>?beside=<otherNoteId>) to show two ",
+    "Notes side by side. Write the path exactly as shown, with no scheme or host. A bare path ",
+    "stays plain text that the person cannot open, so always write it as a link."
 );
 
 pub(crate) use approval::{
@@ -74,3 +84,20 @@ pub(crate) use conversation::{
 pub(crate) use driver::{
     AgentError, Driver, OpenedConversation, PermissionModes, PromptImage, TurnOptions, TurnRejected,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::CAFFOLD_SESSION_INSTRUCTIONS;
+
+    #[test]
+    fn the_session_instructions_give_the_plan_and_then_the_note_links() {
+        let (plan, notes) = CAFFOLD_SESSION_INSTRUCTIONS
+            .split_once("\n\n")
+            .expect("one paragraph each");
+        assert!(plan.starts_with("Caffold supports an optional current plan"));
+        assert!(!notes.contains('\n'));
+        assert!(notes.contains("no scheme or host"));
+        assert!(notes.contains("[Release checklist](/notes/<noteId>) for one Note"));
+        assert!(notes.contains("(/notes/<noteId>?beside=<otherNoteId>) to show two"));
+    }
+}

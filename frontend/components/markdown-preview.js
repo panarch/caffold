@@ -6,6 +6,7 @@ import {
   linkActionHintTarget,
   matchesLinkActionHintBinding,
 } from "../action-hint-scope.js";
+import { parseLinkRoute } from "../navigation-routes.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -363,6 +364,9 @@ function sanitizeAttributes(element) {
 
 function sanitizeLink(element) {
   const href = `${element.getAttribute("href") ?? ""}`.trim();
+  if (parseLinkRoute(href)?.kind === "notes") {
+    return;
+  }
   if (!isExternalUrl(href)) {
     element.replaceWith(...element.childNodes);
     return;

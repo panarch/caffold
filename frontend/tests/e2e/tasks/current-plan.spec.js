@@ -872,6 +872,42 @@ test("uses the Task cwd instead of its managed worktree root", { tag: "@viewport
   );
 });
 
+test("closes the plan document when a Note link in it opens the Note", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  const workspace = prepareWorkspace(testInfo);
+  writeCurrentDocuments(workspace.absolutePath, {
+    plan: "# Linked plan\n\nRecord the outcome in [Storage decision](/notes/storage).\n",
+    checklist: "- [ ] Record the outcome\n",
+  });
+  await installTaskApiFixture(page);
+  const detail = detailFor("thread-1", workspace.logicalPath);
+  await installTaskDetails(page, [detail]);
+
+  await page.goto(`/tasks/thread-1?cwd=${encodeURIComponent(workspace.logicalPath)}`);
+  const projection = currentPlanResponse(page, workspace.logicalPath);
+  await openTaskWithBootstrap(page.locator("caffold-tasks-page"), detail);
+  expect((await (await projection).json()).status).toBe("ready");
+
+  const currentPlan = page.locator("caffold-task-current-plan");
+  const planResponse = fileResponse(
+    page,
+    `${workspace.logicalPath}/.caffold/plans/current/PLAN.md`,
+  );
+  await currentPlan.getByRole("button", { name: /^Open plan:/ }).click();
+  await planResponse;
+  const dialog = currentPlan.locator("caffold-current-plan-document-dialog > dialog");
+  await expect(dialog).toHaveAttribute("open", "");
+  const note = dialog.getByRole("link", { name: "Storage decision" });
+  await expect(note).toHaveAttribute("href", "/notes/storage");
+  await expect(note).not.toHaveAttribute("target", /.+/);
+
+  await note.click();
+  await expect(page).toHaveURL("/notes/storage");
+  await expect(dialog).not.toHaveAttribute("open", "");
+  await expect(page.locator('caffold-note-document[data-note-side="primary"]')).toBeVisible();
+});
+
 test("rejects a stale plan refresh when Task context changes", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {

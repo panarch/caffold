@@ -1579,6 +1579,18 @@ is disabled for an empty Note. Each writes to the clipboard, reports Copied or
 a failure for a moment, drops a copy still in flight when what it copies
 changes, and provides its own Action Hint.
 
+A link to a Note opens in place wherever Caffold renders Markdown. Task
+Markdown and the shared Markdown Preview keep a link whose href
+`parseLinkRoute` reads as a Notes route as a native link without `target`, so
+following it, by pointer or Action Hint, is the App Shell's native-link
+navigation under the [History policy](navigation.md#history-policy). A link in
+either pane of a pair opens that Note alone. The code-block Markdown preview
+and Current Plan document dialogs close when Task Detail is left, so a link
+followed from either leaves no dialog open. Task Markdown counts `/notes` paths
+among the Caffold paths it never treats as files, as the server's file-link
+resolution does, and opens its other Caffold paths in a new tab. The Markdown
+Preview keeps no other relative link.
+
 ## Settings
 
 Settings lives inside Task Workspace. Appearance owns theme and Interface,

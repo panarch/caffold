@@ -184,6 +184,7 @@ requests, selected Task state, or component activation.
 The public helpers are:
 
 - `parseRoute(url)`
+- `parseLinkRoute(href)`
 - `routeUrl(route)`
 - `parentRoute(route)`
 - `routeRelation(from, to)`
@@ -194,6 +195,10 @@ The public helpers are:
 - `routeDomain(route)`
 - `routeMode(route)`
 - `routeTarget(route)`
+
+`parseLinkRoute` reads the route a rendered link's href names only when it is a
+path that keeps the browser on Caffold's origin; `//host/...` and `/\host/...`
+name none.
 
 `routeRelation` reports whether the second route descends below the first,
 ascends above it, swaps with it at the same place, or belongs to another tab.

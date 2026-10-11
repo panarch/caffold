@@ -489,6 +489,11 @@ The Notes surface only reads them.
   Markdown is unavailable for an empty Note.
 - The content renders as Markdown. An empty Note and a Note that no longer
   exists each say so, and a failed read offers Retry.
+- An agent points the person at a Note, or at two Notes side by side, with a
+  link. A link to a Note opens it in place wherever Caffold renders Markdown: a
+  Task's conversation, another Note, a Markdown file preview, the current plan,
+  or a code block's Markdown preview. The Notes tab becomes current, and Back
+  follows the [history policy](../architecture/navigation.md#history-policy).
 - With no Notes, the tree explains that an agent in a Task can save one.
 - Entering Notes, or returning the app to the foreground while Notes is shown,
   reads the top of the tree, every directory already opened, and each open Note

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   ROUTE_RELATION,
   parentRoute,
+  parseLinkRoute,
   parseRoute,
   routeAscentSteps,
   routeDomain,
@@ -399,6 +400,24 @@ test("assigns every route to the bottom tab that presents it", () => {
 
   for (const [url, expected] of cases) {
     assert.equal(routeTab(parseRoute(url)), expected, url);
+  }
+});
+
+test("reads a link's route only while following it stays in the application", () => {
+  assert.deepEqual(parseLinkRoute("/notes/note-1"), parseRoute("/notes/note-1"));
+  assert.equal(parseLinkRoute(" /notes/note-1?beside=note-2 ").secondaryNoteId, "note-2");
+  assert.deepEqual(parseLinkRoute("/tasks/thread"), parseRoute("/tasks/thread"));
+  for (const href of [
+    "notes/note-1",
+    "http://caffold.test/notes/note-1",
+    "https://example.com/notes/note-1",
+    "//example.com/notes/note-1",
+    "/\\example.com/notes/note-1",
+    "/files",
+    "",
+    null,
+  ]) {
+    assert.equal(parseLinkRoute(href), null, href);
   }
 });
 

@@ -405,7 +405,7 @@ impl GrokClient {
         let (mcp_servers, offered) = self.mcp_servers_for(&id).await;
         let rules = format!(
             "{}\n\n{}",
-            super::CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS,
+            super::CAFFOLD_SESSION_INSTRUCTIONS,
             CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS
         );
         let created = self
@@ -2785,6 +2785,7 @@ mod tests {
         }
         let rules = asked["_meta"]["rules"].as_str().unwrap();
         assert!(rules.contains(".caffold/plans/current/PLAN.md"));
+        assert!(rules.contains("/notes/<noteId>?beside=<otherNoteId>"));
         assert!(rules.contains("caffold__rename_current_task"));
 
         // Loaded again on the next bridge, the Task gets a fresh binding to

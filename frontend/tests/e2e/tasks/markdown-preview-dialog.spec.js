@@ -175,6 +175,33 @@ test("keeps the preview through a detail rerender and closes it when the Task ch
   expect(scenario.pageErrors).toEqual([]);
 });
 
+test("closes the preview when a Note link in it opens the Note", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const scenario = await seedPreviewTask(
+    page,
+    "thread_markdown_preview_note_link",
+    ["Record it in [Storage decision](/notes/storage).\n"],
+  );
+  const dialog = page.locator("caffold-task-markdown-preview-dialog > dialog");
+  await finalMarkdown(page).getByRole("button", { name: "Preview Markdown" }).click();
+  await expect(dialog).toHaveAttribute("open", "");
+  const note = dialog.getByRole("link", { name: "Storage decision" });
+  await expect(note).toHaveAttribute("href", "/notes/storage");
+  await expect(note).not.toHaveAttribute("target", /.+/);
+
+  await note.click();
+  await expect(page).toHaveURL("/notes/storage");
+  await expect(dialog).not.toHaveAttribute("open", "");
+  await expect(page.locator('caffold-note-document[data-note-side="primary"]')).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL("/notes");
+  await page.goBack();
+  await expect(page).toHaveURL("/tasks/" + scenario.threadId);
+  await expect(dialog).not.toHaveAttribute("open", "");
+  expect(scenario.pageErrors).toEqual([]);
+});
+
 test("drives the preview with Action Hints and Scroll mode", { tag: "@desktop" }, async ({
   page,
 }) => {
