@@ -159,6 +159,10 @@ export function cleanLogicalPath(path) {
   return cleanRelativeTaskPath(path);
 }
 
+export function sectionLabel(path) {
+  return `${path ?? ""}`.split("/").filter(Boolean).at(-1) ?? "Directory";
+}
+
 // How one tool call reads.
 //
 // Everything an agent does that Caffold draws no surface of its own for arrives

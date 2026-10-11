@@ -1,4 +1,5 @@
 import { escapeHtml } from "#components/dom.js";
+import { sectionLabel } from "#tasks/task-format.js";
 
 class CaffoldSectionDetailSummary extends HTMLElement {
   setSnapshot({ section = null } = {}) {
@@ -10,7 +11,7 @@ class CaffoldSectionDetailSummary extends HTMLElement {
     this.sectionName = `${section?.name ?? ""}`;
     this.innerHTML = section
       ? `<div class="section-detail-heading">
-          <h2 title="${escapeHtml(this.sectionName)}">${escapeHtml(this.sectionName)}</h2>
+          <h2 title="${escapeHtml(this.sectionName)}">${escapeHtml(sectionLabel(this.sectionName))}</h2>
         </div>`
       : "";
   }

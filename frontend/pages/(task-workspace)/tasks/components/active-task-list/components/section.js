@@ -1,5 +1,6 @@
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import { taskStoreOperationsPresentation } from "#app/pages/(task-workspace)/task-store-status.js";
+import { sectionLabel } from "#tasks/task-format.js";
 import { taskThreadId } from "#tasks/task-list-model.js";
 import {
   ACTION_HINT_ACTION,
@@ -181,7 +182,7 @@ class CaffoldActiveTaskSection extends HTMLElement {
       !sectionControl.disabled
     ) {
       const sectionId = `${section.id}`;
-      const label = section.label ?? activeTaskSectionLabel(section.name);
+      const label = section.label ?? sectionLabel(section.name);
       targets.push(buttonActionHintTarget({
         invalidationOwner: this,
         id: `section:${sectionId}`,
@@ -511,7 +512,7 @@ class CaffoldActiveTaskSection extends HTMLElement {
       : section.repository
         ? "Git repository"
         : "Directory";
-    const label = section.label ?? activeTaskSectionLabel(section.name);
+    const label = section.label ?? sectionLabel(section.name);
 
     let select = header.querySelector(":scope > .task-repository-select");
     const selectable = !section.recovery && this.snapshot.reorderMode === "none";
@@ -676,10 +677,6 @@ class CaffoldActiveTaskSection extends HTMLElement {
   }
 }
 
-export function activeTaskSectionLabel(name) {
-  return `${name ?? ""}`.split("/").filter(Boolean).at(-1) ?? "Directory";
-}
-
 function sectionReorderActionHintTarget(owner, { clipRoots = [] } = {}) {
   const section = owner.snapshot.section;
   const sectionId = `${section?.id ?? ""}`;
@@ -696,7 +693,7 @@ function sectionReorderActionHintTarget(owner, { clipRoots = [] } = {}) {
   ) {
     return null;
   }
-  const label = section.label ?? activeTaskSectionLabel(section.name);
+  const label = section.label ?? sectionLabel(section.name);
   return reorderHandleActionHintTarget({
     invalidationOwner: owner,
     id: `section:${sectionId}:reorder`,

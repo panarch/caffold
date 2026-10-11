@@ -15,10 +15,8 @@ import {
   taskThreadId,
 } from "../task-list-model.js";
 import { TaskStreamLifecycle } from "../stream.js";
-import {
-  ACTIVE_TASK_SECTION_INTENT_EVENT,
-  activeTaskSectionLabel,
-} from "./active-task-list/components/section.js";
+import { sectionLabel } from "../task-format.js";
+import { ACTIVE_TASK_SECTION_INTENT_EVENT } from "./active-task-list/components/section.js";
 
 export const ACTIVE_TASK_LIST_INITIAL_SETTLED_EVENT =
   "caffold:active-task-list-initial-settled";
@@ -395,13 +393,13 @@ class CaffoldActiveTaskList extends HTMLElement {
     }
     if (direction === "up" && context.index === 0) {
       this.announce(
-        `${activeTaskSectionLabel(context.section.name)} is already first.`,
+        `${sectionLabel(context.section.name)} is already first.`,
       );
       return;
     }
     if (direction === "down" && context.index === this.sections.length - 1) {
       this.announce(
-        `${activeTaskSectionLabel(context.section.name)} is already last.`,
+        `${sectionLabel(context.section.name)} is already last.`,
       );
       return;
     }
@@ -562,13 +560,13 @@ class CaffoldActiveTaskList extends HTMLElement {
     const { section, index } = context;
     if (direction === "up" && index === 0) {
       this.announce(
-        `${context.task.title} is already first in ${activeTaskSectionLabel(section.name)}.`,
+        `${context.task.title} is already first in ${sectionLabel(section.name)}.`,
       );
       return;
     }
     if (direction === "down" && index === section.tasks.length - 1) {
       this.announce(
-        `${context.task.title} is already last in ${activeTaskSectionLabel(section.name)}.`,
+        `${context.task.title} is already last in ${sectionLabel(section.name)}.`,
       );
       return;
     }
@@ -765,7 +763,7 @@ class CaffoldActiveTaskList extends HTMLElement {
         move.originalBeforeSectionId,
       );
       this.reorderError = this.reorderMode === "sections"
-        ? { subjectTitle: activeTaskSectionLabel(original.section.name) }
+        ? { subjectTitle: sectionLabel(original.section.name) }
         : null;
       this.render();
       await this.loadTasks({ force: true, requireFresh: true });
@@ -829,7 +827,7 @@ class CaffoldActiveTaskList extends HTMLElement {
       return;
     }
     this.announce(
-      `Section ${activeTaskSectionLabel(context.section.name)} moved to position ${context.index + 1} of ${this.sections.length}.`,
+      `Section ${sectionLabel(context.section.name)} moved to position ${context.index + 1} of ${this.sections.length}.`,
     );
   }
 
@@ -891,7 +889,7 @@ class CaffoldActiveTaskList extends HTMLElement {
       return;
     }
     this.announce(
-      `${context.task.title} moved to position ${context.index + 1} of ${context.section.tasks.length} in ${activeTaskSectionLabel(context.section.name)}.`,
+      `${context.task.title} moved to position ${context.index + 1} of ${context.section.tasks.length} in ${sectionLabel(context.section.name)}.`,
     );
   }
 
@@ -1230,7 +1228,7 @@ class CaffoldActiveTaskList extends HTMLElement {
       ...this.sections.flatMap((section) =>
         section.tasks.map((task) => ({
           task,
-          sectionName: activeTaskSectionLabel(section.name),
+          sectionName: sectionLabel(section.name),
         }))),
       ...this.unsectioned.map((task) => ({ task, sectionName: "" })),
     ];

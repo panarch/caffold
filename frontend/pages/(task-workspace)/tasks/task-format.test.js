@@ -10,6 +10,7 @@ import {
   formatRelativeAgePresentation,
   normalizeTaskPath,
   presentTaskFilePath,
+  sectionLabel,
   shortId,
   taskEventObservedMs,
   toolCallPresentation,
@@ -27,6 +28,12 @@ test("task paths normalize separators without allowing parent traversal", () => 
     cleanRelativeTaskPath("../workspace/./project/../../src"),
     "workspace/project/src",
   );
+});
+
+test("a Section is named after the last part of its directory path", () => {
+  assert.equal(sectionLabel("Users/me/Workspace/rust/glues"), "glues");
+  assert.equal(sectionLabel("Workspace/lumen/"), "lumen");
+  assert.equal(sectionLabel(""), "Directory");
 });
 
 test("Task file presentation prefers the managed worktree root and falls back to cwd", () => {

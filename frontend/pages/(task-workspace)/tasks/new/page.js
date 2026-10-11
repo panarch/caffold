@@ -40,6 +40,9 @@ class CaffoldTaskNew extends HTMLElement {
       return;
     }
     this.innerHTML = `
+      <header class="task-new-header">
+        <h2>New Task</h2>
+      </header>
       <section class="task-new-workspace">
         <caffold-task-create></caffold-task-create>
         <section class="task-new-worktree-guide" aria-labelledby="task-new-worktree-guide-title">

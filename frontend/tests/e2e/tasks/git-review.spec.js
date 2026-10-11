@@ -1054,7 +1054,7 @@ test("reloads Section-scoped Log from the Section repository context", { tag: "@
   );
   await expect(
     page.locator("caffold-section-detail-summary h2"),
-  ).toHaveText(ROOT_PATH);
+  ).toHaveText(ROOT_PATH.split("/").at(-1));
   const layout = page.locator("caffold-task-git-layout");
   await expect(layout).toBeVisible();
   await expect(page.locator("caffold-git-log-list-page")).toContainText(

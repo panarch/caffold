@@ -153,6 +153,8 @@ Global New owns:
 - the directory field above the Composer;
 - the setup-only isolated-worktree guide.
 
+Its header reads **New Task**.
+
 A New Task intent from an existing Task starts at that Task's repository root,
 not its managed worktree root. The bootstrap initial path and `.` are later
 fallbacks. The current New Task owns directory selection and its route value.
@@ -225,9 +227,11 @@ the reason; Claude and Grok are not offered by this surface.
 
 Detail provides Summary actions, the subject-aware view switch, a terminal,
 Integrated Review, Git, and GitHub. A Task adds Conversation; a Section adds
-fixed-context New Task. Switching Task or Section context reloads repository
-data, while safe local state may survive surface switches within one context.
-If a Section loses repository capability, it returns to New Task.
+fixed-context New Task. The header names the subject: a Task by its title, a
+Section by its directory's name, with the full path on hover. Switching Task or
+Section context reloads repository data, while safe local state may survive
+surface switches within one context. If a Section loses repository capability,
+it returns to New Task.
 
 ## Task Detail
 
