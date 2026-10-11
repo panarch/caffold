@@ -956,6 +956,64 @@ test("a paired URL on phone retains the pair while showing only the primary and 
   await expect(notesNavigator(page)).toBeVisible();
 });
 
+test("a Note's link to another Note opens it in place and Back returns to the linking Note", { tag: "@viewport-independent" }, async ({ page }) => {
+  await stubNotes(page, {
+    notes: {
+      ...NOTES,
+      storage: note("storage", {
+        content: [
+          "# Storage",
+          "",
+          "See [the inbox](/notes/inbox), [the inbox beside a blank](/notes/inbox?beside=blank),",
+          "[the decision log](decisions.md) and [the docs](https://example.com/docs).",
+          "",
+        ].join("\n"),
+      }),
+    },
+  });
+  await page.goto("/notes/storage");
+  const preview = documentPane(page, "primary").locator("caffold-markdown-preview");
+  const inbox = preview.getByRole("link", { name: "the inbox", exact: true });
+  await expect(inbox).toHaveAttribute("href", "/notes/inbox");
+  await expect(inbox).not.toHaveAttribute("target", /.+/);
+  await expect(preview.getByRole("link", { name: "the inbox beside a blank" }))
+    .toHaveAttribute("href", "/notes/inbox?beside=blank");
+  await expect(preview.getByRole("link", { name: "the decision log" })).toHaveCount(0);
+  await expect(preview).toContainText("the decision log");
+  await expect(preview.getByRole("link", { name: "the docs" })).toHaveAttribute("target", "_blank");
+
+  await inbox.click();
+  await expect(page).toHaveURL(/\/notes\/inbox$/);
+  await expect(preview.locator("h1")).toHaveText("Inbox");
+  await page.goBack();
+  await expect(page).toHaveURL(/\/notes\/storage$/);
+  await expect(preview.locator("h1")).toHaveText("Storage");
+
+  await activateActionHint(page, /Open the inbox beside a blank$/);
+  await expect(page).toHaveURL(/\/notes\/inbox\?beside=blank$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/notes\/storage$/);
+});
+
+test("a Note link inside a pair opens that Note alone and Back restores the pair", { tag: ["@desktop", "@foldable"] }, async ({ page }) => {
+  await stubNotes(page, {
+    notes: { ...NOTES, inbox: note("inbox", { content: "# Inbox\n\nRead [the storage decision](/notes/storage).\n" }) },
+  });
+  await page.goto("/notes/history?beside=inbox");
+  const primary = documentPane(page, "primary");
+  const secondary = documentPane(page, "secondary");
+  await expect(secondary.locator("caffold-markdown-preview h1")).toHaveText("Inbox");
+
+  await secondary.getByRole("link", { name: "the storage decision" }).click();
+  await expect(page).toHaveURL(/\/notes\/storage$/);
+  await expect(primary.locator("caffold-markdown-preview h1")).toHaveText("Storage");
+  await expect(secondary).toBeHidden();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/notes\/history\?beside=inbox$/);
+  await expect(primary.locator("caffold-markdown-preview h1")).toHaveText(LONG_NOTE_NAME);
+  await expect(secondary.locator("caffold-markdown-preview h1")).toHaveText("Inbox");
+});
+
 test("a failed companion retries independently and foreground recovery refreshes both committed documents", { tag: "@desktop" }, async ({ page }) => {
   const notes = { ...NOTES };
   let failCompanion = true;

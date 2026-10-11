@@ -289,6 +289,11 @@ mod tests {
         let response = response_json(initialized).await;
         assert_eq!(response["result"]["protocolVersion"], "2025-06-18");
         assert_eq!(response["result"]["serverInfo"]["name"], "caffold");
+        let instructions = response["result"]["instructions"]
+            .as_str()
+            .expect("every Grok MCP attachment carries the session instructions");
+        assert!(instructions.contains(".caffold/plans/current/PLAN.md"));
+        assert!(instructions.contains("/notes/<noteId>?beside=<otherNoteId>"));
 
         let without_session = request(
             &host,

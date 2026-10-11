@@ -16,7 +16,7 @@ use std::{
 use serde_json::{Value, json};
 
 use crate::agent::{
-    CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS,
+    CAFFOLD_SESSION_INSTRUCTIONS,
     http_mcp::{CAFFOLD_MCP_SERVER_NAME, McpSessionSigner, new_binding_value},
 };
 
@@ -94,7 +94,7 @@ pub(crate) fn grok_mcp_initialize_result(protocol_version: &str) -> Value {
             "name": CAFFOLD_MCP_SERVER_NAME,
             "version": env!("CARGO_PKG_VERSION"),
         },
-        "instructions": CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS,
+        "instructions": CAFFOLD_SESSION_INSTRUCTIONS,
     })
 }
 

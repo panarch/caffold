@@ -276,6 +276,70 @@ test("opens resolved Markdown file links through Task Review with native link se
   );
 });
 
+test("opens a Note an agent message links in place, in the Notes tab", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await stubLinkedNotes(page);
+  const scenario = await seedNoteLinkTask(page, "thread_note_links");
+  const markdown = noteLinkMarkdown(page);
+  const note = markdown.getByRole("link", { name: "Storage decision" });
+  const pair = markdown.getByRole("link", { name: "Storage beside Inbox" });
+  await expect(note).toHaveAttribute("href", "/notes/storage");
+  await expect(pair).toHaveAttribute("href", "/notes/storage?beside=inbox");
+  for (const link of [note, pair]) {
+    await expect(link).not.toHaveAttribute("target", /.+/);
+  }
+  await expect(markdown.getByRole("link", { name: "Settings" })).toHaveAttribute(
+    "target",
+    "_blank",
+  );
+
+  const tabs = page.locator("caffold-task-workspace-navigation");
+  const primaryNote = page.locator('caffold-note-document[data-note-side="primary"]');
+  await note.click();
+  await expect(page).toHaveURL("/notes/storage");
+  await expect(tabs.getByRole("button", { name: "Notes", exact: true })).toHaveAttribute(
+    "aria-current",
+    "",
+  );
+  await expect(primaryNote.locator("caffold-markdown-preview h1")).toHaveText("Storage");
+  await page.goBack();
+  await expect(page).toHaveURL("/notes");
+  await page.goBack();
+  await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
+
+  await note.click();
+  await expect(page).toHaveURL("/notes/storage");
+  await tabs.getByRole("button", { name: "Tasks", exact: true }).click();
+  await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
+
+  await revealActionHintControl(pair);
+  await activateActionHint(page, /Open Storage beside Inbox$/);
+  await expect(page).toHaveURL("/notes/storage?beside=inbox");
+  await expect(primaryNote.locator("caffold-markdown-preview h1")).toHaveText("Storage");
+  expect(scenario.pageErrors).toEqual([]);
+});
+
+test("returns from a linked Note through its Back to the Notes list, then the conversation", { tag: "@phone" }, async ({
+  page,
+}) => {
+  await stubLinkedNotes(page);
+  const scenario = await seedNoteLinkTask(page, "thread_note_links_phone");
+  const primaryNote = page.locator('caffold-note-document[data-note-side="primary"]');
+
+  await noteLinkMarkdown(page).getByRole("link", { name: "Storage beside Inbox" }).click();
+  await expect(page).toHaveURL("/notes/storage?beside=inbox");
+  await expect(primaryNote.locator("caffold-markdown-preview h1")).toHaveText("Storage");
+  await expect(page.locator('caffold-note-document[data-note-side="secondary"]')).toBeHidden();
+  await primaryNote.getByRole("button", { name: "Back to notes" }).click();
+  await expect(page).toHaveURL("/notes");
+  await expect(page.locator("caffold-notes-navigator")).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
+  await expect(noteLinkMarkdown(page)).toBeVisible();
+  expect(scenario.pageErrors).toEqual([]);
+});
+
 test("owns final Markdown links without guessing fragments or stale bindings", { tag: "@all-viewports" }, async ({
   context,
   page,
@@ -544,6 +608,48 @@ function sourceLineIsVisible(viewer, line) {
   const scrollerRect = scroller.getBoundingClientRect();
   const rowRect = row.getBoundingClientRect();
   return rowRect.top >= scrollerRect.top && rowRect.bottom <= scrollerRect.bottom;
+}
+
+async function seedNoteLinkTask(page, threadId) {
+  const scenario = await installTaskLoopFixture(page, {
+    completedAssistantResponse: [
+      "Saved it as [Storage decision](/notes/storage).",
+      "Compare it with [Storage beside Inbox](/notes/storage?beside=inbox).",
+      "[Settings](/settings)",
+    ].join("\n\n"),
+    threadId,
+  });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${scenario.threadId}`);
+  await expect(noteLinkMarkdown(page)).toHaveAttribute("data-render-state", "markdown");
+  return scenario;
+}
+
+function noteLinkMarkdown(page) {
+  return page.locator(".task-assistant-message caffold-task-markdown").filter({
+    hasText: "Saved it as",
+  });
+}
+
+async function stubLinkedNotes(page) {
+  const writer = { threadId: "task-writer", state: "active", displayName: "Write storage notes" };
+  const notes = {
+    storage: { id: "storage", name: "Storage decision", content: "# Storage\n\nKeep one copy.\n" },
+    inbox: { id: "inbox", name: "Inbox", content: "# Inbox\n" },
+  };
+  await page.route(/\/api\/notes\/[^/?]+(?:\?|$)/, (route) => {
+    const noteId = new URL(route.request().url()).pathname.split("/").pop();
+    return route.fulfill({
+      json: {
+        ...notes[noteId],
+        location: [],
+        createdAtMs: 1_000,
+        updatedAtMs: 2_000,
+        createdBy: writer,
+        updatedBy: writer,
+      },
+    });
+  });
 }
 
 test("preserves ordered-list starts through Task Markdown sanitization", { tag: "@all-viewports" }, async ({ page }) => {

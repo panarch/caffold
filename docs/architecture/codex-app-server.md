@@ -248,12 +248,13 @@ persist a second task ledger.
   `thread/resume`. Caffold does not advertise `dynamicTools` on new threads.
   The MCP catalog uses the same Task-owned base names as Claude and Grok:
   `rename_current_task`, `isolate_current_task`, and `read_current_task_name`.
-  The MCP `initialize` result also carries Caffold's provider-neutral
+  The MCP `initialize` result also carries Caffold's provider-neutral session
+  instructions, the
   [current-plan document convention](../product/workflows.md#current-plan-documents)
-  in its `instructions` field. This does not alter Codex
+  and how to link a Note, in its `instructions` field. This does not alter Codex
   `developer_instructions`, send `collaborationMode`, or enable Codex native
   Plan mode. The cross-agent carrier boundary is defined in
-  [Agent Runtimes](agent-runtimes.md#current-plan-document-convention).
+  [Agent Runtimes](agent-runtimes.md#session-instructions).
   App-server may still restore definitions persisted on pre-MCP threads, so
   Caffold continues to answer their historical `rename_current_thread` calls
   through the same rename operation. That alias is confined to the dynamic

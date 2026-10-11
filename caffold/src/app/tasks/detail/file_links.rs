@@ -495,6 +495,8 @@ fn is_caffold_application_path(value: &str) -> bool {
     path == "/"
         || path == "/tasks"
         || path.starts_with("/tasks/")
+        || path == "/notes"
+        || path.starts_with("/notes/")
         || path == "/settings"
         || path.starts_with("/settings/")
         || path == "/api"
@@ -687,7 +689,7 @@ mod tests {
             "assistant_message",
             "Assistant response",
             Some(json!({
-                "text": "[relative](src/lib.rs:7) [external](https://example.com) `not [code](hidden.rs)`\n\n[app](/settings)"
+                "text": "[relative](src/lib.rs:7) [external](https://example.com) `not [code](hidden.rs)`\n\n[app](/settings) [notes](/notes) [note](/notes/note-1) [pair](/notes/note-1?beside=note-2)"
             })),
             1,
         );

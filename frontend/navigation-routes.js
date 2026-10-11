@@ -439,6 +439,23 @@ export function parseRoute(url = window.location.href) {
   return null;
 }
 
+// The route a rendered link's href names, only for a path that stays in this
+// application. `//host/...` and `/\host/...` are paths a browser follows to
+// another host, so they name none.
+export function parseLinkRoute(href) {
+  const value = `${href ?? ""}`.trim();
+  if (!value.startsWith("/")) {
+    return null;
+  }
+  let url;
+  try {
+    url = new URL(value, routeOrigin());
+  } catch {
+    return null;
+  }
+  return url.origin === routeOrigin() ? parseRoute(url.href) : null;
+}
+
 export function routeUrl(route) {
   const definition = routeDefinitionFor(route);
   const url = new URL(routeOrigin());

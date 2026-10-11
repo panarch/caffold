@@ -215,8 +215,9 @@ ordinary files in Files.
 3. A directory is deleted only when it is empty, so removing a subtree takes a
    separate call for everything in it.
 4. Caffold records which Task created each Note and which Task changed it last.
-5. Open Notes to read the tree and the Note. A later Task can ask its agent to
-   read that Note before starting work.
+5. Open Notes to read the tree and the Note, or follow the link the agent gives
+   to the Note. A later Task can ask its agent to read that Note before starting
+   work.
 
 Caffold keeps no Note history: rewritten or deleted content is gone.
 

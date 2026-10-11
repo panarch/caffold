@@ -1,4 +1,4 @@
-import { routeUrl } from "#app/navigation-routes.js";
+import { parseLinkRoute, routeUrl } from "#app/navigation-routes.js";
 import "./markdown/components/code-block.js";
 import {
   ACTION_HINT_ACTION,
@@ -413,7 +413,7 @@ function sanitizeLink(element, internal = false) {
     return;
   }
 
-  if (internal) {
+  if (internal || parseLinkRoute(href)?.kind === "notes") {
     element.removeAttribute("target");
     element.removeAttribute("rel");
     return;
@@ -501,6 +501,8 @@ function isCaffoldApplicationPath(value) {
     path === "/" ||
     path === "/tasks" ||
     path.startsWith("/tasks/") ||
+    path === "/notes" ||
+    path.startsWith("/notes/") ||
     path === "/settings" ||
     path.startsWith("/settings/") ||
     path === "/api" ||

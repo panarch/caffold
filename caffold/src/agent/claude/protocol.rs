@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::agent::CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS;
+use crate::agent::CAFFOLD_SESSION_INSTRUCTIONS;
 use crate::agent::notes_tools::notes_tool_specs;
 
 /// The oldest CLI Caffold drives.
@@ -511,7 +511,7 @@ pub(crate) fn initialize_request() -> Value {
     serde_json::json!({
         "subtype": "initialize",
         "sdkMcpServers": [MCP_SERVER_NAME],
-        "appendSystemPrompt": CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS,
+        "appendSystemPrompt": CAFFOLD_SESSION_INSTRUCTIONS,
     })
 }
 
@@ -520,13 +520,13 @@ pub(crate) fn initialize_request() -> Value {
 ///
 /// Only for a fresh session. The naming instructions call the session newly
 /// created and scope themselves to its first turn, so a resumed conversation
-/// carries only the provider-neutral plan convention from [`initialize_request`].
+/// carries only the provider-neutral session instructions from [`initialize_request`].
 pub(crate) fn initialize_request_for_a_new_task() -> Value {
     serde_json::json!({
         "subtype": "initialize",
         "sdkMcpServers": [MCP_SERVER_NAME],
         "appendSystemPrompt": format!(
-            "{CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS}\n\n{CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS}"
+            "{CAFFOLD_SESSION_INSTRUCTIONS}\n\n{CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS}"
         ),
     })
 }
@@ -1071,15 +1071,15 @@ mod tests {
         assert_eq!(hello["sdkMcpServers"], json!(["caffold"]));
         let setup = hello["appendSystemPrompt"]
             .as_str()
-            .expect("a resumed session receives the plan convention");
-        assert_eq!(setup, CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS);
+            .expect("a resumed session receives the session instructions");
+        assert_eq!(setup, CAFFOLD_SESSION_INSTRUCTIONS);
         assert!(setup.contains(".caffold/plans/current/PLAN.md"));
         assert!(setup.contains(".caffold/plans/current/CHECKLIST.md"));
         assert!(!setup.contains("newly created Caffold task"));
     }
 
     #[test]
-    fn a_new_tasks_hello_combines_the_plan_convention_with_once_only_naming() {
+    fn a_new_tasks_hello_combines_the_session_instructions_with_once_only_naming() {
         let hello = initialize_request_for_a_new_task();
         assert_eq!(hello["sdkMcpServers"], json!(["caffold"]));
         let setup = hello["appendSystemPrompt"]
@@ -1090,9 +1090,9 @@ mod tests {
         assert!(setup.contains(RENAME_CURRENT_TASK_QUALIFIED_NAME));
         assert!(setup.contains(ISOLATE_CURRENT_TASK_QUALIFIED_NAME));
         assert!(setup.contains("first user turn"));
-        assert!(setup.starts_with(CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS));
-        // A resumed conversation keeps the durable plan convention but must
-        // not repeat the new-Task naming claim.
+        assert!(setup.starts_with(CAFFOLD_SESSION_INSTRUCTIONS));
+        // A resumed conversation keeps the session instructions but must not
+        // repeat the new-Task naming claim.
         assert!(
             !initialize_request()["appendSystemPrompt"]
                 .as_str()
