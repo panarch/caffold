@@ -1,8 +1,7 @@
 use super::commands::{apply_managed_thread_metadata, require_codex_thread_connection};
-use super::conversation::task_not_managed_error;
 use super::store::{
     ManagedTaskMembership, task_store_api_error, task_store_archive, task_store_delete_task_rows,
-    task_store_get, task_store_get_archived, task_store_worktree_for_thread,
+    task_store_get, task_store_worktree_for_thread,
 };
 use super::{
     SectionReorderRequest, SectionReorderResponse, TaskDeleteRequest, TaskDeleteResponse,
@@ -12,6 +11,7 @@ use crate::agent;
 use crate::agent::{Conversation, Driver};
 use crate::app::error::ApiError;
 use crate::app::tasks::active_list::{ActiveTask, isolates_task, runs_in_managed_worktree};
+use crate::app::tasks::presence::{active_record, archived_record, moved_refusal, refusal};
 use crate::app::tasks::recovery::{
     ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation,
 };
@@ -102,13 +102,9 @@ pub(super) async fn task_archive(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
+    active_record(&state.task_store, &thread_id).await?;
     let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
-    let Some(managed) = task_store_get(&state, &thread_id).await? else {
-        return Err(task_not_managed_error());
-    };
+    let managed = active_record(&state.task_store, &thread_id).await?;
     state
         .lifecycle
         .preflight_archive_worktree(thread_id.clone())
@@ -170,7 +166,7 @@ pub(super) async fn task_archive(
                 &worktree,
             )
             .await;
-            return Err(task_not_managed_error());
+            return Err(moved_refusal(&state.task_store, &thread_id).await);
         }
         Err(error) => {
             rollback_task_archive(
@@ -331,9 +327,7 @@ pub(super) async fn task_recovery_restore(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRestoreResponse>, ApiError> {
-    let Some(managed) = task_store_get(&state, &thread_id).await? else {
-        return Err(task_not_managed_error());
-    };
+    let managed = active_record(&state.task_store, &thread_id).await?;
     let worktree = runs_in_managed_worktree(&state.task_store, &thread_id).await?;
     let connection = require_codex_thread_connection(&state).await?;
     let (thread, unarchived) = match recovery::locate_thread(&connection.client, &thread_id).await?
@@ -360,7 +354,7 @@ pub(super) async fn task_recovery_restore(
                 let _ = connection.client.archive_thread(&thread_id).await;
                 state.task_sessions.forget_thread(&thread_id).await;
             }
-            return Err(task_not_managed_error());
+            return Err(moved_refusal(&state.task_store, &thread_id).await);
         }
         Err(error) => {
             if unarchived
@@ -390,9 +384,7 @@ pub(super) async fn task_recovery_recheck(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<ActiveTaskRecovery>, ApiError> {
-    let Some(managed) = task_store_get(&state, &thread_id).await? else {
-        return Err(task_not_managed_error());
-    };
+    let managed = active_record(&state.task_store, &thread_id).await?;
     let worktree = runs_in_managed_worktree(&state.task_store, &thread_id).await?;
     let connection = require_codex_thread_connection(&state).await?;
     let recovery = match recovery::locate_thread(&connection.client, &thread_id).await? {
@@ -445,9 +437,7 @@ pub(super) async fn task_recovery_archive(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
-    let Some(managed) = task_store_get(&state, &thread_id).await? else {
-        return Err(task_not_managed_error());
-    };
+    let managed = active_record(&state.task_store, &thread_id).await?;
     let connection = require_codex_thread_connection(&state).await?;
     let thread = match recovery::locate_thread(&connection.client, &thread_id).await? {
         ManagedCodexThreadLocation::Archived(thread) => thread,
@@ -473,7 +463,7 @@ pub(super) async fn task_recovery_archive(
                 .lifecycle
                 .rollback_archived_worktree(&thread_id, &worktree)
                 .await;
-            return Err(task_not_managed_error());
+            return Err(moved_refusal(&state.task_store, &thread_id).await);
         }
         Err(error) => {
             state
@@ -492,9 +482,7 @@ pub(super) async fn task_recovery_remove(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskDeleteResponse>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
+    active_record(&state.task_store, &thread_id).await?;
     let connection = require_codex_thread_connection(&state).await?;
     if !matches!(
         recovery::locate_thread(&connection.client, &thread_id).await?,
@@ -526,7 +514,7 @@ pub(super) async fn task_recovery_remove(
                 .lifecycle
                 .rollback_archived_worktree(&thread_id, &archived_worktree)
                 .await;
-            return Err(task_not_managed_error());
+            return Err(moved_refusal(&state.task_store, &thread_id).await);
         }
         Err(error) => {
             state
@@ -545,9 +533,7 @@ pub(super) async fn task_restore(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRestoreResponse>, ApiError> {
-    let Some(archived) = task_store_get_archived(&state, &thread_id).await? else {
-        return Err(task_not_archived_error());
-    };
+    let archived = archived_record(&state.task_store, &thread_id).await?;
     let agent = state.task_runtime.agent_for(&archived).await?;
     let driver = agent.driver();
     let restored = driver.restore_conversation(&thread_id).await?;
@@ -578,7 +564,7 @@ pub(super) async fn task_restore(
         Ok(Some(placement)) => placement,
         Ok(None) => {
             rollback_task_restore(&state, &driver, &thread_id, took_it_back_out, &worktree).await;
-            return Err(task_not_archived_error());
+            return Err(moved_refusal(&state.task_store, &thread_id).await);
         }
         Err(error) => {
             rollback_task_restore(&state, &driver, &thread_id, took_it_back_out, &worktree).await;
@@ -609,7 +595,7 @@ pub(super) async fn task_delete(
             .await?
             .is_none()
         {
-            return Err(task_not_archived_error());
+            return Err(refusal(Some(&managed)));
         }
         return delete_broken_task(&state, managed, request).await;
     }
@@ -621,9 +607,7 @@ pub(super) async fn task_delete(
                     .to_string(),
         });
     }
-    let Some(archived) = task_store_get_archived(&state, &thread_id).await? else {
-        return Err(task_not_archived_error());
-    };
+    let archived = archived_record(&state.task_store, &thread_id).await?;
     let worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
     if let Some(worktree) = &worktree
         && worktree.state != ManagedWorktreeState::Archived
@@ -650,7 +634,7 @@ pub(super) async fn task_delete(
     )
     .await?;
     if !deleted {
-        return Err(task_not_archived_error());
+        return Err(moved_refusal(&state.task_store, &thread_id).await);
     }
     state.lifecycle.delete_task_resources(&thread_id).await;
     notify_task_removed(&state, &thread_id, "deleted");
@@ -678,9 +662,7 @@ async fn delete_broken_task(
         .lifecycle
         .preflight_broken_deletion(thread_id.clone(), expected_id.clone())
         .await?;
-    let managed = task_store_get(state, &thread_id)
-        .await?
-        .ok_or_else(task_not_managed_error)?;
+    let managed = active_record(&state.task_store, &thread_id).await?;
     let driver = task_provider_driver(state, &managed)
         .await?
         .map_err(ApiError::from)?;
@@ -716,7 +698,7 @@ async fn delete_broken_task(
     )
     .await?
     {
-        return Err(task_not_managed_error());
+        return Err(moved_refusal(&state.task_store, &thread_id).await);
     }
     // The durable deletion is already committed. A private provider reference
     // that could not be unlinked must not strand the UI on a deleted Task.
@@ -802,13 +784,6 @@ pub(super) fn unavailable_archived_task(managed: &ManagedThread) -> TaskRecord {
     }
 }
 
-pub(super) fn task_not_archived_error() -> ApiError {
-    ApiError::BadRequest {
-        code: "task_not_archived",
-        message: "thread is not archived in Caffold".to_string(),
-    }
-}
-
 pub(super) fn task_recovery_changed_error() -> ApiError {
     ApiError::BadRequest {
         code: "task_recovery_changed",
@@ -821,6 +796,7 @@ mod tests {
     use super::super::TasksQuery;
     use super::super::list::{list_archived_tasks, list_managed_tasks};
     use super::super::router;
+    use super::super::store::task_store_get_archived;
     use crate::agent::codex::CodexThreadClient;
     use crate::agent::codex::CodexThreadError;
     use crate::agent::codex::{
@@ -3066,16 +3042,79 @@ mod tests {
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, active_id, root.path()).await;
 
-        for thread_id in ["thread-unmanaged-delete", active_id] {
-            assert!(matches!(
-                task_delete(State(state.clone()), AxumPath(thread_id.to_string()), None).await,
-                Err(ApiError::BadRequest {
-                    code: "task_not_archived",
-                    ..
-                })
-            ));
-        }
+        assert!(matches!(
+            task_delete(State(state.clone()), AxumPath(active_id.to_string()), None).await,
+            Err(ApiError::BadRequest {
+                code: "task_not_archived",
+                ..
+            })
+        ));
+        assert!(matches!(
+            task_delete(
+                State(state.clone()),
+                AxumPath("thread-unknown-delete".to_string()),
+                None
+            )
+            .await,
+            Err(ApiError::NotFound {
+                code: "task_not_found",
+                ..
+            })
+        ));
         assert!(state.task_store.get(active_id).unwrap().is_some());
+        assert!(client.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn restore_says_where_a_task_outside_the_archived_membership_is() {
+        let root = tempfile::tempdir().unwrap();
+        let active_id = "thread-active-restore";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, active_id, root.path()).await;
+
+        assert!(matches!(
+            task_restore(State(state.clone()), AxumPath(active_id.to_string())).await,
+            Err(ApiError::BadRequest {
+                code: "task_not_archived",
+                ..
+            })
+        ));
+        assert!(matches!(
+            task_restore(
+                State(state.clone()),
+                AxumPath("thread-unknown-restore".to_string())
+            )
+            .await,
+            Err(ApiError::NotFound {
+                code: "task_not_found",
+                ..
+            })
+        ));
+        assert!(client.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn archiving_a_task_that_is_already_archived_says_so() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-archived-twice";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        task_store_archive(&state, thread_id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(matches!(
+            task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await,
+            Err(ApiError::Conflict {
+                code: "task_archived",
+                ..
+            })
+        ));
         assert!(client.mock_requests().await.is_empty());
     }
 

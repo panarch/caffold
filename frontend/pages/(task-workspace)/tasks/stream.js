@@ -1,3 +1,4 @@
+import { taskAbsence } from "#app/api.js";
 import { TASK_TRANSPORT_STATE } from "./runtime-state.js";
 import {
   TASK_STREAM_EVENT,
@@ -25,6 +26,7 @@ export class TaskStreamLifecycle {
     this.waitUntilReady = options.waitUntilReady ?? null;
     this.onConnectionInvalidated =
       options.onConnectionInvalidated ?? (() => {});
+    this.onSubjectGone = options.onSubjectGone ?? (() => {});
     this.connectionTimeoutMs = options.connectionTimeoutMs ?? null;
     this.retryDelaysMs = [
       ...(options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS),
@@ -96,6 +98,14 @@ export class TaskStreamLifecycle {
 
   deactivate() {
     this.dispatch({ type: EVENT.DEACTIVATE });
+  }
+
+  // The owner learned from another request about this context's subject that
+  // it is archived or no longer exists.
+  subjectGone(absence) {
+    if (this.contextKey) {
+      this.dispatch({ type: EVENT.SUBJECT_GONE, absence });
+    }
   }
 
   // Events raised while a transition runs its effects wait for it to finish,
@@ -190,6 +200,15 @@ export class TaskStreamLifecycle {
         this.needsReconcile = true;
         this.validating = false;
         return;
+      case EVENT.SUBJECT_GONE:
+        this.release();
+        this.stopWaiting();
+        this.needsReconcile = false;
+        this.skipReconcile = false;
+        this.validating = false;
+        this.retryAttempt = 0;
+        this.onSubjectGone(event.absence, this.contextKey);
+        return;
       default:
     }
   }
@@ -242,17 +261,22 @@ export class TaskStreamLifecycle {
     try {
       source = this.subscribe(contextKey, {
         onOpen: () => {
-          this.fromGateway(source, generation, EVENT.CHANNEL_OPENED);
+          this.fromGateway(source, generation, { type: EVENT.CHANNEL_OPENED });
         },
-        onError: (_error, { exhausted = false, physical = false } = {}) => {
+        onError: (error, { exhausted = false, physical = false } = {}) => {
+          const absence = physical ? null : taskAbsence(error);
           this.fromGateway(
             source,
             generation,
-            !physical
-              ? EVENT.CHANNEL_FAILED
-              : exhausted
-                ? EVENT.GATEWAY_EXHAUSTED
-                : EVENT.GATEWAY_TROUBLE,
+            absence
+              ? { type: EVENT.SUBJECT_GONE, absence }
+              : {
+                  type: !physical
+                    ? EVENT.CHANNEL_FAILED
+                    : exhausted
+                      ? EVENT.GATEWAY_EXHAUSTED
+                      : EVENT.GATEWAY_TROUBLE,
+                },
           );
         },
         onEvent: (type, payload) => {
@@ -266,7 +290,7 @@ export class TaskStreamLifecycle {
           }
         },
         onInvalidated: () => {
-          this.fromGateway(source, generation, EVENT.CHANNEL_FAILED);
+          this.fromGateway(source, generation, { type: EVENT.CHANNEL_FAILED });
         },
       });
       if (!source?.close || !source?.retry) {
@@ -428,9 +452,9 @@ export class TaskStreamLifecycle {
     this.openTimer = null;
   }
 
-  fromGateway(source, generation, type) {
+  fromGateway(source, generation, event) {
     if (this.isCurrent(source, generation)) {
-      this.dispatch({ type });
+      this.dispatch(event);
     }
   }
 

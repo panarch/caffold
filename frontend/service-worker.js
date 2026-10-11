@@ -326,6 +326,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/recovery/page.js",
   "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.css",
   "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.js",
+  "/assets/pages/(task-workspace)/tasks/components/task-absence.css",
+  "/assets/pages/(task-workspace)/tasks/components/task-absence.js",
   "/assets/pages/(task-workspace)/tasks/components/navigator.css",
   "/assets/pages/(task-workspace)/tasks/components/navigator.js",
   "/assets/pages/(task-workspace)/tasks/components/task-create.css",

@@ -89,6 +89,11 @@ caffold-task-detail {
     overflow: hidden;
   }
 
+  & > .tasks-detail-region > .task-detail-placeholder {
+    height: 100%;
+    min-height: 0;
+  }
+
   & .task-conversation-pane {
     position: relative;
     display: grid;

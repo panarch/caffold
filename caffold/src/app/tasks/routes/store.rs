@@ -30,6 +30,7 @@ pub(super) async fn task_store_get(
         .map_err(task_store_api_error)
 }
 
+#[cfg(test)]
 pub(super) async fn task_store_get_archived(
     state: &TaskState,
     thread_id: &str,

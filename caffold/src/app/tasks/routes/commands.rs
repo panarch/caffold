@@ -1,8 +1,5 @@
 use super::codex::normalize_approval_decision;
-use super::conversation::task_not_managed_error;
-use super::store::{
-    task_store_get, task_store_update_composer_settings, task_store_worktree_for_thread,
-};
+use super::store::{task_store_update_composer_settings, task_store_worktree_for_thread};
 use super::uploads::uploaded_file;
 use super::{
     CancelledPromptResponse, CreateTaskRequest, CreatedTaskResponse, MAX_TASK_IMAGES,
@@ -14,6 +11,7 @@ use crate::agent::driver::REVIEWED_PERMISSION_MODE;
 use crate::agent::{AgentError, PromptImage, TurnOptions, TurnRejected};
 use crate::app::error::ApiError;
 use crate::app::tasks::lifecycle::CreateTask;
+use crate::app::tasks::presence::active_record;
 use crate::app::tasks::sessions::{PromptTarget, SessionSnapshot};
 #[cfg(test)]
 use crate::app::tasks::task_activity_ms;
@@ -98,14 +96,10 @@ async fn task_prompt_owned(
     request: TaskPromptRequest,
 ) -> Result<Json<TaskPromptResponse>, ApiError> {
     let prompt_observed_ms = now_ms();
-    if task_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
+    active_record(&state.task_store, &thread_id).await?;
     let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
     let _request = state.task_sessions.reserve_request(&thread_id).await;
-    let managed = task_store_get(&state, &thread_id)
-        .await?
-        .ok_or_else(task_not_managed_error)?;
+    let managed = active_record(&state.task_store, &thread_id).await?;
     let managed_worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
     let managed_cwd = managed_prompt_cwd(managed_worktree.as_ref())?;
     let (prompt, image_paths) = normalize_task_input(&request.prompt, request.image_paths)?;
@@ -395,9 +389,7 @@ pub(super) async fn task_interrupt(
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Json<TaskInterruptResponse>, ApiError> {
-    let managed = task_store_get(&state, &thread_id)
-        .await?
-        .ok_or_else(task_not_managed_error)?;
+    let managed = active_record(&state.task_store, &thread_id).await?;
     state
         .task_sessions
         .restore_managed_composer_settings(
@@ -449,9 +441,7 @@ pub(super) async fn task_permission_instructions(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskPermissionInstructionsResponse>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
+    active_record(&state.task_store, &thread_id).await?;
     let store = state.task_store.clone();
     let wanted = thread_id.clone();
     let instructions = tokio::task::spawn_blocking(move || store.permission_instructions(&wanted))
@@ -469,9 +459,7 @@ pub(super) async fn task_forget_permission_instructions(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskPermissionInstructionsResponse>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
+    active_record(&state.task_store, &thread_id).await?;
     let store = state.task_store.clone();
     let wanted = thread_id.clone();
     tokio::task::spawn_blocking(move || store.clear_permission_instructions(&wanted))
@@ -496,9 +484,7 @@ pub(super) async fn task_approval(
     Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskApprovalRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
+    active_record(&state.task_store, &thread_id).await?;
     let agent = state.task_runtime.task_agent(&thread_id).await?;
     let decision = normalize_approval_decision(&request.decision)?;
     match state
@@ -738,7 +724,7 @@ fn raster_media_type(path: &Path, relative: &str) -> Result<&'static str, ApiErr
 mod tests {
     use super::super::TaskListUpdate;
     use super::super::router;
-    use super::super::store::task_store_get_archived;
+    use super::super::store::{task_store_get, task_store_get_archived};
     use crate::agent::codex::{
         CodexReadiness, CodexReadinessReason, CodexReadinessState, CodexRuntimeEvent,
         MockCodexResponse, decode_server_request,
@@ -2171,6 +2157,43 @@ mod tests {
             state.task_store.worktree("worktree-1").unwrap().unwrap(),
             stored_before
         );
+    }
+
+    #[tokio::test]
+    async fn a_prompt_to_an_archived_task_is_refused_as_archived_before_calling_codex() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-archived-prompt";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        state.task_store.archive(thread_id, 2).unwrap().unwrap();
+
+        let error = task_prompt(
+            State(state),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+            Json(TaskPromptRequest {
+                prompt: "Is anyone there?".to_string(),
+                image_paths: Vec::new(),
+                model: None,
+                effort: None,
+                fast_mode: false,
+                permission_mode: None,
+                active_turn_id: None,
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ApiError::Conflict {
+                code: "task_archived",
+                ..
+            }
+        ));
+        assert!(client.mock_requests().await.is_empty());
     }
 
     #[tokio::test]

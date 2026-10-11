@@ -19,6 +19,8 @@ import {
   previewTaskForkSource,
   reorderSection,
   sendTaskPrompt,
+  TASK_ABSENCE,
+  taskAbsence,
   terminalSocketUrl,
   updateLiveSubscriptions,
   uploadTaskFile,
@@ -77,6 +79,25 @@ test("broken deletion confirms one worktree and preserves structured refusal act
   assert.equal(request.url.pathname, "/api/tasks/broken%20task");
   assert.equal(request.options.method, "DELETE");
   assert.deepEqual(JSON.parse(request.options.body), confirmation);
+});
+
+test("a Task request refused as archived or missing names the absence", async () => {
+  const refusals = [
+    [409, "task_archived", TASK_ABSENCE.ARCHIVED],
+    [404, "task_not_found", TASK_ABSENCE.NOT_FOUND],
+    [400, "task_not_archived", null],
+    [502, "agent_error", null],
+  ];
+  for (const [status, code, absence] of refusals) {
+    installBrowserHarness(() =>
+      jsonResponse({ error: { code, message: code } }, { ok: false, status }),
+    );
+    await assert.rejects(getTask("thread-a"), (error) => {
+      assert.equal(taskAbsence(error), absence, code);
+      return true;
+    });
+  }
+  assert.equal(taskAbsence(null), null);
 });
 
 test("Task history cancellation reaches its own HTTP request", async () => {

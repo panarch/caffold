@@ -404,30 +404,49 @@ fn spawn_task_detail(source: TaskLiveSource, generation: u64, thread_id: String)
             channel_open_frame("task-detail", None, generation),
         )
         .await?;
-        let mut events = match source.task_detail(&thread_id).await {
+        let events = match source.task_detail(&thread_id).await {
             Ok(events) => events,
             Err(error) => {
                 send_frame(
                     &messages,
-                    channel_error_frame("task-detail", None, generation, &error.to_string()),
+                    channel_refusal_frame("task-detail", None, generation, error),
                 )
                 .await?;
                 return Some(());
             }
         };
-        while let Some(event) = events.next().await {
-            send_frame(
-                &messages,
-                channel_event_frame("task-detail", None, generation, &event),
-            )
-            .await?;
-        }
-        send_frame(
-            &messages,
-            channel_error_frame("task-detail", None, generation, "Task Detail stream ended."),
-        )
-        .await
+        forward_task_detail(&messages, generation, events).await
     })
+}
+
+/// Carry one Task's detail until it ends, then report how it ended.
+///
+/// A Task that left the active list ends with the refusal its requests get, so
+/// the browser can tell an archived or missing Task from a stream that merely
+/// stopped.
+async fn forward_task_detail<E: Serialize>(
+    messages: &mpsc::Sender<Bytes>,
+    generation: u64,
+    mut events: impl Stream<Item = Result<E, ApiError>> + Unpin,
+) -> Option<()> {
+    while let Some(event) = events.next().await {
+        let frame = match event {
+            Ok(event) => channel_event_frame("task-detail", None, generation, &event),
+            Err(error) => {
+                return send_frame(
+                    messages,
+                    channel_refusal_frame("task-detail", None, generation, error),
+                )
+                .await;
+            }
+        };
+        send_frame(messages, frame).await?;
+    }
+    send_frame(
+        messages,
+        channel_error_frame("task-detail", None, generation, "Task Detail stream ended."),
+    )
+    .await
 }
 
 fn spawn_watch(
@@ -580,6 +599,8 @@ enum ChannelLifecycleEvent<'a> {
 
 #[derive(Serialize)]
 struct ChannelErrorPayload<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<&'a str>,
     message: &'a str,
 }
 
@@ -613,7 +634,29 @@ fn channel_error_frame(
         channel,
         subscription_id,
         generation,
-        &ChannelLifecycleEvent::Error(ChannelErrorPayload { message }),
+        &ChannelLifecycleEvent::Error(ChannelErrorPayload {
+            code: None,
+            message,
+        }),
+    )
+}
+
+/// A channel refused with an API error, whose code tells the browser why.
+fn channel_refusal_frame(
+    channel: &'static str,
+    subscription_id: Option<&str>,
+    generation: u64,
+    error: ApiError,
+) -> Bytes {
+    let error = error.into_error_body();
+    channel_event_frame(
+        channel,
+        subscription_id,
+        generation,
+        &ChannelLifecycleEvent::Error(ChannelErrorPayload {
+            code: Some(error.code),
+            message: &error.message,
+        }),
     )
 }
 
@@ -1026,7 +1069,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(legacy_list.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(legacy_list.status(), StatusCode::NOT_FOUND);
         assert_ne!(
             legacy_list.headers().get(header::CONTENT_TYPE),
             Some(&HeaderValue::from_static(
@@ -1057,6 +1100,57 @@ mod tests {
         assert_eq!(
             next(),
             "event: live-update\ndata: {\"channel\":\"task-list\",\"generation\":4,\"type\":\"channel-error\",\"payload\":{\"message\":\"Task list updates stopped.\"}}\n\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_task_detail_refused_after_it_opened_tells_the_browser_why() {
+        let (messages, mut frames) = mpsc::channel(4);
+
+        forward_task_detail(
+            &messages,
+            6,
+            stream::iter([
+                Ok(json!({ "type": "task-event" })),
+                Err(ApiError::Conflict {
+                    code: "task_archived",
+                    message: "task is archived".to_string(),
+                }),
+                Ok(json!({ "type": "task-event" })),
+            ]),
+        )
+        .await;
+
+        let mut next = || {
+            let frame = frames.try_recv().expect("a forwarded frame");
+            String::from_utf8(frame.to_vec()).unwrap()
+        };
+        assert_eq!(
+            next(),
+            "event: live-update\ndata: {\"channel\":\"task-detail\",\"generation\":6,\"type\":\"task-event\"}\n\n"
+        );
+        assert_eq!(
+            next(),
+            "event: live-update\ndata: {\"channel\":\"task-detail\",\"generation\":6,\"type\":\"channel-error\",\"payload\":{\"code\":\"task_archived\",\"message\":\"task is archived\"}}\n\n"
+        );
+        assert!(frames.try_recv().is_err(), "nothing follows the refusal");
+    }
+
+    #[tokio::test]
+    async fn a_task_detail_that_ends_without_a_refusal_carries_no_code() {
+        let (messages, mut frames) = mpsc::channel(4);
+
+        forward_task_detail(
+            &messages,
+            6,
+            stream::iter(Vec::<Result<serde_json::Value, ApiError>>::new()),
+        )
+        .await;
+
+        let frame = frames.try_recv().expect("the end is reported");
+        assert_eq!(
+            String::from_utf8(frame.to_vec()).unwrap(),
+            "event: live-update\ndata: {\"channel\":\"task-detail\",\"generation\":6,\"type\":\"channel-error\",\"payload\":{\"message\":\"Task Detail stream ended.\"}}\n\n"
         );
     }
 

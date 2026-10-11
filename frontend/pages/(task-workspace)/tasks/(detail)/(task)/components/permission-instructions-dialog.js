@@ -140,6 +140,7 @@ class CaffoldTaskPermissionInstructionsDialog extends HTMLElement {
         instructions: null,
         error: error?.message ?? "Caffold could not read what this Task settled.",
       };
+      this.reportRequestFailure(threadId, error);
     }
     this.patch();
   }
@@ -171,8 +172,21 @@ class CaffoldTaskPermissionInstructionsDialog extends HTMLElement {
         loading: false,
         error: error?.message ?? "Caffold could not forget what this Task settled.",
       };
+      this.reportRequestFailure(threadId, error);
     }
     this.patch();
+  }
+
+  // The conversation decides what a failure says about the Task itself, such
+  // as the Task having been archived elsewhere.
+  reportRequestFailure(threadId, error) {
+    this.dispatchEvent(
+      new CustomEvent("caffold:task-detail-intent", {
+        bubbles: true,
+        composed: true,
+        detail: { type: "task-request-failed", threadId, error },
+      }),
+    );
   }
 
   isCurrent(request, threadId) {

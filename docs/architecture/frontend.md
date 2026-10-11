@@ -196,7 +196,7 @@ generation and the active route.
 Task List and Task Detail each keep one Task stream through shared
 `tasks/stream.js`. Its private graph separates inactive, suspended,
 subscribing, preparing, reconciling, ready, waiting for the gateway, backing
-off, and unavailable, and every node a stream can wait in ends on its own.
+off, unavailable, and gone, and every node a stream can wait in ends on its own.
 Subscribing ends through the live gateway's open check and Detail's
 eight-second open limit, preparing through Detail's eight-second bootstrap
 limit, reconciling through the eight-second limit on reading the Task list,
@@ -205,7 +205,12 @@ through its timer. A channel that fails, does not open, cannot be prepared, or
 cannot be reconciled backs off for 250 ms, 1 s, and then 3 s before
 subscribing again; after that the stream is unavailable until Retry, recovery,
 or a new activation. Physical trouble keeps the subscription for the gateway to
-reopen, and the reopened stream reconciles before it is ready. Owners read only
+reopen, and the reopened stream reconciles before it is ready. A stream is gone
+when the gateway refuses its channel because the Task is archived or missing,
+or when its owner learns that from another request about the Task: it releases
+its subscription and retries nothing, foreground recovery and hiding leave it
+alone, and it presents as idle until the owner opens a context again. The
+`api.js` boundary alone turns a refusal code into that absence. Owners read only
 the derived transport state: idle, connecting, validating, reconnecting, ready,
 or unavailable. Callers that join a Task list read in flight share its canonical
 answer and each decide for itself whether it still wants it.
@@ -905,8 +910,8 @@ and GitHub menus show by the listed Section's repository capability but stay
 disabled until canonical Detail names the Task's own checkout, which a linked
 worktree places apart from the Section's repository root. Outside a Git
 repository they are absent, not disabled. On a phone, a Task header keeps the
-view switch's row while it waits. A Task switch, deactivation, or successful
-Archive clears that fallback identity.
+view switch's row while it waits. A Task switch, deactivation, successful
+Archive, or an archived or missing Task clears that fallback identity.
 
 `caffold-task-detail` is the canonical owner of the selected Task
 snapshot and live event application, Conversation, Command dialog, code-block
@@ -1027,13 +1032,28 @@ reject an older delta outside that page. Unscoped answers update exact
 identities only; optimistic submissions remain local overlays.
 
 The session phases are inactive, waiting for bootstrap, waiting for readable
-sync, streaming, REST fallback, and unavailable. It alone transitions the
-active attempt, while its Task stream owns logical subscription generations,
-the open limit, reconciliation, and transport presentation. The
+sync, streaming, REST fallback, unavailable, and absent. It alone transitions
+the active attempt, while its Task stream owns logical subscription generations,
+the open limit, reconciliation, and transport presentation. Absent holds why
+the Task is gone, archived or not found, and is entered only from its Task
+stream's gone report; Detail's REST requests about the Task report such an
+answer to the stream. Hiding and foreground recovery leave absent alone, and
+only opening a Task again leaves it. The
 workspace live-update owner separately owns the physical EventSource. Cursor
 pagination stays outside the session, and a Task switch replaces the attempt
 before a late response can update Detail. Provider transport and history
 acquisition remain in their native architecture.
+
+While the session is absent, Detail replaces whichever Task surface was in
+front with the shared `caffold-task-absence` notice and closes the Composer,
+dialogs, and current-plan strip. The notice is laid out like the Task Recovery
+page, under its own header carrying the Task title Detail last knew, or
+**Unavailable Task** when it knew none; the Task header above Detail stays
+hidden meanwhile. An archived Task's notice offers Restore,
+whose request Detail sends: success opens the Task again, a Task restored
+elsewhere meanwhile opens as well, one deleted meanwhile turns the notice to
+not found, and any other refusal is shown in the notice. The Task Recovery page
+shows the same notice when its requests find the Task archived or missing.
 
 `caffold-section-detail` owns fixed-context Task creation and
 existing-conversation shortcuts for one Section. Switching Section context
@@ -1063,7 +1083,9 @@ created-Task answer to the existing `caffold:task-created` owner. It does not
 infer source ownership, status, cwd, or conversation lineage.
 
 A Task deep route is prepared before canonical Task loading. Shared repository
-surfaces activate only after the Task snapshot is available. Section repository
+surfaces and the terminal are active only while the canonical Task snapshot is
+available; until then, and while the Task is archived or missing, the
+conversation slot is the surface on screen and they hold no active lifetime. Section repository
 capability comes from the local Section projection and needs no backend Section
 detail endpoint. The selected Section follows projection changes to its logical
 path and repository capability. Same-subject surface switches retain safe local

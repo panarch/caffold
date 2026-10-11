@@ -290,6 +290,13 @@ cwd movement, ownership, archive, and restore follow the
 - The archived Task remains visible from its durable row when its provider is
   unavailable. Restore is withheld until the provider can confirm that the
   conversation exists; permanent deletion remains available.
+- An open Task archived elsewhere, or a link to an archived Task, shows that the
+  Task is archived with Restore in place of its conversation, review, Git,
+  GitHub, terminal, and Composer. A Task deleted elsewhere, or one Caffold has
+  no record of, shows that Caffold cannot find it, with no action. Neither is
+  reported as a connection failure. Restore from there reopens the Task; one
+  restored elsewhere meanwhile simply reopens, and a restore the agent cannot
+  honor because the conversation is gone reports why.
 - Restoring recreates an archived managed worktree from its retained branch and
   returns the same Task to the active navigator.
 - Tasks without a managed-worktree ownership record retain their cwd and files.

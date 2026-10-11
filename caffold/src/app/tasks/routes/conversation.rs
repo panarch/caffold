@@ -1,10 +1,11 @@
 use super::TaskDetailQuery;
 use super::commands::apply_managed_thread_metadata;
-use super::store::{task_store_get, task_store_mark_seen};
+use super::store::task_store_mark_seen;
 use crate::agent::{Conversation, ThreadStatus};
 use crate::app::error::ApiError;
 use crate::app::tasks::active_list::{ActiveTask, runs_in_managed_worktree};
 use crate::app::tasks::generated_images::GeneratedImageError;
+use crate::app::tasks::presence::{active_record, moved_refusal};
 use crate::app::tasks::{TaskDetailResponse, TaskRecord, TaskState, task_activity_ms};
 use crate::task_store::ManagedThread;
 use axum::Json;
@@ -81,9 +82,7 @@ pub(super) async fn mark_task_seen(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
-    let Some(managed) = task_store_get(&state, &thread_id).await? else {
-        return Err(task_not_managed_error());
-    };
+    let managed = active_record(&state.task_store, &thread_id).await?;
     let worktree = runs_in_managed_worktree(&state.task_store, &thread_id).await?;
     let agent = state.task_runtime.task_agent(&thread_id).await?;
     let mut task = match agent.codex() {
@@ -108,7 +107,7 @@ pub(super) async fn mark_task_seen(
     };
     let activity_ms = task_activity_ms(&task);
     let Some(managed) = task_store_mark_seen(&state, &thread_id, activity_ms).await? else {
-        return Err(task_not_managed_error());
+        return Err(moved_refusal(&state.task_store, &thread_id).await);
     };
     apply_managed_thread_metadata(&mut task, &managed);
     notify_task_updated(&state, ActiveTask::of(&task, worktree));
@@ -141,13 +140,6 @@ fn unavailable_task_record(managed: &ManagedThread) -> TaskRecord {
     }
 }
 
-pub(super) fn task_not_managed_error() -> ApiError {
-    ApiError::BadRequest {
-        code: "task_not_managed",
-        message: "task is not managed by Caffold".to_string(),
-    }
-}
-
 pub(super) fn notify_task_updated(state: &TaskState, task: ActiveTask) {
     state.task_list_events.update(task);
 }
@@ -166,6 +158,7 @@ mod tests {
     use tower::ServiceExt;
 
     use super::super::TaskListUpdate;
+    use super::super::store::task_store_get;
     use super::*;
     use crate::{
         app::tasks::{
@@ -604,9 +597,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unmanaged_deep_link_is_rejected_without_reading_app_server_state() {
+    async fn unknown_deep_link_is_not_found_without_reading_app_server_state() {
         let root = tempfile::tempdir().unwrap();
-        let thread_id = "thread-unmanaged-deep-link";
+        let thread_id = "thread-unknown-deep-link";
         let client = CodexThreadClient::mock(Vec::new());
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -617,12 +610,46 @@ mod tests {
             Query(TaskDetailQuery { cursor: None }),
         )
         .await
-        .expect_err("unmanaged task route must be rejected");
+        .expect_err("an unknown task route must be refused");
 
         assert!(matches!(
             error,
-            ApiError::BadRequest {
-                code: "task_not_managed",
+            ApiError::NotFound {
+                code: "task_not_found",
+                ..
+            }
+        ));
+        assert!(client.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn archived_deep_link_says_archived_without_reading_app_server_state() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-archived-deep-link";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        state
+            .task_store
+            .claim(
+                ManagedThread::new(thread_id, RunBy::Codex, Some(1), None, None),
+                1,
+            )
+            .unwrap();
+        state.task_store.archive(thread_id, 2).unwrap().unwrap();
+
+        let error = task_detail(
+            State(state),
+            AxumPath(thread_id.to_string()),
+            Query(TaskDetailQuery { cursor: None }),
+        )
+        .await
+        .expect_err("an archived task route must be refused");
+
+        assert!(matches!(
+            error,
+            ApiError::Conflict {
+                code: "task_archived",
                 ..
             }
         ));

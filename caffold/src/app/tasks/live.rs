@@ -2,7 +2,7 @@ use std::pin::Pin;
 #[cfg(test)]
 use std::sync::Arc;
 
-use futures_util::{Stream, stream};
+use futures_util::{Stream, StreamExt, stream};
 use serde::Serialize;
 use tokio::sync::broadcast;
 
@@ -11,8 +11,9 @@ use super::{
     active_list::{
         ActiveTask, ActiveTaskComposerSettings, ActiveTaskRuntimeSnapshot, runs_in_managed_worktree,
     },
-    detail::{DetailContext, DetailLiveStream},
+    detail::{DetailContext, DetailLiveEvent, DetailLiveStream},
     lifecycle::ActiveTaskTopPlacement,
+    presence::active_record,
     runtime::TaskRuntime,
     sync::TaskSync,
 };
@@ -24,6 +25,11 @@ use crate::{
 
 pub(in crate::app::tasks) type TaskListLiveStream =
     Pin<Box<dyn Stream<Item = TaskListLiveEvent> + Send>>;
+
+/// One Task's detail events, ending with the refusal that says where the Task
+/// went if it leaves the active list.
+pub(in crate::app) type TaskDetailLiveStream =
+    Pin<Box<dyn Stream<Item = Result<DetailLiveEvent, ApiError>> + Send>>;
 
 /// The Task-owned live capabilities consumed by the application live gateway.
 ///
@@ -58,9 +64,58 @@ impl TaskLiveSource {
     pub(in crate::app) async fn task_detail(
         &self,
         thread_id: &str,
-    ) -> Result<DetailLiveStream, ApiError> {
-        self.detail.stream(thread_id).await
+    ) -> Result<TaskDetailLiveStream, ApiError> {
+        // Heard before the Task's record is read, so an archive or delete that
+        // lands in between still ends the stream.
+        let removals = self.list.events.removals.subscribe();
+        let events = self.detail.stream(thread_id).await?;
+        Ok(detail_until_removed(
+            events,
+            removals,
+            self.list.store.clone(),
+            thread_id.to_string(),
+        ))
     }
+}
+
+/// A Task's detail events until the Task leaves the active list.
+///
+/// A removal of this Task, or a removal this receiver fell behind on, is the
+/// cue to read where the Task is now: a Task restored in the meantime goes on
+/// streaming, and any other ends the stream with the refusal its requests get.
+/// Removals are heard before the Task's own events, so nothing it publishes
+/// after leaving the list goes out first.
+fn detail_until_removed(
+    events: DetailLiveStream,
+    removals: broadcast::Receiver<TaskListRemoval>,
+    store: TaskStore,
+    thread_id: String,
+) -> TaskDetailLiveStream {
+    let stream = stream::unfold(
+        Some((events, removals, store, thread_id)),
+        |watching| async move {
+            let (mut events, mut removals, store, thread_id) = watching?;
+            loop {
+                tokio::select! {
+                    biased;
+                    removal = removals.recv() => match removal {
+                        Ok(removal) if removal.thread_id != thread_id => {}
+                        Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {
+                            if let Err(refusal) = active_record(&store, &thread_id).await {
+                                return Some((Err(refusal), None));
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Closed) => return None,
+                    },
+                    event = events.next() => {
+                        let event = event?;
+                        return Some((Ok(event), Some((events, removals, store, thread_id))));
+                    }
+                }
+            }
+        },
+    );
+    Box::pin(stream)
 }
 
 #[derive(Debug, Serialize)]
@@ -368,6 +423,194 @@ mod tests {
         tokio::time::timeout(Duration::from_millis(100), stream.next())
             .await
             .expect("the Task list answers from what is already queued")
+    }
+
+    fn store_with_active(thread_ids: &[&str]) -> TaskStore {
+        let store = TaskStore::memory().unwrap();
+        for thread_id in thread_ids {
+            store
+                .claim(
+                    ManagedThread::new(*thread_id, RunBy::Codex, Some(1), None, None),
+                    1,
+                )
+                .unwrap();
+        }
+        store
+    }
+
+    fn removal(thread_id: &str, reason: &'static str) -> TaskListRemoval {
+        TaskListRemoval {
+            thread_id: thread_id.to_string(),
+            reason,
+        }
+    }
+
+    /// The detail stream's next item, which is already decided when this is
+    /// asked.
+    async fn decided(
+        stream: &mut TaskDetailLiveStream,
+    ) -> Option<Result<DetailLiveEvent, ApiError>> {
+        tokio::time::timeout(Duration::from_millis(100), stream.next())
+            .await
+            .expect("the detail stream answers from what is already sent")
+    }
+
+    #[tokio::test]
+    async fn a_detail_stream_ends_with_task_archived_when_its_task_is_archived() {
+        let store = store_with_active(&["thread-watched", "thread-other"]);
+        let (removals, receiver) = broadcast::channel(8);
+        let mut stream = detail_until_removed(
+            Box::pin(stream::pending()),
+            receiver,
+            store.clone(),
+            "thread-watched".to_string(),
+        );
+
+        store.archive("thread-other", 2).unwrap().unwrap();
+        removals.send(removal("thread-other", "archived")).unwrap();
+        store.archive("thread-watched", 3).unwrap().unwrap();
+        removals
+            .send(removal("thread-watched", "archived"))
+            .unwrap();
+
+        assert!(matches!(
+            decided(&mut stream).await,
+            Some(Err(ApiError::Conflict {
+                code: "task_archived",
+                ..
+            }))
+        ));
+        assert!(decided(&mut stream).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_detail_stream_ends_with_task_not_found_when_its_task_is_deleted() {
+        let store = store_with_active(&["thread-watched"]);
+        let (removals, receiver) = broadcast::channel(8);
+        let mut stream = detail_until_removed(
+            Box::pin(stream::pending()),
+            receiver,
+            store.clone(),
+            "thread-watched".to_string(),
+        );
+
+        store.archive("thread-watched", 2).unwrap().unwrap();
+        assert!(store.delete_archived("thread-watched").unwrap());
+        removals.send(removal("thread-watched", "deleted")).unwrap();
+
+        assert!(matches!(
+            decided(&mut stream).await,
+            Some(Err(ApiError::NotFound {
+                code: "task_not_found",
+                ..
+            }))
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_detail_stream_goes_on_when_its_task_is_active_again_by_the_time_it_looks() {
+        let store = store_with_active(&["thread-watched"]);
+        let (removals, receiver) = broadcast::channel(8);
+        let published = DetailLiveEvent::Sync(Box::new(TaskDetailSync {
+            thread_id: "thread-watched".to_string(),
+            revision: 4,
+            detail: loading_detail("thread-watched", 4, None),
+            reason: "app-server-notification",
+            error: None,
+        }));
+        let mut stream = detail_until_removed(
+            Box::pin(stream::iter([published]).chain(stream::pending())),
+            receiver,
+            store.clone(),
+            "thread-watched".to_string(),
+        );
+
+        // Archived and restored before the stream reads the removal, which it
+        // hears ahead of the event already waiting.
+        store.archive("thread-watched", 2).unwrap().unwrap();
+        store.restore("thread-watched").unwrap().unwrap();
+        removals
+            .send(removal("thread-watched", "archived"))
+            .unwrap();
+
+        assert!(matches!(
+            decided(&mut stream).await,
+            Some(Ok(DetailLiveEvent::Sync(_)))
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_detail_stream_that_missed_removals_reads_where_its_task_is() {
+        let store = store_with_active(&["thread-watched"]);
+        let (removals, receiver) = broadcast::channel(1);
+        let mut stream = detail_until_removed(
+            Box::pin(stream::pending()),
+            receiver,
+            store.clone(),
+            "thread-watched".to_string(),
+        );
+
+        store.archive("thread-watched", 2).unwrap().unwrap();
+        for other in ["thread-a", "thread-b", "thread-c"] {
+            removals.send(removal(other, "deleted")).unwrap();
+        }
+
+        assert!(matches!(
+            decided(&mut stream).await,
+            Some(Err(ApiError::Conflict {
+                code: "task_archived",
+                ..
+            }))
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_detail_stream_ends_when_removals_stop_at_shutdown() {
+        let store = store_with_active(&["thread-watched"]);
+        let (removals, receiver) = broadcast::channel(8);
+        let mut stream = detail_until_removed(
+            Box::pin(stream::pending()),
+            receiver,
+            store,
+            "thread-watched".to_string(),
+        );
+
+        drop(removals);
+
+        assert!(decided(&mut stream).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_detail_stream_for_an_archived_task_is_refused_when_it_opens() {
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        state
+            .task_store
+            .claim(
+                ManagedThread::new("thread-archived", RunBy::Codex, Some(1), None, None),
+                1,
+            )
+            .unwrap();
+        state
+            .task_store
+            .archive("thread-archived", 2)
+            .unwrap()
+            .unwrap();
+
+        let refused = TaskLiveSource::new(&state)
+            .task_detail("thread-archived")
+            .await;
+
+        assert!(matches!(
+            refused,
+            Err(ApiError::Conflict {
+                code: "task_archived",
+                ..
+            })
+        ));
+        assert!(client.mock_requests().await.is_empty());
     }
 
     #[tokio::test]

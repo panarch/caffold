@@ -19,10 +19,10 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 
 use super::commands::{managed_prompt_cwd, working_directory};
-use super::conversation::task_not_managed_error;
-use super::store::{task_store_get, task_store_worktree_for_thread};
+use super::store::task_store_worktree_for_thread;
 use crate::app::error::ApiError;
 use crate::app::tasks::TaskState;
+use crate::app::tasks::presence::active_record;
 
 const GIGABYTE: u64 = 1024 * 1024 * 1024;
 const MAX_UPLOAD_BYTES: u64 = 5 * GIGABYTE;
@@ -153,9 +153,7 @@ fn parse_upload_path(relative: &str) -> Result<(&str, &str), ApiError> {
 }
 
 async fn task_working_directory(state: &TaskState, thread_id: &str) -> Result<String, ApiError> {
-    task_store_get(state, thread_id)
-        .await?
-        .ok_or_else(task_not_managed_error)?;
+    active_record(&state.task_store, thread_id).await?;
     let worktree = task_store_worktree_for_thread(state, thread_id).await?;
     let managed_cwd = managed_prompt_cwd(worktree.as_ref())?;
     working_directory(
@@ -964,7 +962,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_unmanaged_task_takes_no_uploads() {
+    async fn an_unknown_task_takes_no_uploads() {
         let root = tempfile::tempdir().unwrap();
         let state = task_state_with_codex_client(
             RootedFs::new(root.path()).unwrap(),
@@ -975,8 +973,8 @@ mod tests {
 
         let (status, refused) = send(&app, put(FOLDER, "log.txt", "x")).await;
 
-        assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
-        assert_eq!(refused["error"]["code"], "task_not_managed");
+        assert_eq!(status, StatusCode::NOT_FOUND, "{refused}");
+        assert_eq!(refused["error"]["code"], "task_not_found");
     }
 
     #[tokio::test]

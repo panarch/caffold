@@ -30,6 +30,10 @@ recreates its worktree from the kept branch, and reopens the same conversation.
 Restore is available once the agent confirms that the conversation still
 exists.
 
+If a Task you have open is archived on another device, its conversation gives
+way to **Task archived** and a **Restore** button that brings it back the same
+way.
+
 ## Delete permanently
 
 The delete button, a trash can on the same row, asks for confirmation, then

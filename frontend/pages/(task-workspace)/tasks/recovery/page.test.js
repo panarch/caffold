@@ -46,6 +46,7 @@ test("provides the current recovery actions and exact recovery body", () => {
     isConnected: true,
     recovery: { threadId: "thread-a" },
     ensureState() {},
+    absenceNotice: () => null,
     getClientRects: () => [{}],
     querySelector(selector) {
       if (selector.includes("task-recovery-body")) return scrollport;

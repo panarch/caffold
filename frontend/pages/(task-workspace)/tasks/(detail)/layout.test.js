@@ -21,7 +21,7 @@ test("merges the view switch with only the active direct-child surface", () => {
   const viewRoot = {};
   const taskRoot = {};
   const sectionRoot = {};
-  let activeSurface = "conversation";
+  let surface = "conversation";
   let taskScopeCalls = 0;
   let sectionScopeCalls = 0;
   const task = {
@@ -54,8 +54,8 @@ test("merges the view switch with only the active direct-child surface", () => {
     subjectIdentity() {
       return { kind: this.subjectKind, id: "subject-a" };
     },
-    activeSurface() {
-      return activeSurface;
+    presentedSurface() {
+      return surface;
     },
     summaryHeader() {
       return {};
@@ -127,7 +127,7 @@ test("merges the view switch with only the active direct-child surface", () => {
   });
   assert.equal(taskScopeCalls, 2);
 
-  activeSurface = "review";
+  surface = "review";
   assert.deepEqual(detailLayout.actionHintScope.call(owner), {
     blocked: false,
     targets: [viewTarget, reviewTarget],
@@ -137,7 +137,7 @@ test("merges the view switch with only the active direct-child surface", () => {
   assert.equal(taskScopeCalls, 2);
 
   owner.subjectKind = "section";
-  activeSurface = "new";
+  surface = "new";
   assert.deepEqual(detailLayout.actionHintScope.call(owner), {
     blocked: false,
     targets: [viewTarget, sectionTarget],
@@ -156,17 +156,17 @@ test("merges the view switch with only the active direct-child surface", () => {
   });
   assert.equal(sectionScopeCalls, 1);
 
-  activeSurface = "git";
+  surface = "git";
   assert.deepEqual(
     detailLayout.actionHintScope.call(owner).targets,
     [viewTarget, gitTarget],
   );
-  activeSurface = "github";
+  surface = "github";
   assert.deepEqual(
     detailLayout.actionHintScope.call(owner).targets,
     [viewTarget, githubTarget],
   );
-  activeSurface = "terminal";
+  surface = "terminal";
   assert.deepEqual(
     detailLayout.actionHintScope.call(owner).targets,
     [viewTarget, terminalTarget],
@@ -182,13 +182,13 @@ test("delegates Scroll and keyboard contexts only to the active direct owner", (
     scrollSurfaceScope: () => surfaceScope,
     keyboardNavigationContexts: () => [modalContext],
   };
-  let activeSurface = "conversation";
+  let surface = "conversation";
   const owner = {
     subjectKind: "task",
     hidden: false,
     ensureRendered() {},
     subjectIdentity: () => ({ kind: "task", id: "thread-a" }),
-    activeSurface: () => activeSurface,
+    presentedSurface: () => surface,
     taskDetail: () => task,
     gitMenu: () => null,
     githubMenu: () => null,
@@ -200,10 +200,10 @@ test("delegates Scroll and keyboard contexts only to the active direct owner", (
 
   assert.equal(detailLayout.scrollSurfaceScope.call(owner), surfaceScope);
   assert.deepEqual(detailLayout.keyboardNavigationContexts.call(owner), [modalContext]);
-  activeSurface = "review";
+  surface = "review";
   assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, []);
   assert.deepEqual(detailLayout.keyboardNavigationContexts.call(owner), []);
-  activeSurface = "conversation";
+  surface = "conversation";
   task.loading = true;
   assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, []);
   assert.deepEqual(detailLayout.keyboardNavigationContexts.call(owner), []);
@@ -242,12 +242,12 @@ test("delegates Scroll to each exact active Detail domain", () => {
   const surfaces = Object.fromEntries(
     ["review", "git", "github"].map((name) => [name, { id: name }]),
   );
-  let activeSurface = "review";
+  let surface = "review";
   const owner = {
     subjectKind: "task",
     hidden: false,
     subjectIdentity: () => ({ kind: "task", id: "thread-a" }),
-    activeSurface: () => activeSurface,
+    presentedSurface: () => surface,
     ensureRendered() {},
     taskDetail: () => null,
     review: () => ({ scrollSurfaceScope: () => ({ surfaces: [surfaces.review] }) }),
@@ -255,7 +255,7 @@ test("delegates Scroll to each exact active Detail domain", () => {
     githubLayout: () => ({ scrollSurfaceScope: () => ({ surfaces: [surfaces.github] }) }),
   };
   for (const domain of ["review", "git", "github"]) {
-    activeSurface = domain;
+    surface = domain;
     assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, [surfaces[domain]]);
   }
   owner.hidden = true;
@@ -300,6 +300,8 @@ test("uses managed identity only as a header fallback and prefers canonical Deta
       },
     }),
     rebindSharedDomainContext() {},
+    canonicalTask: detailLayout.canonicalTask,
+    presentedSurface: detailLayout.presentedSurface,
     activeSurface: () => "review",
     taskSummary: () => ({ setSnapshot: (snapshot) => summaries.push(snapshot) }),
     viewSwitch: () => ({
@@ -371,6 +373,8 @@ test("keeps Git and GitHub out of a Task header outside Git from the start", () 
     managedTaskRepository: false,
     summaryHeader: () => ({ toggleAttribute() {} }),
     rebindSharedDomainContext() {},
+    canonicalTask: detailLayout.canonicalTask,
+    presentedSurface: detailLayout.presentedSurface,
     activeSurface: () => "conversation",
     taskSummary: () => ({ setSnapshot() {} }),
     viewSwitch: () => ({ setSnapshot() {}, toggleAttribute() {} }),
@@ -415,6 +419,8 @@ test("selects the view switch choice that names the Review a Task shows", () => 
     managedTaskRepository: false,
     summaryHeader: () => ({ toggleAttribute() {} }),
     rebindSharedDomainContext() {},
+    canonicalTask: detailLayout.canonicalTask,
+    presentedSurface: detailLayout.presentedSurface,
     activeSurface: () => "review",
     taskSummary: () => ({ setSnapshot() {} }),
     viewSwitch: () => ({
@@ -568,7 +574,7 @@ test("a lost terminal socket reports the Detail transport as unavailable", () =>
   let terminal = "ready";
   const owner = {
     subjectKind: "task",
-    activeSurface: () => surface,
+    presentedSurface: () => surface,
     terminalPage: () => ({ transportState: terminal }),
     taskDetail: () => ({ streamState: "reconnecting" }),
   };

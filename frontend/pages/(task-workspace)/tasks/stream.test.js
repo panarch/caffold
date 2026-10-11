@@ -66,6 +66,12 @@ function installBrowserHarness({ manualTimers = false } = {}) {
       });
     }
 
+    emitRefusal(code) {
+      const error = new Error(code);
+      error.code = code;
+      this.listener.onError?.(error, { closed: true, physical: false });
+    }
+
     emitPhysicalTrouble() {
       this.listener.onError?.(new Error("unavailable"), {
         closed: false,
@@ -596,4 +602,96 @@ test("subscribes a context chosen while hidden only when recovery asks", async (
   await settleAsyncWork();
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
   lifecycle.deactivate();
+});
+
+test("ends without retrying when the channel is refused because its subject is gone", () => {
+  const browser = installBrowserHarness({ manualTimers: true });
+  const gone = [];
+  const states = [];
+  const lifecycle = new TaskStreamLifecycle({
+    subscribe: browser.subscribe,
+    onSubjectGone: (absence, contextKey) => gone.push([absence, contextKey]),
+    onStateChange: (state) => states.push(state),
+    retryDelaysMs: [0, 0],
+  });
+
+  lifecycle.activate("thread-a");
+  browser.sources[0].emitOpen();
+  browser.sources[0].emitRefusal("task_archived");
+  browser.runAllTimers();
+
+  assert.deepEqual(gone, [["archived", "thread-a"]]);
+  assert.equal(browser.sources.length, 1);
+  assert.equal(browser.sources[0].closed, true);
+  assert.equal(lifecycle.source, null);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.IDLE);
+  assert.equal(states.at(-1), TASK_TRANSPORT_STATE.IDLE);
+  lifecycle.deactivate();
+});
+
+test("stops an unavailable stream when its owner learns the subject is gone", () => {
+  const browser = installBrowserHarness({ manualTimers: true });
+  const gone = [];
+  const states = [];
+  const lifecycle = new TaskStreamLifecycle({
+    subscribe: browser.subscribe,
+    onSubjectGone: (absence, contextKey) => gone.push([absence, contextKey]),
+    onStateChange: (state) => states.push(state),
+    retryDelaysMs: [],
+  });
+
+  lifecycle.activate("thread-a");
+  browser.sources[0].emitChannelError();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.UNAVAILABLE);
+
+  lifecycle.subjectGone("not-found");
+
+  assert.deepEqual(gone, [["not-found", "thread-a"]]);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.IDLE);
+  assert.deepEqual(states, [
+    TASK_TRANSPORT_STATE.CONNECTING,
+    TASK_TRANSPORT_STATE.UNAVAILABLE,
+    TASK_TRANSPORT_STATE.IDLE,
+  ]);
+  lifecycle.deactivate();
+});
+
+test("leaves a gone subject alone through recovery and hiding until its owner opens it again", async () => {
+  const browser = installBrowserHarness({ manualTimers: true });
+  const lifecycle = new TaskStreamLifecycle({
+    subscribe: browser.subscribe,
+    retryDelaysMs: [0],
+  });
+
+  lifecycle.activate("thread-a");
+  browser.sources[0].emitRefusal("task_not_found");
+  assert.deepEqual(await lifecycle.recover(), { ok: false, stale: true });
+  lifecycle.suspend();
+  browser.runAllTimers();
+  assert.equal(browser.sources.length, 1);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.IDLE);
+
+  lifecycle.activate("thread-a", { force: true });
+  assert.equal(browser.sources.length, 2);
+  browser.sources[1].emitOpen();
+  await settleAsyncWork();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
+  lifecycle.deactivate();
+});
+
+test("ignores the owner's word about a subject once it has no context", () => {
+  const browser = installBrowserHarness();
+  const gone = [];
+  const lifecycle = new TaskStreamLifecycle({
+    subscribe: browser.subscribe,
+    onSubjectGone: (absence) => gone.push(absence),
+  });
+
+  lifecycle.subjectGone("archived");
+  lifecycle.activate("thread-a");
+  lifecycle.deactivate();
+  lifecycle.subjectGone("archived");
+
+  assert.deepEqual(gone, []);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.IDLE);
 });

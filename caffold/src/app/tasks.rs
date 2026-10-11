@@ -7,6 +7,7 @@ mod generated_images;
 mod grok_mcp;
 mod lifecycle;
 mod live;
+mod presence;
 mod projection;
 mod push;
 mod recovery;

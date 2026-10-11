@@ -9,6 +9,7 @@ export {
   installTaskSseControllerInBrowser,
   isWatchSubscriptionClosed,
   openTaskWithBootstrap,
+  refuseTaskDetail,
 } from "./task-sse-fixture.js";
 
 export const PASTED_IMAGE_BASE64 =

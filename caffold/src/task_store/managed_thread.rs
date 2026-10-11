@@ -410,6 +410,21 @@ where
     get_by_membership(glue, thread_id, Membership::Archived)
 }
 
+/// A Task's record on whichever list holds it.
+pub(super) fn find<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<Option<ManagedThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let rows = table(TABLE_NAME)
+        .select()
+        .filter(col("thread_id").eq(text(thread_id.to_owned())))
+        .project(columns())
+        .limit(1)
+        .execute(glue)
+        .rows_as::<ManagedThreadRow>()?;
+    rows.into_iter().next().map(TryInto::try_into).transpose()
+}
+
 pub(super) fn list<S>(
     glue: &mut Glue<S>,
     cursor: Option<&str>,
@@ -1382,6 +1397,24 @@ mod tests {
             .into_iter()
             .map(|thread| (thread.thread_id, thread.position_in_section.unwrap()))
             .collect()
+    }
+
+    #[test]
+    fn find_reads_a_task_on_either_list_and_nothing_once_it_is_deleted() {
+        let mut glue = memory();
+        claim(&mut glue, thread("active", Some(1)), 1).unwrap();
+        claim(&mut glue, thread("archived", Some(1)), 1).unwrap();
+        archive(&mut glue, "archived", 2).unwrap();
+        claim(&mut glue, thread("deleted", Some(1)), 1).unwrap();
+        archive(&mut glue, "deleted", 2).unwrap();
+        assert!(delete_archived(&mut glue, "deleted").unwrap());
+
+        let active = find(&mut glue, "active").unwrap().unwrap();
+        assert_eq!(active.archived_at_ms, None);
+        let archived = find(&mut glue, "archived").unwrap().unwrap();
+        assert_eq!(archived.archived_at_ms, Some(2));
+        assert!(find(&mut glue, "deleted").unwrap().is_none());
+        assert!(find(&mut glue, "never-claimed").unwrap().is_none());
     }
 
     #[test]

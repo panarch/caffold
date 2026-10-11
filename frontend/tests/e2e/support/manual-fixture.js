@@ -213,6 +213,16 @@ export async function installManualTasks(page, { runningCheckout = false } = {})
       ? route.fulfill({ json: detail })
       : route.fulfill({ status: 404, json: { error: { code: "not_found" } } });
   });
+  // Opening an unseen Task marks it seen, as the server does for a Task it has.
+  await page.route(/\/api\/tasks\/([^/?]+)\/seen(?:\?|$)/, (route) => {
+    const threadId = decodeURIComponent(
+      new URL(route.request().url()).pathname.split("/").at(-2),
+    );
+    const task = details[threadId]?.task;
+    return task
+      ? route.fulfill({ json: { ...task, unseen: false } })
+      : route.fulfill({ status: 404, json: { error: { code: "task_not_found" } } });
+  });
   await page.route(
     `**/api/tasks/${MANUAL_TASKS.pagination.threadId}/permission-instructions`,
     (route) => route.fulfill({ json: { instructions: PAGINATION_SETTLED } }),

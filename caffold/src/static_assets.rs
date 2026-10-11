@@ -1190,6 +1190,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/task-store-recovery.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/task-store-recovery.js"
         ))),
+        "pages/(task-workspace)/tasks/components/task-absence.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/tasks/components/task-absence.css"
+        ))),
+        "pages/(task-workspace)/tasks/components/task-absence.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/tasks/components/task-absence.js"
+        ))),
         "pages/(task-workspace)/tasks/components/navigator.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/navigator.css"
         ))),
@@ -2319,6 +2325,10 @@ mod tests {
                 b"caffold-task-store-recovery".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/task-absence.js",
+                b"caffold-task-absence".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js",
                 b"caffold-task-conversation".as_slice(),
             ),
@@ -2489,6 +2499,8 @@ mod tests {
             "/assets/pages/(task-workspace)/tasks/components/archived-task-list.js",
             "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.css",
             "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.js",
+            "/assets/pages/(task-workspace)/tasks/components/task-absence.css",
+            "/assets/pages/(task-workspace)/tasks/components/task-absence.js",
             "/assets/pages/(task-workspace)/task-store-status.js",
             "/assets/pages/(task-workspace)/task-store-status/model.js",
             "/assets/pages/(task-workspace)/task-store-status/lifecycle.js",
@@ -2532,6 +2544,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/task-store-recovery.css",
                 b"caffold-task-store-recovery".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/task-absence.css",
+                b"caffold-task-absence".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/voice-level-meter.css",

@@ -484,6 +484,16 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.archivedTaskList.acceptTask(task);
   }
 
+  acceptRestoredTask(task, placement) {
+    this.ensureChildren();
+    const threadId = taskThreadId(task);
+    if (!threadId) {
+      return;
+    }
+    this.archivedTaskList.removeTask(threadId);
+    this.activeTaskList.placeCanonicalTaskAtTop(task, placement);
+  }
+
   restoreThread(threadId) {
     this.ensureChildren();
     return this.archivedTaskList.restoreThread(threadId);

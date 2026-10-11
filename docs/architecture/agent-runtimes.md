@@ -122,6 +122,16 @@ Claude restore makes the retained Task active again only when its transcript
 still exists, and a Grok restore only when the session's directory is still
 there under Grok's home.
 
+Every request about one Task refuses the same way when Caffold's record shows
+the Task is not where the request needs it: an archived Task
+answers 409 `task_archived`, an active Task asked to restore or delete as
+archived answers 400 `task_not_archived`, and a Task Caffold has no record of
+answers 404 `task_not_found`. Permanent deletion removes the record, so a
+deleted Task reads as one Caffold never had. A request whose Task leaves the
+list it needed while the request runs answers by where the Task is then. The
+Task Detail live channel refuses with the same codes
+([Live Updates](live-updates.md#task-channels)).
+
 Permanent deletion ordinarily requires archive; verified broken managed
 Tasks also allow [confirmed deletion](worktree-lifecycle.md#broken-task-deletion).
 Deletion asks the recorded

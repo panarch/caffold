@@ -45,6 +45,12 @@ function installBrowserHarness() {
       this.listener.onError?.(new Error("unavailable"), { closed, physical });
     }
 
+    emitRefusal(code) {
+      const error = new Error(code);
+      error.code = code;
+      this.listener.onError?.(error, { closed: true, physical: false });
+    }
+
     close() {
       this.closed = true;
     }
@@ -545,4 +551,208 @@ test("foreground recovery settles only after its readable stream bootstrap", asy
   assert.equal(session.state, TASK_TRANSPORT_STATE.READY);
   assert.equal(session.phase, "streaming");
   session.deactivate();
+});
+
+function refusal(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+test("ends an opening at absent when its channel is refused as archived and keeps it until opened again", async () => {
+  const browser = installBrowserHarness();
+  const absences = [];
+  const session = new TaskDetailSession({
+    subscribe: browser.subscribe,
+    onSubjectAbsent: (absence) => absences.push(absence),
+  });
+
+  const opening = session.open("thread-a");
+  browser.sources[0].emitOpen();
+  browser.sources[0].emitRefusal("task_archived");
+
+  assert.deepEqual(await opening, { ok: false, absence: "archived" });
+  assert.equal(session.phase, "absent");
+  assert.equal(session.absence, "archived");
+  assert.equal(session.state, TASK_TRANSPORT_STATE.IDLE);
+  assert.deepEqual(absences, ["archived"]);
+
+  session.suspend();
+  assert.equal(session.phase, "absent");
+  assert.deepEqual(await session.recover(), { ok: true, skipped: true });
+  assert.equal(browser.sources.length, 1);
+
+  session.open("thread-a");
+  assert.equal(session.phase, "waiting-bootstrap");
+  assert.equal(session.absence, null);
+  assert.equal(browser.sources.length, 2);
+  session.deactivate();
+});
+
+test("a streaming conversation becomes absent and takes the newer reason", async () => {
+  const browser = installBrowserHarness();
+  const absences = [];
+  const session = new TaskDetailSession({
+    subscribe: browser.subscribe,
+    onSubjectAbsent: (absence) => absences.push(absence),
+  });
+
+  session.open("thread-a");
+  browser.sources[0].emitOpen();
+  browser.sources[0].emit("task-sync", syncMessage("thread-a", 1));
+  await nextTask();
+  assert.equal(session.phase, "streaming");
+
+  browser.sources[0].emitRefusal("task_archived");
+  session.subjectGone("thread-b", "not-found");
+  session.subjectGone("thread-a", "archived");
+  session.subjectGone("thread-a", "not-found");
+
+  assert.equal(session.phase, "absent");
+  assert.equal(session.absence, "not-found");
+  assert.deepEqual(absences, ["archived", "archived", "not-found"]);
+  session.deactivate();
+  assert.equal(session.phase, "inactive");
+  assert.equal(session.absence, null);
+});
+
+test("a REST fallback that finds the Task archived ends absent, not unavailable", async () => {
+  installBrowserHarness();
+  const absences = [];
+  const session = new TaskDetailSession({
+    loadDetail: async () => {
+      throw refusal("task_archived");
+    },
+    onSubjectAbsent: (absence) => absences.push(absence),
+  });
+
+  const outcome = await session.open("thread-a");
+
+  assert.deepEqual(outcome, { ok: false, absence: "archived" });
+  assert.equal(session.phase, "absent");
+  assert.equal(session.state, TASK_TRANSPORT_STATE.IDLE);
+  assert.deepEqual(absences, ["archived"]);
+  session.deactivate();
+});
+
+test("another request's word that the Task is gone stops an unavailable conversation", async () => {
+  const browser = installBrowserHarness();
+  const states = [];
+  const session = new TaskDetailSession({
+    subscribe: browser.subscribe,
+    retryDelaysMs: [],
+    loadDetail: async (threadId) => detail(threadId, 2),
+    onFallbackDetail: () => true,
+    onStateChange: (state) => states.push(state),
+  });
+
+  const opening = session.open("thread-a");
+  browser.sources[0].emitError({ closed: true });
+  assert.equal((await opening).fallback, true);
+  assert.equal(session.state, TASK_TRANSPORT_STATE.UNAVAILABLE);
+
+  session.subjectGone("thread-a", "not-found");
+
+  assert.equal(session.phase, "absent");
+  assert.equal(session.absence, "not-found");
+  assert.equal(session.state, TASK_TRANSPORT_STATE.IDLE);
+  assert.equal(states.at(-1), TASK_TRANSPORT_STATE.IDLE);
+  session.deactivate();
+});
+
+test("a hidden conversation hears its Task is gone and keeps that on return", async () => {
+  const browser = installBrowserHarness();
+  const session = new TaskDetailSession({ subscribe: browser.subscribe });
+
+  session.open("thread-a");
+  browser.sources[0].emitOpen();
+  browser.sources[0].emit("task-sync", syncMessage("thread-a", 1));
+  await nextTask();
+  session.suspend();
+  assert.equal(session.phase, "inactive");
+
+  session.subjectGone("thread-a", "archived");
+
+  assert.equal(session.phase, "absent");
+  assert.deepEqual(await session.recover(), { ok: true, skipped: true });
+  assert.equal(browser.sources.length, 1);
+  session.deactivate();
+});
+
+test("a conversation still loading its history becomes absent when its Task is archived", async () => {
+  const browser = installBrowserHarness();
+  const session = new TaskDetailSession({ subscribe: browser.subscribe });
+
+  const opening = session.open("thread-a");
+  browser.sources[0].emitOpen();
+  browser.sources[0].emit(
+    "task-sync",
+    syncMessage("thread-a", 1, { readable: false }),
+  );
+  assert.equal(session.phase, "waiting-readable");
+
+  browser.sources[0].emitRefusal("task_archived");
+
+  assert.deepEqual(await opening, { ok: false, absence: "archived" });
+  assert.equal(session.phase, "absent");
+  session.deactivate();
+});
+
+// Drives a fresh session on thread-a into one phase.
+async function sessionIn(phase) {
+  const browser = installBrowserHarness();
+  const fallback = deferred();
+  const session = new TaskDetailSession({
+    subscribe: browser.subscribe,
+    retryDelaysMs: [],
+    loadDetail: () => fallback.promise,
+    onFallbackDetail: () => true,
+  });
+  const opening = session.open("thread-a");
+  if (phase === "waiting-readable" || phase === "streaming") {
+    browser.sources[0].emitOpen();
+    browser.sources[0].emit(
+      "task-sync",
+      syncMessage("thread-a", 1, { readable: phase === "streaming" }),
+    );
+  } else if (phase === "rest-fallback" || phase === "unavailable") {
+    browser.sources[0].emitError({ closed: true });
+    if (phase === "unavailable") {
+      fallback.resolve(detail("thread-a", 1));
+      await opening;
+    }
+  }
+  assert.equal(session.phase, phase);
+  return { browser, session };
+}
+
+test("hiding stops the conversation and recovery starts it again from every phase but absent", async () => {
+  for (const phase of [
+    "waiting-bootstrap",
+    "waiting-readable",
+    "streaming",
+    "rest-fallback",
+    "unavailable",
+  ]) {
+    const { browser, session } = await sessionIn(phase);
+    session.suspend();
+    assert.equal(session.phase, "inactive", `${phase} hides`);
+    const sources = browser.sources.length;
+    void session.recover();
+    assert.equal(session.phase, "waiting-bootstrap", `${phase} recovers`);
+    assert.equal(browser.sources.length, sources + 1);
+    session.deactivate();
+  }
+  for (const phase of [
+    "waiting-bootstrap",
+    "waiting-readable",
+    "streaming",
+    "rest-fallback",
+    "unavailable",
+  ]) {
+    const { session } = await sessionIn(phase);
+    void session.recover();
+    assert.equal(session.phase, "waiting-bootstrap", `${phase} recovers while shown`);
+    session.deactivate();
+  }
 });

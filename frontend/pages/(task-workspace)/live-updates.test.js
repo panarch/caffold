@@ -210,6 +210,37 @@ test("multiplexes Task List, Task Detail, and independent Watch scopes", async (
   browser.liveUpdates.disconnect();
 });
 
+test("passes a channel refusal's code to the subscriber with the error", async () => {
+  const browser = harness();
+  const errors = [];
+  const detail = browser.liveUpdates.subscribeTaskDetail("thread-a", {
+    onError: (error, metadata) => errors.push([error.message, error.code, metadata]),
+  });
+  browser.liveUpdates.connect();
+  browser.sources[0].emit("gateway-ready", { connectionId: "connection-a" });
+  await settle();
+
+  browser.sources[0].emit("live-update", {
+    channel: "task-detail",
+    generation: detail.generation,
+    type: "channel-error",
+    payload: { code: "task_archived", message: "task is archived" },
+  });
+  browser.sources[0].emit("live-update", {
+    channel: "task-detail",
+    generation: detail.generation,
+    type: "channel-error",
+    payload: { message: "Task Detail stream ended." },
+  });
+
+  assert.deepEqual(errors, [
+    ["task is archived", "task_archived", { closed: true, physical: false }],
+    ["Task Detail stream ended.", undefined, { closed: true, physical: false }],
+  ]);
+  detail.close();
+  browser.liveUpdates.disconnect();
+});
+
 test("sends the first Task List subscription after the gateway greeting under a new revision", async () => {
   const { binding, published } = await publishedAfterGreeting(
     (liveUpdates) => liveUpdates.subscribeTaskList({}),

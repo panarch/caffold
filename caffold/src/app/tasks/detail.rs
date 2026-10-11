@@ -14,6 +14,7 @@ use super::{
         TaskHistoryPage, compose_pending_approval_events, sort_task_events, task_event_turn_id,
     },
     lifecycle::worktree_api_error,
+    presence::{active_record, moved_refusal},
     projection::{
         ResolvedTaskCwd, TaskRecord, apply_turn_states_projection, resolve_checkout_cwd,
         resolve_conversation_cwd, task_record_from_conversation,
@@ -529,7 +530,7 @@ impl DetailContext {
                 context,
             });
         }
-        Err(not_managed_error())
+        Err(moved_refusal(&self.store, &thread_id).await)
     }
 
     pub(in crate::app::tasks) fn record_from_conversation(
@@ -653,10 +654,7 @@ impl DetailContext {
     }
 
     async fn restore_managed_composer_settings(&self, thread_id: &str) -> Result<(), ApiError> {
-        let managed = self
-            .store_get(thread_id)
-            .await?
-            .ok_or_else(not_managed_error)?;
+        let managed = active_record(&self.store, thread_id).await?;
         self.sessions
             .restore_managed_composer_settings(
                 thread_id,
@@ -940,13 +938,6 @@ fn max_position(left: TaskEventPosition, right: TaskEventPosition) -> TaskEventP
         right
     } else {
         left
-    }
-}
-
-pub(in crate::app::tasks) fn not_managed_error() -> ApiError {
-    ApiError::BadRequest {
-        code: "task_not_managed",
-        message: "task is not managed by Caffold".to_string(),
     }
 }
 
@@ -2051,8 +2042,8 @@ mod request_tests {
 
         assert!(matches!(
             error,
-            ApiError::BadRequest {
-                code: "task_not_managed",
+            ApiError::NotFound {
+                code: "task_not_found",
                 ..
             }
         ));
