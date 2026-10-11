@@ -1,4 +1,4 @@
-import { getTask, taskResponseError } from "#app/api.js";
+import { getTask, taskAbsence, taskResponseError } from "#app/api.js";
 import { TASK_TRANSPORT_STATE } from "../../runtime-state.js";
 import { TaskStreamLifecycle } from "../../stream.js";
 
@@ -10,25 +10,37 @@ const TASK_DETAIL_SESSION_PHASE = Object.freeze({
   STREAMING: "streaming",
   REST_FALLBACK: "rest-fallback",
   UNAVAILABLE: "unavailable",
+  // The Task is archived or Caffold cannot find it. It stays so, through
+  // hiding and foreground recovery, until the owner opens a Task again.
+  ABSENT: "absent",
 });
 const TASK_DETAIL_SESSION_EVENT = Object.freeze({
   ACTIVATE: "activate",
+  RECOVER: "recover",
   ACCEPT_LOADING_BOOTSTRAP: "accept-loading-bootstrap",
   ACCEPT_READABLE_BOOTSTRAP: "accept-readable-bootstrap",
   ACCEPT_READABLE_SYNC: "accept-readable-sync",
   START_FALLBACK: "start-fallback",
   FINISH_FALLBACK: "finish-fallback",
+  SUSPEND: "suspend",
   DEACTIVATE: "deactivate",
   SOURCE_ERROR: "source-error",
+  SUBJECT_ABSENT: "subject-absent",
 });
+// The complete transition table; any other pair is rejected.
 const TASK_DETAIL_SESSION_TRANSITIONS = Object.freeze({
   [TASK_DETAIL_SESSION_PHASE.INACTIVE]: Object.freeze({
     [TASK_DETAIL_SESSION_EVENT.ACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
+    [TASK_DETAIL_SESSION_EVENT.RECOVER]:
+      TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
+    [TASK_DETAIL_SESSION_EVENT.SUBJECT_ABSENT]: TASK_DETAIL_SESSION_PHASE.ABSENT,
   }),
   [TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP]: Object.freeze({
     [TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR]: TASK_DETAIL_SESSION_PHASE.UNAVAILABLE,
     [TASK_DETAIL_SESSION_EVENT.ACTIVATE]:
+      TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
+    [TASK_DETAIL_SESSION_EVENT.RECOVER]:
       TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
     [TASK_DETAIL_SESSION_EVENT.ACCEPT_LOADING_BOOTSTRAP]:
       TASK_DETAIL_SESSION_PHASE.WAITING_READABLE,
@@ -36,6 +48,8 @@ const TASK_DETAIL_SESSION_TRANSITIONS = Object.freeze({
       TASK_DETAIL_SESSION_PHASE.STREAMING,
     [TASK_DETAIL_SESSION_EVENT.START_FALLBACK]:
       TASK_DETAIL_SESSION_PHASE.REST_FALLBACK,
+    [TASK_DETAIL_SESSION_EVENT.SUBJECT_ABSENT]: TASK_DETAIL_SESSION_PHASE.ABSENT,
+    [TASK_DETAIL_SESSION_EVENT.SUSPEND]: TASK_DETAIL_SESSION_PHASE.INACTIVE,
     [TASK_DETAIL_SESSION_EVENT.DEACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.INACTIVE,
   }),
@@ -43,10 +57,14 @@ const TASK_DETAIL_SESSION_TRANSITIONS = Object.freeze({
     [TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR]: TASK_DETAIL_SESSION_PHASE.UNAVAILABLE,
     [TASK_DETAIL_SESSION_EVENT.ACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
+    [TASK_DETAIL_SESSION_EVENT.RECOVER]:
+      TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
     [TASK_DETAIL_SESSION_EVENT.ACCEPT_READABLE_SYNC]:
       TASK_DETAIL_SESSION_PHASE.STREAMING,
     [TASK_DETAIL_SESSION_EVENT.START_FALLBACK]:
       TASK_DETAIL_SESSION_PHASE.REST_FALLBACK,
+    [TASK_DETAIL_SESSION_EVENT.SUBJECT_ABSENT]: TASK_DETAIL_SESSION_PHASE.ABSENT,
+    [TASK_DETAIL_SESSION_EVENT.SUSPEND]: TASK_DETAIL_SESSION_PHASE.INACTIVE,
     [TASK_DETAIL_SESSION_EVENT.DEACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.INACTIVE,
   }),
@@ -54,6 +72,10 @@ const TASK_DETAIL_SESSION_TRANSITIONS = Object.freeze({
     [TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR]: TASK_DETAIL_SESSION_PHASE.UNAVAILABLE,
     [TASK_DETAIL_SESSION_EVENT.ACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
+    [TASK_DETAIL_SESSION_EVENT.RECOVER]:
+      TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
+    [TASK_DETAIL_SESSION_EVENT.SUBJECT_ABSENT]: TASK_DETAIL_SESSION_PHASE.ABSENT,
+    [TASK_DETAIL_SESSION_EVENT.SUSPEND]: TASK_DETAIL_SESSION_PHASE.INACTIVE,
     [TASK_DETAIL_SESSION_EVENT.DEACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.INACTIVE,
   }),
@@ -61,8 +83,12 @@ const TASK_DETAIL_SESSION_TRANSITIONS = Object.freeze({
     [TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR]: TASK_DETAIL_SESSION_PHASE.UNAVAILABLE,
     [TASK_DETAIL_SESSION_EVENT.ACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
+    [TASK_DETAIL_SESSION_EVENT.RECOVER]:
+      TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
     [TASK_DETAIL_SESSION_EVENT.FINISH_FALLBACK]:
       TASK_DETAIL_SESSION_PHASE.UNAVAILABLE,
+    [TASK_DETAIL_SESSION_EVENT.SUBJECT_ABSENT]: TASK_DETAIL_SESSION_PHASE.ABSENT,
+    [TASK_DETAIL_SESSION_EVENT.SUSPEND]: TASK_DETAIL_SESSION_PHASE.INACTIVE,
     [TASK_DETAIL_SESSION_EVENT.DEACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.INACTIVE,
   }),
@@ -70,6 +96,17 @@ const TASK_DETAIL_SESSION_TRANSITIONS = Object.freeze({
     [TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR]: TASK_DETAIL_SESSION_PHASE.UNAVAILABLE,
     [TASK_DETAIL_SESSION_EVENT.ACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
+    [TASK_DETAIL_SESSION_EVENT.RECOVER]:
+      TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
+    [TASK_DETAIL_SESSION_EVENT.SUBJECT_ABSENT]: TASK_DETAIL_SESSION_PHASE.ABSENT,
+    [TASK_DETAIL_SESSION_EVENT.SUSPEND]: TASK_DETAIL_SESSION_PHASE.INACTIVE,
+    [TASK_DETAIL_SESSION_EVENT.DEACTIVATE]:
+      TASK_DETAIL_SESSION_PHASE.INACTIVE,
+  }),
+  [TASK_DETAIL_SESSION_PHASE.ABSENT]: Object.freeze({
+    [TASK_DETAIL_SESSION_EVENT.ACTIVATE]:
+      TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP,
+    [TASK_DETAIL_SESSION_EVENT.SUBJECT_ABSENT]: TASK_DETAIL_SESSION_PHASE.ABSENT,
     [TASK_DETAIL_SESSION_EVENT.DEACTIVATE]:
       TASK_DETAIL_SESSION_PHASE.INACTIVE,
   }),
@@ -81,10 +118,13 @@ export class TaskDetailSession {
     this.onTaskEvent = callbacks.onTaskEvent ?? (() => {});
     this.onFallbackDetail = callbacks.onFallbackDetail ?? (() => false);
     this.onStateChange = callbacks.onStateChange ?? (() => {});
+    this.onSubjectAbsent = callbacks.onSubjectAbsent ?? (() => {});
     this.loadDetail = callbacks.loadDetail ?? getTask;
     this.bootstrapTimeoutMs =
       callbacks.bootstrapTimeoutMs ?? DEFAULT_BOOTSTRAP_TIMEOUT_MS;
     this.phase = TASK_DETAIL_SESSION_PHASE.INACTIVE;
+    // Why the Task is absent, while the phase says it is.
+    this.absence = null;
     this.readable = false;
     this.bootstrap = null;
     this.attempt = null;
@@ -99,6 +139,8 @@ export class TaskDetailSession {
       onConnectionInvalidated: (source) => this.closeBootstrap(source),
       onStateChange: (state, previousState) =>
         this.handleTransportStateChange(state, previousState),
+      onSubjectGone: (absence, threadId) =>
+        this.handleSubjectGone(absence, threadId),
       connectionTimeoutMs:
         callbacks.connectionTimeoutMs ?? this.bootstrapTimeoutMs,
       retryDelaysMs: callbacks.retryDelaysMs,
@@ -146,9 +188,13 @@ export class TaskDetailSession {
     if (!this.threadId || document.visibilityState !== "visible") {
       return Promise.resolve({ ok: false, stale: true });
     }
+    if (!this.accepts(TASK_DETAIL_SESSION_EVENT.RECOVER)) {
+      return Promise.resolve({ ok: true, skipped: true });
+    }
     return this.startAttempt(this.threadId, {
       readable: this.readable,
       validating: true,
+      event: TASK_DETAIL_SESSION_EVENT.RECOVER,
     });
   }
 
@@ -156,7 +202,16 @@ export class TaskDetailSession {
     this.closeBootstrap();
     this.settleAttempt({ ok: false, stale: true });
     this.transport.suspend();
-    this.transition(TASK_DETAIL_SESSION_EVENT.DEACTIVATE);
+    this.transition(TASK_DETAIL_SESSION_EVENT.SUSPEND);
+  }
+
+  // Another request about this Task found it archived or missing. The Task
+  // stream hears it first, and its end reaches this session as for a refused
+  // channel.
+  subjectGone(threadId, absence) {
+    if (normalizeThreadId(threadId) === this.threadId) {
+      this.transport.subjectGone(absence);
+    }
   }
 
   deactivate() {
@@ -167,13 +222,20 @@ export class TaskDetailSession {
     this.transition(TASK_DETAIL_SESSION_EVENT.DEACTIVATE);
   }
 
-  startAttempt(threadId, { readable, validating = false } = {}) {
+  startAttempt(
+    threadId,
+    {
+      readable,
+      validating = false,
+      event = TASK_DETAIL_SESSION_EVENT.ACTIVATE,
+    } = {},
+  ) {
     const nextThreadId = normalizeThreadId(threadId);
     if (!nextThreadId) {
       this.deactivate();
       return Promise.resolve({ ok: false, stale: true });
     }
-    const attempt = this.createAttempt(nextThreadId, readable);
+    const attempt = this.createAttempt(nextThreadId, readable, event);
     this.transport.activate(nextThreadId, {
       force: true,
       validating,
@@ -181,7 +243,7 @@ export class TaskDetailSession {
     return attempt.promise;
   }
 
-  createAttempt(threadId, readable) {
+  createAttempt(threadId, readable, event = TASK_DETAIL_SESSION_EVENT.ACTIVATE) {
     this.closeBootstrap();
     this.settleAttempt({ ok: false, stale: true });
     let resolveAttempt;
@@ -196,7 +258,7 @@ export class TaskDetailSession {
     };
     this.attempt = attempt;
     this.readable = attempt.readable;
-    this.transition(TASK_DETAIL_SESSION_EVENT.ACTIVATE);
+    this.transition(event);
     return attempt;
   }
 
@@ -344,6 +406,19 @@ export class TaskDetailSession {
     });
   }
 
+  handleSubjectGone(absence, threadId) {
+    if (threadId !== this.threadId) {
+      return;
+    }
+    this.closeBootstrap();
+    if (!this.transition(TASK_DETAIL_SESSION_EVENT.SUBJECT_ABSENT)) {
+      return;
+    }
+    this.absence = absence;
+    this.settleAttempt({ ok: false, absence });
+    this.onSubjectAbsent(absence);
+  }
+
   handleTransportStateChange(state, previousState) {
     if (
       state === TASK_TRANSPORT_STATE.RECONNECTING &&
@@ -396,6 +471,11 @@ export class TaskDetailSession {
     if (!this.isCurrentFallback(attempt)) {
       return;
     }
+    const absence = taskAbsence(error);
+    if (absence) {
+      this.transport.subjectGone(absence);
+      return;
+    }
     this.transition(TASK_DETAIL_SESSION_EVENT.FINISH_FALLBACK);
     if (error) {
       this.settleAttempt({ ok: false, error });
@@ -427,9 +507,21 @@ export class TaskDetailSession {
     attempt.resolve(outcome);
   }
 
+  accepts(event) {
+    return Boolean(TASK_DETAIL_SESSION_TRANSITIONS[this.phase]?.[event]);
+  }
+
+  // The one place the phase changes. False when the table rejects the event.
   transition(event) {
-    this.phase =
-      TASK_DETAIL_SESSION_TRANSITIONS[this.phase]?.[event] ?? this.phase;
+    const next = TASK_DETAIL_SESSION_TRANSITIONS[this.phase]?.[event];
+    if (!next) {
+      return false;
+    }
+    this.phase = next;
+    if (next !== TASK_DETAIL_SESSION_PHASE.ABSENT) {
+      this.absence = null;
+    }
+    return true;
   }
 }
 

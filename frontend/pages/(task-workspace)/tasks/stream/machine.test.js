@@ -143,3 +143,46 @@ test("presents waiting on the gateway or a backoff as reconnecting", () => {
     );
   }
 });
+
+test("ends at gone from every node that holds a context, and stays there", () => {
+  const gone = { type: EVENT.SUBJECT_GONE, absence: "archived" };
+  for (const node of Object.values(NODE)) {
+    assert.equal(
+      transitionTaskStream(node, gone, {}),
+      node === NODE.INACTIVE ? null : NODE.GONE,
+      node,
+    );
+  }
+  // Foreground recovery, hiding, and anything the released subscription might
+  // still report leave a gone subject alone; only the owner reopens it.
+  for (const type of [
+    EVENT.RECOVER,
+    EVENT.SUSPEND,
+    EVENT.CHANNEL_OPENED,
+    EVENT.CHANNEL_FAILED,
+    EVENT.GATEWAY_TROUBLE,
+    EVENT.RETRY_DUE,
+  ]) {
+    assert.equal(transitionTaskStream(NODE.GONE, { type }, { visible: true }), null, type);
+  }
+  assert.equal(
+    transitionTaskStream(
+      NODE.GONE,
+      { type: EVENT.ACTIVATE, sameContext: true, forced: false },
+      { visible: true },
+    ),
+    null,
+  );
+  assert.equal(
+    transitionTaskStream(
+      NODE.GONE,
+      { type: EVENT.ACTIVATE, sameContext: true, forced: true },
+      { visible: true },
+    ),
+    NODE.SUBSCRIBING,
+  );
+  assert.equal(
+    presentTaskStream(NODE.GONE, { validating: false, needsReconcile: false }),
+    TASK_TRANSPORT_STATE.IDLE,
+  );
+});

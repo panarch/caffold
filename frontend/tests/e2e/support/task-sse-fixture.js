@@ -134,9 +134,14 @@ export function installTaskSseControllerInBrowser() {
         }
         nativeEmit(this.physical, "error");
       },
-      emitChannelError({ closed = true } = {}) {
+      emitChannelError({
+        closed = true,
+        code = "",
+        message = "Live updates are unavailable.",
+      } = {}) {
         emitEnvelope(this, "channel-error", {
-          message: "Live updates are unavailable.",
+          ...(code ? { code } : {}),
+          message,
         });
         if (closed) {
           this.readyState = 2;
@@ -520,6 +525,25 @@ export async function emitTaskDetailBootstrap(page, detail) {
   await page.evaluate((bootstrapDetail) => {
     window.__caffoldTaskSse.bootstrap(bootstrapDetail);
   }, detail);
+}
+
+// The gateway's refusal of a Task's open detail channel, with the code the
+// server sends when the Task is archived or Caffold cannot find it.
+export async function refuseTaskDetail(page, threadId, code) {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (requestedThreadId) =>
+          Boolean(window.__caffoldTaskSse?.source(requestedThreadId)),
+        threadId,
+      ),
+    )
+    .toBe(true);
+  await page.evaluate(({ requestedThreadId, refusal }) => {
+    const source = window.__caffoldTaskSse.source(requestedThreadId);
+    source.emitOpen();
+    source.emitChannelError({ code: refusal, message: refusal });
+  }, { requestedThreadId: threadId, refusal: code });
 }
 
 export async function openTaskWithBootstrap(tasksPage, detail) {

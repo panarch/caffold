@@ -850,6 +850,12 @@ async function installSwitcherFixture(page, tasks, {
       body: JSON.stringify(activeTaskProjection(tasks)),
     });
   });
+  // Opening an unseen Task marks it seen, as the server does for a Task it has.
+  await page.route(/\/api\/tasks\/([^/?]+)\/seen(?:\?|$)/, (route) => {
+    const threadId = new URL(route.request().url()).pathname.split("/").at(-2);
+    const task = tasks.find((candidate) => candidate.threadId === threadId);
+    return route.fulfill({ json: { ...task, unseen: false } });
+  });
   await page.route(
     /\/api\/tasks\/(?!archived(?:[/?]|$))([^/?]+)(?:\?|$)/,
     (route) => {

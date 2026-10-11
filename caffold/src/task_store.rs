@@ -576,10 +576,18 @@ impl TaskStore {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn get_archived(&self, thread_id: &str) -> Result<Option<ManagedThread>> {
         match self {
             Self::Memory(glue) => managed_thread::get_archived(&mut *lock_glue(glue)?, thread_id),
             Self::Redb(glue) => managed_thread::get_archived(&mut *lock_glue(glue)?, thread_id),
+        }
+    }
+
+    pub(crate) fn find(&self, thread_id: &str) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => managed_thread::find(&mut *lock_glue(glue)?, thread_id),
+            Self::Redb(glue) => managed_thread::find(&mut *lock_glue(glue)?, thread_id),
         }
     }
 

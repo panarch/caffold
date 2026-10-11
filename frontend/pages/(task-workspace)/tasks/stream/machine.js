@@ -9,7 +9,7 @@ import { TASK_TRANSPORT_STATE } from "../runtime-state.js";
 // the owner's readiness limit, reconciling through the request time limit,
 // waiting-for-gateway through the gateway's retry budget, and backing-off
 // through its timer. Ready, unavailable, suspended, and inactive wait for the
-// owner or the gateway.
+// owner or the gateway, and gone waits for the owner.
 
 export const TASK_STREAM_NODE = Object.freeze({
   // No context is chosen.
@@ -32,6 +32,9 @@ export const TASK_STREAM_NODE = Object.freeze({
   BACKING_OFF: "backing-off",
   // The retry budget or the gateway's own budget is spent.
   UNAVAILABLE: "unavailable",
+  // The context's subject is archived or no longer exists. Nothing is retried
+  // until the owner chooses a context again.
+  GONE: "gone",
 });
 
 export const TASK_STREAM_EVENT = Object.freeze({
@@ -59,6 +62,9 @@ export const TASK_STREAM_EVENT = Object.freeze({
   OPEN_TIMED_OUT: "open-timed-out",
   // The backoff delay ended.
   RETRY_DUE: "retry-due",
+  // The subject is archived or no longer exists, as the gateway's refusal of
+  // the channel or the owner's other requests about it say.
+  SUBJECT_GONE: "subject-gone",
 });
 
 const NODE = TASK_STREAM_NODE;
@@ -76,6 +82,7 @@ export const TASK_STREAM_EDGES = Object.freeze({
     [EVENT.RETRY]: [NODE.SUBSCRIBING, NODE.SUSPENDED],
     [EVENT.RECOVER]: [NODE.SUBSCRIBING],
     [EVENT.CHANNEL_OPENED]: [NODE.PREPARING, NODE.RECONCILING],
+    [EVENT.SUBJECT_GONE]: [NODE.GONE],
     [EVENT.DEACTIVATE]: [NODE.INACTIVE],
   }),
   [NODE.SUBSCRIBING]: Object.freeze({
@@ -90,6 +97,7 @@ export const TASK_STREAM_EDGES = Object.freeze({
     [EVENT.GATEWAY_TROUBLE]: [NODE.WAITING_FOR_GATEWAY],
     [EVENT.GATEWAY_EXHAUSTED]: [NODE.UNAVAILABLE],
     [EVENT.SUSPEND]: [NODE.SUSPENDED],
+    [EVENT.SUBJECT_GONE]: [NODE.GONE],
     [EVENT.DEACTIVATE]: [NODE.INACTIVE],
   }),
   [NODE.PREPARING]: Object.freeze({
@@ -104,6 +112,7 @@ export const TASK_STREAM_EDGES = Object.freeze({
     [EVENT.GATEWAY_TROUBLE]: [NODE.WAITING_FOR_GATEWAY],
     [EVENT.GATEWAY_EXHAUSTED]: [NODE.UNAVAILABLE],
     [EVENT.SUSPEND]: [NODE.SUSPENDED],
+    [EVENT.SUBJECT_GONE]: [NODE.GONE],
     [EVENT.DEACTIVATE]: [NODE.INACTIVE],
   }),
   [NODE.RECONCILING]: Object.freeze({
@@ -116,6 +125,7 @@ export const TASK_STREAM_EDGES = Object.freeze({
     [EVENT.GATEWAY_TROUBLE]: [NODE.WAITING_FOR_GATEWAY],
     [EVENT.GATEWAY_EXHAUSTED]: [NODE.UNAVAILABLE],
     [EVENT.SUSPEND]: [NODE.SUSPENDED],
+    [EVENT.SUBJECT_GONE]: [NODE.GONE],
     [EVENT.DEACTIVATE]: [NODE.INACTIVE],
   }),
   [NODE.READY]: Object.freeze({
@@ -126,6 +136,7 @@ export const TASK_STREAM_EDGES = Object.freeze({
     [EVENT.GATEWAY_TROUBLE]: [NODE.WAITING_FOR_GATEWAY],
     [EVENT.GATEWAY_EXHAUSTED]: [NODE.UNAVAILABLE],
     [EVENT.SUSPEND]: [NODE.SUSPENDED],
+    [EVENT.SUBJECT_GONE]: [NODE.GONE],
     [EVENT.DEACTIVATE]: [NODE.INACTIVE],
   }),
   [NODE.WAITING_FOR_GATEWAY]: Object.freeze({
@@ -136,6 +147,7 @@ export const TASK_STREAM_EDGES = Object.freeze({
     [EVENT.CHANNEL_FAILED]: [NODE.BACKING_OFF, NODE.UNAVAILABLE],
     [EVENT.GATEWAY_EXHAUSTED]: [NODE.UNAVAILABLE],
     [EVENT.SUSPEND]: [NODE.SUSPENDED],
+    [EVENT.SUBJECT_GONE]: [NODE.GONE],
     [EVENT.DEACTIVATE]: [NODE.INACTIVE],
   }),
   [NODE.BACKING_OFF]: Object.freeze({
@@ -144,6 +156,7 @@ export const TASK_STREAM_EDGES = Object.freeze({
     [EVENT.RECOVER]: [NODE.SUBSCRIBING],
     [EVENT.RETRY_DUE]: [NODE.SUBSCRIBING],
     [EVENT.SUSPEND]: [NODE.SUSPENDED],
+    [EVENT.SUBJECT_GONE]: [NODE.GONE],
     [EVENT.DEACTIVATE]: [NODE.INACTIVE],
   }),
   [NODE.UNAVAILABLE]: Object.freeze({
@@ -152,6 +165,14 @@ export const TASK_STREAM_EDGES = Object.freeze({
     [EVENT.RECOVER]: [NODE.SUBSCRIBING],
     [EVENT.CHANNEL_OPENED]: [NODE.PREPARING, NODE.RECONCILING],
     [EVENT.SUSPEND]: [NODE.SUSPENDED],
+    [EVENT.SUBJECT_GONE]: [NODE.GONE],
+    [EVENT.DEACTIVATE]: [NODE.INACTIVE],
+  }),
+  // Foreground recovery and hiding leave a gone subject alone.
+  [NODE.GONE]: Object.freeze({
+    [EVENT.ACTIVATE]: [NODE.SUBSCRIBING, NODE.SUSPENDED],
+    [EVENT.RETRY]: [NODE.SUBSCRIBING, NODE.SUSPENDED],
+    [EVENT.SUBJECT_GONE]: [NODE.GONE],
     [EVENT.DEACTIVATE]: [NODE.INACTIVE],
   }),
 });
@@ -178,6 +199,7 @@ export function presentTaskStream(node, { validating, needsReconcile }) {
   switch (node) {
     case NODE.INACTIVE:
     case NODE.SUSPENDED:
+    case NODE.GONE:
       return TASK_TRANSPORT_STATE.IDLE;
     case NODE.READY:
       return TASK_TRANSPORT_STATE.READY;
@@ -234,6 +256,8 @@ function chooseNext(node, event, facts) {
       return NODE.WAITING_FOR_GATEWAY;
     case EVENT.GATEWAY_EXHAUSTED:
       return NODE.UNAVAILABLE;
+    case EVENT.SUBJECT_GONE:
+      return NODE.GONE;
     default:
       return null;
   }

@@ -19,9 +19,9 @@ use serde::{Deserialize, Serialize};
 
 use super::CreatedTaskResponse;
 use super::commands::{require_codex_thread_client, require_codex_thread_connection};
-use super::conversation::task_not_managed_error;
 use super::membership::task_store_join_error;
 use super::store::{task_store_api_error, task_store_get};
+use crate::app::tasks::presence::moved_refusal;
 use crate::app::tasks::projection;
 
 const TASK_FORK_PREVIEW_TURNS: usize = 4;
@@ -350,13 +350,13 @@ async fn fork_source_context(
     thread_id: &str,
 ) -> Result<(ManagedThread, ManagedSection), ApiError> {
     let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
+    let wanted = thread_id.to_string();
     let (source, section) = tokio::task::spawn_blocking(move || {
         store.read(|tables| {
             let source = tables
                 .active_managed_threads()?
                 .into_iter()
-                .find(|thread| thread.thread_id == thread_id);
+                .find(|thread| thread.thread_id == wanted);
             let section_id = source
                 .as_ref()
                 .and_then(|source| source.section_id.as_deref())
@@ -374,7 +374,9 @@ async fn fork_source_context(
     .await
     .map_err(task_store_join_error)?
     .map_err(task_store_api_error)?;
-    let source = source.ok_or_else(task_not_managed_error)?;
+    let Some(source) = source else {
+        return Err(moved_refusal(&state.task_store, thread_id).await);
+    };
     let section = section.ok_or_else(|| ApiError::Conflict {
         code: "task_fork_source_unplaced",
         message: "the source Task is not placed in an active Section".to_string(),

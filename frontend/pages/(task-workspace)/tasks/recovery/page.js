@@ -3,10 +3,14 @@ import {
   recheckRecoveryTask,
   removeRecoveryTask,
   restoreRecoveryTask,
+  restoreTask,
+  taskAbsence,
+  taskAlreadyActive,
 } from "#app/api.js";
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
+import { TASK_ABSENCE_INTENT_EVENT } from "../components/task-absence.js";
 import { taskThreadId } from "../task-list-model.js";
 import {
   ACTION_HINT_ACTION,
@@ -23,12 +27,14 @@ class CaffoldTaskRecovery extends HTMLElement {
   connectedCallback() {
     this.ensureState();
     this.addEventListener("click", this.boundClick);
+    this.addEventListener(TASK_ABSENCE_INTENT_EVENT, this.boundAbsenceIntent);
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.render();
   }
 
   disconnectedCallback() {
     this.removeEventListener("click", this.boundClick);
+    this.removeEventListener(TASK_ABSENCE_INTENT_EVENT, this.boundAbsenceIntent);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
@@ -38,10 +44,22 @@ class CaffoldTaskRecovery extends HTMLElement {
     }
     this.stateReady = true;
     this.recovery = null;
+    // Why the Task is no longer one to recover here: archived elsewhere, or
+    // not found at all, as an action's answer said.
+    this.absence = null;
     this.pendingAction = "";
     this.actionError = null;
     this.confirmingRemoval = false;
     this.boundClick = (event) => this.handleClick(event);
+    this.boundAbsenceIntent = (event) => {
+      if (event.target !== this.absenceNotice()) {
+        return;
+      }
+      event.stopPropagation();
+      if (event.detail?.type === "restore") {
+        void this.restoreArchived();
+      }
+    };
     this.boundIconsReady = () => this.refreshIcons();
     warmIcons();
   }
@@ -49,6 +67,7 @@ class CaffoldTaskRecovery extends HTMLElement {
   prepare(recovery) {
     this.ensureState();
     this.recovery = recovery ?? null;
+    this.absence = null;
     this.pendingAction = "";
     this.actionError = null;
     this.confirmingRemoval = false;
@@ -62,6 +81,7 @@ class CaffoldTaskRecovery extends HTMLElement {
     if (sameRecoveryPresentation(previous, this.recovery)) {
       return;
     }
+    this.absence = null;
     this.pendingAction = "";
     this.actionError = null;
     this.confirmingRemoval = false;
@@ -128,6 +148,26 @@ class CaffoldTaskRecovery extends HTMLElement {
     });
   }
 
+  // Restore from the notice of a Task archived elsewhere. One restored
+  // elsewhere meanwhile is back to the recovery it needed.
+  async restoreArchived() {
+    const threadId = taskThreadId(this.recovery);
+    if (!threadId || this.pendingAction) {
+      return;
+    }
+    await this.runAction("restore-archived", async () => {
+      const response = await restoreTask(threadId);
+      if (!response?.task || !response?.activeTopPlacement) {
+        throw new Error("Restored Task response is incomplete.");
+      }
+      this.dispatchIntent("resolved", {
+        resolution: "restored",
+        task: response.task,
+        activeTopPlacement: response.activeTopPlacement,
+      });
+    });
+  }
+
   async recheck() {
     const threadId = taskThreadId(this.recovery);
     if (!threadId) {
@@ -174,7 +214,14 @@ class CaffoldTaskRecovery extends HTMLElement {
     try {
       await callback();
     } catch (error) {
-      this.actionError = error instanceof Error ? error : new Error(`${error}`);
+      const absence = taskAbsence(error);
+      if (absence) {
+        this.absence = absence;
+      } else if (action === "restore-archived" && taskAlreadyActive(error)) {
+        this.absence = null;
+      } else {
+        this.actionError = error instanceof Error ? error : new Error(`${error}`);
+      }
     } finally {
       this.pendingAction = "";
       this.render();
@@ -186,6 +233,13 @@ class CaffoldTaskRecovery extends HTMLElement {
     clipRoots = [],
   } = {}) {
     this.ensureState();
+    const notice = this.absenceNotice();
+    if (notice) {
+      return notice.actionHintScope({
+        scopeId: `${scopeId}:${taskThreadId(this.recovery)}:absence`,
+        clipRoots: [this, ...clipRoots],
+      });
+    }
     const scrollport = this.querySelector(
       ":scope > .task-recovery-view > .task-recovery-body",
     );
@@ -267,6 +321,18 @@ class CaffoldTaskRecovery extends HTMLElement {
   render() {
     this.ensureState();
     const recovery = this.recovery;
+    if (recovery && this.absence) {
+      if (!this.absenceNotice()) {
+        this.innerHTML = "<caffold-task-absence></caffold-task-absence>";
+      }
+      this.absenceNotice().setSnapshot({
+        absence: this.absence,
+        title: recovery.title,
+        restoring: this.pendingAction === "restore-archived",
+        error: this.actionError,
+      });
+      return;
+    }
     if (!recovery) {
       this.innerHTML = `
         <section class="task-recovery-view" aria-label="Task recovery">
@@ -433,6 +499,10 @@ class CaffoldTaskRecovery extends HTMLElement {
         </div>
       </div>
     `;
+  }
+
+  absenceNotice() {
+    return this.querySelector(":scope > caffold-task-absence");
   }
 
   refreshIcons() {

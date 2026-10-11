@@ -408,7 +408,7 @@ class CaffoldDetailLayout extends HTMLElement {
     const task = this.subjectKind === "task"
       ? this.taskDetail()?.recoverForeground()
       : null;
-    const terminal = this.activeSurface() === "terminal"
+    const terminal = this.presentedSurface() === "terminal"
       ? this.terminalPage()?.recoverForeground()
       : null;
     if (!terminal) {
@@ -451,7 +451,7 @@ class CaffoldDetailLayout extends HTMLElement {
   }
 
   get streamState() {
-    const terminal = this.activeSurface() === "terminal"
+    const terminal = this.presentedSurface() === "terminal"
       ? this.terminalPage()?.transportState
       : null;
     if (terminal === "unavailable" || this.subjectKind !== "task") {
@@ -493,12 +493,11 @@ class CaffoldDetailLayout extends HTMLElement {
     }
     const snapshot = this.taskSnapshot ?? {};
     const selectedThreadId = `${this.taskRoute?.threadId ?? ""}`;
-    const canonicalTask =
-      selectedThreadId && taskThreadId(snapshot.task) === selectedThreadId
-        ? snapshot.task
-        : null;
+    const canonicalTask = this.canonicalTask();
     const managedTask =
-      selectedThreadId && taskThreadId(this.managedTask) === selectedThreadId
+      !snapshot.absent &&
+      selectedThreadId &&
+      taskThreadId(this.managedTask) === selectedThreadId
         ? this.managedTask
         : null;
     const task = canonicalTask ?? managedTask;
@@ -510,7 +509,7 @@ class CaffoldDetailLayout extends HTMLElement {
       ? repository
       : Boolean(managedTask) && this.managedTaskRepository;
     this.rebindSharedDomainContext();
-    const surface = canonicalTask ? this.activeSurface() : "conversation";
+    const surface = this.presentedSurface();
     this.taskSummary()?.setSnapshot({
       task,
       canonicalTaskAvailable: Boolean(canonicalTask),
@@ -607,7 +606,7 @@ class CaffoldDetailLayout extends HTMLElement {
 
   async activateSharedSurface() {
     this.syncActivePresentation();
-    const surface = this.activeSurface();
+    const surface = this.presentedSurface();
     if (surface !== "review") {
       this.deactivateReview();
     }
@@ -713,6 +712,25 @@ class CaffoldDetailLayout extends HTMLElement {
     }
   }
 
+  // The surface on screen. A Task's own surfaces wait for its canonical Task,
+  // and until it is read, or while it is archived or missing, the conversation
+  // slot holds what stands in for it. A surface not on screen has no active
+  // lifetime.
+  presentedSurface() {
+    return this.subjectKind === "task" && !this.canonicalTask()
+      ? "conversation"
+      : this.activeSurface();
+  }
+
+  canonicalTask() {
+    const selectedThreadId = `${this.taskRoute?.threadId ?? ""}`;
+    const task = this.taskSnapshot?.task ?? null;
+    return selectedThreadId && taskThreadId(task) === selectedThreadId
+      ? task
+      : null;
+  }
+
+  // The surface the route asks for.
   activeSurface() {
     if (this.subjectKind === "section") {
       return this.sectionRoute?.sectionSurface ?? "new";
@@ -732,7 +750,7 @@ class CaffoldDetailLayout extends HTMLElement {
     if (!detailIdentityKey(this.subjectIdentity()) || this.hidden) {
       return null;
     }
-    const surface = this.activeSurface();
+    const surface = this.presentedSurface();
     if (surface === "terminal") {
       return {
         label: "side panel",
@@ -760,7 +778,7 @@ class CaffoldDetailLayout extends HTMLElement {
     if (!identityKey || this.hidden) {
       return emptyActionHintScope();
     }
-    const surface = this.activeSurface();
+    const surface = this.presentedSurface();
     const viewSwitchScope = this.viewSwitch()?.actionHintScope({
       scopeId: `detail:${identityKey}:view`,
       actionId: ACTION_HINT_ACTION.DETAIL_VIEW,
@@ -824,7 +842,7 @@ class CaffoldDetailLayout extends HTMLElement {
       return [];
     }
     const scopeId = `detail:${identityKey}`;
-    const surface = this.activeSurface();
+    const surface = this.presentedSurface();
     let activeChild = [];
     if (this.subjectKind === "task" && surface === "conversation") {
       const taskDetail = this.taskDetail();
@@ -858,7 +876,7 @@ class CaffoldDetailLayout extends HTMLElement {
     if (!detailIdentityKey(this.subjectIdentity()) || this.hidden) {
       return emptyScrollSurfaceScope();
     }
-    const surface = this.activeSurface();
+    const surface = this.presentedSurface();
     if (this.subjectKind === "task" && surface === "conversation") {
       const taskDetail = this.taskDetail();
       return taskDetail && !taskDetail.hidden && !taskDetail.loading

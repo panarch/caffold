@@ -1,0 +1,144 @@
+caffold-task-absence {
+  /* Laid out like Task Recovery, the other screen that stands in for a Task. */
+  --task-absence-header-padding-inline: var(--interface-space-7);
+
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+
+  &[hidden] {
+    display: none;
+  }
+
+  & .task-absence-view {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    height: 100%;
+  }
+
+  & .task-absence-header {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    min-height: var(--task-workspace-header-size);
+    padding:
+      var(--interface-space-4)
+      var(--task-absence-header-padding-inline)
+      var(--interface-space-4)
+      calc(
+        var(--task-absence-header-padding-inline) +
+          var(--task-header-leading-space, 0rem)
+      );
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--structural-shadow-block-end);
+  }
+
+  & .task-absence-header h2 {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--workspace-header-title-size);
+    line-height: var(--interface-line-height);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-absence-body {
+    min-height: 0;
+    overflow: auto;
+  }
+
+  & .task-absence-content {
+    display: grid;
+    justify-items: start;
+    gap: var(--interface-space-5);
+    width: min(calc(100% - 2.5rem), 38rem);
+    margin: 1.75rem auto;
+  }
+
+  & .task-absence-heading {
+    display: grid;
+    grid-template-columns: 1lh minmax(0, 1fr);
+    align-items: start;
+    gap: var(--interface-space-3);
+    font-size: var(--interface-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-absence-icon-slot {
+    display: grid;
+    width: 1lh;
+    height: 1lh;
+    place-items: center;
+  }
+
+  & .task-absence-icon {
+    display: block;
+    width: 1em;
+    height: 1em;
+    color: var(--warning);
+  }
+
+  & .task-absence-action-icon-slot {
+    display: contents;
+  }
+
+  & h3,
+  & p {
+    margin: 0;
+  }
+
+  & h3 {
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  & .task-absence-description {
+    display: grid;
+    gap: var(--interface-space-1);
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-absence-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--interface-space-3);
+  }
+
+  & .task-absence-actions[hidden],
+  & .task-absence-feedback:not(:has(> :not([hidden]))) {
+    display: none;
+  }
+
+  & .task-absence-progress,
+  & .task-absence-error {
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-absence-progress {
+    color: var(--muted);
+  }
+
+  & .task-absence-error {
+    color: var(--danger);
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-task-absence {
+    --task-absence-header-padding-inline: var(--interface-space-4);
+
+    & .task-absence-content {
+      width: calc(100% - 2rem);
+      margin-block: var(--interface-space-7);
+    }
+  }
+}

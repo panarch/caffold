@@ -137,6 +137,12 @@ class CaffoldTasksPage extends HTMLElement {
         this.taskNavigator()?.removeTask(event.detail.threadId);
         this.syncSelectedManagedTask();
         this.requestRoute({ kind: "tasks" }, { correction: true });
+      } else if (event.detail?.type === "task-restored" && event.detail.task) {
+        this.taskNavigator()?.acceptRestoredTask(
+          event.detail.task,
+          event.detail.activeTopPlacement,
+        );
+        this.syncSelectedManagedTask();
       } else if (
         ["review-route", "domain-route"].includes(event.detail?.type) &&
         event.detail.route
@@ -508,7 +514,7 @@ class CaffoldTasksPage extends HTMLElement {
   resolveRecovery(detail) {
     const threadId = detail?.threadId ?? taskDetailThreadId({ task: detail?.task });
     if (detail?.resolution === "restored" && detail.task) {
-      this.taskNavigator()?.placeCanonicalTaskAtTop(
+      this.taskNavigator()?.acceptRestoredTask(
         detail.task,
         detail.activeTopPlacement,
       );

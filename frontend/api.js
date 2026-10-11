@@ -666,6 +666,31 @@ async function requestJson(endpoint, params = {}, options = {}) {
   return payload;
 }
 
+// Why the Task a request named is not there to answer it. A deleted Task
+// leaves no record, so it reads as one Caffold cannot find.
+export const TASK_ABSENCE = Object.freeze({
+  ARCHIVED: "archived",
+  NOT_FOUND: "not-found",
+});
+
+// The absence a failed Task request or a refused Task channel reports, or null
+// for any other failure.
+export function taskAbsence(error) {
+  switch (error?.code) {
+    case "task_archived":
+      return TASK_ABSENCE.ARCHIVED;
+    case "task_not_found":
+      return TASK_ABSENCE.NOT_FOUND;
+    default:
+      return null;
+  }
+}
+
+// A Restore refused because the Task is active already, restored elsewhere.
+export function taskAlreadyActive(error) {
+  return error?.code === "task_not_archived";
+}
+
 export function taskResponseError(value, fallback = "Task details are temporarily unavailable.") {
   if (value instanceof Error) return value;
   const body = value && typeof value === "object" ? value : {};

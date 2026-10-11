@@ -65,6 +65,7 @@ test("merges Conversation, follow-up composer, and Current Plan direct-owner sco
     selectedThreadId: "thread-a",
     ensureRendered() {},
     brokenDeleteDialog: () => null,
+    absenceNotice: () => null,
     followUpComposer: () => composer,
     followUpComposerSlot: () => slot,
     conversationComponent: () => conversationOwner,
@@ -109,6 +110,7 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
     selectedThreadId: "thread-a",
     ensureRendered() {},
     brokenDeleteDialog: () => null,
+    absenceNotice: () => null,
     followUpComposer: () => composer,
     followUpComposerSlot: () => slot,
     currentPlanComponent: () => ({

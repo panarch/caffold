@@ -47,8 +47,10 @@ generations.
 All logical output uses the `live-update` SSE event. Its JSON envelope contains
 `channel`, `generation`, `type`, and an optional `payload`. Watch output also
 contains `subscriptionId`. `channel-open` makes one logical channel ready;
-`channel-error` terminates only the named channel generation. Task and Watch
-event types and payloads otherwise retain their domain contracts.
+`channel-error` terminates only the named channel generation. Its payload
+carries a `message`, and the API error `code` when a refusal ended the channel.
+Task and Watch event types and payloads otherwise retain their domain
+contracts.
 
 The physical stream sends one comment heartbeat every 15 seconds. Replay and
 `Last-Event-ID` are not provided. Reconnection reconstructs current state from
@@ -95,6 +97,18 @@ publications remain queued behind the snapshot. This delivery repair does not
 invalidate provider history or initiate `thread/resume`/`thread/turns/list`.
 Actual Detail EOF sends a `channel-error` for that generation so the browser can
 resubscribe while other channels keep using the same physical connection.
+
+A Task Detail channel streams only an active Task. For an archived Task, or
+one Caffold has no record of, the channel is refused with that Task's refusal
+code, `task_archived` or `task_not_found`
+([Agent Runtimes](agent-runtimes.md#archive-and-permanent-deletion)). The
+producer subscribes to Task List removals before it reads the Task's record. A
+removal of its Task, or a removal its receiver fell behind on, makes it read
+where the Task is now: a Task no longer active ends the channel with that
+refusal, and one restored in the meantime goes on streaming. Removals are heard
+before the Task's own events, so nothing the Task publishes after leaving the
+list goes out first. The browser does not resubscribe a refused Task
+([Frontend](frontend.md)).
 
 ## Filesystem Watch
 

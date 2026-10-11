@@ -644,3 +644,55 @@ test("reconciles an open ordinary Task detail to a later DB Recovery projection"
     page.getByRole("button", { name: /Restore to Active/ }),
   ).toBeVisible();
 });
+
+test("a recovery Task archived elsewhere shows the archived notice and restores from it", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const threadId = "thread_recovery_archived_elsewhere";
+  const recovery = recoveryTask(
+    threadId,
+    "Recovery archived elsewhere",
+    "codexArchived",
+    ["restoreToActive", "moveToArchived", "recheck"],
+  );
+  const restored = task(threadId, "Recovery archived elsewhere");
+  const listState = await installRecoveryList(page, recovery);
+  let restoreCalls = 0;
+  await page.route(`/api/tasks/${threadId}/recovery/recheck`, (route) =>
+    route.fulfill({
+      status: 409,
+      json: { error: { code: "task_archived", message: "task is archived" } },
+    }),
+  );
+  await page.route(`/api/tasks/${threadId}/restore`, (route) => {
+    restoreCalls += 1;
+    listState.projection = activeTaskProjection([restored]);
+    return route.fulfill({
+      json: {
+        task: activeListTask(restored),
+        activeTopPlacement: {
+          section: {
+            id: "fixture-restored-section",
+            name: "frontend/tests/e2e/fixtures/home",
+            repository: false,
+          },
+        },
+      },
+    });
+  });
+
+  await openRecovery(page, recovery);
+  await page.getByRole("button", { name: /Recheck/ }).click();
+  const notice = page.locator("caffold-task-recovery caffold-task-absence");
+  await expect(notice).toContainText("Task archived");
+  await expect(notice.getByRole("heading", { level: 2 })).toHaveText(
+    "Recovery archived elsewhere",
+  );
+  await expect(page.locator(".task-recovery-view")).toHaveCount(0);
+
+  await notice.getByRole("button", { name: "Restore" }).click();
+  await expect.poll(() => restoreCalls).toBe(1);
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
+  await emitTaskDetailBootstrap(page, taskDetail(restored));
+  await expect(page.locator("caffold-task-recovery")).toBeHidden();
+});

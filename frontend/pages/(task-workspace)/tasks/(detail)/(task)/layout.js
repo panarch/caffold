@@ -6,7 +6,10 @@ import {
   interruptTask,
   markTaskSeen,
   resolveTaskApproval,
+  restoreTask,
   sendTaskPrompt,
+  taskAbsence,
+  taskAlreadyActive,
   taskResponseError,
   uploadTaskFile,
 } from "#app/api.js";
@@ -29,6 +32,7 @@ import {
   mergeKeyboardNavigationContexts,
 } from "#app/keyboard-navigation.js";
 import "../../components/composer.js";
+import { TASK_ABSENCE_INTENT_EVENT } from "../../components/task-absence.js";
 import "./components/conversation.js";
 import "./components/command-dialog.js";
 import "./components/markdown-preview-dialog.js";
@@ -117,10 +121,15 @@ class CaffoldTaskDetail extends HTMLElement {
         this.applyTaskFallbackDetail(detail, context),
       onStateChange: (state, previousState) =>
         this.handleStreamStateChange(state, previousState),
+      onSubjectAbsent: () => this.handleSubjectAbsent(),
     });
     this.seenRequestKeys = new Set();
     this.history = new ConversationHistory({
-      load: (threadId, cursor, options) => getTask(threadId, cursor, options),
+      load: (threadId, cursor, options) =>
+        getTask(threadId, cursor, options).catch((error) => {
+          this.reportTaskAbsence(threadId, error);
+          throw error;
+        }),
       apply: (detail, { threadId, cursor }) => this.applyCanonicalTaskDetail(threadId, detail, {
         preserveCurrentTask: true,
         historyPage: true,
@@ -141,6 +150,9 @@ class CaffoldTaskDetail extends HTMLElement {
     this.promptSubmissionSequence = 0;
     this.archiveStateValue = { loading: false, error: null };
     this.forkStateValue = { loading: false, error: null };
+    this.restoreActionToken = 0;
+    this.restoreStateValue = { loading: false, error: null };
+    this.absentTaskTitle = "";
     this.conversationUpdateKind = null;
     this.initialConversationLoad = null;
     this.followUpRequests = new Map();
@@ -199,11 +211,28 @@ class CaffoldTaskDetail extends HTMLElement {
       this.markdownPreviewDialog()?.openMarkdown(event.detail);
     });
     this.addEventListener("caffold:task-detail-intent", (event) => {
+      if (
+        event.target === this.permissionInstructionsDialog() &&
+        event.detail?.type === "task-request-failed"
+      ) {
+        event.stopPropagation();
+        this.reportTaskAbsence(event.detail.threadId, event.detail.error);
+        return;
+      }
       if (event.target !== this.brokenDeleteDialog() || event.detail?.type !== "broken-delete-error") return;
       event.stopPropagation();
       this.detailLoadError = event.detail.error;
       this.loading = false;
       this.render();
+    });
+    this.addEventListener(TASK_ABSENCE_INTENT_EVENT, (event) => {
+      if (event.target !== this.absenceNotice()) {
+        return;
+      }
+      event.stopPropagation();
+      if (event.detail?.type === "restore") {
+        void this.restoreAbsentTask();
+      }
     });
     this.addEventListener("caffold:task-composer-submit", (event) => {
       const composer = closestElement(event.target, "caffold-task-composer");
@@ -303,6 +332,9 @@ class CaffoldTaskDetail extends HTMLElement {
       this.approvalActionToken += 1;
       this.archiveStateValue = { loading: false, error: null };
       this.forkStateValue = { loading: false, error: null };
+      this.restoreActionToken += 1;
+      this.restoreStateValue = { loading: false, error: null };
+      this.absentTaskTitle = "";
       this.reviewView = "conversation";
       this.detailSession.deactivate();
     }
@@ -392,6 +424,25 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   deactivate({ retainComposerDom = false } = {}) {
+    this.endTaskRequests();
+    this.restoreActionToken += 1;
+    this.restoreStateValue = { loading: false, error: null };
+    this.detailSession.deactivate();
+    if (retainComposerDom) {
+      this.endFollowUpComposerEditingLifetime(
+        this.activeFollowUpComposerThreadId,
+        this.followUpComposer(),
+      );
+    } else {
+      this.deactivateFollowUpComposer();
+    }
+    this.currentPlanComponent()?.deactivate();
+    this.hidden = true;
+  }
+
+  // Ends what the open Task's surfaces have in flight: its requests, older
+  // history, and the dialogs opened over its conversation.
+  endTaskRequests() {
     this.brokenDeleteDialog()?.reset();
     this.history.deactivate();
     this.interruptActionToken += 1;
@@ -402,20 +453,9 @@ class CaffoldTaskDetail extends HTMLElement {
     this.archiveStateValue = { loading: false, error: null };
     this.forkStateValue = { loading: false, error: null };
     this.initialConversationLoad = null;
-    this.detailSession.deactivate();
-    if (retainComposerDom) {
-      this.endFollowUpComposerEditingLifetime(
-        this.activeFollowUpComposerThreadId,
-        this.followUpComposer(),
-      );
-    } else {
-      this.deactivateFollowUpComposer();
-    }
     this.commandDialog()?.dismiss();
     this.markdownPreviewDialog()?.dismiss();
     this.permissionInstructionsDialog()?.dismiss();
-    this.currentPlanComponent()?.deactivate();
-    this.hidden = true;
   }
 
   currentDetail() {
@@ -430,6 +470,7 @@ class CaffoldTaskDetail extends HTMLElement {
           ? task
           : null,
       transportState: this.detailSession.state,
+      absent: Boolean(this.detailSession.absence),
       contextPath: this.activeCwdPath(),
       provider: `${this.taskDetail?.provider ?? ""}`.trim(),
       permissionMode: this.followUpComposer()?.selectedPermissionMode() ?? "",
@@ -446,6 +487,13 @@ class CaffoldTaskDetail extends HTMLElement {
       !this.selectedThreadId
     ) {
       return emptyActionHintScope();
+    }
+    const notice = this.absenceNotice();
+    if (notice) {
+      return notice.actionHintScope({
+        scopeId: `task:${this.selectedThreadId}:absence`,
+        clipRoots: [this],
+      });
     }
     const errorControl = this.querySelector('.task-detail-load-error button[data-task-action], .task-domain-pending button[data-task-action]');
     if (errorControl) {
@@ -591,6 +639,9 @@ class CaffoldTaskDetail extends HTMLElement {
     if (outcome.ok) {
       this.finishInitialConversationLoad(threadId);
       return outcome.detail ?? this.taskDetail;
+    }
+    if (outcome.absence) {
+      return null;
     }
     this.loading = false;
     this.detailLoadError =
@@ -797,8 +848,9 @@ class CaffoldTaskDetail extends HTMLElement {
         };
         this.render();
       })
-      .catch(() => {
+      .catch((error) => {
         this.seenRequestKeys.delete(requestKey);
+        this.reportTaskAbsence(threadId, error);
       });
   }
 
@@ -968,10 +1020,87 @@ class CaffoldTaskDetail extends HTMLElement {
       return { ok: true, skipped: true };
     }
     const outcome = await this.detailSession.recover();
-    if (!outcome.ok && !outcome.stale) {
+    if (!outcome.ok && !outcome.stale && !outcome.absence) {
       throw outcome.error ?? new Error("Task detail recovery failed.");
     }
     return outcome;
+  }
+
+  // The open Task is archived or Caffold cannot find it. What it showed
+  // closes, whichever of its surfaces was in front, and the notice takes the
+  // conversation's place.
+  handleSubjectAbsent() {
+    this.endTaskRequests();
+    this.absentTaskTitle =
+      this.taskDetail?.task?.title ||
+      (taskThreadId(this.managedTask) === this.selectedThreadId
+        ? this.managedTask?.title
+        : "") ||
+      this.absentTaskTitle;
+    this.taskDetail = null;
+    this.loading = false;
+    this.detailLoadError = null;
+    this.render();
+  }
+
+  // Any request about the open Task that finds it archived or missing says so
+  // for the whole conversation, through the conversation session.
+  reportTaskAbsence(threadId, error) {
+    const absence = taskAbsence(error);
+    if (absence) {
+      this.detailSession.subjectGone(threadId, absence);
+    }
+    return Boolean(absence);
+  }
+
+  // Restore from the notice. A Task already restored elsewhere just opens; one
+  // deleted meanwhile turns the notice to not found.
+  async restoreAbsentTask() {
+    const threadId = this.selectedThreadId;
+    if (!threadId || this.restoreStateValue.loading || !this.detailSession.absence) {
+      return;
+    }
+    const actionToken = ++this.restoreActionToken;
+    this.restoreStateValue = { loading: true, error: null };
+    this.render();
+    try {
+      const response = await restoreTask(threadId);
+      if (actionToken !== this.restoreActionToken) {
+        return;
+      }
+      this.restoreStateValue = { loading: false, error: null };
+      this.dispatchEvent(
+        new CustomEvent("caffold:task-detail-intent", {
+          bubbles: true,
+          composed: true,
+          detail: {
+            type: "task-restored",
+            task: response?.task,
+            activeTopPlacement: response?.activeTopPlacement,
+          },
+        }),
+      );
+      this.reopenTask(threadId);
+    } catch (error) {
+      if (actionToken !== this.restoreActionToken) {
+        return;
+      }
+      this.restoreStateValue = { loading: false, error: null };
+      if (taskAlreadyActive(error)) {
+        this.reopenTask(threadId);
+        return;
+      }
+      if (!this.reportTaskAbsence(threadId, error)) {
+        this.restoreStateValue = { loading: false, error };
+      }
+      this.render();
+    }
+  }
+
+  // An active Task again: older history starts over, as on a fresh open.
+  reopenTask(threadId) {
+    this.history.activate(threadId);
+    void this.openTask(threadId);
   }
 
   handleAction(action, element) {
@@ -1142,6 +1271,7 @@ class CaffoldTaskDetail extends HTMLElement {
         this.conversationUpdateKind = "live";
       }
     } catch (error) {
+      this.reportTaskAbsence(threadId, error);
       if (followUpRequest.node === PROMPT_SUBMISSION_NODE.UPLOADING) {
         if (
           this.advancePromptSubmission(
@@ -1366,6 +1496,9 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.interruptStateValue = { loading: false, error };
+      if (this.reportTaskAbsence(threadId, error)) {
+        return;
+      }
       this.syncFollowUpComposer();
     }
   }
@@ -1406,6 +1539,9 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.archiveStateValue = { loading: false, error };
+      if (this.reportTaskAbsence(threadId, error)) {
+        return;
+      }
       if (Array.isArray(error.allowedActions)) {
         this.detailLoadError = error;
         this.loading = false;
@@ -1462,6 +1598,9 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.forkStateValue = { loading: false, error };
+      if (this.reportTaskAbsence(threadId, error)) {
+        return;
+      }
       this.emitSubjectSnapshot();
     }
   }
@@ -1501,6 +1640,9 @@ class CaffoldTaskDetail extends HTMLElement {
       ) {
         return;
       }
+      if (this.reportTaskAbsence(threadId, error)) {
+        return;
+      }
       this.conversationComponent()?.setApprovalError(approvalId, error);
     }
   }
@@ -1534,6 +1676,12 @@ class CaffoldTaskDetail extends HTMLElement {
     this.commandDialog()?.setThreadId(this.selectedThreadId);
     this.markdownPreviewDialog()?.setThreadId(this.selectedThreadId);
     this.permissionInstructionsDialog()?.setThreadId(this.selectedThreadId);
+    this.absenceNotice()?.setSnapshot({
+      absence: this.detailSession.absence,
+      title: this.absentTaskTitle,
+      restoring: this.restoreStateValue.loading,
+      error: this.restoreStateValue.error,
+    });
     this.syncCurrentPlan();
     this.syncFollowUpComposer();
     this.conversationComponent()?.setActive(
@@ -1593,6 +1741,10 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   brokenDeleteDialog() { return this.querySelector(":scope > caffold-broken-task-delete-dialog"); }
+
+  absenceNotice() {
+    return this.querySelector(".tasks-detail-region caffold-task-absence");
+  }
 
   conversationComponent() {
     return this.querySelector(
@@ -1991,6 +2143,9 @@ class CaffoldTaskDetail extends HTMLElement {
     if (this.view !== "detail") {
       return `view:${this.view}`;
     }
+    if (this.detailSession.absence) {
+      return `absent:${this.selectedThreadId}`;
+    }
     if (!this.hasSelectedTaskDetail() || Array.isArray(this.detailLoadError?.allowedActions)) {
       if (this.loading) {
         return `loading:${this.selectedThreadId}:${this.reviewView}`;
@@ -2040,6 +2195,9 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   renderBody() {
+    if (this.view === "detail" && this.detailSession.absence) {
+      return "<caffold-task-absence></caffold-task-absence>";
+    }
     const hasSelectedTaskDetail = this.hasSelectedTaskDetail() && !Array.isArray(this.detailLoadError?.allowedActions);
     if (this.loading && !hasSelectedTaskDetail && this.view === "detail") {
       if (["git", "github"].includes(this.reviewView)) {

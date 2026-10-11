@@ -538,12 +538,14 @@ export class WorkspaceLiveUpdates {
       return;
     }
     if (message.type === "channel-error") {
-      binding.listener.onError?.(
-        new Error(
-          message.payload?.message ?? `${channel} live updates are unavailable.`,
-        ),
-        { closed: true, physical: false },
+      // A refusal carries its API error code, as a failed request does.
+      const error = new Error(
+        message.payload?.message ?? `${channel} live updates are unavailable.`,
       );
+      if (message.payload?.code) {
+        error.code = message.payload.code;
+      }
+      binding.listener.onError?.(error, { closed: true, physical: false });
       return;
     }
     binding.listener.onEvent?.(message.type, message.payload);
