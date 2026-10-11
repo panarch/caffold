@@ -5,6 +5,10 @@ caffold-task-detail-git {
   height: var(--interface-compact-visual-size);
   place-items: center;
 
+  &[hidden] {
+    display: none;
+  }
+
   & > .task-git-button {
     display: inline-grid;
     color: var(--text);

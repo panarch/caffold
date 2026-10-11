@@ -332,6 +332,80 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
   await captureReviewScreenshot(page, testInfo, "tasks-summary-live-popover");
 });
 
+test("offers Git and GitHub from the listed Section before Task details arrive", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const repositoryTask = summaryTask("thread_summary_repository", "Repository work", "repo-header", 200);
+  const folderTask = {
+    ...summaryTask("thread_summary_folder", "Folder work", "notes-header", 100),
+    worktree: null,
+  };
+  await installSummaryFixture(page, [repositoryTask, folderTask]);
+  // Details arrive only when the test hands them over, whether the page waits
+  // on the stream or has fallen back to reading them.
+  const handedOver = new Set();
+  const heldReads = [];
+  await page.route(/\/api\/tasks\/thread_summary_(?:repository|folder)(?:\?|$)/, (route) => {
+    const task = [repositoryTask, folderTask].find((candidate) =>
+      route.request().url().includes(candidate.threadId));
+    if (handedOver.has(task.threadId)) {
+      return route.fulfill({ json: summaryDetail(task) });
+    }
+    heldReads.push({ route, task });
+  });
+  const handOverDetails = async (task) => {
+    handedOver.add(task.threadId);
+    for (const read of heldReads.filter((held) => held.task === task)) {
+      await read.route.fulfill({ json: summaryDetail(task) });
+    }
+    await page.evaluate(
+      (detail) => window.__caffoldTaskSse.bootstrap(detail),
+      summaryDetail(task),
+    );
+  };
+  const header = page.locator(".detail-layout-summary");
+  const heading = header.locator("caffold-task-detail-summary .task-detail-heading > h2");
+  const viewSwitch = header.locator("caffold-segmented-control[data-detail-view-switch]");
+  const git = header.locator("caffold-task-detail-git");
+  const github = header.locator("caffold-task-detail-github");
+  const gitButton = git.locator(":scope > .task-git-button");
+  const githubButton = github.locator(":scope > .task-github-button");
+  const headerHeight = () =>
+    header.evaluate((element) => element.getBoundingClientRect().height);
+
+  await page.goto(`/tasks/${repositoryTask.threadId}`);
+  await expect(heading).toHaveText("Repository work");
+  await expect(viewSwitch).toBeHidden();
+  await expect(gitButton).toBeVisible();
+  await expect(gitButton).toBeDisabled();
+  await expect(githubButton).toBeDisabled();
+  const gitBoxBeforeDetails = await gitButton.boundingBox();
+  const repositoryHeightBeforeDetails = await headerHeight();
+  await captureReviewScreenshot(page, testInfo, "tasks-header-repository-before-details");
+  await handOverDetails(repositoryTask);
+  await expect(viewSwitch).toBeVisible();
+  await expect(gitButton).toBeEnabled();
+  await expect(githubButton).toBeEnabled();
+  expect(await gitButton.boundingBox()).toEqual(gitBoxBeforeDetails);
+  expect(await headerHeight()).toBe(repositoryHeightBeforeDetails);
+  await captureReviewScreenshot(page, testInfo, "tasks-header-repository");
+
+  await page.goto(`/tasks/${folderTask.threadId}`);
+  await expect(heading).toHaveText("Folder work");
+  await expect(viewSwitch).toBeHidden();
+  await expect(git).toBeHidden();
+  await expect(github).toBeHidden();
+  const folderHeightBeforeDetails = await headerHeight();
+  await captureReviewScreenshot(page, testInfo, "tasks-header-folder-before-details");
+  await handOverDetails(folderTask);
+  await expect(viewSwitch).toBeVisible();
+  await expect(git).toBeHidden();
+  await expect(github).toBeHidden();
+  // The view switch arrives with the details into a row already kept for it.
+  expect(await headerHeight()).toBe(folderHeightBeforeDetails);
+  await captureReviewScreenshot(page, testInfo, "tasks-header-folder");
+});
+
 test("forks an idle Codex Task and opens the distinct child", { tag: "@all-viewports" }, async ({
   page,
 }) => {

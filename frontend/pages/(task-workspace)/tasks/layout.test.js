@@ -242,10 +242,13 @@ test("passes only the selected managed Task to Detail and clears it off-route", 
       taskFor(threadId) {
         return threadId === task.threadId ? task : null;
       },
+      sectionForTask(threadId) {
+        return threadId === task.threadId ? { id: "app", repository: true } : null;
+      },
     }),
     taskDetail: () => ({
-      setManagedTask(value) {
-        received.push(value);
+      setManagedTask(value, { repository }) {
+        received.push([value, repository]);
       },
     }),
   };
@@ -257,7 +260,7 @@ test("passes only the selected managed Task to Detail and clears it off-route", 
   owner.selectedThreadId = "thread-a";
   tasksPage.syncSelectedManagedTask.call(owner);
 
-  assert.deepEqual(received, [task, null, null]);
+  assert.deepEqual(received, [[task, true], [null, false], [null, false]]);
 });
 
 test("restores managed identity before reopening Detail after a store takeover", () => {

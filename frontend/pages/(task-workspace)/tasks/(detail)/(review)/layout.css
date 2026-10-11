@@ -56,24 +56,14 @@ caffold-task-review {
     border-bottom: 1px solid var(--border);
   }
 
-  & .task-review-git-notice,
   & .task-review-error {
     margin: 0;
     padding: var(--interface-space-3) var(--interface-space-6);
-    color: var(--muted);
+    background: var(--danger-subtle);
+    color: var(--danger-strong);
     font-size: var(--interface-meta-font-size);
   }
 
-  & .task-review-git-notice {
-    background: var(--warning-soft);
-  }
-
-  & .task-review-error {
-    background: var(--danger-subtle);
-    color: var(--danger-strong);
-  }
-
-  & .task-review-git-notice[hidden],
   & .task-review-error[hidden] {
     display: none;
   }

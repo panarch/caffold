@@ -12,8 +12,6 @@ import {
 import "#app/keyboard-navigation/components/presentation.js";
 
 const GITHUB_INTENT_EVENT = "caffold:task-detail-github-intent";
-const UNAVAILABLE_TITLE =
-  "Git and GitHub are unavailable outside a Git worktree";
 
 let taskDetailGithubInstanceId = 0;
 
@@ -211,6 +209,8 @@ class CaffoldTaskDetailGithub extends HTMLElement {
         type="button"
         class="task-github-button"
         popovertarget="${this.popoverId}"
+        aria-label="Open GitHub workspace"
+        title="Open GitHub workspace"
       >
         <span class="task-github-icon" aria-hidden="true"></span>
       </button>
@@ -251,11 +251,6 @@ class CaffoldTaskDetailGithub extends HTMLElement {
       this.deactivate();
     }
     trigger.disabled = !available;
-    trigger.setAttribute(
-      "aria-label",
-      available ? "Open GitHub workspace" : "GitHub unavailable",
-    );
-    trigger.title = available ? "Open GitHub workspace" : UNAVAILABLE_TITLE;
   }
 
   githubTrigger() {

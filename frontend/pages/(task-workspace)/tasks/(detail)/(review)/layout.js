@@ -90,7 +90,6 @@ class CaffoldTaskReview extends HTMLElement {
     this.innerHTML = `
       <section class="task-review-workspace" aria-label="Task review">
         <div class="task-review-notices">
-          <p class="task-review-git-notice" hidden>Git review is unavailable for this task. Browse files and source instead.</p>
           <p class="task-review-error" role="alert" hidden></p>
         </div>
         <div class="task-review-layout">
@@ -928,8 +927,6 @@ class CaffoldTaskReview extends HTMLElement {
       selected: this.route.viewer,
       choices: viewerChoices,
     });
-    const notice = this.querySelector(".task-review-git-notice");
-    notice?.toggleAttribute("hidden", gitAvailable);
     this.patchErrorState();
   }
 

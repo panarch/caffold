@@ -26,7 +26,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("selects a Section and opens fixed-directory Task creation", { tag: "@all-viewports" }, async ({ page }) => {
+test("selects a Section and opens fixed-directory Task creation", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
   const task = {
@@ -115,6 +115,21 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
   await expect(
     detail.locator("caffold-segmented-control[data-detail-view-switch]"),
   ).toBeHidden();
+  await expect(detail.locator("caffold-task-detail-git")).toBeHidden();
+  await expect(detail.locator("caffold-task-detail-github")).toBeHidden();
+  // With nothing to switch or open, even a phone header keeps one row.
+  const terminalInset = await detail.locator(".detail-layout-summary").evaluate((header) => {
+    const headerBox = header.getBoundingClientRect();
+    const terminalBox = header
+      .querySelector(":scope > caffold-task-detail-terminal")
+      .getBoundingClientRect();
+    return {
+      above: terminalBox.top - headerBox.top,
+      below: headerBox.bottom - terminalBox.bottom,
+    };
+  });
+  expect(Math.abs(terminalInset.above - terminalInset.below)).toBeLessThanOrEqual(1.5);
+  await captureReviewScreenshot(page, testInfo, "section-detail-outside-git");
 
   const sectionScroll = detail.locator("caffold-section-detail");
   await sectionScroll.evaluate((element) => {

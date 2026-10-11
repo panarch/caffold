@@ -33,6 +33,25 @@ test("aggregates direct Section Action Hint targets in retained list order", () 
   ]);
 });
 
+test("finds the Section a listed Task sits in", () => {
+  const owner = {
+    sections: [
+      { id: "notes", name: "Documents/notes", repository: false, tasks: [{ threadId: "thread-a" }] },
+      { id: "app", name: "Workspace/app", repository: true, tasks: [{ threadId: "thread-b" }] },
+    ],
+    sectionFor: list.sectionFor,
+  };
+
+  assert.deepEqual(list.sectionForTask.call(owner, "thread-b"), {
+    id: "app",
+    name: "Workspace/app",
+    repository: true,
+    composerSettings: null,
+  });
+  assert.equal(list.sectionForTask.call(owner, "thread-a").repository, false);
+  assert.equal(list.sectionForTask.call(owner, "thread-unlisted"), null);
+});
+
 test("gives a caller that joins a Task list load the canonical answer when the first caller no longer wants it", async () => {
   const originalWindow = globalThis.window;
   const originalFetch = globalThis.fetch;
