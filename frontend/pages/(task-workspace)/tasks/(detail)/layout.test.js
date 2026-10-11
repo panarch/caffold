@@ -281,6 +281,7 @@ test("uses managed identity only as a header fallback and prefers canonical Deta
   const choices = [];
   const viewHidden = [];
   const visibleSurfaces = [];
+  const menus = [];
   const owner = {
     subjectKind: "task",
     taskRoute: { threadId: "thread-a", review: true },
@@ -291,6 +292,7 @@ test("uses managed identity only as a header fallback and prefers canonical Deta
       forkState: { loading: false, error: null },
     },
     managedTask: managed,
+    managedTaskRepository: true,
     streamState: "unavailable",
     summaryHeader: () => ({
       toggleAttribute(name, hidden) {
@@ -309,8 +311,8 @@ test("uses managed identity only as a header fallback and prefers canonical Deta
         viewHidden.push(hidden);
       },
     }),
-    gitMenu: () => ({ setSnapshot() {} }),
-    githubMenu: () => ({ setSnapshot() {} }),
+    gitMenu: () => repositoryMenu("git", menus),
+    githubMenu: () => repositoryMenu("github", menus),
     terminalButton: () => ({
       setSnapshot: (snapshot) => terminalButtons.push(snapshot),
     }),
@@ -324,6 +326,19 @@ test("uses managed identity only as a header fallback and prefers canonical Deta
   detailLayout.syncTaskPresentation.call(owner);
   owner.taskSnapshot = { ...owner.taskSnapshot, task: canonical };
   detailLayout.syncTaskPresentation.call(owner);
+
+  // The listed Section shows Git and GitHub before the details make them
+  // usable.
+  assert.deepEqual(menus, [
+    ["git", "hidden", false],
+    ["github", "hidden", false],
+    ["git", "available", false],
+    ["github", "available", false],
+    ["git", "hidden", false],
+    ["github", "hidden", false],
+    ["git", "available", true],
+    ["github", "available", true],
+  ]);
 
   assert.equal(headers[0].hidden, false);
   assert.equal(summaries[0].task, managed);
@@ -344,6 +359,101 @@ test("uses managed identity only as a header fallback and prefers canonical Deta
     { available: true, pressed: false },
   ]);
 });
+
+test("keeps Git and GitHub out of a Task header outside Git from the start", () => {
+  const managed = { threadId: "thread-a", title: "Notes" };
+  const menus = [];
+  const owner = {
+    subjectKind: "task",
+    taskRoute: { threadId: "thread-a" },
+    taskSnapshot: { task: null },
+    managedTask: managed,
+    managedTaskRepository: false,
+    summaryHeader: () => ({ toggleAttribute() {} }),
+    rebindSharedDomainContext() {},
+    activeSurface: () => "conversation",
+    taskSummary: () => ({ setSnapshot() {} }),
+    viewSwitch: () => ({ setSnapshot() {}, toggleAttribute() {} }),
+    gitMenu: () => repositoryMenu("git", menus),
+    githubMenu: () => repositoryMenu("github", menus),
+    terminalButton: () => ({ setSnapshot() {} }),
+    applySurfaceVisibility() {},
+    selectedTaskContextPath: () => "",
+    taskDetail: () => ({ reconcileVisibleSurface() {} }),
+  };
+
+  detailLayout.syncTaskPresentation.call(owner);
+  owner.taskSnapshot = { task: { ...managed, cwdPath: "Documents/notes", worktree: null } };
+  detailLayout.syncTaskPresentation.call(owner);
+  // Another Task's listed Section says nothing about the Task now opening.
+  owner.taskRoute = { threadId: "thread-b" };
+  owner.managedTaskRepository = true;
+  detailLayout.syncTaskPresentation.call(owner);
+
+  assert.deepEqual(
+    menus.filter(([name]) => name === "git"),
+    [
+      ["git", "hidden", true],
+      ["git", "available", false],
+      ["git", "hidden", true],
+      ["git", "available", false],
+      ["git", "hidden", true],
+      ["git", "available", false],
+    ],
+  );
+});
+
+test("selects the view switch choice that names the Review a Task shows", () => {
+  const selected = [];
+  const owner = {
+    subjectKind: "task",
+    taskRoute: { threadId: "thread-a", review: true },
+    taskSnapshot: {
+      task: { threadId: "thread-a", cwdPath: "Documents/notes", worktree: null },
+    },
+    managedTask: null,
+    managedTaskRepository: false,
+    summaryHeader: () => ({ toggleAttribute() {} }),
+    rebindSharedDomainContext() {},
+    activeSurface: () => "review",
+    taskSummary: () => ({ setSnapshot() {} }),
+    viewSwitch: () => ({
+      setSnapshot(snapshot) {
+        selected.push(snapshot.selected);
+        assert.ok(snapshot.choices.some(({ value }) => value === snapshot.selected));
+      },
+      toggleAttribute() {},
+    }),
+    gitMenu: () => repositoryMenu("git", []),
+    githubMenu: () => repositoryMenu("github", []),
+    terminalButton: () => ({ setSnapshot() {} }),
+    applySurfaceVisibility() {},
+    selectedTaskContextPath: () => "",
+    taskDetail: () => ({ reconcileVisibleSurface() {} }),
+  };
+
+  detailLayout.syncTaskPresentation.call(owner);
+  owner.taskSnapshot = {
+    task: { threadId: "thread-a", cwdPath: "app", worktree: { rootPath: "app" } },
+  };
+  detailLayout.syncTaskPresentation.call(owner);
+  owner.taskRoute = { ...owner.taskRoute, reviewScope: "branch" };
+  detailLayout.syncTaskPresentation.call(owner);
+
+  assert.deepEqual(selected, ["review", "working", "branch"]);
+});
+
+function repositoryMenu(name, calls) {
+  return {
+    toggleAttribute(attribute, hidden) {
+      assert.equal(attribute, "hidden");
+      calls.push([name, "hidden", hidden]);
+    },
+    setSnapshot({ available }) {
+      calls.push([name, "available", available]);
+    },
+  };
+}
 
 test("the terminal toggle enters from any screen and returns to where it was", () => {
   const requested = [];

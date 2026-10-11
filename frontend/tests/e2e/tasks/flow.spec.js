@@ -331,14 +331,11 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   ).toContainText("Global task");
   const openReview = tasksPage.getByRole("button", { name: "Review", exact: true });
   await expect(openReview).toBeEnabled();
-  await expect(tasksPage.getByRole("button", { name: "Git unavailable" })).toBeDisabled();
-  await expect(tasksPage.getByRole("button", { name: "GitHub unavailable" })).toBeDisabled();
+  await expect(tasksPage.locator("caffold-task-detail-git")).toBeHidden();
+  await expect(tasksPage.locator("caffold-task-detail-github")).toBeHidden();
   await openReview.click();
   await expect(page).toHaveURL(
     `/tasks/${threadId}/review?nav=files&view=source`,
-  );
-  await expect(tasksPage).toContainText(
-    "Git review is unavailable for this task.",
   );
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
 

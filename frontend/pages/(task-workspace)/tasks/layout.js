@@ -712,7 +712,10 @@ class CaffoldTasksPage extends HTMLElement {
       !navigator?.recoveryFor?.(this.selectedThreadId)
         ? navigator?.taskFor?.(this.selectedThreadId) ?? null
         : null;
-    this.taskDetail()?.setManagedTask(selected);
+    const repository =
+      Boolean(selected) &&
+      Boolean(navigator?.sectionForTask?.(this.selectedThreadId)?.repository);
+    this.taskDetail()?.setManagedTask(selected, { repository });
   }
 
   reconcileSelectedTask(state = {}) {

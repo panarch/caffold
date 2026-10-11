@@ -56,7 +56,7 @@ test("names the selected base when a branch comparison is clean", { tag: "@all-v
   await captureReviewScreenshot(page, testInfo, "tasks-review-clean-branch");
 });
 
-test("normalizes a non-Git task to Files and Source without hiding why", { tag: "@all-viewports" }, async ({
+test("normalizes a non-Git task to Files and Source", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
@@ -66,7 +66,12 @@ test("normalizes a non-Git task to Files and Source without hiding why", { tag: 
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?nav=files&view=source`,
   );
-  await expect(taskReview).toContainText("Git review is unavailable for this task.");
+  await expect(
+    tasksPage.locator(
+      'caffold-segmented-control[data-detail-view-switch] '
+        + 'button[data-segmented-value="review"]',
+    ),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(
     tasksPage.locator(
       'caffold-segmented-control[data-detail-view-switch] '
@@ -97,6 +102,10 @@ test("normalizes a non-Git task to Files and Source without hiding why", { tag: 
       name: /alpha\.rs file/,
     }),
   ).toBeAttached();
+  // Working outside Git is not a degraded review, so nothing above it says so.
+  expect(await taskReview.evaluate((review) =>
+    review.querySelector(".task-review-layout").getBoundingClientRect().top
+      - review.getBoundingClientRect().top)).toBe(0);
   if (testInfo.project.name === "phone") {
     await expect(
       taskReview.locator(

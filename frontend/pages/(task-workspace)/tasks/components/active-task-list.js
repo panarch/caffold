@@ -1270,6 +1270,12 @@ class CaffoldActiveTaskList extends HTMLElement {
     return section ? this.sectionFor(section.id) : null;
   }
 
+  sectionForTask(threadId) {
+    const section = this.sections.find((candidate) =>
+      candidate.tasks.some((task) => taskThreadId(task) === threadId));
+    return section ? this.sectionFor(section.id) : null;
+  }
+
   recoveryFor(threadId) {
     return this.unsectioned.find(
       (task) => taskThreadId(task) === threadId && task?.recovery,

@@ -527,6 +527,8 @@ test("a Section's terminal bar has its buttons under GitHub and the terminal but
   const sectionId = terminalTaskId("section-bar");
   const projection = activeTaskProjection([terminalDetail(sectionId).task]);
   projection.sections[0].id = sectionId;
+  // Only a Section in a Git repository shows GitHub to line the bar up under.
+  projection.sections[0].repository = true;
   await installTaskApiFixture(page);
   await page.route("**/api/tasks", (route) => route.fulfill({ json: projection }));
   await page.goto(`/?section=${sectionId}`);

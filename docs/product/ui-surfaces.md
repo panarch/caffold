@@ -228,10 +228,11 @@ the reason; Claude and Grok are not offered by this surface.
 Detail provides Summary actions, the subject-aware view switch, a terminal,
 Integrated Review, Git, and GitHub. A Task adds Conversation; a Section adds
 fixed-context New Task. The header names the subject: a Task by its title, a
-Section by its directory's name, with the full path on hover. Switching Task or
-Section context reloads repository data, while safe local state may survive
-surface switches within one context. If a Section loses repository capability,
-it returns to New Task.
+Section by its directory's name, with the full path on hover. Git and GitHub
+belong to a Task or Section in a Git repository; outside one, the header does
+not show them. Switching Task or Section context reloads repository data, while
+safe local state may survive surface switches within one context. If a Section
+loses repository capability, it returns to New Task.
 
 ## Task Detail
 

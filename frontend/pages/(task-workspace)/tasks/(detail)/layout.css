@@ -88,6 +88,12 @@ caffold-detail-layout {
     grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
+  /* A Section outside Git has no actions to keep a place for. */
+  &[data-detail-subject="section"]
+    .detail-layout-actions:not(:has(> :not([hidden]))) {
+    display: none;
+  }
+
   & .detail-layout-body,
   & .detail-layout-body > div,
   & .detail-layout-body > div > caffold-task-review,
@@ -145,6 +151,11 @@ caffold-detail-layout {
     & .detail-layout-actions {
       grid-row: 2;
       grid-column: 1 / -1;
+    }
+
+    /* The Task view switch waits for the Task's details; its row does not. */
+    &[data-detail-subject="task"] .detail-layout-actions {
+      min-height: var(--interface-compact-visual-size);
     }
 
     & .detail-layout-summary > caffold-task-detail-terminal {

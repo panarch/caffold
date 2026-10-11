@@ -3762,7 +3762,6 @@ async function representativeThemeStyles(page) {
       "position:fixed;inset:auto auto 0 -10000px;width:20rem;height:10rem";
     document.body.append(review);
     review.innerHTML = `
-      <p class="task-review-git-notice">Review warning</p>
       <p class="task-review-error">Review error</p>
     `;
 
@@ -3787,7 +3786,6 @@ async function representativeThemeStyles(page) {
           ".settings-theme-control label:has(input:checked) > span",
         ),
       ),
-      reviewWarning: colorPair(review.querySelector(".task-review-git-notice")),
       reviewDanger: colorPair(review.querySelector(".task-review-error")),
       code: colorPair(document.querySelector(".settings-code-preview")),
       diffAdded: colorPair(diff.querySelector(".diff-row-added")),

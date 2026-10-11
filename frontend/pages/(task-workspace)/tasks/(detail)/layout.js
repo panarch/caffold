@@ -45,6 +45,7 @@ class CaffoldDetailLayout extends HTMLElement {
     this.taskRoute = null;
     this.taskSnapshot = null;
     this.managedTask = null;
+    this.managedTaskRepository = false;
     this.sectionActivationKey = "";
     this.sharedDomainContextKey = "";
     this.domainActivationPromise = null;
@@ -237,6 +238,7 @@ class CaffoldDetailLayout extends HTMLElement {
     this.ensureRendered();
     if (taskThreadId(this.managedTask) !== `${threadId ?? ""}`) {
       this.managedTask = null;
+      this.managedTaskRepository = false;
     }
     this.taskRoute = { ...(options.route ?? { kind: "tasks", threadId }) };
     this.keepTerminalTakeFor(this.taskRoute.terminal ? `task:${threadId}` : "");
@@ -277,6 +279,7 @@ class CaffoldDetailLayout extends HTMLElement {
       return false;
     }
     this.managedTask = null;
+    this.managedTaskRepository = false;
     const contextChanged = !this.sectionContextMatches(section);
     if (contextChanged) {
       this.deactivateSectionSurfaces();
@@ -334,17 +337,22 @@ class CaffoldDetailLayout extends HTMLElement {
     return true;
   }
 
-  setManagedTask(task) {
+  setManagedTask(task, { repository = false } = {}) {
     this.ensureRendered();
     const selectedThreadId = `${this.taskRoute?.threadId ?? ""}`;
     const nextTask =
       selectedThreadId && taskThreadId(task) === selectedThreadId
         ? task
         : null;
-    if (this.managedTask === nextTask) {
+    const nextRepository = Boolean(nextTask) && Boolean(repository);
+    if (
+      this.managedTask === nextTask &&
+      this.managedTaskRepository === nextRepository
+    ) {
       return;
     }
     this.managedTask = nextTask;
+    this.managedTaskRepository = nextRepository;
     this.taskDetail()?.setManagedTask?.(nextTask);
     if (this.subjectKind === "task") {
       this.syncTaskPresentation();
@@ -386,6 +394,7 @@ class CaffoldDetailLayout extends HTMLElement {
       this.section = null;
     }
     this.managedTask = null;
+    this.managedTaskRepository = false;
   }
 
   suspendForeground() {
@@ -495,6 +504,11 @@ class CaffoldDetailLayout extends HTMLElement {
     const task = canonicalTask ?? managedTask;
     this.summaryHeader()?.toggleAttribute("hidden", !task);
     const repository = Boolean(canonicalTask?.worktree?.rootPath);
+    // Before the Task's details arrive, the Section it is listed in says
+    // whether it is in a Git repository.
+    const inRepository = canonicalTask
+      ? repository
+      : Boolean(managedTask) && this.managedTaskRepository;
     this.rebindSharedDomainContext();
     const surface = canonicalTask ? this.activeSurface() : "conversation";
     this.taskSummary()?.setSnapshot({
@@ -509,11 +523,12 @@ class CaffoldDetailLayout extends HTMLElement {
       archiveState: snapshot.archiveState,
       forkState: snapshot.forkState,
     });
+    const reviewChoice = !repository
+      ? "review"
+      : this.taskRoute?.reviewScope === "branch" ? "branch" : "working";
     this.viewSwitch()?.setSnapshot({
       label: "Task view",
-      selected: surface === "review"
-        ? this.taskRoute?.reviewScope === "branch" ? "branch" : "working"
-        : surface,
+      selected: surface === "review" ? reviewChoice : surface,
       choices: repository
         ? [
             { value: "conversation", label: "Conversation" },
@@ -530,6 +545,8 @@ class CaffoldDetailLayout extends HTMLElement {
           ],
     });
     this.viewSwitch()?.toggleAttribute("hidden", !canonicalTask);
+    this.gitMenu()?.toggleAttribute("hidden", !inRepository);
+    this.githubMenu()?.toggleAttribute("hidden", !inRepository);
     this.gitMenu()?.setSnapshot({ available: repository });
     this.githubMenu()?.setSnapshot({ available: repository });
     this.terminalButton()?.setSnapshot({
@@ -567,6 +584,8 @@ class CaffoldDetailLayout extends HTMLElement {
         : [{ value: "new", label: "New Task" }],
     });
     this.viewSwitch()?.toggleAttribute("hidden", !repository);
+    this.gitMenu()?.toggleAttribute("hidden", !repository);
+    this.githubMenu()?.toggleAttribute("hidden", !repository);
     this.gitMenu()?.setSnapshot({ available: repository });
     this.githubMenu()?.setSnapshot({ available: repository });
     this.terminalButton()?.setSnapshot({
