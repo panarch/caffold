@@ -534,6 +534,7 @@
   --overlay-rgb: 31 31 31;
   --scrim-rgb: 0 0 0;
   --overlay-border: rgb(255 255 255 / 70%);
+  --overlay-text: #ffffff;
 
   /* Code and diff presentation */
   --code-bg: #ffffff;
@@ -645,6 +646,7 @@
   --overlay-rgb: 10 10 10;
   --scrim-rgb: 0 0 0;
   --overlay-border: rgb(255 255 255 / 18%);
+  --overlay-text: #ededed;
 
   /* Code and diff presentation */
   --code-bg: #161616;
