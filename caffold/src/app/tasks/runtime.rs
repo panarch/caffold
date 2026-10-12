@@ -162,12 +162,20 @@ impl TaskAgent {
 
 /// Something that happened to a session, told to whoever is watching it.
 ///
-/// Neither of these asks which agent the session belongs to, and neither
-/// should: a session that changed and a session that can no longer be reached
-/// are the same news either way.
+/// None of these asks which agent the session belongs to, and none should: a
+/// session that changed and a session that can no longer be reached are the
+/// same news either way.
 #[derive(Clone)]
 pub(in crate::app::tasks) enum TaskRuntimeSignal {
+    /// The conversation or its turns may have moved, so viewers take the whole
+    /// Task Detail again.
     SessionChanged {
+        thread_id: String,
+        snapshot: Box<SessionSnapshot>,
+    },
+    /// Only the Task's state beside its conversation moved: its status, title,
+    /// settings, or context.
+    TaskStateChanged {
         thread_id: String,
         snapshot: Box<SessionSnapshot>,
     },

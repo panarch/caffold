@@ -802,11 +802,11 @@ mod tests {
     use crate::agent::codex::{
         CodexReadiness, CodexReadinessReason, CodexReadinessState, CodexThread, MockCodexResponse,
     };
-    use crate::app::tasks::TaskDetailSync;
     use crate::app::tasks::detail::loading_detail;
     use crate::app::tasks::live::TaskLiveSource;
     use crate::app::tasks::projection::task_record_from_conversation;
     use crate::app::tasks::worktrees::{IsolateOutcome, inspect_ready_worktree};
+    use crate::app::tasks::{TaskDetailPublication, TaskDetailSync};
     use crate::task_store;
     use axum::body::Body;
     use axum::extract::Query;
@@ -1771,13 +1771,15 @@ mod tests {
             &[],
             None,
         ));
-        state.task_sync.publish(TaskDetailSync {
-            thread_id: thread_id.to_string(),
-            revision: 2,
-            detail,
-            reason: "app-server-notification",
-            error: None,
-        });
+        state
+            .task_sync
+            .publish(TaskDetailPublication::Sync(Box::new(TaskDetailSync {
+                thread_id: thread_id.to_string(),
+                revision: 2,
+                detail,
+                reason: "app-server-notification",
+                error: None,
+            })));
 
         let sync = tokio::time::timeout(Duration::from_secs(1), list.next())
             .await

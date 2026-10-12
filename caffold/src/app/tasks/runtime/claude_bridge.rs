@@ -520,9 +520,9 @@ mod tests {
     use serde_json::{Value, json};
 
     use crate::agent::claude::{ClaudeTurnOptions, MockRunnerHandle};
-    use crate::app::tasks::TaskState;
     use crate::app::tasks::events::task_event_record;
     use crate::app::tasks::test_support::task_state_with_agents;
+    use crate::app::tasks::{TaskDetailPublication, TaskState};
     use crate::fs::RootedFs;
     use crate::task_store::{ManagedThread, RunBy};
 
@@ -665,10 +665,13 @@ mod tests {
 
         let detail = tokio::time::timeout(WAIT, async {
             loop {
-                let sync = detail_syncs
+                let TaskDetailPublication::Sync(sync) = detail_syncs
                     .recv()
                     .await
-                    .expect("the Task detail sync channel stays open");
+                    .expect("the Task detail sync channel stays open")
+                else {
+                    continue;
+                };
                 if sync.thread_id == SESSION
                     && sync.detail.events.iter().any(|event| {
                         event.event_type == "assistant_message"

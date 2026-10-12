@@ -380,7 +380,7 @@ test("puts a suggested request after what is being written, ready to read and se
   assert.equal(focused.length, 2);
 });
 
-test("takes no text in its prompt field while unreachable, dictating, or creating", () => {
+test("takes no text in its prompt field while dictating or creating", () => {
   const owner = (phase, { disabled = false, mode = "follow-up", submitting = false } = {}) => ({
     context: { disabled, mode },
     voice: { phase },
@@ -390,7 +390,7 @@ test("takes no text in its prompt field while unreachable, dictating, or creatin
 
   assert.equal(locked(owner("idle")), false);
   assert.equal(locked(owner("idle", { submitting: true })), false);
-  assert.equal(locked(owner("idle", { disabled: true })), true);
+  assert.equal(locked(owner("idle", { disabled: true })), false);
   for (const phase of ["requesting", "recording", "transcribing"]) {
     assert.equal(locked(owner(phase)), true, phase);
   }

@@ -47,6 +47,71 @@ test("raw active flags prioritize approval over user input", { tag: "@all-viewpo
   );
 });
 
+test("takes a Task state change without rebuilding the conversation", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const detail = {
+    ...taskDetailFixture({ running: true }),
+    context: { usedTokens: 32_147, windowTokens: 200_000 },
+  };
+  detail.events = [
+    {
+      id: "thread-1:answer",
+      threadId: "thread-1",
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        turnId: "turn-1",
+        itemId: "answer",
+        text: "The conversation stays as it is.",
+        phase: "final",
+      },
+      position: { anchorMs: detail.task.updatedMs, index: 0 },
+    },
+  ];
+  let detailReads = 0;
+  await page.route("**/api/tasks/thread-1", (route) => {
+    detailReads += 1;
+    return route.fulfill({ json: detail });
+  });
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const answer = page.locator(
+    'caffold-task-detail:not([hidden]) .task-assistant-message[data-event-id="thread-1:answer"]',
+  );
+  await expect(answer).toBeVisible();
+  await answer.evaluate((element) => {
+    element.dataset.identityMarker = "kept";
+  });
+  const readsBeforeState = detailReads;
+
+  await page.evaluate((next) => {
+    window.__caffoldTaskSse.source(next.threadId).emit("task-state", next);
+  }, {
+    threadId: detail.threadId,
+    revision: detail.revision + 1,
+    task: { ...detail.task, title: "Renamed by the agent" },
+    provider: detail.provider,
+    permissionMode: null,
+    model: null,
+    reasoningEffort: null,
+    fastMode: false,
+    context: { usedTokens: 50_000, windowTokens: 200_000 },
+  });
+
+  await expect(page.locator(".task-detail-summary")).toContainText(
+    "Renamed by the agent",
+  );
+  await expect(
+    page.locator(
+      'caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-context-usage-button',
+    ),
+  ).toHaveAccessibleName("Context usage: 25%");
+  await expect(answer).toHaveAttribute("data-identity-marker", "kept");
+  expect(detailReads).toBe(readsBeforeState);
+});
+
 test("work details show only direct item times instead of repeating the turn anchor", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
@@ -2684,7 +2749,7 @@ test("makes disconnected task state unavailable and preserves an unidentifiable 
   await expect(
     tasksPage.getByRole("button", { name: "Stop current turn", exact: true }),
   ).toBeDisabled();
-  await expect(textarea).toBeDisabled();
+  await expect(textarea).toBeEnabled();
   await expect(taskRow).toHaveAttribute("data-task-status", "running");
   await expect(
     page.locator(
@@ -2764,7 +2829,7 @@ test("makes disconnected task state unavailable and preserves an unidentifiable 
     .getByRole("button", { name: "New Task" })
     .click();
   const newTaskForm = tasksPage.locator(".task-new-form");
-  await expect(newTaskForm.locator('textarea[name="prompt"]')).toBeDisabled();
+  await expect(newTaskForm.locator('textarea[name="prompt"]')).toBeEnabled();
   await expect(
     newTaskForm.getByRole("button", { name: "Start task" }),
   ).toBeDisabled();

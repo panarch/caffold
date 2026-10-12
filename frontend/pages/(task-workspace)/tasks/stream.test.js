@@ -122,6 +122,22 @@ function installBrowserHarness({ manualTimers = false } = {}) {
     subscribe(contextKey, listener) {
       return new MockSubscription(contextKey, listener);
     },
+    pendingTimers() {
+      return timers.size;
+    },
+    // Runs the earliest timer and answers the delay it was set with.
+    runNextTimer() {
+      const [id, timer] = [...timers.entries()].sort(
+        ([leftId, left], [rightId, right]) =>
+          left.dueAt - right.dueAt || leftId - rightId,
+      )[0] ?? [];
+      assert.ok(timer, "expected a pending timer");
+      timers.delete(id);
+      const delay = timer.dueAt - timerNow;
+      timerNow = timer.dueAt;
+      timer.callback();
+      return delay;
+    },
     runAllTimers() {
       let iterations = 0;
       while (timers.size) {
@@ -211,6 +227,7 @@ test("bounds replacement attempts and lets an explicit retry start a new cycle",
   const lifecycle = new TaskStreamLifecycle({
     subscribe: browser.subscribe,
     retryDelaysMs: [0, 0],
+    automaticRetryDelaysMs: [],
   });
 
   lifecycle.activate("task-list");
@@ -240,6 +257,7 @@ test("bounds a source that never opens or errors", () => {
     subscribe: browser.subscribe,
     connectionTimeoutMs: 1,
     retryDelaysMs: [0, 0],
+    automaticRetryDelaysMs: [],
   });
 
   lifecycle.activate("task-list");
@@ -248,6 +266,65 @@ test("bounds a source that never opens or errors", () => {
   assert.equal(browser.sources.length, 3);
   assert.equal(lifecycle.source, null);
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.UNAVAILABLE);
+  lifecycle.deactivate();
+});
+
+test("tries again at longer delays once its own retry budget is spent", async () => {
+  const browser = installBrowserHarness({ manualTimers: true });
+  const lifecycle = new TaskStreamLifecycle({
+    subscribe: browser.subscribe,
+    retryDelaysMs: [],
+  });
+
+  lifecycle.activate("task-list");
+  browser.sources[0].emitChannelError();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.UNAVAILABLE);
+
+  assert.equal(browser.runNextTimer(), 5_000);
+  assert.equal(browser.sources.length, 2);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.RECONNECTING);
+  browser.sources[1].emitChannelError();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.UNAVAILABLE);
+
+  assert.equal(browser.runNextTimer(), 10_000);
+  browser.sources[2].emitOpen();
+  await settleAsyncWork();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
+
+  // A stream that worked again starts over from the shortest delay.
+  browser.sources[2].emitChannelError();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.UNAVAILABLE);
+  assert.equal(browser.runNextTimer(), 5_000);
+  lifecycle.deactivate();
+  assert.equal(browser.pendingTimers(), 0);
+});
+
+test("leaves a stream the gateway gave up on to the gateway's own retries", () => {
+  const browser = installBrowserHarness({ manualTimers: true });
+  const lifecycle = new TaskStreamLifecycle({ subscribe: browser.subscribe });
+
+  lifecycle.activate("task-list");
+  browser.sources[0].emitPhysicalExhaustion();
+
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.UNAVAILABLE);
+  assert.equal(browser.pendingTimers(), 0);
+  lifecycle.deactivate();
+});
+
+test("drops its automatic retry when the page hides", () => {
+  const browser = installBrowserHarness({ manualTimers: true });
+  const lifecycle = new TaskStreamLifecycle({
+    subscribe: browser.subscribe,
+    retryDelaysMs: [],
+  });
+
+  lifecycle.activate("task-list");
+  browser.sources[0].emitChannelError();
+  assert.equal(browser.pendingTimers(), 1);
+
+  globalThis.document.visibilityState = "hidden";
+  lifecycle.suspend();
+  assert.equal(browser.pendingTimers(), 0);
   lifecycle.deactivate();
 });
 

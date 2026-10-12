@@ -10,6 +10,8 @@ export const LIVE_CONNECTION_NODE = Object.freeze({
   REOPENED: "reopened",
   CONNECTED: "connected",
   RECONNECTING: "reconnecting",
+  // The bounded retry is spent. While the page is visible, a fresh attempt
+  // follows each automatic retry delay, and Retry starts one at once.
   UNAVAILABLE: "unavailable",
 });
 
@@ -25,6 +27,8 @@ export const LIVE_CONNECTION_EVENT = Object.freeze({
   REPLACE: "replace",
   EXHAUST: "exhaust",
   RETRY: "retry",
+  // The automatic retry delay of an unavailable connection ended.
+  RETRY_DUE: "retry-due",
   SUSPEND: "suspend",
   RESUME: "resume",
   DISCONNECT: "disconnect",
@@ -37,6 +41,7 @@ export const LIVE_CONNECTION_EFFECT = Object.freeze({
   REOPEN: "reopen",
   REPLACE_NOW: "replace-now",
   CLOSE: "close",
+  WAIT_TO_RETRY: "wait-to-retry",
 });
 
 // This is the complete allowed-edge graph. A rejected event leaves the node
@@ -82,6 +87,7 @@ export const LIVE_CONNECTION_EDGES = Object.freeze({
   }),
   [LIVE_CONNECTION_NODE.UNAVAILABLE]: Object.freeze({
     [LIVE_CONNECTION_EVENT.RETRY]: LIVE_CONNECTION_NODE.CONNECTING,
+    [LIVE_CONNECTION_EVENT.RETRY_DUE]: LIVE_CONNECTION_NODE.CONNECTING,
     [LIVE_CONNECTION_EVENT.SUSPEND]: LIVE_CONNECTION_NODE.SUSPENDED,
     [LIVE_CONNECTION_EVENT.DISCONNECT]: LIVE_CONNECTION_NODE.DETACHED,
   }),
@@ -104,6 +110,7 @@ function effectsFor(node, event) {
       LIVE_CONNECTION_EVENT.CONNECT,
       LIVE_CONNECTION_EVENT.REPLACE,
       LIVE_CONNECTION_EVENT.RETRY,
+      LIVE_CONNECTION_EVENT.RETRY_DUE,
       LIVE_CONNECTION_EVENT.RESUME,
     ].includes(event)
   ) {
@@ -128,10 +135,13 @@ function effectsFor(node, event) {
   if (event === LIVE_CONNECTION_EVENT.UNDELIVERED) {
     return [LIVE_CONNECTION_EFFECT.REPLACE_NOW];
   }
+  // A spent retry does not give up: the next attempt waits for a longer delay.
+  if (event === LIVE_CONNECTION_EVENT.EXHAUST) {
+    return [LIVE_CONNECTION_EFFECT.CLOSE, LIVE_CONNECTION_EFFECT.WAIT_TO_RETRY];
+  }
   if (
     [
       LIVE_CONNECTION_EVENT.DISCONNECT,
-      LIVE_CONNECTION_EVENT.EXHAUST,
       LIVE_CONNECTION_EVENT.SUSPEND,
     ].includes(event)
   ) {

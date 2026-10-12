@@ -161,18 +161,24 @@ passes through one complete transition table. Activation intent, diagnostic
 trigger, retry attempt, and in-flight generation remain control data instead of
 duplicating graph nodes. Hidden observations stay pending without starting
 HTTP or SSE work, overlapping visible observations share the current
-generation, and retry stops on success, hide, disconnect, or budget exhaustion.
+generation, and the bounded retry stops on success, hide, disconnect, or budget
+exhaustion. While the page is visible, exhausted recovery, and an offline pause
+while the browser still reports a network, each start a new attempt on their own
+after 5, 10, 20, and then every 30 seconds. A settled attempt, or hiding the
+page, starts those delays over.
 
 A visible `offline` signal is a pause, not a recovery attempt. It invalidates
-in-flight foreground work, releases Task transports, stops retry timers, and
-keeps the current workspace useful behind the shared no-network notice. No
-HTTP, SSE, or backoff polling restarts on its own. A later visible lifecycle or
-connectivity hint may re-enter the ordinary recovery sequence. A fresh
-same-origin API response or current EventSource open is stronger reachability
-evidence and re-enters that same sequence even when the browser omits an
-`online` edge. The evidence never jumps directly to ready: Task-store
-readiness, list, and detail still validate through the current foreground
-generation.
+in-flight foreground work, releases Task transports, stops the bounded retry,
+and keeps the current workspace useful behind the shared no-network notice.
+Recovery re-enters the ordinary sequence on a later visible lifecycle or
+connectivity hint. While the browser still reports a network it also re-enters
+on the next automatic retry, since no browser signal ends a pause that a failed
+request started; a browser that reports itself offline announces its return,
+so that pause waits for the browser. A fresh same-origin API response
+or current EventSource open is stronger reachability evidence and re-enters
+that same sequence even when the browser omits an `online` edge. The evidence
+never jumps directly to ready: Task-store readiness, list, and detail still
+validate through the current foreground generation.
 
 A recovery attempt that fails with no response from Caffold, as a network
 exception does, takes the same pause. An attempt whose request ran out of time
@@ -203,17 +209,21 @@ limit, reconciling through the eight-second limit on reading the Task list,
 waiting for the gateway through the gateway's own retry budget, and backing off
 through its timer. A channel that fails, does not open, cannot be prepared, or
 cannot be reconciled backs off for 250 ms, 1 s, and then 3 s before
-subscribing again; after that the stream is unavailable until Retry, recovery,
-or a new activation. Physical trouble keeps the subscription for the gateway to
-reopen, and the reopened stream reconciles before it is ready. A stream is gone
-when the gateway refuses its channel because the Task is archived or missing,
-or when its owner learns that from another request about the Task: it releases
-its subscription and retries nothing, foreground recovery and hiding leave it
-alone, and it presents as idle until the owner opens a context again. The
-`api.js` boundary alone turns a refusal code into that absence. Owners read only
-the derived transport state: idle, connecting, validating, reconnecting, ready,
-or unavailable. Callers that join a Task list read in flight share its canonical
-answer and each decide for itself whether it still wants it.
+subscribing again. After that the stream is unavailable, and while the page is
+visible it subscribes again after 5, 10, 20, and then every 30 seconds until a
+subscription becomes ready; Retry, recovery, or a new activation starts one at
+once. Physical trouble keeps the subscription for the gateway to reopen, and the
+reopened stream reconciles before it is ready. A stream the gateway gave up on
+keeps its subscription too and waits for the gateway's own automatic retries.
+A stream is gone when the gateway refuses its channel because the Task is
+archived or missing, or when its owner learns that from another request about
+the Task: it releases its subscription and retries nothing, foreground recovery
+and hiding leave it alone, and it presents as idle until the owner opens a
+context again. The `api.js` boundary alone turns a refusal code into that
+absence. Owners read only the derived transport state: idle, connecting,
+validating, reconnecting, ready, or unavailable. Callers that join a Task list
+read in flight share its canonical answer and each decide for itself whether it
+still wants it.
 
 The app shell also owns the single viewport-level recovery notice. Task list
 and detail expose whether an active transport needs recovery; they do not render
@@ -221,10 +231,10 @@ independent connection Retry controls. Initial foreground validation remains
 silent and preserves canonical Task status chips. The notice appears only after
 a real transport failure or foreground backoff. Once the retry budget is
 exhausted it exposes one Retry action that re-enters the same Task-store
-readiness, pending-route, list, and detail recovery operation. Known offline
-state uses the same notice without a spinner or Retry action. Initial
-bootstrap and domain-specific requests such as older-history loading retain
-their separately scoped failure UI.
+readiness, pending-route, list, and detail recovery operation at once, ahead of
+the next automatic retry. Known offline state uses the same notice without a
+spinner or Retry action. Initial bootstrap and domain-specific requests such as
+older-history loading retain their separately scoped failure UI.
 
 The same boundary privately keeps foreground recovery diagnostics for the
 server log. A record starts when the page becomes visible after being hidden,
@@ -997,7 +1007,11 @@ a readable bootstrap pass through the same check, so a snapshot cannot be
 followed by a stale intermediate render. A new stream bootstrap resets this
 process-local baseline for its connection generation. The separate Task
 session `revision` orders canonical Task reads and metadata; it does not
-substitute for conversation publication order.
+substitute for conversation publication order. A `task-state` carries that
+revision with the Task record, composer settings, and context usage alone:
+Detail applies it when its revision is current or newer, leaves the
+conversation as it is, and keeps only the newest one while it waits for a
+readable bootstrap.
 
 Detail applies every Detail answer, whether a bootstrap, a notification
 snapshot, or an older cursor page, through one rule keyed on the answer's
