@@ -626,8 +626,8 @@ impl ClaudeClient {
 
     /// Let go of a conversation. Nothing happens.
     ///
-    /// A Codex subscription is nearly free to drop and to take again, so
-    /// Caffold drops it when the last viewer leaves. A Claude session is a
+    /// Caffold lets go of a Codex conversation once nothing has needed it for
+    /// a while, and Codex stops reporting it. A Claude session is a
     /// process on one attached connection: letting go means detaching, and
     /// taking it back means attaching again, which the runner refuses while the
     /// old connection is still closing. So the session is held for as long as

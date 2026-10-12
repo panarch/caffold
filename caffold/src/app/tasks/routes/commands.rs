@@ -1123,6 +1123,7 @@ mod tests {
         assert!(request.await.unwrap_err().is_cancelled());
         assert_eq!(state.task_sessions.diagnostics().await.request_leases, 1);
         release.send(()).unwrap();
+        state.task_sessions.lapse_retention(id).await;
         wait_for_mock_method(&client, "thread/unsubscribe").await;
         assert!(task_store_get(&state, id).await.unwrap().is_some());
         assert!(updates.try_recv().is_ok());
@@ -1161,6 +1162,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+        state.task_sessions.lapse_retention(id).await;
         wait_for_mock_method(&client, "thread/unsubscribe").await;
         let diagnostics = state.task_sessions.diagnostics().await;
         assert_eq!(diagnostics.request_leases, 0);
@@ -1272,6 +1274,7 @@ mod tests {
         .await
         .expect("create-only request succeeds");
 
+        state.task_sessions.lapse_retention(thread_id).await;
         wait_for_mock_method(&client, "thread/unsubscribe").await;
         let created = response.0;
         let task = created.detail.task.expect("created Task");
@@ -1362,6 +1365,7 @@ mod tests {
         .await
         .expect("task creation succeeds");
 
+        state.task_sessions.lapse_retention(thread_id).await;
         wait_for_mock_method(&client, "thread/unsubscribe").await;
         let detail = &creation.0.detail;
         assert_eq!(detail.permission_mode, Some("approveForMe".to_string()));
@@ -1564,6 +1568,7 @@ mod tests {
         );
         assert!(stored_after_creation.fast_mode);
 
+        state.task_sessions.lapse_retention(thread_id).await;
         wait_for_mock_method(&client, "thread/unsubscribe").await;
         let prompt = task_prompt(
             State(state.clone()),
@@ -1817,6 +1822,7 @@ mod tests {
         .expect("empty Task creation succeeds");
         assert_eq!(detail.0.detail.thread_id, thread_id);
 
+        state.task_sessions.lapse_retention(thread_id).await;
         wait_for_mock_method(&client, "thread/unsubscribe").await;
         let error = task_prompt(
             State(state.clone()),
@@ -1835,6 +1841,7 @@ mod tests {
         .await
         .expect_err("ordinary prompt failure is returned to its caller");
         assert!(error.to_string().contains("the agent could not be reached"));
+        state.task_sessions.lapse_retention(thread_id).await;
         wait_for_mock_method_count(&client, "thread/unsubscribe", 2).await;
         assert!(
             task_store_get(&state, thread_id).await.unwrap().is_some(),

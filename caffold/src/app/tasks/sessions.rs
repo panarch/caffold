@@ -259,8 +259,9 @@ struct SessionState {
     terminal_candidate_turn_id: Option<String>,
     viewer_leases: usize,
     request_leases: usize,
-    /// Reuse the subscription across a short gap after a scoped lease ends.
-    handoff_until: Option<Instant>,
+    /// Keep the subscription until then after the last demand ends, so
+    /// demand that returns before it reuses what is held.
+    retained_until: Option<Instant>,
     runtime_lease: bool,
     /// The agent this session is being watched through, kept so the last
     /// viewer to leave can say so without being handed one.
@@ -306,7 +307,7 @@ impl Default for SessionState {
             terminal_candidate_turn_id: None,
             viewer_leases: 0,
             request_leases: 0,
-            handoff_until: None,
+            retained_until: None,
             runtime_lease: false,
             driver: None,
             generation: 0,

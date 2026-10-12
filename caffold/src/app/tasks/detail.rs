@@ -3349,6 +3349,7 @@ mod request_tests {
             response.0.task.is_none(),
             "detail must stay empty until the canonical resume snapshot arrives"
         );
+        state.task_sessions.lapse_retention(thread_id).await;
         wait_for_mock_method(&client, "thread/unsubscribe").await;
         assert_eq!(
             test_store_get(&state, thread_id).await.unwrap().unwrap(),
@@ -3429,6 +3430,7 @@ mod request_tests {
         );
 
         drop(stream_response);
+        state.task_sessions.lapse_retention(thread_id).await;
         wait_for_mock_method(&client, "thread/unsubscribe").await;
         assert_eq!(
             client
@@ -3481,6 +3483,8 @@ mod request_tests {
         let _detail_response = test_task_detail(state.clone(), thread_id.to_string(), None)
             .await
             .expect("task detail succeeds");
+        let sessions = state.task_sessions.clone();
+        let lapsing = tokio::spawn(async move { sessions.lapse_retention(thread_id).await });
         wait_for_mock_method(&client, "thread/unsubscribe").await;
 
         let stream_response = tokio::time::timeout(
@@ -3510,8 +3514,10 @@ mod request_tests {
             .expect("thread session snapshot");
         assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
         assert_eq!(snapshot.viewer_leases, 1);
+        lapsing.await.unwrap();
 
         drop(stream_response);
+        state.task_sessions.lapse_retention(thread_id).await;
         wait_for_mock_method_count(&client, "thread/unsubscribe", 2).await;
     }
 
@@ -4281,6 +4287,38 @@ mod continuity_tests {
             .await
             .unwrap();
         for _ in 0..3 {
+            assert_cached_reconnect(&state, thread_id).await;
+            assert_no_history_reread(&client).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn a_task_reopened_after_its_last_viewer_left_reuses_retained_history() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-retained-reopen";
+        let mut resume = resumed_task(thread_id, root.path());
+        resume["initialTurnsPage"]["data"] = json!([{
+            "id": "turn-2", "status": "completed",
+            "startedAt": 2.0, "completedAt": 3.0,
+            "items": [{
+                "type": "agentMessage", "id": "answer-2",
+                "text": "Answer for turn 2", "phase": "final_answer"
+            }]
+        }]);
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", resume)]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        drop(
+            state
+                .task_sessions
+                .acquire_viewer(&client.driver(), 1, thread_id)
+                .await
+                .unwrap(),
+        );
+        for _ in 0..3 {
+            // Back on the Task a little later, as after looking at another one.
+            tokio::time::sleep(Duration::from_millis(300)).await;
             assert_cached_reconnect(&state, thread_id).await;
             assert_no_history_reread(&client).await;
         }

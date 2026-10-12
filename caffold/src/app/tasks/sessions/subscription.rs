@@ -17,7 +17,10 @@ use super::{
     turns::{active_turn_id, update_active_turn},
 };
 
-const VIEWER_HANDOFF_GRACE: Duration = Duration::from_millis(250);
+/// How long a conversation stays subscribed after the last viewer, request, or
+/// running turn lets go of it. Opening it again after that rereads it and
+/// sends its whole page once more, which a slow link pays for.
+const UNUSED_SUBSCRIPTION_RETENTION: Duration = Duration::from_secs(30 * 60);
 
 impl Drop for ViewerLease {
     fn drop(&mut self) {
@@ -44,8 +47,9 @@ impl Drop for RequestLease {
                     state.request_leases -= 1;
                     state.defer_unsubscribe()
                 };
-                sleep_until(deadline).await;
-                sessions.unsubscribe_if_unused(&thread_id, &entry).await;
+                sessions
+                    .unsubscribe_after(&thread_id, &entry, deadline)
+                    .await;
             });
         }
     }
@@ -256,6 +260,15 @@ impl TaskSessions {
             state.viewer_leases -= 1;
             state.defer_unsubscribe()
         };
+        self.unsubscribe_after(thread_id, entry, deadline).await;
+    }
+
+    pub(super) async fn unsubscribe_after(
+        &self,
+        thread_id: &str,
+        entry: &Arc<SessionEntry>,
+        deadline: Instant,
+    ) {
         sleep_until(deadline).await;
         self.unsubscribe_if_unused(thread_id, entry).await;
     }
@@ -273,7 +286,7 @@ impl TaskSessions {
                 if state.lifecycle != SessionLifecycle::Subscribed
                     || state.has_demand()
                     || state
-                        .handoff_until
+                        .retained_until
                         .is_some_and(|until| until > Instant::now())
                 {
                     return;
@@ -314,9 +327,9 @@ impl TaskSessions {
 }
 
 impl SessionState {
-    fn defer_unsubscribe(&mut self) -> Instant {
-        let deadline = Instant::now() + VIEWER_HANDOFF_GRACE;
-        self.handoff_until = Some(deadline);
+    pub(super) fn defer_unsubscribe(&mut self) -> Instant {
+        let deadline = Instant::now() + UNUSED_SUBSCRIPTION_RETENTION;
+        self.retained_until = Some(deadline);
         deadline
     }
 }
@@ -326,6 +339,27 @@ enum OpenKind {
     History,
     Refresh,
     Prompt,
+}
+
+#[cfg(test)]
+impl TaskSessions {
+    /// Let a conversation go as soon as nothing needs it, for a test that
+    /// checks the release rather than the thirty minutes before it.
+    pub(in crate::app::tasks) async fn lapse_retention(&self, thread_id: &str) {
+        let entry = self
+            .existing_entry(thread_id)
+            .await
+            .expect("tracked conversation");
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while entry.state.lock().await.has_demand() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("nothing needs the conversation");
+        entry.state.lock().await.retained_until = None;
+        self.unsubscribe_if_unused(thread_id, &entry).await;
+    }
 }
 
 #[cfg(test)]
@@ -557,7 +591,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn viewers_share_one_subscription_and_last_viewer_unsubscribes() {
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
@@ -579,10 +613,16 @@ mod tests {
         assert_eq!(methods(&client).await, vec!["thread/resume"]);
 
         drop(first);
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        assert_eq!(methods(&client).await, vec!["thread/resume"]);
-
+        while sessions.snapshot("thread-1").await.unwrap().viewer_leases != 1 {
+            tokio::task::yield_now().await;
+        }
         drop(second);
+        while sessions.snapshot("thread-1").await.unwrap().viewer_leases != 0 {
+            tokio::task::yield_now().await;
+        }
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION - Duration::from_millis(1)).await;
+        assert_eq!(methods(&client).await, vec!["thread/resume"]);
+        tokio::time::advance(Duration::from_millis(1)).await;
         wait_for_unsubscribe(&client).await;
         assert_eq!(
             methods(&client).await,
@@ -591,7 +631,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_detail_to_stream_handoff_reuses_the_subscription() {
+    async fn a_viewer_returning_within_the_retention_reuses_the_subscription() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, vec![], vec![]),
@@ -605,7 +645,7 @@ mod tests {
         while sessions.snapshot("thread-1").await.unwrap().viewer_leases != 0 {
             tokio::task::yield_now().await;
         }
-        tokio::time::advance(Duration::from_millis(249)).await;
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION - Duration::from_millis(1)).await;
         let _stream = sessions
             .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
@@ -632,7 +672,7 @@ mod tests {
         while sessions.diagnostics().await.request_leases != 0 {
             tokio::task::yield_now().await;
         }
-        tokio::time::advance(Duration::from_millis(249)).await;
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION - Duration::from_millis(1)).await;
         let _viewer = sessions
             .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
@@ -647,7 +687,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn an_older_handoff_timer_cannot_shorten_a_later_handoff() {
+    async fn an_earlier_release_cannot_shorten_a_later_retention() {
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -664,7 +704,7 @@ mod tests {
         while sessions.snapshot("thread-1").await.unwrap().viewer_leases != 0 {
             tokio::task::yield_now().await;
         }
-        tokio::time::advance(Duration::from_millis(200)).await;
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION / 2).await;
         let second = sessions
             .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
@@ -673,8 +713,10 @@ mod tests {
         while sessions.snapshot("thread-1").await.unwrap().viewer_leases != 0 {
             tokio::task::yield_now().await;
         }
-        tokio::time::advance(Duration::from_millis(249)).await;
-        tokio::task::yield_now().await;
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION - Duration::from_millis(1)).await;
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
         assert_eq!(methods(&client).await, ["thread/resume"]);
         tokio::time::advance(Duration::from_millis(1)).await;
         wait_for_unsubscribe(&client).await;
@@ -685,7 +727,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn an_idle_observation_cannot_bypass_the_handoff_grace() {
+    async fn an_idle_observation_neither_cuts_short_nor_extends_the_retention() {
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -702,6 +744,7 @@ mod tests {
         while sessions.snapshot("thread-1").await.unwrap().viewer_leases != 0 {
             tokio::task::yield_now().await;
         }
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION / 2).await;
         let before = tokio::time::Instant::now();
         sessions
             .apply_session_event(
@@ -715,14 +758,68 @@ mod tests {
             )
             .await;
         assert_eq!(before.elapsed(), Duration::ZERO);
-        tokio::time::advance(Duration::from_millis(249)).await;
+        assert_eq!(methods(&client).await, ["thread/resume"]);
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION / 2 - Duration::from_millis(1)).await;
         assert_eq!(methods(&client).await, ["thread/resume"]);
         tokio::time::advance(Duration::from_millis(1)).await;
         wait_for_unsubscribe(&client).await;
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_detail_to_stream_gap_resumes_safely_after_the_handoff_grace() {
+    async fn a_turn_that_ends_unwatched_keeps_the_subscription_for_the_retention() {
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+            ),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
+        ]);
+        let sessions = TaskSessions::default();
+        let viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .expect("viewer");
+        sessions
+            .apply_session_event(
+                1,
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnStarted {
+                        turn: turn("turn-live", TurnStatus::InProgress),
+                    },
+                ),
+            )
+            .await;
+        drop(viewer);
+        while sessions.snapshot("thread-1").await.unwrap().viewer_leases != 0 {
+            tokio::task::yield_now().await;
+        }
+
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION / 2).await;
+        sessions
+            .apply_session_event(
+                1,
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnEnded {
+                        turn: turn("turn-live", TurnStatus::Completed),
+                    },
+                ),
+            )
+            .await;
+        assert!(!sessions.snapshot("thread-1").await.unwrap().runtime_lease);
+
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION - Duration::from_millis(1)).await;
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(methods(&client).await, ["thread/resume"]);
+        tokio::time::advance(Duration::from_millis(1)).await;
+        wait_for_unsubscribe(&client).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_viewer_returning_after_the_retention_resumes_again() {
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -743,7 +840,7 @@ mod tests {
         while sessions.snapshot("thread-1").await.unwrap().viewer_leases != 0 {
             tokio::task::yield_now().await;
         }
-        tokio::time::advance(Duration::from_millis(250)).await;
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION).await;
         while sessions.snapshot("thread-1").await.unwrap().lifecycle != SessionLifecycle::Unloaded {
             tokio::task::yield_now().await;
         }
@@ -761,7 +858,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn a_new_viewer_resumes_after_the_in_flight_unsubscribe_finishes() {
         let (closing, release) =
             MockCodexResponse::gated_ok("thread/unsubscribe", json!({"status":"unsubscribed"}));
@@ -782,6 +879,10 @@ mod tests {
             .await
             .unwrap();
         drop(viewer);
+        while sessions.snapshot("thread-1").await.unwrap().viewer_leases != 0 {
+            tokio::task::yield_now().await;
+        }
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION).await;
         wait_for_unsubscribe(&client).await;
         let opening = {
             let sessions = sessions.clone();
@@ -807,7 +908,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn idle_and_title_observations_cannot_release_an_unfinished_prompt_request() {
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
@@ -841,10 +942,14 @@ mod tests {
             assert_eq!(methods(&client).await, ["thread/resume"]);
         }
         drop(request);
+        while sessions.diagnostics().await.request_leases != 0 {
+            tokio::task::yield_now().await;
+        }
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION).await;
         wait_for_unsubscribe(&client).await;
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn cancelling_a_request_keeps_its_resume_ordered_until_cleanup() {
         let (opening, release) = MockCodexResponse::gated_ok(
             "thread/resume",
@@ -868,10 +973,36 @@ mod tests {
         assert!(request.await.unwrap_err().is_cancelled());
         assert_eq!(methods(&client).await, ["thread/resume"]);
         release.send(()).unwrap();
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION).await;
         wait_for_unsubscribe(&client).await;
         let snapshot = sessions.snapshot("thread-1").await.unwrap();
         assert_eq!(sessions.diagnostics().await.request_leases, 0);
         assert!(!snapshot.runtime_lease);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_conversation_forgotten_during_its_retention_is_not_released_afterwards() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(ThreadStatus::Idle, vec![], vec![]),
+        )]);
+        let sessions = TaskSessions::default();
+        let viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .unwrap();
+        let entry = viewer.entry.clone();
+        drop(viewer);
+        while entry.state.lock().await.viewer_leases != 0 {
+            tokio::task::yield_now().await;
+        }
+        sessions.forget_thread("thread-1").await;
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION).await;
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(methods(&client).await, ["thread/resume"]);
+        assert!(sessions.snapshot("thread-1").await.is_none());
     }
 
     #[tokio::test]

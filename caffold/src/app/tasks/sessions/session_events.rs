@@ -1,3 +1,5 @@
+use tokio::time::Instant;
+
 use crate::agent::{SessionEvent, SessionEventKind, ThreadStatus, TurnStatus};
 
 use super::{
@@ -27,11 +29,12 @@ impl TaskSessions {
         let Some(entry) = self.existing_entry(&event.thread_id).await else {
             return SessionEventOutcome::default();
         };
-        let (effect, revision, should_unsubscribe, terminal) = {
+        let (effect, revision, release, terminal) = {
             let mut state = entry.state.lock().await;
             if state.generation != generation {
                 return SessionEventOutcome::default();
             }
+            let had_demand = state.has_demand();
             let terminal = match &event.kind {
                 SessionEventKind::TurnEnded { turn } => Some(TerminalTurnApplyOutcome {
                     first_current_transition: is_first_current_terminal_transition(
@@ -51,11 +54,29 @@ impl TaskSessions {
             } else {
                 None
             };
-            (effect, revision, !state.has_demand(), terminal)
+            let release = if state.has_demand() {
+                Release::Kept
+            } else if had_demand {
+                Release::After(state.defer_unsubscribe())
+            } else {
+                Release::IfUnused
+            };
+            (effect, revision, release, terminal)
         };
-        let advances_revision = effect != SessionEventEffect::Ignored;
-        if advances_revision && should_unsubscribe {
-            self.unsubscribe_if_unused(&event.thread_id, &entry).await;
+        if effect != SessionEventEffect::Ignored {
+            match release {
+                Release::Kept => {}
+                Release::After(deadline) => {
+                    let sessions = self.clone();
+                    let thread_id = event.thread_id.clone();
+                    tokio::spawn(async move {
+                        sessions
+                            .unsubscribe_after(&thread_id, &entry, deadline)
+                            .await;
+                    });
+                }
+                Release::IfUnused => self.unsubscribe_if_unused(&event.thread_id, &entry).await,
+            }
         }
         SessionEventOutcome {
             accepted: effect != SessionEventEffect::Ignored
@@ -76,6 +97,17 @@ enum SessionEventEffect {
     Ignored,
     RevisionOnly,
     CanonicalStateChanged,
+}
+
+/// What an accepted event leaves to do about letting go of the conversation.
+enum Release {
+    /// Something still needs it.
+    Kept,
+    /// The event ended the last demand, as a finished turn does, so the
+    /// conversation waits out the retention like one a viewer left.
+    After(Instant),
+    /// Nothing needed it before the event either.
+    IfUnused,
 }
 
 /// Record which of the two separately watched fields this event moved.
@@ -1065,6 +1097,7 @@ mod tests {
                 first_current_transition: true,
             })
         );
+        sessions.lapse_retention("thread-1").await;
         wait_for_unsubscribe(&client).await;
         let completed = sessions
             .snapshot("thread-1")

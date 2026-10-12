@@ -436,6 +436,7 @@ mod tests {
         );
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
         assert!(!snapshot.runtime_lease);
+        sessions.lapse_retention("thread-1").await;
         wait_for_unsubscribe(&client).await;
     }
 }

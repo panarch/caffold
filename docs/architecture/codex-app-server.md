@@ -333,15 +333,15 @@ persist a second task ledger.
   caller disconnects. An already sent provider command cannot be retracted by
   dropping its response future; acceptance or failure is recorded before the
   request lease ends. This does not retry or replay the command.
-- Releasing a viewer or request keeps the subscription reusable for 250 ms.
-  Cleanup, including cleanup prompted by provider observations, waits for that
-  grace and for all viewer, request, and runtime demand to end. New demand
-  during the grace reuses the subscription without resuming or rereading its
-  history. A per-session operation lock orders each resume or unsubscribe
-  through its RPC completion. A new consumer arriving during unsubscribe
-  waits for detachment to finish, then resumes; it cannot cancel an effect
-  already sent to app-server. Dropping a waiting caller also cannot release
-  that operation lock before its provider effect completes.
+- The subscription is kept until 30 minutes after the last viewer, request, or
+  runtime demand ends. Cleanup, including cleanup prompted by provider
+  observations, waits for that; an observation neither shortens nor extends it.
+  New demand within those 30 minutes reuses the subscription without resuming
+  or rereading its history. A per-session operation lock orders each resume or
+  unsubscribe through its RPC completion. A new consumer arriving during
+  unsubscribe waits for detachment to finish, then resumes; it cannot cancel an
+  effect already sent to app-server. Dropping a waiting caller also cannot
+  release that operation lock before its provider effect completes.
 
 The local transport lifecycle is `Unloaded`, `Subscribing`, `Subscribed`,
 `Unsubscribing`, or `Error`. `Unloaded` describes Caffold's subscription and does
