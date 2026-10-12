@@ -189,6 +189,7 @@ test("one phrase covers an opening conversation until its Task details and histo
     loading: false,
     taskDetail: null,
     detailLoadError: null,
+    events: [],
     hasSelectedTaskDetail() {
       return taskDetail.hasSelectedTaskDetail.call(this);
     },
@@ -223,6 +224,17 @@ test("one phrase covers an opening conversation until its Task details and histo
     "while a read is under way the phrase follows the body, which hides a Task whose worktree is unavailable",
   );
   assert.equal(waiting({ loading: true, reviewView: "git" }), false, "Git shows its own pending panel");
+  const kept = [{ id: "thread-a:turn-1:assistant" }];
+  assert.equal(
+    waiting({ taskDetail: readTask(true), events: kept }),
+    false,
+    "a conversation on screen stays readable while its history is read",
+  );
+  assert.equal(
+    waiting({ loading: true, events: kept }),
+    true,
+    "kept entries are not on screen until their Task is read",
+  );
 });
 
 test("a Git or GitHub surface waiting for its Task names the wait with the shared phrase", () => {

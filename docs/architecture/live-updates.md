@@ -52,6 +52,16 @@ carries a `message`, and the API error `code` when a refusal ended the channel.
 Task and Watch event types and payloads otherwise retain their domain
 contracts.
 
+EventSource hands a page only whole events, so a message larger than 32 KB
+goes out as consecutive `live-update-part` events that a browser on a slow link
+sees arriving. Each part's data is a header line with the message's `channel`,
+`subscriptionId` for Watch, `generation`, the part's `index`, and the `count` of
+parts, then a line with that part's piece of the message's JSON. The pieces in
+order join into the message, which the browser handles as a `live-update`.
+Parts of one message keep their order; other subscriptions' messages may come
+between them. The browser ignores parts of an older generation and drops a
+message whose parts arrive out of order or that a new connection cuts off.
+
 The physical stream sends one comment heartbeat every 15 seconds. Replay and
 `Last-Event-ID` are not provided. Reconnection reconstructs current state from
 the full subscription snapshot and each domain's initial snapshot or ready
@@ -83,8 +93,17 @@ reopens the channel and reloads the list, so the new snapshot and list
 response cover what was missed.
 
 Task Detail retains the existing viewer lease, agent subscription, bootstrap,
-sync, and event projection owners. Its first readable sequence starts with the
-same `task-sync` bootstrap contract used by the adjacent Detail session. A Task
+sync, and event projection owners. A Task Detail channel opens with a
+`task-sync` whose reason is `stream-bootstrap`, sent before anything published
+after the subscription. For a conversation the session already holds, that
+bootstrap carries the Task record, composer settings, and context usage without
+the conversation: no events, no extent, `eventRevision` 0, and `historyLoading`
+set. The page itself follows at once as a `task-sync` with reason
+`stream-page`. The bootstrap stays small whatever the conversation's size, so
+the browser's wait for it measures whether the channel answers, not how long a
+page takes to arrive. A conversation the session has not read yet bootstraps
+with its loading answer alone, and its page comes once the session has read it;
+an unreadable one bootstraps with its error. A Task
 switch replaces the logical Task Detail generation while the physical SSE
 connection remains open. Browser reconnection does not by itself invalidate
 the provider conversation cache; its retention and membership rules belong to
@@ -196,12 +215,15 @@ owner also reports each physical connection's opening, first answer, and end;
 the Task Workspace raises those reports for the App Shell's foreground recovery
 diagnostics ([Frontend](frontend.md)).
 
-A subscription snapshot that gets no answer within eight seconds fails its
-connection like any other failed snapshot. Once a snapshot is accepted, every
-channel it carries must open within eight seconds. The server opens each
-channel it is given before sending anything else on it, so a channel that
-stays unopened means the connection has stopped delivering while requests
-still succeed. That connection is closed and replaced through the bounded
+A subscription snapshot that gets no answer within thirty seconds fails its
+connection like any other failed snapshot. From the moment a snapshot is sent,
+every channel it carries must open before the connection goes eight seconds
+without delivering anything. Every delivery, each part of a large message
+included, starts that limit again, so an opening queued behind a large message
+on a slow link waits for it. The server opens each channel it is given before
+sending anything else on it, so a channel that stays unopened while nothing
+arrives means the connection has stopped delivering while requests still
+succeed. That connection is closed and replaced through the bounded
 retry delays, and logical consumers hear of the trouble. A replacement's
 greeting does not show that channels open again, so that attempt ends only
 when one does; a server that greets every connection but never opens a channel
@@ -216,11 +238,13 @@ reference-counts listeners by gateway and logical scope, then maps each scope to
 one Watch subscription.
 
 Hiding the document or entering the App Shell's definite offline suspension
-closes the physical SSE while retaining desired logical subscriptions.
+closes the physical SSE. Watch subscriptions stay in the desired snapshot,
+while Task List and Task Detail release theirs and keep only their context.
 Returning to visible or starting foreground recovery opens a new connection
-and republishes the snapshot. The existing App Shell foreground-recovery owner
-still performs the Task-store readiness, Task List, and selected Task Detail
-reconciliation; the gateway adds no second recovery UI. A physical error is
+and republishes the snapshot. The App Shell foreground-recovery owner checks
+Task-store readiness and then subscribes Task List and the selected Task
+Detail again, once each, so a return receives each of their snapshots once;
+the gateway adds no second recovery UI. A physical error is
 reported to every logical consumer, while a `channel-error` affects only its
 named subscription.
 

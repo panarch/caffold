@@ -89,6 +89,12 @@ class FakeEventSource {
     }
   }
 
+  emitData(type, data) {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener({ data });
+    }
+  }
+
   close() {
     this.closed = true;
     this.readyState = 2;
@@ -121,6 +127,23 @@ function harness(options = {}) {
 
 function settle() {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+// The `live-update-part` data the server writes for one message: a header
+// line, then that part's piece of the message.
+function partsOf(message, count) {
+  const text = JSON.stringify(message);
+  const size = Math.ceil(text.length / count);
+  return Array.from({ length: count }, (_, index) => {
+    const header = JSON.stringify({
+      channel: message.channel,
+      subscriptionId: message.subscriptionId,
+      generation: message.generation,
+      index,
+      count,
+    });
+    return `${header}\n${text.slice(index * size, (index + 1) * size)}`;
+  });
 }
 
 function runNextTimer(windowTarget) {
@@ -627,6 +650,164 @@ test("expects nothing more of a channel that opened, even before its subscriptio
   assert.equal(browser.liveUpdates.node, "connected");
 
   watch.close();
+  list.close();
+  browser.liveUpdates.disconnect();
+});
+
+test("joins a message sent in parts into one event for its subscription", async () => {
+  const browser = harness();
+  const detailEvents = [];
+  const watchEvents = [];
+  const detail = browser.liveUpdates.subscribeTaskDetail("thread-a", {
+    onEvent: (type, payload) => detailEvents.push([type, payload]),
+  });
+  const watch = browser.liveUpdates.subscribeWatch("repo", {
+    onEvent: (type, payload) => watchEvents.push([type, payload]),
+  });
+  browser.liveUpdates.connect();
+  const source = browser.sources[0];
+  source.emit("gateway-ready", { connectionId: "connection-a" });
+  await settle();
+  const page = { text: "가나다 conversation ".repeat(40) };
+  const parts = partsOf({
+    channel: "task-detail",
+    generation: detail.generation,
+    type: "task-sync",
+    payload: page,
+  }, 3);
+  const staleParts = partsOf({
+    channel: "task-detail",
+    generation: detail.generation - 1,
+    type: "task-sync",
+    payload: { text: "stale" },
+  }, 2);
+
+  source.emitData("live-update-part", parts[0]);
+  // Other channels and an older generation's parts can come between.
+  source.emitData("live-update-part", staleParts[0]);
+  source.emit("live-update", {
+    channel: "watch",
+    subscriptionId: watch.subscriptionId,
+    generation: watch.generation,
+    type: "change",
+    payload: { revision: 2 },
+  });
+  source.emitData("live-update-part", parts[1]);
+  source.emitData("live-update-part", staleParts[1]);
+  assert.deepEqual(detailEvents, []);
+  source.emitData("live-update-part", parts[2]);
+
+  assert.deepEqual(detailEvents, [["task-sync", page]]);
+  assert.deepEqual(watchEvents, [["change", { revision: 2 }]]);
+
+  watch.close();
+  detail.close();
+  browser.liveUpdates.disconnect();
+});
+
+test("drops a message whose parts go missing or whose connection is replaced", async () => {
+  const browser = harness();
+  const events = [];
+  const detail = browser.liveUpdates.subscribeTaskDetail("thread-a", {
+    onEvent: (type, payload) => events.push([type, payload]),
+  });
+  browser.liveUpdates.connect();
+  browser.sources[0].emit("gateway-ready", { connectionId: "connection-a" });
+  await settle();
+  const parts = partsOf({
+    channel: "task-detail",
+    generation: detail.generation,
+    type: "task-sync",
+    payload: { text: "conversation ".repeat(30) },
+  }, 3);
+
+  browser.sources[0].emitData("live-update-part", parts[0]);
+  browser.sources[0].emitData("live-update-part", parts[2]);
+  browser.sources[0].emitData("live-update-part", parts[1]);
+  browser.sources[0].emitData("live-update-part", parts[2]);
+  assert.deepEqual(events, []);
+
+  browser.sources[0].emitData("live-update-part", parts[0]);
+  browser.sources[0].emitData("live-update-part", parts[1]);
+  browser.liveUpdates.suspend();
+  browser.liveUpdates.resume();
+  browser.sources[1].emit("gateway-ready", { connectionId: "connection-b" });
+  await settle();
+  browser.sources[1].emitData("live-update-part", parts[2]);
+  assert.deepEqual(events, []);
+
+  for (const part of parts) {
+    browser.sources[1].emitData("live-update-part", part);
+  }
+  assert.equal(events.length, 1);
+
+  detail.close();
+  browser.liveUpdates.disconnect();
+});
+
+test("waits on a channel's opening while anything arrives and replaces a connection silent for the limit", async () => {
+  const browser = harness();
+  const listErrors = [];
+  const detailEvents = [];
+  const list = browser.liveUpdates.subscribeTaskList({
+    onError: (_error, metadata) => listErrors.push(metadata),
+  });
+  const detail = browser.liveUpdates.subscribeTaskDetail("thread-a", {
+    onEvent: (type) => detailEvents.push(type),
+  });
+  browser.liveUpdates.connect();
+  const source = browser.sources[0];
+  source.emit("gateway-ready", { connectionId: "connection-a" });
+  await settle();
+  source.emit("live-update", {
+    channel: "task-detail",
+    generation: detail.generation,
+    type: "channel-open",
+  });
+  // The list's opening is queued behind a large Detail page.
+  const [firstCheck] = browser.windowTarget.timers.values();
+  for (const part of partsOf({
+    channel: "task-detail",
+    generation: detail.generation,
+    type: "task-sync",
+    payload: { text: "conversation ".repeat(30) },
+  }, 4)) {
+    source.emitData("live-update-part", part);
+  }
+  assert.deepEqual(detailEvents, ["task-sync"]);
+  assert.equal(browser.windowTarget.timers.size, 1);
+  assert.ok(![...browser.windowTarget.timers.values()].includes(firstCheck));
+
+  // The deadline each delivery replaced changes nothing when it comes due.
+  firstCheck.callback();
+  assert.equal(browser.liveUpdates.node, "connected");
+  assert.equal(source.closed, false);
+
+  const check = runNextTimer(browser.windowTarget);
+  assert.equal(check.delay, 8_000);
+  assert.equal(browser.liveUpdates.node, "reconnecting");
+  assert.equal(source.closed, true);
+  assert.deepEqual(listErrors, [{ closed: false, physical: true }]);
+
+  detail.close();
+  list.close();
+  browser.liveUpdates.disconnect();
+});
+
+test("starts the open check as the snapshot leaves, before the snapshot is answered", async () => {
+  const browser = harness({
+    publishSubscriptions: () => new Promise(() => {}),
+  });
+  const list = browser.liveUpdates.subscribeTaskList({});
+  browser.liveUpdates.connect();
+  browser.sources[0].emit("gateway-ready", { connectionId: "connection-a" });
+  await settle();
+
+  const check = runNextTimer(browser.windowTarget);
+  assert.equal(check.delay, 8_000);
+  assert.equal(browser.liveUpdates.node, "reconnecting");
+  assert.equal(browser.sources[0].closed, true);
+
   list.close();
   browser.liveUpdates.disconnect();
 });

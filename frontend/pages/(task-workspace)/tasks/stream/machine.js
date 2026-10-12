@@ -5,19 +5,19 @@ import { TASK_TRANSPORT_STATE } from "../runtime-state.js";
 // through recovery.
 //
 // Every node an owner can be left waiting in ends on its own. Subscribing ends
-// through the gateway's open check or the owner's open limit, preparing through
-// the owner's readiness limit, reconciling through the request time limit,
-// waiting-for-gateway through the gateway's retry budget, and backing-off
-// through its timer. An unavailable stream that spent its own retry budget
-// tries again after each automatic retry delay while visible. Ready,
-// suspended, inactive, and a stream the gateway gave up on wait for the owner
-// or the gateway, and gone waits for the owner.
+// through the gateway's open check, preparing through the owner's readiness
+// limit, reconciling through the request time limit, waiting-for-gateway
+// through the gateway's retry budget, and backing-off through its timer. An
+// unavailable stream that spent its own retry budget tries again after each
+// automatic retry delay while visible. Ready, suspended, inactive, and a
+// stream the gateway gave up on wait for the owner or the gateway, and gone
+// waits for the owner.
 
 export const TASK_STREAM_NODE = Object.freeze({
   // No context is chosen.
   INACTIVE: "inactive",
-  // The context is kept while the document is hidden. A subscription made
-  // before hiding stays with the gateway, which resumes it when visible.
+  // The context is kept while the document is hidden or recovery waits for
+  // the network, without a subscription. Recovery subscribes again on return.
   SUSPENDED: "suspended",
   // The current subscription waits for its channel to open.
   SUBSCRIBING: "subscribing",
@@ -60,8 +60,6 @@ export const TASK_STREAM_EVENT = Object.freeze({
   // The current reconciliation request settled.
   RECONCILED: "reconciled",
   RECONCILE_FAILED: "reconcile-failed",
-  // The owner's open limit for the current subscription ran out.
-  OPEN_TIMED_OUT: "open-timed-out",
   // A backoff or automatic retry delay ended.
   RETRY_DUE: "retry-due",
   // The subject is archived or no longer exists, as the gateway's refusal of
@@ -83,7 +81,6 @@ export const TASK_STREAM_EDGES = Object.freeze({
     [EVENT.ACTIVATE]: [NODE.SUBSCRIBING, NODE.SUSPENDED],
     [EVENT.RETRY]: [NODE.SUBSCRIBING, NODE.SUSPENDED],
     [EVENT.RECOVER]: [NODE.SUBSCRIBING],
-    [EVENT.CHANNEL_OPENED]: [NODE.PREPARING, NODE.RECONCILING],
     [EVENT.SUBJECT_GONE]: [NODE.GONE],
     [EVENT.DEACTIVATE]: [NODE.INACTIVE],
   }),
@@ -95,7 +92,6 @@ export const TASK_STREAM_EDGES = Object.freeze({
     [EVENT.RECONCILED]: [NODE.SUBSCRIBING],
     [EVENT.RECONCILE_FAILED]: [NODE.SUBSCRIBING],
     [EVENT.CHANNEL_FAILED]: [NODE.BACKING_OFF, NODE.UNAVAILABLE],
-    [EVENT.OPEN_TIMED_OUT]: [NODE.BACKING_OFF, NODE.UNAVAILABLE],
     [EVENT.GATEWAY_TROUBLE]: [NODE.WAITING_FOR_GATEWAY],
     [EVENT.GATEWAY_EXHAUSTED]: [NODE.UNAVAILABLE],
     [EVENT.SUSPEND]: [NODE.SUSPENDED],
@@ -252,7 +248,6 @@ function chooseNext(node, event, facts) {
     case EVENT.RECONCILE_FAILED:
       return node === NODE.RECONCILING ? afterFailure(facts) : node;
     case EVENT.CHANNEL_FAILED:
-    case EVENT.OPEN_TIMED_OUT:
     case EVENT.PREPARE_FAILED:
       return afterFailure(facts);
     case EVENT.GATEWAY_TROUBLE:

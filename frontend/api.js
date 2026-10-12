@@ -1,5 +1,11 @@
 import { reportOriginReachable } from "./origin-reachability.js";
 
+// The limit for requests that recovery and live updates wait on. On a slow
+// link their answers queue behind a large live update; whether the link still
+// delivers is the live connection's call, so this ends only a request that
+// never answers.
+const SLOW_LINK_TIMEOUT_MS = 30_000;
+
 export async function getHealth() {
   return requestJson("/api/health");
 }
@@ -71,7 +77,9 @@ export async function updateCodexRuntime() {
 }
 
 export async function getTaskStoreStatus() {
-  return requestJson("/api/task-store/status", {}, { timeoutMs: 8_000 });
+  return requestJson("/api/task-store/status", {}, {
+    timeoutMs: SLOW_LINK_TIMEOUT_MS,
+  });
 }
 
 export async function retryTaskStoreMigration() {
@@ -215,7 +223,7 @@ export async function transcribeVoice(recording, signal) {
 }
 
 export async function getTasks() {
-  return requestJson("/api/tasks", {}, { timeoutMs: 8_000 });
+  return requestJson("/api/tasks", {}, { timeoutMs: SLOW_LINK_TIMEOUT_MS });
 }
 
 export async function getArchivedTasks(cursor = null) {
@@ -435,7 +443,7 @@ export async function updateLiveSubscriptions(connectionId, subscriptions) {
       method: "PUT",
       body: subscriptions,
       expectJson: false,
-      timeoutMs: 8_000,
+      timeoutMs: SLOW_LINK_TIMEOUT_MS,
     },
   );
 }
@@ -494,7 +502,10 @@ export async function getNote(noteId, signal) {
 }
 
 export async function getCurrentPlan(path = "", signal) {
-  return requestJson("/api/current-plan", { path }, { signal, timeoutMs: 8_000 });
+  return requestJson("/api/current-plan", { path }, {
+    signal,
+    timeoutMs: SLOW_LINK_TIMEOUT_MS,
+  });
 }
 
 export function imageUrl(path) {

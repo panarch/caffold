@@ -28,6 +28,10 @@ use super::{error::ApiError, tasks::TaskLiveSource, user_agent::browser_name};
 use crate::watch::{WatchChange, WatchHub, WatchMessage, WatchReady};
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+/// The most of one channel message a single SSE event carries. EventSource
+/// hands over only whole events, so a larger message goes out in parts that a
+/// browser on a slow link sees arriving.
+const MESSAGE_PART_BYTES: usize = 32 * 1024;
 const CHANNEL_QUEUE_CAPACITY: usize = 16;
 const CONTROL_QUEUE_CAPACITY: usize = 8;
 const MAX_WATCH_SUBSCRIPTIONS: usize = 64;
@@ -558,8 +562,14 @@ where
     SpawnedChannel { messages, task }
 }
 
-async fn send_frame(messages: &mpsc::Sender<Bytes>, frame: Bytes) -> Option<()> {
-    messages.send(frame).await.ok()
+/// The SSE events that carry one channel message, in the order they go out.
+struct ChannelFrame(Vec<Bytes>);
+
+async fn send_frame(messages: &mpsc::Sender<Bytes>, frame: ChannelFrame) -> Option<()> {
+    for event in frame.0 {
+        messages.send(event).await.ok()?;
+    }
+    Some(())
 }
 
 #[derive(Serialize)]
@@ -570,6 +580,17 @@ struct ChannelEnvelope<'a, T> {
     generation: u64,
     #[serde(flatten)]
     event: &'a T,
+}
+
+/// Which message a `live-update-part` belongs to, and its place in it.
+#[derive(Serialize)]
+struct MessagePart<'a> {
+    channel: &'static str,
+    #[serde(rename = "subscriptionId", skip_serializing_if = "Option::is_none")]
+    subscription_id: Option<&'a str>,
+    generation: u64,
+    index: usize,
+    count: usize,
 }
 
 #[derive(Serialize)]
@@ -615,7 +636,7 @@ fn channel_open_frame(
     channel: &'static str,
     subscription_id: Option<&str>,
     generation: u64,
-) -> Bytes {
+) -> ChannelFrame {
     channel_event_frame(
         channel,
         subscription_id,
@@ -629,7 +650,7 @@ fn channel_error_frame(
     subscription_id: Option<&str>,
     generation: u64,
     message: &str,
-) -> Bytes {
+) -> ChannelFrame {
     channel_event_frame(
         channel,
         subscription_id,
@@ -647,7 +668,7 @@ fn channel_refusal_frame(
     subscription_id: Option<&str>,
     generation: u64,
     error: ApiError,
-) -> Bytes {
+) -> ChannelFrame {
     let error = error.into_error_body();
     channel_event_frame(
         channel,
@@ -660,26 +681,75 @@ fn channel_refusal_frame(
     )
 }
 
+/// One channel message as a `live-update`, or, when it is larger than one
+/// part, as `live-update-part`s. Each part's data is its header on the first
+/// line and its piece of the message on the second; the pieces in order join
+/// back into the message.
 fn channel_event_frame<T: Serialize>(
     channel: &'static str,
     subscription_id: Option<&str>,
     generation: u64,
     event: &T,
-) -> Bytes {
-    sse_frame(
-        "live-update",
-        &ChannelEnvelope {
-            channel,
-            subscription_id,
-            generation,
-            event,
-        },
+) -> ChannelFrame {
+    let message = json_text(&ChannelEnvelope {
+        channel,
+        subscription_id,
+        generation,
+        event,
+    });
+    if message.len() <= MESSAGE_PART_BYTES {
+        return ChannelFrame(vec![sse_event("live-update", &message)]);
+    }
+    let pieces = split_at_char_boundaries(&message, MESSAGE_PART_BYTES);
+    let count = pieces.len();
+    ChannelFrame(
+        pieces
+            .into_iter()
+            .enumerate()
+            .map(|(index, piece)| {
+                let header = json_text(&MessagePart {
+                    channel,
+                    subscription_id,
+                    generation,
+                    index,
+                    count,
+                });
+                Bytes::from(format!(
+                    "event: live-update-part\ndata: {header}\ndata: {piece}\n\n"
+                ))
+            })
+            .collect(),
     )
 }
 
+/// Pieces of at most `limit` bytes that each end on a character boundary.
+/// Serialized JSON holds no line breaks, so a piece fits on one data line.
+fn split_at_char_boundaries(text: &str, limit: usize) -> Vec<&str> {
+    let mut pieces = Vec::new();
+    let mut rest = text;
+    while rest.len() > limit {
+        let mut end = limit;
+        while !rest.is_char_boundary(end) {
+            end -= 1;
+        }
+        let (piece, tail) = rest.split_at(end);
+        pieces.push(piece);
+        rest = tail;
+    }
+    pieces.push(rest);
+    pieces
+}
+
 fn sse_frame<T: Serialize>(event: &str, payload: &T) -> Bytes {
-    let payload = serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string());
-    Bytes::from(format!("event: {event}\ndata: {payload}\n\n"))
+    sse_event(event, &json_text(payload))
+}
+
+fn sse_event(event: &str, data: &str) -> Bytes {
+    Bytes::from(format!("event: {event}\ndata: {data}\n\n"))
+}
+
+fn json_text<T: Serialize>(value: &T) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string())
 }
 
 fn parse_connection_id(value: &str) -> Result<Uuid, ApiError> {
@@ -1162,8 +1232,9 @@ mod tests {
             4,
             &json!({ "type": "task-list-refresh" }),
         );
+        assert_eq!(task.0.len(), 1);
         assert_eq!(
-            std::str::from_utf8(&task).unwrap(),
+            std::str::from_utf8(&task.0[0]).unwrap(),
             "event: live-update\ndata: {\"channel\":\"task-list\",\"generation\":4,\"type\":\"task-list-refresh\"}\n\n"
         );
         let watch = channel_event_frame(
@@ -1172,8 +1243,93 @@ mod tests {
             7,
             &json!({ "type": "change", "payload": { "revision": 2 } }),
         );
-        let watch = std::str::from_utf8(&watch).unwrap();
+        let watch = std::str::from_utf8(&watch.0[0]).unwrap();
         assert!(watch.contains("\"subscriptionId\":\"files\""));
         assert!(watch.contains("\"generation\":7"));
+    }
+
+    #[test]
+    fn a_message_that_fits_one_part_goes_out_whole() {
+        let envelope = |text: &str| {
+            json_text(&ChannelEnvelope {
+                channel: "task-detail",
+                subscription_id: None,
+                generation: 3,
+                event: &json!({ "type": "task-sync", "payload": text }),
+            })
+        };
+        let overhead = envelope("").len();
+        let text = "a".repeat(MESSAGE_PART_BYTES - overhead);
+        assert_eq!(envelope(&text).len(), MESSAGE_PART_BYTES);
+
+        let frame = channel_event_frame(
+            "task-detail",
+            None,
+            3,
+            &json!({ "type": "task-sync", "payload": text }),
+        );
+
+        assert_eq!(frame.0.len(), 1);
+        assert!(frame.0[0].starts_with(b"event: live-update\ndata: "));
+    }
+
+    #[tokio::test]
+    async fn a_larger_message_goes_out_in_parts_that_join_back_into_it() {
+        // Three-byte characters make some cuts fall inside a character.
+        let text = "가나다 conversation ".repeat(6_000);
+        let event = json!({ "type": "task-sync", "payload": { "text": text } });
+        let message = json_text(&ChannelEnvelope {
+            channel: "watch",
+            subscription_id: Some("files"),
+            generation: 9,
+            event: &event,
+        });
+        assert!(message.len() > 3 * MESSAGE_PART_BYTES);
+        let (messages, mut sent) = mpsc::channel(64);
+
+        send_frame(
+            &messages,
+            channel_event_frame("watch", Some("files"), 9, &event),
+        )
+        .await
+        .expect("every part is queued");
+
+        let mut parts = Vec::new();
+        while let Ok(part) = sent.try_recv() {
+            parts.push(String::from_utf8(part.to_vec()).expect("each part is UTF-8"));
+        }
+        let count = parts.len();
+        assert!(count > 3);
+        let mut joined = String::new();
+        for (index, part) in parts.iter().enumerate() {
+            let data = part
+                .strip_prefix("event: live-update-part\ndata: ")
+                .and_then(|part| part.strip_suffix("\n\n"))
+                .expect("a live-update-part event");
+            let (header, piece) = data
+                .split_once("\ndata: ")
+                .expect("a header line and a piece line");
+            assert!(!piece.contains('\n'));
+            assert!(piece.len() <= MESSAGE_PART_BYTES);
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(header).unwrap(),
+                json!({
+                    "channel": "watch",
+                    "subscriptionId": "files",
+                    "generation": 9,
+                    "index": index,
+                    "count": count,
+                })
+            );
+            joined.push_str(piece);
+        }
+        assert_eq!(joined, message);
+    }
+
+    #[test]
+    fn pieces_end_on_character_boundaries() {
+        assert_eq!(split_at_char_boundaries("가나다", 5), ["가", "나", "다"]);
+        assert_eq!(split_at_char_boundaries("abcdef", 4), ["abcd", "ef"]);
+        assert_eq!(split_at_char_boundaries("abcd", 4), ["abcd"]);
     }
 }

@@ -72,6 +72,9 @@ export class WorkspaceLiveUpdates {
     // Each subscription a publication carried that has not opened yet on this
     // connection, with its deadline.
     this.openChecks = new Map();
+    // The parts of a large message each subscription has received so far on
+    // this connection.
+    this.partialMessages = new Map();
     this.channelGenerations = new Map(
       LIVE_CHANNELS.map((channel) => [channel, 0]),
     );
@@ -182,6 +185,7 @@ export class WorkspaceLiveUpdates {
     if (previous) {
       previous.closed = true;
       this.clearOpenCheck(previous);
+      this.partialMessages.delete(previous);
       previous.listener.onInvalidated?.();
     }
     const binding = {
@@ -205,6 +209,7 @@ export class WorkspaceLiveUpdates {
     }
     binding.closed = true;
     this.clearOpenCheck(binding);
+    this.partialMessages.delete(binding);
     if (binding.channel === "watch") {
       if (this.watchBindings.get(binding.subscriptionId) !== binding) {
         return;
@@ -300,7 +305,13 @@ export class WorkspaceLiveUpdates {
         // gateway-ready included, takes a new revision.
         this.controlRevision += 1;
         const subscriptions = this.desiredSubscriptions();
-        const published = this.publishedBindings();
+        // The checks start as the snapshot leaves, so a connection that
+        // stopped delivering is found while its answer is still outstanding.
+        this.expectChannelsOpen(
+          this.publishedBindings(),
+          sourceGeneration,
+          connectionId,
+        );
         try {
           await this.publishSubscriptions(connectionId, subscriptions);
         } catch (error) {
@@ -309,9 +320,6 @@ export class WorkspaceLiveUpdates {
             this.connectionFailed(this.source, sourceGeneration, error);
           }
           return;
-        }
-        if (this.isCurrentConnection(sourceGeneration, connectionId)) {
-          this.expectChannelsOpen(published, sourceGeneration, connectionId);
         }
       }
     })().finally(() => {
@@ -335,7 +343,9 @@ export class WorkspaceLiveUpdates {
   }
 
   // The server opens every channel it is given before sending anything else on
-  // it, so one that stays unopened means the connection has stopped delivering.
+  // it, so one that stays unopened while nothing arrives means the connection
+  // has stopped delivering. A large message still arriving in parts is not
+  // that: every delivery starts each check's limit again.
   expectChannelsOpen(published, sourceGeneration, connectionId) {
     if (!Number.isFinite(this.channelOpenTimeoutMs)) {
       return;
@@ -348,19 +358,34 @@ export class WorkspaceLiveUpdates {
         continue;
       }
       this.clearOpenCheck(binding);
-      const timer = this.windowTarget.setTimeout(() => {
-        this.openChecks.delete(binding);
-        if (
-          !binding.closed &&
-          binding.generation === generation &&
-          !channelOpened(binding, generation, connectionId) &&
-          this.isCurrentConnection(sourceGeneration, connectionId)
-        ) {
-          this.connectionUndelivered(this.source, sourceGeneration);
-        }
-      }, Math.max(0, this.channelOpenTimeoutMs));
-      this.openChecks.set(binding, { generation, timer });
+      this.armOpenCheck(binding, { generation, sourceGeneration, connectionId });
     }
+  }
+
+  extendOpenChecks() {
+    for (const [binding, check] of this.openChecks) {
+      this.windowTarget.clearTimeout(check.timer);
+      this.armOpenCheck(binding, check);
+    }
+  }
+
+  armOpenCheck(binding, { generation, sourceGeneration, connectionId }) {
+    const check = { generation, sourceGeneration, connectionId, timer: null };
+    check.timer = this.windowTarget.setTimeout(() => {
+      if (this.openChecks.get(binding) !== check) {
+        return;
+      }
+      this.openChecks.delete(binding);
+      if (
+        !binding.closed &&
+        binding.generation === generation &&
+        !channelOpened(binding, generation, connectionId) &&
+        this.isCurrentConnection(sourceGeneration, connectionId)
+      ) {
+        this.connectionUndelivered(this.source, sourceGeneration);
+      }
+    }, Math.max(0, this.channelOpenTimeoutMs));
+    this.openChecks.set(binding, check);
   }
 
   clearOpenCheck(binding) {
@@ -499,6 +524,9 @@ export class WorkspaceLiveUpdates {
     source.addEventListener("live-update", (event) => {
       this.acceptLiveUpdate(source, generation, event);
     });
+    source.addEventListener("live-update-part", (event) => {
+      this.acceptLiveUpdatePart(source, generation, event);
+    });
     source.addEventListener("error", () => {
       this.connectionFailed(source, generation);
     });
@@ -530,11 +558,10 @@ export class WorkspaceLiveUpdates {
     if (!this.isCurrentSource(source, sourceGeneration)) {
       return;
     }
+    this.extendOpenChecks();
     const message = parsePayload(event);
     const channel = message?.channel;
-    const binding = channel === "watch"
-      ? this.watchBindings.get(message?.subscriptionId)
-      : this.bindings.get(channel);
+    const binding = this.addressedBinding(message);
     if (
       !binding ||
       binding.closed ||
@@ -569,6 +596,61 @@ export class WorkspaceLiveUpdates {
       return;
     }
     binding.listener.onEvent?.(message.type, message.payload);
+  }
+
+  // A message too large for one event arrives in parts: a header line naming
+  // the subscription, the generation, and the part's place, then a piece of
+  // the message. The pieces of the current generation join back into it.
+  acceptLiveUpdatePart(source, sourceGeneration, event) {
+    if (!this.isCurrentSource(source, sourceGeneration)) {
+      return;
+    }
+    this.extendOpenChecks();
+    const data = `${event?.data ?? ""}`;
+    const lineEnd = data.indexOf("\n");
+    const part = lineEnd < 0 ? null : parseJson(data.slice(0, lineEnd));
+    const binding = this.addressedBinding(part);
+    if (
+      !binding ||
+      binding.closed ||
+      part.generation !== binding.generation ||
+      !Number.isSafeInteger(part.index) ||
+      !Number.isSafeInteger(part.count) ||
+      part.index < 0 ||
+      part.index >= part.count
+    ) {
+      return;
+    }
+    if (part.index === 0) {
+      this.partialMessages.set(binding, {
+        generation: part.generation,
+        count: part.count,
+        pieces: [],
+      });
+    }
+    const partial = this.partialMessages.get(binding);
+    if (
+      partial?.generation !== part.generation ||
+      partial.count !== part.count ||
+      partial.pieces.length !== part.index
+    ) {
+      this.partialMessages.delete(binding);
+      return;
+    }
+    partial.pieces.push(data.slice(lineEnd + 1));
+    if (partial.pieces.length < partial.count) {
+      return;
+    }
+    this.partialMessages.delete(binding);
+    this.acceptLiveUpdate(source, sourceGeneration, {
+      data: partial.pieces.join(""),
+    });
+  }
+
+  addressedBinding(message) {
+    return message?.channel === "watch"
+      ? this.watchBindings.get(message?.subscriptionId)
+      : this.bindings.get(message?.channel);
   }
 
   connectionFailed(source, generation, _error = null) {
@@ -608,6 +690,7 @@ export class WorkspaceLiveUpdates {
   releaseConnection() {
     this.clearConnectionTimer();
     this.clearOpenChecks();
+    this.partialMessages.clear();
     this.connectionId = "";
     this.controlPublication = null;
     this.controlDirty = true;
@@ -671,6 +754,7 @@ export class WorkspaceLiveUpdates {
     const source = this.source;
     this.source = null;
     this.clearOpenChecks();
+    this.partialMessages.clear();
     this.connectionId = "";
     this.controlPublication = null;
     if (source) {
@@ -741,8 +825,12 @@ function channelOpened(binding, generation, connectionId) {
 }
 
 function parsePayload(event) {
+  return parseJson(event.data);
+}
+
+function parseJson(text) {
   try {
-    return JSON.parse(event.data);
+    return JSON.parse(text);
   } catch {
     return null;
   }

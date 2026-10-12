@@ -2,10 +2,12 @@ import { expect, test } from "@playwright/test";
 
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
+  activeLiveUpdateChannels,
   activeTaskProjection,
   canonicalTaskState,
   emitTaskDetailBootstrap,
   installEventSourceMock,
+  isScrolledToBottom,
   mockAgentModels,
 } from "../support/task-fixtures.js";
 
@@ -75,6 +77,30 @@ function assistantEvent(threadId, text, revision) {
     payload: { turnId: `turn_${revision}`, text },
     position: { anchorMs: 1_767_400_000_000 + revision, index: 0 },
   };
+}
+
+// The first message of a conversation the server already holds: the Task
+// beside its conversation, with the page following it.
+function withoutConversation(detail) {
+  return {
+    ...detail,
+    eventRevision: 0,
+    events: [],
+    eventsPage: { nextCursor: null },
+    eventsRange: null,
+    historyLoading: true,
+  };
+}
+
+function emitDetailSync(page, threadId, reason, detail) {
+  return page.evaluate(({ id, syncReason, syncDetail }) => {
+    window.__caffoldTaskSse.source(id).emit("task-sync", {
+      threadId: id,
+      revision: syncDetail.revision,
+      reason: syncReason,
+      detail: syncDetail,
+    });
+  }, { id: threadId, syncReason: reason, syncDetail: detail });
 }
 
 async function activeDetailSource(page, threadId) {
@@ -303,11 +329,12 @@ test("preserves readable detail and buffers events through a loading reconnect b
   await expect(tasksPage).toContainText(
     "Readable detail stays mounted during reconnect.",
   );
-  await expect(
-    page.locator(
-      '.app-foreground-recovery[data-recovery-state="reconnecting"]',
-    ),
-  ).toContainText("Reconnecting to Caffold server");
+  // The channel answered, so nothing is reconnecting while the server reads
+  // the conversation, and the conversation on screen goes without the
+  // loading phrase.
+  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
+  await expect(tasksPage.locator("caffold-task-detail > caffold-loading-text"))
+    .toBeHidden();
   await activeDetailSource(page, threadId);
   await page.evaluate(({ threadId: id, detail }) => {
     window.__caffoldTaskSse.source(id).emit("task-sync", {
@@ -618,4 +645,150 @@ test("one retained phrase stands for an opening conversation until its history a
   await emitSync("session-bootstrap", taskDetail(task, "History arrived.", 3));
   await expect(tasksPage).toContainText("History arrived.");
   await expect(phrase).toBeHidden();
+});
+
+test("takes a page that arrives in parts for longer than a channel has to open", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await installEventSourceMock(page, { autoOpen: true });
+  await mockAgentModels(page);
+  const threadId = "thread_page_in_parts";
+  const task = taskRecord(threadId, "Page in parts", 1_767_400_400_000);
+  const detail = taskDetail(task, "Every part of the page arrived.", 2);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+  const physicalConnections = () =>
+    page.evaluate(() => window.__caffoldMockLiveEventSources.length);
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  // On a slow link a channel's opening waits behind the large page.
+  await page.evaluate(() => window.__caffoldTaskSse.holdChannelOpens("watch"));
+  await activeDetailSource(page, threadId);
+  await emitDetailSync(page, threadId, "stream-bootstrap", withoutConversation(detail));
+  await expect(tasksPage.locator(".task-detail-summary")).toContainText("Page in parts");
+  // Knowing the Task's directory, the current plan asks for its Watch.
+  await expect.poll(() => activeLiveUpdateChannels(page)).toContain("watch");
+  const connections = await physicalConnections();
+
+  const parts = await page.evaluate(({ id, pageDetail }) =>
+    window.__caffoldTaskSse.source(id).parts("task-sync", {
+      threadId: id,
+      revision: pageDetail.revision,
+      reason: "stream-page",
+      detail: pageDetail,
+    }, 6), { id: threadId, pageDetail: detail });
+  for (const part of parts) {
+    await page.clock.runFor(2_000);
+    await page.evaluate(({ id, data }) => {
+      window.__caffoldTaskSse.source(id).emitPart(data);
+    }, { id: threadId, data: part });
+  }
+
+  await expect(tasksPage).toContainText("Every part of the page arrived.");
+  expect(await physicalConnections()).toBe(connections);
+  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
+  await page.evaluate(() => window.__caffoldTaskSse.releaseChannelOpens("watch"));
+  await page.clock.runFor(8_000);
+  expect(await physicalConnections()).toBe(connections);
+});
+
+test("keeps a conversation on screen through its first message and takes the page that follows", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, { autoOpen: true });
+  await mockAgentModels(page);
+  const now = 1_767_400_500_000;
+  const viewed = taskRecord("thread_viewed_before", "Viewed before", now);
+  const other = taskRecord("thread_viewed_between", "Viewed between", now - 10);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([viewed, other]) }),
+  );
+  for (const task of [viewed, other]) {
+    await page.route(new RegExp(`/api/tasks/${task.threadId}(?:\\?|$)`), (route) =>
+      route.fulfill({ json: taskDetail(task, "Read over REST.", 1) }),
+    );
+  }
+  const tasksPage = page.locator("caffold-tasks-page");
+  const taskNavigator = page.locator("caffold-task-navigator");
+  const phrase = tasksPage.locator("caffold-task-detail > caffold-loading-text");
+
+  await page.goto(`/tasks/${viewed.threadId}?cwd=src`);
+  await activeDetailSource(page, viewed.threadId);
+  await emitDetailSync(
+    page,
+    viewed.threadId,
+    "stream-bootstrap",
+    taskDetail(viewed, "The conversation seen before switching.", 2),
+  );
+  await expect(tasksPage).toContainText("The conversation seen before switching.");
+
+  await taskNavigator.locator(`.task-row[data-thread-id="${other.threadId}"]`).click();
+  await activeDetailSource(page, other.threadId);
+  await emitDetailSync(
+    page,
+    other.threadId,
+    "stream-bootstrap",
+    taskDetail(other, "The conversation in between.", 2),
+  );
+  await expect(tasksPage).toContainText("The conversation in between.");
+
+  await taskNavigator.locator(`.task-row[data-thread-id="${viewed.threadId}"]`).click();
+  await activeDetailSource(page, viewed.threadId);
+  const renamed = { ...viewed, title: "Renamed while away" };
+  await emitDetailSync(
+    page,
+    viewed.threadId,
+    "stream-bootstrap",
+    withoutConversation(taskDetail(renamed, "", 3)),
+  );
+  await expect(tasksPage.locator(".task-detail-summary")).toContainText(
+    "Renamed while away",
+  );
+  await expect(tasksPage).toContainText("The conversation seen before switching.");
+  await expect(phrase).toBeHidden();
+
+  await emitDetailSync(
+    page,
+    viewed.threadId,
+    "stream-page",
+    taskDetail(renamed, "The page that followed.", 3),
+  );
+  await expect(tasksPage).toContainText("The page that followed.");
+  await expect(tasksPage).not.toContainText("The conversation seen before switching.");
+});
+
+test("a Task whose page follows its first message opens at the newest entry", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, { autoOpen: true });
+  await mockAgentModels(page);
+  const threadId = "thread_page_after_first_message";
+  const task = taskRecord(threadId, "Page after first message", 1_767_400_600_000);
+  const detail = {
+    ...taskDetail(task, "", 40),
+    events: Array.from({ length: 40 }, (_, index) => ({
+      ...assistantEvent(threadId, `Entry ${index + 1}. ${"Long conversation text. ".repeat(12)}`, index + 1),
+    })),
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await activeDetailSource(page, threadId);
+  await emitDetailSync(page, threadId, "stream-bootstrap", withoutConversation(detail));
+  await expect(tasksPage.locator(".task-detail-summary")).toContainText(
+    "Page after first message",
+  );
+  await emitDetailSync(page, threadId, "stream-page", detail);
+
+  await expect(tasksPage).toContainText("Entry 40.");
+  const scroller = tasksPage.locator(".task-conversation-scroll");
+  await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+  expect(await scroller.evaluate((element) =>
+    element.scrollHeight > element.clientHeight)).toBe(true);
 });

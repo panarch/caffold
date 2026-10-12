@@ -21,8 +21,8 @@ export const LIVE_CONNECTION_EVENT = Object.freeze({
   ERROR: "error",
   // The current connection gave no first answer within its time limit.
   STALL: "stall",
-  // A channel sent on the connected source did not open in time, so the
-  // connection is no longer delivering.
+  // A channel sent on the connected source has not opened, and nothing has
+  // arrived for the channel limit, so the connection is no longer delivering.
   UNDELIVERED: "undelivered",
   REPLACE: "replace",
   EXHAUST: "exhaust",

@@ -193,8 +193,9 @@ Every completion still has to match the active recovery generation.
 
 Foreground recovery checks Task-store readiness first, after which the Tasks
 page asks its navigator and selected detail to reconcile their separately owned
-transports. The selected detail's transports are the Task stream and, while the
-terminal is shown, the terminal socket.
+transports. Hiding suspends the navigator's Task list in every mode, so outside
+Tasks recovery resumes that list alone. The selected detail's transports are
+the Task stream and, while the terminal is shown, the terminal socket.
 Parents call public child methods; the app shell does not inspect Task
 transport internals. Async completions must still match both the foreground
 generation and the active route.
@@ -203,12 +204,14 @@ Task List and Task Detail each keep one Task stream through shared
 `tasks/stream.js`. Its private graph separates inactive, suspended,
 subscribing, preparing, reconciling, ready, waiting for the gateway, backing
 off, unavailable, and gone, and every node a stream can wait in ends on its own.
-Subscribing ends through the live gateway's open check and Detail's
-eight-second open limit, preparing through Detail's eight-second bootstrap
-limit, reconciling through the eight-second limit on reading the Task list,
-waiting for the gateway through the gateway's own retry budget, and backing off
-through its timer. A channel that fails, does not open, cannot be prepared, or
-cannot be reconciled backs off for 250 ms, 1 s, and then 3 s before
+Subscribing ends through the live gateway's open check, preparing through
+Detail's eight-second limit on its first bootstrap, reconciling through the
+thirty-second limit on reading the Task list, waiting for the gateway through
+the gateway's own retry budget, and backing off through its timer. A suspended
+stream keeps only its context: hiding releases its subscription, and only
+foreground recovery or a forced activation subscribes it again, so a return
+does not subscribe twice. A channel that fails, cannot be prepared, or cannot be
+reconciled backs off for 250 ms, 1 s, and then 3 s before
 subscribing again. After that the stream is unavailable, and while the page is
 visible it subscribes again after 5, 10, 20, and then every 30 seconds until a
 subscription becomes ready; Retry, recovery, or a new activation starts one at
@@ -844,7 +847,7 @@ while it blocks; an answer not yet loaded blocks nothing. Its control graph
 separates attachment and suspension, a check in flight, a migrating store
 rechecked on a timer, a failed store waiting for **Retry Task setup**, and that
 retry in flight. A check that cannot reach the store, or gets no answer within
-eight seconds, keeps the last answer and stops rechecking until another check
+thirty seconds, keeps the last answer and stops rechecking until another check
 is requested, such as by foreground recovery.
 
 A separate workspace lifecycle owns backend-owned Codex readiness requests and
@@ -1048,10 +1051,14 @@ identities only; optimistic submissions remain local overlays.
 The session phases are inactive, waiting for bootstrap, waiting for readable
 sync, streaming, REST fallback, unavailable, and absent. It alone transitions
 the active attempt, while its Task stream owns logical subscription generations,
-the open limit, reconciliation, and transport presentation. Absent holds why
-the Task is gone, archived or not found, and is entered only from its Task
-stream's gone report; Detail's REST requests about the Task report such an
-answer to the stream. Hiding and foreground recovery leave absent alone, and
+reconciliation, and transport presentation. The session gives an opened channel
+eight seconds to deliver its first bootstrap, which the server keeps small; a
+loading bootstrap ends that wait too, and the stream is ready while the session
+waits for the readable sync with no limit of its own. The server ends that wait
+with the readable sync or an error, and the live connection judges the link.
+Absent holds why the Task is gone, archived or not found, and is entered only
+from its Task stream's gone report; Detail's REST requests about the Task
+report such an answer to the stream. Hiding and foreground recovery leave absent alone, and
 only opening a Task again leaves it. The
 workspace live-update owner separately owns the physical EventSource. Cursor
 pagination stays outside the session, and a Task switch replaces the attempt
@@ -1126,7 +1133,8 @@ updates. Moving from Tasks to Settings ends active editing and transport work
 without destroying a retained Composer draft.
 
 While a Task's details or its first page of history are still being read,
-Task Detail shows one retained loading phrase centered over the Task area.
+Task Detail shows one retained loading phrase centered over the Task area. A
+conversation already on screen while its page is read goes without it.
 The same element stays through both waits, so it neither restarts nor moves
 when the Composer appears; Conversation draws no loading notice of its own.
 

@@ -563,7 +563,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
           isCurrent,
           progress,
         })
-      : Promise.resolve({ retry: false });
+      : this.recoverTaskList({ initialActivation });
     this.liveUpdates.resume();
     this.liveUpdates.retry();
     const tasks = await tasksRecovery;
@@ -575,6 +575,21 @@ class CaffoldTaskWorkspace extends HTMLElement {
       ),
       error: storeError ?? tasks?.error ?? null,
     };
+  }
+
+  // Hiding suspends the Task list whichever mode is shown, and a suspended list
+  // holds no subscription, so recovery resumes it outside Tasks as well. No
+  // other Task surface is open there.
+  async recoverTaskList({ initialActivation }) {
+    if (initialActivation) {
+      return { retry: false };
+    }
+    try {
+      await this.taskNavigator.recoverForeground();
+      return { retry: false };
+    } catch (error) {
+      return { retry: true, error };
+    }
   }
 
   selectedTaskContextPath() {

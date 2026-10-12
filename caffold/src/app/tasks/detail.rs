@@ -1,4 +1,8 @@
-use std::{collections::HashSet, pin::Pin, sync::Arc};
+use std::{
+    collections::{HashSet, VecDeque},
+    pin::Pin,
+    sync::Arc,
+};
 
 use futures_util::{Stream, stream};
 use serde::Serialize;
@@ -342,13 +346,7 @@ impl DetailContext {
             Err(error) => return Err(error),
         };
         let file_link_task_root = detail.task.as_ref().map(file_links::task_root);
-        let initial = DetailLiveEvent::Sync(Box::new(TaskDetailSync {
-            thread_id: thread_id.to_string(),
-            revision: detail.revision,
-            detail,
-            reason: "stream-bootstrap",
-            error,
-        }));
+        let opening = opening_messages(thread_id, detail, error);
         let context = self.clone();
         let bootstrap_thread_id = thread_id.to_string();
         tokio::spawn(async move {
@@ -357,7 +355,7 @@ impl DetailContext {
                 .await;
         });
         let state = DetailStream {
-            initial: Some(initial),
+            opening,
             events: receiver,
             sync: sync_receiver,
             shutdown: self.shutdown.subscribe(),
@@ -823,10 +821,64 @@ pub(in crate::app::tasks) fn loading_detail(
     }
 }
 
+/// What a new subscription hears before anything published after it.
+///
+/// A conversation the session already holds goes out as two messages: the
+/// Task beside its conversation, which is small, and then the page itself.
+/// The browser gives a channel a few seconds to bootstrap, and on a slow link
+/// a whole page can take longer than that to arrive.
+fn opening_messages(
+    thread_id: &str,
+    detail: TaskDetailResponse,
+    error: Option<ErrorBody>,
+) -> VecDeque<DetailLiveEvent> {
+    let sync = |detail: TaskDetailResponse, reason, error| {
+        DetailLiveEvent::Sync(Box::new(TaskDetailSync {
+            thread_id: thread_id.to_string(),
+            revision: detail.revision,
+            detail,
+            reason,
+            error,
+        }))
+    };
+    if error.is_some() || detail.task.is_none() || detail.history_loading {
+        return VecDeque::from([sync(detail, "stream-bootstrap", error)]);
+    }
+    VecDeque::from([
+        sync(without_conversation(&detail), "stream-bootstrap", None),
+        sync(detail, "stream-page", None),
+    ])
+}
+
+/// The same answer with its conversation held back, shaped like one whose
+/// history is still loading: no events, and no extent, so it removes nothing
+/// a browser already shows.
+fn without_conversation(detail: &TaskDetailResponse) -> TaskDetailResponse {
+    TaskDetailResponse {
+        thread_id: detail.thread_id.clone(),
+        sync_state: detail.sync_state,
+        revision: detail.revision,
+        event_revision: 0,
+        task: detail.task.clone(),
+        events: Vec::new(),
+        file_links: Vec::new(),
+        events_page: TaskEventsPage { next_cursor: None },
+        events_range: None,
+        pending_approvals: Vec::new(),
+        history_loading: true,
+        provider: detail.provider,
+        permission_mode: detail.permission_mode.clone(),
+        model: detail.model.clone(),
+        reasoning_effort: detail.reasoning_effort.clone(),
+        fast_mode: detail.fast_mode,
+        context: detail.context,
+    }
+}
+
 /// A viewer keeps its provider lease while repairing lost delivery. Both
 /// receivers are attached before capturing the replacement cache snapshot.
 struct DetailStream {
-    initial: Option<DetailLiveEvent>,
+    opening: VecDeque<DetailLiveEvent>,
     events: broadcast::Receiver<TaskEventPublication>,
     sync: broadcast::Receiver<TaskDetailPublication>,
     shutdown: broadcast::Receiver<()>,
@@ -843,8 +895,8 @@ enum DetailDelivery {
 
 impl DetailStream {
     async fn next(&mut self) -> Option<DetailLiveEvent> {
-        if let Some(initial) = self.initial.take() {
-            return Some(initial);
+        if let Some(opening) = self.opening.pop_front() {
+            return Some(opening);
         }
         loop {
             let message = tokio::select! {
@@ -3464,84 +3516,126 @@ mod request_tests {
     }
 
     #[test]
-    fn task_stream_bootstrap_replays_the_canonical_detail_snapshot() {
-        let thread_id = "thread-bootstrap";
-        let assistant = task_event_record(
-            thread_id,
-            "turn-1:assistant-1",
-            "assistant_message",
-            "canonical assistant response",
-            Some(json!({ "text": "canonical assistant response" })),
-            2,
-        );
-        let sync = TaskDetailSync {
-            thread_id: thread_id.to_string(),
-            revision: 7,
-            detail: TaskDetailResponse {
-                provider: Some(TaskProvider::Codex),
-                thread_id: thread_id.to_string(),
-                sync_state: TaskSyncState::Ready,
-                revision: 7,
-                event_revision: 11,
-                task: Some(TaskRecord {
-                    id: thread_id.to_string(),
-                    thread_id: thread_id.to_string(),
-                    conversation_available: true,
-                    title: "Bootstrap regression".to_string(),
-                    preview: "canonical assistant response".to_string(),
-                    thread_status: ThreadStatus::Idle,
-                    latest_turn_status: Some(TurnStatus::Completed),
-                    active_turn: None,
-                    cwd: "/tmp".to_string(),
-                    cwd_path: None,
-                    relative_cwd: ".".to_string(),
-                    worktree: None,
-                    created_ms: 1,
-                    updated_ms: 2,
-                    recency_ms: None,
-                    last_completed_ms: None,
-                    last_event_summary: Some("canonical assistant response".to_string()),
-                    unseen: false,
-                }),
-                events: vec![assistant],
-                file_links: Vec::new(),
-                events_page: TaskEventsPage { next_cursor: None },
-                events_range: Some(TaskEventsRange {
-                    from: None,
-                    to: None,
-                }),
-                pending_approvals: Vec::new(),
-                history_loading: false,
-                permission_mode: Some("askForApproval".to_string()),
-                model: Some("gpt-test".to_string()),
-                reasoning_effort: Some("xhigh".to_string()),
-                fast_mode: true,
-                context: Some(ContextUsage {
-                    used_tokens: 32_147,
-                    window_tokens: 200_000,
-                }),
-            },
-            reason: "stream-bootstrap",
-            error: None,
+    fn a_held_conversation_opens_with_the_task_and_then_its_page() {
+        let opening = opening_messages(
+            "thread-bootstrap",
+            readable_detail("thread-bootstrap"),
+            None,
+        )
+        .into_iter()
+        .map(|message| serde_json::to_value(message).unwrap())
+        .collect::<Vec<_>>();
+
+        let [bootstrap, page] = opening.as_slice() else {
+            panic!("a held conversation opens with two messages");
         };
+        let context = json!({ "usedTokens": 32_147, "windowTokens": 200_000 });
+        assert_eq!(bootstrap["type"], "task-sync");
+        assert_eq!(bootstrap["payload"]["reason"], "stream-bootstrap");
+        assert_eq!(bootstrap["payload"]["threadId"], "thread-bootstrap");
+        assert_eq!(bootstrap["payload"]["revision"], 7);
+        let head = &bootstrap["payload"]["detail"];
+        assert_eq!(head["task"]["title"], "Bootstrap regression");
+        assert_eq!(head["model"], "gpt-test");
+        assert_eq!(head["context"], context);
+        assert_eq!(head["events"], json!([]));
+        assert_eq!(head["pendingApprovals"], json!([]));
+        assert_eq!(head["eventsRange"], json!(null));
+        assert_eq!(head["eventRevision"], 0);
+        assert_eq!(head["historyLoading"], true);
 
-        let event = serde_json::to_value(DetailLiveEvent::Sync(Box::new(sync))).unwrap();
-
-        assert_eq!(event["type"], "task-sync");
-        assert_eq!(event["payload"]["threadId"], "thread-bootstrap");
-        assert_eq!(event["payload"]["revision"], 7);
+        assert_eq!(page["type"], "task-sync");
+        assert_eq!(page["payload"]["reason"], "stream-page");
+        assert_eq!(page["payload"]["revision"], 7);
+        let detail = &page["payload"]["detail"];
+        assert_eq!(detail["eventRevision"], 11);
+        assert_eq!(detail["historyLoading"], false);
+        assert_eq!(detail["events"][0]["type"], "assistant_message");
         assert_eq!(
-            event["payload"]["detail"]["events"][0]["type"],
-            "assistant_message"
-        );
-        assert_eq!(
-            event["payload"]["detail"]["events"][0]["summary"],
+            detail["events"][0]["summary"],
             "canonical assistant response"
         );
-        assert_eq!(
-            event["payload"]["detail"]["context"],
-            json!({ "usedTokens": 32_147, "windowTokens": 200_000 })
-        );
+        assert_eq!(detail["context"], context);
+    }
+
+    #[test]
+    fn a_conversation_not_yet_read_or_unreadable_opens_with_one_message() {
+        let mut history_loading = readable_detail("thread-bootstrap");
+        history_loading.events.clear();
+        history_loading.events_range = None;
+        history_loading.history_loading = true;
+        let unreadable = Some(ApiError::Agent("no history".to_string()).into_error_body());
+        for (detail, error) in [
+            (loading_detail("thread-bootstrap", 3, None), None),
+            (history_loading, None),
+            (readable_detail("thread-bootstrap"), unreadable),
+        ] {
+            let opening = Vec::from(opening_messages(
+                "thread-bootstrap",
+                detail.clone(),
+                error.clone(),
+            ));
+            let [DetailLiveEvent::Sync(bootstrap)] = opening.as_slice() else {
+                panic!("one bootstrap");
+            };
+            assert_eq!(bootstrap.reason, "stream-bootstrap");
+            assert_eq!(bootstrap.detail.events.len(), detail.events.len());
+            assert_eq!(bootstrap.error.is_some(), error.is_some());
+        }
+    }
+
+    fn readable_detail(thread_id: &str) -> TaskDetailResponse {
+        TaskDetailResponse {
+            provider: Some(TaskProvider::Codex),
+            thread_id: thread_id.to_string(),
+            sync_state: TaskSyncState::Ready,
+            revision: 7,
+            event_revision: 11,
+            task: Some(TaskRecord {
+                id: thread_id.to_string(),
+                thread_id: thread_id.to_string(),
+                conversation_available: true,
+                title: "Bootstrap regression".to_string(),
+                preview: "canonical assistant response".to_string(),
+                thread_status: ThreadStatus::Idle,
+                latest_turn_status: Some(TurnStatus::Completed),
+                active_turn: None,
+                cwd: "/tmp".to_string(),
+                cwd_path: None,
+                relative_cwd: ".".to_string(),
+                worktree: None,
+                created_ms: 1,
+                updated_ms: 2,
+                recency_ms: None,
+                last_completed_ms: None,
+                last_event_summary: Some("canonical assistant response".to_string()),
+                unseen: false,
+            }),
+            events: vec![task_event_record(
+                thread_id,
+                "turn-1:assistant-1",
+                "assistant_message",
+                "canonical assistant response",
+                Some(json!({ "text": "canonical assistant response" })),
+                2,
+            )],
+            file_links: Vec::new(),
+            events_page: TaskEventsPage { next_cursor: None },
+            events_range: Some(TaskEventsRange {
+                from: None,
+                to: None,
+            }),
+            pending_approvals: Vec::new(),
+            history_loading: false,
+            permission_mode: Some("askForApproval".to_string()),
+            model: Some("gpt-test".to_string()),
+            reasoning_effort: Some("xhigh".to_string()),
+            fast_mode: true,
+            context: Some(ContextUsage {
+                used_tokens: 32_147,
+                window_tokens: 200_000,
+            }),
+        }
     }
 
     #[tokio::test]
@@ -3907,6 +4001,10 @@ mod continuity_tests {
             slow.next().await,
             Some(DetailLiveEvent::Sync(sync)) if sync.reason == "stream-bootstrap"
         ));
+        assert!(matches!(
+            slow.next().await,
+            Some(DetailLiveEvent::Sync(sync)) if sync.reason == "stream-page"
+        ));
 
         let snapshot = state.task_sessions.snapshot(thread_id).await.unwrap();
         let conversation = snapshot.conversation.as_ref().unwrap();
@@ -4126,8 +4224,23 @@ mod continuity_tests {
         let Some(DetailLiveEvent::Sync(bootstrap)) = stream.next().await else {
             panic!("a replacement viewer must receive a bootstrap");
         };
+        // The bootstrap is the Task beside its conversation; the page follows.
         assert_eq!(bootstrap.reason, "stream-bootstrap");
-        assert_missing_turn(&bootstrap);
+        assert!(bootstrap.error.is_none());
+        let head = &bootstrap.detail;
+        assert_eq!(head.task.as_ref().unwrap().thread_id, thread_id);
+        assert!(head.events.is_empty() && head.pending_approvals.is_empty());
+        assert!(head.events_range.is_none() && head.events_page.next_cursor.is_none());
+        assert_eq!(head.event_revision, 0);
+        assert!(head.history_loading);
+        let Some(DetailLiveEvent::Sync(page)) = stream.next().await else {
+            panic!("the page must follow the bootstrap");
+        };
+        assert_eq!(page.reason, "stream-page");
+        assert_eq!(page.revision, bootstrap.revision);
+        assert!(!page.detail.history_loading);
+        assert!(page.detail.event_revision > 0);
+        assert_missing_turn(&page);
         // Await the canonical bootstrap path too: checking just the first cached
         // frame would miss an unnecessary provider read in its background work.
         state.detail.bootstrap(thread_id, bootstrap.revision).await;
@@ -4249,16 +4362,17 @@ mod continuity_tests {
             .unwrap();
         assert_eq!(accepted.status(), axum::http::StatusCode::NO_CONTENT);
         tokio::time::timeout(Duration::from_secs(1), async {
-            loop {
+            let mut reasons = Vec::new();
+            while reasons.last() != Some(&"stream-page".to_string()) {
                 let frame = frames.next().await.expect("gateway remains open");
-                if frame["type"] == "task-sync" && frame["payload"]["reason"] == "stream-bootstrap"
-                {
-                    break;
+                if frame["type"] == "task-sync" {
+                    reasons.push(frame["payload"]["reason"].as_str().unwrap().to_string());
                 }
             }
+            assert_eq!(reasons, ["stream-bootstrap", "stream-page"]);
         })
         .await
-        .expect("the real gateway must forward the initial bootstrap");
+        .expect("the real gateway must forward the bootstrap and then the page");
 
         if recover {
             // No await in this burst: on the current-thread test runtime the

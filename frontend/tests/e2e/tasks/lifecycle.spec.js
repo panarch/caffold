@@ -1877,9 +1877,9 @@ test("gives up on a Task list reading that never answers and reads again", { tag
   holdListReads = false;
   await expect(notice).toHaveAttribute("data-recovery-state", "reconnecting");
 
-  // The held reading gives up after eight seconds, and the list reads again.
+  // The held reading gives up after thirty seconds, and the list reads again.
   await advanceClockUntil(page, async () => (await listState()) === "ready", {
-    budgetMs: 10_000,
+    budgetMs: 32_000,
     stepMs: 250,
   });
   await expect(notice).toBeHidden();
@@ -1934,7 +1934,7 @@ test("backs off instead of waiting or pausing offline when a return's Task-store
   await advanceClockUntil(
     page,
     async () => (await notice.getAttribute("data-recovery-state")) === "reconnecting",
-    { budgetMs: 8_500, stepMs: 250 },
+    { budgetMs: 30_500, stepMs: 250 },
   );
   await advanceClockUntil(page, () => foregroundRecoverySettled(page), {
     budgetMs: 2_000,
@@ -1942,6 +1942,142 @@ test("backs off instead of waiting or pausing offline when a return's Task-store
   });
   await expect(notice).toBeHidden();
 });
+
+test("a return subscribes the Task list and Detail once each", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__caffoldVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => window.__caffoldVisibilityState,
+    });
+  });
+  const threadId = "thread_single_return_subscription";
+  const registryKey = "__singleReturnSources";
+  await installTransportOverlayFixture(page, threadId, registryKey);
+  let holdStoreReads = false;
+  const heldStoreReads = [];
+  await page.route(/\/api\/task-store\/status(?:\?|$)/, (route) => {
+    if (holdStoreReads) {
+      heldStoreReads.push(route);
+      return undefined;
+    }
+    return route.fulfill({ json: mockTaskStoreStatus() });
+  });
+  const subscriptions = (channel) =>
+    page.evaluate(({ key, name }) =>
+      window[key].filter((source) => source.channel === name).length,
+    { key: registryKey, name: channel });
+
+  await page.goto(`/tasks/${threadId}`);
+  await expect
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  const before = {
+    list: await subscriptions("task-list"),
+    detail: await subscriptions("task-detail"),
+  };
+
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  holdStoreReads = true;
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  // The live connection reopens and publishes while recovery still checks
+  // the store.
+  await expect.poll(() => heldStoreReads.length).toBe(1);
+  await expect
+    .poll(() => page.evaluate(() =>
+      Boolean(window.__caffoldMockLiveEventSources.at(-1).subscriptions)))
+    .toBe(true);
+  holdStoreReads = false;
+  await heldStoreReads[0].fulfill({ json: mockTaskStoreStatus() });
+
+  await expect
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  expect(await subscriptions("task-list")).toBe(before.list + 1);
+  expect(await subscriptions("task-detail")).toBe(before.detail + 1);
+  await expect(page.locator("caffold-tasks-page")).toContainText(
+    "Conversation stays fixed while transport notices change.",
+  );
+});
+
+test("a return outside Tasks resumes the Task list for when Tasks shows again", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__caffoldVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => window.__caffoldVisibilityState,
+    });
+  });
+  const threadId = "thread_return_outside_tasks";
+  const registryKey = "__returnOutsideTasksSources";
+  await installTransportOverlayFixture(page, threadId, registryKey);
+
+  await page.goto(`/tasks/${threadId}`);
+  await expect
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  await followLink(page, "/notes");
+  await expect(page).toHaveURL(/\/notes$/);
+
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  await expect
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toContain("task-list");
+
+  await followLink(page, `/tasks/${threadId}`);
+  const row = page.locator(
+    `caffold-task-navigator .task-row[data-thread-id="${threadId}"]`,
+  );
+  await expect(row).toBeVisible();
+  await page.evaluate(({ key, renamed }) => {
+    const listSource = [...window[key]]
+      .reverse()
+      .find((source) => source.channel === "task-list" && source.readyState !== 2);
+    listSource.emit("task-list-snapshot", { tasks: [renamed] });
+  }, {
+    key: registryKey,
+    renamed: activeListTask({
+      ...transportOverlayTask(threadId),
+      title: "Renamed while outside Tasks",
+    }),
+  });
+  await expect(row.locator(".task-row-title")).toHaveText(
+    "Renamed while outside Tasks",
+  );
+});
+
+// A link the app follows in place, as a person clicking one would.
+function followLink(page, href) {
+  return page.evaluate((target) => {
+    const anchor = document.createElement("a");
+    anchor.href = target;
+    anchor.textContent = target;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+  }, href);
+}
 
 test("shows one viewport recovery notice without moving Task surfaces", { tag: "@all-viewports" }, async ({
   page,
