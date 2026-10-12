@@ -332,6 +332,7 @@ test("keeps diagnostic triggers outside the control graph", () => {
     "origin",
     "notification",
     "manual-retry",
+    "automatic-retry",
   ]);
 
   const fromFocus = startedState();

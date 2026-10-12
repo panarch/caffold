@@ -8,6 +8,14 @@ import {
 } from "./stream/machine.js";
 
 const DEFAULT_RETRY_DELAYS_MS = Object.freeze([250, 1_000, 3_000]);
+// Once its own retry budget is spent, a stream tries again at these delays;
+// the last one repeats.
+const DEFAULT_AUTOMATIC_RETRY_DELAYS_MS = Object.freeze([
+  5_000,
+  10_000,
+  20_000,
+  30_000,
+]);
 
 const NODE = TASK_STREAM_NODE;
 const EVENT = TASK_STREAM_EVENT;
@@ -31,12 +39,16 @@ export class TaskStreamLifecycle {
     this.retryDelaysMs = [
       ...(options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS),
     ];
+    this.automaticRetryDelaysMs = [
+      ...(options.automaticRetryDelaysMs ?? DEFAULT_AUTOMATIC_RETRY_DELAYS_MS),
+    ];
     this.node = NODE.INACTIVE;
     this.state = TASK_TRANSPORT_STATE.IDLE;
     this.contextKey = "";
     this.source = null;
     this.generation = 0;
     this.retryAttempt = 0;
+    this.automaticRetryAttempt = 0;
     this.hasConnected = false;
     this.needsReconcile = false;
     this.skipReconcile = false;
@@ -168,6 +180,7 @@ export class TaskStreamLifecycle {
         this.skipReconcile = false;
         this.validating = false;
         this.retryAttempt = 0;
+        this.automaticRetryAttempt = 0;
         return;
       case EVENT.CHANNEL_OPENED:
       case EVENT.PREPARED:
@@ -207,6 +220,7 @@ export class TaskStreamLifecycle {
         this.skipReconcile = false;
         this.validating = false;
         this.retryAttempt = 0;
+        this.automaticRetryAttempt = 0;
         this.onSubjectGone(event.absence, this.contextKey);
         return;
       default:
@@ -221,6 +235,7 @@ export class TaskStreamLifecycle {
       this.skipReconcile = !event.reconcile;
       this.validating = false;
       this.retryAttempt = 0;
+      this.automaticRetryAttempt = 0;
     } else if (event.type !== EVENT.RETRY_DUE) {
       this.chooseContext(event);
     }
@@ -246,6 +261,7 @@ export class TaskStreamLifecycle {
     }
     this.validating = recovery ? sameContext : Boolean(validating);
     this.retryAttempt = 0;
+    this.automaticRetryAttempt = 0;
   }
 
   openSubscription() {
@@ -390,6 +406,7 @@ export class TaskStreamLifecycle {
 
   settleReady() {
     this.retryAttempt = 0;
+    this.automaticRetryAttempt = 0;
     this.needsReconcile = false;
     this.skipReconcile = false;
     this.validating = false;
@@ -400,6 +417,10 @@ export class TaskStreamLifecycle {
     this.stopWaiting();
     this.needsReconcile = true;
     this.validating = false;
+    if (next === NODE.UNAVAILABLE) {
+      this.waitToRetry();
+      return;
+    }
     if (next !== NODE.BACKING_OFF) {
       return;
     }
@@ -409,6 +430,25 @@ export class TaskStreamLifecycle {
     this.retryTimer = window.setTimeout(() => {
       this.retryTimer = null;
       if (this.generation === generation) {
+        this.dispatch({ type: EVENT.RETRY_DUE });
+      }
+    }, Math.max(0, delayMs));
+  }
+
+  // A stream that spent its own retry budget tries again while the page is
+  // visible, each time after a longer delay up to the last one.
+  waitToRetry() {
+    const delays = this.automaticRetryDelaysMs;
+    const delayMs =
+      delays[Math.min(this.automaticRetryAttempt, delays.length - 1)];
+    if (!Number.isFinite(delayMs) || !isVisible()) {
+      return;
+    }
+    this.automaticRetryAttempt += 1;
+    const generation = this.generation;
+    this.retryTimer = window.setTimeout(() => {
+      this.retryTimer = null;
+      if (this.generation === generation && isVisible()) {
         this.dispatch({ type: EVENT.RETRY_DUE });
       }
     }, Math.max(0, delayMs));

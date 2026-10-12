@@ -35,7 +35,9 @@ use crate::{
 };
 
 pub(in crate::app) use codex_mcp::CodexMcpHost;
-use detail::{DetailContext, TaskDetailSync};
+#[cfg(test)]
+use detail::TaskDetailSync;
+use detail::{DetailContext, TaskDetailPublication};
 use events::TaskEvents;
 pub(in crate::app) use grok_mcp::GrokMcpHost;
 use lifecycle::TaskLifecycle;
@@ -55,7 +57,7 @@ struct TaskState {
     task_sessions: sessions::TaskSessions,
     detail: DetailContext,
     task_events: TaskEvents,
-    task_sync: TaskSync<TaskDetailSync>,
+    task_sync: TaskSync<TaskDetailPublication>,
     task_list_events: TaskListEvents,
     task_store: TaskStore,
     lifecycle: TaskLifecycle,

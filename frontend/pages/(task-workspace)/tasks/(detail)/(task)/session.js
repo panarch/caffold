@@ -115,6 +115,7 @@ const TASK_DETAIL_SESSION_TRANSITIONS = Object.freeze({
 export class TaskDetailSession {
   constructor(callbacks = {}) {
     this.onTaskSync = callbacks.onTaskSync ?? (() => {});
+    this.onTaskState = callbacks.onTaskState ?? (() => {});
     this.onTaskEvent = callbacks.onTaskEvent ?? (() => {});
     this.onFallbackDetail = callbacks.onFallbackDetail ?? (() => false);
     this.onStateChange = callbacks.onStateChange ?? (() => {});
@@ -283,6 +284,7 @@ export class TaskDetailSession {
       threadId,
       isCurrent,
       pendingEvents: [],
+      pendingState: null,
       settled: false,
       resolve: resolveBootstrap,
       reject: rejectBootstrap,
@@ -294,6 +296,7 @@ export class TaskDetailSession {
       }
       bootstrap.settled = true;
       bootstrap.pendingEvents = [];
+      bootstrap.pendingState = null;
       bootstrap.reject(new Error("Task detail stream bootstrap timed out."));
     }, this.bootstrapTimeoutMs);
     this.bootstrap = bootstrap;
@@ -308,6 +311,7 @@ export class TaskDetailSession {
     this.bootstrap = null;
     window.clearTimeout(bootstrap.timer);
     bootstrap.pendingEvents = [];
+    bootstrap.pendingState = null;
     if (!bootstrap.settled) {
       bootstrap.settled = true;
       bootstrap.resolve(false);
@@ -329,6 +333,10 @@ export class TaskDetailSession {
 
     if (type === "task-sync") {
       this.handleTaskSync(bootstrap, message);
+      return;
+    }
+    if (type === "task-state") {
+      this.handleTaskState(bootstrap, message);
       return;
     }
     if (this.phase === TASK_DETAIL_SESSION_PHASE.STREAMING) {
@@ -362,6 +370,7 @@ export class TaskDetailSession {
       this.transition(TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR);
       window.clearTimeout(bootstrap.timer);
       bootstrap.pendingEvents = [];
+      bootstrap.pendingState = null;
       if (!bootstrap.settled) {
         bootstrap.settled = true;
         bootstrap.resolve(true);
@@ -390,9 +399,14 @@ export class TaskDetailSession {
         : TASK_DETAIL_SESSION_EVENT.ACCEPT_READABLE_SYNC,
     );
     const pendingEvents = bootstrap.pendingEvents;
+    const pendingState = bootstrap.pendingState;
     bootstrap.pendingEvents = [];
+    bootstrap.pendingState = null;
     for (const pendingEvent of pendingEvents) {
       this.onTaskEvent(pendingEvent);
+    }
+    if (pendingState) {
+      this.onTaskState(pendingState);
     }
     if (!bootstrap.settled) {
       bootstrap.settled = true;
@@ -404,6 +418,22 @@ export class TaskDetailSession {
       detail: message.detail,
       source: "stream",
     });
+  }
+
+  // The Task's state beside its conversation. Until the conversation is
+  // readable only the newest is kept, to follow the readable sync.
+  handleTaskState(bootstrap, message) {
+    if (this.phase === TASK_DETAIL_SESSION_PHASE.STREAMING) {
+      this.onTaskState(message);
+      return;
+    }
+    if (
+      (this.phase === TASK_DETAIL_SESSION_PHASE.WAITING_BOOTSTRAP ||
+        this.phase === TASK_DETAIL_SESSION_PHASE.WAITING_READABLE) &&
+      !(Number(bootstrap.pendingState?.revision) > Number(message.revision))
+    ) {
+      bootstrap.pendingState = message;
+    }
   }
 
   handleSubjectGone(absence, threadId) {

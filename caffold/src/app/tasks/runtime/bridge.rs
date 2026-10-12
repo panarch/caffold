@@ -202,9 +202,18 @@ impl TaskRuntime {
         self.record_reported_usage(&event);
         self.record_turn_recency(&event);
         if let Some(snapshot) = snapshot {
-            let _ = self.signals.send(TaskRuntimeSignal::SessionChanged {
-                thread_id: event.thread_id,
-                snapshot: Box::new(snapshot),
+            let thread_id = event.thread_id;
+            let snapshot = Box::new(snapshot);
+            let _ = self.signals.send(if changes_task_state_only(&event.kind) {
+                TaskRuntimeSignal::TaskStateChanged {
+                    thread_id,
+                    snapshot,
+                }
+            } else {
+                TaskRuntimeSignal::SessionChanged {
+                    thread_id,
+                    snapshot,
+                }
             });
         }
     }
@@ -295,6 +304,26 @@ impl TaskRuntime {
         generation: u64,
     ) {
         self.spawn_bridge(client, generation, self.shutdown.subscribe());
+    }
+}
+
+/// Whether a report that changed the session moved only the Task's state
+/// beside its conversation, leaving the conversation and its turns as they
+/// were. Viewers then need that state alone, not the whole Task Detail again.
+fn changes_task_state_only(kind: &SessionEventKind) -> bool {
+    match kind {
+        SessionEventKind::StatusChanged { .. }
+        | SessionEventKind::ActivityChanged { .. }
+        | SessionEventKind::TitleChanged { .. }
+        | SessionEventKind::SettingsChanged { .. }
+        | SessionEventKind::ContextReported { .. } => true,
+        SessionEventKind::ConversationStarted { .. }
+        | SessionEventKind::TurnStarted { .. }
+        | SessionEventKind::TurnEnded { .. }
+        | SessionEventKind::ItemChanged { .. }
+        | SessionEventKind::DiffChanged
+        | SessionEventKind::UsageReported { .. }
+        | SessionEventKind::ApprovalAnsweredElsewhere { .. } => false,
     }
 }
 
@@ -526,12 +555,12 @@ mod tests {
             .await
             .expect("canonical status change publishes a runtime signal")
             .expect("runtime signal channel remains open");
-        let TaskRuntimeSignal::SessionChanged {
+        let TaskRuntimeSignal::TaskStateChanged {
             thread_id: signal_thread_id,
             snapshot,
         } = signal
         else {
-            panic!("expected a changed-session signal");
+            panic!("a status change moves the Task state alone");
         };
         assert_eq!(signal_thread_id, thread_id);
         assert_eq!(snapshot.revision, initial_revision + 2);
@@ -572,6 +601,46 @@ mod tests {
         assert_eq!(stored.last_observed_recency_ms, Some(1_750_000_004_500));
         assert!(stored.unseen());
         assert_eq!(list_events.refresh_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn only_changes_beside_the_conversation_reach_viewers_as_task_state() {
+        for kind in [
+            SessionEventKind::StatusChanged {
+                status: ThreadStatus::Idle,
+            },
+            SessionEventKind::ActivityChanged {
+                status: ThreadStatus::Idle,
+            },
+            SessionEventKind::TitleChanged {
+                title: Some("Renamed".to_string()),
+            },
+            SessionEventKind::SettingsChanged {
+                settings: Default::default(),
+            },
+            SessionEventKind::ContextReported {
+                context: agent::ContextUsage {
+                    used_tokens: 10,
+                    window_tokens: 100,
+                },
+            },
+        ] {
+            assert!(changes_task_state_only(&kind), "{kind:?}");
+        }
+        for (method, status) in [
+            ("turn/started", "inProgress"),
+            ("turn/completed", "completed"),
+        ] {
+            let event = reported(
+                method,
+                json!({
+                    "threadId": "thread_1",
+                    "turn": { "id": "turn_1", "status": status }
+                }),
+            )
+            .await;
+            assert!(!changes_task_state_only(&event.kind), "{method}");
+        }
     }
 
     #[tokio::test]

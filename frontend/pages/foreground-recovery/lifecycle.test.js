@@ -553,7 +553,8 @@ test("uses default delays, bounds server retries, and exposes reconnecting", asy
 
   assert.deepEqual(
     retryTimers.map(({ delayMs }) => delayMs),
-    expectedRetryDelays,
+    [...expectedRetryDelays, 5_000],
+    "the spent budget leaves only the first automatic retry waiting",
   );
   assert.equal(attempts, 4);
   assert.equal(lifecycle.snapshot().node.type, FOREGROUND_RECOVERY_NODE.EXHAUSTED);
@@ -572,6 +573,87 @@ test("uses default delays, bounds server retries, and exposes reconnecting", asy
           FOREGROUND_RECOVERY_PRESENTATION.RECONNECTING,
     ),
   );
+  lifecycle.disconnect();
+});
+
+test("tries again on its own after pausing offline or spending its retries", async () => {
+  const browser = harness();
+  const timers = [];
+  const cleared = [];
+  browser.windowTarget.setTimeout = (callback, delayMs) => {
+    timers.push({ callback, delayMs });
+    return timers.length;
+  };
+  browser.windowTarget.clearTimeout = (id) => cleared.push(id);
+  const triggers = [];
+  let outcome = "offline";
+  const lifecycle = new ForegroundRecoveryRuntime({
+    ...browser,
+    onRecover: async ({ trigger }) => {
+      triggers.push(trigger);
+      if (outcome === "offline") {
+        throw new TypeError("Failed to fetch");
+      }
+      return outcome === "server"
+        ? { retry: true, error: new Error("HTTP 502") }
+        : { retry: false };
+    },
+    retryDelaysMs: [],
+  });
+  lifecycle.connect();
+
+  await lifecycle.requestForegroundRecovery();
+  assert.equal(lifecycle.snapshot().node.type, FOREGROUND_RECOVERY_NODE.OFFLINE);
+  timers.at(-1).callback();
+  await settle();
+  assert.equal(lifecycle.snapshot().node.type, FOREGROUND_RECOVERY_NODE.OFFLINE);
+  assert.deepEqual(timers.map(({ delayMs }) => delayMs), [5_000, 10_000]);
+  assert.equal(triggers.at(-1), FOREGROUND_RECOVERY_TRIGGER.AUTOMATIC_RETRY);
+
+  outcome = "ok";
+  timers.at(-1).callback();
+  await settle();
+  assert.equal(lifecycle.snapshot().node.type, FOREGROUND_RECOVERY_NODE.READY);
+  assert.equal(timers.length, 2, "a settled attempt waits for nothing");
+
+  // A settled attempt starts the delays over.
+  outcome = "server";
+  await lifecycle.requestForegroundRecovery();
+  assert.equal(lifecycle.snapshot().node.type, FOREGROUND_RECOVERY_NODE.EXHAUSTED);
+  assert.equal(timers.at(-1).delayMs, 5_000);
+
+  browser.documentTarget.visibilityState = "hidden";
+  browser.documentTarget.dispatch("visibilitychange");
+  assert.deepEqual(cleared, [timers.length], "hiding drops the pending retry");
+  lifecycle.disconnect();
+});
+
+test("leaves a pause the browser reported offline to the browser's own return signal", async () => {
+  const browser = harness();
+  const timers = new Map();
+  let nextTimer = 0;
+  browser.windowTarget.setTimeout = (callback, delayMs) => {
+    nextTimer += 1;
+    timers.set(nextTimer, { callback, delayMs });
+    return nextTimer;
+  };
+  browser.windowTarget.clearTimeout = (id) => timers.delete(id);
+  const lifecycle = new ForegroundRecoveryRuntime({
+    ...browser,
+    onRecover: async () => ({ retry: false }),
+  });
+  lifecycle.connect();
+
+  browser.navigatorTarget.onLine = false;
+  browser.windowTarget.dispatch("offline");
+  assert.equal(lifecycle.snapshot().node.type, FOREGROUND_RECOVERY_NODE.OFFLINE);
+  assert.equal(timers.size, 0);
+
+  browser.navigatorTarget.onLine = true;
+  browser.windowTarget.dispatch("online");
+  await settle();
+  assert.equal(lifecycle.snapshot().node.type, FOREGROUND_RECOVERY_NODE.READY);
+  assert.equal(timers.size, 0);
   lifecycle.disconnect();
 });
 

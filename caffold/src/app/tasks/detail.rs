@@ -51,7 +51,7 @@ pub(in crate::app::tasks) struct DetailContext {
     sessions: TaskSessions,
     events: TaskEvents,
     file_links: TaskFileLinkResolver,
-    sync: TaskSync<TaskDetailSync>,
+    sync: TaskSync<TaskDetailPublication>,
     shutdown: broadcast::Sender<()>,
     refresh_task_list: RefreshTaskList,
 }
@@ -147,6 +147,73 @@ pub(in crate::app) struct TaskDetailSync {
     pub(in crate::app::tasks) error: Option<ErrorBody>,
 }
 
+/// A Task's state beside its conversation, for a change that left the
+/// conversation as it was: its record, composer settings, and context. Its
+/// revision orders it among the full answers, and it carries no events, so it
+/// changes nothing in the conversation.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app) struct TaskDetailState {
+    pub(in crate::app::tasks) thread_id: String,
+    pub(in crate::app::tasks) revision: u64,
+    pub(in crate::app::tasks) task: Option<TaskRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<TaskProvider>,
+    permission_mode: Option<String>,
+    model: Option<String>,
+    reasoning_effort: Option<String>,
+    fast_mode: bool,
+    context: Option<ContextUsage>,
+}
+
+impl TaskDetailState {
+    /// The part of a full answer that lies beside its conversation.
+    fn of(detail: TaskDetailResponse) -> Self {
+        Self {
+            thread_id: detail.thread_id,
+            revision: detail.revision,
+            task: detail.task,
+            provider: detail.provider,
+            permission_mode: detail.permission_mode,
+            model: detail.model,
+            reasoning_effort: detail.reasoning_effort,
+            fast_mode: detail.fast_mode,
+            context: detail.context,
+        }
+    }
+}
+
+/// What a Task's viewers hear when it changes: the whole Task Detail when its
+/// conversation may have moved, or its state alone when only that did.
+#[derive(Debug, Clone)]
+pub(in crate::app::tasks) enum TaskDetailPublication {
+    Sync(Box<TaskDetailSync>),
+    State(Box<TaskDetailState>),
+}
+
+impl TaskDetailPublication {
+    pub(in crate::app::tasks) fn thread_id(&self) -> &str {
+        match self {
+            Self::Sync(sync) => &sync.thread_id,
+            Self::State(state) => &state.thread_id,
+        }
+    }
+
+    pub(in crate::app::tasks) fn revision(&self) -> u64 {
+        match self {
+            Self::Sync(sync) => sync.revision,
+            Self::State(state) => state.revision,
+        }
+    }
+
+    pub(in crate::app::tasks) fn task(&self) -> Option<&TaskRecord> {
+        match self {
+            Self::Sync(sync) => sync.detail.task.as_ref(),
+            Self::State(state) => state.task.as_ref(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::app) struct TaskEventEnvelope {
@@ -166,6 +233,8 @@ pub(in crate::app) struct TaskEventEnvelope {
 pub(in crate::app) enum DetailLiveEvent {
     #[serde(rename = "task-sync")]
     Sync(Box<TaskDetailSync>),
+    #[serde(rename = "task-state")]
+    State(Box<TaskDetailState>),
     #[serde(rename = "task-event")]
     Event(Box<TaskEventEnvelope>),
 }
@@ -182,7 +251,7 @@ impl DetailContext {
         runtime_signals: broadcast::Receiver<TaskRuntimeSignal>,
         sessions: TaskSessions,
         events: TaskEvents,
-        sync: TaskSync<TaskDetailSync>,
+        sync: TaskSync<TaskDetailPublication>,
         shutdown: broadcast::Sender<()>,
         refresh_task_list: impl Fn() + Send + Sync + 'static,
     ) -> Self {
@@ -573,6 +642,12 @@ impl DetailContext {
                             .broadcast_snapshot(&thread_id, *snapshot, "app-server-notification")
                             .await;
                     }
+                    Ok(TaskRuntimeSignal::TaskStateChanged {
+                        thread_id,
+                        snapshot,
+                    }) => {
+                        context.broadcast_state(&thread_id, *snapshot).await;
+                    }
                     Ok(TaskRuntimeSignal::SessionUnavailable { thread_id, message }) => {
                         let error = match context.check_worktree(&thread_id).await {
                             Err(error) => error.into_error_body(),
@@ -606,13 +681,34 @@ impl DetailContext {
                 return;
             }
         };
-        self.sync.publish(TaskDetailSync {
-            revision: detail.revision,
-            thread_id: thread_id.to_string(),
-            detail,
-            reason,
-            error: None,
-        });
+        self.sync
+            .publish(TaskDetailPublication::Sync(Box::new(TaskDetailSync {
+                revision: detail.revision,
+                thread_id: thread_id.to_string(),
+                detail,
+                reason,
+                error: None,
+            })));
+    }
+
+    /// Tell viewers about a change beside the conversation. The conversation
+    /// is not sent again: its items reach viewers as their own events.
+    async fn broadcast_state(&self, thread_id: &str, snapshot: SessionSnapshot) {
+        match self
+            .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
+            .await
+        {
+            Ok(detail) => {
+                self.sync
+                    .publish(TaskDetailPublication::State(Box::new(TaskDetailState::of(
+                        detail,
+                    ))))
+            }
+            Err(error) => {
+                self.broadcast_error(thread_id, error.into_error_body())
+                    .await;
+            }
+        }
     }
 
     async fn broadcast_error(&self, thread_id: &str, error: ErrorBody) {
@@ -623,13 +719,14 @@ impl DetailContext {
             .map(|snapshot| snapshot.revision)
             .unwrap_or_default();
         let detail = loading_detail(thread_id, revision, None);
-        self.sync.publish(TaskDetailSync {
-            thread_id: thread_id.to_string(),
-            revision,
-            detail,
-            reason: "canonical-source-error",
-            error: Some(error),
-        });
+        self.sync
+            .publish(TaskDetailPublication::Sync(Box::new(TaskDetailSync {
+                thread_id: thread_id.to_string(),
+                revision,
+                detail,
+                reason: "canonical-source-error",
+                error: Some(error),
+            })));
     }
 
     async fn check_worktree(&self, thread_id: &str) -> Result<(), ApiError> {
@@ -731,7 +828,7 @@ pub(in crate::app::tasks) fn loading_detail(
 struct DetailStream {
     initial: Option<DetailLiveEvent>,
     events: broadcast::Receiver<TaskEventPublication>,
-    sync: broadcast::Receiver<TaskDetailSync>,
+    sync: broadcast::Receiver<TaskDetailPublication>,
     shutdown: broadcast::Receiver<()>,
     thread_id: String,
     _viewer: ViewerLease,
@@ -740,7 +837,7 @@ struct DetailStream {
 }
 
 enum DetailDelivery {
-    Sync(Box<TaskDetailSync>),
+    Detail(TaskDetailPublication),
     Event(Box<TaskEventPublication>),
 }
 
@@ -752,18 +849,21 @@ impl DetailStream {
         loop {
             let message = tokio::select! {
                 _ = self.shutdown.recv() => return None,
-                message = self.sync.recv() => message.map(|sync| DetailDelivery::Sync(Box::new(sync))),
+                message = self.sync.recv() => message.map(DetailDelivery::Detail),
                 message = self.events.recv() => message.map(|event| DetailDelivery::Event(Box::new(event))),
             };
             match message {
-                Ok(DetailDelivery::Sync(sync)) if sync.thread_id == self.thread_id => {
-                    self.file_link_task_root = sync
-                        .detail
-                        .task
-                        .as_ref()
+                Ok(DetailDelivery::Detail(publication))
+                    if publication.thread_id() == self.thread_id =>
+                {
+                    self.file_link_task_root = publication
+                        .task()
                         .map(file_links::task_root)
                         .or(self.file_link_task_root.take());
-                    return Some(DetailLiveEvent::Sync(sync));
+                    return Some(match publication {
+                        TaskDetailPublication::Sync(sync) => DetailLiveEvent::Sync(sync),
+                        TaskDetailPublication::State(state) => DetailLiveEvent::State(state),
+                    });
                 }
                 Ok(DetailDelivery::Event(publication))
                     if publication.event.thread_id == self.thread_id =>
@@ -1414,9 +1514,12 @@ mod request_tests {
             .detail
             .broadcast_snapshot(thread_id, snapshot, "app-server-notification")
             .await;
-        let update = updates
+        let TaskDetailPublication::Sync(update) = updates
             .try_recv()
-            .expect("assembly failure must be published");
+            .expect("assembly failure must be published")
+        else {
+            panic!("an assembly failure reaches viewers as a whole Task Detail");
+        };
         assert_eq!(update.thread_id, thread_id);
         let diagnosis = update.error.unwrap();
         assert_eq!(diagnosis.code, "managed_worktree_not_repository");
@@ -1483,15 +1586,23 @@ mod request_tests {
         assert_eq!(event.thread_id, thread_id);
         assert_eq!(event.event_type, "reasoning");
 
-        let sync = tokio::time::timeout(Duration::from_secs(1), detail_syncs.recv())
+        let publication = tokio::time::timeout(Duration::from_secs(1), detail_syncs.recv())
             .await
-            .expect("canonical status change publishes a detail sync")
+            .expect("canonical status change publishes the Task state")
             .expect("detail sync channel remains open");
-        assert_eq!(sync.thread_id, thread_id);
-        assert_eq!(sync.revision, initial_revision + 2);
-        assert_eq!(sync.reason, "app-server-notification");
+        let TaskDetailPublication::State(state) = publication else {
+            panic!("a status change carries the Task state alone, not the conversation");
+        };
+        let wire = serde_json::to_value(DetailLiveEvent::State(state.clone())).unwrap();
+        assert_eq!(wire["type"], "task-state");
+        assert!(
+            wire["payload"].get("events").is_none(),
+            "the Task state carries no conversation"
+        );
+        assert_eq!(state.thread_id, thread_id);
+        assert_eq!(state.revision, initial_revision + 2);
         assert_eq!(
-            sync.detail.task.expect("canonical Task").thread_status,
+            state.task.expect("canonical Task").thread_status,
             ThreadStatus::SystemError
         );
     }
@@ -3750,7 +3861,9 @@ mod continuity_tests {
     use serde_json::json;
     use tower::ServiceExt;
 
-    use super::{DetailLiveEvent, TaskDetailSync, loading_detail};
+    use super::{
+        DetailLiveEvent, TaskDetailPublication, TaskDetailState, TaskDetailSync, loading_detail,
+    };
     use crate::{
         agent::{
             TurnPage,
@@ -3855,22 +3968,26 @@ mod continuity_tests {
                         .as_ref()
                         .is_some_and(|payload| payload["turnId"] == "turn-2")
                 }));
-                state.task_sync.publish(TaskDetailSync {
-                    thread_id: thread_id.into(),
-                    revision: detail.revision,
-                    detail,
-                    reason: "app-server-notification",
-                    error: None,
-                });
-                // TaskSync's shared queue holds 64 snapshots.
-                for revision in 1..=128 {
-                    state.task_sync.publish(TaskDetailSync {
-                        thread_id: "other-task".into(),
-                        revision,
-                        detail: loading_detail("other-task", revision, None),
+                state
+                    .task_sync
+                    .publish(TaskDetailPublication::Sync(Box::new(TaskDetailSync {
+                        thread_id: thread_id.into(),
+                        revision: detail.revision,
+                        detail,
                         reason: "app-server-notification",
                         error: None,
-                    });
+                    })));
+                // TaskSync's shared queue holds 64 snapshots.
+                for revision in 1..=128 {
+                    state
+                        .task_sync
+                        .publish(TaskDetailPublication::Sync(Box::new(TaskDetailSync {
+                            thread_id: "other-task".into(),
+                            revision,
+                            detail: loading_detail("other-task", revision, None),
+                            reason: "app-server-notification",
+                            error: None,
+                        })));
                 }
             }
         }
@@ -3941,18 +4058,42 @@ mod continuity_tests {
         assert!(matches!(follow_up, Some(DetailLiveEvent::Event(event))
             if event.event.id == format!("{thread_id}:turn-3:answer")));
         let (detail, _) = state.detail.cached(thread_id).await.unwrap();
-        state.task_sync.publish(TaskDetailSync {
-            thread_id: thread_id.into(),
-            revision: detail.revision,
-            detail,
-            reason: "app-server-notification",
-            error: None,
-        });
+        state
+            .task_sync
+            .publish(TaskDetailPublication::Sync(Box::new(TaskDetailSync {
+                thread_id: thread_id.into(),
+                revision: detail.revision,
+                detail,
+                reason: "app-server-notification",
+                error: None,
+            })));
         let normal_sync = tokio::time::timeout(Duration::from_secs(1), slow.next())
             .await
             .unwrap();
         assert!(matches!(normal_sync, Some(DetailLiveEvent::Sync(sync))
             if sync.reason == "app-server-notification"));
+
+        // A change beside the conversation reaches the viewer as the Task
+        // state alone, and only for its own Task.
+        let (detail, _) = state.detail.cached(thread_id).await.unwrap();
+        let revision = detail.revision;
+        let mut other = loading_detail("other-task", revision, None);
+        other.task = detail.task.clone();
+        state
+            .task_sync
+            .publish(TaskDetailPublication::State(Box::new(TaskDetailState::of(
+                other,
+            ))));
+        let publication = TaskDetailPublication::State(Box::new(TaskDetailState::of(detail)));
+        assert_eq!(publication.thread_id(), thread_id);
+        assert_eq!(publication.revision(), revision);
+        assert!(publication.task().is_some());
+        state.task_sync.publish(publication);
+        let state_update = tokio::time::timeout(Duration::from_secs(1), slow.next())
+            .await
+            .unwrap();
+        assert!(matches!(state_update, Some(DetailLiveEvent::State(update))
+            if update.thread_id == thread_id && update.task.is_some()));
         assert_no_history_reread(&client).await;
     }
 

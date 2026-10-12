@@ -8,8 +8,10 @@ import { TASK_TRANSPORT_STATE } from "../runtime-state.js";
 // through the gateway's open check or the owner's open limit, preparing through
 // the owner's readiness limit, reconciling through the request time limit,
 // waiting-for-gateway through the gateway's retry budget, and backing-off
-// through its timer. Ready, unavailable, suspended, and inactive wait for the
-// owner or the gateway, and gone waits for the owner.
+// through its timer. An unavailable stream that spent its own retry budget
+// tries again after each automatic retry delay while visible. Ready,
+// suspended, inactive, and a stream the gateway gave up on wait for the owner
+// or the gateway, and gone waits for the owner.
 
 export const TASK_STREAM_NODE = Object.freeze({
   // No context is chosen.
@@ -60,7 +62,7 @@ export const TASK_STREAM_EVENT = Object.freeze({
   RECONCILE_FAILED: "reconcile-failed",
   // The owner's open limit for the current subscription ran out.
   OPEN_TIMED_OUT: "open-timed-out",
-  // The backoff delay ended.
+  // A backoff or automatic retry delay ended.
   RETRY_DUE: "retry-due",
   // The subject is archived or no longer exists, as the gateway's refusal of
   // the channel or the owner's other requests about it say.
@@ -163,6 +165,7 @@ export const TASK_STREAM_EDGES = Object.freeze({
     [EVENT.ACTIVATE]: [NODE.SUBSCRIBING, NODE.SUSPENDED],
     [EVENT.RETRY]: [NODE.SUBSCRIBING, NODE.SUSPENDED],
     [EVENT.RECOVER]: [NODE.SUBSCRIBING],
+    [EVENT.RETRY_DUE]: [NODE.SUBSCRIBING],
     [EVENT.CHANNEL_OPENED]: [NODE.PREPARING, NODE.RECONCILING],
     [EVENT.SUSPEND]: [NODE.SUSPENDED],
     [EVENT.SUBJECT_GONE]: [NODE.GONE],

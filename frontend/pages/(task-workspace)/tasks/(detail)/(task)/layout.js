@@ -116,6 +116,7 @@ class CaffoldTaskDetail extends HTMLElement {
         return this.liveUpdates.subscribeTaskDetail(threadId, listener);
       },
       onTaskSync: (message) => this.applyTaskStreamSync(message),
+      onTaskState: (message) => this.applyTaskStreamState(message),
       onTaskEvent: (message) => this.applyTaskStreamEvent(message),
       onFallbackDetail: (detail, context) =>
         this.applyTaskFallbackDetail(detail, context),
@@ -709,6 +710,41 @@ class CaffoldTaskDetail extends HTMLElement {
     if (!applied) {
       return false;
     }
+    return true;
+  }
+
+  // A change beside the conversation: the Task's status, title, settings, or
+  // context. The conversation is left as it is; its items arrive as events.
+  applyTaskStreamState(message) {
+    const threadId = `${message?.threadId ?? ""}`;
+    if (
+      threadId !== this.selectedThreadId ||
+      taskDetailThreadId(this.taskDetail) !== threadId ||
+      !message.task ||
+      !this.acceptTaskDetailRevision(threadId, message.revision)
+    ) {
+      return false;
+    }
+    const currentTask = this.taskDetail.task;
+    const task = currentTask && sameStructuredValue(currentTask, message.task)
+      ? currentTask
+      : message.task;
+    if (!isTaskActivelyWorking(task) || !task?.activeTurn?.id) {
+      this.interruptStateValue = { loading: false, error: null };
+    }
+    this.taskDetail = {
+      ...this.taskDetail,
+      revision: message.revision,
+      task,
+      provider: message.provider,
+      permissionMode: message.permissionMode,
+      model: message.model,
+      reasoningEffort: message.reasoningEffort,
+      fastMode: message.fastMode,
+      context: message.context,
+    };
+    this.render();
+    this.markDisplayedTaskSeen(threadId, task);
     return true;
   }
 

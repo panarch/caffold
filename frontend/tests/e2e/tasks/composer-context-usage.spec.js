@@ -173,13 +173,18 @@ test("takes a new count while its numbers are open", { tag: "@viewport-independe
   await expect(popover).toBeVisible();
 
   await page.evaluate((next) => {
-    window.__caffoldTaskSse.source(next.threadId).emit("task-sync", {
-      threadId: next.threadId,
-      revision: next.revision,
-      detail: next,
-      reason: "app-server-notification",
-    });
-  }, { ...detail, revision: detail.revision + 1, context: { usedTokens: 50_000, windowTokens: 200_000 } });
+    window.__caffoldTaskSse.source(next.threadId).emit("task-state", next);
+  }, {
+    threadId: detail.threadId,
+    revision: detail.revision + 1,
+    task: detail.task,
+    provider: detail.provider,
+    permissionMode: detail.permissionMode ?? null,
+    model: detail.model ?? null,
+    reasoningEffort: detail.reasoningEffort ?? null,
+    fastMode: Boolean(detail.fastMode),
+    context: { usedTokens: 50_000, windowTokens: 200_000 },
+  });
 
   await expect(pie).toHaveAccessibleName("Context usage: 25%");
   await expect(popover.locator("dd").first()).toHaveText("50,000 tokens (25%)");

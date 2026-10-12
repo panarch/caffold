@@ -18,6 +18,14 @@ const DEFAULT_CONNECTION_TIMEOUT_MS = 8_000;
 const DEFAULT_RECONNECT_TIMEOUT_MS = 8_000;
 const DEFAULT_CHANNEL_OPEN_TIMEOUT_MS = 8_000;
 const DEFAULT_RETRY_DELAYS_MS = Object.freeze([250, 1_000, 3_000]);
+// Once the bounded retry is spent, attempts go on at these delays; the last
+// one repeats.
+const DEFAULT_AUTOMATIC_RETRY_DELAYS_MS = Object.freeze([
+  5_000,
+  10_000,
+  20_000,
+  30_000,
+]);
 const LIVE_CHANNELS = Object.freeze([
   "task-list",
   "task-detail",
@@ -43,6 +51,9 @@ export class WorkspaceLiveUpdates {
     this.retryDelaysMs = [
       ...(options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS),
     ];
+    this.automaticRetryDelaysMs = [
+      ...(options.automaticRetryDelaysMs ?? DEFAULT_AUTOMATIC_RETRY_DELAYS_MS),
+    ];
     this.node = LIVE_CONNECTION_NODE.DETACHED;
     this.source = null;
     this.sourceGeneration = 0;
@@ -51,6 +62,7 @@ export class WorkspaceLiveUpdates {
     this.reconnectTimer = null;
     this.retryTimer = null;
     this.retryAttempt = 0;
+    this.automaticRetryAttempt = 0;
     // Set when a connection stopped delivering: the next greeting does not show
     // channels open again, so the attempt ends only when one does.
     this.deliveryPending = false;
@@ -102,6 +114,7 @@ export class WorkspaceLiveUpdates {
     ) {
       return false;
     }
+    this.clearRetryTimer();
     this.retryAttempt = 0;
     this.deliveryPending = false;
     return this.dispatchConnection(LIVE_CONNECTION_EVENT.RETRY);
@@ -123,6 +136,7 @@ export class WorkspaceLiveUpdates {
       return false;
     }
     this.retryAttempt = 0;
+    this.automaticRetryAttempt = 0;
     this.deliveryPending = false;
     const resumed = this.dispatchConnection(LIVE_CONNECTION_EVENT.RESUME);
     if (resumed) {
@@ -396,6 +410,7 @@ export class WorkspaceLiveUpdates {
       this.clearRetryTimer();
       if (!this.deliveryPending) {
         this.retryAttempt = 0;
+        this.automaticRetryAttempt = 0;
       }
       return;
     }
@@ -425,6 +440,10 @@ export class WorkspaceLiveUpdates {
         );
       }
       this.closeConnection();
+      return;
+    }
+    if (effect === LIVE_CONNECTION_EFFECT.WAIT_TO_RETRY) {
+      this.waitToRetry();
     }
   }
 
@@ -533,6 +552,7 @@ export class WorkspaceLiveUpdates {
       if (this.deliveryPending) {
         this.deliveryPending = false;
         this.retryAttempt = 0;
+        this.automaticRetryAttempt = 0;
       }
       binding.listener.onOpen?.();
       return;
@@ -622,6 +642,21 @@ export class WorkspaceLiveUpdates {
     this.retryTimer = this.windowTarget.setTimeout(() => {
       this.retryTimer = null;
       this.dispatchConnection(LIVE_CONNECTION_EVENT.REPLACE);
+    }, Math.max(0, delayMs));
+  }
+
+  // Each automatic retry waits longer than the last, up to the final delay.
+  waitToRetry() {
+    const delays = this.automaticRetryDelaysMs;
+    const delayMs =
+      delays[Math.min(this.automaticRetryAttempt, delays.length - 1)];
+    if (!Number.isFinite(delayMs)) {
+      return;
+    }
+    this.automaticRetryAttempt += 1;
+    this.retryTimer = this.windowTarget.setTimeout(() => {
+      this.retryTimer = null;
+      this.dispatchConnection(LIVE_CONNECTION_EVENT.RETRY_DUE);
     }, Math.max(0, delayMs));
   }
 
