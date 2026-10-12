@@ -28,10 +28,13 @@ export const FOREGROUND_RECOVERY_NODE = Object.freeze({
   // A bounded retry delay is running while the page remains usable and visible.
   BACKING_OFF: "backing-off",
 
-  // Connectivity is known unavailable, so HTTP, SSE, and retry work are paused.
+  // Connectivity looks unavailable, so HTTP and SSE work are paused until a
+  // browser signal, a reachable origin, or, while the browser still reports a
+  // network, the next automatic retry.
   OFFLINE: "offline",
 
-  // The bounded retry budget is spent; explicit global Retry remains available.
+  // The bounded retry budget is spent. The next automatic retry, or the global
+  // Retry at once, starts a new attempt.
   EXHAUSTED: "exhausted",
 });
 
@@ -227,6 +230,9 @@ export const FOREGROUND_RECOVERY_TRIGGER = Object.freeze({
 
   // The user invoked the one global recovery Retry action.
   MANUAL_RETRY: "manual-retry",
+
+  // Recovery that spent its retries or paused offline tried again on its own.
+  AUTOMATIC_RETRY: "automatic-retry",
 });
 
 // Intent selects workspace work without adding another control-graph dimension.

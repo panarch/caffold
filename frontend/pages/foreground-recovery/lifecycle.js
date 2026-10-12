@@ -20,6 +20,21 @@ export const NOTIFICATION_ACTIVATION_MESSAGE =
   "caffold:notification-activation";
 
 const DEFAULT_RETRY_DELAYS_MS = Object.freeze([250, 1_000, 3_000]);
+// Delays between automatic recovery attempts while the page is visible; the
+// last one repeats.
+const DEFAULT_AUTOMATIC_RETRY_DELAYS_MS = Object.freeze([
+  5_000,
+  10_000,
+  20_000,
+  30_000,
+]);
+
+// A settled attempt or a new visit starts the automatic delays over.
+const AUTOMATIC_RETRY_RESET_EVENTS = new Set([
+  FOREGROUND_RECOVERY_EVENT.ATTEMPT_SETTLED,
+  FOREGROUND_RECOVERY_EVENT.SUSPENDED,
+  FOREGROUND_RECOVERY_EVENT.DISCONNECTED,
+]);
 
 // Runtime effects consume the private machine contract and cannot bypass its reducer.
 const triggerByBrowserSignal = Object.freeze({
@@ -47,6 +62,7 @@ export class ForegroundRecoveryRuntime {
     onStateChange = () => {},
     onSuspend = () => {},
     retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
+    automaticRetryDelaysMs = DEFAULT_AUTOMATIC_RETRY_DELAYS_MS,
     serviceWorkerTarget = navigatorTarget.serviceWorker,
     windowTarget = window,
   } = {}) {
@@ -54,10 +70,13 @@ export class ForegroundRecoveryRuntime {
     this.onStateChange = onStateChange;
     this.onSuspend = onSuspend;
     this.retryDelaysMs = [...retryDelaysMs];
+    this.automaticRetryDelaysMs = [...automaticRetryDelaysMs];
     this.windowTarget = windowTarget;
     this.runtime = {
       inFlight: null,
       retryTimer: null,
+      automaticRetryTimer: null,
+      automaticRetryAttempt: 0,
     };
     this.browserSignals = new ForegroundRecoveryBrowserSignals({
       documentTarget,
@@ -430,7 +449,51 @@ export class ForegroundRecoveryRuntime {
       return false;
     }
     this.state = next;
+    if (AUTOMATIC_RETRY_RESET_EVENTS.has(event.type)) {
+      this.runtime.automaticRetryAttempt = 0;
+    }
+    this.syncAutomaticRetry();
     this.onStateChange(this.snapshot());
     return true;
+  }
+
+  // While visible, recovery that spent its retries tries again on its own,
+  // each time after a longer delay up to the last one. So does an offline pause
+  // while the browser still reports a network, since no browser signal will end
+  // it; a browser that reports itself offline announces its return.
+  syncAutomaticRetry() {
+    const { node, observation } = this.state;
+    const waiting =
+      observation.visibility === "visible" &&
+      (node.type === FOREGROUND_RECOVERY_NODE.EXHAUSTED ||
+        (node.type === FOREGROUND_RECOVERY_NODE.OFFLINE &&
+          !isDefinitelyOfflineObservation(observation)));
+    if (!waiting) {
+      this.clearAutomaticRetryTimer();
+      return;
+    }
+    if (this.runtime.automaticRetryTimer !== null) {
+      return;
+    }
+    const delays = this.automaticRetryDelaysMs;
+    const delayMs =
+      delays[Math.min(this.runtime.automaticRetryAttempt, delays.length - 1)];
+    if (!Number.isFinite(delayMs)) {
+      return;
+    }
+    this.runtime.automaticRetryAttempt += 1;
+    this.runtime.automaticRetryTimer = this.windowTarget.setTimeout(() => {
+      this.runtime.automaticRetryTimer = null;
+      void this.requestForegroundRecovery({
+        trigger: FOREGROUND_RECOVERY_TRIGGER.AUTOMATIC_RETRY,
+      });
+    }, Math.max(0, delayMs));
+  }
+
+  clearAutomaticRetryTimer() {
+    if (this.runtime.automaticRetryTimer !== null) {
+      this.windowTarget.clearTimeout(this.runtime.automaticRetryTimer);
+      this.runtime.automaticRetryTimer = null;
+    }
   }
 }

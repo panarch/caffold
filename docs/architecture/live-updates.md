@@ -90,6 +90,14 @@ connection remains open. Browser reconnection does not by itself invalidate
 the provider conversation cache; its retention and membership rules belong to
 [Agent Runtimes](agent-runtimes.md#backend-reconciliation).
 
+A change beside the conversation, to the Task's status, activity, title,
+composer settings, or context usage, reaches viewers as `task-state`: the
+session revision, the Task record, its composer settings, and its context
+usage, without events. The conversation's start, a turn's start or end, and
+every reread of canonical history reach them as a full `task-sync`, and
+conversation items as `task-event` deltas. Task List takes its row from
+either publication.
+
 If either Detail broadcast receiver lags, the producer installs fresh receivers
 before capturing a cached snapshot and emits `task-sync` with reason
 `stream-recovery`. The same viewer lease and logical channel continue, and new
@@ -168,9 +176,9 @@ the subscription and invalidates pending reads.
 owner. Its private lifecycle graph owns physical connection attachment,
 visibility suspension, native reconnection grace, silent-connection
 replacement, replacement of a connection that stopped delivering, bounded
-replacement, and exhaustion. The Task Workspace injects
-this capability into Task List, Task Detail, Integrated Review, and Git; no
-global store or browser-wide worker owns the connection.
+replacement, and automatic retries once that is spent. The Task Workspace
+injects this capability into Task List, Task Detail, Integrated Review, and
+Git; no global store or browser-wide worker owns the connection.
 
 A browser `error` on the physical connection waits eight seconds for the
 browser's own reconnection unless the source is already closed, then replaces
@@ -178,11 +186,14 @@ it. A connection that sends no `gateway-ready` within its eight-second limit is
 silent instead: the browser is not reconnecting it, so it is closed and a fresh
 one opens at once. If that one is silent too, the attempt ends and the next
 attempt follows the bounded retry delays. Each attempt allows two silent
-connections, so the bounded retry gives up after the same number of attempts
-whether connections fail or stay silent. Logical consumers hear of the trouble
-once per attempt, when its first connection fails or goes silent. The owner
-also reports each physical connection's opening, first answer, and end; the
-Task Workspace raises those reports for the App Shell's foreground recovery
+connections, so the bounded retry is spent after the same number of attempts
+whether connections fail or stay silent. The connection is then unavailable,
+and while the page is visible a fresh attempt follows after 5, 10, 20, and then
+every 30 seconds until one connects; Retry starts one at once, and a connection
+that delivers again starts those delays over. Logical consumers hear of the
+trouble once per attempt, when its first connection fails or goes silent. The
+owner also reports each physical connection's opening, first answer, and end;
+the Task Workspace raises those reports for the App Shell's foreground recovery
 diagnostics ([Frontend](frontend.md)).
 
 A subscription snapshot that gets no answer within eight seconds fails its
@@ -194,7 +205,8 @@ still succeed. That connection is closed and replaced through the bounded
 retry delays, and logical consumers hear of the trouble. A replacement's
 greeting does not show that channels open again, so that attempt ends only
 when one does; a server that greets every connection but never opens a channel
-uses up the retries and leaves the connection unavailable.
+spends the bounded retry and leaves the connection unavailable between
+automatic retries.
 
 Task List and Task Detail keep their domain lifecycles. Shared `tasks/stream.js`
 adapts those lifecycles to logical gateway subscriptions through a control graph

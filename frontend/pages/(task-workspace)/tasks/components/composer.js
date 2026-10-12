@@ -340,11 +340,11 @@ class CaffoldTaskComposer extends HTMLElement {
     return true;
   }
 
-  // Whether the prompt field takes no text now: the Task cannot be reached,
-  // voice input is filling it, or a new Task is being created from it.
+  // Whether the prompt field takes no text now: voice input is filling it, or
+  // a new Task is being created from it. A Task that cannot be reached still
+  // takes text; only sending waits for it.
   promptFieldLocked() {
     return (
-      this.context.disabled ||
       ["requesting", "recording", "transcribing"].includes(this.voice.phase) ||
       (Boolean(this.activeSubmissionFor()) && this.context.mode === "create")
     );

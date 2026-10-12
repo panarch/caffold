@@ -404,7 +404,7 @@ test("one workspace creates one physical connection", () => {
   second.liveUpdates.disconnect();
 });
 
-test("bounds physical replacements and waits for an explicit retry", async () => {
+test("bounds quick replacements, then goes on retrying at longer delays", async () => {
   const browser = harness();
   browser.liveUpdates.retryDelaysMs = [0];
   browser.liveUpdates.reconnectTimeoutMs = 0;
@@ -422,7 +422,6 @@ test("bounds physical replacements and waits for an explicit retry", async () =>
   browser.sources[1].emit("error");
   runNextTimer(browser.windowTarget);
   assert.equal(browser.liveUpdates.node, "unavailable");
-  assert.equal(browser.windowTarget.timers.size, 0);
   assert.deepEqual(errors.at(-1), {
     closed: true,
     exhausted: true,
@@ -432,11 +431,76 @@ test("bounds physical replacements and waits for an explicit retry", async () =>
   const extraBinding = browser.liveUpdates.subscribeWatch("repo", {});
   await settle();
   assert.equal(browser.sources.length, 2);
+
+  // Each automatic attempt that fails waits longer before the next.
+  const delays = [];
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    delays.push(runNextTimer(browser.windowTarget).delay);
+    assert.equal(browser.liveUpdates.node, "connecting");
+    browser.sources.at(-1).emit("error");
+    runNextTimer(browser.windowTarget);
+    assert.equal(browser.liveUpdates.node, "unavailable");
+  }
+  assert.deepEqual(delays, [5_000, 10_000, 20_000, 30_000, 30_000]);
+  assert.equal(browser.sources.length, 7);
+
+  // An explicit retry starts at once and drops the pending automatic one.
   assert.equal(browser.liveUpdates.retry(), true);
-  assert.equal(browser.sources.length, 3);
+  assert.equal(browser.sources.length, 8);
+  assert.equal(browser.windowTarget.timers.size, 1, "only the new connection's limit");
+  browser.sources[7].emit("gateway-ready", { connectionId: "connection-h" });
+  await settle();
+  assert.equal(browser.liveUpdates.node, "connected");
+  assert.equal(browser.liveUpdates.automaticRetryAttempt, 0);
 
   extraBinding.close();
   binding.close();
+  browser.liveUpdates.disconnect();
+});
+
+test("an automatic retry that connects revives the channels it kept", async () => {
+  const browser = harness();
+  browser.liveUpdates.retryDelaysMs = [];
+  browser.liveUpdates.reconnectTimeoutMs = 0;
+  const opened = [];
+  const binding = browser.liveUpdates.subscribeTaskList({
+    onOpen: () => opened.push("task-list"),
+  });
+  browser.liveUpdates.connect();
+
+  browser.sources[0].emit("error");
+  runNextTimer(browser.windowTarget);
+  assert.equal(browser.liveUpdates.node, "unavailable");
+
+  runNextTimer(browser.windowTarget);
+  browser.sources[1].emit("gateway-ready", { connectionId: "connection-b" });
+  await settle();
+  assert.equal(browser.publications.at(-1).connectionId, "connection-b");
+  browser.sources[1].emit("live-update", {
+    channel: "task-list",
+    generation: binding.generation,
+    type: "channel-open",
+  });
+  assert.deepEqual(opened, ["task-list"]);
+
+  binding.close();
+  browser.liveUpdates.disconnect();
+});
+
+test("hiding the page drops a pending automatic retry", () => {
+  const browser = harness();
+  browser.liveUpdates.retryDelaysMs = [];
+  browser.liveUpdates.reconnectTimeoutMs = 0;
+  browser.liveUpdates.connect();
+
+  browser.sources[0].emit("error");
+  runNextTimer(browser.windowTarget);
+  assert.equal(browser.liveUpdates.node, "unavailable");
+  assert.equal(browser.windowTarget.timers.size, 1);
+
+  browser.documentTarget.setVisibility("hidden");
+  assert.equal(browser.liveUpdates.node, "suspended");
+  assert.equal(browser.windowTarget.timers.size, 0);
   browser.liveUpdates.disconnect();
 });
 
@@ -594,7 +658,11 @@ test("a second silent connection ends the attempt and retry gives up after as ma
   runNextTimer(browser.windowTarget);
   assert.equal(browser.sources.length, 4);
   assert.equal(browser.liveUpdates.node, "unavailable");
-  assert.equal(browser.windowTarget.timers.size, 0);
+  assert.deepEqual(
+    [...browser.windowTarget.timers.values()].map(({ delay }) => delay),
+    [5_000],
+    "only the first automatic retry waits",
+  );
   assert.deepEqual(errors.at(-1), {
     closed: true,
     exhausted: true,

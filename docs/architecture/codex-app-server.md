@@ -174,8 +174,8 @@ runtime shutdown lifecycle to `caffold/src/app.rs`.
   Codex's bindings stay in the agent layer; the route receives only the Task
   runtime operation needed to execute a verified call.
 - `sync.rs` owns the revisioned Task Detail publication channel that REST
-  bootstrap, notification snapshots, and live viewers share. It does not read
-  Codex threads or construct browser details.
+  bootstrap, notification snapshots, Task state updates, and live viewers
+  share. It does not read Codex threads or construct browser details.
 - `detail.rs` owns canonical detail assembly, session/viewer lifecycle,
   history pages, and typed Detail events. Source errors produce unavailable
   detail rather than a Redb fallback.
@@ -539,9 +539,11 @@ the original flag array remains unchanged. Turn completion, failure, and
 interruption are rendered inside that conversation turn rather than replacing
 the thread badge. Item changes and diff reports advance the in-memory session
 revision and may enter the common projection as `task-event` deltas without
-materializing a full Task Detail snapshot. Canonical Thread or Turn changes may
-instead publish a `task-sync` snapshot. Their ordering and membership semantics
-belong to the
+materializing a full Task Detail snapshot. Thread status, activity, title,
+settings, and context changes publish a `task-state` without events, while the
+conversation's start and Turn changes publish a full `task-sync` snapshot
+([Live Updates](live-updates.md#task-channels)). Their ordering and
+membership semantics belong to the
 [common conversation projection](agent-runtimes.md#conversation-and-event-ownership).
 Task lifecycle changes also arrive through canonical REST responses and the
 Task List channel's revisioned row syncs.

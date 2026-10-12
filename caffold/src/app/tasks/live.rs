@@ -244,7 +244,7 @@ impl TaskListEvents {
 struct TaskListLiveSource {
     runtime: TaskRuntime,
     sessions: super::sessions::TaskSessions,
-    sync: TaskSync<super::TaskDetailSync>,
+    sync: TaskSync<super::TaskDetailPublication>,
     events: TaskListEvents,
     store: TaskStore,
     claude: ClaudeClient,
@@ -286,7 +286,7 @@ impl TaskListLiveSource {
 }
 
 struct TaskListEventReceivers {
-    sync: broadcast::Receiver<super::TaskDetailSync>,
+    sync: broadcast::Receiver<super::TaskDetailPublication>,
     removals: broadcast::Receiver<TaskListRemoval>,
     updates: broadcast::Receiver<TaskListUpdate>,
     shutdown: broadcast::Receiver<()>,
@@ -313,18 +313,22 @@ pub(in crate::app) struct TaskListSync {
 }
 
 impl TaskListSync {
-    /// A Task Detail publication as the Active list reads it.
-    async fn of(store: &TaskStore, sync: super::TaskDetailSync) -> Result<Self, ApiError> {
-        let task = match sync.detail.task {
+    /// A Task Detail publication, whole or state alone, as the Active list
+    /// reads it.
+    async fn of(
+        store: &TaskStore,
+        publication: super::TaskDetailPublication,
+    ) -> Result<Self, ApiError> {
+        let task = match publication.task() {
             Some(task) => Some(ActiveTask::of(
-                &task,
+                task,
                 runs_in_managed_worktree(store, &task.thread_id).await?,
             )),
             None => None,
         };
         Ok(Self {
-            thread_id: sync.thread_id,
-            revision: sync.revision,
+            thread_id: publication.thread_id().to_string(),
+            revision: publication.revision(),
             task,
         })
     }
@@ -383,7 +387,7 @@ mod tests {
     use crate::{
         agent::{Conversation, codex::CodexThreadClient},
         app::tasks::{
-            TaskDetailSync,
+            TaskDetailPublication, TaskDetailSync,
             detail::loading_detail,
             lifecycle::ActiveTaskSectionIdentity,
             projection::{resolve_conversation_cwd, task_record_from_conversation},
@@ -675,13 +679,13 @@ mod tests {
 
         let sync = TaskListSync::of(
             &store,
-            TaskDetailSync {
+            TaskDetailPublication::Sync(Box::new(TaskDetailSync {
                 thread_id: thread_id.to_string(),
                 revision: 3,
                 detail,
                 reason: "app-server-notification",
                 error: None,
-            },
+            })),
         )
         .await
         .unwrap();
@@ -789,13 +793,13 @@ mod tests {
 
         let sync = TaskListSync::of(
             &TaskStore::memory().unwrap(),
-            TaskDetailSync {
+            TaskDetailPublication::Sync(Box::new(TaskDetailSync {
                 thread_id: thread_id.to_string(),
                 revision: 2,
                 detail: loading_detail(thread_id, 2, None),
                 reason: "app-server-notification",
                 error: None,
-            },
+            })),
         )
         .await
         .unwrap();

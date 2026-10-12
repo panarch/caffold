@@ -216,6 +216,39 @@ test("waits for a readable bootstrap and buffers connection-local events", async
   session.deactivate();
 });
 
+test("keeps the newest Task state until the conversation is readable, then applies each as it comes", async () => {
+  const browser = installBrowserHarness();
+  const states = [];
+  const session = new TaskDetailSession({
+    subscribe: browser.subscribe,
+    onTaskState: (message) => states.push(message.revision),
+  });
+  const state = (revision) => ({
+    threadId: "thread-a",
+    revision,
+    task: { id: "thread-a", threadId: "thread-a" },
+  });
+
+  const acquisition = session.open("thread-a");
+  const source = browser.sources[0];
+  source.emitOpen();
+  await Promise.resolve();
+  source.emit("task-sync", syncMessage("thread-a", 1, { readable: false }));
+  source.emit("task-state", state(3));
+  source.emit("task-state", state(2));
+  assert.deepEqual(states, [], "nothing applies before the conversation is readable");
+
+  source.emit("task-sync", syncMessage("thread-a", 2, { reason: "session-bootstrap" }));
+  await acquisition;
+  assert.deepEqual(states, [3], "only the newest waiting state follows the readable sync");
+
+  source.emit("task-state", state(4));
+  assert.deepEqual(states, [3, 4]);
+  source.emit("task-state", { ...state(5), threadId: "thread-b" });
+  assert.deepEqual(states, [3, 4], "another Task's state is not this conversation's");
+  session.deactivate();
+});
+
 test("applies one valid bootstrap per connection and rejects duplicates", async () => {
   const browser = installBrowserHarness();
   const syncs = [];

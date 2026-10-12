@@ -976,7 +976,13 @@ test("fresh origin reachability recovers a foreground offline pause without an o
   });
   const readsBeforeOffline = reads();
   await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
-  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "onLine", {
+      configurable: true,
+      get: () => false,
+    });
+    window.dispatchEvent(new Event("offline"));
+  });
 
   const notice = appShell.locator(".app-foreground-recovery");
   await expect(notice).toBeVisible();
@@ -1006,6 +1012,10 @@ test("fresh origin reachability recovers a foreground offline pause without an o
 
   recovered = true;
   await page.evaluate(async () => {
+    Object.defineProperty(navigator, "onLine", {
+      configurable: true,
+      get: () => true,
+    });
     const { getHealth } = await import("/assets/api.js");
     await getHealth();
   });
