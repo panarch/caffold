@@ -309,3 +309,45 @@ for (const themeMode of ["light", "dark"]) {
     });
   });
 }
+
+test("draws a status row's message level with its branch guide", { tag: ["@desktop", "@phone"] }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+  const offsets = await page.evaluate(async () => {
+    await import("/assets/components/file-tree.js");
+    const directory = (name, children) => ({
+      key: `directory:${name}`,
+      kind: "directory",
+      name,
+      expandedByDefault: true,
+      children,
+    });
+    const tree = document.createElement("caffold-file-tree");
+    document.body.replaceChildren(tree);
+    tree.setModel({
+      entityKey: "status-rows",
+      nodes: [
+        directory("loading", { status: "loading", message: "Loading..." }),
+        directory("unreadable", { status: "error", message: "Unable to load directory." }),
+      ],
+    });
+    const rows = [...tree.querySelectorAll(".file-tree-status")];
+    await document.fonts.load(getComputedStyle(rows[0]).font);
+
+    return Object.fromEntries(rows.map((row) => {
+      const message = document.createRange();
+      message.selectNodeContents(row.lastChild);
+      const text = message.getBoundingClientRect();
+      const rect = row.getBoundingClientRect();
+      // The branch guide is drawn at the middle of the row.
+      return [row.dataset.fileTreeRowKey, text.top + text.height / 2 - (rect.top + rect.height / 2)];
+    }));
+  });
+
+  expect(offsets).toEqual({
+    "directory:loading:children-state": expect.any(Number),
+    "directory:unreadable:children-state": expect.any(Number),
+  });
+  expect(Object.entries(offsets).filter(([, offset]) => Math.abs(offset) > 1)).toEqual([]);
+});

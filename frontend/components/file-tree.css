@@ -235,9 +235,11 @@ caffold-file-tree {
 
   & .file-tree-status {
     position: relative;
+    display: flex;
     width: 100%;
     min-width: 0;
     min-height: var(--file-tree-row-height);
+    align-items: center;
     padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
       var(--file-tree-padding-y)
       calc(
