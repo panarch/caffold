@@ -310,7 +310,7 @@ for (const themeMode of ["light", "dark"]) {
   });
 }
 
-test("draws a status row's message level with its branch guide", { tag: ["@desktop", "@phone"] }, async ({
+test("places a status row's message on its branch guide below its folder's name", { tag: ["@desktop", "@phone"] }, async ({
   page,
 }) => {
   await page.goto("/settings/files");
@@ -330,24 +330,35 @@ test("draws a status row's message level with its branch guide", { tag: ["@deskt
       nodes: [
         directory("loading", { status: "loading", message: "Loading..." }),
         directory("unreadable", { status: "error", message: "Unable to load directory." }),
+        { key: "status:top", kind: "status", name: "No matching folders." },
       ],
     });
     const rows = [...tree.querySelectorAll(".file-tree-status")];
     await document.fonts.load(getComputedStyle(rows[0]).font);
+    const nameLeft = (key) =>
+      tree.querySelector(`[data-file-tree-key="${key}"] .file-tree-name`).getBoundingClientRect().left;
 
     return Object.fromEntries(rows.map((row) => {
       const message = document.createRange();
       message.selectNodeContents(row.lastChild);
       const text = message.getBoundingClientRect();
       const rect = row.getBoundingClientRect();
-      // The branch guide is drawn at the middle of the row.
-      return [row.dataset.fileTreeRowKey, text.top + text.height / 2 - (rect.top + rect.height / 2)];
+      return [row.dataset.fileTreeRowKey, {
+        // The branch guide is drawn at the middle of the row.
+        guide: text.top + text.height / 2 - (rect.top + rect.height / 2),
+        // A message under a folder starts below that folder's name; a
+        // top-level one keeps the top-level name column.
+        column: text.left - nameLeft(row.dataset.fileTreeParentKey ?? "directory:loading"),
+      }];
     }));
   });
 
-  expect(offsets).toEqual({
-    "directory:loading:children-state": expect.any(Number),
-    "directory:unreadable:children-state": expect.any(Number),
-  });
-  expect(Object.entries(offsets).filter(([, offset]) => Math.abs(offset) > 1)).toEqual([]);
+  expect(Object.keys(offsets).sort()).toEqual([
+    "directory:loading:children-state",
+    "directory:unreadable:children-state",
+    "status:top",
+  ]);
+  expect(Object.entries(offsets).filter(([, { guide, column }]) =>
+    Math.abs(guide) > 1 || Math.abs(column) > 1
+  )).toEqual([]);
 });

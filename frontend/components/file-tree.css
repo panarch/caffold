@@ -234,6 +234,7 @@ caffold-file-tree {
   }
 
   & .file-tree-status {
+    --file-tree-status-name-depth: var(--tree-depth, 0);
     position: relative;
     display: flex;
     width: 100%;
@@ -244,10 +245,17 @@ caffold-file-tree {
       var(--file-tree-padding-y)
       calc(
         0.1875rem + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) +
-          var(--file-tree-column-gap) + var(--tree-depth, 0) * var(--file-tree-indent)
+          var(--file-tree-column-gap) +
+          var(--file-tree-status-name-depth) * var(--file-tree-indent)
       );
     color: var(--muted);
     font-size: var(--file-tree-font-size);
+  }
+
+  /* A message under a folder starts below the folder's name, a short step
+     past its branch guide. */
+  & .file-tree-status[data-file-tree-parent-key] {
+    --file-tree-status-name-depth: calc(var(--tree-depth, 0) - 1);
   }
 
   & .file-tree-status.is-error {
