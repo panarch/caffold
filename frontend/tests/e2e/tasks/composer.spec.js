@@ -1027,6 +1027,38 @@ test("places attachment remove controls over thumbnail corners inside the attach
   }
 });
 
+test("keeps the attachment remove X legible on its circle in Light and Dark", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page);
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+  const form = page.locator('form[data-task-form="create"]');
+  const prompt = form.locator('textarea[name="prompt"]');
+  await pasteImage(prompt, "theme.png");
+  const remove = form.locator(".task-composer-attachment-remove");
+  await expect(remove).toHaveCount(1);
+
+  for (const themeMode of ["light", "dark"]) {
+    await page.evaluate(async (value) => {
+      const { setThemeMode } = await import("/assets/settings.js");
+      setThemeMode(value);
+    }, themeMode);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", themeMode);
+
+    await prompt.focus();
+    expect(
+      await remove.evaluate(iconContrastOnCircle),
+      `${themeMode} X at rest`,
+    ).toBeGreaterThanOrEqual(4.5);
+    await page.keyboard.press("Shift+Tab");
+    await expect(remove).toBeFocused();
+    expect(
+      await remove.evaluate(iconContrastOnCircle),
+      `${themeMode} X while focused`,
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 test("attaches files from the picker, the clipboard, and a drop onto the Composer", { tag: "@desktop" }, async ({
   page,
 }) => {
@@ -1171,6 +1203,25 @@ function attachmentRemoveGeometry(strip) {
         : stripBox.right,
     };
   });
+}
+
+function iconContrastOnCircle(remove) {
+  const luminance = (value) => {
+    const linear = value.match(/[\d.]+/g).slice(0, 3).map((channel) => {
+      const normalized = Number(channel) / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  };
+  const icon = remove.querySelector(".task-composer-attachment-remove-icon");
+  const iconLuminance = luminance(getComputedStyle(icon).color);
+  const circleLuminance = luminance(getComputedStyle(remove, "::before").backgroundColor);
+  return (
+    (Math.max(iconLuminance, circleLuminance) + 0.05) /
+    (Math.min(iconLuminance, circleLuminance) + 0.05)
+  );
 }
 
 function receivesTapOutsideThumbnail(remove) {

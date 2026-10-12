@@ -102,7 +102,7 @@ caffold-task-composer {
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--text-inverse);
+    color: var(--overlay-text);
     cursor: pointer;
   }
 
@@ -118,6 +118,7 @@ caffold-task-composer {
   & .task-composer-attachment-remove:hover,
   & .task-composer-attachment-remove:focus-visible {
     outline: none;
+    color: var(--text-inverse);
   }
 
   & .task-composer-attachment-remove:hover::before,
