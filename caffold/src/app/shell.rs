@@ -4,12 +4,14 @@ use axum::{
     Json, Router,
     body::Body,
     extract::{Path as AxumPath, State},
-    http::{HeaderName, HeaderValue, StatusCode, header},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
 };
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use sha2::{Digest, Sha256};
 
 use super::error::ApiError;
 use crate::{
@@ -165,18 +167,50 @@ fn render_service_worker(source: &[u8], build_id: &str) -> Result<String, ApiErr
     Ok(source.replacen(SERVICE_WORKER_CACHE_NAME_PLACEHOLDER, &cache_name, 1))
 }
 
-async fn asset(AxumPath(path): AxumPath<String>) -> Response {
-    match static_assets::get(&path) {
-        Some(asset) => {
-            let mut response = Response::new(Body::from(asset.body));
-            response.headers_mut().insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static(asset.content_type),
-            );
-            response
-        }
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
+async fn asset(AxumPath(path): AxumPath<String>, request: HeaderMap) -> Response {
+    let Some(asset) = static_assets::get(&path) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let tag = content_tag(asset.body);
+    let held = request
+        .get(header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|if_none_match| names_tag(if_none_match, &tag));
+    let mut response = if held {
+        StatusCode::NOT_MODIFIED.into_response()
+    } else {
+        let mut response = Response::new(Body::from(asset.body));
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static(asset.content_type),
+        );
+        response
+    };
+    let headers = response.headers_mut();
+    headers.insert(
+        header::ETAG,
+        HeaderValue::from_str(&format!("\"{tag}\""))
+            .expect("a base64url digest is a valid header value"),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    response
+}
+
+/// Name an asset by its contents, so a file a new build did not change keeps
+/// its tag and the browser revalidates it instead of downloading it again.
+fn content_tag(body: &[u8]) -> String {
+    URL_SAFE_NO_PAD.encode(Sha256::digest(body))
+}
+
+/// Whether an `If-None-Match` value holds this tag. The header compares tags
+/// weakly, so a `W/` prefix does not matter, and `*` holds every tag.
+fn names_tag(if_none_match: &str, tag: &str) -> bool {
+    if_none_match.trim() == "*"
+        || if_none_match
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .any(|held| held == tag)
 }
 
 async fn health(State(state): State<ShellState>) -> Json<HealthResponse> {
@@ -233,6 +267,9 @@ fn escape_html(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use axum::http::Request;
+    use tower::ServiceExt;
+
     use super::*;
 
     #[test]
@@ -283,5 +320,105 @@ mod tests {
         assert_eq!(health["status"], "ok");
         assert_eq!(health["version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(health["buildId"], env!("CAFFOLD_BUILD_ID"));
+    }
+
+    #[tokio::test]
+    async fn assets_are_tagged_by_their_contents_and_revalidated_before_use() {
+        let (_root, router) = shell_router();
+        let script = static_assets::get("app.js").unwrap();
+
+        let response = get_asset(&router, "app.js", None).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            script.content_type
+        );
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-cache");
+        let tag = response.headers()[header::ETAG]
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(
+            tag,
+            format!(
+                "\"{}\"",
+                URL_SAFE_NO_PAD.encode(Sha256::digest(script.body))
+            )
+        );
+        assert_eq!(body(response).await, script.body);
+        let again = get_asset(&router, "app.js", None).await;
+        assert_eq!(again.headers()[header::ETAG], tag.as_str());
+        let font = get_asset(&router, "fonts/GeistSans-Variable.woff2", None).await;
+        assert_ne!(font.headers()[header::ETAG], tag.as_str());
+    }
+
+    #[tokio::test]
+    async fn an_asset_the_browser_already_holds_is_answered_without_its_body() {
+        let (_root, router) = shell_router();
+        let tag = get_asset(&router, "app.js", None).await.headers()[header::ETAG]
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        for held in [
+            tag.clone(),
+            format!("W/{tag}"),
+            format!("\"elsewhere,1\", {tag}"),
+            "*".to_string(),
+        ] {
+            let response = get_asset(&router, "app.js", Some(&held)).await;
+            assert_eq!(response.status(), StatusCode::NOT_MODIFIED, "{held}");
+            assert_eq!(response.headers()[header::ETAG], tag.as_str());
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-cache");
+            assert!(body(response).await.is_empty());
+        }
+
+        let changed = get_asset(&router, "app.js", Some("\"an-older-build\"")).await;
+        assert_eq!(changed.status(), StatusCode::OK);
+        assert_eq!(
+            body(changed).await,
+            static_assets::get("app.js").unwrap().body
+        );
+    }
+
+    #[tokio::test]
+    async fn a_missing_asset_is_not_tagged() {
+        let (_root, router) = shell_router();
+
+        let response = get_asset(&router, "missing.js", Some("*")).await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert!(response.headers().get(header::ETAG).is_none());
+    }
+
+    fn shell_router() -> (tempfile::TempDir, Router) {
+        let root = tempfile::tempdir().unwrap();
+        let router = router(
+            Arc::new(RootedFs::new(root.path().to_path_buf()).unwrap()),
+            Arc::new(ServerSettingsStore::memory()),
+            String::new(),
+            None,
+        );
+        (root, router)
+    }
+
+    async fn get_asset(router: &Router, path: &str, if_none_match: Option<&str>) -> Response {
+        let mut request = Request::builder().uri(format!("/assets/{path}"));
+        if let Some(held) = if_none_match {
+            request = request.header(header::IF_NONE_MATCH, held);
+        }
+        router
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
+    async fn body(response: Response) -> Vec<u8> {
+        axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .to_vec()
     }
 }
