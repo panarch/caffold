@@ -166,7 +166,7 @@ test("a current-plan read honors both its caller cancellation and its timeout", 
 
   const timedOut = getCurrentPlan("task", new AbortController().signal);
   assert.equal(timers.length, 1);
-  assert.equal(timers[0].delay, 8_000);
+  assert.equal(timers[0].delay, 30_000);
   timers[0].callback();
   await assert.rejects(timedOut, {
     code: "request_timeout",
@@ -184,8 +184,15 @@ test("a current-plan read honors both its caller cancellation and its timeout", 
   assert.deepEqual(cleared, [1, 2, 3]);
 });
 
-test("the Task list and Task-store readiness give up after eight seconds without an answer", async () => {
-  for (const read of [getTasks, getTaskStoreStatus]) {
+test("the Task list, Task-store readiness, and live subscriptions give up after thirty seconds without an answer", async () => {
+  const publish = () =>
+    updateLiveSubscriptions("connection", {
+      controlRevision: 1,
+      taskList: null,
+      taskDetail: null,
+      watches: [],
+    });
+  for (const read of [getTasks, getTaskStoreStatus, publish]) {
     const timers = [];
     const windowTarget = installBrowserHarness((_url, options) =>
       new Promise((_resolve, reject) => {
@@ -204,7 +211,7 @@ test("the Task list and Task-store readiness give up after eight seconds without
 
     const pending = read();
     assert.equal(timers.length, 1);
-    assert.equal(timers[0].delay, 8_000);
+    assert.equal(timers[0].delay, 30_000);
     timers[0].callback();
     await assert.rejects(pending, { code: "request_timeout", status: 0 });
   }

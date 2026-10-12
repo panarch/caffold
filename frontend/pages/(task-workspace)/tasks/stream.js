@@ -35,7 +35,6 @@ export class TaskStreamLifecycle {
     this.onConnectionInvalidated =
       options.onConnectionInvalidated ?? (() => {});
     this.onSubjectGone = options.onSubjectGone ?? (() => {});
-    this.connectionTimeoutMs = options.connectionTimeoutMs ?? null;
     this.retryDelaysMs = [
       ...(options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS),
     ];
@@ -56,7 +55,6 @@ export class TaskStreamLifecycle {
     this.reconciliation = null;
     this.reconcileToken = 0;
     this.prepareToken = 0;
-    this.openTimer = null;
     this.retryTimer = null;
     this.queue = [];
     this.dispatching = false;
@@ -166,6 +164,7 @@ export class TaskStreamLifecycle {
         this.resubscribe(event, next);
         return;
       case EVENT.SUSPEND:
+        this.release();
         this.stopWaiting();
         this.needsReconcile = true;
         this.skipReconcile = false;
@@ -184,7 +183,6 @@ export class TaskStreamLifecycle {
         return;
       case EVENT.CHANNEL_OPENED:
       case EVENT.PREPARED:
-        this.clearOpenTimer();
         this.hasConnected = true;
         this.enterOpened(next);
         return;
@@ -201,7 +199,6 @@ export class TaskStreamLifecycle {
         }
         return;
       case EVENT.CHANNEL_FAILED:
-      case EVENT.OPEN_TIMED_OUT:
       case EVENT.PREPARE_FAILED:
         this.fail(next);
         return;
@@ -317,7 +314,6 @@ export class TaskStreamLifecycle {
       return;
     }
     this.source = source;
-    this.startOpenTimer(generation);
   }
 
   enterOpened(next) {
@@ -467,29 +463,11 @@ export class TaskStreamLifecycle {
 
   // Stops timers and makes in-flight reconciliation and preparation stale.
   stopWaiting() {
-    this.clearOpenTimer();
     window.clearTimeout(this.retryTimer);
     this.retryTimer = null;
     this.reconcileToken += 1;
     this.prepareToken += 1;
     this.reconciliation = null;
-  }
-
-  startOpenTimer(generation) {
-    if (!Number.isFinite(this.connectionTimeoutMs)) {
-      return;
-    }
-    this.openTimer = window.setTimeout(() => {
-      this.openTimer = null;
-      if (this.generation === generation) {
-        this.dispatch({ type: EVENT.OPEN_TIMED_OUT });
-      }
-    }, Math.max(0, this.connectionTimeoutMs));
-  }
-
-  clearOpenTimer() {
-    window.clearTimeout(this.openTimer);
-    this.openTimer = null;
   }
 
   fromGateway(source, generation, event) {

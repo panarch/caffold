@@ -251,24 +251,6 @@ test("bounds replacement attempts and lets an explicit retry start a new cycle",
   lifecycle.deactivate();
 });
 
-test("bounds a source that never opens or errors", () => {
-  const browser = installBrowserHarness({ manualTimers: true });
-  const lifecycle = new TaskStreamLifecycle({
-    subscribe: browser.subscribe,
-    connectionTimeoutMs: 1,
-    retryDelaysMs: [0, 0],
-    automaticRetryDelaysMs: [],
-  });
-
-  lifecycle.activate("task-list");
-  browser.runAllTimers();
-
-  assert.equal(browser.sources.length, 3);
-  assert.equal(lifecycle.source, null);
-  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.UNAVAILABLE);
-  lifecycle.deactivate();
-});
-
 test("tries again at longer delays once its own retry budget is spent", async () => {
   const browser = installBrowserHarness({ manualTimers: true });
   const lifecycle = new TaskStreamLifecycle({
@@ -574,7 +556,7 @@ test("ignores a preparation begun before physical trouble once the channel reope
   lifecycle.deactivate();
 });
 
-test("resumes a suspended stream when the gateway reopens its subscription", async () => {
+test("releases its subscription while suspended and subscribes once when recovery asks", async () => {
   const browser = installBrowserHarness();
   let reconciliations = 0;
   const lifecycle = new TaskStreamLifecycle({
@@ -588,10 +570,23 @@ test("resumes a suspended stream when the gateway reopens its subscription", asy
   browser.sources[0].emitOpen();
   lifecycle.suspend();
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.IDLE);
+  assert.equal(browser.sources[0].closed, true);
+  assert.equal(lifecycle.source, null);
 
+  // The released subscription opening late, or the owner asking again for
+  // its context, subscribes nothing.
   browser.sources[0].emitOpen();
+  lifecycle.activate("task-list");
   await settleAsyncWork();
   assert.equal(browser.sources.length, 1);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.IDLE);
+
+  const recovery = lifecycle.recover();
+  assert.equal(browser.sources.length, 2);
+  browser.sources[1].emitOpen();
+  assert.equal((await recovery).ok, true);
+  await settleAsyncWork();
+  assert.equal(browser.sources.length, 2);
   assert.equal(reconciliations, 1);
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
   lifecycle.deactivate();

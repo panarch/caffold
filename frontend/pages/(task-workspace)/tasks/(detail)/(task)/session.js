@@ -2,6 +2,9 @@ import { getTask, taskAbsence, taskResponseError } from "#app/api.js";
 import { TASK_TRANSPORT_STATE } from "../../runtime-state.js";
 import { TaskStreamLifecycle } from "../../stream.js";
 
+// From a channel's opening to its first bootstrap, which the server keeps small
+// whatever the conversation's size. What follows has no limit here: the server
+// ends its own reading, and the live connection judges the link.
 const DEFAULT_BOOTSTRAP_TIMEOUT_MS = 8_000;
 const TASK_DETAIL_SESSION_PHASE = Object.freeze({
   INACTIVE: "inactive",
@@ -142,8 +145,6 @@ export class TaskDetailSession {
         this.handleTransportStateChange(state, previousState),
       onSubjectGone: (absence, threadId) =>
         this.handleSubjectGone(absence, threadId),
-      connectionTimeoutMs:
-        callbacks.connectionTimeoutMs ?? this.bootstrapTimeoutMs,
       retryDelaysMs: callbacks.retryDelaysMs,
     });
   }
@@ -368,13 +369,9 @@ export class TaskDetailSession {
     }
     if (Array.isArray(message.error?.allowedActions)) {
       this.transition(TASK_DETAIL_SESSION_EVENT.SOURCE_ERROR);
-      window.clearTimeout(bootstrap.timer);
       bootstrap.pendingEvents = [];
       bootstrap.pendingState = null;
-      if (!bootstrap.settled) {
-        bootstrap.settled = true;
-        bootstrap.resolve(true);
-      }
+      readyBootstrap(bootstrap);
       this.settleAttempt({ ok: false, error: taskResponseError(message.error) });
       return;
     }
@@ -383,6 +380,7 @@ export class TaskDetailSession {
         this.transition(
           TASK_DETAIL_SESSION_EVENT.ACCEPT_LOADING_BOOTSTRAP,
         );
+        readyBootstrap(bootstrap);
       }
       return;
     }
@@ -408,11 +406,7 @@ export class TaskDetailSession {
     if (pendingState) {
       this.onTaskState(pendingState);
     }
-    if (!bootstrap.settled) {
-      bootstrap.settled = true;
-      window.clearTimeout(bootstrap.timer);
-      bootstrap.resolve(true);
-    }
+    readyBootstrap(bootstrap);
     this.settleAttempt({
       ok: true,
       detail: message.detail,
@@ -553,6 +547,17 @@ export class TaskDetailSession {
     }
     return true;
   }
+}
+
+// The channel answered, so its Task stream is ready; the bootstrap stays the
+// place later messages are matched against.
+function readyBootstrap(bootstrap) {
+  if (bootstrap.settled) {
+    return;
+  }
+  bootstrap.settled = true;
+  window.clearTimeout(bootstrap.timer);
+  bootstrap.resolve(true);
 }
 
 function normalizeThreadId(threadId) {

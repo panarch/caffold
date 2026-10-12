@@ -17,6 +17,9 @@ export function installTaskSseControllerInBrowser() {
   // While set, every new physical connection fails before its greeting, like a
   // server that refuses connections.
   let refusingConnections = false;
+  // Channels whose opening waits for the test, like an opening queued behind a
+  // large message on a slow link.
+  const heldChannels = new Set();
 
   const detailThreadId = (detail) =>
     detail?.threadId ?? detail?.task?.threadId ?? detail?.task?.id ?? "";
@@ -40,6 +43,10 @@ export function installTaskSseControllerInBrowser() {
   };
 
   const nativeEmit = (source, type, payload = null) => {
+    nativeEmitData(source, type, payload === null ? null : JSON.stringify(payload));
+  };
+
+  const nativeEmitData = (source, type, data) => {
     // A connection that stopped delivering still looks open but passes nothing
     // on, while subscription requests keep succeeding.
     if (source.undelivering && type !== "error") {
@@ -50,7 +57,13 @@ export function installTaskSseControllerInBrowser() {
       ? [registered]
       : registered ?? [];
     for (const listener of listeners) {
-      listener(payload === null ? {} : { data: JSON.stringify(payload) });
+      listener(data === null ? {} : { data });
+    }
+  };
+
+  const openSoon = (virtual) => {
+    if (!heldChannels.has(virtual.channel)) {
+      queueMicrotask(() => virtual.emitOpen());
     }
   };
 
@@ -105,6 +118,34 @@ export function installTaskSseControllerInBrowser() {
       closed: false,
       emit(type, payload) {
         emitEnvelope(this, type, payload);
+      },
+      // A message as the server sends a large one: `live-update-part` data,
+      // each a header line and a piece of the message, for the test to
+      // deliver one at a time through emitPart.
+      parts(type, payload, count) {
+        const text = JSON.stringify({
+          channel: this.channel,
+          ...(this.subscriptionId ? { subscriptionId: this.subscriptionId } : {}),
+          generation: this.generation,
+          type,
+          payload,
+        });
+        const size = Math.ceil(text.length / count);
+        return Array.from({ length: count }, (_, index) => {
+          const header = JSON.stringify({
+            channel: this.channel,
+            ...(this.subscriptionId ? { subscriptionId: this.subscriptionId } : {}),
+            generation: this.generation,
+            index,
+            count,
+          });
+          return `${header}\n${text.slice(index * size, (index + 1) * size)}`;
+        });
+      },
+      emitPart(data) {
+        if (this.readyState !== 2 && this.physical.readyState !== 2) {
+          nativeEmitData(this.physical, "live-update-part", data);
+        }
       },
       emitOpen() {
         if (this.readyState === 2) {
@@ -207,7 +248,7 @@ export function installTaskSseControllerInBrowser() {
         url: "/api/tasks/stream",
       });
       if (physical.autoOpen || physical.readyState === 1) {
-        queueMicrotask(() => virtual.emitOpen());
+        openSoon(virtual);
       }
     }
     if (subscriptions.taskDetail) {
@@ -243,7 +284,7 @@ export function installTaskSseControllerInBrowser() {
           });
         });
       } else if (physical.autoOpen || physical.readyState === 1) {
-        queueMicrotask(() => virtual.emitOpen());
+        openSoon(virtual);
       }
       const pendingBootstrap = pendingDetailBootstraps.get(threadId);
       if (pendingBootstrap) {
@@ -266,7 +307,7 @@ export function installTaskSseControllerInBrowser() {
         url: `/api/watch?path=${encodeURIComponent(watch.path ?? "")}`,
       });
       if (physical.autoOpen || physical.readyState === 1) {
-        queueMicrotask(() => virtual.emitOpen());
+        openSoon(virtual);
       }
     }
     removeMissingVirtuals(physical, desiredKeys);
@@ -298,6 +339,17 @@ export function installTaskSseControllerInBrowser() {
     },
     refuseConnections(refused = true) {
       refusingConnections = refused;
+    },
+    holdChannelOpens(channel) {
+      heldChannels.add(channel);
+    },
+    releaseChannelOpens(channel) {
+      heldChannels.delete(channel);
+      for (const source of defaultRegistry) {
+        if (source.channel === channel && source.readyState === 0) {
+          source.emitOpen();
+        }
+      }
     },
     stopDelivering() {
       for (const source of physicalRegistry) {

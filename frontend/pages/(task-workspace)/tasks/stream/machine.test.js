@@ -52,6 +52,15 @@ test("reaches every edge in the table and rejects every other event", () => {
   }
 });
 
+test("a suspended stream holds no subscription for a channel to open", () => {
+  const facts = { visible: true, prepares: true, reconcilePending: true };
+
+  assert.equal(
+    transitionTaskStream(NODE.SUSPENDED, { type: EVENT.CHANNEL_OPENED }, facts),
+    null,
+  );
+});
+
 test("takes a repeated request for the same context as a new attempt only when unavailable", () => {
   const repeat = { type: EVENT.ACTIVATE, sameContext: true, forced: false };
   const visible = { visible: true };

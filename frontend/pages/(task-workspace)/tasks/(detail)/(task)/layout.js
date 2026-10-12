@@ -139,10 +139,14 @@ class CaffoldTaskDetail extends HTMLElement {
         reconcilePrompt: false,
       }),
       change: () => {
+        if (this.applyingCanonicalDetail) {
+          return;
+        }
         this.conversationUpdateKind = "preserve";
         this.render();
       },
     });
+    this.applyingCanonicalDetail = false;
     this.interruptActionToken = 0;
     this.interruptStateValue = { loading: false, error: null };
     this.archiveActionToken = 0;
@@ -846,7 +850,14 @@ class CaffoldTaskDetail extends HTMLElement {
     if (acceptMetadata || !this.taskDetail) {
       this.taskDetail = { ...detail, task: stableTask };
     }
-    this.history.accept(detail, historyCursor, this.events);
+    // The answer renders once below with its own update kind, so a history
+    // change it causes does not render first and move the conversation.
+    this.applyingCanonicalDetail = true;
+    try {
+      this.history.accept(detail, historyCursor, this.events);
+    } finally {
+      this.applyingCanonicalDetail = false;
+    }
     const canonicalError = detailError ? taskResponseError(detailError) : null;
     if (acceptMetadata) {
       this.loading = detail?.syncState === "loading" && !canonicalError;
@@ -1758,7 +1769,9 @@ class CaffoldTaskDetail extends HTMLElement {
 
   // One retained phrase covers both waits of an opening conversation: Task
   // details not yet read, then history not yet read. Staying shown across the
-  // two keeps its delay and animation from starting over.
+  // two keeps its delay and animation from starting over. It sits over the
+  // middle of Detail, so a conversation already on screen while its history
+  // is read goes without it.
   waitsForConversation() {
     if (this.view !== "detail" || this.reviewView !== "conversation") {
       return false;
@@ -1767,7 +1780,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.hasSelectedTaskDetail() &&
       !Array.isArray(this.detailLoadError?.allowedActions);
     return shownDetail
-      ? Boolean(this.taskDetail.historyLoading)
+      ? Boolean(this.taskDetail.historyLoading) && this.events.length === 0
       : this.loading;
   }
 

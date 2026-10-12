@@ -468,26 +468,33 @@ test("falls back after a loading bootstrap and retries from unavailable", async 
   session.deactivate();
 });
 
-test("bounds a connection that neither opens nor errors", async () => {
+test("waits as long as the server reads a conversation once the channel bootstraps", async () => {
   const browser = installBrowserHarness();
-  let fallbackCalls = 0;
   const session = new TaskDetailSession({
     subscribe: browser.subscribe,
-    connectionTimeoutMs: 1,
-    retryDelaysMs: [0, 0],
-    loadDetail: async () => {
-      fallbackCalls += 1;
-      throw new Error("fallback failed");
-    },
+    bootstrapTimeoutMs: 1,
   });
 
-  const outcome = await session.open("thread-a");
+  const opening = session.open("thread-a");
+  browser.sources[0].emitOpen();
+  browser.sources[0].emit(
+    "task-sync",
+    syncMessage("thread-a", 1, { readable: false }),
+  );
+  await nextTask();
+  await nextTask();
 
-  assert.equal(browser.sources.length, 3);
-  assert.equal(fallbackCalls, 1);
-  assert.equal(outcome.ok, false);
-  assert.equal(session.state, TASK_TRANSPORT_STATE.UNAVAILABLE);
-  assert.equal(session.phase, "unavailable");
+  assert.equal(browser.sources.length, 1);
+  assert.equal(session.state, TASK_TRANSPORT_STATE.READY);
+  assert.equal(session.phase, "waiting-readable");
+  browser.sources[0].emit(
+    "task-sync",
+    syncMessage("thread-a", 2, { reason: "session-bootstrap" }),
+  );
+  const outcome = await opening;
+  assert.equal(outcome.ok, true);
+  assert.equal(outcome.source, "stream");
+  assert.equal(session.phase, "streaming");
   session.deactivate();
 });
 
@@ -571,7 +578,8 @@ test("foreground recovery settles only after its readable stream bootstrap", asy
   );
   await nextTask();
   assert.equal(settled, false);
-  assert.equal(session.state, TASK_TRANSPORT_STATE.VALIDATING);
+  assert.equal(session.state, TASK_TRANSPORT_STATE.READY);
+  assert.equal(session.phase, "waiting-readable");
 
   replacement.emit(
     "task-sync",
