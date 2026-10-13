@@ -281,7 +281,11 @@ workspace, which owns `caffold-update-task-dialog` and hands the Task it starts
 to the Tasks page's `startTaskCreation`, as Start Task does.
 
 A replacement is `ready` only after its complete shell cache is available, and
-Reload explicitly transitions to that prepared generation. The viewport-fixed
+Reload explicitly transitions to that prepared generation. The server sends
+every `/assets/` file except the manifest, which carries the server's name,
+with `Cache-Control: no-cache` and an `ETag` taken from the file's contents, so
+filling a replacement's shell cache revalidates the files the browser already
+holds and downloads only those that changed. The viewport-fixed
 `caffold-build-mismatch-alert` remains a separate exceptional diagnostic and
 appears only when UI and server builds differ after the lifecycle is `settled`.
 

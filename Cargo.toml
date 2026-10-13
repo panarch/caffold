@@ -1,3 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["caffold", "runners/claude"]
+
+# The asset route hashes every file it serves. Unoptimized, that hashing slows
+# the debug server the browser suite installs the app from in every test.
+[profile.dev.package.sha2]
+opt-level = 3
