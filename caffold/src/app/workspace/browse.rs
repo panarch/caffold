@@ -16,7 +16,7 @@ use download::download;
 use super::{PathQuery, WorkspaceState};
 use crate::{
     app::{conditional, error::ApiError},
-    fs::{BinaryFile, FsError, ListResponse, RootedFs},
+    fs::{FileBytes, FsError, ListResponse, RootedFs},
 };
 
 const LIST_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -119,7 +119,7 @@ fn viewer_response<T: IntoResponse>(
     Ok((conditional::validators(&version), read()?).into_response())
 }
 
-fn binary_response(file: BinaryFile) -> impl IntoResponse {
+fn binary_response(file: FileBytes) -> impl IntoResponse {
     (
         [(
             header::CONTENT_TYPE,

@@ -29,7 +29,7 @@ pub struct FileResponse {
 
 /// A file a viewer shows as bytes, with the Content-Type its extension names.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BinaryFile {
+pub struct FileBytes {
     pub content_type: &'static str,
     pub bytes: Vec<u8>,
 }
@@ -110,8 +110,8 @@ impl OpenedBinary {
         self.opened.version()
     }
 
-    pub fn read(self) -> Result<BinaryFile, FsError> {
-        Ok(BinaryFile {
+    pub fn read(self) -> Result<FileBytes, FsError> {
+        Ok(FileBytes {
             content_type: self.content_type,
             bytes: self.opened.read()?.bytes,
         })
@@ -514,7 +514,7 @@ mod tests {
                     .open_document(name)
                     .and_then(OpenedBinary::read)
                     .unwrap(),
-                BinaryFile {
+                FileBytes {
                     content_type,
                     bytes: name.as_bytes().to_vec(),
                 },
