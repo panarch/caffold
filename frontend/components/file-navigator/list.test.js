@@ -55,6 +55,7 @@ test("merges Refresh files with the owned tree and delegates Scroll", () => {
   ]);
   assert.equal(treeActionOptions.actionId, "navigation.file.open");
   assert.equal(treeActionOptions.disclosureActionId, "disclosure.toggle");
+  assert.equal(treeActionOptions.includeDirectories, true);
   assert.equal(scope.targets[0].isActionable(), true);
 
   const scrollScope = list.scrollSurfaceScope.call(owner, {

@@ -479,7 +479,8 @@ Product-owned native controls use distinct closed action kinds rather than
 pretending to be buttons. Appearance declares non-current Theme radios, its
 Interface and Code typeface selects, and the three size ranges; Files declares
 its non-current ordering radio; Voice Input declares its non-current provider
-radios; Keyboard declares its enabled On/Off switch;
+radios and each provider's API key textbox; Jev Permissions declares its Extra
+rules and API key textboxes; Keyboard declares its enabled On/Off switch;
 Git Compare declares its visible Base and Head selects; and the Branch Review
 Compare Tree declares its comparison-base select while the Review owner injects
 the action meaning. The Branch target remains available while its compared File
@@ -490,9 +491,10 @@ primary header. This keeps selected-value label updates on one frozen binding,
 while activation still uses the exact select. Radio and switch activation
 focuses and clicks the exact retained input after Hint cleanup. A select
 focuses and calls native `showPicker()` in the trusted key stack, with a
-focus-only fallback when the browser cannot open it. A range target only receives
-focus. The native control and its product owner continue to own option
-selection, value changes, persistence, and subsequent keyboard input.
+focus-only fallback when the browser cannot open it. A range target, and a
+Settings textbox through `control.textbox.focus`, only receives focus. The
+native control and its product owner continue to own option selection, value
+changes, persistence, and subsequent keyboard input.
 
 Keyboard-operable split separators follow the same focus-only handoff. The
 reusable Pane Resizer publishes a child scope that Task Workspace, Integrated
@@ -503,8 +505,11 @@ not become targets. Arrow, Shift+Arrow, Home, and End remain component-owned.
 
 Product-owned disclosure uses the same one-shot flow through a distinct
 `disclosure.toggle` action and `disclosure` control kind. The shared File Tree
-declares only expandable directory buttons; the New Task directory field's
-folder rows are not expandable and keep their meaning of opening that folder.
+declares only expandable directory buttons as disclosures. A folder row that
+cannot expand keeps its meaning of opening that folder, and the File Tree
+declares it as a row action for an owner that asks: the Files navigator for its
+folder rows outside Git and its `..` row, and the New Task directory field for
+its folder rows.
 Work Details declares its root summary,
 Command Group declares its summary,
 active Command declares its summary while terminal Command keeps View output,
@@ -519,14 +524,14 @@ session; the user presses `F` again against the new visible state.
 Links use the distinct `link.open` action and `link` control kind. A component
 that renders a direct product link declares that exact retained anchor: Remote
 Access owns its current Tailnet link, Settings and Task readiness own their
-conditional Codex guide, and GitHub Issue or Pull detail owns its header,
-comment, and commit links. Each target freezes the anchor's raw `href`,
-`target`, and `rel`. After Hint cleanup and final revalidation, activation
-focuses and clicks that native anchor; the helper does not call a router or
-`window.open()`. Consequently same-tab Caffold paths, external tabs, and
-`mailto:` links preserve their existing browser semantics. Changing any frozen
-link attribute retires that link's declared owner group, while an
-accessible-name-only patch updates the existing badge and code.
+conditional Codex guide, About owns its latest-release link, and GitHub Issue
+or Pull detail owns its header, comment, and commit links. Each target freezes
+the anchor's raw `href`, `target`, and `rel`. After Hint cleanup and final
+revalidation, activation focuses and clicks that native anchor; the helper does
+not call a router or `window.open()`. Consequently same-tab Caffold paths,
+external tabs, and `mailto:` links preserve their existing browser semantics.
+Changing any frozen link attribute retires that link's declared owner group,
+while an accessible-name-only patch updates the existing badge and code.
 
 Rendered-content owners register links only after their existing sanitizer and
 final DOM mount. Task Markdown and the shared Markdown Preview enumerate the
@@ -1646,8 +1651,9 @@ Settings navigator. Desktop may therefore expose independent navigator and page
 Scroll surfaces, while foldable and phone layouts contribute only the pane with
 a layout box. Appearance registers non-current Theme choices, both typeface
 choices, and its three ranges; Files registers the non-current ordering choice;
-Voice Input registers its non-current provider choices; and Keyboard registers
-its switch only while keyboard navigation is enabled.
+Voice Input registers its non-current provider choices and its enabled API key
+fields; Jev Permissions registers its enabled Extra rules and API key fields;
+and Keyboard registers its switch only while keyboard navigation is enabled.
 These controls keep their native editing, choice, and persistence behavior
 after the Action Hint coordinator hands off focus or click ownership.
 

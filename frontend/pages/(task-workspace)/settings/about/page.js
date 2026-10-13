@@ -7,6 +7,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
+  linkActionHintTarget,
 } from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
@@ -219,6 +220,23 @@ class CaffoldSettingsAboutPage extends HTMLElement {
           hasActionHintLayoutBox(control),
       })];
     });
+    const release = this.querySelector("[data-updates-latest] > a");
+    if (release && hasActionHintLayoutBox(release)) {
+      targets.push(linkActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:latest-release`,
+        actionId: ACTION_HINT_ACTION.LINK_OPEN,
+        label: `Open the ${release.textContent} release in a new tab`,
+        control: release,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector("[data-updates-latest] > a") === release &&
+          hasActionHintLayoutBox(release),
+      }));
+    }
     return {
       blocked: false,
       targets,
@@ -340,12 +358,19 @@ class CaffoldSettingsAboutPage extends HTMLElement {
     this.querySelector("[data-updates-version]").textContent = view.version;
     const latest = this.querySelector("[data-updates-latest]");
     if (view.latest.url) {
-      const link = document.createElement("a");
-      link.href = view.latest.url;
-      link.target = "_blank";
-      link.rel = "noreferrer";
-      link.textContent = view.latest.text;
-      latest.replaceChildren(link);
+      // The link is an Action Hint target, so the same release keeps the
+      // same anchor across renders.
+      let link = latest.querySelector(":scope > a");
+      if (!link || link.getAttribute("href") !== view.latest.url) {
+        link = document.createElement("a");
+        link.href = view.latest.url;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        latest.replaceChildren(link);
+      }
+      if (link.textContent !== view.latest.text) {
+        link.textContent = view.latest.text;
+      }
     } else {
       latest.textContent = view.latest.text;
     }

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activateActionHint } from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import { mockAgentModels } from "./support/task-fixtures.js";
 
@@ -151,6 +152,29 @@ test("chooses Grok, shows its model inside the page, and keeps its key write-onl
     ["PUT", "grok", { key: "xai-e2e-secret" }],
     ["DELETE", "grok", null],
   ]);
+});
+
+test("Action Hints focus each provider's API key field", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await installVoiceSettings(page);
+
+  await page.goto("/settings/voice");
+  const voicePage = page.locator("caffold-settings-voice-page");
+  await expect(voicePage.getByRole("radio", { name: /^Whisper/ })).toBeChecked();
+
+  for (const [provider, name] of [
+    ["openai", "OpenAI"],
+    ["gemini", "Gemini"],
+    ["grok", "Grok"],
+  ]) {
+    const key = voicePage.locator(`[data-provider="${provider}"]`).getByLabel("API key");
+    await key.scrollIntoViewIfNeeded();
+    await activateActionHint(page, new RegExp(`Focus ${name} API key$`));
+    await expect(key).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".settings-workspace-detail-pane")).toBeFocused();
+  }
 });
 
 test("starts, cancels, and deletes the Whisper model from the server's download state", { tag: "@viewport-independent" }, async ({

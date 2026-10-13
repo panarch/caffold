@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activateActionHint } from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import { mockAgentModels } from "./support/task-fixtures.js";
 
@@ -89,6 +90,29 @@ test("saves rules and a key, and never shows the key again", { tag: "@all-viewpo
     ["PUT", { key: "ts-e2e-secret" }],
     ["DELETE", null],
   ]);
+});
+
+test("Action Hints focus the rules and key fields, and Escape leaves them", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await installJevSettings(page, { keyConfigured: true });
+
+  await page.goto("/settings/jev");
+  const jevPage = page.locator("caffold-settings-jev-page");
+  await expect(detailValue(jevPage, "api-key")).toHaveText("Saved");
+  const rules = jevPage.getByLabel("Extra rules");
+  await expect(rules).toBeEnabled();
+
+  await activateActionHint(page, /Focus Extra rules$/);
+  await expect(rules).toBeFocused();
+  await page.keyboard.type("Allow reads.");
+  await expect(rules).toHaveValue("Allow reads.");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".settings-workspace-detail-pane")).toBeFocused();
+  await expect(rules).toHaveValue("Allow reads.");
+
+  await activateActionHint(page, /Focus Replace API key$/);
+  await expect(jevPage.getByLabel("Replace API key")).toBeFocused();
 });
 
 test("a key that did not work says so instead of looking configured", { tag: "@viewport-independent" }, async ({
