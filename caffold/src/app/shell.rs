@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 
-use super::{conditional, error::ApiError};
+use super::{error::ApiError, etag};
 use crate::{
     fs::{MAX_FILE_BYTES, RootedFs},
     server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
@@ -172,11 +172,11 @@ async fn asset(AxumPath(path): AxumPath<String>, request: HeaderMap) -> Response
         return StatusCode::NOT_FOUND.into_response();
     };
     let tag = content_tag(asset.body);
-    if conditional::holds(&request, &tag) {
-        return conditional::not_modified(&tag);
+    if etag::matches(&request, &tag) {
+        return etag::not_modified(&tag);
     }
     (
-        conditional::validators(&tag),
+        etag::headers(&tag),
         [(
             header::CONTENT_TYPE,
             HeaderValue::from_static(asset.content_type),

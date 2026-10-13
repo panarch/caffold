@@ -8,8 +8,8 @@ use axum::Router;
 use tokio::{net::TcpListener, sync::broadcast};
 use tracing::info;
 
-mod conditional;
 mod error;
+mod etag;
 mod jev;
 mod live_updates;
 mod notes;

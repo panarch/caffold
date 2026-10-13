@@ -44,7 +44,7 @@ pub struct OpenedBinary {
 }
 
 impl RootedFs {
-    pub fn read_file(&self, requested_path: &str) -> Result<FileResponse, FsError> {
+    pub fn read_text(&self, requested_path: &str) -> Result<FileResponse, FsError> {
         self.open_text(requested_path)?.read()
     }
 
@@ -364,11 +364,11 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert!(matches!(
-            rooted.read_file("src"),
+            rooted.read_text("src"),
             Err(FsError::IsDirectory { .. })
         ));
         assert!(matches!(
-            rooted.read_file("agent.sock"),
+            rooted.read_text("agent.sock"),
             Err(FsError::NotFile { .. })
         ));
     }
@@ -380,7 +380,7 @@ mod tests {
         fs::write(temp.path().join("src/main.rs"), "fn main() {}\n").unwrap();
         let rooted = RootedFs::new(temp.path()).unwrap();
 
-        let file = rooted.read_file("src/main.rs").unwrap();
+        let file = rooted.read_text("src/main.rs").unwrap();
 
         assert_eq!(file.path, "src/main.rs");
         assert_eq!(file.name, "main.rs");
@@ -397,7 +397,7 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert!(matches!(
-            rooted.read_file("binary.bin"),
+            rooted.read_text("binary.bin"),
             Err(FsError::BinaryFile { .. })
         ));
     }
@@ -410,7 +410,7 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert!(matches!(
-            rooted.read_file("invalid.txt"),
+            rooted.read_text("invalid.txt"),
             Err(FsError::InvalidUtf8 { .. })
         ));
     }
@@ -427,7 +427,7 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert!(matches!(
-            rooted.read_file("large.txt"),
+            rooted.read_text("large.txt"),
             Err(FsError::FileTooLarge { .. })
         ));
     }

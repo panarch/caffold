@@ -15,7 +15,7 @@ use download::download;
 
 use super::{PathQuery, WorkspaceState};
 use crate::{
-    app::{conditional, error::ApiError},
+    app::{error::ApiError, etag},
     fs::{FileBytes, FsError, ListResponse, RootedFs},
 };
 
@@ -113,10 +113,10 @@ fn viewer_response<T: IntoResponse>(
         let no_store = [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))];
         return Ok((no_store, read()?).into_response());
     };
-    if conditional::holds(request, &version) {
-        return Ok(conditional::not_modified(&version));
+    if etag::matches(request, &version) {
+        return Ok(etag::not_modified(&version));
     }
-    Ok((conditional::validators(&version), read()?).into_response())
+    Ok((etag::headers(&version), read()?).into_response())
 }
 
 fn binary_response(file: FileBytes) -> impl IntoResponse {

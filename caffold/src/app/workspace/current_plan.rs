@@ -109,8 +109,8 @@ fn current_plan_projection(
     let watch_path = deepest_watch_path(fs, &cwd);
     let plan_path = join_logical_path(&cwd, PLAN_RELATIVE_PATH);
     let checklist_path = join_logical_path(&cwd, CHECKLIST_RELATIVE_PATH);
-    let plan = fs.read_file(&plan_path);
-    let checklist = fs.read_file(&checklist_path);
+    let plan = fs.read_text(&plan_path);
+    let checklist = fs.read_text(&checklist_path);
 
     if document_is_absent(&cwd_absolute, PLAN_RELATIVE_PATH, &plan)
         && document_is_absent(&cwd_absolute, CHECKLIST_RELATIVE_PATH, &checklist)
