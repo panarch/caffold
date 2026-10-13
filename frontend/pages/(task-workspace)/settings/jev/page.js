@@ -4,6 +4,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
+  textboxActionHintTarget,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import {
@@ -32,6 +33,10 @@ const ACTION_BUTTONS = Object.freeze([
     selector: 'button[data-action="remove-key"]',
     label: "Remove the Jev API key",
   },
+]);
+const TEXTBOXES = Object.freeze([
+  { id: "criteria", selector: 'textarea[name="criteria"]' },
+  { id: "key", selector: 'input[name="key"]' },
 ]);
 
 class CaffoldSettingsJevPage extends HTMLElement {
@@ -148,9 +153,14 @@ class CaffoldSettingsJevPage extends HTMLElement {
     };
     return {
       blocked: false,
-      targets: ACTION_BUTTONS.flatMap((definition) =>
-        actionButtonTarget(this, context, definition)
-      ),
+      targets: [
+        ...ACTION_BUTTONS.flatMap((definition) =>
+          actionButtonTarget(this, context, definition)
+        ),
+        ...TEXTBOXES.flatMap((definition) =>
+          textboxTarget(this, context, definition)
+        ),
+      ],
       mutationRoots: [this],
       scrollRoots: [scrollport],
     };
@@ -300,6 +310,27 @@ function actionButtonTarget(owner, context, { id, selector, label }) {
     id: `${context.scopeId}:${id}`,
     actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
     label,
+    control,
+    clipRoots: context.clipRoots,
+    isActionable: () =>
+      owner.isConnected &&
+      !owner.hidden &&
+      context.isCurrent() &&
+      owner.querySelector(selector) === control &&
+      controlAvailable(control),
+  })];
+}
+
+function textboxTarget(owner, context, { id, selector }) {
+  const control = owner.querySelector(selector);
+  if (!controlAvailable(control)) {
+    return [];
+  }
+  return [textboxActionHintTarget({
+    invalidationOwner: owner,
+    id: `${context.scopeId}:${id}`,
+    actionId: ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS,
+    label: `Focus ${control.labels[0].textContent}`,
     control,
     clipRoots: context.clipRoots,
     isActionable: () =>

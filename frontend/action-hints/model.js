@@ -53,6 +53,7 @@ export const ACTION_HINT_ACTION = Object.freeze({
   CONTROL_SELECT_OPEN: "control.select.open",
   CONTROL_RANGE_FOCUS: "control.range.focus",
   CONTROL_SEPARATOR_FOCUS: "control.separator.focus",
+  CONTROL_TEXTBOX_FOCUS: "control.textbox.focus",
   DIALOG_TEXTBOX_FOCUS: "dialog.textbox.focus",
   TERMINAL_OPEN: "navigation.terminal.open",
   TERMINAL_FOCUS: "terminal.focus",
@@ -123,6 +124,10 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
   }),
   [ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS]: Object.freeze({
     controlKind: "separator",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  }),
+  [ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS]: Object.freeze({
+    controlKind: "textbox",
     allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
   }),
   [ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS]: Object.freeze({

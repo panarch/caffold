@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { enterActionHints } from "./support/action-hints.js";
 import {
   installBrowserDefaults,
   mockCaffoldUpdate,
@@ -157,6 +158,45 @@ test("About says each update state and offers the action that fits it", { tag: "
     }
   }
   await expect(updates.locator("[data-updates-last-row]")).toBeHidden();
+});
+
+test("an Action Hint opens the latest release, and only while About links to one", { tag: "@viewport-independent" }, async ({
+  context,
+  page,
+}) => {
+  await context.route(RELEASE_URL, (route) =>
+    route.fulfill({ contentType: "text/html", body: "<title>Caffold 0.18.3</title>" }),
+  );
+  const answer = await answerUpdates(page, AVAILABLE);
+  await page.goto("/settings/about");
+  const about = page.locator("caffold-settings-about-page");
+  const latest = updatesSection(page).locator("[data-updates-latest]");
+  await expect(latest.locator("a")).toHaveText("0.18.3");
+
+  const dialog = await enterActionHints(page);
+  const badge = dialog.getByLabel(/Open the 0\.18\.3 release in a new tab$/);
+  await expect(badge).toBeVisible();
+  // About draws itself again for every status answer; the same release keeps
+  // its link, so the code on show still opens it.
+  await about.evaluate((element) => element.setBuildStatus(element.healthValue));
+  await expect(badge).toBeVisible();
+  const code = await badge.getAttribute("data-action-hint-code");
+  const opened = context.waitForEvent("page");
+  await page.keyboard.type(code.toLowerCase());
+  await expect(dialog).toBeHidden();
+  await expect(await opened).toHaveURL(RELEASE_URL);
+
+  answer.status = {
+    version: "0.18.2",
+    releaseError: "GitHub answered HTTP 403 Forbidden.",
+    updateAvailable: false,
+  };
+  await page.bringToFront();
+  await page.reload();
+  await expect(latest).toHaveText("Unavailable");
+  const withoutRelease = await enterActionHints(page);
+  await expect(withoutRelease.getByLabel(/Copy diagnostics$/)).toBeVisible();
+  await expect(withoutRelease.getByLabel(/release in a new tab$/)).toHaveCount(0);
 });
 
 test("Check for Updates asks GitHub now and offers the update it finds", { tag: "@desktop" }, async ({ page }) => {

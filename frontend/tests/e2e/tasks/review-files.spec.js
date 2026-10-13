@@ -249,6 +249,42 @@ test("browses source through the shared Files navigator and one root watch", { t
     .toBe(true);
 });
 
+test("opens a folder and its parent from Action Hints outside Git", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await page.route(/\/api\/list(?:\?|$)/, async (route) => {
+    const response = await route.fetch();
+    const directory = await response.json();
+    await route.fulfill({
+      response,
+      json: {
+        ...directory,
+        git: null,
+        entries: directory.entries.map((entry) => ({ ...entry, gitIgnored: false })),
+      },
+    });
+  });
+  const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  taskScenario.updateTask({ worktree: null });
+  await page.reload();
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?nav=files&view=source`,
+  );
+
+  const navigator = taskReview.locator("caffold-file-navigator");
+  const planner = navigator.locator('button[data-file-tree-path="src/planner"]');
+  const plannerFile = navigator.locator('button[data-file-tree-path="src/planner/mod.rs"]');
+  await expect(planner).toBeVisible();
+  await expect(planner).not.toHaveAttribute("aria-expanded");
+  await activateActionHint(page, /planner dir$/);
+  await expect(plannerFile).toBeVisible();
+  await expect(planner).toHaveCount(0);
+  await activateActionHint(page, /Parent directory$/);
+  await expect(planner).toBeVisible();
+  await expect(plannerFile).toHaveCount(0);
+});
+
 test("downloads a file Source cannot show from inside File details", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {

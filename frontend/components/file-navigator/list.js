@@ -241,6 +241,7 @@ class CaffoldFileList extends HTMLElement {
           disclosureActionId,
           clipRoots: [this, ...clipRoots],
           isCurrent: (node) => node.source?.path === this.selectedPath,
+          includeDirectories: true,
           labelForNode: (node) =>
             node.ariaLabel || `Open ${node.source?.name ?? node.name}`,
         })

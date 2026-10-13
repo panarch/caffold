@@ -9,6 +9,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   radioActionHintTarget,
+  textboxActionHintTarget,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import {
@@ -169,6 +170,7 @@ class CaffoldSettingsVoicePage extends HTMLElement {
       targets: [
         ...PROVIDER_CHOICES.flatMap((choice) => providerChoiceTarget(this, context, choice)),
         ...ACTION_BUTTONS.flatMap((definition) => actionButtonTarget(this, context, definition)),
+        ...VOICE_KEY_PROVIDERS.flatMap((provider) => keyInputTarget(this, context, provider)),
       ],
       mutationRoots: [this],
       scrollRoots: [scrollport],
@@ -379,6 +381,26 @@ function actionButtonTarget(owner, context, { id, selector, label }) {
     id: `${context.scopeId}:${id}`,
     actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
     label,
+    control,
+    clipRoots: context.clipRoots,
+    isActionable: () =>
+      ownerIsCurrent(owner, context) &&
+      owner.querySelector(selector) === control &&
+      controlAvailable(control),
+  })];
+}
+
+function keyInputTarget(owner, context, provider) {
+  const selector = `form[data-key-provider="${provider}"] input[name="key"]`;
+  const control = owner.querySelector(selector);
+  if (!controlAvailable(control)) {
+    return [];
+  }
+  return [textboxActionHintTarget({
+    invalidationOwner: owner,
+    id: `${context.scopeId}:key:${provider}`,
+    actionId: ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS,
+    label: `Focus ${KEY_PROVIDER_NAMES[provider]} API key`,
     control,
     clipRoots: context.clipRoots,
     isActionable: () =>

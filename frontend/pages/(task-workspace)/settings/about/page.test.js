@@ -81,6 +81,70 @@ test("provides current About actions and its exact scrollport", () => {
   );
 });
 
+function releaseLink(href) {
+  const attributes = new Map([
+    ["href", href],
+    ["target", "_blank"],
+    ["rel", "noreferrer"],
+  ]);
+  return {
+    textContent: "0.18.3",
+    getAttribute: (name) => attributes.get(name) ?? null,
+    setAttribute: (name, value) => attributes.set(name, value),
+    getClientRects: () => [{}],
+    focus() {},
+    click() {},
+  };
+}
+
+test("offers the latest release link while it is the one on show", () => {
+  const scrollport = { getClientRects: () => [{}] };
+  const controls = new Map([
+    [
+      "[data-updates-latest] > a",
+      releaseLink("https://github.com/panarch/caffold/releases/tag/v0.18.3"),
+    ],
+  ]);
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    querySelector(selector) {
+      if (selector === ":scope > .settings-content-scroll") return scrollport;
+      return controls.get(selector) ?? null;
+    },
+  };
+
+  const [target] = about.actionHintScope.call(owner).targets;
+  assert.deepEqual(
+    {
+      id: target.id,
+      actionId: target.actionId,
+      controlKind: target.controlKind,
+      label: target.label,
+    },
+    {
+      id: "settings:about:latest-release",
+      actionId: "link.open",
+      controlKind: "link",
+      label: "Open the 0.18.3 release in a new tab",
+    },
+  );
+  assert.equal(target.isActionable(), true);
+
+  const link = controls.get("[data-updates-latest] > a");
+  link.setAttribute("href", "https://github.com/panarch/caffold/releases/tag/v0.18.4");
+  assert.equal(target.isActionable(), false);
+
+  controls.set(
+    "[data-updates-latest] > a",
+    releaseLink("https://github.com/panarch/caffold/releases/tag/v0.18.3"),
+  );
+  assert.equal(target.isActionable(), false);
+
+  controls.delete("[data-updates-latest] > a");
+  assert.deepEqual(about.actionHintScope.call(owner).targets, []);
+});
+
 const { caffoldUpdatesView, lastUpdateValue } = await import("./page.js");
 
 function answered(status) {

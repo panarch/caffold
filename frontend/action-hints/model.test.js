@@ -111,6 +111,7 @@ test("accepts only the central semantic action and control-kind policy", () => {
     [ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE, "switch"],
     [ACTION_HINT_ACTION.CONTROL_RANGE_FOCUS, "range"],
     [ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS, "separator"],
+    [ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS, "textbox"],
     [ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS, "reorder-handle"],
     [ACTION_HINT_ACTION.DISCLOSURE_TOGGLE, "disclosure"],
     [ACTION_HINT_ACTION.LINK_OPEN, "link"],
@@ -183,6 +184,7 @@ test("allocates native controls through one automatic pool", () => {
       "reorder-handle",
     ),
     target("finish", ACTION_HINT_ACTION.REORDER_FINISH),
+    target("rules", ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS, "textbox"),
   ]);
 
   assert.deepEqual(
@@ -197,6 +199,7 @@ test("allocates native controls through one automatic pool", () => {
       ["split", "J"],
       ["task-handle", "K"],
       ["finish", "L"],
+      ["rules", "Q"],
     ],
   );
 
@@ -207,6 +210,7 @@ test("allocates native controls through one automatic pool", () => {
       [ACTION_HINT_ACTION.CONTROL_SELECT_OPEN, "button"],
       [ACTION_HINT_ACTION.CONTROL_RANGE_FOCUS, "button"],
       [ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS, "button"],
+      [ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS, "button"],
       [ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS, "button"],
     ]
   ) {
