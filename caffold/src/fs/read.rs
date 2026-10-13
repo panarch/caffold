@@ -1,6 +1,6 @@
-//! Reads a whole file for a viewer to show. Each kind of viewer accepts its own
-//! file types and size limit; a download is the file as it is and lives with
-//! `RootedFs::open_download` instead.
+//! Reads a whole file for a viewer to show, as text or as bytes. Each kind of
+//! viewer accepts its own file types and size limit; a download is the file as
+//! it is and lives with `RootedFs::open_download` instead.
 //!
 //! Opening a file runs every check that does not need its contents and names
 //! the file's version, so a viewer that already shows that version need not
@@ -27,20 +27,9 @@ pub struct FileResponse {
     pub content: String,
 }
 
-/// A file a library-backed document viewer draws, with the Content-Type its
-/// extension names.
+/// A file a viewer shows as bytes, with the Content-Type its extension names.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DocumentFile {
-    pub content_type: &'static str,
-    pub bytes: Vec<u8>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImageResponse {
-    pub path: String,
-    pub name: String,
-    pub size: u64,
-    pub modified_ms: Option<u64>,
+pub struct BinaryFile {
     pub content_type: &'static str,
     pub bytes: Vec<u8>,
 }
@@ -48,14 +37,8 @@ pub struct ImageResponse {
 /// A text file opened for a viewer and not read yet.
 pub struct OpenedText(Opened);
 
-/// An image opened for a viewer and not read yet.
-pub struct OpenedImage {
-    opened: Opened,
-    content_type: &'static str,
-}
-
-/// A document opened for a viewer and not read yet.
-pub struct OpenedDocument {
+/// An image or document opened for a viewer and not read yet.
+pub struct OpenedBinary {
     opened: Opened,
     content_type: &'static str,
 }
@@ -70,26 +53,26 @@ impl RootedFs {
         open_bounded(resolved, requested_path, MAX_FILE_BYTES).map(OpenedText)
     }
 
-    pub fn open_image(&self, requested_path: &str) -> Result<OpenedImage, FsError> {
+    pub fn open_image(&self, requested_path: &str) -> Result<OpenedBinary, FsError> {
         let resolved = self.resolve_existing(requested_path)?;
         let content_type =
             image_content_type(&resolved.logical).ok_or_else(|| FsError::UnsupportedImage {
                 path: requested_path.to_string(),
             })?;
-        Ok(OpenedImage {
+        Ok(OpenedBinary {
             opened: open_bounded(resolved, requested_path, MAX_IMAGE_BYTES)?,
             content_type,
         })
     }
 
-    pub fn open_document(&self, requested_path: &str) -> Result<OpenedDocument, FsError> {
+    pub fn open_document(&self, requested_path: &str) -> Result<OpenedBinary, FsError> {
         let resolved = self.resolve_existing(requested_path)?;
         let content_type = document_content_type(&resolved.logical).ok_or_else(|| {
             FsError::UnsupportedDocument {
                 path: requested_path.to_string(),
             }
         })?;
-        Ok(OpenedDocument {
+        Ok(OpenedBinary {
             opened: open_bounded(resolved, requested_path, MAX_DOCUMENT_BYTES)?,
             content_type,
         })
@@ -122,31 +105,13 @@ impl OpenedText {
     }
 }
 
-impl OpenedImage {
+impl OpenedBinary {
     pub fn version(&self) -> Option<String> {
         self.opened.version()
     }
 
-    pub fn read(self) -> Result<ImageResponse, FsError> {
-        let file = self.opened.read()?;
-        Ok(ImageResponse {
-            path: relative_path_string(&file.resolved.logical),
-            name: display_name(&file.resolved),
-            size: file.metadata.len(),
-            modified_ms: modified_ms(&file.metadata),
-            content_type: self.content_type,
-            bytes: file.bytes,
-        })
-    }
-}
-
-impl OpenedDocument {
-    pub fn version(&self) -> Option<String> {
-        self.opened.version()
-    }
-
-    pub fn read(self) -> Result<DocumentFile, FsError> {
-        Ok(DocumentFile {
+    pub fn read(self) -> Result<BinaryFile, FsError> {
+        Ok(BinaryFile {
             content_type: self.content_type,
             bytes: self.opened.read()?.bytes,
         })
@@ -479,11 +444,9 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
         let image = rooted
             .open_image("preview.svg")
-            .and_then(OpenedImage::read)
+            .and_then(OpenedBinary::read)
             .unwrap();
 
-        assert_eq!(image.path, "preview.svg");
-        assert_eq!(image.name, "preview.svg");
         assert_eq!(image.content_type, "image/svg+xml; charset=utf-8");
         assert!(image.bytes.starts_with(b"<svg"));
     }
@@ -496,7 +459,7 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert!(matches!(
-            rooted.open_image("notes.txt").and_then(OpenedImage::read),
+            rooted.open_image("notes.txt").and_then(OpenedBinary::read),
             Err(FsError::UnsupportedImage { .. })
         ));
     }
@@ -512,7 +475,7 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert!(matches!(
-            rooted.open_image("large.png").and_then(OpenedImage::read),
+            rooted.open_image("large.png").and_then(OpenedBinary::read),
             Err(FsError::FileTooLarge { .. })
         ));
     }
@@ -549,9 +512,9 @@ mod tests {
             assert_eq!(
                 rooted
                     .open_document(name)
-                    .and_then(OpenedDocument::read)
+                    .and_then(OpenedBinary::read)
                     .unwrap(),
-                DocumentFile {
+                BinaryFile {
                     content_type,
                     bytes: name.as_bytes().to_vec(),
                 },
@@ -579,7 +542,7 @@ mod tests {
         for name in names {
             assert!(
                 matches!(
-                    rooted.open_document(name).and_then(OpenedDocument::read),
+                    rooted.open_document(name).and_then(OpenedBinary::read),
                     Err(FsError::UnsupportedDocument { .. })
                 ),
                 "{name}"
@@ -597,7 +560,7 @@ mod tests {
         assert!(matches!(
             rooted
                 .open_document("bundle.pdf")
-                .and_then(OpenedDocument::read),
+                .and_then(OpenedBinary::read),
             Err(FsError::IsDirectory { .. })
         ));
     }
@@ -618,7 +581,7 @@ mod tests {
         assert_eq!(
             rooted
                 .open_document("limit.xlsx")
-                .and_then(OpenedDocument::read)
+                .and_then(OpenedBinary::read)
                 .unwrap()
                 .bytes
                 .len(),
@@ -629,7 +592,7 @@ mod tests {
                 matches!(
                     rooted
                         .open_document(&format!("large.{extension}"))
-                        .and_then(OpenedDocument::read),
+                        .and_then(OpenedBinary::read),
                     Err(FsError::FileTooLarge { .. })
                 ),
                 "{extension}"
@@ -651,13 +614,13 @@ mod tests {
         assert!(matches!(
             rooted
                 .open_document("../outside.pptx")
-                .and_then(OpenedDocument::read),
+                .and_then(OpenedBinary::read),
             Err(FsError::PathEscapesRoot)
         ));
         assert!(matches!(
             rooted
                 .open_document("link.pptx")
-                .and_then(OpenedDocument::read),
+                .and_then(OpenedBinary::read),
             Err(FsError::PathEscapesRoot)
         ));
     }

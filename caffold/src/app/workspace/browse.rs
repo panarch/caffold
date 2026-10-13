@@ -16,7 +16,7 @@ use download::download;
 use super::{PathQuery, WorkspaceState};
 use crate::{
     app::{conditional, error::ApiError},
-    fs::{FsError, ListResponse, RootedFs},
+    fs::{BinaryFile, FsError, ListResponse, RootedFs},
 };
 
 const LIST_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -74,9 +74,7 @@ async fn image(
 ) -> Result<Response, ApiError> {
     let image = state.fs.open_image(&query.path)?;
     viewer_response(&request, image.version(), || {
-        image
-            .read()
-            .map(|image| viewer_bytes(image.content_type, image.bytes))
+        image.read().map(binary_response)
     })
 }
 
@@ -87,9 +85,7 @@ async fn document(
 ) -> Result<Response, ApiError> {
     let document = state.fs.open_document(&query.path)?;
     viewer_response(&request, document.version(), || {
-        document
-            .read()
-            .map(|document| viewer_bytes(document.content_type, document.bytes))
+        document.read().map(binary_response)
     })
 }
 
@@ -101,9 +97,7 @@ async fn task_image(
     let logical_path = task_image_logical_path(&state.fs, Path::new(&query.path))?;
     let image = state.fs.open_image(&logical_path)?;
     viewer_response(&request, image.version(), || {
-        image
-            .read()
-            .map(|image| viewer_bytes(image.content_type, image.bytes))
+        image.read().map(binary_response)
     })
 }
 
@@ -125,10 +119,13 @@ fn viewer_response<T: IntoResponse>(
     Ok((conditional::validators(&version), read()?).into_response())
 }
 
-fn viewer_bytes(content_type: &'static str, bytes: Vec<u8>) -> impl IntoResponse {
+fn binary_response(file: BinaryFile) -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, HeaderValue::from_static(content_type))],
-        bytes,
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static(file.content_type),
+        )],
+        file.bytes,
     )
 }
 
