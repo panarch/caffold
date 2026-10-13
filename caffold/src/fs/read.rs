@@ -1,8 +1,12 @@
 //! Reads a whole file for a viewer to show. Each kind of viewer accepts its own
 //! file types and size limit; a download is the file as it is and lives with
 //! `RootedFs::open_download` instead.
+//!
+//! Opening a file runs every check that does not need its contents and names
+//! the file's version, so a viewer that already shows that version need not
+//! read it again.
 
-use std::{fs, io::Read, path::Path};
+use std::{fs, io::Read, path::Path, time::UNIX_EPOCH};
 
 use serde::Serialize;
 
@@ -41,76 +45,187 @@ pub struct ImageResponse {
     pub bytes: Vec<u8>,
 }
 
+/// A text file opened for a viewer and not read yet.
+pub struct OpenedText(Opened);
+
+/// An image opened for a viewer and not read yet.
+pub struct OpenedImage {
+    opened: Opened,
+    content_type: &'static str,
+}
+
+/// A document opened for a viewer and not read yet.
+pub struct OpenedDocument {
+    opened: Opened,
+    content_type: &'static str,
+}
+
 impl RootedFs {
     pub fn read_file(&self, requested_path: &str) -> Result<FileResponse, FsError> {
-        let resolved = self.resolve_existing(requested_path)?;
-        let file = read_bounded(&resolved, requested_path, MAX_FILE_BYTES)?;
-
-        if file.bytes.contains(&0) {
-            return Err(FsError::BinaryFile {
-                path: requested_path.to_string(),
-            });
-        }
-
-        let content = String::from_utf8(file.bytes).map_err(|_| FsError::InvalidUtf8 {
-            path: requested_path.to_string(),
-        })?;
-
-        Ok(FileResponse {
-            path: relative_path_string(&resolved.logical),
-            name: display_name(&resolved),
-            size: file.metadata.len(),
-            modified_ms: modified_ms(&file.metadata),
-            language_hint: language_hint(&resolved.logical),
-            content,
-        })
+        self.open_text(requested_path)?.read()
     }
 
-    pub fn read_image(&self, requested_path: &str) -> Result<ImageResponse, FsError> {
+    pub fn open_text(&self, requested_path: &str) -> Result<OpenedText, FsError> {
+        let resolved = self.resolve_existing(requested_path)?;
+        open_bounded(resolved, requested_path, MAX_FILE_BYTES).map(OpenedText)
+    }
+
+    pub fn open_image(&self, requested_path: &str) -> Result<OpenedImage, FsError> {
         let resolved = self.resolve_existing(requested_path)?;
         let content_type =
             image_content_type(&resolved.logical).ok_or_else(|| FsError::UnsupportedImage {
                 path: requested_path.to_string(),
             })?;
-        let file = read_bounded(&resolved, requested_path, MAX_IMAGE_BYTES)?;
-
-        Ok(ImageResponse {
-            path: relative_path_string(&resolved.logical),
-            name: display_name(&resolved),
-            size: file.metadata.len(),
-            modified_ms: modified_ms(&file.metadata),
+        Ok(OpenedImage {
+            opened: open_bounded(resolved, requested_path, MAX_IMAGE_BYTES)?,
             content_type,
-            bytes: file.bytes,
         })
     }
 
-    pub fn read_document(&self, requested_path: &str) -> Result<DocumentFile, FsError> {
+    pub fn open_document(&self, requested_path: &str) -> Result<OpenedDocument, FsError> {
         let resolved = self.resolve_existing(requested_path)?;
         let content_type = document_content_type(&resolved.logical).ok_or_else(|| {
             FsError::UnsupportedDocument {
                 path: requested_path.to_string(),
             }
         })?;
-        let file = read_bounded(&resolved, requested_path, MAX_DOCUMENT_BYTES)?;
-        Ok(DocumentFile {
+        Ok(OpenedDocument {
+            opened: open_bounded(resolved, requested_path, MAX_DOCUMENT_BYTES)?,
             content_type,
+        })
+    }
+}
+
+impl OpenedText {
+    pub fn version(&self) -> Option<String> {
+        self.0.version()
+    }
+
+    pub fn read(self) -> Result<FileResponse, FsError> {
+        let file = self.0.read()?;
+        if file.bytes.contains(&0) {
+            return Err(FsError::BinaryFile {
+                path: file.requested_path,
+            });
+        }
+        let content = String::from_utf8(file.bytes).map_err(|_| FsError::InvalidUtf8 {
+            path: file.requested_path,
+        })?;
+        Ok(FileResponse {
+            path: relative_path_string(&file.resolved.logical),
+            name: display_name(&file.resolved),
+            size: file.metadata.len(),
+            modified_ms: modified_ms(&file.metadata),
+            language_hint: language_hint(&file.resolved.logical),
+            content,
+        })
+    }
+}
+
+impl OpenedImage {
+    pub fn version(&self) -> Option<String> {
+        self.opened.version()
+    }
+
+    pub fn read(self) -> Result<ImageResponse, FsError> {
+        let file = self.opened.read()?;
+        Ok(ImageResponse {
+            path: relative_path_string(&file.resolved.logical),
+            name: display_name(&file.resolved),
+            size: file.metadata.len(),
+            modified_ms: modified_ms(&file.metadata),
+            content_type: self.content_type,
             bytes: file.bytes,
         })
     }
 }
 
+impl OpenedDocument {
+    pub fn version(&self) -> Option<String> {
+        self.opened.version()
+    }
+
+    pub fn read(self) -> Result<DocumentFile, FsError> {
+        Ok(DocumentFile {
+            content_type: self.content_type,
+            bytes: self.opened.read()?.bytes,
+        })
+    }
+}
+
+/// A file that passed every check but those on its contents, open for reading.
+struct Opened {
+    resolved: ResolvedPath,
+    requested_path: String,
+    metadata: fs::Metadata,
+    file: fs::File,
+    limit: u64,
+}
+
 struct BoundedFile {
+    resolved: ResolvedPath,
+    requested_path: String,
     metadata: fs::Metadata,
     bytes: Vec<u8>,
 }
 
-// The size is checked before reading and again after, because the file can
-// grow in between; the read itself stops one byte past the limit.
-fn read_bounded(
-    resolved: &ResolvedPath,
+impl Opened {
+    /// Names the file by its size and modification time as they were when it
+    /// was checked. A file system that keeps no modification time gives none.
+    fn version(&self) -> Option<String> {
+        let modified = self.metadata.modified().ok()?;
+        let since_epoch = modified.duration_since(UNIX_EPOCH).ok()?;
+        Some(format!(
+            "{:x}-{:x}",
+            self.metadata.len(),
+            since_epoch.as_nanos()
+        ))
+    }
+
+    // The size is checked again after reading, because the file can grow after
+    // it was checked; the read itself stops one byte past the limit.
+    fn read(self) -> Result<BoundedFile, FsError> {
+        let Self {
+            resolved,
+            requested_path,
+            metadata,
+            mut file,
+            limit,
+        } = self;
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        file.by_ref()
+            .take(limit + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|source| FsError::Io {
+                action: "read file",
+                path: requested_path.clone(),
+                source,
+            })?;
+
+        if bytes.len() as u64 > limit {
+            return Err(FsError::FileTooLarge {
+                path: requested_path,
+                size: bytes.len() as u64,
+                limit,
+            });
+        }
+
+        Ok(BoundedFile {
+            resolved,
+            requested_path,
+            metadata,
+            bytes,
+        })
+    }
+}
+
+// The file is checked before it is opened, so opening never waits on something
+// that is not a regular file and a file over the limit is never read.
+fn open_bounded(
+    resolved: ResolvedPath,
     requested_path: &str,
     limit: u64,
-) -> Result<BoundedFile, FsError> {
+) -> Result<Opened, FsError> {
     let metadata = fs::metadata(&resolved.absolute).map_err(|source| FsError::Io {
         action: "read metadata",
         path: requested_path.to_string(),
@@ -137,30 +252,19 @@ fn read_bounded(
         });
     }
 
-    let mut file = fs::File::open(&resolved.absolute).map_err(|source| FsError::Io {
+    let file = fs::File::open(&resolved.absolute).map_err(|source| FsError::Io {
         action: "open file",
         path: requested_path.to_string(),
         source,
     })?;
-    let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    file.by_ref()
-        .take(limit + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|source| FsError::Io {
-            action: "read file",
-            path: requested_path.to_string(),
-            source,
-        })?;
 
-    if bytes.len() as u64 > limit {
-        return Err(FsError::FileTooLarge {
-            path: requested_path.to_string(),
-            size: bytes.len() as u64,
-            limit,
-        });
-    }
-
-    Ok(BoundedFile { metadata, bytes })
+    Ok(Opened {
+        resolved,
+        requested_path: requested_path.to_string(),
+        metadata,
+        file,
+        limit,
+    })
 }
 
 fn display_name(resolved: &ResolvedPath) -> String {
@@ -236,17 +340,54 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         let four = rooted.resolve_existing("four.bin").unwrap();
-        assert_eq!(read_bounded(&four, "four.bin", 4).unwrap().bytes, b"abcd");
+        assert_eq!(
+            open_bounded(four, "four.bin", 4)
+                .unwrap()
+                .read()
+                .unwrap()
+                .bytes,
+            b"abcd"
+        );
 
         let five = rooted.resolve_existing("five.bin").unwrap();
         assert!(matches!(
-            read_bounded(&five, "five.bin", 4),
+            open_bounded(five, "five.bin", 4),
             Err(FsError::FileTooLarge {
                 size: 5,
                 limit: 4,
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn a_version_follows_the_files_size_and_modification_time() {
+        let temp = tempfile::tempdir().unwrap();
+        let notes = temp.path().join("notes.md");
+        let set_modified = |seconds| {
+            fs::File::options()
+                .write(true)
+                .open(&notes)
+                .unwrap()
+                .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(seconds))
+                .unwrap();
+        };
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let version = || rooted.open_text("notes.md").unwrap().version().unwrap();
+
+        fs::write(&notes, "first").unwrap();
+        set_modified(1_700_000_000);
+        let first = version();
+        assert_eq!(version(), first);
+
+        fs::write(&notes, "fixed").unwrap();
+        set_modified(1_700_000_001);
+        let later = version();
+        assert_ne!(later, first);
+
+        fs::write(&notes, "longer").unwrap();
+        set_modified(1_700_000_001);
+        assert_ne!(version(), later);
     }
 
     #[test]
@@ -336,7 +477,10 @@ mod tests {
         .unwrap();
 
         let rooted = RootedFs::new(temp.path()).unwrap();
-        let image = rooted.read_image("preview.svg").unwrap();
+        let image = rooted
+            .open_image("preview.svg")
+            .and_then(OpenedImage::read)
+            .unwrap();
 
         assert_eq!(image.path, "preview.svg");
         assert_eq!(image.name, "preview.svg");
@@ -352,7 +496,7 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert!(matches!(
-            rooted.read_image("notes.txt"),
+            rooted.open_image("notes.txt").and_then(OpenedImage::read),
             Err(FsError::UnsupportedImage { .. })
         ));
     }
@@ -368,7 +512,7 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert!(matches!(
-            rooted.read_image("large.png"),
+            rooted.open_image("large.png").and_then(OpenedImage::read),
             Err(FsError::FileTooLarge { .. })
         ));
     }
@@ -403,7 +547,10 @@ mod tests {
 
         for (name, content_type) in documents {
             assert_eq!(
-                rooted.read_document(name).unwrap(),
+                rooted
+                    .open_document(name)
+                    .and_then(OpenedDocument::read)
+                    .unwrap(),
                 DocumentFile {
                     content_type,
                     bytes: name.as_bytes().to_vec(),
@@ -432,7 +579,7 @@ mod tests {
         for name in names {
             assert!(
                 matches!(
-                    rooted.read_document(name),
+                    rooted.open_document(name).and_then(OpenedDocument::read),
                     Err(FsError::UnsupportedDocument { .. })
                 ),
                 "{name}"
@@ -448,7 +595,9 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert!(matches!(
-            rooted.read_document("bundle.pdf"),
+            rooted
+                .open_document("bundle.pdf")
+                .and_then(OpenedDocument::read),
             Err(FsError::IsDirectory { .. })
         ));
     }
@@ -467,13 +616,20 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert_eq!(
-            rooted.read_document("limit.xlsx").unwrap().bytes.len(),
+            rooted
+                .open_document("limit.xlsx")
+                .and_then(OpenedDocument::read)
+                .unwrap()
+                .bytes
+                .len(),
             100 * 1024 * 1024
         );
         for extension in ["pdf", "docx", "pptx", "xlsx", "xlsm"] {
             assert!(
                 matches!(
-                    rooted.read_document(&format!("large.{extension}")),
+                    rooted
+                        .open_document(&format!("large.{extension}"))
+                        .and_then(OpenedDocument::read),
                     Err(FsError::FileTooLarge { .. })
                 ),
                 "{extension}"
@@ -493,11 +649,15 @@ mod tests {
         let rooted = RootedFs::new(&root).unwrap();
 
         assert!(matches!(
-            rooted.read_document("../outside.pptx"),
+            rooted
+                .open_document("../outside.pptx")
+                .and_then(OpenedDocument::read),
             Err(FsError::PathEscapesRoot)
         ));
         assert!(matches!(
-            rooted.read_document("link.pptx"),
+            rooted
+                .open_document("link.pptx")
+                .and_then(OpenedDocument::read),
             Err(FsError::PathEscapesRoot)
         ));
     }
