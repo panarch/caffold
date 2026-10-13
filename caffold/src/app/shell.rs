@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 
-use super::error::ApiError;
+use super::{error::ApiError, etag};
 use crate::{
     fs::{MAX_FILE_BYTES, RootedFs},
     server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
@@ -172,45 +172,24 @@ async fn asset(AxumPath(path): AxumPath<String>, request: HeaderMap) -> Response
         return StatusCode::NOT_FOUND.into_response();
     };
     let tag = content_tag(asset.body);
-    let held = request
-        .get(header::IF_NONE_MATCH)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|if_none_match| names_tag(if_none_match, &tag));
-    let mut response = if held {
-        StatusCode::NOT_MODIFIED.into_response()
-    } else {
-        let mut response = Response::new(Body::from(asset.body));
-        response.headers_mut().insert(
+    if etag::matches(&request, &tag) {
+        return etag::not_modified(&tag);
+    }
+    (
+        etag::headers(&tag),
+        [(
             header::CONTENT_TYPE,
             HeaderValue::from_static(asset.content_type),
-        );
-        response
-    };
-    let headers = response.headers_mut();
-    headers.insert(
-        header::ETAG,
-        HeaderValue::from_str(&format!("\"{tag}\""))
-            .expect("a base64url digest is a valid header value"),
-    );
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-    response
+        )],
+        Body::from(asset.body),
+    )
+        .into_response()
 }
 
 /// Name an asset by its contents, so a file a new build did not change keeps
 /// its tag and the browser revalidates it instead of downloading it again.
 fn content_tag(body: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(body))
-}
-
-/// Whether an `If-None-Match` value holds this tag. The header compares tags
-/// weakly, so a `W/` prefix does not matter, and `*` holds every tag.
-fn names_tag(if_none_match: &str, tag: &str) -> bool {
-    if_none_match.trim() == "*"
-        || if_none_match
-            .split('"')
-            .skip(1)
-            .step_by(2)
-            .any(|held| held == tag)
 }
 
 async fn health(State(state): State<ShellState>) -> Json<HealthResponse> {

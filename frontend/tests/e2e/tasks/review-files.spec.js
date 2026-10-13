@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { repositoryPath } from "../../repository-paths.mjs";
 import {
   actionHintDialog,
@@ -674,6 +674,55 @@ test("selects supported source and preview representations for images", { tag: "
     await expect(viewer.locator("img.image-preview")).toBeVisible();
   } finally {
     await rm(rasterPath, { force: true });
+  }
+});
+
+test("keeps an image's address until the file on disk changes", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const imageName = "review-image-address.png";
+  const imagePath = repositoryPath("frontend/tests/e2e/fixtures/home/src", imageName);
+  const firstModified = new Date(1_700_000_000_000);
+  const laterModified = new Date(1_700_000_005_000);
+  await copyFile(repositoryPath("frontend/assets/icons/favicon-32.png"), imagePath);
+  await utimes(imagePath, firstModified, firstModified);
+  try {
+    const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+    const navigator = taskReview.locator("caffold-file-navigator");
+    const image = taskReview.locator("caffold-review-file-viewer img.image-preview");
+    const imageAddress = new RegExp(
+      `/api/image\\?path=src%2F${imageName.replace(".", "\\.")}&revision=${firstModified.getTime()}$`,
+    );
+
+    await navigator.locator(`button[data-file-tree-path="src/${imageName}"]`).click();
+    await taskReview.getByRole("button", { name: "Preview", exact: true }).click();
+    await expect(image).toHaveAttribute("src", imageAddress);
+    await navigator.locator('button[data-file-tree-path="src/alpha.rs"]').click();
+    await expect(image).toHaveCount(0);
+    await navigator.locator(`button[data-file-tree-path="src/${imageName}"]`).click();
+    await expect(image).toHaveAttribute("src", imageAddress);
+
+    await utimes(imagePath, laterModified, laterModified);
+    await page.evaluate((logicalPath) => {
+      const source = window.__caffoldMockEventSources.find(
+        (candidate) => candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
+      );
+      source?.emit("change", {
+        revision: 2,
+        paths: [logicalPath],
+        gitStatusChanged: false,
+        gitRefsChanged: false,
+        overflow: false,
+      });
+    }, `src/${imageName}`);
+    await expect(image).toHaveAttribute(
+      "src",
+      new RegExp(`&revision=${laterModified.getTime()}$`),
+    );
+  } finally {
+    await rm(imagePath, { force: true });
   }
 });
 

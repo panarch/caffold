@@ -1290,6 +1290,15 @@ without the viewers' size limits or text checks, so a file no viewer can show
 can still be saved. A diff shows a change rather than a file on disk and offers
 no Download.
 
+The routes that read a file for a viewer, `/api/file`, `/api/image`,
+`/api/document`, and the conversation's `/api/task-image`, send
+`Cache-Control: no-cache` with an `ETag` made from the file's size and
+modification time, and answer a browser that already holds that version with
+304 without reading the file. A file without a modification time is sent with
+`no-store`. Review's image and document addresses carry the modification time
+as `revision`, so a file that changes on disk is also loaded from a new
+address.
+
 PDFs, Word documents, PowerPoint decks, and Excel workbooks share one document
 state in the file viewer, which mounts the viewer for the document's kind and
 hands it `/api/document`. That route answers each kind with its own content

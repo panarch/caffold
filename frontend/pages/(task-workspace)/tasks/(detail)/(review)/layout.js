@@ -78,7 +78,6 @@ class CaffoldTaskReview extends HTMLElement {
     this.statusGeneration = 0;
     this.branchGeneration = 0;
     this.viewerGeneration = 0;
-    this.imageRevision = 0;
     this.watchUnsubscribe = null;
     this.watchPath = "";
     this.pendingWatchViewerRefresh = false;
@@ -738,7 +737,9 @@ class CaffoldTaskReview extends HTMLElement {
         imageType: imageTypeLabel(selectedPath),
         size: entry?.size,
         modifiedMs: entry?.modifiedMs,
-        revision: ++this.imageRevision,
+        // As for a document, the modification time keeps the image URL stable
+        // while the file on disk is unchanged.
+        revision: entry?.modifiedMs,
       });
       return;
     }

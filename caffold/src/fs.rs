@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use crate::{git, github};
 
-pub use read::{FileResponse, ImageResponse, MAX_FILE_BYTES, MAX_IMAGE_BYTES};
+pub use read::{FileBytes, FileResponse, MAX_FILE_BYTES, MAX_IMAGE_BYTES};
 
 #[derive(Debug, Clone)]
 pub struct RootedFs {
@@ -2269,7 +2269,7 @@ mod tests {
 
         assert!(matches!(rooted.list("../"), Err(FsError::PathEscapesRoot)));
         assert!(matches!(
-            rooted.read_file("../secret.txt"),
+            rooted.read_text("../secret.txt"),
             Err(FsError::PathEscapesRoot)
         ));
     }
@@ -2280,7 +2280,7 @@ mod tests {
         let rooted = RootedFs::new(temp.path()).unwrap();
 
         assert!(matches!(
-            rooted.read_file("/etc/passwd"),
+            rooted.read_text("/etc/passwd"),
             Err(FsError::PathEscapesRoot)
         ));
     }
@@ -2300,7 +2300,7 @@ mod tests {
         let rooted = RootedFs::new(root.path()).unwrap();
 
         assert!(matches!(
-            rooted.read_file("escape.txt"),
+            rooted.read_text("escape.txt"),
             Err(FsError::PathEscapesRoot)
         ));
         assert!(
