@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use crate::{git, github};
 
-pub use read::{FileBytes, FileResponse, MAX_FILE_BYTES, MAX_IMAGE_BYTES};
+pub use read::{FileBytes, FileResponse, MAX_FILE_BYTES, MAX_IMAGE_BYTES, OpenedBinary};
 
 #[derive(Debug, Clone)]
 pub struct RootedFs {

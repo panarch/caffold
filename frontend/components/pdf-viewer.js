@@ -2,6 +2,7 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../scroll-scope.js";
+import { fetchInChunks } from "../chunked-fetch.js";
 import "./loading-text.js";
 
 const PDFJS_VERSION = "6.3.289";
@@ -77,8 +78,13 @@ class CaffoldPdfViewer extends HTMLElement {
   }
 
   async open(generation, url) {
+    const reading = new AbortController();
+    this.reading = reading;
     try {
-      const pdfjs = await loadLibrary();
+      const [pdfjs, data] = await Promise.all([
+        loadLibrary(),
+        readDocument(url, reading.signal),
+      ]);
       if (!this.isCurrent(generation)) {
         return;
       }
@@ -86,7 +92,7 @@ class CaffoldPdfViewer extends HTMLElement {
       // rather than degrading: predefined CJK encodings, unembedded standard
       // fonts, JPEG 2000 images, and CMYK colour respectively.
       const task = pdfjs.getDocument({
-        url,
+        data,
         cMapUrl: `${PDFJS_BASE}/cmaps/`,
         cMapPacked: true,
         standardFontDataUrl: `${PDFJS_BASE}/standard_fonts/`,
@@ -216,6 +222,8 @@ class CaffoldPdfViewer extends HTMLElement {
     this.generation = (this.generation ?? 0) + 1;
     this.url = null;
     this.revision = null;
+    this.reading?.abort();
+    this.reading = null;
     this.pageObserver?.disconnect();
     this.pageObserver = null;
     this.widthObserver?.disconnect();
@@ -275,6 +283,13 @@ function destroyLoadingTask(task) {
   task.destroy().catch(() => {
     // A document torn down mid-render rejects its outstanding work.
   });
+}
+
+// pdf.js is handed the bytes rather than the address, so the document arrives
+// in cells like every other file a viewer shows.
+async function readDocument(url, signal) {
+  const file = await fetchInChunks(url, { signal });
+  return new Uint8Array(await file.arrayBuffer());
 }
 
 function loadLibrary() {

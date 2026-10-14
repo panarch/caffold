@@ -175,16 +175,19 @@ test("renders and previews assistant-generated images after history reload", { t
       10.5,
     ),
   ];
+  let generatedImageRequests = 0;
   await page.route(
     `/api/tasks/${scenario.threadId}/generated-images/image_1`,
-    (route) =>
-      route.fulfill({
+    (route) => {
+      generatedImageRequests += 1;
+      return route.fulfill({
         contentType: "image/png",
         body: Buffer.from(
           "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
           "base64",
         ),
-      }),
+      });
+    },
   );
 
   await page.goto(`/tasks/${scenario.threadId}`);
@@ -197,10 +200,12 @@ test("renders and previews assistant-generated images after history reload", { t
   );
 
   await expect(preview).toBeVisible();
-  await expect(preview.locator("img")).toHaveAttribute(
-    "src",
-    `/api/tasks/${scenario.threadId}/generated-images/image_1`,
-  );
+  // The picture is fetched from its address and drawn from the fetched copy.
+  await expect(preview.locator("img")).toHaveAttribute("src", /^blob:/);
+  await expect
+    .poll(() => preview.locator("img").evaluate((image) => image.naturalWidth))
+    .toBeGreaterThan(0);
+  expect(generatedImageRequests).toBeGreaterThan(0);
   await expect(
     tasksPage.locator(".task-work-details", {
       has: preview,
@@ -211,6 +216,11 @@ test("renders and previews assistant-generated images after history reload", { t
   await expect(dialog.locator("[data-task-image-preview-name]")).toHaveText(
     "Generated image.png",
   );
+  await expect
+    .poll(() =>
+      dialog.locator("[data-task-image-preview-image]").evaluate((image) => image.naturalWidth)
+    )
+    .toBeGreaterThan(0);
   await dialog.getByRole("button", { name: "Close image preview" }).click();
 
   await page.reload();

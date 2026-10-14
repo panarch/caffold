@@ -607,10 +607,13 @@ test("creates a task with responsive composer controls and canonical approval st
     "planner-layout.png",
   );
   await expect(userAttachments.nth(1).locator("img")).toBeVisible();
+  // A picture the server holds is fetched from its address and drawn from
+  // the fetched copy.
   await expect(userAttachments.nth(1).locator("img")).toHaveAttribute(
-    "src",
+    "data-attachment-source",
     /\/api\/task-image\?path=%2Ftmp%2Fplanner-layout\.png$/,
   );
+  await expect(userAttachments.nth(1).locator("img")).toHaveAttribute("src", /^blob:/);
   await expect(userAttachments.nth(1).locator("figcaption")).toContainText(
     "server-reference.png",
   );

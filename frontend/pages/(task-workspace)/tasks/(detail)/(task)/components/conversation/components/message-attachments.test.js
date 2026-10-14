@@ -129,3 +129,98 @@ test("keeps its pictures when the same ones are reported again", () => {
   );
   assert.equal(renders, 2);
 });
+
+function picture(source) {
+  return {
+    dataset: { attachmentSource: source },
+    removeAttribute(name) {
+      delete this[name];
+    },
+  };
+}
+
+function watchedHost(pictures) {
+  const observers = [];
+  globalThis.IntersectionObserver = class {
+    constructor(callback, options) {
+      this.callback = callback;
+      this.options = options;
+      this.observed = new Set();
+      observers.push(this);
+    }
+    observe(target) {
+      this.observed.add(target);
+    }
+    unobserve(target) {
+      this.observed.delete(target);
+    }
+    disconnect() {
+      this.observed.clear();
+    }
+  };
+  const host = attachmentsHost({
+    fetchedPictures: new Map(),
+    querySelectorAll: () => pictures,
+  });
+  return { host, observers };
+}
+
+async function settle() {
+  for (let turn = 0; turn < 10; turn += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+test("fetches a picture only once it nears the viewport", async (t) => {
+  const near = picture("/api/task-image?path=%2Ftmp%2Fnear.png");
+  const far = picture("/api/task-image?path=%2Ftmp%2Ffar.png");
+  const { host, observers } = watchedHost([near, far]);
+  const fetched = [];
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    fetched.push(url);
+    return new Response(new Uint8Array([1, 2, 3]), {
+      headers: { "Content-Type": "image/png" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    delete globalThis.IntersectionObserver;
+  });
+
+  host.watchPictures();
+  const [observer] = observers;
+  assert.deepEqual([...observer.observed], [near, far]);
+  assert.equal(observer.options.rootMargin, "2500px 0px");
+  assert.equal(observer.options.scrollMargin, "2500px 0px");
+
+  observer.callback([
+    { target: near, isIntersecting: true },
+    { target: far, isIntersecting: false },
+  ]);
+  await settle();
+
+  assert.deepEqual(fetched, ["/api/task-image?path=%2Ftmp%2Fnear.png"]);
+  assert.match(near.src, /^blob:/);
+  assert.equal(far.src, undefined);
+  assert.deepEqual([...observer.observed], [far], "a fetched picture is no longer watched");
+});
+
+test("lets go of its pictures when it leaves, so they are fetched again on return", async () => {
+  const shown = picture("/api/task-image?path=%2Ftmp%2Fshown.png");
+  const arriving = picture("/api/task-image?path=%2Ftmp%2Farriving.png");
+  const { host } = watchedHost([shown, arriving]);
+  const shownFetch = new AbortController();
+  const arrivingFetch = new AbortController();
+  shown.src = URL.createObjectURL(new Blob([new Uint8Array([1])]));
+  host.fetchedPictures.set(shown, { fetching: shownFetch, objectUrl: shown.src });
+  host.fetchedPictures.set(arriving, { fetching: arrivingFetch, objectUrl: "" });
+
+  host.releasePictures();
+
+  assert.equal(shownFetch.signal.aborted, true);
+  assert.equal(arrivingFetch.signal.aborted, true);
+  assert.equal(shown.src, undefined);
+  assert.equal(host.fetchedPictures.size, 0);
+  delete globalThis.IntersectionObserver;
+});

@@ -521,6 +521,7 @@ function retainingViewer(state) {
     "cancelRetainedContent",
     "deactivate",
     "closeDetailsPopover",
+    "releaseShownImage",
     "setNotice",
     "setEmpty",
   ]) {
@@ -611,6 +612,17 @@ test("deactivation ends the wait and leaves the previous content shown", () => {
 
   owner.setLoading({ title: "next.md" });
   assert.equal(timers.size, 1, "a request after reactivation waits again");
+});
+
+test("deactivation lets go of the picture being fetched", () => {
+  const { owner } = retainingViewer(shown);
+  const fetching = new AbortController();
+  owner.shownImage = { url: "/api/image?path=a.png", fetching, objectUrl: "" };
+
+  owner.deactivate();
+
+  assert.equal(fetching.signal.aborted, true);
+  assert.equal(owner.shownImage, null);
 });
 
 test("a deadline whose wait already ended changes nothing", () => {

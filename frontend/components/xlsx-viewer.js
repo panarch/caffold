@@ -9,6 +9,7 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../scroll-scope.js";
+import { fetchInChunks } from "../chunked-fetch.js";
 import "./loading-text.js";
 import "./segmented-control.js";
 import { readWorkbook } from "./xlsx-viewer/workbook.js";
@@ -531,11 +532,8 @@ function sum(values, first, end) {
 }
 
 async function readDocument(url, signal) {
-  const response = await fetch(url, { signal });
-  if (!response.ok) {
-    throw new Error(`document request failed with ${response.status}`);
-  }
-  return response.arrayBuffer();
+  const file = await fetchInChunks(url, { signal });
+  return file.arrayBuffer();
 }
 
 function loadLibrary() {

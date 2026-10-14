@@ -28,6 +28,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "origin-reachability.js" => Some(js(include_str!("../../frontend/origin-reachability.js"))),
         "file-status.js" => Some(js(include_str!("../../frontend/file-status.js"))),
+        "chunked-fetch.js" => Some(js(include_str!("../../frontend/chunked-fetch.js"))),
+        "chunked-fetch/cell-scheduler.js" => Some(js(include_str!(
+            "../../frontend/chunked-fetch/cell-scheduler.js"
+        ))),
+        "chunked-fetch/in-flight-limit.js" => Some(js(include_str!(
+            "../../frontend/chunked-fetch/in-flight-limit.js"
+        ))),
+        "chunked-fetch/transfer.js" => {
+            Some(js(include_str!("../../frontend/chunked-fetch/transfer.js")))
+        }
         "fonts.js" => Some(js(include_str!("../../frontend/fonts.js"))),
         "navigation-routes.js" => Some(js(include_str!("../../frontend/navigation-routes.js"))),
         "settings.js" => Some(js(include_str!("../../frontend/settings.js"))),
@@ -1824,6 +1834,10 @@ mod tests {
             "keyboard-navigation/components/presentation.js",
             "keyboard-navigation/components/shortcut-list.js",
             "keyboard-navigation/components/shortcut-dialog.js",
+            "chunked-fetch.js",
+            "chunked-fetch/cell-scheduler.js",
+            "chunked-fetch/in-flight-limit.js",
+            "chunked-fetch/transfer.js",
             "action-hints.js",
             "action-hints/control.js",
             "action-hints/model.js",

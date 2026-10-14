@@ -8,6 +8,7 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../scroll-scope.js";
+import { fetchInChunks } from "../chunked-fetch.js";
 import "./loading-text.js";
 
 const PPTX_RENDERER_VERSION = "1.3.0";
@@ -351,11 +352,8 @@ function withholdMedia(container) {
 }
 
 async function readDocument(url, signal) {
-  const response = await fetch(url, { signal });
-  if (!response.ok) {
-    throw new Error(`document request failed with ${response.status}`);
-  }
-  return response.arrayBuffer();
+  const file = await fetchInChunks(url, { signal });
+  return file.arrayBuffer();
 }
 
 function loadLibrary() {

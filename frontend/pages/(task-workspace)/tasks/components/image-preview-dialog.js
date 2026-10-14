@@ -1,3 +1,4 @@
+import { fetchInChunks } from "#app/chunked-fetch.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import {
   ACTION_HINT_ACTION,
@@ -126,12 +127,51 @@ class CaffoldTaskImagePreviewDialog extends HTMLElement {
     this.querySelector("[data-task-image-preview-unavailable]").hidden = true;
     preview.hidden = false;
     preview.alt = name;
+    this.releasePicture();
     preview.removeAttribute("src");
-    preview.src = src;
+    if (src.startsWith("data:")) {
+      preview.src = src;
+    } else {
+      this.showFetchedPicture(preview, src);
+    }
     if (!dialog.open) {
       dialog.showModal();
     }
     return true;
+  }
+
+  // A picture the server holds is fetched in cells; the list that opened the
+  // preview has usually fetched it already.
+  showFetchedPicture(preview, src) {
+    const fetching = new AbortController();
+    const picture = { fetching, objectUrl: "" };
+    this.picture = picture;
+    fetchInChunks(src, { signal: fetching.signal }).then(
+      (file) => {
+        if (this.picture !== picture) {
+          return;
+        }
+        picture.objectUrl = URL.createObjectURL(file);
+        preview.src = picture.objectUrl;
+      },
+      (error) => {
+        if (this.picture === picture && error?.name !== "AbortError") {
+          this.showUnavailable();
+        }
+      },
+    );
+  }
+
+  releasePicture() {
+    const picture = this.picture;
+    if (!picture) {
+      return;
+    }
+    this.picture = null;
+    picture.fetching.abort();
+    if (picture.objectUrl) {
+      URL.revokeObjectURL(picture.objectUrl);
+    }
   }
 
   dismiss() {
@@ -148,6 +188,7 @@ class CaffoldTaskImagePreviewDialog extends HTMLElement {
 
   reset() {
     const preview = this.image();
+    this.releasePicture();
     preview.hidden = false;
     preview.removeAttribute("src");
     preview.alt = "";
