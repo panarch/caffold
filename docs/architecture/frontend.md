@@ -1326,7 +1326,9 @@ one and changes once a round trip by how long a cell waited for its first byte:
 it grows while cells wait no longer than the usual round trip and a quarter of a
 second, and shrinks otherwise. Conversation thumbnails start fetching when they
 come within 2500px of view; a picture the message itself carries as a
-`data:` address is drawn directly.
+`data:` address is drawn directly. Until a fetched picture is drawn, its place
+in Review, the conversation, and the image preview shows "Loading image...",
+as a document viewer does for its document.
 
 PDFs, Word documents, PowerPoint decks, and Excel workbooks share one document
 state in the file viewer, which mounts the viewer for the document's kind and

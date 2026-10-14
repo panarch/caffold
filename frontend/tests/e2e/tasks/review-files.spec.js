@@ -815,6 +815,47 @@ test("fetches a large image in 64 KB cells, the later ones under its version", {
   }
 });
 
+test("says an image is loading until it is drawn", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const imageName = "review-image-loading.png";
+  const imagePath = repositoryPath("frontend/tests/e2e/fixtures/home/src", imageName);
+  await copyFile(repositoryPath("frontend/assets/icons/icon-512.png"), imagePath);
+  try {
+    let releaseImage;
+    const imageGate = new Promise((resolve) => {
+      releaseImage = resolve;
+    });
+    await page.route(/\/api\/image\?/, async (route) => {
+      if (new URL(route.request().url()).searchParams.get("path") === `src/${imageName}`) {
+        await imageGate;
+      }
+      return route.fallback();
+    });
+    const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+    const viewer = taskReview.locator("caffold-review-file-viewer");
+    const image = viewer.locator("img.image-preview");
+    const loading = viewer.locator(".image-stage > caffold-loading-text");
+
+    await taskReview
+      .locator(`caffold-file-navigator button[data-file-tree-path="src/${imageName}"]`)
+      .click();
+    await taskReview.getByRole("button", { name: "Preview", exact: true }).click();
+    await expect(loading).toHaveText("Loading image...");
+    await expect(loading).toBeVisible();
+    await expect(image).toBeHidden();
+
+    releaseImage();
+    await expectFetchedPicture(image);
+    await expect(image).toBeVisible();
+    await expect(loading).toHaveCount(0);
+  } finally {
+    await rm(imagePath, { force: true });
+  }
+});
+
 // The `revision` of each request for an image's first cell, the address the
 // viewer asks for; later cells add the file's version to that address.
 function imageRequestRevisions(page, name) {

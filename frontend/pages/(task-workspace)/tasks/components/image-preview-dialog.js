@@ -1,5 +1,6 @@
 import { fetchInChunks } from "#app/chunked-fetch.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -39,6 +40,7 @@ class CaffoldTaskImagePreviewDialog extends HTMLElement {
     this.initialized = true;
     this.render();
     this.image().addEventListener("error", () => this.showUnavailable());
+    this.image().addEventListener("load", () => this.showLoaded());
     this.dialog().addEventListener("close", () => this.reset());
     warmIcons();
   }
@@ -66,6 +68,10 @@ class CaffoldTaskImagePreviewDialog extends HTMLElement {
 
   image() {
     return this.querySelector("[data-task-image-preview-image]");
+  }
+
+  loading() {
+    return this.querySelector("[data-task-image-preview-loading]");
   }
 
   keyboardNavigationContexts() {
@@ -125,13 +131,18 @@ class CaffoldTaskImagePreviewDialog extends HTMLElement {
     const preview = this.image();
     this.querySelector("[data-task-image-preview-name]").textContent = name;
     this.querySelector("[data-task-image-preview-unavailable]").hidden = true;
-    preview.hidden = false;
     preview.alt = name;
     this.releasePicture();
     preview.removeAttribute("src");
     if (src.startsWith("data:")) {
+      preview.hidden = false;
+      this.loading().hidden = true;
       preview.src = src;
     } else {
+      // Until the picture is drawn, the preview says it is loading rather
+      // than showing an empty image the browser would draw as broken.
+      preview.hidden = true;
+      this.loading().hidden = false;
       this.showFetchedPicture(preview, src);
     }
     if (!dialog.open) {
@@ -181,8 +192,14 @@ class CaffoldTaskImagePreviewDialog extends HTMLElement {
     }
   }
 
+  showLoaded() {
+    this.loading().hidden = true;
+    this.image().hidden = false;
+  }
+
   showUnavailable() {
     this.image().hidden = true;
+    this.loading().hidden = true;
     this.querySelector("[data-task-image-preview-unavailable]").hidden = false;
   }
 
@@ -192,6 +209,7 @@ class CaffoldTaskImagePreviewDialog extends HTMLElement {
     preview.hidden = false;
     preview.removeAttribute("src");
     preview.alt = "";
+    this.loading().hidden = true;
     this.querySelector("[data-task-image-preview-name]").textContent = "";
     this.querySelector("[data-task-image-preview-unavailable]").hidden = true;
   }
@@ -222,6 +240,7 @@ class CaffoldTaskImagePreviewDialog extends HTMLElement {
           <div class="task-image-preview-body">
             <div class="task-image-preview-viewport">
               <img data-task-image-preview-image alt="">
+              <caffold-loading-text data-task-image-preview-loading hidden>Loading image...</caffold-loading-text>
               <p class="task-image-preview-unavailable" data-task-image-preview-unavailable hidden>
                 Image preview unavailable.
               </p>

@@ -52,6 +52,11 @@ caffold-task-message-attachments {
     object-fit: contain;
   }
 
+  & .task-message-attachment-preview > caffold-loading-text {
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
   & > .task-message-attachment > .task-message-attachment-unavailable {
     align-content: center;
     gap: 0.4375rem;

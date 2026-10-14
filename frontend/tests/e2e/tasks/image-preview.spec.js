@@ -152,6 +152,55 @@ test("keeps one sent-image dialog stable through live conversation updates", { t
   await expect(dialog).toBeHidden();
 });
 
+test("says a sent picture is loading until it is drawn, in the list and in the preview", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page);
+  await scenario.seedCompletedTask();
+  let releasePicture;
+  const pictureGate = new Promise((resolve) => {
+    releasePicture = resolve;
+  });
+  await page.route(/\/api\/task-image(?:\?|$)/, async (route) => {
+    await pictureGate;
+    return route.fallback();
+  });
+  await page.goto(`/tasks/${scenario.threadId}`);
+
+  const tasksPage = page.locator("caffold-tasks-page");
+  // The prompt's second picture is a file the server holds; the first is
+  // carried in the message itself.
+  const sentPreview = tasksPage.getByRole("button", {
+    name: "Preview server-reference.png",
+  });
+  const thumbnail = sentPreview.locator("img");
+  const thumbnailLoading = sentPreview.locator("caffold-loading-text");
+  await expect(sentPreview).toBeVisible();
+  await expect(thumbnailLoading).toHaveText("Loading image...");
+  await expect(thumbnail).toBeHidden();
+
+  await sentPreview.click();
+  const dialog = tasksPage.locator(
+    ":scope > caffold-task-image-preview-dialog > dialog",
+  );
+  const previewImage = dialog.locator("[data-task-image-preview-image]");
+  const previewLoading = dialog.locator("[data-task-image-preview-loading]");
+  await expect(dialog).toBeVisible();
+  await expect(previewLoading).toBeVisible();
+  await expect(previewLoading).toHaveText("Loading image...");
+  await expect(previewImage).toBeHidden();
+
+  releasePicture();
+  await expect(previewImage).toBeVisible();
+  await expect(previewLoading).toBeHidden();
+  await expect
+    .poll(() => previewImage.evaluate((image) => image.naturalWidth))
+    .toBeGreaterThan(0);
+  await dialog.getByRole("button", { name: "Close image preview" }).click();
+  await expect(thumbnail).toBeVisible();
+  await expect(thumbnailLoading).toBeHidden();
+});
+
 test("renders and previews assistant-generated images after history reload", { tag: "@all-viewports" }, async ({
   page,
 }) => {

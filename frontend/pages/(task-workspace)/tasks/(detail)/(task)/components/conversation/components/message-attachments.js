@@ -10,6 +10,7 @@ import {
   hasActionHintLayoutBox,
 } from "#app/action-hints.js";
 import { fetchInChunks } from "#app/chunked-fetch.js";
+import "#components/loading-text.js";
 import { requestTaskImagePreview } from "#tasks/components/image-preview-dialog.js";
 
 // A picture is fetched when it comes this near view, in the viewport and in
@@ -106,17 +107,20 @@ class CaffoldTaskMessageAttachments extends HTMLElement {
       (entries) => this.fetchNearbyPictures(entries),
       { rootMargin: NEARBY_MARGIN, scrollMargin: NEARBY_MARGIN },
     );
+    // A picture is watched through its box: the picture stays hidden until
+    // it is drawn, and a hidden element never comes near the viewport.
     for (const picture of pictures) {
-      this.pictureObserver.observe(picture);
+      this.pictureObserver.observe(picture.parentElement);
     }
   }
 
   fetchNearbyPictures(entries) {
-    for (const { target: picture, isIntersecting } of entries) {
-      if (!isIntersecting || this.fetchedPictures.has(picture)) {
+    for (const { target: box, isIntersecting } of entries) {
+      const picture = box.querySelector(":scope > img[data-attachment-source]");
+      if (!isIntersecting || !picture || this.fetchedPictures.has(picture)) {
         continue;
       }
-      this.pictureObserver.unobserve(picture);
+      this.pictureObserver.unobserve(box);
       const fetching = new AbortController();
       const record = { fetching, objectUrl: "" };
       this.fetchedPictures.set(picture, record);
@@ -128,23 +132,36 @@ class CaffoldTaskMessageAttachments extends HTMLElement {
             return;
           }
           record.objectUrl = URL.createObjectURL(file);
+          picture.addEventListener("load", () => {
+            picture.hidden = false;
+            pictureLoading(picture).hidden = true;
+          }, { once: true });
           picture.src = record.objectUrl;
         },
-        () => {},
+        (error) => {
+          if (
+            this.fetchedPictures.get(picture) === record &&
+            error?.name !== "AbortError"
+          ) {
+            pictureLoading(picture).hidden = true;
+          }
+        },
       );
     }
   }
 
-  // A released picture loses its copy, so the list fetches it again if it is
-  // shown again.
+  // A released picture loses its copy and goes back to loading, so the list
+  // fetches it again if it is shown again.
   releasePictures() {
     this.pictureObserver?.disconnect();
     for (const [picture, record] of this.fetchedPictures) {
       record.fetching.abort();
       if (record.objectUrl) {
         URL.revokeObjectURL(record.objectUrl);
-        picture.removeAttribute("src");
       }
+      picture.removeAttribute("src");
+      picture.hidden = true;
+      pictureLoading(picture).hidden = false;
     }
     this.fetchedPictures.clear();
   }
@@ -238,10 +255,19 @@ function renderAttachment(attachment, index) {
   `;
 }
 
+// Until a fetched picture is drawn, its place says it is loading rather than
+// standing empty.
 function renderPicture(src) {
   return src.startsWith("data:")
     ? `<img src="${escapeHtml(src)}" alt="">`
-    : `<img data-attachment-source="${escapeHtml(src)}" alt="">`;
+    : `
+      <img data-attachment-source="${escapeHtml(src)}" alt="" hidden>
+      <caffold-loading-text>Loading image...</caffold-loading-text>
+    `;
+}
+
+function pictureLoading(picture) {
+  return picture.parentElement.querySelector(":scope > caffold-loading-text");
 }
 
 function renderAttachmentIcon(kind) {

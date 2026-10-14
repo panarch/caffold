@@ -811,12 +811,16 @@ class CaffoldReviewFileViewer extends HTMLElement {
       <section class="viewer-panel image-panel">
         ${this.renderHeader(image.name, metadata, { downloadPath: image.path })}
         <div class="image-stage">
-          <img class="image-preview" alt="${escapeHtml(image.name)}">
+          <img class="image-preview" alt="${escapeHtml(image.name)}" hidden>
+          <caffold-loading-text>Loading image...</caffold-loading-text>
         </div>
       </section>
     `;
 
+    // Until the picture is drawn, its place says it is loading rather than
+    // showing an empty image the browser would draw as broken.
     const preview = this.querySelector(".image-preview");
+    const loading = this.querySelector(".image-stage > caffold-loading-text");
     const failed = () => {
       this.setError(
         sourceViewerPresentation(image),
@@ -824,6 +828,10 @@ class CaffoldReviewFileViewer extends HTMLElement {
       );
     };
     preview.addEventListener("error", failed);
+    preview.addEventListener("load", () => {
+      loading.remove();
+      preview.hidden = false;
+    });
     this.showFetchedImage(
       preview,
       imageUrlWithRevision(image.path, image.revision),
