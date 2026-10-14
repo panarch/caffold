@@ -45,6 +45,51 @@ const DOCUMENT_VIEWERS = {
   xlsx: "caffold-xlsx-viewer",
 };
 
+// An image or document preview is fetched here, once for its file, and drawn
+// from that copy. Review asks for it again only when the file may have
+// changed, and it is drawn again only when the server answers with another
+// version. One preview file at a time moves through these phases; with none,
+// nothing is fetched or drawn.
+const PREVIEW_PHASE = Object.freeze({
+  // Fetched for the first time; nothing of it is drawn yet.
+  READING: "reading",
+  // Drawn from a fetched copy.
+  SHOWN: "shown",
+  // Drawn, and asked for again.
+  RECHECKING: "rechecking",
+  // Its first fetch failed; showing it again fetches it again.
+  FAILED: "failed",
+});
+
+const PREVIEW_EVENT = Object.freeze({
+  // Review says the file may have changed.
+  RECHECK: "recheck",
+  // The fetch answered with the file and the version the server named.
+  READ: "read",
+  FAILED: "failed",
+});
+
+// The complete set of allowed moves; any other event leaves the phase alone.
+// Showing another file, another kind of content, or deactivating lets the
+// preview file go, and showing it again starts over.
+const PREVIEW_EDGES = Object.freeze({
+  [PREVIEW_PHASE.READING]: Object.freeze({
+    [PREVIEW_EVENT.RECHECK]: PREVIEW_PHASE.READING,
+    [PREVIEW_EVENT.READ]: PREVIEW_PHASE.SHOWN,
+    [PREVIEW_EVENT.FAILED]: PREVIEW_PHASE.FAILED,
+  }),
+  [PREVIEW_PHASE.SHOWN]: Object.freeze({
+    [PREVIEW_EVENT.RECHECK]: PREVIEW_PHASE.RECHECKING,
+  }),
+  [PREVIEW_PHASE.RECHECKING]: Object.freeze({
+    [PREVIEW_EVENT.RECHECK]: PREVIEW_PHASE.RECHECKING,
+    [PREVIEW_EVENT.READ]: PREVIEW_PHASE.SHOWN,
+    // The copy already drawn stays; the next recheck asks again.
+    [PREVIEW_EVENT.FAILED]: PREVIEW_PHASE.SHOWN,
+  }),
+  [PREVIEW_PHASE.FAILED]: Object.freeze({}),
+});
+
 let viewerInstanceId = 0;
 
 class CaffoldReviewFileViewer extends HTMLElement {
@@ -96,7 +141,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
   deactivate() {
     this.cancelRetainedContent();
     this.closeDetailsPopover();
-    this.releaseShownImage();
+    this.releasePreviewFile();
   }
 
   closeDetailsPopover() {
@@ -185,20 +230,30 @@ class CaffoldReviewFileViewer extends HTMLElement {
     this.render({ ...options, markdownChanged: true });
   }
 
-  setImage(image) {
+  // `recheck` says the file may have changed since it was fetched.
+  setImage(image, { recheck = false } = {}) {
     this.cancelRetainedContent();
+    const held = this.previewFile;
     this.state = { status: "image", image };
     this.render();
+    if (recheck && held && this.previewFile === held) {
+      this.recheckPreviewFile();
+    }
   }
 
-  setDocument(previewDocument) {
+  // `recheck` says the file may have changed since it was fetched.
+  setDocument(previewDocument, { recheck = false } = {}) {
     this.cancelRetainedContent();
+    const held = this.previewFile;
     this.state = {
       status: "document",
       document: previewDocument,
       presentation: sourceViewerPresentation(previewDocument),
     };
     this.render();
+    if (recheck && held && this.previewFile === held) {
+      this.recheckPreviewFile();
+    }
   }
 
   setRefreshState(state) {
@@ -637,8 +692,8 @@ class CaffoldReviewFileViewer extends HTMLElement {
 
   render(options = {}) {
     this.closeDetailsPopover();
-    if (this.state?.status !== "image") {
-      this.releaseShownImage();
+    if (this.state?.status !== "image" && this.state?.status !== "document") {
+      this.releasePreviewFile();
     }
     if (!this.state || this.state.status === "empty") {
       this.innerHTML = `
@@ -760,25 +815,30 @@ class CaffoldReviewFileViewer extends HTMLElement {
   renderDocument() {
     const { document: previewDocument, presentation } = this.state;
     const tagName = DOCUMENT_VIEWERS[previewDocument.kind];
-    const source = {
-      url: documentUrl(previewDocument.path),
-      revision: previewDocument.revision,
-    };
     const panel = this.querySelector(":scope > .document-panel");
     const viewer = panel?.querySelector(`:scope > ${tagName}`);
     if (panel && viewer) {
       this.replacePresentationHeader(panel, presentation);
-      viewer.setSource(source);
-      return;
+    } else {
+      // A new viewer holds nothing yet, so the file is fetched for it.
+      this.releasePreviewFile();
+      this.innerHTML = `
+        <section class="viewer-panel file-panel document-panel">
+          ${this.renderPresentationHeader(presentation)}
+          <${tagName}></${tagName}>
+        </section>
+      `;
     }
+    this.showPreviewFile(documentUrl(previewDocument.path));
+  }
 
-    this.innerHTML = `
-      <section class="viewer-panel file-panel document-panel">
-        ${this.renderPresentationHeader(presentation)}
-        <${tagName}></${tagName}>
-      </section>
-    `;
-    this.querySelector(`:scope > .document-panel > ${tagName}`)?.setSource(source);
+  documentViewer() {
+    if (this.state?.status !== "document") {
+      return null;
+    }
+    return this.querySelector(
+      `:scope > .document-panel > ${DOCUMENT_VIEWERS[this.state.document.kind]}`,
+    );
   }
 
   replacePresentationHeader(panel, presentation) {
@@ -821,65 +881,152 @@ class CaffoldReviewFileViewer extends HTMLElement {
     // showing an empty image the browser would draw as broken.
     const preview = this.querySelector(".image-preview");
     const loading = this.querySelector(".image-stage > caffold-loading-text");
-    const failed = () => {
-      this.setError(
-        sourceViewerPresentation(image),
-        new Error("Image preview failed to load."),
-      );
-    };
-    preview.addEventListener("error", failed);
+    preview.addEventListener("error", () => this.showImageFailure());
     preview.addEventListener("load", () => {
       loading.remove();
       preview.hidden = false;
     });
-    this.showFetchedImage(
-      preview,
-      imageUrlWithRevision(image.path, image.revision),
-      failed,
+    this.showPreviewFile(imageUrl(image.path));
+    this.drawPreviewImage();
+  }
+
+  showImageFailure() {
+    this.setError(
+      sourceViewerPresentation(this.state.image),
+      new Error("Image preview failed to load."),
     );
   }
 
-  // The picture is fetched once for its address and drawn from that copy on
-  // every render; another address, another state, or leaving lets it go.
-  showFetchedImage(preview, url, failed) {
-    let shown = this.shownImage;
-    if (shown?.url !== url) {
-      this.releaseShownImage();
-      const fetching = new AbortController();
-      shown = {
-        url,
-        fetching,
-        objectUrl: "",
-        file: fetchInChunks(url, { signal: fetching.signal }),
-      };
-      this.shownImage = shown;
-    }
-    shown.file.then(
-      (file) => {
-        if (this.shownImage !== shown || !preview.isConnected) {
-          return;
-        }
-        shown.objectUrl ||= URL.createObjectURL(file);
-        preview.src = shown.objectUrl;
-      },
-      (error) => {
-        if (this.shownImage === shown && error?.name !== "AbortError") {
-          failed();
-        }
-      },
-    );
-  }
-
-  releaseShownImage() {
-    const shown = this.shownImage;
-    if (!shown) {
+  // Fetches the preview's file unless it is the one already drawn or
+  // arriving; a file whose first fetch failed is fetched again.
+  showPreviewFile(url) {
+    const shown = this.previewFile;
+    if (shown?.url === url && shown.phase !== PREVIEW_PHASE.FAILED) {
       return;
     }
-    this.shownImage = null;
-    shown.fetching.abort();
-    if (shown.objectUrl) {
-      URL.revokeObjectURL(shown.objectUrl);
+    this.releasePreviewFile();
+    const preview = {
+      url,
+      phase: PREVIEW_PHASE.READING,
+      fetching: null,
+      file: null,
+      version: null,
+      objectUrl: "",
+      recheckAfter: false,
+    };
+    this.previewFile = preview;
+    this.fetchPreviewFile(preview);
+  }
+
+  recheckPreviewFile() {
+    if (this.previewFile) {
+      this.movePreviewFile(this.previewFile, PREVIEW_EVENT.RECHECK);
     }
+  }
+
+  releasePreviewFile() {
+    const preview = this.previewFile;
+    if (!preview) {
+      return;
+    }
+    this.previewFile = null;
+    preview.fetching?.abort();
+    if (preview.objectUrl) {
+      URL.revokeObjectURL(preview.objectUrl);
+    }
+  }
+
+  // The one place a preview file changes phase.
+  movePreviewFile(preview, event, answer = null) {
+    const previous = preview.phase;
+    const next = PREVIEW_EDGES[previous][event];
+    if (!next) {
+      return;
+    }
+    preview.phase = next;
+    switch (event) {
+      case PREVIEW_EVENT.RECHECK:
+        if (previous === PREVIEW_PHASE.SHOWN) {
+          this.fetchPreviewFile(preview);
+        } else {
+          preview.recheckAfter = true;
+        }
+        return;
+      case PREVIEW_EVENT.READ:
+        preview.fetching = null;
+        if (
+          previous === PREVIEW_PHASE.READING ||
+          answer.version === null ||
+          answer.version !== preview.version
+        ) {
+          this.keepPreviewCopy(preview, answer, {
+            newerCopy: previous === PREVIEW_PHASE.RECHECKING,
+          });
+        }
+        if (preview.recheckAfter) {
+          preview.recheckAfter = false;
+          this.movePreviewFile(preview, PREVIEW_EVENT.RECHECK);
+        }
+        return;
+      case PREVIEW_EVENT.FAILED:
+        preview.fetching = null;
+        preview.recheckAfter = false;
+        if (previous === PREVIEW_PHASE.READING && this.state?.status === "image") {
+          this.showImageFailure();
+        }
+        return;
+    }
+  }
+
+  // A document viewer is handed the first fetch itself, so it says the file
+  // is loading until it arrives and reports a failed fetch the way it reports
+  // a document it cannot open.
+  fetchPreviewFile(preview) {
+    const fetching = new AbortController();
+    preview.fetching = fetching;
+    const reading = fetchInChunks(preview.url, { signal: fetching.signal });
+    if (preview.phase === PREVIEW_PHASE.READING) {
+      this.documentViewer()?.setFile(reading.then(({ file }) => file));
+    }
+    const current = () => this.previewFile === preview && preview.fetching === fetching;
+    reading.then(
+      (answer) => {
+        if (current()) {
+          this.movePreviewFile(preview, PREVIEW_EVENT.READ, answer);
+        }
+      },
+      (error) => {
+        if (current() && error?.name !== "AbortError") {
+          this.movePreviewFile(preview, PREVIEW_EVENT.FAILED);
+        }
+      },
+    );
+  }
+
+  keepPreviewCopy(preview, { file, version }, { newerCopy }) {
+    preview.file = file;
+    preview.version = version;
+    if (preview.objectUrl) {
+      URL.revokeObjectURL(preview.objectUrl);
+      preview.objectUrl = "";
+    }
+    if (this.state?.status === "image") {
+      this.drawPreviewImage();
+    } else if (newerCopy) {
+      this.documentViewer()?.setFile(file, { newerCopy: true });
+    }
+  }
+
+  // Every render draws a new picture element, which takes the copy already
+  // fetched.
+  drawPreviewImage() {
+    const preview = this.previewFile;
+    const image = this.querySelector(":scope > .image-panel .image-preview");
+    if (!preview?.file || !image) {
+      return;
+    }
+    preview.objectUrl ||= URL.createObjectURL(preview.file);
+    image.src = preview.objectUrl;
   }
 
   renderDiff(options = {}) {
@@ -1151,10 +1298,3 @@ await compactIconButton.register(
 
 customElements.define("caffold-review-file-viewer", CaffoldReviewFileViewer);
 
-function imageUrlWithRevision(path, revision) {
-  const url = new URL(imageUrl(path));
-  if (revision !== undefined && revision !== null) {
-    url.searchParams.set("revision", `${revision}`);
-  }
-  return url.toString();
-}

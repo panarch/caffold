@@ -715,6 +715,10 @@ class CaffoldTaskReview extends HTMLElement {
       );
       return;
     }
+    // A background load follows a change the watch reported for the file or
+    // a recovered watch, so the file may have changed; any other load shows
+    // the file the viewer already holds.
+    const recheck = Boolean(options.background);
     if (previewMode && representations.previewKind === "document") {
       const entry = this.fileNavigator()?.entryForPath(selectedPath);
       this.viewer()?.setDocument({
@@ -723,10 +727,7 @@ class CaffoldTaskReview extends HTMLElement {
         name: fileNameFromPath(selectedPath),
         size: entry?.size,
         modifiedMs: entry?.modifiedMs,
-        // The file's own modification time keeps the source URL stable while
-        // the document on disk is unchanged.
-        revision: entry?.modifiedMs,
-      });
+      }, { recheck });
       return;
     }
     if (previewMode && representations.previewKind === "image") {
@@ -737,10 +738,7 @@ class CaffoldTaskReview extends HTMLElement {
         imageType: imageTypeLabel(selectedPath),
         size: entry?.size,
         modifiedMs: entry?.modifiedMs,
-        // As for a document, the modification time keeps the image URL stable
-        // while the file on disk is unchanged.
-        revision: entry?.modifiedMs,
-      });
+      }, { recheck });
       return;
     }
     if (sourceMode && !representations.source) {

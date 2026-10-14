@@ -158,7 +158,7 @@ class CaffoldTaskImagePreviewDialog extends HTMLElement {
     const picture = { fetching, objectUrl: "" };
     this.picture = picture;
     fetchInChunks(src, { signal: fetching.signal }).then(
-      (file) => {
+      ({ file }) => {
         if (this.picture !== picture) {
           return;
         }

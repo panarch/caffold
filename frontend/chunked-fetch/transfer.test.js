@@ -66,9 +66,10 @@ test("puts the cells together in order, whatever order they arrive in", async ()
   assert.equal(transfer.answer(second, partAnswer(file, second)), true);
 
   assert.equal(transfer.node, TRANSFER_NODE.FINISHED);
-  const blob = await transfer.done;
+  const { file: blob, version } = await transfer.done;
   assert.equal(blob.type, "image/png");
   assert.deepEqual(await contents(blob), file);
+  assert.equal(version, "v1", "the version its first cell named");
 });
 
 test("finishes on a first cell that holds the whole file", async () => {
@@ -79,23 +80,36 @@ test("finishes on a first cell that holds the whole file", async () => {
   transfer.answer(first, partAnswer(file, first));
 
   assert.equal(transfer.node, TRANSFER_NODE.FINISHED);
-  assert.deepEqual(await contents(await transfer.done), file);
+  assert.deepEqual(await contents((await transfer.done).file), file);
 });
 
 test("finishes on a whole file or an empty one", async () => {
   const whole = new Transfer(URL_ASKED);
   const wholeCell = whole.takeCell(0);
-  whole.answer(wholeCell, { kind: "whole", type: "image/gif", bytes: bytes(5).buffer });
+  whole.answer(wholeCell, {
+    kind: "whole",
+    version: "w1",
+    type: "image/gif",
+    bytes: bytes(5).buffer,
+  });
   assert.equal(whole.node, TRANSFER_NODE.FINISHED);
-  const wholeBlob = await whole.done;
-  assert.equal(wholeBlob.type, "image/gif");
-  assert.deepEqual(await contents(wholeBlob), bytes(5));
+  const wholeFile = await whole.done;
+  assert.equal(wholeFile.file.type, "image/gif");
+  assert.deepEqual(await contents(wholeFile.file), bytes(5));
+  assert.equal(wholeFile.version, "w1");
+
+  const unnamed = new Transfer(URL_ASKED);
+  const unnamedCell = unnamed.takeCell(0);
+  unnamed.answer(unnamedCell, { kind: "whole", version: "", type: "", bytes: bytes(1).buffer });
+  assert.equal((await unnamed.done).version, null, "a file sent without a version has none");
 
   const empty = new Transfer(URL_ASKED);
   const emptyCell = empty.takeCell(0);
-  empty.answer(emptyCell, { kind: "out-of-range", size: 0, type: "" });
+  empty.answer(emptyCell, { kind: "out-of-range", size: 0, version: "e1", type: "" });
   assert.equal(empty.node, TRANSFER_NODE.FINISHED);
-  assert.equal((await empty.done).size, 0);
+  const emptyFile = await empty.done;
+  assert.equal(emptyFile.file.size, 0);
+  assert.equal(emptyFile.version, "e1");
 });
 
 test("fails while opening on an error or an answer that cannot start the file", async () => {
@@ -158,7 +172,9 @@ test("starts again from the first cell when the file changes, twice at most", as
   const rest = transfer.takeCell(0);
   assert.equal(rest.url, `${URL_ASKED}&version=v2&cell=1`);
   transfer.answer(rest, partAnswer(after, rest, { version: "v2" }));
-  assert.deepEqual(await contents(await transfer.done), after);
+  const changed = await transfer.done;
+  assert.deepEqual(await contents(changed.file), after);
+  assert.equal(changed.version, "v2", "the version of the file fetched in the end");
 
   const restless = new Transfer(URL_ASKED);
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -201,7 +217,7 @@ test("ignores answers and events once the file has ended", async () => {
   assert.equal(transfer.cancel(), false);
   assert.equal(transfer.dispatch(TRANSFER_EVENT.PART), false);
   assert.equal(transfer.node, TRANSFER_NODE.FINISHED);
-  assert.deepEqual(await contents(await transfer.done), file);
+  assert.deepEqual(await contents((await transfer.done).file), file);
 });
 
 test("rejects an event the current node does not accept", () => {

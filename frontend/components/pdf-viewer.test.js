@@ -10,15 +10,14 @@ await import("./pdf-viewer.js");
 const pdfViewer = registry.element("caffold-pdf-viewer").prototype;
 after(() => registry.restore());
 
-function loadedViewer(url, revision = 1700) {
+// A viewer drawing a document, ready to be handed another file.
+function drawingViewer() {
   const opened = [];
   return {
     opened,
     owner: {
       initialized: true,
       generation: 4,
-      url,
-      revision,
       dataset: { renderState: "pdf" },
       ensureRendered() {},
       showMessage(renderState) {
@@ -27,81 +26,21 @@ function loadedViewer(url, revision = 1700) {
       release() {
         pdfViewer.release.call(this);
       },
-      open(generation, requested) {
-        opened.push(requested);
+      open(generation, file) {
+        opened.push({ generation, file });
       },
     },
   };
 }
 
-test("keeps the open document while its file is unchanged", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=manual.pdf");
+test("lets go of the document shown and opens the file it is handed", () => {
+  const { owner, opened } = drawingViewer();
+  const file = Promise.resolve(new Blob(["bytes"]));
 
-  pdfViewer.setSource.call(owner, {
-    url: "/api/document?path=manual.pdf",
-    revision: 1700,
-  });
+  pdfViewer.setFile.call(owner, file);
 
-  assert.deepEqual(opened, []);
-  assert.equal(owner.dataset.renderState, "pdf");
-});
-
-test("reopens the document when the file changed on disk", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=manual.pdf");
-
-  pdfViewer.setSource.call(owner, {
-    url: "/api/document?path=manual.pdf",
-    revision: 1800,
-  });
-
-  assert.deepEqual(opened, ["/api/document?path=manual.pdf"]);
-  assert.equal(owner.dataset.renderState, "loading");
-  assert.equal(owner.revision, 1800);
-});
-
-test("reopens the document when another file is selected", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=manual.pdf");
-
-  pdfViewer.setSource.call(owner, {
-    url: "/api/document?path=other.pdf",
-    revision: 1700,
-  });
-
-  assert.deepEqual(opened, ["/api/document?path=other.pdf"]);
-});
-
-test("reads the file again once its modification time becomes known", () => {
-  // Only a refresh intent delivers a modification time the viewer did not have,
-  // so treating it as unchanged would leave a replaced document on screen.
-  const { owner, opened } = loadedViewer("/api/document?path=manual.pdf", null);
-
-  pdfViewer.setSource.call(owner, {
-    url: "/api/document?path=manual.pdf",
-    revision: 1800,
-  });
-
-  assert.deepEqual(opened, ["/api/document?path=manual.pdf"]);
-  assert.equal(owner.revision, 1800);
-});
-
-test("keeps the open document across a re-render with no modification time", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=manual.pdf", null);
-
-  pdfViewer.setSource.call(owner, { url: "/api/document?path=manual.pdf" });
-
-  assert.deepEqual(opened, []);
-});
-
-test("retries the same source after a failed load", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=manual.pdf");
-  owner.dataset.renderState = "error";
-
-  pdfViewer.setSource.call(owner, {
-    url: "/api/document?path=manual.pdf",
-    revision: 1700,
-  });
-
-  assert.deepEqual(opened, ["/api/document?path=manual.pdf"]);
+  assert.equal(owner.dataset.renderState, "loading", "it says the file is loading until it is drawn");
+  assert.deepEqual(opened, [{ generation: 5, file }], "the document shown before is let go of first");
 });
 
 test("publishes only the axis a scaled page can overflow", () => {
@@ -140,7 +79,6 @@ test("cancels page renders and tears down the loading task when released", () =>
   let destroyed = 0;
   const owner = {
     generation: 2,
-    url: "/api/document?path=manual.pdf",
     pages: [
       { task: { cancel: () => cancelled.push("first") } },
       { task: null },
@@ -157,8 +95,6 @@ test("cancels page renders and tears down the loading task when released", () =>
   assert.deepEqual(disconnected, ["pages", "width"]);
   assert.equal(destroyed, 1);
   assert.equal(owner.generation, 3);
-  assert.equal(owner.url, null);
-  assert.equal(owner.revision, null);
   assert.equal(owner.pages, null);
   assert.equal(owner.loadingTask, null);
   assert.equal(owner.pageObserver, null);

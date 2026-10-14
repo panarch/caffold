@@ -77,6 +77,33 @@ async function openDocument(page, testInfo, view = "preview", { beforeOpen } = {
   return { taskScenario, taskReview };
 }
 
+// A response held back until the test lets it through.
+function heldResponse() {
+  let letThrough;
+  const held = new Promise((resolve) => {
+    letThrough = resolve;
+  });
+  return { held, letThrough };
+}
+
+// A check whose answer leaves the drawn document alone ends with nothing on
+// screen to wait for, so its end is read from the viewer's preview phase.
+async function expectPreviewSettled(taskReview) {
+  await expect.poll(() =>
+    taskReview.locator("caffold-review-file-viewer").evaluate((viewer) =>
+      viewer.previewFile?.phase === "shown" && viewer.previewFile.fetching === null))
+    .toBe(true);
+}
+
+async function markDrawnPage(viewer) {
+  const canvas = viewer.locator(".pdf-viewer-page canvas").first();
+  await expect(canvas).toBeVisible();
+  await canvas.evaluate((element) => {
+    element.dataset.drawnBefore = "";
+  });
+  return viewer.locator(".pdf-viewer-page canvas[data-drawn-before]");
+}
+
 test("renders a PDF as the only representation its file supports", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
@@ -143,11 +170,7 @@ test("reads the document again after the file changes", { tag: "@viewport-indepe
 }, testInfo) => {
   const { pattern, requests } = documentRequests(page, testInfo);
 
-  const { taskReview } = await openDocument(page, testInfo, "preview", {
-    // When the working-tree status arrives it reloads the viewer, which reads
-    // the document again if the navigator has listed it by then.
-    beforeOpen: () => page.route(/\/api\/git\/status(?:\?|$)/, () => {}),
-  });
+  const { taskReview } = await openDocument(page, testInfo);
   const viewer = taskReview.locator("caffold-pdf-viewer");
   await expect(viewer).toHaveAttribute("data-render-state", "pdf");
   // The viewer does not wait for the navigator, and the refresh below reports a
@@ -167,17 +190,89 @@ test("reads the document again after the file changes", { tag: "@viewport-indepe
     Buffer.concat([original, Buffer.from("\n% replaced\n")]),
   );
   const reread = page.waitForRequest(pattern);
-  // Re-listing the directory is what publishes the new modification time, so
-  // the refresh has to cover the directories the navigator already loaded.
+  // A refresh of the selected file asks the server again, which answers with
+  // the changed file's new version.
   await taskReview
     .locator("caffold-file-navigator")
-    .evaluate((navigator) =>
-      navigator.requestRefresh({ selected: true, allDirectories: true }));
+    .evaluate((navigator) => navigator.requestRefresh({ selected: true }));
   await reread;
 
   await expect(viewer).toHaveAttribute("data-render-state", "pdf");
   await expect(viewer.locator(".pdf-viewer-page")).toHaveCount(2);
   expect(requests).toHaveLength(2);
+});
+
+test("reads a document once when the file list arrives after it", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  const { pattern, requests } = documentRequests(page, testInfo);
+  const listing = heldResponse();
+  const status = heldResponse();
+  const listingPattern = new RegExp(`/api/list\\?path=src%2F${DOCUMENT_DIRECTORY}(?:&|$)`);
+  const statusPattern = /\/api\/git\/status(?:\?|$)/;
+  const firstRead = page.waitForRequest(pattern);
+
+  const { taskReview } = await openDocument(page, testInfo, "preview", {
+    beforeOpen: async () => {
+      await page.route(listingPattern, async (route) => {
+        await listing.held;
+        await route.continue();
+      });
+      await page.route(statusPattern, async (route) => {
+        await status.held;
+        await route.continue();
+      });
+    },
+  });
+  await firstRead;
+
+  // The viewer read the file before the list knew it; the list arrives next,
+  // and then the status, whose arrival loads the viewer again.
+  const listed = page.waitForResponse(listingPattern);
+  listing.letThrough();
+  await listed;
+  await expect(
+    taskReview
+      .locator("caffold-file-navigator")
+      .locator(`button[data-file-tree-path="src/${documentRoute(testInfo)}"]`),
+  ).toHaveAttribute("aria-current", "true");
+  const header = taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header");
+  await header.evaluate((element) => {
+    element.dataset.beforeStatus = "";
+  });
+  const statusArrived = page.waitForResponse(statusPattern);
+  status.letThrough();
+  await statusArrived;
+  await expect(
+    taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header[data-before-status]"),
+  ).toHaveCount(0);
+
+  const viewer = taskReview.locator("caffold-pdf-viewer");
+  await expect(viewer).toHaveAttribute("data-render-state", "pdf");
+  expect(requests).toHaveLength(1);
+});
+
+test("keeps the drawn document when a check finds the file unchanged", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  const { pattern, requests } = documentRequests(page, testInfo);
+  const { taskReview } = await openDocument(page, testInfo);
+  const viewer = taskReview.locator("caffold-pdf-viewer");
+  await expect(viewer).toHaveAttribute("data-render-state", "pdf");
+  const navigator = taskReview.locator("caffold-file-navigator");
+  await expect(
+    navigator.locator(`button[data-file-tree-path="src/${documentRoute(testInfo)}"]`),
+  ).toHaveAttribute("aria-current", "true");
+  const drawnBefore = await markDrawnPage(viewer);
+
+  const asked = page.waitForResponse(pattern);
+  await navigator.evaluate((element) => element.requestRefresh({ selected: true }));
+  await asked;
+  await expectPreviewSettled(taskReview);
+
+  expect(requests).toHaveLength(2);
+  await expect(drawnBefore).toHaveCount(1);
+  await expect(viewer).toHaveAttribute("data-render-state", "pdf");
 });
 
 test("keeps the open document while the review switches representations", { tag: "@viewport-independent" }, async ({

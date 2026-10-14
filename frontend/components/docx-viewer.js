@@ -2,7 +2,6 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../scroll-scope.js";
-import { fetchInChunks } from "../chunked-fetch.js";
 import "./loading-text.js";
 
 const DOCX_PREVIEW_VERSION = "0.4.1";
@@ -63,24 +62,13 @@ class CaffoldDocxViewer extends HTMLElement {
     this.release();
   }
 
-  setSource(source = {}) {
+  // Opens the file the file viewer fetched for it: a Blob, or the promise of
+  // one, which fails when the fetch does.
+  setFile(file) {
     this.ensureRendered();
-    const url = `${source.url ?? ""}`;
-    const revision = source.revision ?? null;
-    // A rebuilt header or resized pane shows the same file; only another file
-    // or a newer modification time is a reason to read it again.
-    if (
-      this.url === url &&
-      this.revision === revision &&
-      this.dataset.renderState !== "error"
-    ) {
-      return;
-    }
     this.release();
-    this.url = url;
-    this.revision = revision;
     this.showMessage("loading", "Loading document...");
-    void this.open(this.generation, url);
+    void this.open(this.generation, file);
   }
 
   scrollSurfaceScope({
@@ -113,14 +101,9 @@ class CaffoldDocxViewer extends HTMLElement {
     };
   }
 
-  async open(generation, url) {
-    const reading = new AbortController();
-    this.reading = reading;
+  async open(generation, file) {
     try {
-      const [docx, bytes] = await Promise.all([
-        loadLibrary(),
-        readDocument(url, reading.signal),
-      ]);
+      const [docx, bytes] = await Promise.all([loadLibrary(), readBytes(file)]);
       if (!this.isCurrent(generation)) {
         return;
       }
@@ -130,13 +113,10 @@ class CaffoldDocxViewer extends HTMLElement {
         return;
       }
       this.mountDocument(generation, nodes);
-    } catch {
-      if (this.isCurrent(generation)) {
+    } catch (error) {
+      // A fetch let go of is followed by another file or by nothing at all.
+      if (this.isCurrent(generation) && error?.name !== "AbortError") {
         this.showMessage("error", "This document could not be displayed.");
-      }
-    } finally {
-      if (this.reading === reading) {
-        this.reading = null;
       }
     }
   }
@@ -191,10 +171,6 @@ class CaffoldDocxViewer extends HTMLElement {
 
   release() {
     this.generation = (this.generation ?? 0) + 1;
-    this.url = null;
-    this.revision = null;
-    this.reading?.abort();
-    this.reading = null;
     this.widthObserver?.disconnect();
     this.widthObserver = null;
     this.mount = null;
@@ -272,9 +248,8 @@ function hasVisibleContent(element) {
     element.querySelector("img, svg, table") !== null;
 }
 
-async function readDocument(url, signal) {
-  const file = await fetchInChunks(url, { signal });
-  return file.arrayBuffer();
+async function readBytes(file) {
+  return (await file).arrayBuffer();
 }
 
 function loadLibrary() {

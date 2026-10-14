@@ -10,15 +10,14 @@ await import("./docx-viewer.js");
 const docxViewer = registry.element("caffold-docx-viewer").prototype;
 after(() => registry.restore());
 
-function loadedViewer(url, revision = 1700) {
+// A viewer drawing a document, ready to be handed another file.
+function drawingViewer() {
   const opened = [];
   return {
     opened,
     owner: {
       initialized: true,
       generation: 4,
-      url,
-      revision,
       dataset: { renderState: "docx" },
       ensureRendered() {},
       showMessage(renderState) {
@@ -27,8 +26,8 @@ function loadedViewer(url, revision = 1700) {
       release() {
         docxViewer.release.call(this);
       },
-      open(generation, requested) {
-        opened.push(requested);
+      open(generation, file) {
+        opened.push({ generation, file });
       },
     },
   };
@@ -50,63 +49,14 @@ function fittingViewer(clientWidth, pages) {
   };
 }
 
-test("keeps the open document while its file is unchanged", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=report.docx");
+test("lets go of the document shown and opens the file it is handed", () => {
+  const { owner, opened } = drawingViewer();
+  const file = Promise.resolve(new Blob(["bytes"]));
 
-  docxViewer.setSource.call(owner, {
-    url: "/api/document?path=report.docx",
-    revision: 1700,
-  });
+  docxViewer.setFile.call(owner, file);
 
-  assert.deepEqual(opened, []);
-  assert.equal(owner.dataset.renderState, "docx");
-});
-
-test("reopens the document when the file changed on disk", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=report.docx");
-
-  docxViewer.setSource.call(owner, {
-    url: "/api/document?path=report.docx",
-    revision: 1800,
-  });
-
-  assert.deepEqual(opened, ["/api/document?path=report.docx"]);
-  assert.equal(owner.dataset.renderState, "loading");
-  assert.equal(owner.revision, 1800);
-});
-
-test("reopens the document when another file is selected", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=report.docx");
-
-  docxViewer.setSource.call(owner, {
-    url: "/api/document?path=minutes.docx",
-    revision: 1700,
-  });
-
-  assert.deepEqual(opened, ["/api/document?path=minutes.docx"]);
-});
-
-test("reads the file again once its modification time becomes known", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=report.docx", null);
-
-  docxViewer.setSource.call(owner, {
-    url: "/api/document?path=report.docx",
-    revision: 1800,
-  });
-
-  assert.deepEqual(opened, ["/api/document?path=report.docx"]);
-});
-
-test("retries the same source after a failed load", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=report.docx");
-  owner.dataset.renderState = "error";
-
-  docxViewer.setSource.call(owner, {
-    url: "/api/document?path=report.docx",
-    revision: 1700,
-  });
-
-  assert.deepEqual(opened, ["/api/document?path=report.docx"]);
+  assert.equal(owner.dataset.renderState, "loading", "it says the file is loading until it is drawn");
+  assert.deepEqual(opened, [{ generation: 5, file }], "the document shown before is let go of first");
 });
 
 test("publishes only the vertical axis of a page fitted to its width", () => {
@@ -136,13 +86,10 @@ test("publishes no scroll surface without a scope identity", () => {
   assert.deepEqual(docxViewer.scrollSurfaceScope.call(owner, {}).surfaces, []);
 });
 
-test("stops reading and fitting the document when released", () => {
+test("stops fitting the document when released", () => {
   const events = [];
   const owner = {
     generation: 2,
-    url: "/api/document?path=report.docx",
-    revision: 1700,
-    reading: { abort: () => events.push("abort") },
     widthObserver: { disconnect: () => events.push("disconnect") },
     mount: {},
     pages: [page(794)],
@@ -150,11 +97,8 @@ test("stops reading and fitting the document when released", () => {
 
   docxViewer.release.call(owner);
 
-  assert.deepEqual(events, ["abort", "disconnect"]);
+  assert.deepEqual(events, ["disconnect"]);
   assert.equal(owner.generation, 3);
-  assert.equal(owner.url, null);
-  assert.equal(owner.revision, null);
-  assert.equal(owner.reading, null);
   assert.equal(owner.widthObserver, null);
   assert.equal(owner.mount, null);
   assert.equal(owner.pages, null);
