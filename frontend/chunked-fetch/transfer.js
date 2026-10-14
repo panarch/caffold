@@ -189,13 +189,22 @@ export class Transfer {
         return;
       case TRANSFER_EVENT.LAST_PART:
         this.keep(cell, answer);
-        this.resolve(new Blob(this.parts, { type: this.type }));
+        this.resolve({
+          file: new Blob(this.parts, { type: this.type }),
+          version: this.version,
+        });
         return;
       case TRANSFER_EVENT.WHOLE:
-        this.resolve(new Blob([answer.bytes], { type: answer.type }));
+        this.resolve({
+          file: new Blob([answer.bytes], { type: answer.type }),
+          version: answer.version || null,
+        });
         return;
       case TRANSFER_EVENT.EMPTY:
-        this.resolve(new Blob([], { type: answer.type }));
+        this.resolve({
+          file: new Blob([], { type: answer.type }),
+          version: answer.version || null,
+        });
         return;
       case TRANSFER_EVENT.CHANGED:
         this.abortCells();

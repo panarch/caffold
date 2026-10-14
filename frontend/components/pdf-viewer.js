@@ -2,7 +2,6 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../scroll-scope.js";
-import { fetchInChunks } from "../chunked-fetch.js";
 import "./loading-text.js";
 
 const PDFJS_VERSION = "6.3.289";
@@ -27,24 +26,13 @@ class CaffoldPdfViewer extends HTMLElement {
     this.release();
   }
 
-  setSource(source = {}) {
+  // Opens the file the file viewer fetched for it: a Blob, or the promise of
+  // one, which fails when the fetch does.
+  setFile(file) {
     this.ensureRendered();
-    const url = `${source.url ?? ""}`;
-    const revision = source.revision ?? null;
-    // A rebuilt header or resized pane re-renders the same file; only another
-    // file or a newer modification time is a reason to read it again.
-    if (
-      this.url === url &&
-      this.revision === revision &&
-      this.dataset.renderState !== "error"
-    ) {
-      return;
-    }
     this.release();
-    this.url = url;
-    this.revision = revision;
     this.showMessage("loading", "Loading PDF...");
-    void this.open(this.generation, url);
+    void this.open(this.generation, file);
   }
 
   scrollSurfaceScope({
@@ -77,14 +65,9 @@ class CaffoldPdfViewer extends HTMLElement {
     };
   }
 
-  async open(generation, url) {
-    const reading = new AbortController();
-    this.reading = reading;
+  async open(generation, file) {
     try {
-      const [pdfjs, data] = await Promise.all([
-        loadLibrary(),
-        readDocument(url, reading.signal),
-      ]);
+      const [pdfjs, data] = await Promise.all([loadLibrary(), readBytes(file)]);
       if (!this.isCurrent(generation)) {
         return;
       }
@@ -107,8 +90,9 @@ class CaffoldPdfViewer extends HTMLElement {
       }
       this.loadingTask = task;
       await this.mountPages(generation, await task.promise);
-    } catch {
-      if (this.isCurrent(generation)) {
+    } catch (error) {
+      // A fetch let go of is followed by another file or by nothing at all.
+      if (this.isCurrent(generation) && error?.name !== "AbortError") {
         this.showMessage("error", "This PDF could not be displayed.");
       }
     }
@@ -220,10 +204,6 @@ class CaffoldPdfViewer extends HTMLElement {
 
   release() {
     this.generation = (this.generation ?? 0) + 1;
-    this.url = null;
-    this.revision = null;
-    this.reading?.abort();
-    this.reading = null;
     this.pageObserver?.disconnect();
     this.pageObserver = null;
     this.widthObserver?.disconnect();
@@ -287,9 +267,8 @@ function destroyLoadingTask(task) {
 
 // pdf.js is handed the bytes rather than the address, so the document arrives
 // in cells like every other file a viewer shows.
-async function readDocument(url, signal) {
-  const file = await fetchInChunks(url, { signal });
-  return new Uint8Array(await file.arrayBuffer());
+async function readBytes(file) {
+  return new Uint8Array(await (await file).arrayBuffer());
 }
 
 function loadLibrary() {

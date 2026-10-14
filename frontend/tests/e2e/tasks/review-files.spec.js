@@ -610,8 +610,8 @@ test("selects supported source and preview representations for images", { tag: "
     rasterPath,
   );
   try {
-    const rasterRevisions = imageRequestRevisions(page, rasterName);
-    const svgRevisions = imageRequestRevisions(page, "review-image.svg");
+    const rasterRequests = imageRequests(page, rasterName);
+    const svgRequests = imageRequests(page, "review-image.svg");
     const { taskScenario, tasksPage, taskReview } =
       await openCompletedTaskForReview(page);
     await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
@@ -639,7 +639,7 @@ test("selects supported source and preview representations for images", { tag: "
     await expect(sourceControl).toBeHidden();
     await expect(previewControl).toHaveAttribute("aria-pressed", "true");
     await expect(viewer).toContainText("PNG image");
-    await expect.poll(() => rasterRevisions).toEqual([expect.stringMatching(/^\d+$/)]);
+    await expect.poll(() => rasterRequests.length).toBe(1);
     await expectFetchedPicture(viewer.locator("img.image-preview"));
     const imageStage = viewer.locator(".image-stage");
     await viewer.locator("img.image-preview").evaluate((image) => {
@@ -689,7 +689,7 @@ test("selects supported source and preview representations for images", { tag: "
     await expect(sourceControl).toBeVisible();
     await expect(previewControl).toHaveAttribute("aria-pressed", "true");
     await expect(viewer).toContainText("SVG image");
-    await expect.poll(() => svgRevisions).toEqual([expect.stringMatching(/^\d+$/)]);
+    await expect.poll(() => svgRequests.length).toBe(1);
     await expectFetchedPicture(viewer.locator("img.image-preview"));
 
     await sourceControl.click();
@@ -711,7 +711,7 @@ test("selects supported source and preview representations for images", { tag: "
   }
 });
 
-test("keeps an image's address until the file on disk changes", { tag: "@viewport-independent" }, async ({
+test("fetches an image again only when the file may have changed", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const imageName = "review-image-address.png";
@@ -721,25 +721,26 @@ test("keeps an image's address until the file on disk changes", { tag: "@viewpor
   await copyFile(repositoryPath("frontend/assets/icons/favicon-32.png"), imagePath);
   await utimes(imagePath, firstModified, firstModified);
   try {
-    const revisions = imageRequestRevisions(page, imageName);
+    const requests = imageRequests(page, imageName);
     const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
     await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
     await taskReview.getByRole("button", { name: "Files", exact: true }).click();
     const navigator = taskReview.locator("caffold-file-navigator");
     const image = taskReview.locator("caffold-review-file-viewer img.image-preview");
-    const first = `${firstModified.getTime()}`;
 
     await navigator.locator(`button[data-file-tree-path="src/${imageName}"]`).click();
     await taskReview.getByRole("button", { name: "Preview", exact: true }).click();
-    await expect.poll(() => revisions).toEqual([first]);
+    await expect.poll(() => requests.length).toBe(1);
     await expectFetchedPicture(image);
+    const drawnFirst = await image.getAttribute("src");
     await navigator.locator('button[data-file-tree-path="src/alpha.rs"]').click();
     await expect(image).toHaveCount(0);
     await navigator.locator(`button[data-file-tree-path="src/${imageName}"]`).click();
-    await expect.poll(() => revisions).toEqual([first, first]);
+    await expect.poll(() => requests.length).toBe(2);
     await expectFetchedPicture(image);
 
     await utimes(imagePath, laterModified, laterModified);
+    const drawnBefore = await image.getAttribute("src");
     await page.evaluate((logicalPath) => {
       const source = window.__caffoldMockEventSources.find(
         (candidate) => candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
@@ -752,10 +753,71 @@ test("keeps an image's address until the file on disk changes", { tag: "@viewpor
         overflow: false,
       });
     }, `src/${imageName}`);
-    await expect
-      .poll(() => revisions)
-      .toEqual([first, first, `${laterModified.getTime()}`]);
+    await expect.poll(() => requests.length).toBe(3);
+    // The file on disk changed, so the server names another version and the
+    // picture is drawn from the new copy.
+    await expect.poll(() => image.getAttribute("src")).not.toBe(drawnBefore);
     await expectFetchedPicture(image);
+    expect(new Set(requests).size, "the image keeps one address").toBe(1);
+    expect(drawnFirst).toMatch(/^blob:/);
+  } finally {
+    await rm(imagePath, { force: true });
+  }
+});
+
+test("fetches an image once when the file list arrives after it", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  // Concurrent tests keep the rows they already have: the picture goes into a
+  // directory the file tree keeps collapsed.
+  const imageName = `planner/review-image-late-list-${testInfo.project.name}.png`;
+  const imagePath = repositoryPath("frontend/tests/e2e/fixtures/home/src", imageName);
+  await copyFile(repositoryPath("frontend/assets/icons/favicon-32.png"), imagePath);
+  try {
+    const requests = imageRequests(page, imageName);
+    const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    const listing = heldResponse();
+    const status = heldResponse();
+    const listingPattern = /\/api\/list\?path=src%2Fplanner(?:&|$)/;
+    const statusPattern = /\/api\/git\/status(?:\?|$)/;
+    await page.route(listingPattern, async (route) => {
+      await listing.held;
+      await route.continue();
+    });
+    await page.route(statusPattern, async (route) => {
+      await status.held;
+      await route.continue();
+    });
+    await page.goto(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=preview` +
+        `&file=${encodeURIComponent(imageName)}`,
+    );
+    await expect.poll(() => requests.length).toBe(1);
+
+    // The viewer fetched the file before the list knew it; the list arrives
+    // next, and then the status, whose arrival loads the viewer again.
+    const listed = page.waitForResponse(listingPattern);
+    listing.letThrough();
+    await listed;
+    await expect(
+      taskReview
+        .locator("caffold-file-navigator")
+        .locator(`button[data-file-tree-path="src/${imageName}"]`),
+    ).toHaveAttribute("aria-current", "true");
+    const header = taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header");
+    await header.evaluate((element) => {
+      element.dataset.beforeStatus = "";
+    });
+    const statusArrived = page.waitForResponse(statusPattern);
+    status.letThrough();
+    await statusArrived;
+    await expect(
+      taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header[data-before-status]"),
+    ).toHaveCount(0);
+
+    await expectFetchedPicture(taskReview.locator("caffold-review-file-viewer img.image-preview"));
+    expect(requests).toHaveLength(1);
   } finally {
     await rm(imagePath, { force: true });
   }
@@ -856,10 +918,10 @@ test("says an image is loading until it is drawn", { tag: "@viewport-independent
   }
 });
 
-// The `revision` of each request for an image's first cell, the address the
-// viewer asks for; later cells add the file's version to that address.
-function imageRequestRevisions(page, name) {
-  const revisions = [];
+// Each request for an image's first cell, the address the viewer asks for;
+// later cells add the file's version to that address.
+function imageRequests(page, name) {
+  const requests = [];
   page.on("request", (request) => {
     const address = new URL(request.url());
     if (
@@ -867,10 +929,19 @@ function imageRequestRevisions(page, name) {
       address.searchParams.get("path") === `src/${name}` &&
       !address.searchParams.has("version")
     ) {
-      revisions.push(address.searchParams.get("revision"));
+      requests.push(request.url());
     }
   });
-  return revisions;
+  return requests;
+}
+
+// A response held back until the test lets it through.
+function heldResponse() {
+  let letThrough;
+  const held = new Promise((resolve) => {
+    letThrough = resolve;
+  });
+  return { held, letThrough };
 }
 
 // A picture is drawn from the copy fetched for it, not from its address.

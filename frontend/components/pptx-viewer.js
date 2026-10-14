@@ -8,7 +8,6 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../scroll-scope.js";
-import { fetchInChunks } from "../chunked-fetch.js";
 import "./loading-text.js";
 
 const PPTX_RENDERER_VERSION = "1.3.0";
@@ -74,24 +73,13 @@ class CaffoldPptxViewer extends HTMLElement {
     this.release();
   }
 
-  setSource(source = {}) {
+  // Opens the file the file viewer fetched for it: a Blob, or the promise of
+  // one, which fails when the fetch does.
+  setFile(file) {
     this.ensureRendered();
-    const url = `${source.url ?? ""}`;
-    const revision = source.revision ?? null;
-    // A rebuilt header or resized pane shows the same file; only another file
-    // or a newer modification time is a reason to read it again.
-    if (
-      this.url === url &&
-      this.revision === revision &&
-      this.dataset.renderState !== "error"
-    ) {
-      return;
-    }
     this.release();
-    this.url = url;
-    this.revision = revision;
     this.showMessage("loading", "Loading document...");
-    void this.open(this.generation, url);
+    void this.open(this.generation, file);
   }
 
   scrollSurfaceScope({
@@ -178,14 +166,9 @@ class CaffoldPptxViewer extends HTMLElement {
     };
   }
 
-  async open(generation, url) {
-    const reading = new AbortController();
-    this.reading = reading;
+  async open(generation, file) {
     try {
-      const [library, bytes] = await Promise.all([
-        loadLibrary(),
-        readDocument(url, reading.signal),
-      ]);
+      const [library, bytes] = await Promise.all([loadLibrary(), readBytes(file)]);
       if (!this.isCurrent(generation)) {
         return;
       }
@@ -212,15 +195,12 @@ class CaffoldPptxViewer extends HTMLElement {
         return;
       }
       this.dataset.renderState = "pptx";
-    } catch {
-      if (this.isCurrent(generation)) {
+    } catch (error) {
+      // A fetch let go of is followed by another file or by nothing at all.
+      if (this.isCurrent(generation) && error?.name !== "AbortError") {
         this.viewer?.destroy();
         this.viewer = null;
         this.showMessage("error", "This document could not be displayed.");
-      }
-    } finally {
-      if (this.reading === reading) {
-        this.reading = null;
       }
     }
   }
@@ -249,10 +229,6 @@ class CaffoldPptxViewer extends HTMLElement {
 
   release() {
     this.generation = (this.generation ?? 0) + 1;
-    this.url = null;
-    this.revision = null;
-    this.reading?.abort();
-    this.reading = null;
     this.slideObserver?.disconnect();
     this.slideObserver = null;
     this.viewer?.destroy();
@@ -351,9 +327,8 @@ function withholdMedia(container) {
   }
 }
 
-async function readDocument(url, signal) {
-  const file = await fetchInChunks(url, { signal });
-  return file.arrayBuffer();
+async function readBytes(file) {
+  return (await file).arrayBuffer();
 }
 
 function loadLibrary() {

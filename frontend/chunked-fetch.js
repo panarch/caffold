@@ -8,7 +8,8 @@ const scheduler = new CellScheduler({
   fetch: (url, init) => fetch(url, init),
 });
 
-// Resolves to the file as a Blob of the type the server named. Aborting the
+// Resolves to the file, a Blob of the type the server named, and the version
+// the server named it by (its ETag), or null when it named none. Aborting the
 // signal lets go of the fetch, which stops once nothing else waits for it.
 export function fetchInChunks(url, { signal } = {}) {
   return scheduler.fetchFile(url, { signal });

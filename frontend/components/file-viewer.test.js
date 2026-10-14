@@ -521,7 +521,7 @@ function retainingViewer(state) {
     "cancelRetainedContent",
     "deactivate",
     "closeDetailsPopover",
-    "releaseShownImage",
+    "releasePreviewFile",
     "setNotice",
     "setEmpty",
   ]) {
@@ -614,17 +614,6 @@ test("deactivation ends the wait and leaves the previous content shown", () => {
   assert.equal(timers.size, 1, "a request after reactivation waits again");
 });
 
-test("deactivation lets go of the picture being fetched", () => {
-  const { owner } = retainingViewer(shown);
-  const fetching = new AbortController();
-  owner.shownImage = { url: "/api/image?path=a.png", fetching, objectUrl: "" };
-
-  owner.deactivate();
-
-  assert.equal(fetching.signal.aborted, true);
-  assert.equal(owner.shownImage, null);
-});
-
 test("a deadline whose wait already ended changes nothing", () => {
   const { owner, timers } = retainingViewer(shown);
 
@@ -662,4 +651,270 @@ test("the loading state keeps its phrase when only the header changes", () => {
   owner.state = { ...owner.state, waited: false };
   fileViewer.renderLoading.call(owner);
   assert.match(html, /<caffold-loading-text>Loading file\.\.\.<\/caffold-loading-text>/);
+});
+
+// A preview file is fetched by the viewer and moves between reading, shown,
+// rechecking, and failed; these walk every move with a server whose answers
+// can be held back, fail, or name another version.
+// Each test fetches files of its own names: the fetch schedule is one for the
+// whole page and shares a fetch of the same address.
+const ORIGIN = "http://caffold.test";
+
+function previewAddress(path) {
+  return `${ORIGIN}/api/document?${new URLSearchParams({ path })}`;
+}
+
+function fileServer(files) {
+  const requests = [];
+  const waiting = [];
+  const server = {
+    requests,
+    holding: false,
+    letThrough() {
+      server.holding = false;
+      for (const resume of waiting.splice(0)) {
+        resume();
+      }
+    },
+  };
+  const previous = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const path = new URL(url).searchParams.get("path");
+    requests.push(path);
+    if (server.holding) {
+      await new Promise((resume) => waiting.push(resume));
+    }
+    const file = files[path];
+    if (!file || file.failing) {
+      return new Response(null, { status: 500 });
+    }
+    const bytes = new TextEncoder().encode(file.text);
+    return new Response(bytes, {
+      status: 206,
+      headers: {
+        "Content-Range": `bytes 0-${bytes.length - 1}/${bytes.length}`,
+        "Content-Type": file.type ?? "application/pdf",
+        ETag: `"${file.version}"`,
+      },
+    });
+  };
+  after(() => {
+    globalThis.fetch = previous;
+  });
+  return server;
+}
+
+function previewHost(status = "document") {
+  const handed = [];
+  const errors = [];
+  const image = { src: "" };
+  const host = Object.assign(Object.create(fileViewer), {
+    state: status === "image"
+      ? { status, image: { path: "picture.png", name: "picture.png" } }
+      : { status, document: { kind: "pdf", path: "document.pdf" } },
+    previewFile: null,
+    // A document viewer waits for the file it is handed, so a fetch let go of
+    // ends there.
+    documentViewer: () =>
+      host.state.status === "document"
+        ? {
+          setFile(file, options) {
+            Promise.resolve(file).catch(() => {});
+            handed.push({ file, options });
+          },
+        }
+        : null,
+    querySelector: (selector) => (selector.includes("image-preview") ? image : null),
+    setError: (presentation, error) => errors.push(error.message),
+  });
+  return { host, handed, errors, image };
+}
+
+async function until(condition) {
+  for (let turn = 0; turn < 100 && !condition(); turn += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.ok(condition(), "the awaited state arrived");
+}
+
+async function blobText(file) {
+  return (await file).text();
+}
+
+test("fetches a preview once, hands a document viewer that fetch, and keeps the copy", async () => {
+  const server = fileServer({ "a1.pdf": { text: "first", version: "v1" } });
+  const { host, handed } = previewHost();
+
+  host.showPreviewFile(previewAddress("a1.pdf"));
+  assert.equal(host.previewFile.phase, "reading");
+  assert.equal(handed.length, 1, "the viewer is handed the fetch itself");
+  await until(() => host.previewFile.phase === "shown");
+
+  assert.equal(await blobText(handed[0].file), "first");
+  assert.equal(host.previewFile.version, "v1");
+  host.showPreviewFile(previewAddress("a1.pdf"));
+  assert.deepEqual(server.requests, ["a1.pdf"], "showing the same file again fetches nothing");
+  assert.equal(handed.length, 1);
+});
+
+test("a recheck keeps a file the server answers with the same version", async () => {
+  const server = fileServer({ "a2.pdf": { text: "first", version: "v1" } });
+  const { host, handed } = previewHost();
+  host.showPreviewFile(previewAddress("a2.pdf"));
+  await until(() => host.previewFile.phase === "shown");
+
+  host.recheckPreviewFile();
+  assert.equal(host.previewFile.phase, "rechecking");
+  await until(() => host.previewFile.phase === "shown");
+
+  assert.deepEqual(server.requests, ["a2.pdf", "a2.pdf"]);
+  assert.equal(handed.length, 1, "nothing is drawn again");
+});
+
+test("a recheck hands over a newer version as a newer copy", async () => {
+  const files = { "a3.pdf": { text: "first", version: "v1" } };
+  fileServer(files);
+  const { host, handed } = previewHost();
+  host.showPreviewFile(previewAddress("a3.pdf"));
+  await until(() => host.previewFile.phase === "shown");
+
+  files["a3.pdf"] = { text: "second", version: "v2" };
+  host.recheckPreviewFile();
+  await until(() => host.previewFile.phase === "shown" && handed.length === 2);
+
+  assert.equal(await blobText(handed[1].file), "second");
+  assert.deepEqual(handed[1].options, { newerCopy: true });
+  assert.equal(host.previewFile.version, "v2");
+});
+
+test("a recheck asked for during a fetch asks once more after it", async () => {
+  const files = { "a4.pdf": { text: "first", version: "v1" } };
+  const server = fileServer(files);
+  const { host, handed } = previewHost();
+  server.holding = true;
+  host.showPreviewFile(previewAddress("a4.pdf"));
+  host.recheckPreviewFile();
+  host.recheckPreviewFile();
+  assert.equal(host.previewFile.phase, "reading", "a fetch on its way is not doubled");
+
+  files["a4.pdf"] = { text: "second", version: "v2" };
+  server.letThrough();
+  await until(() => server.requests.length === 2 && host.previewFile.phase === "shown");
+
+  assert.equal(host.previewFile.version, "v2");
+  assert.equal(await blobText(handed.at(-1).file), "second");
+
+  server.holding = true;
+  host.recheckPreviewFile();
+  host.recheckPreviewFile();
+  assert.equal(host.previewFile.phase, "rechecking");
+  server.letThrough();
+  await until(() => server.requests.length === 4 && host.previewFile.phase === "shown");
+  assert.equal(server.requests.length, 4, "one recheck while rechecking asks once more");
+});
+
+test("a failed first fetch shows its failure and the next showing fetches again", async () => {
+  const files = { "a5.png": { text: "png", version: "v1", type: "image/png", failing: true } };
+  const server = fileServer(files);
+  const { host, errors } = previewHost("image");
+
+  host.showPreviewFile(previewAddress("a5.png"));
+  await until(() => host.previewFile.phase === "failed");
+  assert.deepEqual(errors, ["Image preview failed to load."]);
+
+  host.recheckPreviewFile();
+  assert.equal(host.previewFile.phase, "failed", "a recheck of a failed file does nothing");
+  files["a5.png"].failing = false;
+  host.showPreviewFile(previewAddress("a5.png"));
+  await until(() => host.previewFile.phase === "shown");
+  assert.deepEqual(server.requests, ["a5.png", "a5.png"]);
+});
+
+test("a failed recheck keeps the copy already drawn", async () => {
+  const files = { "a6.pdf": { text: "first", version: "v1" } };
+  fileServer(files);
+  const { host, handed } = previewHost();
+  host.showPreviewFile(previewAddress("a6.pdf"));
+  await until(() => host.previewFile.phase === "shown");
+
+  files["a6.pdf"].failing = true;
+  host.recheckPreviewFile();
+  await until(() => host.previewFile.phase === "shown" && host.previewFile.fetching === null);
+
+  assert.equal(host.previewFile.version, "v1");
+  assert.equal(handed.length, 1);
+});
+
+test("an image is drawn from its copy, again only for a newer version", async () => {
+  const files = { "a7.png": { text: "png", version: "v1", type: "image/png" } };
+  fileServer(files);
+  const { host, image } = previewHost("image");
+  host.showPreviewFile(previewAddress("a7.png"));
+  await until(() => image.src !== "");
+  const first = image.src;
+  assert.match(first, /^blob:/);
+
+  image.src = "";
+  host.drawPreviewImage();
+  assert.equal(image.src, first, "a new picture element takes the same copy");
+
+  host.recheckPreviewFile();
+  await until(() => host.previewFile.phase === "shown");
+  assert.equal(image.src, first, "the same version is not drawn again");
+
+  files["a7.png"] = { text: "png2", version: "v2", type: "image/png" };
+  host.recheckPreviewFile();
+  await until(() => host.previewFile.version === "v2");
+  assert.notEqual(image.src, first);
+  assert.match(image.src, /^blob:/);
+});
+
+test("deactivation lets go of the preview file and its fetch", () => {
+  const server = fileServer({});
+  const { host } = previewHost();
+  host.cancelRetainedContent = () => {};
+  host.closeDetailsPopover = () => {};
+  server.holding = true;
+
+  host.showPreviewFile(previewAddress("a8.pdf"));
+  const fetching = host.previewFile.fetching;
+  host.deactivate();
+
+  assert.equal(fetching.signal.aborted, true);
+  assert.equal(host.previewFile, null);
+  server.letThrough();
+});
+
+test("another file, or letting go, ends the fetch of the one before", () => {
+  const server = fileServer({});
+  const { host } = previewHost();
+  server.holding = true;
+
+  host.showPreviewFile(previewAddress("a9.pdf"));
+  const first = host.previewFile.fetching;
+  host.showPreviewFile(previewAddress("b9.pdf"));
+  assert.equal(first.signal.aborted, true);
+  assert.equal(host.previewFile.url, previewAddress("b9.pdf"));
+
+  const second = host.previewFile.fetching;
+  host.releasePreviewFile();
+  assert.equal(second.signal.aborted, true);
+  assert.equal(host.previewFile, null);
+  server.letThrough();
+});
+
+test("a recheck applies only to a preview held before the new state", async () => {
+  const server = fileServer({ "a10.pdf": { text: "first", version: "v1" } });
+  const { host } = previewHost();
+  host.render = () => host.showPreviewFile(previewAddress(host.state.document.path));
+  host.cancelRetainedContent = () => {};
+
+  host.setDocument({ kind: "pdf", path: "a10.pdf" }, { recheck: true });
+  await until(() => host.previewFile.phase === "shown");
+  assert.deepEqual(server.requests, ["a10.pdf"], "a file shown for the first time is fetched once");
+
+  host.setDocument({ kind: "pdf", path: "a10.pdf" }, { recheck: true });
+  await until(() => server.requests.length === 2 && host.previewFile.phase === "shown");
+  host.setDocument({ kind: "pdf", path: "a10.pdf" });
+  assert.equal(server.requests.length, 2, "a load without recheck shows the file held");
 });

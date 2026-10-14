@@ -120,7 +120,7 @@ function callerAnswer(transfer, signal) {
     };
     signal?.addEventListener("abort", letGo, { once: true });
     transfer.done.then(
-      (blob) => settle(resolve, blob),
+      (fetched) => settle(resolve, fetched),
       (error) => settle(reject, error),
     );
   });
@@ -146,13 +146,23 @@ async function readAnswer(response) {
     };
   }
   if (response.status === 200) {
-    return { kind: "whole", type, bytes: await response.arrayBuffer() };
+    return {
+      kind: "whole",
+      version: versionOf(response.headers.get("ETag")),
+      type,
+      bytes: await response.arrayBuffer(),
+    };
   }
   if (response.status === 416) {
     const size = /^bytes \*\/(\d+)$/.exec(
       response.headers.get("Content-Range") ?? "",
     );
-    return { kind: "out-of-range", size: size ? Number(size[1]) : null, type };
+    return {
+      kind: "out-of-range",
+      size: size ? Number(size[1]) : null,
+      version: versionOf(response.headers.get("ETag")),
+      type,
+    };
   }
   if (response.status === 412) {
     return { kind: "changed" };

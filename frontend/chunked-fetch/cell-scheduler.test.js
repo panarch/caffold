@@ -25,14 +25,17 @@ function fakeServer(files) {
     if (asked !== null && asked !== file.version) {
       return new Response(null, { status: 412 });
     }
+    const named = file.version ? { ETag: `"${file.version}"` } : {};
     if (file.whole) {
-      return new Response(file.bytes, { headers: { "Content-Type": file.type } });
+      return new Response(file.bytes, {
+        headers: { "Content-Type": file.type, ...named },
+      });
     }
     const [, first, last] = /^bytes=(\d+)-(\d+)$/.exec(range);
     if (Number(first) >= file.bytes.length) {
       return new Response(null, {
         status: 416,
-        headers: { "Content-Range": `bytes */${file.bytes.length}` },
+        headers: { "Content-Range": `bytes */${file.bytes.length}`, ...named },
       });
     }
     const end = Math.min(Number(last), file.bytes.length - 1);
@@ -71,10 +74,11 @@ test("fetches a file in 64 KB cells cut at the same places and puts it together"
   const server = fakeServer({ "a.png": { bytes: file, version: "v1", type: "image/png" } });
   const scheduler = new CellScheduler({ fetch: server.fetch, now: slowClock() });
 
-  const blob = await scheduler.fetchFile(address("a.png"));
+  const { file: blob, version } = await scheduler.fetchFile(address("a.png"));
 
   assert.equal(blob.type, "image/png");
   assert.deepEqual(await contents(blob), file);
+  assert.equal(version, "v1");
   assert.deepEqual(
     server.requests.map(({ version, range }) => [version, range]),
     [
@@ -86,19 +90,24 @@ test("fetches a file in 64 KB cells cut at the same places and puts it together"
   );
 });
 
-test("takes a file sent whole, and an empty one", async () => {
+test("takes a file sent whole, and an empty one, with the version each names", async () => {
   const server = fakeServer({
-    "whole.png": { bytes: bytes(300), type: "image/png", whole: true },
+    "whole.png": { bytes: bytes(300), version: "w1", type: "image/png", whole: true },
+    "unnamed.png": { bytes: bytes(3), type: "image/png", whole: true },
     "empty.png": { bytes: new Uint8Array(0), version: "v1", type: "image/png" },
   });
   const scheduler = new CellScheduler({ fetch: server.fetch, now: slowClock() });
 
   const whole = await scheduler.fetchFile(address("whole.png"));
+  const unnamed = await scheduler.fetchFile(address("unnamed.png"));
   const empty = await scheduler.fetchFile(address("empty.png"));
 
-  assert.deepEqual(await contents(whole), bytes(300));
-  assert.equal(whole.type, "image/png");
-  assert.equal(empty.size, 0);
+  assert.deepEqual(await contents(whole.file), bytes(300));
+  assert.equal(whole.file.type, "image/png");
+  assert.equal(whole.version, "w1");
+  assert.equal(unnamed.version, null);
+  assert.equal(empty.file.size, 0);
+  assert.equal(empty.version, "v1");
 });
 
 test("fetches the file asked for most recently first, then goes back to the earlier one", async () => {
@@ -122,8 +131,8 @@ test("fetches the file asked for most recently first, then goes back to the earl
       `early.png bytes=${CELL_BYTES * 2}`,
     ],
   );
-  assert.deepEqual(await contents(await early), bytes(CELL_BYTES * 3, 1));
-  assert.deepEqual(await contents(await late), bytes(CELL_BYTES * 2, 2));
+  assert.deepEqual(await contents((await early).file), bytes(CELL_BYTES * 3, 1));
+  assert.deepEqual(await contents((await late).file), bytes(CELL_BYTES * 2, 2));
 });
 
 test("shares one fetch of the same address and stops it only when every caller lets go", async () => {
@@ -137,7 +146,7 @@ test("shares one fetch of the same address and stops it only when every caller l
   first.abort();
 
   await assert.rejects(leaving, { name: "AbortError" });
-  assert.deepEqual(await contents(await staying), file);
+  assert.deepEqual(await contents((await staying).file), file);
   assert.equal(server.requests.length, 2, "one fetch of two cells");
 
   const bothLeave = new CellScheduler({ fetch: server.fetch, now: slowClock() });
@@ -182,9 +191,10 @@ test("fetches a file again from its first cell when it changes on the way", asyn
   };
   const scheduler = new CellScheduler({ fetch, now: slowClock() });
 
-  const blob = await scheduler.fetchFile(address("a.png"));
+  const changed = await scheduler.fetchFile(address("a.png"));
 
-  assert.deepEqual(await contents(blob), after);
+  assert.deepEqual(await contents(changed.file), after);
+  assert.equal(changed.version, "v2");
   assert.deepEqual(
     server.requests.map(({ version, range }) => `${version} ${range.split("-")[0]}`),
     ["null bytes=0", `v1 bytes=${CELL_BYTES}`, "null bytes=0", `v2 bytes=${CELL_BYTES}`, `v2 bytes=${CELL_BYTES * 2}`],

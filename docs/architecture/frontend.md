@@ -1300,9 +1300,11 @@ The routes that read a file for a viewer, `/api/file`, `/api/image`,
 `Cache-Control: no-cache` with an `ETag` made from the file's size and
 modification time, and answer a browser that already holds that version with
 304 without reading the file. A file without a modification time is sent with
-`no-store`. Review's image and document addresses carry the modification time
-as `revision`, so a file that changes on disk is also loaded from a new
-address.
+`no-store`. Review's file viewer fetches the image or document it previews
+itself, once for the selected file, and draws it from that copy. It asks the
+server again only when Review learns the file may have changed: the watch
+reports a change to it or recovers. An answer that names the same version, the
+`ETag`, leaves the drawn copy in place; another version is drawn instead.
 
 Images and documents also answer one `Range: bytes=` range with 206 and
 `Content-Range`, reading only that part of the file, and a range that starts
@@ -1332,12 +1334,13 @@ as a document viewer does for its document.
 
 PDFs, Word documents, PowerPoint decks, and Excel workbooks share one document
 state in the file viewer, which mounts the viewer for the document's kind and
-hands it `/api/document`. That route answers each kind with its own content
-type, up to 100 MiB, and refuses any other extension. The viewer owns
-rendering, document lifetime, and local scroll, and keeps one open document per
-selected file and modification time. `caffold-pdf-viewer` imports its pinned
-pdf.js release at first use, hands it the fetched bytes rather than the
-address, and draws a page as it approaches the viewport.
+hands it the file fetched from `/api/document`. That route answers each kind
+with its own content type, up to 100 MiB, and refuses any other extension. The
+viewer owns rendering, document lifetime, and local scroll, and keeps the open
+document until it is handed another file or a newer copy of this one.
+`caffold-pdf-viewer` imports its pinned pdf.js release at first use, hands it
+the fetched bytes rather than the address, and draws a page as it approaches
+the viewport.
 `caffold-docx-viewer` imports its pinned docx-preview release at first use and
 draws the whole document inside a shadow root of its own, so the document's
 styles and the app's stylesheet do not reach each other; embedded fonts are not

@@ -10,15 +10,14 @@ await import("./xlsx-viewer.js");
 const xlsxViewer = registry.element("caffold-xlsx-viewer").prototype;
 after(() => registry.restore());
 
-function loadedViewer(url, revision = 1700) {
+// A viewer drawing a document, ready to be handed another file.
+function drawingViewer() {
   const opened = [];
   return {
     opened,
     owner: {
       initialized: true,
       generation: 4,
-      url,
-      revision,
       selectedSheetName: "Q3",
       dataset: { renderState: "xlsx" },
       ensureRendered() {},
@@ -28,8 +27,8 @@ function loadedViewer(url, revision = 1700) {
       release() {
         xlsxViewer.release.call(this);
       },
-      open(generation, requested) {
-        opened.push(requested);
+      open(generation, file) {
+        opened.push({ generation, file });
       },
     },
   };
@@ -85,53 +84,30 @@ function workbookViewer({ links = [], tabsHidden = false, tabScope = null } = {}
   return { owner, sheetport, tabs, control, received };
 }
 
-test("keeps the open workbook while its file is unchanged", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=budget.xlsx");
+test("lets go of the workbook shown and opens the file it is handed", () => {
+  const { owner, opened } = drawingViewer();
+  const file = Promise.resolve(new Blob(["bytes"]));
 
-  xlsxViewer.setSource.call(owner, {
-    url: "/api/document?path=budget.xlsx",
-    revision: 1700,
-  });
+  xlsxViewer.setFile.call(owner, file);
 
-  assert.deepEqual(opened, []);
-  assert.equal(owner.dataset.renderState, "xlsx");
+  assert.equal(owner.dataset.renderState, "loading", "it says the file is loading until it is drawn");
+  assert.deepEqual(opened, [{ generation: 5, file }], "the workbook shown before is let go of first");
 });
 
-test("keeps the sheet being read when the same file changes on disk", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=budget.xlsx");
+test("keeps the sheet being read for a newer copy of the same file", () => {
+  const { owner } = drawingViewer();
 
-  xlsxViewer.setSource.call(owner, {
-    url: "/api/document?path=budget.xlsx",
-    revision: 1800,
-  });
+  xlsxViewer.setFile.call(owner, Promise.resolve(new Blob(["bytes"])), { newerCopy: true });
 
-  assert.deepEqual(opened, ["/api/document?path=budget.xlsx"]);
-  assert.equal(owner.dataset.renderState, "loading");
   assert.equal(owner.selectedSheetName, "Q3");
 });
 
 test("starts another file at its first sheet", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=budget.xlsx");
+  const { owner } = drawingViewer();
 
-  xlsxViewer.setSource.call(owner, {
-    url: "/api/document?path=forecast.xlsm",
-    revision: 1700,
-  });
+  xlsxViewer.setFile.call(owner, Promise.resolve(new Blob(["bytes"])));
 
-  assert.deepEqual(opened, ["/api/document?path=forecast.xlsm"]);
   assert.equal(owner.selectedSheetName, null);
-});
-
-test("retries the same workbook after a failed load", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=budget.xlsx");
-  owner.dataset.renderState = "error";
-
-  xlsxViewer.setSource.call(owner, {
-    url: "/api/document?path=budget.xlsx",
-    revision: 1700,
-  });
-
-  assert.deepEqual(opened, ["/api/document?path=budget.xlsx"]);
 });
 
 test("scrolls the sheet on both axes and the sheet tabs sideways", () => {
@@ -233,7 +209,7 @@ test("offers nothing while the workbook loads or failed", () => {
   }
 });
 
-test("stops reading, measuring, and drawing the sheet when released", () => {
+test("stops measuring and drawing the sheet when released", () => {
   const events = [];
   const frames = [];
   const original = globalThis.window;
@@ -241,9 +217,6 @@ test("stops reading, measuring, and drawing the sheet when released", () => {
   try {
     const owner = {
       generation: 2,
-      url: "/api/document?path=budget.xlsx",
-      revision: 1700,
-      reading: { abort: () => events.push("abort") },
       sizeObserver: { disconnect: () => events.push("disconnect") },
       windowFrame: 7,
       workbook: {},
@@ -254,11 +227,11 @@ test("stops reading, measuring, and drawing the sheet when released", () => {
 
     xlsxViewer.release.call(owner);
 
-    assert.deepEqual(events, ["abort", "disconnect"]);
+    assert.deepEqual(events, ["disconnect"]);
     assert.deepEqual(frames, [7]);
     assert.equal(owner.generation, 3);
     assert.equal(owner.windowFrame, 0);
-    for (const field of ["url", "revision", "reading", "sizeObserver", "workbook", "visibleSheets", "sheet", "renderedRange"]) {
+    for (const field of ["sizeObserver", "workbook", "visibleSheets", "sheet", "renderedRange"]) {
       assert.equal(owner[field], null, field);
     }
   } finally {

@@ -9,7 +9,6 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../scroll-scope.js";
-import { fetchInChunks } from "../chunked-fetch.js";
 import "./loading-text.js";
 import "./segmented-control.js";
 import { readWorkbook } from "./xlsx-viewer/workbook.js";
@@ -42,28 +41,17 @@ class CaffoldXlsxViewer extends HTMLElement {
     this.release();
   }
 
-  setSource(source = {}) {
+  // Opens the file the file viewer fetched for it: a Blob, or the promise of
+  // one, which fails when the fetch does. A newer copy of the file already
+  // shown keeps the sheet the person was reading.
+  setFile(file, { newerCopy = false } = {}) {
     this.ensureRendered();
-    const url = `${source.url ?? ""}`;
-    const revision = source.revision ?? null;
-    // A rebuilt header or resized pane shows the same file; only another file
-    // or a newer modification time is a reason to read it again.
-    if (
-      this.url === url &&
-      this.revision === revision &&
-      this.dataset.renderState !== "error"
-    ) {
-      return;
-    }
-    // A newer copy of the same file keeps the sheet the person was reading.
-    if (this.url !== url) {
+    if (!newerCopy) {
       this.selectedSheetName = null;
     }
     this.release();
-    this.url = url;
-    this.revision = revision;
     this.showMessage("loading", "Loading document...");
-    void this.open(this.generation, url);
+    void this.open(this.generation, file);
   }
 
   scrollSurfaceScope({
@@ -173,14 +161,9 @@ class CaffoldXlsxViewer extends HTMLElement {
     );
   }
 
-  async open(generation, url) {
-    const reading = new AbortController();
-    this.reading = reading;
+  async open(generation, file) {
     try {
-      const [XLSX, bytes] = await Promise.all([
-        loadLibrary(),
-        readDocument(url, reading.signal),
-      ]);
+      const [XLSX, bytes] = await Promise.all([loadLibrary(), readBytes(file)]);
       if (!this.isCurrent(generation)) {
         return;
       }
@@ -189,13 +172,10 @@ class CaffoldXlsxViewer extends HTMLElement {
         return;
       }
       this.mountWorkbook(generation, XLSX, workbook);
-    } catch {
-      if (this.isCurrent(generation)) {
+    } catch (error) {
+      // A fetch let go of is followed by another file or by nothing at all.
+      if (this.isCurrent(generation) && error?.name !== "AbortError") {
         this.showMessage("error", "This document could not be displayed.");
-      }
-    } finally {
-      if (this.reading === reading) {
-        this.reading = null;
       }
     }
   }
@@ -452,10 +432,6 @@ class CaffoldXlsxViewer extends HTMLElement {
 
   release() {
     this.generation = (this.generation ?? 0) + 1;
-    this.url = null;
-    this.revision = null;
-    this.reading?.abort();
-    this.reading = null;
     this.sizeObserver?.disconnect();
     this.sizeObserver = null;
     if (this.windowFrame) {
@@ -531,9 +507,8 @@ function sum(values, first, end) {
   return total;
 }
 
-async function readDocument(url, signal) {
-  const file = await fetchInChunks(url, { signal });
-  return file.arrayBuffer();
+async function readBytes(file) {
+  return (await file).arrayBuffer();
 }
 
 function loadLibrary() {

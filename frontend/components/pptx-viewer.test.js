@@ -10,15 +10,14 @@ await import("./pptx-viewer.js");
 const pptxViewer = registry.element("caffold-pptx-viewer").prototype;
 after(() => registry.restore());
 
-function loadedViewer(url, revision = 1700) {
+// A viewer drawing a document, ready to be handed another file.
+function drawingViewer() {
   const opened = [];
   return {
     opened,
     owner: {
       initialized: true,
       generation: 4,
-      url,
-      revision,
       dataset: { renderState: "pptx" },
       ensureRendered() {},
       showMessage(renderState) {
@@ -27,8 +26,8 @@ function loadedViewer(url, revision = 1700) {
       release() {
         pptxViewer.release.call(this);
       },
-      open(generation, requested) {
-        opened.push(requested);
+      open(generation, file) {
+        opened.push({ generation, file });
       },
     },
   };
@@ -72,46 +71,14 @@ function deckViewer(slides) {
   };
 }
 
-test("keeps the open deck while its file is unchanged", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=deck.pptx");
+test("lets go of the deck shown and opens the file it is handed", () => {
+  const { owner, opened } = drawingViewer();
+  const file = Promise.resolve(new Blob(["bytes"]));
 
-  pptxViewer.setSource.call(owner, {
-    url: "/api/document?path=deck.pptx",
-    revision: 1700,
-  });
+  pptxViewer.setFile.call(owner, file);
 
-  assert.deepEqual(opened, []);
-  assert.equal(owner.dataset.renderState, "pptx");
-});
-
-test("reopens the deck when the file changed on disk or another file is selected", () => {
-  const changed = loadedViewer("/api/document?path=deck.pptx");
-  pptxViewer.setSource.call(changed.owner, {
-    url: "/api/document?path=deck.pptx",
-    revision: 1800,
-  });
-  assert.deepEqual(changed.opened, ["/api/document?path=deck.pptx"]);
-  assert.equal(changed.owner.dataset.renderState, "loading");
-  assert.equal(changed.owner.revision, 1800);
-
-  const other = loadedViewer("/api/document?path=deck.pptx");
-  pptxViewer.setSource.call(other.owner, {
-    url: "/api/document?path=pitch.pptx",
-    revision: 1700,
-  });
-  assert.deepEqual(other.opened, ["/api/document?path=pitch.pptx"]);
-});
-
-test("retries the same deck after a failed load", () => {
-  const { owner, opened } = loadedViewer("/api/document?path=deck.pptx");
-  owner.dataset.renderState = "error";
-
-  pptxViewer.setSource.call(owner, {
-    url: "/api/document?path=deck.pptx",
-    revision: 1700,
-  });
-
-  assert.deepEqual(opened, ["/api/document?path=deck.pptx"]);
+  assert.equal(owner.dataset.renderState, "loading", "it says the file is loading until it is drawn");
+  assert.deepEqual(opened, [{ generation: 5, file }], "the deck shown before is let go of first");
 });
 
 test("publishes only the vertical axis of slides fitted to its width", () => {
@@ -210,13 +177,10 @@ test("offers no links before the deck is drawn or without a link action", () => 
   }).targets, []);
 });
 
-test("stops reading, watching slides, and drawing them when released", () => {
+test("stops watching slides and drawing them when released", () => {
   const events = [];
   const owner = {
     generation: 2,
-    url: "/api/document?path=deck.pptx",
-    revision: 1700,
-    reading: { abort: () => events.push("abort") },
     slideObserver: { disconnect: () => events.push("disconnect") },
     viewer: { destroy: () => events.push("destroy") },
     mount: {},
@@ -224,11 +188,8 @@ test("stops reading, watching slides, and drawing them when released", () => {
 
   pptxViewer.release.call(owner);
 
-  assert.deepEqual(events, ["abort", "disconnect", "destroy"]);
+  assert.deepEqual(events, ["disconnect", "destroy"]);
   assert.equal(owner.generation, 3);
-  assert.equal(owner.url, null);
-  assert.equal(owner.revision, null);
-  assert.equal(owner.reading, null);
   assert.equal(owner.slideObserver, null);
   assert.equal(owner.viewer, null);
   assert.equal(owner.mount, null);

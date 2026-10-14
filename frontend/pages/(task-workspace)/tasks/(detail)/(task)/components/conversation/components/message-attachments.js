@@ -127,7 +127,7 @@ class CaffoldTaskMessageAttachments extends HTMLElement {
       fetchInChunks(picture.dataset.attachmentSource, {
         signal: fetching.signal,
       }).then(
-        (file) => {
+        ({ file }) => {
           if (this.fetchedPictures.get(picture) !== record) {
             return;
           }
