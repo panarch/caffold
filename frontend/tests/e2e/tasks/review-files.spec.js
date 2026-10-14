@@ -610,6 +610,8 @@ test("selects supported source and preview representations for images", { tag: "
     rasterPath,
   );
   try {
+    const rasterRevisions = imageRequestRevisions(page, rasterName);
+    const svgRevisions = imageRequestRevisions(page, "review-image.svg");
     const { taskScenario, tasksPage, taskReview } =
       await openCompletedTaskForReview(page);
     await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
@@ -637,10 +639,8 @@ test("selects supported source and preview representations for images", { tag: "
     await expect(sourceControl).toBeHidden();
     await expect(previewControl).toHaveAttribute("aria-pressed", "true");
     await expect(viewer).toContainText("PNG image");
-    await expect(viewer.locator("img.image-preview")).toHaveAttribute(
-      "src",
-      new RegExp(`/api/image\\?path=src%2F${rasterName}&revision=\\d+$`),
-    );
+    await expect.poll(() => rasterRevisions).toEqual([expect.stringMatching(/^\d+$/)]);
+    await expectFetchedPicture(viewer.locator("img.image-preview"));
     const imageStage = viewer.locator(".image-stage");
     await viewer.locator("img.image-preview").evaluate((image) => {
       image.style.height = "1200px";
@@ -689,10 +689,8 @@ test("selects supported source and preview representations for images", { tag: "
     await expect(sourceControl).toBeVisible();
     await expect(previewControl).toHaveAttribute("aria-pressed", "true");
     await expect(viewer).toContainText("SVG image");
-    await expect(viewer.locator("img.image-preview")).toHaveAttribute(
-      "src",
-      /\/api\/image\?path=src%2Freview-image\.svg&revision=\d+$/,
-    );
+    await expect.poll(() => svgRevisions).toEqual([expect.stringMatching(/^\d+$/)]);
+    await expectFetchedPicture(viewer.locator("img.image-preview"));
 
     await sourceControl.click();
     await expect(page).toHaveURL(
@@ -723,22 +721,23 @@ test("keeps an image's address until the file on disk changes", { tag: "@viewpor
   await copyFile(repositoryPath("frontend/assets/icons/favicon-32.png"), imagePath);
   await utimes(imagePath, firstModified, firstModified);
   try {
+    const revisions = imageRequestRevisions(page, imageName);
     const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
     await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
     await taskReview.getByRole("button", { name: "Files", exact: true }).click();
     const navigator = taskReview.locator("caffold-file-navigator");
     const image = taskReview.locator("caffold-review-file-viewer img.image-preview");
-    const imageAddress = new RegExp(
-      `/api/image\\?path=src%2F${imageName.replace(".", "\\.")}&revision=${firstModified.getTime()}$`,
-    );
+    const first = `${firstModified.getTime()}`;
 
     await navigator.locator(`button[data-file-tree-path="src/${imageName}"]`).click();
     await taskReview.getByRole("button", { name: "Preview", exact: true }).click();
-    await expect(image).toHaveAttribute("src", imageAddress);
+    await expect.poll(() => revisions).toEqual([first]);
+    await expectFetchedPicture(image);
     await navigator.locator('button[data-file-tree-path="src/alpha.rs"]').click();
     await expect(image).toHaveCount(0);
     await navigator.locator(`button[data-file-tree-path="src/${imageName}"]`).click();
-    await expect(image).toHaveAttribute("src", imageAddress);
+    await expect.poll(() => revisions).toEqual([first, first]);
+    await expectFetchedPicture(image);
 
     await utimes(imagePath, laterModified, laterModified);
     await page.evaluate((logicalPath) => {
@@ -753,14 +752,132 @@ test("keeps an image's address until the file on disk changes", { tag: "@viewpor
         overflow: false,
       });
     }, `src/${imageName}`);
-    await expect(image).toHaveAttribute(
-      "src",
-      new RegExp(`&revision=${laterModified.getTime()}$`),
-    );
+    await expect
+      .poll(() => revisions)
+      .toEqual([first, first, `${laterModified.getTime()}`]);
+    await expectFetchedPicture(image);
   } finally {
     await rm(imagePath, { force: true });
   }
 });
+
+test("fetches a large image in 64 KB cells, the later ones under its version", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const imageName = "review-image-cells.png";
+  const imagePath = repositoryPath("frontend/tests/e2e/fixtures/home/src", imageName);
+  await copyFile(repositoryPath("frontend/assets/icons/icon-512.png"), imagePath);
+  try {
+    const cells = [];
+    page.on("response", (response) => {
+      const address = new URL(response.url());
+      if (
+        address.pathname === "/api/image" &&
+        address.searchParams.get("path") === `src/${imageName}`
+      ) {
+        cells.push({
+          version: address.searchParams.get("version"),
+          range: response.request().headers().range,
+          status: response.status(),
+          contentRange: response.headers()["content-range"],
+        });
+      }
+    });
+    const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+    const image = taskReview.locator("caffold-review-file-viewer img.image-preview");
+
+    await taskReview
+      .locator(`caffold-file-navigator button[data-file-tree-path="src/${imageName}"]`)
+      .click();
+    await taskReview.getByRole("button", { name: "Preview", exact: true }).click();
+
+    await expectFetchedPicture(image);
+    expect(await image.evaluate((element) => element.naturalWidth)).toBe(512);
+    await expect.poll(() => cells.length).toBe(2);
+    expect(cells).toEqual([
+      {
+        version: null,
+        range: "bytes=0-65535",
+        status: 206,
+        contentRange: "bytes 0-65535/106327",
+      },
+      {
+        version: expect.stringMatching(/^[0-9a-f]+-[0-9a-f]+$/),
+        range: "bytes=65536-106326",
+        status: 206,
+        contentRange: "bytes 65536-106326/106327",
+      },
+    ]);
+  } finally {
+    await rm(imagePath, { force: true });
+  }
+});
+
+test("says an image is loading until it is drawn", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const imageName = "review-image-loading.png";
+  const imagePath = repositoryPath("frontend/tests/e2e/fixtures/home/src", imageName);
+  await copyFile(repositoryPath("frontend/assets/icons/icon-512.png"), imagePath);
+  try {
+    let releaseImage;
+    const imageGate = new Promise((resolve) => {
+      releaseImage = resolve;
+    });
+    await page.route(/\/api\/image\?/, async (route) => {
+      if (new URL(route.request().url()).searchParams.get("path") === `src/${imageName}`) {
+        await imageGate;
+      }
+      return route.fallback();
+    });
+    const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+    const viewer = taskReview.locator("caffold-review-file-viewer");
+    const image = viewer.locator("img.image-preview");
+    const loading = viewer.locator(".image-stage > caffold-loading-text");
+
+    await taskReview
+      .locator(`caffold-file-navigator button[data-file-tree-path="src/${imageName}"]`)
+      .click();
+    await taskReview.getByRole("button", { name: "Preview", exact: true }).click();
+    await expect(loading).toHaveText("Loading image...");
+    await expect(loading).toBeVisible();
+    await expect(image).toBeHidden();
+
+    releaseImage();
+    await expectFetchedPicture(image);
+    await expect(image).toBeVisible();
+    await expect(loading).toHaveCount(0);
+  } finally {
+    await rm(imagePath, { force: true });
+  }
+});
+
+// The `revision` of each request for an image's first cell, the address the
+// viewer asks for; later cells add the file's version to that address.
+function imageRequestRevisions(page, name) {
+  const revisions = [];
+  page.on("request", (request) => {
+    const address = new URL(request.url());
+    if (
+      address.pathname === "/api/image" &&
+      address.searchParams.get("path") === `src/${name}` &&
+      !address.searchParams.has("version")
+    ) {
+      revisions.push(address.searchParams.get("revision"));
+    }
+  });
+  return revisions;
+}
+
+// A picture is drawn from the copy fetched for it, not from its address.
+async function expectFetchedPicture(image) {
+  await expect(image).toHaveAttribute("src", /^blob:/);
+  await expect.poll(() => image.evaluate((element) => element.naturalWidth)).toBeGreaterThan(0);
+}
 
 test("keeps the shared Review panes inside the task workspace", { tag: "@all-viewports" }, async ({ page }) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);

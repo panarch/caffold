@@ -4,9 +4,14 @@
 //!
 //! Opening a file runs every check that does not need its contents and names
 //! the file's version, so a viewer that already shows that version need not
-//! read it again.
+//! read it again. An image or document can also be read one part at a time.
 
-use std::{fs, io::Read, path::Path, time::UNIX_EPOCH};
+use std::{
+    fs,
+    io::{Read, Seek, SeekFrom},
+    path::Path,
+    time::UNIX_EPOCH,
+};
 
 use serde::Serialize;
 
@@ -116,6 +121,20 @@ impl OpenedBinary {
             bytes: self.opened.read()?.bytes,
         })
     }
+
+    /// The size the file had when it was checked.
+    pub fn size(&self) -> u64 {
+        self.opened.metadata.len()
+    }
+
+    /// Reads bytes `first` through `last`, both within the checked size, and
+    /// nothing else of the file.
+    pub fn read_part(self, first: u64, last: u64) -> Result<FileBytes, FsError> {
+        Ok(FileBytes {
+            content_type: self.content_type,
+            bytes: self.opened.read_part(first, last)?,
+        })
+    }
 }
 
 /// A file that passed every check but those on its contents, open for reading.
@@ -181,6 +200,20 @@ impl Opened {
             metadata,
             bytes,
         })
+    }
+
+    // A file that shrank since it was checked cannot fill the part and fails.
+    fn read_part(mut self, first: u64, last: u64) -> Result<Vec<u8>, FsError> {
+        let mut bytes = vec![0; (last - first + 1) as usize];
+        self.file
+            .seek(SeekFrom::Start(first))
+            .and_then(|_| self.file.read_exact(&mut bytes))
+            .map_err(|source| FsError::Io {
+                action: "read file",
+                path: self.requested_path,
+                source,
+            })?;
+        Ok(bytes)
     }
 }
 
@@ -353,6 +386,43 @@ mod tests {
         fs::write(&notes, "longer").unwrap();
         set_modified(1_700_000_001);
         assert_ne!(version(), later);
+    }
+
+    #[test]
+    fn reads_only_the_part_asked_for() {
+        let temp = tempfile::tempdir().unwrap();
+        let digits = temp.path().join("digits.png");
+        fs::write(&digits, b"0123456789").unwrap();
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let part = |first, last| {
+            rooted
+                .open_image("digits.png")
+                .unwrap()
+                .read_part(first, last)
+                .unwrap()
+                .bytes
+        };
+
+        assert_eq!(rooted.open_image("digits.png").unwrap().size(), 10);
+        assert_eq!(part(0, 0), b"0");
+        assert_eq!(part(9, 9), b"9");
+        assert_eq!(part(3, 6), b"3456");
+        assert_eq!(part(0, 9), b"0123456789");
+
+        let opened = rooted.open_image("digits.png").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&digits)
+            .unwrap()
+            .set_len(3)
+            .unwrap();
+        assert!(matches!(
+            opened.read_part(5, 9),
+            Err(FsError::Io {
+                action: "read file",
+                ..
+            })
+        ));
     }
 
     #[test]

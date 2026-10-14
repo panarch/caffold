@@ -1304,13 +1304,40 @@ modification time, and answer a browser that already holds that version with
 as `revision`, so a file that changes on disk is also loaded from a new
 address.
 
+Images and documents also answer one `Range: bytes=` range with 206 and
+`Content-Range`, reading only that part of the file, and a range that starts
+past the end with 416. `If-None-Match` is answered before the range, and an
+`If-Range` that does not name the current version gets the whole file. Their
+viewers fetch them through `fetchInChunks` (`frontend/chunked-fetch.js`) in
+64 KB cells cut at the same places every time, so the bytes of a large file
+wait in line on the shared connection ahead of the page's other requests, the
+live updates included, by no more than the cells in flight. The first cell
+comes from the address the viewer names. Every later cell comes from that
+address with `version` set to the first cell's `ETag` and `cell` set to its
+number; the server answers it with
+`Cache-Control: private, max-age=31536000, immutable`, and refuses it with 412
+once the file has changed, so the fetch starts again instead of joining two
+versions. The browser's HTTP cache keeps the cells, so a file fetched before
+costs one 304 for its first cell. Each cell has an address of its own because
+over HTTP/2 Chrome keeps only one of several requests for one address that are
+in flight together. One count of cells in flight is shared by
+every file being fetched, the most recently requested file first. It starts at
+one and changes once a round trip by how long a cell waited for its first byte:
+it grows while cells wait no longer than the usual round trip and a quarter of a
+second, and shrinks otherwise. Conversation thumbnails start fetching when they
+come within 2500px of view; a picture the message itself carries as a
+`data:` address is drawn directly. Until a fetched picture is drawn, its place
+in Review, the conversation, and the image preview shows "Loading image...",
+as a document viewer does for its document.
+
 PDFs, Word documents, PowerPoint decks, and Excel workbooks share one document
 state in the file viewer, which mounts the viewer for the document's kind and
 hands it `/api/document`. That route answers each kind with its own content
 type, up to 100 MiB, and refuses any other extension. The viewer owns
 rendering, document lifetime, and local scroll, and keeps one open document per
 selected file and modification time. `caffold-pdf-viewer` imports its pinned
-pdf.js release at first use and draws a page as it approaches the viewport.
+pdf.js release at first use, hands it the fetched bytes rather than the
+address, and draws a page as it approaches the viewport.
 `caffold-docx-viewer` imports its pinned docx-preview release at first use and
 draws the whole document inside a shadow root of its own, so the document's
 styles and the app's stylesheet do not reach each other; embedded fonts are not

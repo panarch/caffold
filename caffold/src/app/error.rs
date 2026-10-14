@@ -26,6 +26,7 @@ pub(super) enum ApiError {
     BadRequest { code: &'static str, message: String },
     Forbidden { code: &'static str, message: String },
     Conflict { code: &'static str, message: String },
+    PreconditionFailed { code: &'static str, message: String },
 }
 
 impl std::fmt::Display for ApiError {
@@ -41,7 +42,8 @@ impl std::fmt::Display for ApiError {
             | Self::NotFound { message, .. }
             | Self::BadRequest { message, .. }
             | Self::Forbidden { message, .. }
-            | Self::Conflict { message, .. } => formatter.write_str(message),
+            | Self::Conflict { message, .. }
+            | Self::PreconditionFailed { message, .. } => formatter.write_str(message),
         }
     }
 }
@@ -296,6 +298,9 @@ impl ApiError {
             ApiError::BadRequest { code, message } => (StatusCode::BAD_REQUEST, code, message),
             ApiError::Forbidden { code, message } => (StatusCode::FORBIDDEN, code, message),
             ApiError::Conflict { code, message } => (StatusCode::CONFLICT, code, message),
+            ApiError::PreconditionFailed { code, message } => {
+                (StatusCode::PRECONDITION_FAILED, code, message)
+            }
         };
 
         (status, ErrorBody::new(code, message))

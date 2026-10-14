@@ -17,6 +17,7 @@ import {
 } from "./file-viewer-presentation.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 import { documentUrl, downloadUrl, imageUrl } from "../api.js";
+import { fetchInChunks } from "../chunked-fetch.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
@@ -95,6 +96,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
   deactivate() {
     this.cancelRetainedContent();
     this.closeDetailsPopover();
+    this.releaseShownImage();
   }
 
   closeDetailsPopover() {
@@ -635,6 +637,9 @@ class CaffoldReviewFileViewer extends HTMLElement {
 
   render(options = {}) {
     this.closeDetailsPopover();
+    if (this.state?.status !== "image") {
+      this.releaseShownImage();
+    }
     if (!this.state || this.state.status === "empty") {
       this.innerHTML = `
         <section class="viewer-panel empty-panel">
@@ -806,21 +811,75 @@ class CaffoldReviewFileViewer extends HTMLElement {
       <section class="viewer-panel image-panel">
         ${this.renderHeader(image.name, metadata, { downloadPath: image.path })}
         <div class="image-stage">
-          <img
-            class="image-preview"
-            src="${escapeHtml(imageUrlWithRevision(image.path, image.revision))}"
-            alt="${escapeHtml(image.name)}"
-          >
+          <img class="image-preview" alt="${escapeHtml(image.name)}" hidden>
+          <caffold-loading-text>Loading image...</caffold-loading-text>
         </div>
       </section>
     `;
 
-    this.querySelector(".image-preview").addEventListener("error", () => {
+    // Until the picture is drawn, its place says it is loading rather than
+    // showing an empty image the browser would draw as broken.
+    const preview = this.querySelector(".image-preview");
+    const loading = this.querySelector(".image-stage > caffold-loading-text");
+    const failed = () => {
       this.setError(
         sourceViewerPresentation(image),
         new Error("Image preview failed to load."),
       );
+    };
+    preview.addEventListener("error", failed);
+    preview.addEventListener("load", () => {
+      loading.remove();
+      preview.hidden = false;
     });
+    this.showFetchedImage(
+      preview,
+      imageUrlWithRevision(image.path, image.revision),
+      failed,
+    );
+  }
+
+  // The picture is fetched once for its address and drawn from that copy on
+  // every render; another address, another state, or leaving lets it go.
+  showFetchedImage(preview, url, failed) {
+    let shown = this.shownImage;
+    if (shown?.url !== url) {
+      this.releaseShownImage();
+      const fetching = new AbortController();
+      shown = {
+        url,
+        fetching,
+        objectUrl: "",
+        file: fetchInChunks(url, { signal: fetching.signal }),
+      };
+      this.shownImage = shown;
+    }
+    shown.file.then(
+      (file) => {
+        if (this.shownImage !== shown || !preview.isConnected) {
+          return;
+        }
+        shown.objectUrl ||= URL.createObjectURL(file);
+        preview.src = shown.objectUrl;
+      },
+      (error) => {
+        if (this.shownImage === shown && error?.name !== "AbortError") {
+          failed();
+        }
+      },
+    );
+  }
+
+  releaseShownImage() {
+    const shown = this.shownImage;
+    if (!shown) {
+      return;
+    }
+    this.shownImage = null;
+    shown.fetching.abort();
+    if (shown.objectUrl) {
+      URL.revokeObjectURL(shown.objectUrl);
+    }
   }
 
   renderDiff(options = {}) {

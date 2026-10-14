@@ -143,6 +143,11 @@ caffold-task-image-preview-dialog {
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
   }
+
+  & .task-image-preview-viewport > caffold-loading-text {
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
 }
 
 @media (max-width: 620px) {

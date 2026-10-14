@@ -396,6 +396,12 @@ caffold-review-file-viewer {
     max-height: 100%;
     object-fit: contain;
   }
+
+  & .image-stage > caffold-loading-text {
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    text-align: center;
+  }
 }
 
 @media (max-width: 860px) {
