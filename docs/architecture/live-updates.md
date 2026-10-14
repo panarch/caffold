@@ -101,9 +101,10 @@ the conversation: no events, no extent, `eventRevision` 0, and `historyLoading`
 set. The page itself follows at once as a `task-sync` with reason
 `stream-page`. The bootstrap stays small whatever the conversation's size, so
 the browser's wait for it measures whether the channel answers, not how long a
-page takes to arrive. A conversation the session has not read yet bootstraps
-with its loading answer alone, and its page comes once the session has read it;
-an unreadable one bootstraps with its error. A Task
+page takes to arrive. A conversation the session does not hold, because it has
+not read it yet or has let it go with an idle subscription, bootstraps with its
+loading answer alone, and its page comes once the session has read it; an
+unreadable one bootstraps with its error. A Task
 switch replaces the logical Task Detail generation while the physical SSE
 connection remains open. Browser reconnection does not by itself invalidate
 the provider conversation cache; its retention and membership rules belong to

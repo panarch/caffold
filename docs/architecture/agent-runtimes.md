@@ -474,9 +474,10 @@ and stable positions even if a history read uses different IDs. Unmatched IDs
 from a partial attachment or recovered source remain distinct. Their contents,
 timestamps, or proximity cannot authorize a guessed match.
 
-Retention is by whole turn. Each Task protects its latest turn and the newest
-retained turns with items that fill a current-page answer, through the one that
-completes `TASK_DETAIL_EVENT_LIMIT` events. It also protects one historical
+Retention is by whole turn. While Caffold keeps a Task's subscription, the Task
+protects its latest turn and the newest retained turns with items that fill a
+current-page answer, through the one that completes `TASK_DETAIL_EVENT_LIMIT`
+events. It also protects one historical
 continuation selected by the most recently requested successful older-page read.
 A failed request retains the previous selection; a late response cannot change
 the selection after a newer request. When the total exceeds 300 distinct
@@ -485,6 +486,13 @@ whole. Updates to the same item do not add to the count. Protected turns may
 exceed the budget. Unprotected empty completed turns are discarded after the
 response and continuation have been captured. This is an item retention policy,
 not a byte bound, prefetch target, or limit on the browser's retained pages.
+Letting an idle subscription go
+([Codex App Server](codex-app-server.md#thread-subscription-lifecycle)), which
+Caffold does for Claude and Grok sessions too without asking their agents to
+detach, discards the Task's latest-turns page in `TaskSessions` and its
+retained turns, items, and generated pictures in `TaskEvents`. The conversation
+record, composer settings, session revision, and context usage remain, so the
+next open reads the latest page from the agent again.
 
 A provider generation change or confirmed observation gap withdraws history
 validity and rejects pending reads from that observation lifetime. Retained

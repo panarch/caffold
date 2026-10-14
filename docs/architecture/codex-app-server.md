@@ -337,11 +337,14 @@ persist a second task ledger.
   runtime demand ends. Cleanup, including cleanup prompted by provider
   observations, waits for that; an observation neither shortens nor extends it.
   New demand within those 30 minutes reuses the subscription without resuming
-  or rereading its history. A per-session operation lock orders each resume or
-  unsubscribe through its RPC completion. A new consumer arriving during
-  unsubscribe waits for detachment to finish, then resumes; it cannot cancel an
-  effect already sent to app-server. Dropping a waiting caller also cannot
-  release that operation lock before its provider effect completes.
+  or rereading its history. Letting it go after them also discards what Caffold
+  retained of the conversation
+  ([Backend reconciliation](agent-runtimes.md#backend-reconciliation)), so later
+  demand reads the latest page again. A per-session operation lock orders each
+  resume or unsubscribe through its RPC completion. A new consumer arriving
+  during unsubscribe waits for detachment to finish, then resumes; it cannot
+  cancel an effect already sent to app-server. Dropping a waiting caller also
+  cannot release that operation lock before its provider effect completes.
 
 The local transport lifecycle is `Unloaded`, `Subscribing`, `Subscribed`,
 `Unsubscribing`, or `Error`. `Unloaded` describes Caffold's subscription and does

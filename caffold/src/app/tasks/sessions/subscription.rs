@@ -18,8 +18,9 @@ use super::{
 };
 
 /// How long a conversation stays subscribed after the last viewer, request, or
-/// running turn lets go of it. Opening it again after that rereads it and
-/// sends its whole page once more, which a slow link pays for.
+/// running turn lets go of it. After that its turns and items are let go too:
+/// opening it again rereads it and sends its whole page, which a slow link
+/// pays for.
 const UNUSED_SUBSCRIPTION_RETENTION: Duration = Duration::from_secs(30 * 60);
 
 impl Drop for ViewerLease {
@@ -312,6 +313,9 @@ impl TaskSessions {
                     state.driver = None;
                     state.terminal_candidate_turn_id = None;
                     state.last_error = None;
+                    state.turns_page = None;
+                    state.history_base_revision = None;
+                    state.events.remove_thread(&thread_id);
                 }
                 Err(error) => {
                     state.transition(SubscriptionTransition::Failed);
@@ -365,6 +369,8 @@ impl TaskSessions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::tasks::events::TaskEvents;
+    use crate::app::tasks::generated_images::GeneratedImageError;
     use crate::app::tasks::sessions::test_support::*;
 
     #[tokio::test]
@@ -856,6 +862,129 @@ mod tests {
             sessions.snapshot("thread-1").await.unwrap().lifecycle,
             SessionLifecycle::Subscribed
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn what_was_held_of_a_conversation_goes_with_its_subscription() {
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                resume_response(ThreadStatus::Idle, vec![], vec![turn_with_a_drawn_image()]),
+            ),
+            MockCodexResponse::ok("thread/unsubscribe", json!({"status":"unsubscribed"})),
+        ]);
+        let events = TaskEvents::default();
+        let sessions = TaskSessions::new(events.clone());
+        let viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .unwrap();
+        let held = sessions.snapshot("thread-1").await.unwrap();
+        assert!(held.turns_page.is_some());
+        assert!(!events.for_thread("thread-1").is_empty());
+        assert!(
+            events
+                .generated_images()
+                .load("thread-1", "image-1")
+                .await
+                .is_ok()
+        );
+
+        drop(viewer);
+        while sessions.snapshot("thread-1").await.unwrap().viewer_leases != 0 {
+            tokio::task::yield_now().await;
+        }
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION - Duration::from_millis(1)).await;
+        assert!(
+            sessions
+                .snapshot("thread-1")
+                .await
+                .unwrap()
+                .turns_page
+                .is_some()
+        );
+        assert!(!events.for_thread("thread-1").is_empty());
+
+        tokio::time::advance(Duration::from_millis(1)).await;
+        while sessions.snapshot("thread-1").await.unwrap().lifecycle != SessionLifecycle::Unloaded {
+            tokio::task::yield_now().await;
+        }
+        let let_go = sessions.snapshot("thread-1").await.unwrap();
+        assert!(let_go.turns_page.is_none());
+        assert_eq!(let_go.history_base_revision, None);
+        assert_eq!(let_go.conversation, held.conversation);
+        assert_eq!(let_go.revision, held.revision);
+        assert!(events.for_thread("thread-1").is_empty());
+        assert_eq!(
+            events.generated_images().load("thread-1", "image-1").await,
+            Err(GeneratedImageError::NotFound)
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_subscription_that_fails_to_close_keeps_what_it_held() {
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                resume_response(ThreadStatus::Idle, vec![], vec![turn_with_a_drawn_image()]),
+            ),
+            MockCodexResponse::error("thread/unsubscribe", CodexThreadError::ProcessUnavailable),
+        ]);
+        let events = TaskEvents::default();
+        let sessions = TaskSessions::new(events.clone());
+        let viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .unwrap();
+
+        drop(viewer);
+        while sessions.snapshot("thread-1").await.unwrap().viewer_leases != 0 {
+            tokio::task::yield_now().await;
+        }
+        tokio::time::advance(UNUSED_SUBSCRIPTION_RETENTION).await;
+        while sessions.snapshot("thread-1").await.unwrap().lifecycle != SessionLifecycle::Error {
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            sessions
+                .snapshot("thread-1")
+                .await
+                .unwrap()
+                .turns_page
+                .is_some()
+        );
+        assert!(!events.for_thread("thread-1").is_empty());
+        assert!(
+            events
+                .generated_images()
+                .load("thread-1", "image-1")
+                .await
+                .is_ok()
+        );
+    }
+
+    fn turn_with_a_drawn_image() -> CodexTurn {
+        decoded(json!({
+            "id": "turn-1",
+            "items": [
+                {
+                    "id": "prompt-1",
+                    "type": "userMessage",
+                    "content": [{ "type": "text", "text": "Draw one pixel" }]
+                },
+                {
+                    "id": "image-1",
+                    "type": "imageGeneration",
+                    "status": "completed",
+                    "result": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                    "savedPath": null
+                }
+            ],
+            "itemsView": "full",
+            "status": "completed",
+            "startedAt": 1.0,
+            "completedAt": 2.0
+        }))
     }
 
     #[tokio::test(start_paused = true)]
