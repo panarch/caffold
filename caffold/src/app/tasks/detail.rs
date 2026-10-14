@@ -1505,6 +1505,7 @@ mod request_tests {
             codex::{CodexNotification, CodexRuntimeEvent, CodexThreadClient},
         },
         app::error::ApiError,
+        app::tasks::generated_images::GeneratedImageError,
         app::tasks::sessions::{SessionLifecycle, TaskSessions},
         fs::RootedFs,
         task_store::TaskStore,
@@ -3519,6 +3520,106 @@ mod request_tests {
         drop(stream_response);
         state.task_sessions.lapse_retention(thread_id).await;
         wait_for_mock_method_count(&client, "thread/unsubscribe", 2).await;
+    }
+
+    #[tokio::test]
+    async fn a_task_reopened_after_its_subscription_lapsed_sends_its_page_once() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-reopened-after-lapse";
+        let resume = || {
+            let mut resumed = resumed_task(thread_id, root.path());
+            resumed["initialTurnsPage"]["data"] = json!([turn_with_a_drawn_image()]);
+            resumed
+        };
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/resume", resume()),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
+            MockCodexResponse::ok("thread/resume", resume()),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let images = state.task_events.generated_images().clone();
+
+        let mut first = test_task_stream(state.clone(), thread_id.to_string())
+            .await
+            .unwrap();
+        let opened = syncs_through_session_bootstrap(&mut first).await;
+        assert_eq!(reasons(&opened), ["stream-bootstrap", "session-bootstrap"]);
+        drop(first);
+
+        state.task_sessions.lapse_retention(thread_id).await;
+        assert_eq!(
+            images.load(thread_id, "image-1").await,
+            Err(GeneratedImageError::NotFound)
+        );
+
+        let mut reopened = test_task_stream(state.clone(), thread_id.to_string())
+            .await
+            .unwrap();
+        let syncs = syncs_through_session_bootstrap(&mut reopened).await;
+        assert_eq!(reasons(&syncs), ["stream-bootstrap", "session-bootstrap"]);
+        let [loading, page] = syncs.as_slice() else {
+            unreachable!("the reasons were checked above");
+        };
+        assert!(loading.detail.history_loading);
+        assert!(loading.detail.events.is_empty());
+        assert!(!page.detail.events.is_empty());
+        assert_eq!(event_ids(&page.detail), event_ids(&opened[1].detail));
+        assert!(images.load(thread_id, "image-1").await.is_ok());
+    }
+
+    async fn next_sync(stream: &mut DetailLiveStream) -> TaskDetailSync {
+        loop {
+            let event = tokio::time::timeout(Duration::from_secs(5), stream.next())
+                .await
+                .expect("the stream keeps sending")
+                .expect("the stream stays open");
+            if let DetailLiveEvent::Sync(sync) = event {
+                return *sync;
+            }
+        }
+    }
+
+    /// What a stream sends up to and including the page read from the agent.
+    async fn syncs_through_session_bootstrap(stream: &mut DetailLiveStream) -> Vec<TaskDetailSync> {
+        let mut syncs = Vec::new();
+        loop {
+            let sync = next_sync(stream).await;
+            let read = sync.reason == "session-bootstrap";
+            syncs.push(sync);
+            if read {
+                return syncs;
+            }
+        }
+    }
+
+    fn reasons(syncs: &[TaskDetailSync]) -> Vec<&str> {
+        syncs.iter().map(|sync| sync.reason).collect()
+    }
+
+    fn turn_with_a_drawn_image() -> serde_json::Value {
+        json!({
+            "id": "turn-1",
+            "items": [
+                {
+                    "id": "prompt-1",
+                    "type": "userMessage",
+                    "content": [{ "type": "text", "text": "Draw one pixel" }]
+                },
+                {
+                    "id": "image-1",
+                    "type": "imageGeneration",
+                    "status": "completed",
+                    "result": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                    "savedPath": null
+                }
+            ],
+            "itemsView": "full",
+            "status": "completed",
+            "startedAt": 1.0,
+            "completedAt": 2.0
+        })
     }
 
     #[test]
