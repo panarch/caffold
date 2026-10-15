@@ -1651,7 +1651,10 @@ mod tests {
         );
         managed.permission_mode = mode.map(str::to_string);
         runtime.task_store.claim(managed, now_ms()).unwrap();
-        runtime.watch_claude();
+        // The bridge alone, without taking up live conversations: taken up
+        // after the one below opens, the Task would report its status as an
+        // event of its own, depending only on which ran first.
+        runtime.spawn_claude_bridge(runtime.shutdown.subscribe());
         runtime
             .claude()
             .open_conversation("claude-reviewed", &cwd, &ClaudeTurnOptions::default())
