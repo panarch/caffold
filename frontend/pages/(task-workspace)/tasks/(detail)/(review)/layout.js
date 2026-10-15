@@ -201,7 +201,6 @@ class CaffoldTaskReview extends HTMLElement {
     this.ensureRendered();
     const contextKey = reviewContextKey(task);
     const contextChanged = contextKey !== this.contextKey;
-    const taskChanged = this.task !== task;
     const previousRoute = this.route;
     const nextRoute = normalizeReviewRoute(route, task);
     const nextRouteKey = reviewRouteKey(nextRoute);
@@ -215,12 +214,10 @@ class CaffoldTaskReview extends HTMLElement {
           previousRoute.navigator !== "files" ||
           previousRoute.path !== nextRoute.path),
     );
-    if (
-      this.active &&
-      !contextChanged &&
-      !routeChanged &&
-      !taskChanged
-    ) {
+    if (this.active && !contextChanged && !routeChanged) {
+      // Detail hands the context over on every Task update; keep its newest
+      // branch and HEAD for later requests without restarting any load.
+      this.task = task;
       return false;
     }
     if (contextChanged) {

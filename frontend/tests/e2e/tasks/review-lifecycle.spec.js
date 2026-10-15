@@ -438,6 +438,108 @@ test("rejects a late file navigator response while Review is inactive", { tag: "
   }
 });
 
+test("keeps the first Working Tree loads running through Task updates", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  const statusRelease = Promise.withResolvers();
+  const rootListingRelease = Promise.withResolvers();
+  let statusRequests = 0;
+  let rootListings = 0;
+  await page.route(/\/api\/git\/status(?:\?|$)/, async (route) => {
+    statusRequests += 1;
+    await statusRelease.promise;
+    await route.fallback();
+  });
+  await page.route(/\/api\/list(?:\?|$)/, async (route) => {
+    if (new URL(route.request().url()).searchParams.get("path") !== "src") {
+      return route.continue();
+    }
+    rootListings += 1;
+    await rootListingRelease.promise;
+    await route.continue();
+  });
+
+  try {
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    await expect.poll(() => statusRequests).toBe(1);
+    await expect.poll(() => rootListings).toBe(1);
+    const loadingChanges = taskReview.locator(
+      "caffold-git-diff-changes-tree caffold-loading-text",
+    );
+    await expect(loadingChanges).toHaveText("Loading changes...");
+    await loadingChanges.evaluate((element) => {
+      element.dataset.firstLoadProbe = "kept";
+    });
+
+    await emitTaskSyncAndAwaitSnapshot(page, taskScenario, 20, "Command started");
+    await emitTaskSyncAndAwaitSnapshot(page, taskScenario, 21, "Command finished");
+    await expect(loadingChanges).toHaveAttribute("data-first-load-probe", "kept");
+
+    statusRelease.resolve();
+    rootListingRelease.resolve();
+    await expect(
+      taskReview.locator(
+        'caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]',
+      ),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        taskReview.evaluate((review) => review.fileNavigator().loadedDirectoryPath),
+      )
+      .toBe("src");
+    // Only the newest request's answer is accepted, so every earlier request
+    // has reached its route handler by now.
+    expect(statusRequests).toBe(1);
+    expect(rootListings).toBe(1);
+  } finally {
+    statusRelease.resolve();
+    rootListingRelease.resolve();
+    await page.unrouteAll({ behavior: "wait" });
+  }
+});
+
+test("keeps the first Branch loads running through Task updates", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const { reviewScenario, taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await expect(
+    taskReview.locator(
+      'caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]',
+    ),
+  ).toBeVisible();
+  const refsRelease = Promise.withResolvers();
+  let refsRequests = 0;
+  await page.route(/\/api\/git\/refs(?:\?|$)/, async (route) => {
+    refsRequests += 1;
+    await refsRelease.promise;
+    await route.fallback();
+  });
+  const compareBefore = reviewScenario.gitCompareRequests;
+
+  try {
+    await selectTaskReviewScope(tasksPage, "branch");
+    await expect.poll(() => refsRequests).toBe(1);
+
+    await emitTaskSyncAndAwaitSnapshot(page, taskScenario, 20, "Command started");
+    await emitTaskSyncAndAwaitSnapshot(page, taskScenario, 21, "Command finished");
+
+    refsRelease.resolve();
+    await expect(
+      taskReview.locator('caffold-git-compare-tree button[data-file-tree-path="src/planner.rs"]'),
+    ).toBeVisible();
+    // Only the newest request's answer is accepted, so every earlier request
+    // has reached its route handler by now.
+    expect(refsRequests).toBe(1);
+    expect(reviewScenario.gitCompareRequests - compareBefore).toBe(1);
+  } finally {
+    refsRelease.resolve();
+    await page.unrouteAll({ behavior: "wait" });
+  }
+});
+
 async function scrollAwayFromTop(locator) {
   return locator.evaluate(async (element) => {
     await new Promise((resolve) =>
@@ -501,6 +603,28 @@ async function emitTaskSync(page, taskScenario, revision, summary) {
       detail: taskScenario.detailResponse({ revision }),
     },
   );
+}
+
+// Resolves once Detail has published the update, which is when it hands the
+// Review its context again. The Detail layout stops the event, so this listens
+// while it is captured; the layout handles it before the promise settles.
+async function emitTaskSyncAndAwaitSnapshot(page, taskScenario, revision, summary) {
+  await page.evaluate((expectedSummary) => {
+    window.__reviewTaskSnapshot = new Promise((resolve) => {
+      window.addEventListener(
+        "caffold:task-subject-snapshot",
+        function listener(event) {
+          if (event.detail?.task?.lastEventSummary === expectedSummary) {
+            window.removeEventListener("caffold:task-subject-snapshot", listener, true);
+            resolve();
+          }
+        },
+        true,
+      );
+    });
+  }, summary);
+  await emitTaskSync(page, taskScenario, revision, summary);
+  await page.evaluate(() => window.__reviewTaskSnapshot);
 }
 
 async function emitWatchChange(page, change) {

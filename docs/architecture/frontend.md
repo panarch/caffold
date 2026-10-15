@@ -1407,7 +1407,10 @@ those public scopes; it never queries a child's `.file-tree-scroll`,
 Integrated Review uses a bounded cache keyed by explicit Task or Section
 identity. Disconnecting an inactive entry invalidates its requests and releases
 its root watch. Selected path and current-branch root watch remain unique to
-that cached review instance.
+that cached review instance. Detail hands the active entry its context again
+with every subject snapshot; a handoff with the same identity, roots, and route
+keeps the newer Task fields, such as branch and HEAD, for later requests and
+starts no request.
 
 ### Git
 
