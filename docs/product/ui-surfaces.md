@@ -428,7 +428,13 @@ The terminal fills the Detail body. Like the code surfaces it leaves out the
 Task navigator on wide layouts, whichever surface opened it, and the side panel
 button stays in its corner but cannot open anything. While a phone's or
 tablet's on-screen keyboard is open it ends above the keyboard, so the prompt
-and the special key row stay in sight. Its bar holds the special key toggle and **Kill terminal**.
+and the special key row stay in sight. Its bar holds the special key toggle,
+**Kill terminal**, and **Hide header**, which gives the terminal the Detail
+header's height too. The header and the controls in its corner then leave, and
+the bar becomes a column on the terminal's right with **Show header** on top
+and **Leave terminal**, which leaves as the terminal button does. Each browser
+remembers the choice for every terminal it shows; other surfaces always show
+the header.
 The special key row — Esc, Tab, a one-shot Ctrl, and the four arrows — starts
 shown on touch screens and remembers the choice per browser.
 A terminal shown on another screen offers **Open here**; a Task or Section

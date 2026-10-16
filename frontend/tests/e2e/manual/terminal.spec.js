@@ -61,6 +61,7 @@ test("a Task's terminal replaces its conversation and, when wide, the Task list"
   await expect(terminal).toHaveAttribute("data-terminal-node", "live");
   await expect(terminal.locator(".xterm-rows")).toContainText("10 passed (10)");
   await expect(terminal.getByRole("button", { name: "Kill terminal" })).toBeVisible();
+  await expect(terminal.getByRole("button", { name: "Hide header" })).toBeVisible();
   const specialKeys = terminal.locator("caffold-terminal-special-keys");
   if (testInfo.project.name === "phone") {
     await expect(specialKeys).toBeVisible();
@@ -73,4 +74,22 @@ test("a Task's terminal replaces its conversation and, when wide, the Task list"
     await expect(page.locator(".task-workspace-side-pane-toggle")).toBeDisabled();
   }
   await captureReviewScreenshot(page, testInfo, "terminal");
+});
+
+test("a terminal without the Task header has its buttons in a column on its right", { tag: "@desktop" }, async ({ page }, testInfo) => {
+  const task = MANUAL_TASKS.darkTheme;
+  await page.goto(`/tasks/${task.threadId}`);
+  await page.locator("caffold-task-detail-terminal > button").click();
+  const terminal = page.locator("caffold-terminal-page");
+  await expect(terminal).toHaveAttribute("data-terminal-node", "live");
+  await expect(terminal.locator(".xterm-rows")).toContainText("10 passed (10)");
+
+  await terminal.getByRole("button", { name: "Hide header" }).click();
+
+  await expect(page.locator("caffold-detail-layout .detail-layout-summary")).toBeHidden();
+  await expect(terminal.getByRole("button", { name: "Show header" })).toBeVisible();
+  await expect(terminal.getByRole("button", { name: "Leave terminal" })).toBeVisible();
+  // Back in the terminal, as someone who goes on typing would be.
+  await terminal.locator(".xterm-screen").click();
+  await captureReviewScreenshot(page, testInfo, "terminal-header-hidden");
 });

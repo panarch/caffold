@@ -38,8 +38,8 @@ as another screen.
 
 Everything you type goes to the shell, including <kbd>Esc</kbd>, so programs
 such as editors get it. Leave the terminal with <kbd>⌘</kbd>+<kbd>J</kbd> or
-<kbd>Ctrl</kbd>+<kbd>&#96;</kbd>. To reach the buttons above the terminal from
-the keyboard, press <kbd>⇧</kbd>+<kbd>⌘</kbd>+<kbd>F</kbd> or
+<kbd>Ctrl</kbd>+<kbd>&#96;</kbd>. To reach the terminal's buttons from the
+keyboard, press <kbd>⇧</kbd>+<kbd>⌘</kbd>+<kbd>F</kbd> or
 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> and type a code. To scroll back,
 use the mouse wheel, touch, or <kbd>Shift</kbd>+<kbd>PageUp</kbd> and
 <kbd>Shift</kbd>+<kbd>PageDown</kbd>; a terminal keeps its last 5,000 lines.
@@ -47,23 +47,30 @@ use the mouse wheel, touch, or <kbd>Shift</kbd>+<kbd>PageUp</kbd> and
 On a phone or tablet, a row of special keys sits under the terminal:
 <kbd>Esc</kbd>, <kbd>Tab</kbd>, <kbd>Ctrl</kbd>, and the arrows. <kbd>Ctrl</kbd>
 applies to the next key you press, so <kbd>Ctrl</kbd> and then <kbd>C</kbd>
-stops a command. The keyboard button above the terminal shows or hides the row,
-and each browser remembers your choice. While the on-screen keyboard is open,
-the terminal ends above it, so the prompt and the special key row stay in
-sight.
+stops a command. The keyboard button shows or hides the row, and each browser
+remembers your choice. While the on-screen keyboard is open, the terminal ends
+above it, so the prompt and the special key row stay in sight.
 
 ![The terminal on a phone, with the special key row](../assets/screenshots/terminal-phone.png)
 
 For more than one shell in a Task, run a program such as `tmux` inside the
 terminal.
 
+## Give it more height
+
+Choose **Hide header**, the last button above the terminal, to give the terminal
+the header's height too. Its buttons then stand on the right, with **Leave
+terminal** to go back and **Show header** to bring the header back. Each
+browser remembers your choice.
+
+![A terminal without the header, its buttons in a column on the right](../assets/screenshots/terminal-header-hidden-desktop.png)
+
 ## Close it
 
 Type `exit`, press <kbd>Ctrl</kbd>+<kbd>D</kbd>, or choose **Kill terminal**,
-the trash button above the terminal. The screen goes back to where you were
-before you opened the terminal. A terminal screen you reach with no terminal
-running, by link or after Caffold Server restarted, offers **Open terminal** to
-start a new one.
+the trash button. The screen goes back to where you were before you opened the
+terminal. A terminal screen you reach with no terminal running, by link or after
+Caffold Server restarted, offers **Open terminal** to start a new one.
 
 A terminal also closes when:
 

@@ -978,6 +978,10 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.tasksPage.dataset.taskDetailView ?? "conversation";
     this.dataset.taskDetailPresentation =
       this.tasksPage.dataset.taskDetailPresentation ?? "reading";
+    this.toggleAttribute(
+      "data-task-detail-header-hidden",
+      this.tasksPage.hasAttribute("data-task-detail-header-hidden"),
+    );
     this.dataset.notesView =
       this.notesWorkspace?.dataset.notesView ?? "list";
     this.dataset.notesPicker = this.notesWorkspace?.dataset.notesPicker ?? "";

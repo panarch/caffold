@@ -7,7 +7,10 @@ import {
 import { TERMINAL_EFFECT, TERMINAL_EVENT, TERMINAL_NODE } from "./page/model.js";
 
 const registry = installCustomElementUnitRegistry();
-const { TERMINAL_PAGE_LEAVE_EVENT } = await import("./page.js");
+const {
+  TERMINAL_PAGE_HEADER_EVENT,
+  TERMINAL_PAGE_LEAVE_EVENT,
+} = await import("./page.js");
 const terminalPage = registry.element("caffold-terminal-page").prototype;
 after(() => registry.restore());
 
@@ -133,6 +136,115 @@ test("clearing the screen closes the terminal the view drew", () => {
 
   assert.equal(owner.closes, 1);
 });
+
+test("the header toggle keeps the choice in the browser and tells the Detail layout", () => {
+  const stored = [];
+  const owner = headerOwner();
+  withWindow({ localStorage: { setItem: (key, value) => stored.push([key, value]) } }, () => {
+    terminalPage.toggleHeader.call(owner);
+    terminalPage.toggleHeader.call(owner);
+  });
+
+  assert.deepEqual(owner.shown, [true, false]);
+  assert.deepEqual(stored, [
+    ["caffold:terminal-header-hidden", "true"],
+    ["caffold:terminal-header-hidden", "false"],
+  ]);
+  assert.deepEqual(
+    owner.dispatched.map((event) => [event.type, event.bubbles]),
+    [[TERMINAL_PAGE_HEADER_EVENT, true], [TERMINAL_PAGE_HEADER_EVENT, true]],
+  );
+});
+
+test("the header toggle still works where the browser keeps no storage", () => {
+  const owner = headerOwner();
+  const storage = {};
+  Object.defineProperty(storage, "localStorage", {
+    get: () => {
+      throw new Error("storage is off");
+    },
+  });
+  withWindow(storage, () => terminalPage.toggleHeader.call(owner));
+
+  assert.deepEqual(owner.shown, [true]);
+  assert.equal(owner.dispatched.length, 1);
+});
+
+test("without the header the toggle offers it back and leaving joins the bar", () => {
+  const attributes = new Set();
+  const toggle = barButton();
+  const leave = barButton({ hidden: true });
+  let icons = 0;
+  const owner = {
+    toggleAttribute: (name, on) => (on ? attributes.add(name) : attributes.delete(name)),
+    querySelector: (selector) => ({
+      '[data-terminal-action="header"]': toggle,
+      '[data-terminal-action="leave"]': leave,
+    })[selector] ?? null,
+    renderIcons: () => {
+      icons += 1;
+    },
+  };
+
+  terminalPage.setHeaderHidden.call(owner, true);
+
+  assert.deepEqual([...attributes], ["data-header-hidden"]);
+  assert.deepEqual(toggle.attributes, { "aria-expanded": "false", "aria-label": "Show header" });
+  assert.equal(toggle.title, "Show header");
+  assert.equal(leave.hidden, false);
+
+  terminalPage.setHeaderHidden.call(owner, false);
+
+  assert.deepEqual([...attributes], []);
+  assert.deepEqual(toggle.attributes, { "aria-expanded": "true", "aria-label": "Hide header" });
+  assert.equal(toggle.title, "Hide header");
+  assert.equal(leave.hidden, true);
+  assert.equal(icons, 2);
+});
+
+function headerOwner() {
+  const owner = {
+    headerHidden: false,
+    shown: [],
+    dispatched: [],
+    setHeaderHidden: (hidden) => {
+      owner.shown.push(hidden);
+      owner.headerHidden = hidden;
+    },
+    dispatchEvent: (event) => owner.dispatched.push(event),
+  };
+  return owner;
+}
+
+function barButton({ hidden = false } = {}) {
+  return {
+    attributes: {},
+    title: "",
+    hidden,
+    setAttribute(name, value) {
+      this.attributes[name] = value;
+    },
+    toggleAttribute(name, on) {
+      if (name === "hidden") {
+        this.hidden = on;
+      }
+    },
+  };
+}
+
+function withWindow(window, run) {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { value: window, configurable: true });
+  try {
+    run();
+  } finally {
+    if (previous) {
+      Object.defineProperty(globalThis, "window", previous);
+    } else {
+      delete globalThis.window;
+    }
+  }
+}
 
 function pageOwner({
   sent = [],

@@ -162,6 +162,12 @@ caffold-task-workspace {
     gap: var(--task-workspace-route-control-gap);
   }
 
+  /* They stand on the Detail header, so they leave when the terminal takes its
+     height. */
+  &[data-workspace-mode="tasks"][data-task-detail-header-hidden] > .task-workspace-route-controls {
+    display: none;
+  }
+
   & .task-workspace-route-control {
     margin-block: 0;
     color: var(--control-fg);

@@ -29,8 +29,10 @@ import {
 export const TERMINAL_PAGE_STATE_EVENT = "caffold:terminal-page-state";
 export const TERMINAL_PAGE_FOCUS_RELEASE_EVENT = "caffold:terminal-page-focus-release";
 export const TERMINAL_PAGE_LEAVE_EVENT = "caffold:terminal-page-leave";
+export const TERMINAL_PAGE_HEADER_EVENT = "caffold:terminal-page-header";
 
 const SPECIAL_KEYS_STORAGE_KEY = "caffold:terminal-special-keys";
+const HEADER_STORAGE_KEY = "caffold:terminal-header-hidden";
 const FALLBACK_SIZE = Object.freeze({ cols: 80, rows: 24 });
 
 /**
@@ -80,6 +82,19 @@ class CaffoldTerminalPage extends HTMLElement {
           aria-label="Kill terminal"
           title="Kill terminal"
         ></button>
+        <button
+          type="button"
+          class="terminal-page-button"
+          data-terminal-action="header"
+        ></button>
+        <button
+          type="button"
+          class="terminal-page-button"
+          data-terminal-action="leave"
+          aria-label="Leave terminal"
+          title="Leave terminal"
+          hidden
+        ></button>
       </div>
       <div class="terminal-page-body">
         <caffold-terminal-view></caffold-terminal-view>
@@ -109,6 +124,7 @@ class CaffoldTerminalPage extends HTMLElement {
       }
     });
     this.setSpecialKeysShown(readSpecialKeysPreference());
+    this.setHeaderHidden(readHeaderPreference());
     this.renderIcons();
     this.renderState();
   }
@@ -387,6 +403,12 @@ class CaffoldTerminalPage extends HTMLElement {
       void killTerminal(this.subject).catch(() => {});
     } else if (action === "open") {
       this.apply({ type: TERMINAL_EVENT.ACTIVATE, mode: TERMINAL_MODE.TAKE });
+    } else if (action === "header") {
+      this.toggleHeader();
+    } else if (action === "leave") {
+      this.dispatchEvent(new CustomEvent(TERMINAL_PAGE_LEAVE_EVENT, {
+        bubbles: true,
+      }));
     }
   }
 
@@ -394,6 +416,34 @@ class CaffoldTerminalPage extends HTMLElement {
     this.specialKeys()?.toggleAttribute("hidden", !shown);
     this.querySelector('[data-terminal-action="special-keys"]')
       ?.setAttribute("aria-pressed", shown ? "true" : "false");
+  }
+
+  /** Whether the person chose to give the Detail header's height to the terminal. */
+  get headerHidden() {
+    this.ensureRendered();
+    return this.hasAttribute("data-header-hidden");
+  }
+
+  toggleHeader() {
+    const hidden = !this.headerHidden;
+    this.setHeaderHidden(hidden);
+    writeHeaderPreference(hidden);
+    this.dispatchEvent(new CustomEvent(TERMINAL_PAGE_HEADER_EVENT, { bubbles: true }));
+  }
+
+  // Without the header the bar stands as a column on the right, and leaving
+  // the terminal, which the header's button did, moves into it.
+  setHeaderHidden(hidden) {
+    this.toggleAttribute("data-header-hidden", hidden);
+    const toggle = this.querySelector('[data-terminal-action="header"]');
+    const label = hidden ? "Show header" : "Hide header";
+    toggle?.setAttribute("aria-expanded", hidden ? "false" : "true");
+    toggle?.setAttribute("aria-label", label);
+    if (toggle && toggle.title !== label) {
+      toggle.title = label;
+    }
+    this.querySelector('[data-terminal-action="leave"]')?.toggleAttribute("hidden", !hidden);
+    this.renderIcons();
   }
 
   /** Waits for the connection being made to succeed or fail. */
@@ -444,9 +494,14 @@ class CaffoldTerminalPage extends HTMLElement {
   }
 
   renderIcons() {
+    const headerHidden = this.hasAttribute("data-header-hidden");
     const icons = {
       "special-keys": renderInlineIcon("Keyboard", "Special keys", "terminal-page-icon"),
       kill: renderInlineIcon("Trash2", "Kill terminal", "terminal-page-icon"),
+      header: headerHidden
+        ? renderInlineIcon("Minimize2", "Show header", "terminal-page-icon")
+        : renderInlineIcon("Maximize2", "Hide header", "terminal-page-icon"),
+      leave: renderInlineIcon("SquareTerminal", "Leave terminal", "terminal-page-icon"),
     };
     for (const [action, icon] of Object.entries(icons)) {
       const button = this.querySelector(`.terminal-page-bar > [data-terminal-action="${action}"]`);
@@ -518,6 +573,22 @@ function readSpecialKeysPreference() {
 function writeSpecialKeysPreference(shown) {
   try {
     window.localStorage.setItem(SPECIAL_KEYS_STORAGE_KEY, `${shown}`);
+  } catch {
+    // The choice then lasts only for this page.
+  }
+}
+
+function readHeaderPreference() {
+  try {
+    return window.localStorage.getItem(HEADER_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeHeaderPreference(hidden) {
+  try {
+    window.localStorage.setItem(HEADER_STORAGE_KEY, `${hidden}`);
   } catch {
     // The choice then lasts only for this page.
   }
