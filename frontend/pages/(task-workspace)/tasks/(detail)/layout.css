@@ -35,6 +35,15 @@ caffold-detail-layout {
     overflow: hidden;
   }
 
+  /* The terminal screen can take the header's height. */
+  &[data-header-hidden] > .common-detail-shell {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  &[data-header-hidden] > .common-detail-shell > .detail-layout-summary {
+    display: none;
+  }
+
   & .detail-layout-summary {
     box-sizing: border-box;
     position: relative;

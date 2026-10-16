@@ -368,7 +368,8 @@ owns:
 - forwarding routes to Tasks, Notes, or Settings.
 
 The workspace consumes the semantic presentation snapshot published by Tasks:
-`reading` or `code`, current Task target, and Task-detail child. It does not
+`reading` or `code`, current Task target, Task-detail child, and whether the
+Detail header is hidden. It does not
 query nested Git/GitHub DOM or read their private state.
 
 Reading surfaces keep the Task navigator on desktop until the person collapses
@@ -394,7 +395,9 @@ event, and when its own size changes. It shows the toggle while the pane sits
 beside its detail and the compact Back is not using the corner, and keeps it in
 place but disabled while nothing is open, so the header beneath it keeps the
 same leading space. The terminal has no start pane, so Detail reports one that
-is closed and cannot open, and the toggle stays in place, disabled.
+is closed and cannot open, and the toggle stays in place, disabled. While Tasks
+reports the Detail header hidden, the toggle, the compact Back, and the Task
+switcher opener leave with the header they stand on.
 
 The App Shell keyboard-navigation coordinator is the only document-level key
 owner. It derives normal versus editing state from focus and composition,
@@ -1450,12 +1453,22 @@ as proof that remote data is current.
 Section the Detail layout activates it for. It owns the terminal screen's
 control model and WebSocket (private `page/model.js`, `page/connection.js`, and
 `page/keys.js`), the empty and "open on another screen" states, the bar with
-the special-key toggle and Kill terminal, and the special key row
-(`components/special-keys.js`). [Terminals](terminal.md#browser) owns the
-control model and the backend contract. The bar is as tall as the review file
-viewer's header. Detail passes the terminal page its header's inline padding and
-control gap, so the bar ends where the header does and, on a Task, its two
-buttons stand under the terminal and Task details buttons.
+the special-key toggle, Kill terminal, and the header toggle, the special key
+row (`components/special-keys.js`), and the choice to give the Detail header's
+height to the terminal, which each browser keeps in `localStorage`.
+[Terminals](terminal.md#browser) owns the control model and the backend
+contract. The bar is as tall as the review file viewer's header. Detail passes
+the terminal page its header's inline padding and control gap, so the bar ends
+where the header does and, on a Task, its last two buttons stand under the
+terminal and Task details buttons.
+
+Without the header the bar stands as a column on the terminal's right, down to
+the special key row, and adds Leave terminal, which asks Detail to leave as an
+ended terminal does. The terminal page announces a changed choice with a
+bubbling `caffold:terminal-page-header`. Detail hides its header only while the
+terminal is the presented surface, announces each change with
+`caffold:detail-header-change`, and Tasks publishes it in its presentation
+snapshot for Task Workspace.
 
 `caffold-terminal-view` in `frontend/components/terminal-view.js` is the
 reusable leaf that loads xterm.js, opens and closes its terminal, sizes it to

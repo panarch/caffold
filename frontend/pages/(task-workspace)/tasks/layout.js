@@ -169,6 +169,13 @@ class CaffoldTasksPage extends HTMLElement {
       this.querySelector(":scope > .tasks-surface > .tasks-detail-pane")
         ?.focus({ preventScroll: true });
     });
+    this.addEventListener("caffold:detail-header-change", (event) => {
+      if (event.target !== this.taskDetail()) {
+        return;
+      }
+      event.stopPropagation();
+      this.render();
+    });
     this.addEventListener(TASK_IMAGE_PREVIEW_EVENT, (event) => {
       event.stopPropagation();
       this.imagePreviewDialog()?.openImage(event.detail);
@@ -856,6 +863,12 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskDetail()?.toggleAttribute(
       "hidden",
       takeover || this.view !== "detail",
+    );
+    // The corner controls stand on the Detail header, which the terminal can
+    // give up.
+    this.toggleAttribute(
+      "data-task-detail-header-hidden",
+      !takeover && this.view === "detail" && Boolean(this.taskDetail()?.headerHidden),
     );
     this.taskRecovery()?.toggleAttribute(
       "hidden",

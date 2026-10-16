@@ -39,6 +39,10 @@ caffold-terminal-page {
     color: var(--control-fg);
   }
 
+  & .terminal-page-button[hidden] {
+    display: none;
+  }
+
   & .terminal-page-button > svg {
     position: relative;
     display: block;
@@ -47,9 +51,53 @@ caffold-terminal-page {
     stroke-width: 2;
   }
 
-  & .terminal-page-button[aria-pressed="true"]::before {
+  /* Leaving looks like the header's terminal button, which shows pressed while
+     the terminal is on screen. */
+  & .terminal-page-button[aria-pressed="true"]::before,
+  & .terminal-page-button[data-terminal-action="leave"]::before {
     border-color: var(--border-strong);
     background: var(--surface-muted);
+  }
+
+  /* Without the Detail header the bar stands on the right as a column, from the
+     top down to the special key row, with the bar's inset on every side of its
+     buttons. The header toggle keeps the corner it had at the end of the bar. */
+  &[data-header-hidden] {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  &[data-header-hidden] > .terminal-page-bar {
+    grid-column: 2;
+    grid-row: 1;
+    flex-direction: column;
+    justify-content: flex-start;
+    width: calc(
+      var(--interface-compact-hit-size) + var(--terminal-page-bar-padding-block) +
+        var(--terminal-page-bar-padding-block) + 1px
+    );
+    height: auto;
+    padding: var(--terminal-page-bar-padding-block) 0;
+    border-bottom: 0;
+    border-inline-start: 1px solid var(--border);
+  }
+
+  &[data-header-hidden] > .terminal-page-bar > [data-terminal-action="header"] {
+    order: -2;
+  }
+
+  &[data-header-hidden] > .terminal-page-bar > [data-terminal-action="leave"] {
+    order: -1;
+  }
+
+  &[data-header-hidden] > .terminal-page-body {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  &[data-header-hidden] > caffold-terminal-special-keys {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   & > .terminal-page-body {

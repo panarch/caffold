@@ -20,6 +20,7 @@ import "./components/git-menu.js";
 import "./components/github-menu.js";
 import { TERMINAL_BUTTON_INTENT_EVENT } from "./components/terminal-button.js";
 import {
+  TERMINAL_PAGE_HEADER_EVENT,
   TERMINAL_PAGE_LEAVE_EVENT,
   TERMINAL_PAGE_STATE_EVENT,
 } from "./terminal/page.js";
@@ -186,6 +187,13 @@ class CaffoldDetailLayout extends HTMLElement {
       }
       event.stopPropagation();
       this.leaveTerminal();
+    });
+    this.addEventListener(TERMINAL_PAGE_HEADER_EVENT, (event) => {
+      if (event.target !== this.terminalPage()) {
+        return;
+      }
+      event.stopPropagation();
+      this.syncHeaderVisibility(this.presentedSurface());
     });
     this.addEventListener(TERMINAL_PAGE_STATE_EVENT, (event) => {
       if (event.target !== this.terminalPage()) {
@@ -707,9 +715,25 @@ class CaffoldDetailLayout extends HTMLElement {
     this.gitSlot()?.toggleAttribute("hidden", surface !== "git");
     this.githubSlot()?.toggleAttribute("hidden", surface !== "github");
     this.terminalSlot()?.toggleAttribute("hidden", surface !== "terminal");
+    this.syncHeaderVisibility(surface);
     if (!subjectActive && this.subjectKind === "task") {
       this.taskDetail()?.deactivateVisibleSurface?.();
     }
+  }
+
+  // The terminal screen may give the header's height to the terminal. Tasks
+  // hears of each change, because the corner controls stand on this header.
+  syncHeaderVisibility(surface) {
+    const hidden = surface === "terminal" && Boolean(this.terminalPage()?.headerHidden);
+    if (hidden === this.headerHidden) {
+      return;
+    }
+    this.toggleAttribute("data-header-hidden", hidden);
+    this.dispatchEvent(new CustomEvent("caffold:detail-header-change", { bubbles: true }));
+  }
+
+  get headerHidden() {
+    return this.hasAttribute("data-header-hidden");
   }
 
   // The surface on screen. A Task's own surfaces wait for its canonical Task,

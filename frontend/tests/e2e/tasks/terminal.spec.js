@@ -507,16 +507,19 @@ test("the terminal bar is as tall as the review file header, with its buttons un
     info: ".task-detail-info-button",
     keyboard: '.terminal-page-bar > [data-terminal-action="special-keys"]',
     kill: '.terminal-page-bar > [data-terminal-action="kill"]',
+    toggle: '.terminal-page-bar > [data-terminal-action="header"]',
   });
   expect(barHeight).toBeCloseTo(reviewHeight, 1);
-  expect(buttons.keyboard.left).toBeCloseTo(buttons.terminal.left, 1);
-  expect(buttons.keyboard.right).toBeCloseTo(buttons.terminal.right, 1);
-  expect(buttons.kill.left).toBeCloseTo(buttons.info.left, 1);
-  expect(buttons.kill.right).toBeCloseTo(buttons.info.right, 1);
+  expect(buttons.kill.left).toBeCloseTo(buttons.terminal.left, 1);
+  expect(buttons.kill.right).toBeCloseTo(buttons.terminal.right, 1);
+  expect(buttons.toggle.left).toBeCloseTo(buttons.info.left, 1);
+  expect(buttons.toggle.right).toBeCloseTo(buttons.info.right, 1);
+  expect(buttons.kill.left - buttons.keyboard.right)
+    .toBeCloseTo(buttons.toggle.left - buttons.kill.right, 1);
 });
 
 // The phone moves GitHub to the second row, away from the terminal button.
-test("a Section's terminal bar has its buttons under GitHub and the terminal button", { tag: ["@desktop", "@foldable"] }, async ({
+test("a Section's terminal bar has its buttons under Git, GitHub, and the terminal button", { tag: ["@desktop", "@foldable"] }, async ({
   page,
 }, testInfo) => {
   await page.route("**/api/terminal", (route) => route.fulfill({ status: 204 }));
@@ -538,15 +541,181 @@ test("a Section's terminal bar has its buttons under GitHub and the terminal but
   await captureReviewScreenshot(page, testInfo, "terminal-bar-section");
 
   const buttons = await drawnButtons(page, {
+    git: ".task-git-button",
     github: ".task-github-button",
     terminal: "caffold-task-detail-terminal > button",
     keyboard: '.terminal-page-bar > [data-terminal-action="special-keys"]',
     kill: '.terminal-page-bar > [data-terminal-action="kill"]',
+    toggle: '.terminal-page-bar > [data-terminal-action="header"]',
   });
-  expect(buttons.keyboard.left).toBeCloseTo(buttons.github.left, 1);
-  expect(buttons.keyboard.right).toBeCloseTo(buttons.github.right, 1);
-  expect(buttons.kill.left).toBeCloseTo(buttons.terminal.left, 1);
-  expect(buttons.kill.right).toBeCloseTo(buttons.terminal.right, 1);
+  expect(buttons.keyboard.left).toBeCloseTo(buttons.git.left, 1);
+  expect(buttons.keyboard.right).toBeCloseTo(buttons.git.right, 1);
+  expect(buttons.kill.left).toBeCloseTo(buttons.github.left, 1);
+  expect(buttons.kill.right).toBeCloseTo(buttons.github.right, 1);
+  expect(buttons.toggle.left).toBeCloseTo(buttons.terminal.left, 1);
+  expect(buttons.toggle.right).toBeCloseTo(buttons.terminal.right, 1);
+});
+
+test("Hide header gives the terminal the header's height, and the browser keeps the choice", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const threadId = terminalTaskId("hide-header");
+  await openTask(page, threadId);
+  await terminalButton(page).click();
+  await expectLive(page);
+  await expectPrompt(page);
+  const header = page.locator("caffold-detail-layout .detail-layout-summary");
+  // The side pane toggle, or the compact Back and Task switcher, over the
+  // header's corner.
+  const corner = page.locator(".task-workspace-route-controls");
+  const screenRows = page.locator("caffold-terminal-page .xterm-rows > div");
+  const rowCount = () => screenRows.count();
+  const hide = page.getByRole("button", { name: "Hide header" });
+  const show = page.getByRole("button", { name: "Show header" });
+  await expect(header).toBeVisible();
+  await expect(corner).toBeVisible();
+  await expect(hide).toHaveAttribute("aria-expanded", "true");
+  const fullRows = await rowCount();
+
+  await hide.click();
+
+  await expect(show).toHaveAttribute("aria-expanded", "false");
+  await expect(header).toBeHidden();
+  await expect(corner).toBeHidden();
+  await expect.poll(rowCount).toBeGreaterThan(fullRows);
+  const rows = await rowCount();
+  await page.locator("caffold-terminal-page .xterm-screen").click();
+  await page.keyboard.type("stty size");
+  await page.keyboard.press("Enter");
+  await expect(screenRows.filter({ hasText: new RegExp(`^${rows} \\d+\\s*$`) })).toHaveCount(1);
+
+  await page.reload();
+  await emitTaskDetailBootstrap(page, terminalDetail(threadId));
+
+  await expectLive(page);
+  await expect(show).toBeVisible();
+  await expect(header).toBeHidden();
+
+  // Leaving the terminal brings the header back; coming back hides it again.
+  await page.keyboard.press("Meta+KeyJ");
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
+  await expect(header).toBeVisible();
+  await expect(corner).toBeVisible();
+  await terminalButton(page).click();
+  await expectLive(page);
+  await expect(header).toBeHidden();
+  await expect(corner).toBeHidden();
+
+  await show.click();
+
+  await expect(hide).toHaveAttribute("aria-expanded", "true");
+  await expect(header).toBeVisible();
+  await expect(corner).toBeVisible();
+  await expect.poll(rowCount).toBe(fullRows);
+});
+
+test("without the header the terminal's buttons stand in a column on its right", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await answerTerminalRequests(page);
+  await openTask(page, terminalTaskId("column"), "", { annotate: false });
+  await terminalButton(page).click();
+  await expectLive(page);
+  const bar = await terminalBarGeometry(page);
+  const [first, second] = bar.buttons;
+  const inset = first.top - bar.bar.top;
+  const gap = second.left - first.right;
+
+  await page.getByRole("button", { name: "Hide header" }).click();
+
+  const column = await terminalBarGeometry(page);
+  expect(column.buttons.map(({ action }) => action))
+    .toEqual(["header", "leave", "special-keys", "kill"]);
+  expect(column.page.top).toBeCloseTo(column.detail.top, 1);
+  expect(column.bar.top).toBeCloseTo(column.page.top, 1);
+  expect(column.bar.right).toBeCloseTo(column.page.right, 1);
+  expect(column.bar.left).toBeCloseTo(column.body.right, 1);
+  expect(column.body.top).toBeCloseTo(column.page.top, 1);
+  // The column ends at the special key row, shown on touch screens.
+  expect(column.bar.bottom).toBeCloseTo(column.keys?.top ?? column.page.bottom, 1);
+  // One inset on every side of the column, past its 1px border: the bar's,
+  // which the bar's bottom border trims by half a pixel. Between the buttons,
+  // the bar's gap.
+  const top = column.buttons[0];
+  const columnInset = top.top - column.bar.top;
+  expect(column.bar.right - top.right).toBeCloseTo(columnInset, 1);
+  expect(top.left - column.bar.left - 1).toBeCloseTo(columnInset, 1);
+  expect(Math.abs(columnInset - inset)).toBeLessThanOrEqual(0.51);
+  for (let index = 1; index < column.buttons.length; index += 1) {
+    expect(column.buttons[index].top - column.buttons[index - 1].bottom).toBeCloseTo(gap, 1);
+  }
+});
+
+test("Leave terminal in the column goes back to the screen before the terminal", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await answerTerminalRequests(page);
+  const threadId = terminalTaskId("column-leave");
+  await openTask(page, threadId, "", { annotate: false });
+  await terminalButton(page).click();
+  await expectLive(page);
+  await page.getByRole("button", { name: "Hide header" }).click();
+
+  await page.getByRole("button", { name: "Leave terminal" }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
+  await expect(page.locator("caffold-task-detail")).toBeVisible();
+  await expect(page.locator("caffold-detail-layout .detail-layout-summary")).toBeVisible();
+});
+
+test("a Section's terminal gives up the Section header too", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await answerTerminalRequests(page);
+  const sectionId = terminalTaskId("section-column");
+  const projection = activeTaskProjection([terminalDetail(sectionId).task]);
+  projection.sections[0].id = sectionId;
+  await installTaskApiFixture(page);
+  await page.route("**/api/tasks", (route) => route.fulfill({ json: projection }));
+  await page.goto(`/?section=${sectionId}`);
+  const header = page.locator("caffold-detail-layout .detail-layout-summary");
+  await terminalButton(page).click();
+  await expectLive(page);
+
+  await page.getByRole("button", { name: "Hide header" }).click();
+
+  await expect(header).toBeHidden();
+  await page.getByRole("button", { name: "Leave terminal" }).click();
+  await expect(page).toHaveURL(new RegExp(`/\\?section=${sectionId}$`));
+  await expect(header).toBeVisible();
+});
+
+test("⇧⌘F offers the column's buttons and nothing of the hidden header", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await answerTerminalRequests(page);
+  await openTask(page, terminalTaskId("column-hints"), "", { annotate: false });
+  await terminalButton(page).click();
+  await expectLive(page);
+  const hints = page.locator("caffold-action-hint-dialog > dialog:modal");
+  const hint = (label) => hints.getByLabel(new RegExp(` — ${label}$`));
+  await page.keyboard.press("Control+Shift+KeyF");
+  await expect(hint("Open Conversation")).toBeVisible();
+  // The header's terminal button.
+  await expect(hint("Leave terminal")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(hints).toBeHidden();
+
+  await page.getByRole("button", { name: "Hide header" }).click();
+  await page.keyboard.press("Control+Shift+KeyF");
+
+  for (const label of ["Show header", "Leave terminal", "Special keys", "Kill terminal"]) {
+    await expect(hint(label)).toHaveCount(1);
+  }
+  await expect(hint("Open Conversation")).toHaveCount(0);
+  const code = await hint("Show header").getAttribute("data-action-hint-code");
+  await page.keyboard.type(code.toLowerCase());
+  await expect(page.locator("caffold-detail-layout .detail-layout-summary")).toBeVisible();
 });
 
 test("from Working Tree the terminal keeps the header in place and brings no Task list", { tag: ["@desktop", "@foldable"] }, async ({
@@ -674,22 +843,7 @@ test("a Section's terminal button is its header's last control", { tag: "@all-vi
 test("the terminal ends above the on-screen keyboard and the shell sees the rows left", { tag: "@phone" }, async ({
   page,
 }) => {
-  // A browser test cannot open the phone's keyboard; the visual viewport the
-  // page reads shrinks by the keyboard's height instead, as it does on a phone.
-  await page.addInitScript(() => {
-    const real = window.visualViewport;
-    const viewport = new EventTarget();
-    let keyboard = 0;
-    for (const name of ["width", "offsetLeft", "offsetTop", "pageLeft", "pageTop", "scale"]) {
-      Object.defineProperty(viewport, name, { get: () => real[name] });
-    }
-    Object.defineProperty(viewport, "height", { get: () => real.height - keyboard });
-    Object.defineProperty(window, "visualViewport", { get: () => viewport });
-    window.showKeyboard = (height) => {
-      keyboard = height;
-      viewport.dispatchEvent(new Event("resize"));
-    };
-  });
+  await installKeyboardViewport(page);
   const threadId = terminalTaskId("keyboard-inset");
   await openTask(page, threadId);
   await terminalButton(page).click();
@@ -721,6 +875,27 @@ test("the terminal ends above the on-screen keyboard and the shell sees the rows
 
   await expect.poll(keysBottom).toBe(fullBottom);
   await expect.poll(rowCount).toBe(fullRows);
+});
+
+test("without the header the column and the special key row end above the on-screen keyboard", { tag: "@phone" }, async ({
+  page,
+}) => {
+  await installKeyboardViewport(page);
+  await answerTerminalRequests(page);
+  await openTask(page, terminalTaskId("column-keyboard"), "", { annotate: false });
+  await terminalButton(page).click();
+  await expectLive(page);
+  await page.getByRole("button", { name: "Hide header" }).click();
+
+  await page.evaluate(() => window.showKeyboard(300));
+
+  const visibleBottom = await page.evaluate(() =>
+    Math.round(window.visualViewport.offsetTop + window.visualViewport.height)
+  );
+  await expect.poll(async () => Math.round((await terminalBarGeometry(page)).keys.bottom))
+    .toBe(visibleBottom);
+  const column = await terminalBarGeometry(page);
+  expect(column.bar.bottom).toBeCloseTo(column.keys.top, 1);
 });
 
 test("the special key row starts on touch screens and keeps the choice", { tag: "@phone" }, async ({
@@ -822,6 +997,34 @@ async function openTask(page, threadId, suffix = "", { annotate = true, detail }
   await expect(terminalButton(page)).toBeEnabled();
 }
 
+// Answers the terminal's requests for a test that only looks at its screen.
+async function answerTerminalRequests(page) {
+  await page.route("**/api/terminal", (route) => route.fulfill({ status: 204 }));
+  await page.routeWebSocket(/\/api\/terminal\/socket/, (socket) => {
+    socket.onMessage(() => {});
+    socket.send(JSON.stringify({ type: "attached" }));
+  });
+}
+
+// A browser test cannot open the phone's keyboard; the visual viewport the
+// page reads shrinks by the keyboard's height instead, as it does on a phone.
+async function installKeyboardViewport(page) {
+  await page.addInitScript(() => {
+    const real = window.visualViewport;
+    const viewport = new EventTarget();
+    let keyboard = 0;
+    for (const name of ["width", "offsetLeft", "offsetTop", "pageLeft", "pageTop", "scale"]) {
+      Object.defineProperty(viewport, name, { get: () => real[name] });
+    }
+    Object.defineProperty(viewport, "height", { get: () => real.height - keyboard });
+    Object.defineProperty(window, "visualViewport", { get: () => viewport });
+    window.showKeyboard = (height) => {
+      keyboard = height;
+      viewport.dispatchEvent(new Event("resize"));
+    };
+  });
+}
+
 function terminalButton(page) {
   return page.locator("caffold-task-detail-terminal > button");
 }
@@ -862,6 +1065,42 @@ async function drawnButtons(page, selectors) {
       return [name, { left: rect.left + inset, right: rect.right - inset }];
     }),
   ), selectors);
+}
+
+// The terminal screen's boxes, and where each button of its bar draws its box,
+// in the order they stand.
+async function terminalBarGeometry(page) {
+  return page.locator("caffold-terminal-page").evaluate((terminal) => {
+    const box = (element) => {
+      if (!element || !element.getClientRects().length) {
+        return null;
+      }
+      const { left, right, top, bottom } = element.getBoundingClientRect();
+      return { left, right, top, bottom };
+    };
+    const buttons = [...terminal.querySelectorAll(":scope > .terminal-page-bar > button")]
+      .filter((button) => button.getClientRects().length)
+      .map((button) => {
+        const inset = parseFloat(getComputedStyle(button, "::before").top);
+        const rect = box(button);
+        return {
+          action: button.dataset.terminalAction,
+          left: rect.left + inset,
+          right: rect.right - inset,
+          top: rect.top + inset,
+          bottom: rect.bottom - inset,
+        };
+      })
+      .sort((a, b) => a.top - b.top || a.left - b.left);
+    return {
+      detail: box(terminal.closest("caffold-detail-layout")),
+      page: box(terminal),
+      bar: box(terminal.querySelector(":scope > .terminal-page-bar")),
+      body: box(terminal.querySelector(":scope > .terminal-page-body")),
+      keys: box(terminal.querySelector(":scope > caffold-terminal-special-keys")),
+      buttons,
+    };
+  });
 }
 
 // Drags `fingers` from the middle of the terminal screen `rows` rows down, or
