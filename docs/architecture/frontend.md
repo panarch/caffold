@@ -283,11 +283,14 @@ to the Tasks page's `startTaskCreation`, as Start Task does.
 A replacement is `ready` only after its complete shell cache is available, and
 Reload explicitly transitions to that prepared generation. The server sends
 every `/assets/` file except the manifest, which carries the server's name,
-with `Cache-Control: no-cache` and an `ETag` taken from the file's contents, so
-filling a replacement's shell cache revalidates the files the browser already
-holds and downloads only those that changed. The viewport-fixed
-`caffold-build-mismatch-alert` remains a separate exceptional diagnostic and
-appears only when UI and server builds differ after the lifecycle is `settled`.
+with `Cache-Control: no-cache` and an `ETag` taken from the file's contents.
+While filling a replacement's shell cache, the service worker asks about each
+file an earlier build's shell cache holds with that copy's tag and keeps the
+copy when the server answers that it is unchanged, so an update downloads only
+the files that changed whether or not the browser kept its own copies. The
+viewport-fixed `caffold-build-mismatch-alert` remains a separate exceptional
+diagnostic and appears only when UI and server builds differ after the
+lifecycle is `settled`.
 
 The private update-handoff graph contains `detached`, `idle`, `activating`,
 `claiming`, and `applying`. Prepared-worker metadata, registration and

@@ -12,6 +12,11 @@ const serviceWorkerSource = readFileSync(
   new URL("../../service-worker.js", import.meta.url),
   "utf8",
 );
+const appShellAssets = JSON.parse(
+  serviceWorkerSource
+    .match(/const APP_SHELL_ASSETS = (\[[\s\S]*?\]);/)[1]
+    .replace(/,\s*\]$/, "]"),
+);
 const TEST_ACTIVATION_GATE_MESSAGE = "caffold:test-activation-gate";
 const TEST_ACTIVATION_REQUEST_OBSERVED_MESSAGE =
   "caffold:test-activation-request-observed";
@@ -984,6 +989,52 @@ test("prepares and reloads the latest consecutive replacement through the real b
     );
     await expect(page.locator("caffold-build-mismatch-alert")).toBeHidden();
     await expect(updateDialog).toBeHidden();
+  } finally {
+    await fixture.close();
+  }
+});
+
+test("fills a replacement from the current build's cache after the browser dropped its copies", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  const fixture = await startBuildLifecycleServer(testInfo.project.use.baseURL);
+  try {
+    await page.goto(fixture.origin);
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload();
+    await expect.poll(() => activeControllerState(page)).toBe("activated");
+
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Network.clearBrowserCache");
+    fixture.takeFileRequests();
+    fixture.setBuild("browser-build-b", 2);
+    await openAboutWithoutReload(page);
+    await expect.poll(() => serviceWorkerDiagnostics(page), { timeout: 20_000 }).toMatchObject({
+      waitingState: "installed",
+    });
+    await expect.poll(() => cachedShellBuild(page, "browser-build-b")).toBe(
+      "browser-build-b",
+    );
+
+    const shellPaths = new Set(appShellAssets);
+    const filled = fixture.takeFileRequests().filter(({ path }) => shellPaths.has(path));
+    expect(filled.map(({ path }) => path).sort()).toEqual([...shellPaths].sort());
+    // Only the files that carry no tag are downloaded again.
+    expect(
+      filled.filter(({ status }) => status !== 304).map(({ path }) => path).sort(),
+    ).toEqual(["/", "/assets/build-info.js", "/assets/manifest.webmanifest"]);
+    expect(
+      filled.filter(({ status }) => status === 304).every(({ ifNoneMatch }) => ifNoneMatch),
+    ).toBe(true);
+
+    const font = "/assets/fonts/Pretendard-Variable.woff2";
+    const copiedBytes = await page.evaluate(async (path) => {
+      const cache = await caches.open("caffold-shell-browser-build-b");
+      return (await (await cache.match(path)).arrayBuffer()).byteLength;
+    }, font);
+    const served = await fetch(new URL(font, testInfo.project.use.baseURL));
+    expect(copiedBytes).toBe((await served.arrayBuffer()).byteLength);
   } finally {
     await fixture.close();
   }
@@ -2044,6 +2095,7 @@ async function startBuildLifecycleServer(upstreamOrigin) {
     number: 1,
     omitControlledAck: false,
   };
+  let fileRequests = [];
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://caffold.test");
@@ -2103,6 +2155,11 @@ async function startBuildLifecycleServer(upstreamOrigin) {
         return;
       }
       if (url.pathname === "/assets/build-info.js") {
+        fileRequests.push({
+          path: url.pathname,
+          ifNoneMatch: request.headers["if-none-match"] ?? null,
+          status: 200,
+        });
         response.writeHead(200, {
           "Content-Type": "text/javascript; charset=utf-8",
         });
@@ -2125,7 +2182,11 @@ async function startBuildLifecycleServer(upstreamOrigin) {
         return;
       }
 
-      const upstream = await fetch(new URL(request.url, upstreamOrigin));
+      const ifNoneMatch = request.headers["if-none-match"] ?? null;
+      const upstream = await fetch(new URL(request.url, upstreamOrigin), {
+        headers: ifNoneMatch ? { "If-None-Match": ifNoneMatch } : {},
+      });
+      fileRequests.push({ path: url.pathname, ifNoneMatch, status: upstream.status });
       const headers = Object.fromEntries(upstream.headers);
       delete headers["content-encoding"];
       delete headers["content-length"];
@@ -2157,6 +2218,11 @@ async function startBuildLifecycleServer(upstreamOrigin) {
     origin: `http://127.0.0.1:${address.port}`,
     setBuild(id, number, { omitControlledAck = false } = {}) {
       currentBuild = { id, number, omitControlledAck };
+    },
+    takeFileRequests() {
+      const taken = fileRequests;
+      fileRequests = [];
+      return taken;
     },
     close() {
       return new Promise((resolve, reject) => {

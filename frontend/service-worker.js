@@ -427,11 +427,7 @@ const APP_SHELL_ASSETS = [
 const APP_SHELL_ASSET_PATHS = new Set(APP_SHELL_ASSETS);
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL_ASSETS)),
-  );
+  event.waitUntil(installShell());
 });
 
 self.addEventListener("activate", (event) => {
@@ -493,6 +489,56 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(activeShellFirst(request, url.pathname));
   }
 });
+
+// Fills this build's cache. A file an earlier build's cache holds is asked
+// about by its tag, and that copy goes in when the server says it is
+// unchanged, so an update downloads only what changed even when the browser
+// no longer keeps its own copies. Each answer is stored as it arrives, since
+// unread bodies hold their connections and would leave later requests waiting.
+// A file that cannot be fetched discards the cache, leaving nothing half made.
+async function installShell() {
+  const cache = await caches.open(CACHE_NAME);
+  const previousCaches = await Promise.all(
+    (await caches.keys())
+      .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+      .reverse()
+      .map((key) => caches.open(key)),
+  );
+  try {
+    await Promise.all(
+      APP_SHELL_ASSETS.map(async (path) => {
+        await cache.put(path, await shellAssetResponse(path, previousCaches));
+      }),
+    );
+  } catch (error) {
+    await caches.delete(CACHE_NAME);
+    throw error;
+  }
+}
+
+async function shellAssetResponse(path, previousCaches) {
+  let previous = null;
+  for (const previousCache of previousCaches) {
+    const copy = await previousCache.match(path);
+    if (copy?.headers.get("ETag")) {
+      previous = copy;
+      break;
+    }
+  }
+  const response = previous
+    ? await fetch(path, {
+        cache: "no-store",
+        headers: { "If-None-Match": previous.headers.get("ETag") },
+      })
+    : await fetch(path);
+  if (previous && response.status === 304) {
+    return previous;
+  }
+  if (!response.ok) {
+    throw new Error(`The app shell could not fetch ${path}: ${response.status}`);
+  }
+  return response;
+}
 
 async function activeShellFirst(request, cachePath) {
   const cache = await caches.open(CACHE_NAME);
