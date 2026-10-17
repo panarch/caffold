@@ -89,6 +89,10 @@ const ownership = new Map([
     ["caffold-task-composer"],
   ],
   [
+    "pages/(task-workspace)/tasks/components/composer/components/attachments.css",
+    ["caffold-task-composer-attachments"],
+  ],
+  [
     "pages/(task-workspace)/tasks/components/composer/components/context-usage.css",
     ["caffold-task-context-usage"],
   ],

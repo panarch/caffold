@@ -74,9 +74,19 @@ test("provides Model, Permission, and Prompt through their existing component ac
       return { selectionStart: null, selectionEnd: null };
     },
     focus: composer.focus,
+    actionHintContextKey: composer.actionHintContextKey,
     actionHintButtonTargets(options) {
       return composer.actionHintButtonTargets.call(this, options);
     },
+    attachmentActionHintTargets(options) {
+      return composer.attachmentActionHintTargets.call(this, options);
+    },
+    attachmentStrip: () => ({
+      actionHintTargets(options) {
+        stripOptions = options;
+        return [stripTarget];
+      },
+    }),
     contextUsage: () => ({
       actionHintTarget(options) {
         pieOptions = options;
@@ -84,6 +94,11 @@ test("provides Model, Permission, and Prompt through their existing component ac
       },
     }),
   };
+  const stripTarget = {
+    id: "task-composer:task:thread-a:remove-image:image-a",
+    isActionable: () => true,
+  };
+  let stripOptions = null;
   const pieTarget = { id: "task-composer:task:thread-a:context-usage" };
   let pieOptions = null;
 
@@ -92,13 +107,16 @@ test("provides Model, Permission, and Prompt through their existing component ac
     clipRoots: [clipRoot],
   });
 
-  assert.equal(targets.length, 4);
+  assert.equal(targets.length, 5);
   assert.deepEqual(delegatedOptions, {
     scopeId: "task:thread-a",
     clipRoots: [clipRoot],
   });
+  assert.deepEqual(stripOptions, delegatedOptions, "the attachment strip provides its own targets");
   assert.deepEqual(pieOptions, delegatedOptions, "the pie provides its own target");
-  const [model, permission, prompt, pie] = targets;
+  const [model, permission, prompt, attachment, pie] = targets;
+  assert.equal(attachment.id, stripTarget.id);
+  assert.equal(attachment.isActionable(), true);
   assert.equal(pie, pieTarget);
   assert.equal(model.control, modelControl);
   assert.equal(model.isActionable(), true);
@@ -135,11 +153,12 @@ test("provides Model, Permission, and Prompt through their existing component ac
   assert.equal(model.isActionable(), false);
   assert.equal(permission.isActionable(), false);
   assert.equal(prompt.isActionable(), false);
+  assert.equal(attachment.isActionable(), false, "an attachment key belongs to the draft it was offered for");
 });
 
-function composerButton({ action = "", primaryAction = "", imageId = "", fileId = "" }) {
+function composerButton({ action = "", primaryAction = "" }) {
   return {
-    dataset: { composerAction: action, primaryAction, imageId, fileId },
+    dataset: { composerAction: action, primaryAction },
     disabled: false,
     title: "",
     textContent: action || primaryAction,
@@ -159,19 +178,7 @@ test("provides the current Composer button catalog without retargeting it", () =
   const cancelVoice = composerButton({ action: "cancel-voice" });
   const cancel = composerButton({ action: "cancel" });
   const primary = composerButton({ primaryAction: "start" });
-  const preview = composerButton({ action: "preview-image", imageId: "image-a" });
-  const remove = composerButton({ action: "remove-image", imageId: "image-a" });
-  const removeFile = composerButton({ action: "remove-file", fileId: "file-b" });
-  let controls = [
-    attach,
-    voice,
-    cancelVoice,
-    cancel,
-    primary,
-    preview,
-    remove,
-    removeFile,
-  ];
+  let controls = [attach, voice, cancelVoice, cancel, primary];
   const matches = (selector) => {
     if (selector.includes("task-primary-action-button")) {
       return controls.filter(({ dataset }) => dataset.primaryAction);
@@ -180,22 +187,16 @@ test("provides the current Composer button catalog without retargeting it", () =
       selector.matchAll(/data-composer-action="([^"]+)"/g),
       (match) => match[1],
     );
-    return controls.filter(({ dataset }) =>
-      actions.includes(dataset.composerAction) &&
-      (!selector.includes("[data-image-id]") || dataset.imageId) &&
-      (!selector.includes("[data-file-id]") || dataset.fileId)
-    );
+    return controls.filter(({ dataset }) => actions.includes(dataset.composerAction));
   };
   const owner = {
     isConnected: true,
     context: { mode: "create", threadId: "", cwd: "/repo" },
-    state: {
-      activeSubmissionId: null,
-      attachments: [{ id: "image-a" }, { id: "file-b" }],
-    },
+    state: { activeSubmissionId: null },
     stateFor() {
       return this.state;
     },
+    actionHintContextKey: composer.actionHintContextKey,
     querySelector: (selector) => matches(selector)[0] ?? null,
     querySelectorAll: matches,
   };
@@ -211,21 +212,19 @@ test("provides the current Composer button catalog without retargeting it", () =
     "task-composer:new:cancel-voice",
     "task-composer:new:cancel",
     "task-composer:new:primary:start",
-    "task-composer:new:preview-image:image-a",
-    "task-composer:new:remove-image:image-a",
-    "task-composer:new:remove-file:file-b",
   ]);
   targets.forEach((target) => target.activate());
   assert.deepEqual(
     controls.map(({ clicks }) => clicks),
-    [1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1],
   );
 
-  owner.state.attachments = [{ id: "image-a" }];
-  assert.equal(targets[5].isActionable(), true);
-  assert.equal(targets[7].isActionable(), false);
-  owner.state.attachments = [];
-  assert.equal(targets[5].isActionable(), false);
+  // The primary button changes its action in place; the key offered for the
+  // old action no longer presses it.
+  primary.dataset.primaryAction = "stop";
+  assert.equal(targets[4].isActionable(), false);
+  primary.dataset.primaryAction = "start";
+  assert.equal(targets[4].isActionable(), true);
   owner.state.activeSubmissionId = "submission-a";
   assert.equal(targets[0].isActionable(), false);
   controls = controls.filter((control) => control !== voice);
@@ -274,7 +273,7 @@ test("renders Send after the turn options take the new context", () => {
     const nodes = {
       ":scope > form[data-task-form]": node(),
       "textarea[name='prompt']": { ...node(), value: "Keep going" },
-      '[data-composer-region="actions"]': { innerHTML: "" },
+      ".task-primary-action-button": node(),
       'button[data-composer-action="attach"]': node(),
     };
     const owner = {
@@ -290,10 +289,12 @@ test("renders Send after the turn options take the new context", () => {
       promptFieldLocked: composer.promptFieldLocked,
       acceptsAttachments: composer.acceptsAttachments,
       primaryActionView: composer.primaryActionView,
+      syncPrimaryAction: composer.syncPrimaryAction,
       querySelector: (selector) => nodes[selector],
       setRegion() {},
       renderVoiceStatus: () => "",
-      renderVoiceControls: () => "",
+      syncVoiceControls() {},
+      attachmentStrip: () => ({ setAttachments() {} }),
       turnOptions: () => ({ readyForSubmission: () => ready }),
       contextUsage: () => ({ hidden: true }),
       // A new working directory asks for its own permission list.
@@ -306,7 +307,9 @@ test("renders Send after the turn options take the new context", () => {
 
     composer.render.call(owner);
 
-    assert.match(nodes['[data-composer-region="actions"]'].innerHTML, /\sdisabled\s/);
+    const send = nodes[".task-primary-action-button"];
+    assert.equal(send.dataset.primaryAction, "send");
+    assert.equal(send.disabled, true);
   } finally {
     restoreGlobal("document", previousDocument);
   }
@@ -510,6 +513,29 @@ test("takes the files of a drop and refuses the folders in it", async () => {
   assert.deepEqual(added, [{ names: ["server.log"], error: "Folders cannot be attached." }]);
 });
 
+test("writes a status region only when its text changes, quotes included", () => {
+  let writes = 0;
+  const region = {
+    html: "",
+    set innerHTML(value) {
+      writes += 1;
+      this.html = value;
+    },
+    // What a browser hands back: a quote in text is not escaped.
+    get innerHTML() {
+      return this.html.replaceAll("&#39;", "'");
+    },
+  };
+  const owner = { querySelector: () => region };
+  const alert = '<p role="alert">Couldn&#39;t reach the server.</p>';
+
+  composer.setRegion.call(owner, "request-error", alert);
+  composer.setRegion.call(owner, "request-error", alert);
+  assert.equal(writes, 1);
+  composer.setRegion.call(owner, "request-error", "");
+  assert.equal(writes, 2);
+});
+
 test("hands the agent's count to the context pie without drawing the Composer again", () => {
   const snapshots = [];
   const owner = {
@@ -553,7 +579,9 @@ test("shows the context pie only in a Task's follow-up Composer", () => {
       })[selector] ?? { innerHTML: "" },
       setRegion() {},
       renderVoiceStatus: () => "",
-      renderVoiceControls: () => "",
+      syncVoiceControls() {},
+      syncPrimaryAction() {},
+      attachmentStrip: () => ({ setAttachments() {} }),
       turnOptions: () => ({ readyForSubmission: () => true }),
       contextUsage: () => pie,
       syncTurnOptionsContext() {},
