@@ -27,9 +27,20 @@ function createHarness(options = {}) {
   const claimCalls = [];
   const notifications = [];
   const openedWindows = [];
-  const cache = {
-    addAll: options.addAll ?? (async () => {}),
-    match: options.match ?? (async () => undefined),
+  const puts = [];
+  const cacheEntries = options.cacheEntries ?? {
+    "caffold-shell-test-build": new Map(),
+  };
+  const openCache = (key) => {
+    cacheEntries[key] ??= new Map();
+    const entries = cacheEntries[key];
+    return {
+      match: options.match ?? (async (path) => entries.get(path)),
+      async put(path, response) {
+        puts.push({ cache: key, path, response });
+        entries.set(path, response);
+      },
+    };
   };
   const controlledClients = options.controlledClients ?? [];
   const allClients = options.allClients ?? controlledClients;
@@ -44,10 +55,10 @@ function createHarness(options = {}) {
         deletedCaches.push(key);
         return true;
       },
-      keys: async () => options.cacheKeys ?? ["caffold-shell-test-build"],
+      keys: async () => options.cacheKeys ?? Object.keys(cacheEntries),
       open: async (key) => {
         openedCaches.push(key);
-        return cache;
+        return openCache(key);
       },
     },
     clearTimeout: options.clearTimeout ?? clearTimeout,
@@ -88,6 +99,7 @@ function createHarness(options = {}) {
     openedCaches,
     openedWindows,
     notifications,
+    puts,
     skipWaitingCalls,
     async dispatchExtendable(type, properties = {}) {
       let completion = Promise.resolve();
@@ -114,11 +126,12 @@ function createHarness(options = {}) {
 
 test("installs the complete shell without replacing the current worker", async () => {
   const gate = deferred();
-  let installedAssets;
+  const fetched = [];
   const harness = createHarness({
-    addAll: async (assets) => {
-      installedAssets = [...assets];
+    fetch: async (path) => {
+      fetched.push(path);
       await gate.promise;
+      return new Response(`network ${path}`);
     },
   });
 
@@ -129,6 +142,11 @@ test("installs the complete shell without replacing the current worker", async (
   await completion;
 
   assert.equal(harness.skipWaitingCalls.length, 0);
+  const installedAssets = harness.puts.map(({ path }) => path);
+  assert.deepEqual([...installedAssets].sort(), [...fetched].sort());
+  assert.ok(
+    harness.puts.every(({ cache }) => cache === "caffold-shell-test-build"),
+  );
   assert.ok(installedAssets.includes("/assets/file-status.js"));
   assert.ok(installedAssets.includes("/assets/pages/foreground-recovery.js"));
   assert.ok(
@@ -165,6 +183,124 @@ test("installs the complete shell without replacing the current worker", async (
     ),
   );
 });
+
+function taggedResponse(body, tag) {
+  return new Response(body, { headers: { ETag: tag } });
+}
+
+function installedResponse(harness, path) {
+  return harness.puts.find(
+    (put) => put.cache === "caffold-shell-test-build" && put.path === path,
+  )?.response;
+}
+
+test("copies a file the server calls unchanged from an earlier build's cache", async () => {
+  const requests = [];
+  const harness = createHarness({
+    cacheEntries: {
+      "caffold-shell-older-build": new Map([
+        ["/assets/app.js", taggedResponse("older app", '"app-older"')],
+      ]),
+      "caffold-shell-current-build": new Map([
+        ["/assets/app.js", taggedResponse("current app", '"app-current"')],
+      ]),
+      "caffold-shell-test-build": new Map(),
+    },
+    fetch: async (path, init) => {
+      requests.push({ path, init });
+      return path === "/assets/app.js"
+        ? new Response(null, { status: 304 })
+        : new Response(`network ${path}`);
+    },
+  });
+
+  await harness.dispatchExtendable("install");
+
+  assert.equal(await installedResponse(harness, "/assets/app.js").text(), "current app");
+  // The worker builds the request options in its own context.
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(requests.filter(({ path }) => path === "/assets/app.js"))),
+    [{
+      path: "/assets/app.js",
+      init: { cache: "no-store", headers: { "If-None-Match": '"app-current"' } },
+    }],
+  );
+  assert.equal(
+    await installedResponse(harness, "/assets/styles.css").text(),
+    "network /assets/styles.css",
+  );
+});
+
+test("downloads a file the server says changed since the earlier build", async () => {
+  const harness = createHarness({
+    cacheEntries: {
+      "caffold-shell-current-build": new Map([
+        ["/assets/app.js", taggedResponse("current app", '"app-current"')],
+      ]),
+      "caffold-shell-test-build": new Map(),
+    },
+    fetch: async (path) =>
+      new Response(path === "/assets/app.js" ? "replacement app" : `network ${path}`),
+  });
+
+  await harness.dispatchExtendable("install");
+
+  assert.equal(
+    await installedResponse(harness, "/assets/app.js").text(),
+    "replacement app",
+  );
+});
+
+test("downloads a file without asking when no earlier copy carries a tag", async () => {
+  const requests = [];
+  const harness = createHarness({
+    cacheEntries: {
+      "caffold-shell-current-build": new Map([["/", new Response("current shell")]]),
+      "other-cache": new Map([
+        ["/assets/app.js", taggedResponse("other app", '"app-other"')],
+      ]),
+      "caffold-shell-test-build": new Map([
+        ["/assets/styles.css", taggedResponse("partial styles", '"styles-partial"')],
+      ]),
+    },
+    fetch: async (path, init) => {
+      requests.push({ path, init });
+      return new Response(`network ${path}`);
+    },
+  });
+
+  await harness.dispatchExtendable("install");
+
+  for (const path of ["/", "/assets/app.js", "/assets/styles.css"]) {
+    assert.deepEqual(requests.filter((request) => request.path === path), [
+      { path, init: undefined },
+    ]);
+    assert.equal(await installedResponse(harness, path).text(), `network ${path}`);
+  }
+});
+
+test("discards the build's cache when any shell file cannot be fetched", async () => {
+  const harness = createHarness({
+    cacheEntries: {
+      "caffold-shell-current-build": new Map([
+        ["/assets/app.js", taggedResponse("current app", '"app-current"')],
+      ]),
+      "caffold-shell-test-build": new Map(),
+    },
+    fetch: async (path) => {
+      if (path === "/assets/styles.css") {
+        return new Response("unavailable", { status: 503 });
+      }
+      return path === "/assets/app.js"
+        ? new Response(null, { status: 304 })
+        : new Response(`network ${path}`);
+    },
+  });
+
+  await assert.rejects(harness.dispatchExtendable("install"), /\/assets\/styles\.css: 503/);
+  assert.deepEqual(harness.deletedCaches, ["caffold-shell-test-build"]);
+});
+
 for (const [name, url, cachePath] of [
   ["navigation", "https://caffold.test/tasks/83", "/"],
   ["asset", "https://caffold.test/assets/app.js", "/assets/app.js"],

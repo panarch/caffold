@@ -16,7 +16,7 @@ const source = readFileSync(
 
 test("precaches every bundled runtime asset", async () => {
   let installListener;
-  let installedAssets;
+  const installedAssets = new Set();
   const context = {
     AbortController,
     Promise,
@@ -24,16 +24,22 @@ test("precaches every bundled runtime asset", async () => {
     Set,
     URL,
     caches: {
+      async keys() {
+        return [];
+      },
       async open() {
         return {
-          async addAll(assets) {
-            installedAssets = new Set(assets);
+          async match() {
+            return undefined;
+          },
+          async put(asset) {
+            installedAssets.add(asset);
           },
         };
       },
     },
     clearTimeout,
-    fetch,
+    fetch: async () => new Response(""),
     self: {
       addEventListener(type, listener) {
         if (type === "install") {
