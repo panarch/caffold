@@ -157,6 +157,43 @@ test("provides retained final links through its own scroll boundary", () => {
   assert.equal(scope.targets[0].isActionable(), false);
 });
 
+test("lets go of every image it fetched and puts each back to loading", (context) => {
+  const revoked = [];
+  context.mock.method(URL, "revokeObjectURL", (url) => revoked.push(url));
+  const picture = (objectUrl) => {
+    const removed = [];
+    const image = { hidden: false, removeAttribute: (name) => removed.push(name) };
+    const loading = { hidden: true };
+    const slot = {
+      querySelector: (selector) => selector === ":scope > img" ? image : loading,
+    };
+    return { slot, image, loading, removed, record: { fetching: new AbortController(), objectUrl } };
+  };
+  const drawn = picture("blob:drawn");
+  const fetching = picture("");
+  let disconnected = false;
+  const owner = {
+    imageObserver: { disconnect: () => { disconnected = true; } },
+    fetchedImages: new Map([
+      [drawn.slot, drawn.record],
+      [fetching.slot, fetching.record],
+    ]),
+  };
+
+  markdownPreview.releaseImages.call(owner);
+
+  assert.equal(disconnected, true);
+  assert.equal(drawn.record.fetching.signal.aborted, true);
+  assert.equal(fetching.record.fetching.signal.aborted, true);
+  assert.deepEqual(revoked, ["blob:drawn"]);
+  for (const { image, loading, removed } of [drawn, fetching]) {
+    assert.deepEqual(removed, ["src"]);
+    assert.equal(image.hidden, true);
+    assert.equal(loading.hidden, false);
+  }
+  assert.equal(owner.fetchedImages.size, 0);
+});
+
 function layoutElement(properties = {}) {
   return { getClientRects: () => [{}], ...properties };
 }

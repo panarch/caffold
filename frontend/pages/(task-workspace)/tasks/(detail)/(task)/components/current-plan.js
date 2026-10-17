@@ -314,6 +314,7 @@ class CaffoldTaskCurrentPlan extends HTMLElement {
           document.path,
           this.context?.rootPath,
         ),
+        rootPath: this.context?.rootPath,
         opener: button,
       });
     }

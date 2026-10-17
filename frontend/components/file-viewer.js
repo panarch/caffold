@@ -220,11 +220,14 @@ class CaffoldReviewFileViewer extends HTMLElement {
     this.render({ ...options, scroll });
   }
 
-  setMarkdown(file, options = {}) {
+  // `imageRoot` is the Task root that an image address starting with "/"
+  // is read from.
+  setMarkdown(file, { imageRoot = "", ...options } = {}) {
     this.cancelRetainedContent();
     this.state = {
       status: "markdown",
       file,
+      imageRoot,
       presentation: sourceViewerPresentation(file),
     };
     this.render({ ...options, markdownChanged: true });
@@ -788,8 +791,12 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   renderMarkdown(options = {}) {
-    const { file, presentation } = this.state;
+    const { file, imageRoot, presentation } = this.state;
     const { markdownChanged = false, ...previewOptions } = options;
+    previewOptions.images = {
+      folder: `${file.path ?? ""}`.split("/").slice(0, -1).join("/"),
+      root: imageRoot,
+    };
     const panel = this.querySelector(":scope > .markdown-panel");
     const preview = panel?.querySelector(
       ":scope > caffold-markdown-preview",

@@ -6,14 +6,28 @@ import {
   linkActionHintTarget,
   matchesLinkActionHintBinding,
 } from "../action-hint-scope.js";
+import { imageUrl } from "../api.js";
+import { fetchInChunks } from "../chunked-fetch.js";
 import { parseLinkRoute } from "../navigation-routes.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
 } from "../scroll-scope.js";
+import "./loading-text.js";
 
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
+
+// An image starts fetching when it comes this close to view, as a
+// conversation thumbnail does.
+const NEARBY_MARGIN = "2500px 0px";
+
+// The natural size of each workspace image drawn lately, shared by every
+// preview in the page. Drawing the same Markdown again holds each image's
+// place at that size before its file arrives, so the restored reading position
+// stays put.
+const drawnImageSizes = new Map();
+const DRAWN_IMAGE_SIZE_LIMIT = 500;
 
 let parserPromise;
 
@@ -24,11 +38,14 @@ class CaffoldMarkdownPreview extends HTMLElement {
     this.setAttribute("aria-label", "Markdown preview");
     if (this.markdown !== undefined && this.dataset.renderState === "loading") {
       this.startRender();
+    } else if (this.dataset.renderState === "markdown") {
+      this.watchImages();
     }
   }
 
   disconnectedCallback() {
     this.renderToken = null;
+    this.releaseImages();
   }
 
   ensureRendered() {
@@ -38,18 +55,113 @@ class CaffoldMarkdownPreview extends HTMLElement {
     this.initialized = true;
     this.actionHintLinks = [];
     this.scrollSurfaceRecords = [];
+    this.fetchedImages = new Map();
     this.innerHTML = '<article class="markdown-preview-body"></article>';
   }
 
+  // `images` names the Markdown file's folder and the Task root, both from
+  // the workspace root, for the owner whose Markdown is a file there. Without
+  // it every image stays its description.
   setMarkdown(markdown, options = {}) {
     this.ensureRendered();
     const scroll = options.preserveScroll
       ? this.getScrollState()
       : options.scroll ?? null;
     this.markdown = `${markdown ?? ""}`;
+    this.images = options.images ?? null;
     this.pendingScroll = scroll;
     this.renderPending();
     this.startRender();
+  }
+
+  // A released image loses its copy and goes back to loading, so the preview
+  // fetches it again if it is shown again.
+  releaseImages() {
+    this.imageObserver?.disconnect();
+    for (const [slot, record] of this.fetchedImages ?? []) {
+      record.fetching.abort();
+      if (record.objectUrl) {
+        URL.revokeObjectURL(record.objectUrl);
+      }
+      const image = slot.querySelector(":scope > img");
+      image?.removeAttribute("src");
+      if (image) {
+        image.hidden = true;
+      }
+      const loading = slot.querySelector(":scope > caffold-loading-text");
+      if (loading) {
+        loading.hidden = false;
+      }
+    }
+    this.fetchedImages?.clear();
+  }
+
+  watchImages() {
+    const slots = this.body()?.querySelectorAll(".markdown-preview-image") ?? [];
+    if (!slots.length) {
+      return;
+    }
+    this.imageObserver ??= new IntersectionObserver(
+      (entries) => this.fetchNearbyImages(entries),
+      { rootMargin: NEARBY_MARGIN, scrollMargin: NEARBY_MARGIN },
+    );
+    for (const slot of slots) {
+      this.imageObserver.observe(slot);
+    }
+  }
+
+  fetchNearbyImages(entries) {
+    for (const { target: slot, isIntersecting } of entries) {
+      if (!isIntersecting || this.fetchedImages.has(slot)) {
+        continue;
+      }
+      this.imageObserver.unobserve(slot);
+      const fetching = new AbortController();
+      const record = { fetching, objectUrl: "" };
+      this.fetchedImages.set(slot, record);
+      const current = () => this.fetchedImages.get(slot) === record;
+      const image = slot.querySelector(":scope > img");
+      fetchInChunks(imageUrl(slot.dataset.imagePath), {
+        signal: fetching.signal,
+      }).then(
+        ({ file }) => {
+          if (!current()) {
+            return;
+          }
+          record.objectUrl = URL.createObjectURL(file);
+          image.addEventListener("load", () => {
+            if (current()) {
+              rememberDrawnSize(slot.dataset.imagePath, image);
+              image.hidden = false;
+              slot.querySelector(":scope > caffold-loading-text").hidden = true;
+              delete slot.dataset.reserved;
+            }
+          }, { once: true });
+          image.addEventListener("error", () => {
+            if (current()) {
+              this.dropImage(slot);
+            }
+          }, { once: true });
+          image.src = record.objectUrl;
+        },
+        (error) => {
+          if (current() && error?.name !== "AbortError") {
+            this.dropImage(slot);
+          }
+        },
+      );
+    }
+  }
+
+  // An image Caffold could not read or draw reads as its description, as an
+  // image the preview does not fetch does.
+  dropImage(slot) {
+    const record = this.fetchedImages.get(slot);
+    if (record?.objectUrl) {
+      URL.revokeObjectURL(record.objectUrl);
+    }
+    this.fetchedImages.delete(slot);
+    slot.replaceWith(imagePlaceholder(slot.querySelector(":scope > img")));
   }
 
   getScrollState() {
@@ -185,6 +297,7 @@ class CaffoldMarkdownPreview extends HTMLElement {
   }
 
   renderPending() {
+    this.releaseImages();
     this.actionHintLinks = [];
     this.scrollSurfaceRecords = [];
     const pending = document.createElement("span");
@@ -218,7 +331,7 @@ class CaffoldMarkdownPreview extends HTMLElement {
 
   async renderMarkdown(renderToken, scroll) {
     try {
-      const content = await markdownContent(this.markdown);
+      const content = await markdownContent(this.markdown, this.images);
       if (!this.acceptRender(renderToken)) {
         return;
       }
@@ -229,6 +342,7 @@ class CaffoldMarkdownPreview extends HTMLElement {
       this.dataset.renderState = "markdown";
       this.pendingScroll = null;
       restoreScroll(this, scroll);
+      this.watchImages();
     } catch {
       parserPromise = null;
       this.renderPlainText(renderToken, scroll);
@@ -280,14 +394,14 @@ if (!customElements.get("caffold-markdown-preview")) {
   customElements.define("caffold-markdown-preview", CaffoldMarkdownPreview);
 }
 
-async function markdownContent(markdown) {
+async function markdownContent(markdown, images) {
   const parser = await loadParser();
   const source = `${markdown ?? ""}`.replace(/^[\u200B-\u200F\uFEFF]/, "");
   const parse = parser.parse?.bind(parser) ?? parser;
   const html = await parse(source, { gfm: true, breaks: false });
   const template = document.createElement("template");
   template.innerHTML = `${html ?? ""}`;
-  sanitizeChildren(template.content);
+  sanitizeChildren(template.content, images);
   wrapTables(template.content);
   return template.content;
 }
@@ -301,7 +415,7 @@ function loadParser() {
   return parserPromise;
 }
 
-function sanitizeChildren(parent) {
+function sanitizeChildren(parent, images) {
   for (const element of [...parent.children]) {
     const tagName = element.localName;
     if (FORBIDDEN_ELEMENTS.has(tagName)) {
@@ -309,11 +423,16 @@ function sanitizeChildren(parent) {
       continue;
     }
     if (tagName === "img") {
-      element.replaceWith(imagePlaceholder(element));
+      const path = images
+        ? localImagePath(element.getAttribute("src"), images)
+        : "";
+      element.replaceWith(
+        path ? imageSlot(element, path) : imagePlaceholder(element),
+      );
       continue;
     }
 
-    sanitizeChildren(element);
+    sanitizeChildren(element, images);
     if (!ALLOWED_ELEMENTS.has(tagName)) {
       element.replaceWith(...element.childNodes);
       continue;
@@ -336,6 +455,85 @@ function imagePlaceholder(image) {
   const alt = `${image.getAttribute("alt") ?? ""}`.trim();
   placeholder.textContent = alt ? `[Image: ${alt}]` : "[Image]";
   return placeholder;
+}
+
+// The workspace path an image address names, read as a repository reads its
+// Markdown: beside the file, or from the Task root when the address starts
+// with "/". An address with a scheme or a host, or one that climbs above the
+// workspace root, names no file Caffold serves.
+function localImagePath(source, { folder = "", root = "" }) {
+  const address = `${source ?? ""}`.trim().split(/[?#]/, 1)[0];
+  if (!address || address.startsWith("//") || /^[a-z][a-z\d+.-]*:/i.test(address)) {
+    return "";
+  }
+  let path;
+  try {
+    path = decodeURIComponent(address);
+  } catch {
+    return "";
+  }
+  const parts = [];
+  for (const part of `${path.startsWith("/") ? root : folder}/${path}`.split("/")) {
+    if (part === "..") {
+      if (!parts.length) {
+        return "";
+      }
+      parts.pop();
+    } else if (part && part !== ".") {
+      parts.push(part);
+    }
+  }
+  return parts.join("/");
+}
+
+// A fresh picture with only what describes and sizes it, kept hidden behind
+// its loading phrase until its file is fetched. A size known before then
+// holds the picture's place.
+function imageSlot(source, path) {
+  const slot = document.createElement("span");
+  slot.className = "markdown-preview-image";
+  slot.dataset.imagePath = path;
+  const image = document.createElement("img");
+  for (const name of ["alt", "title"]) {
+    if (source.hasAttribute(name)) {
+      image.setAttribute(name, source.getAttribute(name));
+    }
+  }
+  for (const name of ["width", "height"]) {
+    const value = `${source.getAttribute(name) ?? ""}`.trim();
+    if (/^\d+$/.test(value) && Number(value) > 0) {
+      image.setAttribute(name, value);
+    }
+  }
+  const drawn = drawnImageSizes.get(path);
+  const width = Number(image.getAttribute("width")) || drawn?.width;
+  const ratio = drawn
+    ? `${drawn.width} / ${drawn.height}`
+    : image.hasAttribute("height") && `${width} / ${image.getAttribute("height")}`;
+  if (width && ratio) {
+    slot.dataset.reserved = "";
+    slot.style.setProperty("--markdown-image-width", `${width}px`);
+    slot.style.setProperty("--markdown-image-ratio", ratio);
+  }
+  image.hidden = true;
+  const loading = document.createElement("caffold-loading-text");
+  loading.textContent = "Loading image...";
+  slot.append(image, loading);
+  return slot;
+}
+
+function rememberDrawnSize(path, image) {
+  if (!image.naturalWidth || !image.naturalHeight) {
+    return;
+  }
+  drawnImageSizes.delete(path);
+  drawnImageSizes.set(path, {
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+  });
+  if (drawnImageSizes.size > DRAWN_IMAGE_SIZE_LIMIT) {
+    drawnImageSizes.delete(drawnImageSizes.keys().next().value);
+  }
 }
 
 function sanitizeInput(element) {

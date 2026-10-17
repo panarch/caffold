@@ -1269,8 +1269,10 @@ each issue with its original error and offers Refresh for a Watch interruption
 or failed read. Refresh rereads the projection and never clears a Watch
 interruption. The panel publishes its own popover keyboard context, which is
 session-bound only while Refresh is available. Rendering delegates to the
-reusable `caffold-markdown-preview`, whose task-list controls are disabled.
-Neither component writes plan files. The product-level file convention belongs
+reusable `caffold-markdown-preview`, whose task-list controls are disabled; the
+dialog names the plan's folder and the Task root for its images, as
+[Integrated Review](#integrated-review) describes. Neither component writes
+plan files. The product-level file convention belongs
 to [Product Workflows](../product/workflows.md#current-plan-documents).
 
 ### Integrated Review
@@ -1285,13 +1287,25 @@ review. It owns:
 - disclosure, selection, and scroll.
 
 The Integrated Review owner resolves file-open intents to a path and supported
-representation together. Text files support Source, Markdown adds text-only
-Preview, raster images use Preview, PDFs, Word documents (`.docx`), PowerPoint
+representation together. Text files support Source, Markdown adds Preview,
+raster images use Preview, PDFs, Word documents (`.docx`), PowerPoint
 decks (`.pptx`), and Excel workbooks (`.xlsx`, `.xlsm`) use Preview alone, and
 SVG supports both its source text and image Preview. The
 file viewer owns representation chrome and image rendering, and delegates
 Markdown rendering, sanitization, fallback, and local scroll to the shared
 `caffold-markdown-preview` component also used by the current-plan dialog.
+Both name the Markdown file's folder and the Task root, so the preview draws
+an image whose address names a file under the workspace root, read from that
+folder, or from the Task root when the address starts with `/`, without its
+query or fragment. It fetches each such image from `/api/image` whenever it
+draws the Markdown, so a changed image appears once the file is shown again.
+The page remembers the natural size of the 500 images it drew most recently,
+and a preview drawing one of them again holds its place at that size until the
+file arrives, so a restored reading position stays where it was.
+An address with a scheme or a host, a path above the workspace root, an image
+the preview cannot fetch or draw, and every image of an owner that names no
+folder, such as a Note or a code block's Markdown preview, read as the image's
+description.
 Source and Preview show the file on disk, so their File details offer Download,
 a link to `/api/download`. That route streams the file's bytes as an attachment
 without the viewers' size limits or text checks, so a file no viewer can show
@@ -1329,11 +1343,12 @@ in flight together. One count of cells in flight is shared by
 every file being fetched, the most recently requested file first. It starts at
 one and changes once a round trip by how long a cell waited for its first byte:
 it grows while cells wait no longer than the usual round trip and a quarter of a
-second, and shrinks otherwise. Conversation thumbnails start fetching when they
-come within 2500px of view; a picture the message itself carries as a
-`data:` address is drawn directly. Until a fetched picture is drawn, its place
-in Review, the conversation, and the image preview shows "Loading image...",
-as a document viewer does for its document.
+second, and shrinks otherwise. Conversation thumbnails and Markdown preview
+images start fetching when they come within 2500px of view; a picture the
+message itself carries as a `data:` address is drawn directly. Until a fetched
+picture is drawn, its place in Review, the conversation, a Markdown preview,
+and the image preview shows "Loading image...", as a document viewer does for
+its document.
 
 PDFs, Word documents, PowerPoint decks, and Excel workbooks share one document
 state in the file viewer, which mounts the viewer for the document's kind and

@@ -191,17 +191,24 @@ test("restores the opener before native close handling returns", () => {
       focused = true;
     },
   };
+  let imagesReleased = false;
   const owner = {
     requestId: 4,
     requestController: null,
     current: { path: "task/PLAN.md" },
     opener,
     dialog: () => ({ open: false }),
+    preview: () => ({
+      releaseImages() {
+        imagesReleased = true;
+      },
+    }),
   };
 
   documentDialog.handleClose.call(owner);
 
   assert.equal(focused, true);
+  assert.equal(imagesReleased, true);
   assert.equal(owner.requestId, 5);
   assert.equal(owner.current, null);
   assert.equal(owner.opener, null);

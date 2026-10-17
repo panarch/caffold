@@ -714,6 +714,33 @@ test("a Note URL survives reload and browser history", { tag: "@viewport-indepen
   await expect(title).toHaveText("Storage decision");
 });
 
+test("a Note's images stay their descriptions", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const imageRequests = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/image") {
+      imageRequests.push(request.url());
+    }
+  });
+  await stubNotes(page, {
+    notes: {
+      ...NOTES,
+      inbox: note("inbox", {
+        content: '# Inbox\n\n![Diagram](diagram.png)\n\n<img src="/shot.png" alt="Shot">\n',
+      }),
+    },
+  });
+  await page.goto("/notes/inbox");
+  const preview = primaryDocument(page).locator("caffold-markdown-preview");
+  await expect(preview.locator(".markdown-preview-image-placeholder")).toHaveText([
+    "[Image: Diagram]",
+    "[Image: Shot]",
+  ]);
+  await expect(preview.locator("img")).toHaveCount(0);
+  expect(imageRequests).toEqual([]);
+});
+
 test("a missing Note and an empty Note each say what they are", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
