@@ -9,6 +9,7 @@ import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
+  pasteImage,
 } from "../support/task-fixtures.js";
 
 test.use({
@@ -57,7 +58,7 @@ test("records without focusing the prompt and inserts a host transcript at the s
   );
   const prompt = composer.locator('textarea[name="prompt"]');
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
   await prompt.fill("앞쪽 뒤쪽");
   await prompt.evaluate((textarea) => textarea.setSelectionRange(3, 5));
   const initialViewportHeight = await page.evaluate(() => window.innerHeight);
@@ -249,10 +250,10 @@ test("records without focusing the prompt and inserts a host transcript at the s
 
   await activateActionHint(page, /Stop recording$/);
   await expect(composer).toHaveAttribute("data-voice-state", "transcribing");
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
   await expect(composer.locator(".task-composer-voice-status")).toHaveCount(0);
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
   await expect(prompt).toHaveValue("앞쪽 로컬 음성 입력");
   await expect(prompt).not.toBeFocused();
   expect(transcriptionRequests).toBe(1);
@@ -273,7 +274,7 @@ test("records without focusing the prompt and inserts a host transcript at the s
     .toBeGreaterThan(0);
   await composer.getByRole("button", { name: "Stop recording" }).click();
   await expect(composer).toHaveAttribute("data-voice-state", "transcribing");
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
   await expect(composer.locator(".task-composer-voice-status")).toHaveCount(0);
 
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
@@ -319,10 +320,10 @@ test("keeps live input feedback visible without transitions in reduced motion", 
 
   await composer.getByRole("button", { name: "Cancel voice input" }).click();
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
-  await expect(meter).toHaveCount(0);
+  await expect(meter).toBeHidden();
 });
 
-test("mounts the level meter only after microphone permission resolves", { tag: "@viewport-independent" }, async ({
+test("shows the level meter only after microphone permission resolves", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -350,16 +351,16 @@ test("mounts the level meter only after microphone permission resolves", { tag: 
   );
   await composer.getByRole("button", { name: "Start voice input" }).click();
   await expect(composer).toHaveAttribute("data-voice-state", "requesting");
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
 
   await page.evaluate(() => window.__releaseVoicePermission());
   await expect(composer).toHaveAttribute("data-voice-state", "recording");
   await expect(composer.locator("caffold-voice-level-meter")).toBeVisible();
   await composer.getByRole("button", { name: "Cancel voice input" }).click();
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
 });
 
-test("does not render a stale meter when microphone capture is unavailable", { tag: "@viewport-independent" }, async ({
+test("does not show a stale meter when microphone capture is unavailable", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -375,7 +376,7 @@ test("does not render a stale meter when microphone capture is unavailable", { t
     'caffold-task-new caffold-task-composer form[data-task-form="create"]',
   );
   await expect(composer).toHaveAttribute("data-voice-state", "unavailable");
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
 });
 
 test("shows the elapsed duration and automatically transcribes at the recording limit", { tag: "@viewport-independent" }, async ({
@@ -413,7 +414,7 @@ test("shows the elapsed duration and automatically transcribes at the recording 
 
   await transcriptionStarted;
   await expect(composer).toHaveAttribute("data-voice-state", "transcribing");
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
   await expect(composer.getByRole("timer")).toHaveText("0:01");
   await expect(composer.getByRole("timer")).toHaveClass(/is-limit/);
   await expect(composer.locator(".task-composer-voice-status")).toHaveCount(0);
@@ -750,12 +751,209 @@ test("keeps the draft unsent when send-triggered transcription fails", { tag: "@
     .click();
 
   await expect(composer).toHaveAttribute("data-voice-state", "error");
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
   await expect(prompt).toHaveValue("보존할 초안");
   expect(
     await page.evaluate(() => window.__caffoldVoiceSubmissions),
   ).toHaveLength(0);
   expect(scenario.createTaskRequests).toBe(0);
+});
+
+test("keeps attached pictures and the Composer's buttons in place through voice input", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page);
+  await mockVoiceStatus(page, true);
+  let releaseTranscription;
+  const transcriptionReleased = new Promise((resolve) => {
+    releaseTranscription = resolve;
+  });
+  await page.route("**/api/voice/transcribe", async (route) => {
+    await transcriptionReleased;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ text: "사진 두 장 설명" }),
+    });
+  });
+
+  await page.goto(`/tasks/new?cwd=${scenario.contextPath}`);
+  const composer = page.locator(
+    'caffold-task-new caffold-task-composer form[data-task-form="create"]',
+  );
+  const prompt = composer.locator('textarea[name="prompt"]');
+  const pictures = composer.locator(".task-composer-attachment");
+  await pasteImage(prompt, "first.png");
+  await expect(pictures).toHaveCount(1);
+  await pasteImage(prompt, "second.png");
+  await expect(pictures).toHaveCount(2);
+  // A node drawn again loses its mark.
+  const marked = composer.locator("[data-test-shown-before]");
+  await composer.evaluate((form) => {
+    for (const node of form.querySelectorAll(
+      ".task-composer-attachment img, .task-voice-button, .task-primary-action-button",
+    )) {
+      node.dataset.testShownBefore = "";
+    }
+  });
+  await expect(marked).toHaveCount(4);
+
+  await composer.getByRole("button", { name: "Start voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "recording");
+  await expect(marked).toHaveCount(4);
+  await expect
+    .poll(() =>
+      composer.evaluate(
+        (form) =>
+          form.closest("caffold-task-composer")?.voiceRecorder?.sampleCount ?? 0,
+      ),
+    )
+    .toBeGreaterThan(0);
+  await composer.getByRole("button", { name: "Stop recording" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "transcribing");
+  await expect(marked).toHaveCount(4);
+
+  releaseTranscription();
+  await expect(prompt).toHaveValue("사진 두 장 설명");
+  await expect(composer).toHaveAttribute("data-voice-state", "idle");
+  await expect(marked).toHaveCount(4);
+});
+
+test("keeps the level meter through a Task update while recording and starts the next recording silent", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  // The second recording waits for the test before the microphone opens.
+  await page.addInitScript(() => {
+    const originalGetUserMedia =
+      navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    let requests = 0;
+    let releaseSecond;
+    const secondGate = new Promise((resolve) => {
+      releaseSecond = resolve;
+    });
+    window.__releaseSecondMicrophone = () => releaseSecond();
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      configurable: true,
+      value: async (...args) => {
+        requests += 1;
+        if (requests > 1) {
+          await secondGate;
+        }
+        return originalGetUserMedia(...args);
+      },
+    });
+  });
+  await installTaskApiFixture(page);
+  await mockVoiceStatus(page, true);
+  const detail = taskDetailFixture({ running: true });
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const composer = page.locator(
+    'caffold-task-detail:not([hidden]) form[data-task-form="follow-up"]',
+  );
+  const meter = composer.locator("caffold-voice-level-meter");
+  await composer.getByRole("button", { name: "Start voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "recording");
+  await expect(meter).toBeVisible();
+  // Speech lifts every bar, and the meter is marked; a meter drawn again
+  // would lose both. The readings are dated far ahead, so the microphone's
+  // own chunks deliver no reading over them.
+  await composer.evaluate((form) => {
+    const recorder = form.closest("caffold-task-composer").voiceRecorder;
+    const start = performance.now() + 1e9;
+    const speech = new Float32Array(512).fill(0.5);
+    recorder.levelTracker.reset();
+    for (let index = 0; index <= 16; index += 1) {
+      recorder.captureChunk(speech, start + index * 100);
+    }
+    form.querySelector("caffold-voice-level-meter").dataset.testShownBefore = "";
+  });
+  const liftedBars = () =>
+    meter.evaluate((element) => element.levels.filter((level) => level > 0).length);
+  expect(await liftedBars()).toBe(16);
+
+  // The turn ends while recording, and the Composer takes the new Task state.
+  await page.evaluate((finished) => {
+    window.__caffoldTaskSse.source(finished.threadId).emit("task-sync", {
+      threadId: finished.threadId,
+      revision: finished.revision,
+      detail: finished,
+      reason: "canonical-sync",
+    });
+  }, { ...taskDetailFixture({ running: false }), revision: 2, eventRevision: 2 });
+  await expect
+    .poll(() =>
+      composer.evaluate(
+        (form) => form.closest("caffold-task-composer").context.turnActive,
+      ),
+    )
+    .toBe(false);
+  await expect(composer).toHaveAttribute("data-voice-state", "recording");
+  await expect(meter).toHaveAttribute("data-test-shown-before", "");
+  expect(await liftedBars()).toBe(16);
+
+  await composer.getByRole("button", { name: "Cancel voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "idle");
+  await expect(meter).toBeHidden();
+  await composer.getByRole("button", { name: "Start voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "requesting");
+  expect(await liftedBars()).toBe(0);
+  await page.evaluate(() => window.__releaseSecondMicrophone());
+  await expect(composer).toHaveAttribute("data-voice-state", "recording");
+  await expect(meter).toBeVisible();
+  await composer.getByRole("button", { name: "Cancel voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "idle");
+});
+
+test("leaves a voice error on screen as it is while the Composer is drawn again", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page);
+  await mockVoiceStatus(page, true);
+  await page.route("**/api/voice/transcribe", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: {
+          code: "voice_transcription_failed",
+          message: "Caffold couldn't transcribe this recording.",
+        },
+      }),
+    }),
+  );
+
+  await page.goto(`/tasks/new?cwd=${scenario.contextPath}`);
+  const composer = page.locator(
+    'caffold-task-new caffold-task-composer form[data-task-form="create"]',
+  );
+  await composer.getByRole("button", { name: "Start voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "recording");
+  await expect
+    .poll(() =>
+      composer.evaluate(
+        (form) =>
+          form.closest("caffold-task-composer")?.voiceRecorder?.sampleCount ?? 0,
+      ),
+    )
+    .toBeGreaterThan(0);
+  await composer.getByRole("button", { name: "Stop recording" }).click();
+  const alert = composer.getByRole("alert");
+  await expect(alert).toHaveText("Caffold couldn't transcribe this recording.");
+  // An alert put on screen again is read out again.
+  await alert.evaluate((element) => {
+    element.dataset.testShownBefore = "";
+  });
+
+  // Attaching a file draws the Composer again.
+  await composer.locator("input[data-composer-file-input]").setInputFiles([
+    { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("notes") },
+  ]);
+  await expect(composer.locator(".task-composer-file")).toHaveCount(1);
+  await expect(alert).toHaveAttribute("data-test-shown-before", "");
 });
 
 test("keeps a follow-up draft and releases microphone tracks when recording is cancelled", { tag: "@viewport-independent" }, async ({
@@ -794,7 +992,7 @@ test("keeps a follow-up draft and releases microphone tracks when recording is c
   await activateActionHint(page, /Cancel voice input$/);
 
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
   await expect(prompt).toHaveValue("취소해도 남아야 하는 초안");
   await expect
     .poll(() => page.evaluate(() => window.__caffoldStoppedVoiceTracks))
@@ -909,7 +1107,7 @@ test("cancels voice input while microphone permission is still pending", { tag: 
     .poll(() => page.evaluate(() => window.__caffoldStoppedVoiceTracks))
     .toBeGreaterThan(0);
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
 });
 
 test("returns to idle and releases the microphone when the composer is moved while recording", { tag: "@viewport-independent" }, async ({
@@ -947,7 +1145,7 @@ test("returns to idle and releases the microphone when the composer is moved whi
     .poll(() => page.evaluate(() => window.__caffoldStoppedVoiceTracks))
     .toBeGreaterThan(0);
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
   await expect(
     composer.getByRole("button", { name: "Start voice input" }),
   ).toBeEnabled();
@@ -983,7 +1181,7 @@ test("reports microphone permission denial without changing the draft and record
   await composer.getByRole("button", { name: "Start voice input" }).click();
 
   await expect(composer).toHaveAttribute("data-voice-state", "error");
-  await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
+  await expect(composer.locator("caffold-voice-level-meter")).toBeHidden();
   await expect(composer.getByRole("alert")).toContainText(
     "Microphone access was denied",
   );

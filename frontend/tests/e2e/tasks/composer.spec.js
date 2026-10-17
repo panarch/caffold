@@ -1123,6 +1123,82 @@ test("stops at ten attachments and says so", { tag: "@viewport-independent" }, a
   );
 });
 
+test("keeps each attachment on screen while others come and go", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page);
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+  const form = page.locator('form[data-task-form="create"]');
+  const prompt = form.locator('textarea[name="prompt"]');
+  const pictures = form.locator(".task-composer-attachment");
+  await pasteImage(prompt, "first.png");
+  await expect(pictures).toHaveCount(1);
+  await pasteImage(prompt, "second.png");
+  await expect(pictures).toHaveCount(2);
+  await form.locator("input[data-composer-file-input]").setInputFiles([
+    { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("notes") },
+  ]);
+  await expect(form.locator(".task-composer-file")).toHaveCount(1);
+  // A node drawn again loses its mark.
+  const marked = form.locator("[data-test-shown-before]");
+  await form.evaluate((element) => {
+    for (const node of element.querySelectorAll(
+      ".task-composer-attachment img, .task-composer-file",
+    )) {
+      node.dataset.testShownBefore = "";
+    }
+  });
+  await expect(marked).toHaveCount(3);
+
+  await pasteImage(prompt, "third.png");
+  await expect(pictures).toHaveCount(3);
+  await expect(marked).toHaveCount(3);
+
+  await form.getByRole("button", { name: "Remove first.png" }).click();
+  await expect(pictures).toHaveCount(2);
+  await expect(marked).toHaveCount(2);
+  await expect(pictures.nth(0)).toHaveAttribute("title", "second.png");
+  await expect(pictures.nth(1)).toHaveAttribute("title", "third.png");
+});
+
+test("draws a large picture's thumbnail from a reduced copy and previews the original", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page);
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+  const form = page.locator('form[data-task-form="create"]');
+  await form.locator("input[data-composer-file-input]").evaluate(async (input) => {
+    const canvas = new OffscreenCanvas(1200, 2000);
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#3b82f6";
+    context.fillRect(0, 0, 1200, 2000);
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([await canvas.convertToBlob({ type: "image/png" })], "tall.png", {
+        type: "image/png",
+      }),
+    );
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  // Three device pixels for each of the thumbnail's 72px on the short side.
+  const thumbnail = form.locator(".task-composer-attachment img");
+  await expect
+    .poll(() =>
+      thumbnail.evaluate((image) => [image.naturalWidth, image.naturalHeight]),
+    )
+    .toEqual([216, 360]);
+
+  await form.getByRole("button", { name: "Preview tall.png" }).click();
+  const preview = page.locator(
+    "caffold-task-image-preview-dialog > dialog [data-task-image-preview-image]",
+  );
+  await expect
+    .poll(() => preview.evaluate((image) => image.naturalWidth))
+    .toBe(1200);
+});
+
 test("keeps a file chip to its name, its extension whole, within the Composer", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {

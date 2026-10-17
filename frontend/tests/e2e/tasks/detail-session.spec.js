@@ -1521,10 +1521,12 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
     name: "Remove thread-a-draft.png",
   });
   await expect(attachment).toHaveCount(1);
+  // The thumbnail is drawn once its picture has been read.
+  await expect(attachment.locator("img")).toHaveAttribute("src", /^data:/);
   const imageDraft = await attachment.evaluate((element) => {
-    const preview = element.querySelector('[data-composer-action="preview-image"]');
+    const preview = element.querySelector('[data-attachment-action="preview-image"]');
     return {
-      id: preview?.dataset.imageId ?? "",
+      id: preview?.dataset.attachmentId ?? "",
       src: preview?.querySelector("img")?.getAttribute("src") ?? "",
     };
   });
@@ -1665,7 +1667,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   ).toBeVisible();
   await expect(prompt).toHaveValue("Keep this thread-specific draft");
   await expect(attachment).toHaveCount(1);
-  await expect(previewImage).toHaveAttribute("data-image-id", imageDraft.id);
+  await expect(previewImage).toHaveAttribute("data-attachment-id", imageDraft.id);
   await expect(attachment.locator("img")).toHaveAttribute("src", imageDraft.src);
   await expect(removeImage).toBeVisible();
   const taskRetention = await tasksPage.evaluate((element) => {

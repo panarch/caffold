@@ -3,13 +3,13 @@ import { busySpin } from "#app/component-styles.js";
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
-import { requestTaskImagePreview } from "./image-preview-dialog.js";
 import { collectComposerActionHintTargets } from "./composer/action-hints.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   hasActionHintLayoutBox,
 } from "#app/action-hints.js";
+import "./composer/components/attachments.js";
 import "./composer/components/context-usage.js";
 import "./task-turn-options.js";
 import "./voice-level-meter.js";
@@ -85,6 +85,10 @@ class CaffoldTaskComposer extends HTMLElement {
       "caffold:task-turn-options-change",
       this.boundTurnOptionsChange,
     );
+    this.addEventListener(
+      "caffold:task-composer-attachment-remove",
+      this.boundAttachmentRemove,
+    );
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     window.addEventListener(
       "caffold:voice-settings-changed",
@@ -115,6 +119,10 @@ class CaffoldTaskComposer extends HTMLElement {
     this.removeEventListener(
       "caffold:task-turn-options-change",
       this.boundTurnOptionsChange,
+    );
+    this.removeEventListener(
+      "caffold:task-composer-attachment-remove",
+      this.boundAttachmentRemove,
     );
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     window.removeEventListener(
@@ -229,6 +237,7 @@ class CaffoldTaskComposer extends HTMLElement {
       this.syncPrimaryAction();
       this.notifyLayoutChange();
     };
+    this.boundAttachmentRemove = (event) => this.removeAttachment(event);
     warmIcons();
   }
 
@@ -544,17 +553,38 @@ class CaffoldTaskComposer extends HTMLElement {
     return [
       ...existingTargets,
       ...this.actionHintButtonTargets({ mode, scopeId, clipRoots }),
+      ...this.attachmentActionHintTargets({ scopeId, clipRoots }),
       this.contextUsage()?.actionHintTarget({ scopeId, clipRoots }),
     ].filter(Boolean);
   }
 
-  actionHintButtonTargets({ mode, scopeId, clipRoots }) {
-    const contextKey = JSON.stringify([
-      mode,
+  // The strip offers its own buttons; each stays offered only while the
+  // Composer still holds the draft it was offered for.
+  attachmentActionHintTargets({ scopeId, clipRoots }) {
+    const contextKey = this.actionHintContextKey();
+    return (
+      this.attachmentStrip()?.actionHintTargets({ scopeId, clipRoots }) ?? []
+    ).map((target) => {
+      const isActionable = target.isActionable;
+      return {
+        ...target,
+        isActionable: () =>
+          this.actionHintContextKey() === contextKey && isActionable(),
+      };
+    });
+  }
+
+  actionHintContextKey() {
+    return JSON.stringify([
+      this.context.mode,
       `${this.context.threadId ?? ""}`,
       `${this.context.cwd ?? ""}`,
       `${this.stateFor().activeSubmissionId ?? ""}`,
     ]);
+  }
+
+  actionHintButtonTargets({ scopeId, clipRoots }) {
+    const contextKey = this.actionHintContextKey();
     const definitions = [];
     for (const [id, selector] of [
       ["attach", 'button[data-composer-action="attach"]'],
@@ -565,38 +595,18 @@ class CaffoldTaskComposer extends HTMLElement {
     ]) {
       const control = this.querySelector(selector);
       if (control) {
+        // The button turns between Send and Stop in place; a key offered for
+        // one must not press the other.
+        const primaryAction = control.dataset.primaryAction;
         definitions.push({
           id: id === "primary"
-            ? `primary:${control.dataset.primaryAction ?? "action"}`
+            ? `primary:${primaryAction ?? "action"}`
             : id,
           selector,
           control,
           identity: id === "primary"
-            ? (candidate) =>
-                candidate.dataset.primaryAction === control.dataset.primaryAction
+            ? (candidate) => candidate.dataset.primaryAction === primaryAction
             : null,
-        });
-      }
-    }
-    for (const [action, key] of [
-      ["preview-image", "imageId"],
-      ["remove-image", "imageId"],
-      ["remove-file", "fileId"],
-    ]) {
-      const attribute = key === "imageId" ? "data-image-id" : "data-file-id";
-      for (const control of this.querySelectorAll(
-        `button[data-composer-action="${action}"][${attribute}]`,
-      )) {
-        const attachmentId = `${control.dataset[key] ?? ""}`;
-        if (!attachmentId) {
-          continue;
-        }
-        definitions.push({
-          id: `${action}:${attachmentId}`,
-          selector: `button[data-composer-action="${action}"][${attribute}]`,
-          control,
-          identity: (candidate) => candidate.dataset[key] === attachmentId,
-          attachmentId,
         });
       }
     }
@@ -622,16 +632,8 @@ class CaffoldTaskComposer extends HTMLElement {
         clipRoots: [...clipRoots],
         isActionable: () =>
           this.isConnected &&
-          JSON.stringify([
-              this.context.mode,
-              `${this.context.threadId ?? ""}`,
-              `${this.context.cwd ?? ""}`,
-              `${this.stateFor().activeSubmissionId ?? ""}`,
-            ]) === contextKey &&
+          this.actionHintContextKey() === contextKey &&
           currentControl() === control &&
-          (!definition.attachmentId || this.stateFor().attachments.some(
-            (attachment) => attachment.id === definition.attachmentId
-          )) &&
           !control.disabled &&
           hasActionHintLayoutBox(control),
       })];
@@ -819,14 +821,11 @@ class CaffoldTaskComposer extends HTMLElement {
     }
     button.setAttribute("aria-label", action.label);
     button.title = action.title;
-    if (button.dataset.primaryActionIcon !== action.icon) {
-      button.dataset.primaryActionIcon = action.icon;
-      button.innerHTML = renderInlineIcon(
-        action.icon,
-        action.label,
-        "task-primary-action-icon",
-      );
-    }
+    button.dataset.primaryActionIcon = action.icon;
+    drawIcon(
+      button,
+      renderInlineIcon(action.icon, action.label, "task-primary-action-icon"),
+    );
   }
 
   handleKeydown(event) {
@@ -858,6 +857,9 @@ class CaffoldTaskComposer extends HTMLElement {
     if (!action || !this.contains(action)) {
       return;
     }
+    // The click is the action's alone. Stop can turn into Send in place while
+    // it is handled, and the browser must not then submit as well.
+    event.preventDefault();
     event.stopPropagation();
     const type = action.dataset.composerAction;
     if (type === "voice") {
@@ -878,30 +880,20 @@ class CaffoldTaskComposer extends HTMLElement {
     }
     if (type === "attach") {
       this.querySelector("input[data-composer-file-input]")?.click();
+    }
+  }
+
+  removeAttachment(event) {
+    if (event.target !== this.attachmentStrip()) {
       return;
     }
-    if (type === "preview-image") {
-      const image = this.stateFor().attachments.find(
-        (candidate) => candidate.id === action.dataset.imageId,
-      );
-      if (image) {
-        requestTaskImagePreview(this, {
-          src: image.dataUrl,
-          name: image.name,
-        });
-      }
-      return;
-    }
-    if (type === "remove-image" || type === "remove-file") {
-      const removed = action.dataset.imageId ?? action.dataset.fileId;
-      const state = this.stateFor();
-      state.attachments = state.attachments.filter(
-        (attachment) => attachment.id !== removed,
-      );
-      state.attachmentError = "";
-      this.render();
-      return;
-    }
+    event.stopPropagation();
+    const state = this.stateFor();
+    state.attachments = state.attachments.filter(
+      (attachment) => attachment.id !== event.detail?.attachmentId,
+    );
+    state.attachmentError = "";
+    this.render();
   }
 
   handlePointerdown(event) {
@@ -980,6 +972,7 @@ class CaffoldTaskComposer extends HTMLElement {
       },
     });
     this.voiceRecorder = recorder;
+    this.levelMeter().reset();
     this.setVoicePhase("requesting");
     this.voice.error = "";
     this.render();
@@ -1006,18 +999,24 @@ class CaffoldTaskComposer extends HTMLElement {
     this.voice.elapsedSeconds = elapsedSeconds;
     this.voice.recordingLimitReached =
       elapsedSeconds >= this.voice.maxRecordingSeconds;
+    this.drawVoiceElapsed();
+  }
+
+  drawVoiceElapsed() {
     const timer = this.querySelector(".task-voice-elapsed");
     if (!timer) {
       return;
     }
-    const duration = formatRecordingDuration(elapsedSeconds);
-    timer.textContent = duration;
-    timer.setAttribute("aria-label", `Recording duration ${duration}`);
+    const duration = formatRecordingDuration(this.voice.elapsedSeconds);
+    if (timer.textContent !== duration) {
+      timer.textContent = duration;
+      timer.setAttribute("aria-label", `Recording duration ${duration}`);
+    }
     timer.classList.toggle("is-limit", this.voice.recordingLimitReached);
   }
 
   updateVoiceLevel(level) {
-    this.querySelector("caffold-voice-level-meter")?.setLevel(level);
+    this.levelMeter()?.setLevel(level);
   }
 
   async stopVoiceRecording({ submitAfterTranscription = false } = {}) {
@@ -1318,8 +1317,9 @@ class CaffoldTaskComposer extends HTMLElement {
 
   render() {
     this.ensureState();
-    // Keep the textarea and turn-options nodes mounted. The former owns IME
-    // composition; the latter owns native popover and request state.
+    // Every node stays mounted and only what changed is patched: the textarea
+    // owns IME composition, the turn options their popovers and requests, the
+    // attachment strip each picture already shown, and a button its focus.
     if (this.compositionActive) {
       this.pendingRender = true;
       return;
@@ -1347,15 +1347,13 @@ class CaffoldTaskComposer extends HTMLElement {
     );
     setOptionalAttribute(form, "data-thread-id", this.context.threadId);
 
-    this.setRegion("attachments", renderAttachments(state.attachments));
+    this.attachmentStrip().setAttachments(state.attachments);
     const attach = this.querySelector('button[data-composer-action="attach"]');
     attach.disabled = fieldDisabled || !this.acceptsAttachments();
-    // Drawn again once the icon set has loaded, as the other toolbar icons are.
-    const attachIcon = renderInlineIcon("Paperclip", "Attach files", "task-composer-attach-icon");
-    if (drawnIcons.get(attach) !== attachIcon) {
-      drawnIcons.set(attach, attachIcon);
-      attach.innerHTML = attachIcon;
-    }
+    drawIcon(
+      attach,
+      renderInlineIcon("Paperclip", "Attach files", "task-composer-attach-icon"),
+    );
 
     const textarea = this.querySelector("textarea[name='prompt']");
     const textareaFocused = document.activeElement === textarea;
@@ -1405,25 +1403,11 @@ class CaffoldTaskComposer extends HTMLElement {
     );
     this.syncTurnOptionsContext(settingsLocked);
     this.syncTurnOptionsFields();
+    this.contextUsage().hidden = this.context.mode !== "follow-up";
+    this.syncVoiceControls(submitting);
     // Taking the new context can ask for another permission list, and Send
     // waits for it.
-    const primaryAction = this.primaryActionView();
-    this.contextUsage().hidden = this.context.mode !== "follow-up";
-    this.querySelector('[data-composer-region="actions"]').innerHTML = `
-      ${this.renderVoiceControls(submitting)}
-      <button
-        type="${primaryAction.kind === "send" ? "submit" : "button"}"
-        class="task-primary-action-button"
-        data-primary-action="${primaryAction.kind}"
-        data-primary-action-icon="${primaryAction.icon}"
-        ${primaryAction.kind === "stop" ? 'data-composer-action="interrupt"' : ""}
-        aria-label="${escapeHtml(primaryAction.label)}"
-        title="${escapeHtml(primaryAction.title)}"
-        ${primaryAction.disabled ? "disabled" : ""}
-      >
-        ${renderInlineIcon(primaryAction.icon, primaryAction.label, "task-primary-action-icon")}
-      </button>
-    `;
+    this.syncPrimaryAction();
     this.notifyLayoutChange();
   }
 
@@ -1434,7 +1418,7 @@ class CaffoldTaskComposer extends HTMLElement {
     this.innerHTML = `
       <form class="task-composer" data-task-form="create">
         <div class="task-composer-panel">
-          <div class="task-composer-render-region" data-composer-region="attachments"></div>
+          <caffold-task-composer-attachments></caffold-task-composer-attachments>
           <textarea name="prompt" rows="1"></textarea>
           <div class="task-composer-render-region" data-composer-region="create-status"></div>
           <div class="task-composer-render-region" data-composer-region="voice-status"></div>
@@ -1460,7 +1444,24 @@ class CaffoldTaskComposer extends HTMLElement {
             </div>
             <div class="task-composer-actions">
               <caffold-task-context-usage hidden></caffold-task-context-usage>
-              <div class="task-composer-render-region" data-composer-region="actions"></div>
+              <div class="task-composer-render-region" data-composer-region="actions">
+                <caffold-voice-level-meter hidden></caffold-voice-level-meter>
+                <span class="task-voice-elapsed" role="timer" hidden></span>
+                <button
+                  type="button"
+                  class="task-voice-cancel-button"
+                  data-composer-action="cancel-voice"
+                  aria-label="Cancel voice input"
+                  title="Cancel voice input"
+                  hidden
+                ></button>
+                <button
+                  type="button"
+                  class="task-voice-button"
+                  data-composer-action="voice"
+                ></button>
+                <button class="task-primary-action-button"></button>
+              </div>
             </div>
           </div>
         </div>
@@ -1468,10 +1469,13 @@ class CaffoldTaskComposer extends HTMLElement {
     `;
   }
 
+  // Compared with what was last written rather than with innerHTML, which the
+  // browser serializes in its own way.
   setRegion(name, html) {
     const region = this.querySelector(`[data-composer-region="${name}"]`);
-    if (region && region.innerHTML !== html) {
+    if (region && region.renderedHtml !== html) {
       region.innerHTML = html;
+      region.renderedHtml = html;
     }
   }
 
@@ -1479,8 +1483,15 @@ class CaffoldTaskComposer extends HTMLElement {
     return this.querySelector(":scope caffold-task-turn-options");
   }
 
-  // Mounted once beside the buttons that are drawn again, so an open popover
-  // stays open while the agent's count moves.
+  attachmentStrip() {
+    return this.querySelector(":scope caffold-task-composer-attachments");
+  }
+
+  levelMeter() {
+    return this.querySelector(":scope caffold-voice-level-meter");
+  }
+
+  // Mounted once, so an open popover stays open while the agent's count moves.
   contextUsage() {
     return this.querySelector(":scope caffold-task-context-usage");
   }
@@ -1543,59 +1554,44 @@ class CaffoldTaskComposer extends HTMLElement {
       snapshot.permissionMode;
   }
 
-  renderVoiceControls(submitting) {
+  // The voice controls stay mounted for the Composer's life; a phase only
+  // shows, hides, and relabels them.
+  syncVoiceControls(submitting) {
     const phase = this.voice.phase;
     const recording = phase === "recording";
-    const showElapsed =
-      recording ||
-      (phase === "transcribing" && this.voice.recordingLimitReached);
-    const cancellable = ["requesting", "recording", "transcribing"].includes(
-      phase,
-    );
+    const busy = ["checking", "requesting", "transcribing"].includes(phase);
     const disabled =
       submitting ||
       this.context.disabled ||
       this.context.interrupting ||
       ["checking", "requesting", "transcribing", "unavailable"].includes(phase);
     const label = voiceActionLabel(phase, this.voice.ready);
-    const icon = recording
-      ? "Square"
-      : ["checking", "requesting", "transcribing"].includes(phase)
-          ? "LoaderCircle"
-          : "Mic";
-    return `
-      ${recording ? "<caffold-voice-level-meter></caffold-voice-level-meter>" : ""}
-      ${
-        showElapsed
-          ? `<span
-              class="task-voice-elapsed ${this.voice.recordingLimitReached ? "is-limit" : ""}"
-              role="timer"
-              aria-label="Recording duration ${escapeHtml(formatRecordingDuration(this.voice.elapsedSeconds))}"
-            >${escapeHtml(formatRecordingDuration(this.voice.elapsedSeconds))}</span>`
-          : ""
-      }
-      ${
-        cancellable
-          ? `<button
-              type="button"
-              class="task-voice-cancel-button"
-              data-composer-action="cancel-voice"
-              aria-label="Cancel voice input"
-              title="Cancel voice input"
-            >${renderInlineIcon("X", "Cancel voice input", "task-voice-cancel-icon")}</button>`
-          : ""
-      }
-      <button
-        type="button"
-        class="task-voice-button ${recording ? "is-recording" : ""} ${["checking", "requesting", "transcribing"].includes(phase) ? "is-busy" : ""}"
-        data-composer-action="voice"
-        aria-label="${escapeHtml(label)}"
-        title="${escapeHtml(label)}"
-        ${disabled && !recording ? "disabled" : ""}
-      >
-        ${renderInlineIcon(icon, label, "task-voice-icon")}
-      </button>
-    `;
+    this.levelMeter().hidden = !recording;
+    this.querySelector(".task-voice-elapsed").hidden = !(
+      recording ||
+      (phase === "transcribing" && this.voice.recordingLimitReached)
+    );
+    this.drawVoiceElapsed();
+    const cancel = this.querySelector('button[data-composer-action="cancel-voice"]');
+    cancel.hidden = !["requesting", "recording", "transcribing"].includes(phase);
+    drawIcon(
+      cancel,
+      renderInlineIcon("X", "Cancel voice input", "task-voice-cancel-icon"),
+    );
+    const button = this.querySelector('button[data-composer-action="voice"]');
+    button.classList.toggle("is-recording", recording);
+    button.classList.toggle("is-busy", busy);
+    button.setAttribute("aria-label", label);
+    button.title = label;
+    button.disabled = disabled && !recording;
+    drawIcon(
+      button,
+      renderInlineIcon(
+        recording ? "Square" : busy ? "LoaderCircle" : "Mic",
+        label,
+        "task-voice-icon",
+      ),
+    );
   }
 
   renderVoiceStatus() {
@@ -1623,72 +1619,16 @@ class CaffoldTaskComposer extends HTMLElement {
 
 const COMPOSER_KEYBOARD_CONTEXT_MODES = new Set(["create", "follow-up"]);
 
-function renderAttachments(attachments) {
-  const images = attachments.filter((attachment) => attachment.imageInput);
-  const files = attachments.filter((attachment) => !attachment.imageInput);
-  return `${images.length ? `
-    <div class="task-composer-attachments" aria-label="Images to send">
-      ${images
-        .map(
-          (image) => `
-            <figure class="task-composer-attachment" title="${escapeHtml(image.name)}">
-              <button
-                type="button"
-                class="task-composer-attachment-preview"
-                data-composer-action="preview-image"
-                data-image-id="${escapeHtml(image.id)}"
-                aria-label="Preview ${escapeHtml(image.name)}"
-                title="Preview image"
-              ><img src="${escapeHtml(image.dataUrl)}" alt=""></button>
-              <button
-                type="button"
-                class="task-composer-attachment-remove"
-                data-composer-action="remove-image"
-                data-image-id="${escapeHtml(image.id)}"
-                aria-label="Remove ${escapeHtml(image.name)}"
-                title="Remove image"
-              >${renderInlineIcon("X", "Remove image", "task-composer-attachment-remove-icon")}</button>
-            </figure>
-          `,
-        )
-        .join("")}
-    </div>
-  ` : ""}${files.length ? `
-    <div class="task-composer-files" aria-label="Files to send">
-      ${files
-        .map((file) => {
-          const { stem, extension } = splitFileName(file.name);
-          return `
-            <span class="task-composer-file" title="${escapeHtml(file.name)}">
-              ${renderInlineIcon("File", "File", "task-composer-file-icon")}
-              <span class="task-composer-file-name"><span class="task-composer-file-stem">${escapeHtml(stem)}</span><span class="task-composer-file-extension">${escapeHtml(extension)}</span></span>
-              <button
-                type="button"
-                class="task-composer-file-remove"
-                data-composer-action="remove-file"
-                data-file-id="${escapeHtml(file.id)}"
-                aria-label="Remove ${escapeHtml(file.name)}"
-                title="Remove file"
-              >${renderInlineIcon("X", "Remove file", "task-composer-file-remove-icon")}</button>
-            </span>
-          `;
-        })
-        .join("")}
-    </div>
-  ` : ""}`;
-}
-
-// The extension stays whole when a long name is cut short, so a file is still
-// told apart by its kind.
-function splitFileName(name) {
-  const dot = name.lastIndexOf(".");
-  return dot > 0
-    ? { stem: name.slice(0, dot), extension: name.slice(dot) }
-    : { stem: name, extension: "" };
-}
-
 function carriesFiles(dataTransfer) {
   return Array.from(dataTransfer?.types ?? []).includes("Files");
+}
+
+// Drawn again once the icon set has loaded; until then an icon is its label.
+function drawIcon(element, html) {
+  if (drawnIcons.get(element) !== html) {
+    drawnIcons.set(element, html);
+    element.innerHTML = html;
+  }
 }
 
 function voiceActionLabel(phase, ready) {

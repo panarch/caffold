@@ -698,6 +698,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/composer/action-hints.js"
             )))
         }
+        "pages/(task-workspace)/tasks/components/composer/components/attachments.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/components/composer/components/attachments.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/composer/components/attachments.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/components/composer/components/attachments.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/composer/components/context-usage.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/components/composer/components/context-usage.css"
@@ -2477,6 +2487,10 @@ mod tests {
                 b"caffold-voice-level-meter".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/composer/components/attachments.js",
+                b"caffold-task-composer-attachments".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/composer/components/context-usage.js",
                 b"caffold-task-context-usage".as_slice(),
             ),
@@ -2520,6 +2534,8 @@ mod tests {
             "/assets/pages/(task-workspace)/task-store-status/lifecycle.js",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.css",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.js",
+            "/assets/pages/(task-workspace)/tasks/components/composer/components/attachments.css",
+            "/assets/pages/(task-workspace)/tasks/components/composer/components/attachments.js",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.css",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.js",
             "/assets/pages/(task-workspace)/codex-status/lifecycle.js",
@@ -2566,6 +2582,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/voice-level-meter.css",
                 b"caffold-voice-level-meter".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/composer/components/attachments.css",
+                b"caffold-task-composer-attachments".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/composer/components/context-usage.css",

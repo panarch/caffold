@@ -1345,10 +1345,13 @@ one and changes once a round trip by how long a cell waited for its first byte:
 it grows while cells wait no longer than the usual round trip and a quarter of a
 second, and shrinks otherwise. Conversation thumbnails and Markdown preview
 images start fetching when they come within 2500px of view; a picture the
-message itself carries as a `data:` address is drawn directly. Until a fetched
-picture is drawn, its place in Review, the conversation, a Markdown preview,
-and the image preview shows "Loading image...", as a document viewer does for
-its document.
+message itself carries as a `data:` address is drawn directly. When a picture
+to be sent is more than 216px on its short side, three device pixels for each
+of its 72px thumbnail, the Composer's attachment strip draws it from a copy
+reduced to that size; the image preview and the send keep the original. Until
+a fetched picture is drawn, its place in Review, the conversation, a Markdown
+preview, and the image preview shows "Loading image...", as a document viewer
+does for its document.
 
 PDFs, Word documents, PowerPoint decks, and Excel workbooks share one document
 state in the file viewer, which mounts the viewer for the document's kind and
@@ -1869,6 +1872,7 @@ frontend/
 |           |   |-- task-turn-options.js
 |           |   |-- composer.js
 |           |   |-- composer/action-hints.js
+|           |   |-- composer/components/attachments.js
 |           |   `-- composer/components/context-usage.js
 |           `-- (detail)/
 |               |-- layout.js

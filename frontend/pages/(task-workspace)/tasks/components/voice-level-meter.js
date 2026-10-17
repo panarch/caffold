@@ -32,6 +32,14 @@ class CaffoldVoiceLevelMeter extends HTMLElement {
     this.renderLevels();
   }
 
+  // A new recording starts from silence rather than the last one's levels.
+  reset() {
+    this.level = 0;
+    delete this.dataset.level;
+    this.levels = Array(SEGMENT_COUNT).fill(0);
+    this.renderLevels();
+  }
+
   renderLevels() {
     for (const [index, segment] of (this.segments ?? []).entries()) {
       const level = this.levels?.[index] ?? 0;

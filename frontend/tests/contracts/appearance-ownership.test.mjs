@@ -902,7 +902,7 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--task-list-row-height",
     ],
     [
-      "pages/(task-workspace)/tasks/components/composer.css",
+      "pages/(task-workspace)/tasks/components/composer/components/attachments.css",
       ".task-composer-attachment-remove",
       "--interface-compact-hit-size",
     ],
@@ -1090,7 +1090,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
       "--interface-control-hit-outset",
     ],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-button::before", "--interface-control-hit-outset"],
-    ["pages/(task-workspace)/tasks/components/composer.css", ".task-composer-attachment-remove::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/tasks/components/composer/components/attachments.css", ".task-composer-attachment-remove::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/task-turn-options.css", ".task-model-button::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/task-turn-options.css", ".task-permission-button::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css", ".task-suggested-prompt::before", "--interface-compact-hit-outset"],

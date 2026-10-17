@@ -228,6 +228,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/components/composer.css",
   "/assets/pages/(task-workspace)/tasks/components/composer.js",
   "/assets/pages/(task-workspace)/tasks/components/composer/action-hints.js",
+  "/assets/pages/(task-workspace)/tasks/components/composer/components/attachments.css",
+  "/assets/pages/(task-workspace)/tasks/components/composer/components/attachments.js",
   "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.css",
   "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.js",
   "/assets/pages/(task-workspace)/tasks/components/task-turn-options.css",
