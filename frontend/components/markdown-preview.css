@@ -152,10 +152,40 @@ caffold-markdown-preview {
     color: var(--muted);
   }
 
-  & .markdown-preview-loading {
+  & :is(.markdown-preview-loading, .markdown-preview-image > caffold-loading-text) {
     font-family: var(--font-ui);
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
+  }
+
+  /* A picture sits on the text line and keeps its own size until the column
+     is narrower, then shrinks to it without changing shape. Until it is
+     drawn, its loading phrase sits on the line as text does. */
+  & .markdown-preview-image > img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* A place held at a known size takes the room the picture will: with nothing
+     in flow, its bottom edge sits on the baseline where the picture's will.
+     The loading phrase waits in its middle, as it does in Review's image stage
+     and a conversation thumbnail. */
+  & .markdown-preview-image[data-reserved] {
+    display: inline-block;
+    position: relative;
+    max-width: 100%;
+    width: var(--markdown-image-width);
+    aspect-ratio: var(--markdown-image-ratio);
+    overflow: hidden;
+
+    & > caffold-loading-text {
+      position: absolute;
+      inset: 0;
+      width: fit-content;
+      height: fit-content;
+      margin: auto;
+      text-align: center;
+    }
   }
 
   & .markdown-preview-fallback {

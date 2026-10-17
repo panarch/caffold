@@ -783,7 +783,10 @@ class CaffoldTaskReview extends HTMLElement {
           return;
         }
         if (previewMode) {
-          viewer?.setMarkdown(file, viewerOptions);
+          viewer?.setMarkdown(file, {
+            ...viewerOptions,
+            imageRoot: taskRootPath(this.task),
+          });
         } else {
           viewer?.setFile(file, viewerOptions);
         }

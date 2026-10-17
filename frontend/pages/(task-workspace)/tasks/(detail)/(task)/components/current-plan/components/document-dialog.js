@@ -165,7 +165,9 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
     })];
   }
 
-  openDocument({ label, document, displayPath, opener } = {}) {
+  // `rootPath` is the Task root that an image address starting with "/" is
+  // read from.
+  openDocument({ label, document, displayPath, rootPath, opener } = {}) {
     const path = `${document?.path ?? ""}`.trim();
     if (!path) {
       return false;
@@ -175,6 +177,7 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
       path,
       displayPath: `${displayPath ?? ""}`.trim() || path,
       name: `${document?.name ?? ""}`.trim(),
+      rootPath: `${rootPath ?? ""}`.trim(),
     };
     this.opener = opener instanceof HTMLElement ? opener : null;
     this.patchHeader();
@@ -198,6 +201,7 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
     this.requestId += 1;
     this.requestController?.abort();
     this.requestController = null;
+    this.preview()?.releaseImages();
     this.opener = null;
     this.current = null;
     if (this.dialog()?.open) {
@@ -227,7 +231,13 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
       this.querySelector("[data-current-plan-dialog-error]").hidden = true;
       const preview = this.preview();
       preview.hidden = false;
-      preview.setMarkdown(file.content, { scroll });
+      preview.setMarkdown(file.content, {
+        scroll,
+        images: {
+          folder: current.path.split("/").slice(0, -1).join("/"),
+          root: current.rootPath,
+        },
+      });
     } catch (error) {
       if (!this.acceptRequest(requestId, current.path) || error?.name === "AbortError") {
         return;
@@ -277,6 +287,7 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
     this.requestId += 1;
     this.requestController?.abort();
     this.requestController = null;
+    this.preview()?.releaseImages();
     const opener = this.opener;
     this.opener = null;
     this.current = null;

@@ -344,6 +344,7 @@ export async function installExternalModuleDefaults(page) {
           const inline = (value) => value
             .replace(/\\*\\*(.+?)\\*\\*/g, "<strong>$1</strong>")
             .replace(/\\x60([^\\x60]+)\\x60/g, "<code>$1</code>")
+            .replace(/!\\[([^\\]]*)\\]\\(([^)]+)\\)/g, '<img src="$2" alt="$1">')
             .replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2">$1</a>');
           const unorderedItem = (line) => {
             const content = line.slice(2);

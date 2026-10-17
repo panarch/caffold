@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  copyFileSync,
   mkdirSync,
   rmSync,
   unlinkSync,
@@ -8,6 +9,7 @@ import {
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { repositoryPath } from "../../repository-paths.mjs";
 import {
   actionHintDialog,
   activateActionHintIntoPopover,
@@ -908,6 +910,78 @@ test("closes the plan document when a Note link in it opens the Note", { tag: "@
   await expect(page.locator('caffold-note-document[data-note-side="primary"]')).toBeVisible();
 });
 
+test("draws the images the plan names beside it and from the Task root", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  const workspace = prepareWorkspace(testInfo);
+  writeCurrentDocuments(workspace.absolutePath, {
+    plan: "# Pictured plan\n\n![Beside](diagram.png)\n\n![Rooted](/shot.png)\n",
+    checklist: "- [ ] Look at the pictures\n",
+  });
+  const picture = repositoryPath("frontend/assets/icons/favicon-32.png");
+  copyFileSync(picture, join(workspace.absolutePath, ".caffold/plans/current/diagram.png"));
+  copyFileSync(picture, join(workspace.absolutePath, "shot.png"));
+  const requested = [];
+  page.on("request", (request) => {
+    const address = new URL(request.url());
+    if (address.pathname === "/api/image" && !address.searchParams.has("version")) {
+      requested.push(address.searchParams.get("path"));
+    }
+  });
+  const dialog = await openPlanDocument(page, workspace);
+
+  for (const name of ["Beside", "Rooted"]) {
+    const image = dialog.locator(`caffold-markdown-preview img[alt="${name}"]`);
+    await expect(image).toHaveAttribute("src", /^blob:/);
+    await expect.poll(() => image.evaluate((element) => element.naturalWidth)).toBeGreaterThan(0);
+  }
+  expect(new Set(requested)).toEqual(new Set([
+    `${workspace.logicalPath}/.caffold/plans/current/diagram.png`,
+    `${workspace.logicalPath}/shot.png`,
+  ]));
+});
+
+test("lets go of a plan image it is still fetching when the plan closes", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  const workspace = prepareWorkspace(testInfo);
+  writeCurrentDocuments(workspace.absolutePath, {
+    plan: "# Pictured plan\n\n![Held](held.png)\n",
+    checklist: "- [ ] Look at the picture\n",
+  });
+  copyFileSync(
+    repositoryPath("frontend/assets/icons/favicon-32.png"),
+    join(workspace.absolutePath, ".caffold/plans/current/held.png"),
+  );
+  let markRequested;
+  const requested = new Promise((resolve) => {
+    markRequested = resolve;
+  });
+  let letThrough;
+  const held = new Promise((resolve) => {
+    letThrough = resolve;
+  });
+  await page.route((url) => url.pathname === "/api/image", async (route) => {
+    markRequested();
+    await held;
+    await route.fallback().catch(() => {});
+  });
+  const aborted = page.waitForEvent(
+    "requestfailed",
+    (request) => new URL(request.url()).pathname === "/api/image",
+  );
+  const dialog = await openPlanDocument(page, workspace);
+  const image = dialog.locator('caffold-markdown-preview img[alt="Held"]');
+  await requested;
+  await expect(image).toBeHidden();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toHaveAttribute("open", "");
+  await aborted;
+  letThrough();
+  await expect(image).not.toHaveAttribute("src", /.+/);
+});
+
 test("rejects a stale plan refresh when Task context changes", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {
@@ -995,6 +1069,21 @@ test("rejects a stale plan refresh when Task context changes", { tag: "@viewport
     "2 / 4",
   );
 });
+
+async function openPlanDocument(page, workspace) {
+  await installTaskApiFixture(page);
+  const detail = detailFor("thread-1", workspace.logicalPath);
+  await installTaskDetails(page, [detail]);
+  await page.goto(`/tasks/thread-1?cwd=${encodeURIComponent(workspace.logicalPath)}`);
+  const projection = currentPlanResponse(page, workspace.logicalPath);
+  await openTaskWithBootstrap(page.locator("caffold-tasks-page"), detail);
+  expect((await (await projection).json()).status).toBe("ready");
+  const currentPlan = page.locator("caffold-task-current-plan");
+  await currentPlan.getByRole("button", { name: /^Open plan:/ }).click();
+  const dialog = currentPlan.locator("caffold-current-plan-document-dialog > dialog");
+  await expect(dialog).toHaveAttribute("open", "");
+  return dialog;
+}
 
 function prepareWorkspace(testInfo) {
   const absolutePath = workspacePath(testInfo);

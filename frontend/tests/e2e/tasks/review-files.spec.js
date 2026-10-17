@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { copyFile, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { repositoryPath } from "../../repository-paths.mjs";
 import {
   actionHintDialog,
@@ -372,7 +372,7 @@ test("File details Download measures the same as the Task details actions", { ta
   expect(layout.insetDifference).toBeLessThanOrEqual(0.5);
 });
 
-test("renders a route-owned text-only Markdown Preview without changing file selection", { tag: "@all-viewports" }, async ({
+test("renders a route-owned Markdown Preview without changing file selection", { tag: "@all-viewports" }, async ({
   context,
   page,
 }, testInfo) => {
@@ -598,6 +598,248 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
   );
   await expect(viewer.locator("caffold-code-viewer")).toContainText("pub const ALPHA");
   await expect(previewControl).toBeHidden();
+});
+
+test("draws the workspace images a Markdown Preview names and leaves the rest as their descriptions", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  // Concurrent tests keep the rows they already have: the files go into a
+  // directory the file tree keeps collapsed.
+  const folder = `planner/markdown-images-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
+  const folderPath = repositoryPath("frontend/tests/e2e/fixtures/home/src", folder);
+  await mkdir(`${folderPath}/docs`, { recursive: true });
+  const picture = repositoryPath("frontend/assets/icons/favicon-32.png");
+  await copyFile(picture, `${folderPath}/docs/beside.png`);
+  await copyFile(picture, `${folderPath}/docs/with space.png`);
+  await copyFile(picture, `${folderPath}/parent.png`);
+  await writeFile(`${folderPath}/docs/guide.md`, [
+    "# Images",
+    "",
+    "![Beside](beside.png) ![Dotted](./beside.png?raw=true#top) ![Spaced](with%20space.png)",
+    "",
+    `![Parent](../parent.png) ![Rooted](/${folder}/parent.png)`,
+    "",
+    "![Workspace](../../../../preview-image.svg)",
+    "",
+    '<img src="beside.png" alt="Sized" width="20" height="10">',
+    "",
+    "![Web](https://example.com/web.png) ![Missing](missing.png) ![Above](../../../../../outside.png)",
+    "",
+  ].join("\n"));
+  try {
+    const requested = [];
+    const webRequests = [];
+    page.on("request", (request) => {
+      const address = new URL(request.url());
+      if (address.pathname === "/api/image" && !address.searchParams.has("version")) {
+        requested.push(address.searchParams.get("path"));
+      }
+      if (address.origin === "https://example.com") {
+        webRequests.push(request.url());
+      }
+    });
+    const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    await page.goto(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=preview` +
+        `&file=${encodeURIComponent(`${folder}/docs/guide.md`)}`,
+    );
+    const preview = taskReview.locator("caffold-review-file-viewer caffold-markdown-preview");
+
+    for (const name of ["Beside", "Dotted", "Spaced", "Parent", "Rooted", "Workspace", "Sized"]) {
+      await expectFetchedPicture(preview.locator(`img[alt="${name}"]`));
+    }
+    await expect(preview.locator('img[alt="Sized"]')).toHaveAttribute("width", "20");
+    await expect(preview.locator('img[alt="Sized"]')).toHaveAttribute("height", "10");
+    await expect(preview.locator(".markdown-preview-image-placeholder")).toHaveText([
+      "[Image: Web]",
+      "[Image: Missing]",
+      "[Image: Above]",
+    ]);
+    await expect(preview.locator("img")).toHaveCount(7);
+    expect(new Set(requested)).toEqual(new Set([
+      `src/${folder}/docs/beside.png`,
+      `src/${folder}/docs/with space.png`,
+      `src/${folder}/parent.png`,
+      "preview-image.svg",
+      `src/${folder}/docs/missing.png`,
+    ]));
+    expect(webRequests).toEqual([]);
+  } finally {
+    await rm(folderPath, { recursive: true, force: true });
+  }
+});
+
+test("shrinks a Markdown Preview image wider than the text to the text width", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const folder = `planner/markdown-wide-image-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
+  const folderPath = repositoryPath("frontend/tests/e2e/fixtures/home/src", folder);
+  await mkdir(folderPath, { recursive: true });
+  await writeFile(
+    `${folderPath}/wide.svg`,
+    '<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="100">' +
+      '<rect width="2000" height="100" fill="#888"/></svg>',
+  );
+  await writeFile(`${folderPath}/wide.md`, "# Wide\n\n![Wide](wide.svg)\n");
+  try {
+    const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    await page.goto(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=preview` +
+        `&file=${encodeURIComponent(`${folder}/wide.md`)}`,
+    );
+    const preview = taskReview.locator("caffold-review-file-viewer caffold-markdown-preview");
+    await expectFetchedPicture(preview.locator('img[alt="Wide"]'));
+
+    const sizes = await preview.evaluate((element) => {
+      const text = element.querySelector(".markdown-preview-body").getBoundingClientRect();
+      const image = element.querySelector('img[alt="Wide"]').getBoundingClientRect();
+      return { text: text.width, width: image.width, height: image.height };
+    });
+    expect(sizes.width).toBeLessThanOrEqual(sizes.text);
+    expect(sizes.width).toBeGreaterThan(sizes.text - 1);
+    expect(Math.abs(sizes.height - sizes.width / 20)).toBeLessThanOrEqual(1);
+  } finally {
+    await rm(folderPath, { recursive: true, force: true });
+  }
+});
+
+test("keeps a Markdown Preview's reading position while it fetches its pictures again", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  const folder = `planner/markdown-image-position-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
+  const folderPath = repositoryPath("frontend/tests/e2e/fixtures/home/src", folder);
+  await mkdir(folderPath, { recursive: true });
+  const lines = ["# Position", ""];
+  for (let index = 0; index < 4; index += 1) {
+    await copyFile(
+      repositoryPath("frontend/assets/icons/icon-512.png"),
+      `${folderPath}/picture-${index}.png`,
+    );
+    lines.push(`![Picture ${index}](picture-${index}.png)`, "");
+  }
+  lines.push("Below the pictures.", "");
+  for (let index = 0; index < 60; index += 1) {
+    lines.push(`Line ${index} after the pictures.`, "");
+  }
+  await writeFile(`${folderPath}/guide.md`, lines.join("\n"));
+  try {
+    const { taskReview, preview } = await openGuidePreview(page, folder);
+    const pictures = [0, 1, 2, 3].map((index) => preview.locator(`img[alt="Picture ${index}"]`));
+    for (const picture of pictures) {
+      await expectFetchedPicture(picture);
+    }
+    const paragraph = preview.getByText("Below the pictures.", { exact: true });
+    const place = () => paragraph.evaluate((element) => Math.round(
+      element.getBoundingClientRect().top -
+        element.closest("caffold-markdown-preview").getBoundingClientRect().top,
+    ));
+    await preview.evaluate((element, offset) => {
+      element.scrollTop += offset;
+    }, (await place()) - 120);
+    expect(await place()).toBe(120);
+
+    // Every picture is held from here on, so each place is read before any
+    // picture is drawn again.
+    const pictureFiles = heldResponse();
+    let heldPictures = 0;
+    await page.route(/\/api\/image\?/, async (route) => {
+      heldPictures += 1;
+      await pictureFiles.held;
+      await route.fallback().catch(() => {});
+    });
+
+    await appendFile(`${folderPath}/guide.md`, "\nOne more line.\n");
+    await reportGuideChange(page, folder);
+    await expect(preview).toContainText("One more line.");
+    await expect.poll(() => heldPictures).toBeGreaterThan(0);
+    await expect(pictures[0]).toBeHidden();
+    expect(await place()).toBe(120);
+
+    const navigator = taskReview.locator("caffold-file-navigator");
+    await navigator.locator('button[data-file-tree-path="src/planner/mod.rs"]').click();
+    await expect(taskReview.locator("caffold-review-file-viewer caffold-code-viewer")).toBeVisible();
+    const heldBeforeReturn = heldPictures;
+    await navigator.locator(`button[data-file-tree-path="src/${folder}/guide.md"]`).click();
+    await taskReview.getByRole("button", { name: "Preview", exact: true }).click();
+    await expect(preview).toContainText("One more line.");
+    await expect.poll(() => heldPictures).toBeGreaterThan(heldBeforeReturn);
+    await expect(pictures[0]).toBeHidden();
+    expect(await place()).toBe(120);
+
+    pictureFiles.letThrough();
+    for (const picture of pictures) {
+      await expectFetchedPicture(picture);
+    }
+    expect(await place()).toBe(120);
+  } finally {
+    await rm(folderPath, { recursive: true, force: true });
+  }
+});
+
+test("puts a Markdown Preview picture's loading phrase on the text line, or in the middle of the place it holds", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  const folder = `planner/markdown-image-loading-${testInfo.project.name}-${testInfo.repeatEachIndex}`;
+  const folderPath = repositoryPath("frontend/tests/e2e/fixtures/home/src", folder);
+  await mkdir(folderPath, { recursive: true });
+  await copyFile(repositoryPath("frontend/assets/icons/icon-512.png"), `${folderPath}/picture.png`);
+  await writeFile(`${folderPath}/guide.md`, "# Loading\n\nBefore ![Picture](picture.png) after.\n");
+  try {
+    let pictureFile = heldResponse();
+    await page.route(/\/api\/image\?/, async (route) => {
+      await pictureFile.held;
+      await route.fallback().catch(() => {});
+    });
+    const { taskReview, preview } = await openGuidePreview(page, folder);
+    const place = preview.locator(".markdown-preview-image");
+    const loading = place.locator("caffold-loading-text");
+
+    // Nothing says how large the picture is yet: the phrase reads on the line.
+    await expect(loading).toHaveText("Loading image...");
+    await expect(place).not.toHaveAttribute("data-reserved");
+    const baselines = await place.evaluate((element) => {
+      const baselineAt = (insert) => {
+        const probe = document.createElement("span");
+        probe.style.cssText = "display: inline-block; width: 0; height: 0;";
+        insert(probe);
+        const bottom = probe.getBoundingClientRect().bottom;
+        probe.remove();
+        return bottom;
+      };
+      return {
+        line: baselineAt((probe) => element.closest("p").prepend(probe)),
+        phrase: baselineAt((probe) => element.querySelector("caffold-loading-text").append(probe)),
+      };
+    });
+    expect(Math.abs(baselines.phrase - baselines.line)).toBeLessThanOrEqual(1);
+
+    pictureFile.letThrough();
+    await expectFetchedPicture(preview.locator('img[alt="Picture"]'));
+
+    // Drawn once, the picture's size is known when the Markdown is drawn
+    // again: the phrase waits in the middle of the place held for it.
+    pictureFile = heldResponse();
+    await appendFile(`${folderPath}/guide.md`, "\nOne more line.\n");
+    await reportGuideChange(page, folder);
+    await expect(preview).toContainText("One more line.");
+    await expect(place).toHaveAttribute("data-reserved", "");
+    await expect(loading).toHaveText("Loading image...");
+    const middles = await place.evaluate((element) => {
+      const middle = (box) => ({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+      return {
+        place: middle(element.getBoundingClientRect()),
+        phrase: middle(element.querySelector("caffold-loading-text").getBoundingClientRect()),
+      };
+    });
+    expect(Math.abs(middles.phrase.x - middles.place.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(middles.phrase.y - middles.place.y)).toBeLessThanOrEqual(1);
+    pictureFile.letThrough();
+    await expectFetchedPicture(preview.locator('img[alt="Picture"]'));
+  } finally {
+    await rm(folderPath, { recursive: true, force: true });
+  }
 });
 
 test("selects supported source and preview representations for images", { tag: "@all-viewports" }, async ({
@@ -933,6 +1175,64 @@ function imageRequests(page, name) {
     }
   });
   return requests;
+}
+
+// Opens a test's guide.md in Preview. The Working Tree status draws the open
+// file again when it arrives, so it is held until the file is drawn and its
+// redraw is over before the test goes on.
+async function openGuidePreview(page, folder) {
+  const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const status = heldResponse();
+  const statusPattern = /\/api\/git\/status(?:\?|$)/;
+  await page.route(statusPattern, async (route) => {
+    await status.held;
+    await route.continue();
+  });
+  await page.goto(
+    `/tasks/${taskScenario.threadId}/review?nav=files&view=preview` +
+      `&file=${encodeURIComponent(`${folder}/guide.md`)}`,
+  );
+  const preview = taskReview.locator("caffold-review-file-viewer caffold-markdown-preview");
+  await expect(preview).toHaveAttribute("data-render-state", "markdown");
+  const header = taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header");
+  await header.evaluate((element) => {
+    element.dataset.beforeStatus = "";
+  });
+  const statusArrived = page.waitForResponse(statusPattern);
+  status.letThrough();
+  await statusArrived;
+  await expect(
+    taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header[data-before-status]"),
+  ).toHaveCount(0);
+  await expect(preview).toHaveAttribute("data-render-state", "markdown");
+  return { taskReview, preview };
+}
+
+// Tells the Review's open watch on the Task root that a test's guide.md
+// changed, and waits for the Review to read the file again.
+async function reportGuideChange(page, folder) {
+  const logicalPath = `src/${folder}/guide.md`;
+  const watchesRoot = () => page.evaluate(() => window.__caffoldMockEventSources.filter(
+    (candidate) => candidate.channel === "watch" && candidate.context === "src" && candidate.readyState === 1,
+  ).length);
+  await expect.poll(watchesRoot).toBeGreaterThan(0);
+  const reread = page.waitForResponse((response) => {
+    const address = new URL(response.url());
+    return address.pathname === "/api/file" && address.searchParams.get("path") === logicalPath;
+  });
+  await page.evaluate((logicalPath) => {
+    window.__caffoldMockEventSources.filter(
+      (candidate) => candidate.channel === "watch" && candidate.context === "src" && candidate.readyState === 1,
+    ).at(-1).emit("change", {
+      revision: 2,
+      paths: [logicalPath],
+      gitStatusChanged: false,
+      gitRefsChanged: false,
+      overflow: false,
+    });
+  }, logicalPath);
+  await reread;
 }
 
 // A response held back until the test lets it through.
