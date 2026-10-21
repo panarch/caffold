@@ -41,12 +41,14 @@ semver = "1.0.28"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 sha2 = "0.10.9"
+syntect = { version = "5.3.0", default-features = false, features = ["parsing", "regex-onig"] }
 thiserror = "2.0.12"
 tokio = { version = "1.45.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-tungstenite = "0.30.0"
 tower = "0.5.3"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+two-face = { version = "0.5.2", default-features = false, features = ["syntect-onig"] }
 unicode-segmentation = "1.13.3"
 uuid = { version = "1.23.4", features = ["v4", "v7"] }
 url = "2.5.8"

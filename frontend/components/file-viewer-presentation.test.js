@@ -12,7 +12,7 @@ test("source presentation keeps a stable basename while metadata becomes availab
     name: "mod.rs",
     size: 2048,
     modifiedMs: 1_767_000_000_000,
-    languageHint: "rust",
+    language: "Rust",
   });
 
   assert.equal(loading.title, "mod.rs");
@@ -33,14 +33,14 @@ test("loaded source keeps explicit unknown metadata instead of looking incomplet
     name: "README",
     size: 0,
     modifiedMs: null,
-    languageHint: null,
+    language: "Plain Text",
   });
 
   assert.deepEqual(presentation.metadata, [
     { field: "path", label: "Path", value: "notes/README" },
     { field: "size", label: "Size", value: "0 B" },
     { field: "modified", label: "Modified", value: "Unknown" },
-    { field: "language", label: "Language", value: "Text" },
+    { field: "language", label: "Language", value: "Plain Text" },
   ]);
 });
 

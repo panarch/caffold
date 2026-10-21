@@ -318,6 +318,52 @@ test("downloads a file Source cannot show from inside File details", { tag: "@vi
   }
 });
 
+test("colors Source with the syntax the server names in File details", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  const folder = "frontend/tests/e2e/fixtures/home/src/ignored-output";
+  const script = `syntax-${testInfo.project.name}.js`;
+  const unknown = `syntax-${testInfo.project.name}.unknownext`;
+  const scriptPath = repositoryPath(folder, script);
+  const unknownPath = repositoryPath(folder, unknown);
+  await writeFile(scriptPath, "/* first\n   middle\n   last */\nconst answer = 1;\n");
+  await writeFile(unknownPath, "/* first */\nconst answer = 1;\n");
+  try {
+    const { taskScenario, taskReview } = await openCompletedTaskForReview(page);
+    const viewer = taskReview.locator("caffold-review-file-viewer:not([hidden])");
+    const language = viewer.locator('.viewer-meta-popover [data-field="language"] dd');
+    const lineColors = () => viewer.locator(".code-row .line-code").evaluateAll((lines) =>
+      lines.map((line) => [...line.querySelectorAll("span")].map((span) => [
+        span.className,
+        span.textContent,
+      ])),
+    );
+
+    await page.goto(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=ignored-output/${script}`,
+    );
+    await expect(viewer.locator(".code-row")).toHaveCount(5);
+    const colors = await lineColors();
+    expect(colors.slice(0, 3)).toEqual([
+      [["syntax-comment", "/* first"]],
+      [["syntax-comment", "   middle"]],
+      [["syntax-comment", "   last */"]],
+    ]);
+    expect(colors[3]).toContainEqual(["syntax-keyword", "const"]);
+    await expect(language).toHaveText("JavaScript (Babel)");
+
+    await page.goto(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=ignored-output/${unknown}`,
+    );
+    await expect(viewer).toContainText("const answer = 1;");
+    await expect(viewer.locator(".code-row .line-code span")).toHaveCount(0);
+    await expect(language).toHaveText("Plain Text");
+  } finally {
+    await rm(scriptPath, { force: true });
+    await rm(unknownPath, { force: true });
+  }
+});
+
 test("File details Download measures the same as the Task details actions", { tag: "@all-viewports" }, async ({
   page,
 }) => {

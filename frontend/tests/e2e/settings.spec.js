@@ -3126,7 +3126,7 @@ test("applies extreme values to the retained Review code viewer", { tag: "@all-v
       size: 24,
       modifiedMs: null,
       content: "fn example() {}",
-      languageHint: "rust",
+      language: "Rust",
     });
     document.body.append(element);
     return element;

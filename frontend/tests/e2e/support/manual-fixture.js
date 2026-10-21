@@ -247,7 +247,7 @@ export async function installManualTasks(page, { runningCheckout = false } = {})
             name: path.split("/").at(-1),
             size: content.length,
             modifiedMs: MANUAL_NOW - 3 * 60_000,
-            languageHint: "markdown",
+            language: "Markdown",
             content,
           },
         });
@@ -377,6 +377,7 @@ export async function installManualRepository(page) {
         additions: file.additions,
         deletions: file.deletions,
         diff: file.diff,
+        syntaxSpans: file.syntaxSpans ?? null,
       },
     });
   });
@@ -427,6 +428,7 @@ export async function installManualRepository(page) {
         additions: file.additions,
         deletions: file.deletions,
         diff: file.diff,
+        syntaxSpans: file.syntaxSpans ?? null,
       },
     });
   });
@@ -1028,6 +1030,35 @@ const WORKING_TREE_FILES = [
       "   );",
       " }",
     ].join("\n"),
+    // The spans the server sends for this diff; see caffold/src/fs/syntax.rs.
+    syntaxSpans: [
+      null,
+      null,
+      null,
+      null,
+      null,
+      [[0,  6,  1],  [26,  4,  1],  [31,  18,  3]],
+      [[0,  6,  1],  [31,  4,  1],  [36,  23,  3]],
+      [[0,  6,  1],  [23,  4,  1],  [28,  15,  3]],
+      [[0,  6,  1],  [30,  4,  1],  [35,  17,  3]],
+      [],
+      [[0,  6,  1],  [7,  8,  1],  [16,  12,  4]],
+      [[2,  5,  1],  [28,  18,  4]],
+      [],
+      [[2,  6,  1]],
+      [[5,  4,  1],  [10,  9,  2],  [20,  10,  3]],
+      [[7,  2,  1],  [20,  2,  1]],
+      [[7,  2,  1],  [10,  9,  2],  [20,  16,  3],  [47,  2,  1]],
+      [[7,  14,  5]],
+      [[7,  7,  1],  [15,  15,  2],  [31,  18,  3]],
+      [[9,  2,  1],  [12,  2,  2],  [15,  18,  3],  [46,  2,  1]],
+      [[9,  11,  5],  [21,  5,  2],  [35,  8,  2]],
+      [[8,  7,  1]],
+      [[7,  19,  5]],
+      [[6,  4,  1]],
+      [],
+      [],
+    ],
   },
   {
     path: "src/settings/ThemePicker.tsx",
@@ -1121,6 +1152,19 @@ const COMPARE_FILES = [
       "+    onUploaded(await upload.result());",
       "   }",
     ].join("\n"),
+    syntaxSpans: [
+      null,
+      null,
+      null,
+      null,
+      [[2,  5,  1],  [8,  8,  1],  [17,  6,  4],  [30,  4,  5]],
+      [[4,  5,  1],  [21,  5,  1],  [27,  5,  4],  [33,  13,  3],  [58,  6,  3]],
+      [[4,  10,  4],  [15,  5,  1],  [30,  4,  4]],
+      [[4,  5,  1],  [19,  3,  1],  [23,  15,  4]],
+      [[4,  5,  1],  [17,  6,  4],  [24,  5,  1],  [37,  18,  4]],
+      [[4,  10,  4],  [15,  5,  1],  [28,  6,  4]],
+      [],
+    ],
   },
   {
     path: "src/settings/SettingsPage.tsx",
@@ -1128,6 +1172,7 @@ const COMPARE_FILES = [
     additions: 26,
     deletions: 17,
     diff: WORKING_TREE_FILES[0].diff,
+    syntaxSpans: WORKING_TREE_FILES[0].syntaxSpans,
   },
 ];
 

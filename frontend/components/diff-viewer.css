@@ -140,6 +140,30 @@ caffold-diff-viewer {
   & .diff-row-empty {
     color: var(--muted);
   }
+
+  & .syntax-comment {
+    color: var(--syntax-comment);
+  }
+
+  & .syntax-keyword {
+    color: var(--syntax-keyword);
+  }
+
+  & .syntax-literal {
+    color: var(--syntax-literal);
+  }
+
+  & .syntax-string {
+    color: var(--syntax-string);
+  }
+
+  & .syntax-title {
+    color: var(--syntax-title);
+  }
+
+  & .syntax-type {
+    color: var(--syntax-type);
+  }
 }
 
 @media (max-width: 520px) {

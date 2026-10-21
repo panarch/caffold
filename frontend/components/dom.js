@@ -6,28 +6,6 @@ const HTML_ESCAPE = {
   "'": "&#39;",
 };
 
-const LANGUAGE_LABELS = {
-  bash: "Shell",
-  c: "C",
-  cpp: "C++",
-  css: "CSS",
-  diff: "Diff",
-  go: "Go",
-  java: "Java",
-  javascript: "JavaScript",
-  json: "JSON",
-  kotlin: "Kotlin",
-  markdown: "Markdown",
-  python: "Python",
-  ruby: "Ruby",
-  rust: "Rust",
-  sql: "SQL",
-  toml: "TOML",
-  typescript: "TypeScript",
-  xml: "XML",
-  yaml: "YAML",
-};
-
 const IMAGE_TYPES = {
   avif: "AVIF image",
   gif: "GIF image",
@@ -81,10 +59,6 @@ export function formatModified(modifiedMs) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
-}
-
-export function languageLabel(language) {
-  return LANGUAGE_LABELS[language] ?? "Text";
 }
 
 export function isPreviewableImagePath(path) {

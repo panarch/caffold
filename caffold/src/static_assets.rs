@@ -28,6 +28,7 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "origin-reachability.js" => Some(js(include_str!("../../frontend/origin-reachability.js"))),
         "file-status.js" => Some(js(include_str!("../../frontend/file-status.js"))),
+        "syntax-spans.js" => Some(js(include_str!("../../frontend/syntax-spans.js"))),
         "chunked-fetch.js" => Some(js(include_str!("../../frontend/chunked-fetch.js"))),
         "chunked-fetch/cell-scheduler.js" => Some(js(include_str!(
             "../../frontend/chunked-fetch/cell-scheduler.js"
@@ -1848,6 +1849,7 @@ mod tests {
             "chunked-fetch/cell-scheduler.js",
             "chunked-fetch/in-flight-limit.js",
             "chunked-fetch/transfer.js",
+            "syntax-spans.js",
             "action-hints.js",
             "action-hints/control.js",
             "action-hints/model.js",

@@ -1619,6 +1619,20 @@ PDF, Word, PowerPoint, and Excel leaves used by review surfaces. Navigation,
 presentation, and filesystem-watch primitives stay shared while each active
 surface owns its selection and request lifetime.
 
+Source and diff text arrive colored. `/api/file` and the Git diff routes color
+it on the server with syntect and bat's syntax set (two-face), choosing a
+syntax by file name and then by first line, and send `syntaxSpans`: for each
+line, `[start, length, color]` spans in UTF-16 units, the color one of six
+(comment, keyword, literal, string, title, type). A diff's spans come from the
+same diff made with both files whole as its context, so a removed line is
+colored within the old file and an added or context line within the new one.
+Text stays uncolored when no syntax matches, when a line is longer than 5,000
+characters, when that whole-file diff exceeds 1 MiB, and in GitHub Pull Request
+diffs. `/api/file` also names the syntax in `language`, which File details shows
+as Language, "Plain Text" when none matches. `syntax-spans.js` turns a line and
+its spans into markup for both viewers, and each viewer's stylesheet gives the
+six classes their `--syntax-*` colors.
+
 ## Notes
 
 Notes lives inside Task Workspace. `notes/layout.js` defines

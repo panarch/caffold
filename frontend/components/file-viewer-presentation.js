@@ -2,7 +2,6 @@ import {
   fileNameFromPath,
   formatBytes,
   formatModified,
-  languageLabel,
 } from "./dom.js";
 import { fileStatusPresentation } from "../file-status.js";
 
@@ -21,12 +20,8 @@ export function sourceViewerPresentation(source = {}) {
           value: formatModified(source.modifiedMs) || "Unknown",
         }
       : null,
-    Object.hasOwn(source, "languageHint")
-      ? {
-          field: "language",
-          label: "Language",
-          value: languageLabel(source.languageHint),
-        }
+    Object.hasOwn(source, "language")
+      ? { field: "language", label: "Language", value: source.language }
       : null,
   ].filter(Boolean);
 

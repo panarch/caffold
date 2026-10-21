@@ -1,12 +1,8 @@
-import { escapeHtml } from "./dom.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../scroll-scope.js";
-
-const HIGHLIGHT_IMPORT = "https://esm.sh/highlight.js@11.11.1/lib/common";
-
-let highlighterPromise;
+import { syntaxLineHtml } from "../syntax-spans.js";
 
 class CaffoldCodeViewer extends HTMLElement {
   setFile(file, options = {}) {
@@ -14,38 +10,16 @@ class CaffoldCodeViewer extends HTMLElement {
       options.scroll ?? (options.preserveScroll ? this.captureScroll() : null);
     const line = normalizeLine(options.line);
     this.file = file;
-    this.renderPlain();
+    this.render();
     this.restorePosition(scroll, line);
-    this.renderHighlighted(scroll, line);
   }
 
-  renderPlain() {
+  render() {
     this.innerHTML = `
-      <section class="code-viewer" data-highlighted="false">
-        ${renderCodeLines(escapeHtml(this.file.content), this.file.content)}
+      <section class="code-viewer">
+        ${renderCodeLines(this.file)}
       </section>
     `;
-  }
-
-  async renderHighlighted(scroll = null, line = null) {
-    const renderToken = Symbol("highlight");
-    this.renderToken = renderToken;
-
-    try {
-      const highlighted = await highlightCode(this.file.content, this.file.languageHint);
-      if (this.renderToken !== renderToken) {
-        return;
-      }
-
-      this.innerHTML = `
-        <section class="code-viewer" data-highlighted="true">
-          ${renderCodeLines(highlighted, this.file.content)}
-        </section>
-      `;
-      this.restorePosition(scroll, line);
-    } catch {
-      // CDN import is an enhancement. The plain renderer above remains valid.
-    }
   }
 
   captureScroll() {
@@ -143,30 +117,9 @@ class CaffoldCodeViewer extends HTMLElement {
   }
 }
 
-async function highlightCode(code, language) {
-  const hljs = await getHighlighter();
-
-  if (language && hljs.getLanguage?.(language)) {
-    return hljs.highlight(code, {
-      language,
-      ignoreIllegals: true,
-    }).value;
-  }
-
-  return hljs.highlightAuto(code).value;
-}
-
-async function getHighlighter() {
-  if (!highlighterPromise) {
-    highlighterPromise = import(HIGHLIGHT_IMPORT).then((module) => module.default ?? module);
-  }
-
-  return highlighterPromise;
-}
-
-function renderCodeLines(html, rawContent) {
-  const codeWidth = `${codeColumns(rawContent)}ch`;
-  const lineNumberColumns = `${lineNumberDigits(rawContent)}ch`;
+function renderCodeLines(file) {
+  const codeWidth = `${codeColumns(file.content)}ch`;
+  const lineNumberColumns = `${lineNumberDigits(file.content)}ch`;
 
   return `
     <div
@@ -177,18 +130,19 @@ function renderCodeLines(html, rawContent) {
     >
       <div class="code-gutter-backdrop" aria-hidden="true"></div>
       <div class="code-table" style="--code-content-width: ${codeWidth};">
-        ${renderLines(html)}
+        ${renderLines(file)}
       </div>
     </div>
   `;
 }
 
-function renderLines(html) {
-  const lines = html.split(/\r?\n/);
+function renderLines(file) {
+  const lines = file.content.split(/\r?\n/);
 
   return lines
     .map((line, index) => {
-      const content = line.length === 0 ? "&nbsp;" : line;
+      const content =
+        line.length === 0 ? "&nbsp;" : syntaxLineHtml(line, file.syntaxSpans?.[index]);
       return `
         <div class="code-row" data-line-number="${index + 1}">
           <span class="line-number">${index + 1}</span>

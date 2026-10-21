@@ -75,8 +75,15 @@ async fn file(
     Query(query): Query<PathQuery>,
     request: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let file = state.fs.open_text(&query.path)?;
-    viewer_response(&request, file.version(), || file.read().map(Json))
+    // Reading colors the file, which takes a noticeable share of a second for
+    // a large one, so it runs on the blocking pool.
+    let fs = state.fs.clone();
+    tokio::task::spawn_blocking(move || {
+        let file = fs.open_text(&query.path)?;
+        viewer_response(&request, file.version(), || file.read().map(Json))
+    })
+    .await
+    .map_err(|error| ApiError::Internal(format!("File read task failed: {error}")))?
 }
 
 async fn image(
@@ -318,6 +325,26 @@ mod tests {
             let body = to_bytes(held.into_body(), 1024).await.unwrap();
             assert!(body.is_empty(), "{uri}");
         }
+    }
+
+    #[tokio::test]
+    async fn a_text_file_is_sent_with_its_language_and_colors() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("main.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(root.path().join("notes.unknownext"), "fn main() {}\n").unwrap();
+
+        let rust = request(app(root.path()), "/api/file?path=main.rs").await;
+        let unknown = request(app(root.path()), "/api/file?path=notes.unknownext").await;
+
+        assert_eq!(rust.status(), StatusCode::OK);
+        let rust: serde_json::Value =
+            serde_json::from_slice(&to_bytes(rust.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(rust["language"], "Rust");
+        assert_eq!(rust["syntaxSpans"][0][0], serde_json::json!([0, 2, 1]));
+        let unknown: serde_json::Value =
+            serde_json::from_slice(&to_bytes(unknown.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(unknown["language"], "Plain Text");
+        assert_eq!(unknown["syntaxSpans"], serde_json::Value::Null);
     }
 
     #[tokio::test]

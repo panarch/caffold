@@ -27,6 +27,7 @@ const APP_SHELL_ASSETS = [
   "/assets/component-styles/busy-spin.css",
   "/assets/origin-reachability.js",
   "/assets/file-status.js",
+  "/assets/syntax-spans.js",
   "/assets/chunked-fetch.js",
   "/assets/chunked-fetch/cell-scheduler.js",
   "/assets/chunked-fetch/in-flight-limit.js",

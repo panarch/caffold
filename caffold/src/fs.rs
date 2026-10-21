@@ -1,4 +1,5 @@
 mod read;
+mod syntax;
 
 use std::{
     env, fs, io,
@@ -445,6 +446,8 @@ pub struct GitDiffResponse {
     pub additions: Option<u64>,
     pub deletions: Option<u64>,
     pub diff: String,
+    /// Colored spans for each line of `diff`; see `syntax::diff_syntax_spans`.
+    pub syntax_spans: Option<Vec<Option<syntax::LineSpans>>>,
 }
 
 #[derive(Debug, Error)]
@@ -855,6 +858,15 @@ impl RootedFs {
             })?;
         let (additions, deletions) = optional_diff_stats(stats);
         let kind = format!("commit {}", short_commit_label(commit_sha));
+        let syntax_spans = git::commit_whole_file_diff(
+            &repository,
+            commit_sha,
+            &repo_relative_path,
+            MAX_FILE_BYTES,
+        )
+        .and_then(|whole_file| {
+            syntax::diff_syntax_spans(Path::new(&repo_relative_path), &diff, &whole_file)
+        });
 
         Ok(GitDiffResponse {
             repository: repository_info,
@@ -864,6 +876,7 @@ impl RootedFs {
             additions,
             deletions,
             diff,
+            syntax_spans,
         })
     }
 
@@ -943,6 +956,11 @@ impl RootedFs {
                 }
             })?;
         let (additions, deletions) = optional_diff_stats(stats);
+        let syntax_spans =
+            git::compare_whole_file_diff(&repository, &refs, &repo_relative_path, MAX_FILE_BYTES)
+                .and_then(|whole_file| {
+                    syntax::diff_syntax_spans(Path::new(&repo_relative_path), &diff, &whole_file)
+                });
 
         Ok(GitDiffResponse {
             repository: repository_info,
@@ -952,6 +970,7 @@ impl RootedFs {
             additions,
             deletions,
             diff,
+            syntax_spans,
         })
     }
 
@@ -1340,6 +1359,12 @@ impl RootedFs {
             }
         })?;
         let (additions, deletions) = optional_diff_stats(stats);
+        let syntax_spans =
+            git::whole_file_diff(&repository, &repo_relative_path, kind, MAX_FILE_BYTES).and_then(
+                |whole_file| {
+                    syntax::diff_syntax_spans(Path::new(&repo_relative_path), &diff, &whole_file)
+                },
+            );
 
         Ok(GitDiffResponse {
             repository: repository_info,
@@ -1349,6 +1374,7 @@ impl RootedFs {
             additions,
             deletions,
             diff,
+            syntax_spans,
         })
     }
 
@@ -2164,6 +2190,73 @@ mod tests {
             (Some(2), Some(0))
         );
         assert_eq!((binary.additions, binary.deletions), (None, None));
+    }
+
+    #[test]
+    fn colors_each_diff_up_to_the_viewer_limit() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        fs::create_dir(&repo_path).unwrap();
+        git(&repo_path, &["init", "-b", "main"]);
+        fs::write(repo_path.join("sample.rs"), "fn old() {}\n").unwrap();
+        git(&repo_path, &["add", "sample.rs"]);
+        commit(&repo_path, "Add sample");
+        git(
+            &repo_path,
+            &["update-ref", "refs/remotes/origin/main", "HEAD"],
+        );
+        git(&repo_path, &["checkout", "-b", "feature"]);
+        fs::write(repo_path.join("sample.rs"), "fn new() {}\n").unwrap();
+        git(&repo_path, &["add", "sample.rs"]);
+        commit(&repo_path, "Rename sample");
+        fs::write(repo_path.join("sample.rs"), "fn newer() {}\n").unwrap();
+        let filler = "// one line of a file larger than a viewer shows\n";
+        let big = filler.repeat(MAX_FILE_BYTES as usize / filler.len() + 1);
+        fs::write(repo_path.join("big.rs"), big).unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let sha = rooted.git_log("repo", 1, 1).unwrap().commits[0].sha.clone();
+        let diffs = [
+            rooted
+                .git_diff("repo", "repo/sample.rs", "unstaged")
+                .unwrap(),
+            rooted
+                .git_commit_diff("repo", &sha, "repo/sample.rs")
+                .unwrap(),
+            rooted
+                .git_compare_diff(
+                    "repo",
+                    Some("origin/main"),
+                    Some("feature"),
+                    "repo/sample.rs",
+                )
+                .unwrap(),
+        ];
+        let big_diff = rooted.git_diff("repo", "repo/big.rs", "untracked").unwrap();
+
+        let keyword = 1;
+        for response in &diffs {
+            let lines: Vec<&str> = response.diff.split('\n').collect();
+            let spans = response.syntax_spans.as_ref().unwrap();
+            assert_eq!(spans.len(), lines.len());
+            let added = lines
+                .iter()
+                .position(|line| line.starts_with("+fn"))
+                .unwrap();
+            let removed = lines
+                .iter()
+                .position(|line| line.starts_with("-fn"))
+                .unwrap();
+            assert_eq!(spans[added].as_ref().unwrap()[0], [0, 2, keyword]);
+            assert_eq!(spans[removed].as_ref().unwrap()[0], [0, 2, keyword]);
+            assert_eq!(spans[0], None);
+        }
+        assert!(big_diff.diff.len() as u64 > MAX_FILE_BYTES);
+        assert_eq!(big_diff.syntax_spans, None);
     }
 
     #[test]

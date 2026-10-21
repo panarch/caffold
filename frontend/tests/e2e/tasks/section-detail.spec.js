@@ -916,7 +916,7 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
         name: "README.md",
         size: markdownContent.length,
         modifiedMs: null,
-        languageHint: "markdown",
+        language: "Markdown",
         content: markdownContent,
       },
     });

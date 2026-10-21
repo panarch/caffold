@@ -15,7 +15,10 @@ use std::{
 
 use serde::Serialize;
 
-use super::{FsError, ResolvedPath, RootedFs, modified_ms, relative_path_string};
+use super::{
+    FsError, ResolvedPath, RootedFs, modified_ms, relative_path_string,
+    syntax::{self, LineSpans},
+};
 
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 pub const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
@@ -28,8 +31,9 @@ pub struct FileResponse {
     pub name: String,
     pub size: u64,
     pub modified_ms: Option<u64>,
-    pub language_hint: Option<String>,
+    pub language: String,
     pub content: String,
+    pub syntax_spans: Option<Vec<LineSpans>>,
 }
 
 /// A file a viewer shows as bytes, with the Content-Type its extension names.
@@ -99,13 +103,15 @@ impl OpenedText {
         let content = String::from_utf8(file.bytes).map_err(|_| FsError::InvalidUtf8 {
             path: file.requested_path,
         })?;
+        let syntax = syntax::file_syntax(&file.resolved.logical, &content);
         Ok(FileResponse {
             path: relative_path_string(&file.resolved.logical),
             name: display_name(&file.resolved),
             size: file.metadata.len(),
             modified_ms: modified_ms(&file.metadata),
-            language_hint: language_hint(&file.resolved.logical),
+            language: syntax.language,
             content,
+            syntax_spans: syntax.spans,
         })
     }
 }
@@ -285,34 +291,6 @@ fn document_content_type(path: &Path) -> Option<&'static str> {
     }
 }
 
-fn language_hint(path: &Path) -> Option<String> {
-    let extension = path.extension()?.to_string_lossy().to_lowercase();
-    let language = match extension.as_str() {
-        "c" | "h" => "c",
-        "cc" | "cpp" | "cxx" | "hpp" => "cpp",
-        "css" => "css",
-        "go" => "go",
-        "html" | "htm" => "xml",
-        "java" => "java",
-        "js" | "mjs" | "cjs" => "javascript",
-        "json" => "json",
-        "kt" | "kts" => "kotlin",
-        "md" | "markdown" => "markdown",
-        "py" => "python",
-        "rb" => "ruby",
-        "rs" => "rust",
-        "sh" | "bash" | "zsh" => "bash",
-        "sql" => "sql",
-        "toml" => "toml",
-        "ts" | "tsx" => "typescript",
-        "xml" => "xml",
-        "yaml" | "yml" => "yaml",
-        _ => return None,
-    };
-
-    Some(language.to_string())
-}
-
 fn image_content_type(path: &Path) -> Option<&'static str> {
     let extension = path.extension()?.to_string_lossy().to_lowercase();
     match extension.as_str() {
@@ -444,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_text_with_its_language_hint() {
+    fn reads_text_with_its_language_and_colors() {
         let temp = tempfile::tempdir().unwrap();
         fs::create_dir(temp.path().join("src")).unwrap();
         fs::write(temp.path().join("src/main.rs"), "fn main() {}\n").unwrap();
@@ -455,8 +433,9 @@ mod tests {
         assert_eq!(file.path, "src/main.rs");
         assert_eq!(file.name, "main.rs");
         assert_eq!(file.size, 13);
-        assert_eq!(file.language_hint.as_deref(), Some("rust"));
+        assert_eq!(file.language, "Rust");
         assert_eq!(file.content, "fn main() {}\n");
+        assert_eq!(file.syntax_spans.as_ref().map(Vec::len), Some(1));
     }
 
     #[test]

@@ -81,38 +81,27 @@ caffold-code-viewer {
     padding: 0 0.75rem;
   }
 
-  & .hljs-comment,
-  & .hljs-quote {
+  & .syntax-comment {
     color: var(--syntax-comment);
   }
 
-  & .hljs-keyword,
-  & .hljs-selector-tag,
-  & .hljs-subst {
+  & .syntax-keyword {
     color: var(--syntax-keyword);
   }
 
-  & .hljs-literal,
-  & .hljs-number,
-  & .hljs-tag .hljs-attr,
-  & .hljs-template-variable,
-  & .hljs-variable {
+  & .syntax-literal {
     color: var(--syntax-literal);
   }
 
-  & .hljs-doctag,
-  & .hljs-string {
+  & .syntax-string {
     color: var(--syntax-string);
   }
 
-  & .hljs-section,
-  & .hljs-selector-id,
-  & .hljs-title {
+  & .syntax-title {
     color: var(--syntax-title);
   }
 
-  & .hljs-type,
-  & .hljs-class .hljs-title {
+  & .syntax-type {
     color: var(--syntax-type);
   }
 }

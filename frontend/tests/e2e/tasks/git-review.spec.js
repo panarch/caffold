@@ -113,6 +113,7 @@ async function installTaskGitFixture(
     largeLog = false,
     longDiff = false,
     mockFetch = true,
+    mockGit = true,
     logTotalPages = 1,
   } = {},
 ) {
@@ -235,6 +236,9 @@ async function installTaskGitFixture(
         },
       }),
     );
+  }
+  if (!mockGit) {
+    return counts;
   }
   await page.route(/\/api\/git\/refs(?:\?|$)/, (route) => {
     counts.refs += 1;
@@ -1510,6 +1514,108 @@ test("connects the Fetch control to the actual backend Git boundary", { tag: "@a
     rmSync(scenario.root, { recursive: true, force: true });
   }
 });
+
+test("colors a Compare diff from the repository's whole files", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  const scenario = createSyntaxScenario(testInfo.project.name);
+  try {
+    await installTaskGitFixture(
+      page,
+      [taskRecord(THREAD_ID, { rootPath: scenario.rootPath, branch: "feature" })],
+      { rootPath: scenario.rootPath, branch: "feature", mockGit: false },
+    );
+    await page.goto(`/tasks/${THREAD_ID}/git/compare?base=main&head=feature&file=example.js`);
+
+    await expectSyntaxScenarioColors(
+      page.locator("caffold-git-compare-page caffold-review-file-viewer:not([hidden]) caffold-diff-viewer"),
+    );
+  } finally {
+    await page.goto("about:blank");
+    rmSync(scenario.root, { recursive: true, force: true });
+  }
+});
+
+test("colors a commit diff from the repository's whole files", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  const scenario = createSyntaxScenario(testInfo.project.name);
+  try {
+    await installTaskGitFixture(
+      page,
+      [taskRecord(THREAD_ID, { rootPath: scenario.rootPath, branch: "feature" })],
+      { rootPath: scenario.rootPath, branch: "feature", mockGit: false },
+    );
+    await page.goto(`/tasks/${THREAD_ID}/git/log?sha=${scenario.sha}&file=example.js`);
+
+    await expectSyntaxScenarioColors(
+      page.locator("caffold-git-log-commit-page caffold-review-file-viewer:not([hidden]) caffold-diff-viewer"),
+    );
+  } finally {
+    await page.goto("about:blank");
+    rmSync(scenario.root, { recursive: true, force: true });
+  }
+});
+
+// A change in the middle of a block comment, so the diff's hunk starts inside
+// the comment, and a change to the code after it.
+function createSyntaxScenario(projectName) {
+  const root = mkdtempSync(resolve(FIXTURE_HOME, `.git-syntax-${projectName}-`));
+  const repo = resolve(root, "repo");
+  mkdirSync(repo);
+  const comment = Array.from({ length: 12 }, (_, index) => ` * line ${index + 1}\n`).join("");
+  const original = `/**\n${comment} */\nexport const answer = 1;\n`;
+  git(repo, ["init"]);
+  writeFileSync(resolve(repo, "example.js"), original);
+  git(repo, ["add", "example.js"]);
+  gitCommit(repo, "Add example");
+  git(repo, ["branch", "-M", "main"]);
+  git(repo, ["checkout", "-b", "feature"]);
+  writeFileSync(
+    resolve(repo, "example.js"),
+    original.replace(" * line 9\n", " * line nine\n").replace("answer = 1", "answer = 2"),
+  );
+  git(repo, ["add", "example.js"]);
+  gitCommit(repo, "Revise example");
+  return {
+    root,
+    rootPath: relative(FIXTURE_HOME, repo).split("\\").join("/"),
+    sha: execFileSync("git", ["-C", repo, "rev-parse", "HEAD"]).toString().trim(),
+  };
+}
+
+async function expectSyntaxScenarioColors(diffViewer) {
+  await expect(diffViewer).toContainText("line nine");
+  const rows = await diffViewer.locator(".diff-row").evaluateAll((elements) =>
+    elements.map((row) => ({
+      type: row.className.match(/diff-row-(\w+)/)[1],
+      text: row.querySelector(".diff-code").textContent,
+      colors: [...row.querySelectorAll(".diff-code span")].map((span) => [
+        span.className,
+        span.textContent,
+      ]),
+    })),
+  );
+  const commentRows = rows.filter(({ text }) => text.startsWith(" * line"));
+  expect(commentRows.map(({ type, text }) => `${type} ${text}`)).toEqual([
+    "context  * line 6",
+    "context  * line 7",
+    "context  * line 8",
+    "removed  * line 9",
+    "added  * line nine",
+    "context  * line 10",
+    "context  * line 11",
+    "context  * line 12",
+  ]);
+  for (const { text, colors } of commentRows) {
+    expect(colors).toEqual([["syntax-comment", text]]);
+  }
+  const added = rows.find(({ type, text }) => type === "added" && text.includes("answer"));
+  expect(added.colors).toContainEqual(["syntax-keyword", "export"]);
+  expect(added.colors).toContainEqual(["syntax-keyword", "const"]);
+  expect(rows.filter(({ type }) => type === "hunk").every(({ colors }) => colors.length === 0))
+    .toBe(true);
+}
 
 test("exposes every Git fetch failure through the native Fetch tooltip", { tag: "@all-viewports" }, async ({ page }) => {
   const counts = await installTaskGitFixture(page);
