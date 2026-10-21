@@ -132,8 +132,8 @@
 @import "./pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css";
-@import "./components/code-viewer.css";
-@import "./components/diff-viewer.css";
+@import "./components/file-viewer/components/code-viewer.css";
+@import "./components/file-viewer/components/diff-viewer.css";
 
 @font-face {
   font-family: "Caffold Geist Sans";

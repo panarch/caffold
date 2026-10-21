@@ -111,7 +111,7 @@ fn is_long_line(line: &str) -> bool {
 }
 
 /// The six colors the viewers have. Their numbers are the order in which
-/// `frontend/syntax-spans.js` names its classes.
+/// `frontend/components/file-viewer/syntax-spans.js` names its classes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SyntaxColor {
     Comment = 0,

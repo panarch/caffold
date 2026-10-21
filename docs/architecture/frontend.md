@@ -1629,9 +1629,9 @@ colored within the old file and an added or context line within the new one.
 Text stays uncolored when no syntax matches, when a line is longer than 5,000
 characters, when that whole-file diff exceeds 1 MiB, and in GitHub Pull Request
 diffs. `/api/file` also names the syntax in `language`, which File details shows
-as Language, "Plain Text" when none matches. `syntax-spans.js` turns a line and
-its spans into markup for both viewers, and each viewer's stylesheet gives the
-six classes their `--syntax-*` colors.
+as Language, "Plain Text" when none matches. The file viewer's `syntax-spans.js`
+turns a line and its spans into markup for both viewers, and each viewer's
+stylesheet gives the six classes their `--syntax-*` colors.
 
 ## Notes
 

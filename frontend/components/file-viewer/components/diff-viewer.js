@@ -1,8 +1,8 @@
-import { escapeHtml } from "./dom.js";
+import { escapeHtml } from "../../dom.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../scroll-scope.js";
+} from "#app/scroll-scope.js";
 import { syntaxLineHtml } from "../syntax-spans.js";
 
 const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/;

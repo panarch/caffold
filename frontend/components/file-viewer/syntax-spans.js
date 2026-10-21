@@ -1,4 +1,4 @@
-import { escapeHtml } from "./components/dom.js";
+import { escapeHtml } from "../dom.js";
 
 // The server colors source text and sends each line's spans as
 // `[start, length, color]` in UTF-16 units. The color numbers follow

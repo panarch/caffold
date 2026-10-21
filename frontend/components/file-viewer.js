@@ -24,8 +24,8 @@ import {
   popoverScrollSurfaceScope,
 } from "../keyboard-navigation.js";
 import "../keyboard-navigation/components/presentation.js";
-import "./code-viewer.js";
-import "./diff-viewer.js";
+import "./file-viewer/components/code-viewer.js";
+import "./file-viewer/components/diff-viewer.js";
 import "./docx-viewer.js";
 import "./loading-text.js";
 import "./markdown-preview.js";

@@ -13,8 +13,8 @@ const registeredStyles = [
   "component-styles/busy-spin.css",
 ];
 const ownership = new Map([
-  ["components/code-viewer.css", ["caffold-code-viewer"]],
-  ["components/diff-viewer.css", ["caffold-diff-viewer"]],
+  ["components/file-viewer/components/code-viewer.css", ["caffold-code-viewer"]],
+  ["components/file-viewer/components/diff-viewer.css", ["caffold-diff-viewer"]],
   ["components/file-navigator.css", ["caffold-file-navigator"]],
   ["components/file-navigator/list.css", ["caffold-file-list"]],
   ["components/file-tree.css", ["caffold-file-tree"]],

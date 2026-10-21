@@ -1,7 +1,7 @@
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../scroll-scope.js";
+} from "#app/scroll-scope.js";
 import { syntaxLineHtml } from "../syntax-spans.js";
 
 class CaffoldCodeViewer extends HTMLElement {

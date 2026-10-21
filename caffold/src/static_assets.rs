@@ -28,7 +28,6 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "origin-reachability.js" => Some(js(include_str!("../../frontend/origin-reachability.js"))),
         "file-status.js" => Some(js(include_str!("../../frontend/file-status.js"))),
-        "syntax-spans.js" => Some(js(include_str!("../../frontend/syntax-spans.js"))),
         "chunked-fetch.js" => Some(js(include_str!("../../frontend/chunked-fetch.js"))),
         "chunked-fetch/cell-scheduler.js" => Some(js(include_str!(
             "../../frontend/chunked-fetch/cell-scheduler.js"
@@ -1430,18 +1429,21 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js"
             )))
         }
-        "components/code-viewer.css" => Some(css(include_str!(
-            "../../frontend/components/code-viewer.css"
+        "components/file-viewer/components/code-viewer.css" => Some(css(include_str!(
+            "../../frontend/components/file-viewer/components/code-viewer.css"
         ))),
-        "components/code-viewer.js" => {
-            Some(js(include_str!("../../frontend/components/code-viewer.js")))
-        }
-        "components/diff-viewer.css" => Some(css(include_str!(
-            "../../frontend/components/diff-viewer.css"
+        "components/file-viewer/components/code-viewer.js" => Some(js(include_str!(
+            "../../frontend/components/file-viewer/components/code-viewer.js"
         ))),
-        "components/diff-viewer.js" => {
-            Some(js(include_str!("../../frontend/components/diff-viewer.js")))
-        }
+        "components/file-viewer/components/diff-viewer.css" => Some(css(include_str!(
+            "../../frontend/components/file-viewer/components/diff-viewer.css"
+        ))),
+        "components/file-viewer/components/diff-viewer.js" => Some(js(include_str!(
+            "../../frontend/components/file-viewer/components/diff-viewer.js"
+        ))),
+        "components/file-viewer/syntax-spans.js" => Some(js(include_str!(
+            "../../frontend/components/file-viewer/syntax-spans.js"
+        ))),
         "components/dom.js" => Some(js(include_str!("../../frontend/components/dom.js"))),
         "components/file-viewer.css" => Some(css(include_str!(
             "../../frontend/components/file-viewer.css"
@@ -1849,7 +1851,7 @@ mod tests {
             "chunked-fetch/cell-scheduler.js",
             "chunked-fetch/in-flight-limit.js",
             "chunked-fetch/transfer.js",
-            "syntax-spans.js",
+            "components/file-viewer/syntax-spans.js",
             "action-hints.js",
             "action-hints/control.js",
             "action-hints/model.js",
