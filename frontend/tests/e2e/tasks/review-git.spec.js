@@ -911,6 +911,384 @@ test("refreshes Branch after returning from the background", { tag: "@viewport-i
   ).toHaveText("-0");
 });
 
+test("shows Branch loading where it said nothing changed until it is read again after returning", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await controlPageVisibility(page);
+  const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.cleanBranch = true;
+    },
+  });
+  await selectTaskReviewScope(tasksPage, "branch");
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await expect(compareTree).toContainText("No changes compared with origin/main.");
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await taskReview
+    .locator('caffold-file-navigator button[data-file-tree-path="src/planner.rs"]')
+    .click();
+  await taskReview.getByRole("button", { name: "Changes", exact: true }).click();
+  await expect(viewer).toContainText("No changes in this scope.");
+
+  await leavePage(page);
+  reviewScenario.cleanBranch = false;
+  const comparesBefore = reviewScenario.gitCompareRequests;
+  const releaseCompare = reviewScenario.holdCompare("origin/main");
+  try {
+    await returnToPage(page);
+    await expect.poll(() => reviewScenario.gitCompareRequests).toBe(comparesBefore + 1);
+    await expect(compareTree).toContainText("Loading compare...");
+    await expect(compareTree.locator(".compare-file-count")).toHaveText("");
+    await expect(viewer.locator(".loading-panel")).toHaveCount(1);
+    await expect(viewer).not.toContainText("No changes in this scope.");
+  } finally {
+    releaseCompare();
+  }
+  await expect(
+    compareTree.locator('button[data-file-tree-path="src/planner.rs"]'),
+  ).toBeVisible();
+  await expect(viewer).toContainText("new branch behavior");
+});
+
+test("reads Branch again when it is chosen after returning on Working Tree", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await controlPageVisibility(page);
+  const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.cleanBranch = true;
+    },
+  });
+  await selectTaskReviewScope(tasksPage, "branch");
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  await expect(compareTree).toContainText("No changes compared with origin/main.");
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await expect(
+    taskReview.locator('caffold-git-diff-changes-tree button[data-file-tree-kind="file"]'),
+  ).toHaveCount(4);
+
+  await leavePage(page);
+  reviewScenario.cleanBranch = false;
+  const statusBefore = reviewScenario.gitStatusRequests;
+  await returnToPage(page);
+  await expect.poll(() => reviewScenario.gitStatusRequests).toBe(statusBefore + 1);
+
+  const refsBefore = reviewScenario.gitRefsRequests;
+  const comparesBefore = reviewScenario.gitCompareRequests;
+  const releaseCompare = reviewScenario.holdCompare("origin/main");
+  try {
+    await selectTaskReviewScope(tasksPage, "branch");
+    await expect.poll(() => reviewScenario.gitCompareRequests).toBe(comparesBefore + 1);
+    expect(reviewScenario.gitRefsRequests).toBe(refsBefore + 1);
+    await expect(compareTree).toContainText("Loading compare...");
+  } finally {
+    releaseCompare();
+  }
+  await expect(
+    compareTree.locator('button[data-file-tree-path="src/planner.rs"]'),
+  ).toBeVisible();
+});
+
+test("reads Working Tree again when it is chosen after returning on Branch", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await controlPageVisibility(page);
+  const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.cleanWorkingTree = true;
+    },
+  });
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const changes = taskReview.locator("caffold-git-diff-changes-tree");
+  const reviewBranch = taskReview.getByRole("button", { name: "Review branch changes" });
+  await expect(changes).toContainText("No changes.");
+  await expect(reviewBranch).toBeVisible();
+  await selectTaskReviewScope(tasksPage, "branch");
+  await expect(
+    taskReview.locator('caffold-git-compare-tree button[data-file-tree-path="src/planner.rs"]'),
+  ).toBeVisible();
+
+  await leavePage(page);
+  reviewScenario.cleanWorkingTree = false;
+  const comparesBefore = reviewScenario.gitCompareRequests;
+  await returnToPage(page);
+  await expect.poll(() => reviewScenario.gitCompareRequests).toBe(comparesBefore + 1);
+
+  const statusBefore = reviewScenario.gitStatusRequests;
+  const releaseStatus = reviewScenario.holdStatus();
+  try {
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    await expect.poll(() => reviewScenario.gitStatusRequests).toBe(statusBefore + 1);
+    await expect(changes).toContainText("Loading changes...");
+    await expect(reviewBranch).toBeHidden();
+  } finally {
+    releaseStatus();
+  }
+  await expect(changes.locator('button[data-file-tree-kind="file"]')).toHaveCount(4);
+  await expect(reviewBranch).toBeHidden();
+});
+
+test("updates the loading viewer when a watch change replaces the Working Tree read after returning", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await controlPageVisibility(page);
+  const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.cleanWorkingTree = true;
+    },
+  });
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await expect(taskReview.locator("caffold-git-diff-changes-tree")).toContainText("No changes.");
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await taskReview
+    .locator('caffold-file-navigator button[data-file-tree-path="src/planner.rs"]')
+    .click();
+  await taskReview.getByRole("button", { name: "Changes", exact: true }).click();
+  await expect(viewer).toContainText("No changes in this scope.");
+
+  await leavePage(page);
+  reviewScenario.cleanWorkingTree = false;
+  const statusBefore = reviewScenario.gitStatusRequests;
+  const releaseStatus = reviewScenario.holdStatus();
+  try {
+    await returnToPage(page);
+    await expect.poll(() => reviewScenario.gitStatusRequests).toBe(statusBefore + 1);
+    await expect(viewer.locator(".loading-panel")).toHaveCount(1);
+    await emitGitStatusChanged(page, ["src/other.rs"]);
+    await expect.poll(() => reviewScenario.gitStatusRequests).toBe(statusBefore + 2);
+  } finally {
+    releaseStatus();
+  }
+  await expect(viewer).toContainText("new planner behavior");
+  await expect(viewer.locator(".loading-panel")).toHaveCount(0);
+});
+
+test("shows Branch loading, not the last error, while a failed reread is read again", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await controlPageVisibility(page);
+  const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.cleanBranch = true;
+    },
+  });
+  await selectTaskReviewScope(tasksPage, "branch");
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await expect(compareTree).toContainText("No changes compared with origin/main.");
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await taskReview
+    .locator('caffold-file-navigator button[data-file-tree-path="src/planner.rs"]')
+    .click();
+  await taskReview.getByRole("button", { name: "Changes", exact: true }).click();
+  await expect(viewer).toContainText("No changes in this scope.");
+
+  await leavePage(page);
+  reviewScenario.failNextCompare = true;
+  await returnToPage(page);
+  await expect(viewer.locator(".error-panel")).toContainText("fixture compare unavailable");
+
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await expect(viewer).toContainText("new planner behavior");
+  const comparesBefore = reviewScenario.gitCompareRequests;
+  const releaseCompare = reviewScenario.holdCompare("origin/main");
+  try {
+    await selectTaskReviewScope(tasksPage, "branch");
+    await expect.poll(() => reviewScenario.gitCompareRequests).toBe(comparesBefore + 1);
+    await expect(viewer.locator(".loading-panel")).toHaveCount(1);
+    await expect(viewer.locator(".error-panel")).toHaveCount(0);
+  } finally {
+    releaseCompare();
+  }
+  await expect(viewer).toContainText("No changes in this scope.");
+});
+
+test("keeps the Working Tree loading text while another reread starts", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await controlPageVisibility(page);
+  const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.cleanWorkingTree = true;
+    },
+  });
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const changes = taskReview.locator("caffold-git-diff-changes-tree");
+  await expect(changes).toContainText("No changes.");
+
+  await leavePage(page);
+  const statusBefore = reviewScenario.gitStatusRequests;
+  const releaseStatus = reviewScenario.holdStatus();
+  try {
+    await returnToPage(page);
+    await expect.poll(() => reviewScenario.gitStatusRequests).toBe(statusBefore + 1);
+    const loadingText = changes.locator("caffold-loading-text");
+    await expect(loadingText).toHaveText("Loading changes...");
+    await loadingText.evaluate((element) => {
+      window.__workingTreeLoadingText = element;
+    });
+    await emitGitStatusChanged(page, ["src/other.rs"]);
+    await expect.poll(() => reviewScenario.gitStatusRequests).toBe(statusBefore + 2);
+    expect(
+      await changes.evaluate(
+        (tree) => tree.querySelector("caffold-loading-text") === window.__workingTreeLoadingText,
+      ),
+    ).toBe(true);
+  } finally {
+    releaseStatus();
+  }
+  await expect(changes).toContainText("No changes.");
+});
+
+test("shows the error where Branch was loading when reading it again fails", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await controlPageVisibility(page);
+  const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.cleanBranch = true;
+    },
+  });
+  await selectTaskReviewScope(tasksPage, "branch");
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await expect(compareTree).toContainText("No changes compared with origin/main.");
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await taskReview
+    .locator('caffold-file-navigator button[data-file-tree-path="src/planner.rs"]')
+    .click();
+  await taskReview.getByRole("button", { name: "Changes", exact: true }).click();
+  await expect(viewer).toContainText("No changes in this scope.");
+
+  await leavePage(page);
+  reviewScenario.failNextCompare = true;
+  await returnToPage(page);
+  await expect(taskReview.locator(".task-review-error")).toHaveText(
+    "Branch comparison update failed: fixture compare unavailable",
+  );
+  await expect(compareTree).toContainText("fixture compare unavailable");
+  await expect(compareTree).not.toContainText("No changes compared with origin/main.");
+  await expect(viewer.locator(".error-panel")).toContainText("fixture compare unavailable");
+  await expect(viewer).not.toContainText("No changes in this scope.");
+});
+
+test("shows the error where Working Tree was loading when reading it again fails", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await controlPageVisibility(page);
+  const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.cleanWorkingTree = true;
+    },
+  });
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const changes = taskReview.locator("caffold-git-diff-changes-tree");
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await expect(changes).toContainText("No changes.");
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await taskReview
+    .locator('caffold-file-navigator button[data-file-tree-path="src/planner.rs"]')
+    .click();
+  await taskReview.getByRole("button", { name: "Changes", exact: true }).click();
+  await expect(viewer).toContainText("No changes in this scope.");
+
+  await leavePage(page);
+  reviewScenario.failNextGitStatus = true;
+  await returnToPage(page);
+  await expect(taskReview.locator(".task-review-error")).toHaveText(
+    "Working tree update failed: fixture status unavailable",
+  );
+  await expect(changes).toContainText("fixture status unavailable");
+  await expect(changes).not.toContainText("No changes.");
+  await expect(taskReview.getByRole("button", { name: "Review branch changes" })).toBeHidden();
+  await expect(viewer.locator(".error-panel")).toContainText("fixture status unavailable");
+  await expect(viewer).not.toContainText("No changes in this scope.");
+});
+
+test("keeps the open Branch diff where it was when Branch is read again", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.branchDiffText = longDiffText("branch line");
+    },
+  });
+  await selectTaskReviewScope(tasksPage, "branch");
+  await taskReview
+    .locator('caffold-git-compare-tree button[data-file-tree-path="src/planner.rs"]')
+    .click();
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await expect(viewer).toContainText("branch line 200");
+  const top = await scrollViewerAndWatchReload(viewer, "caffold-diff-viewer", ".diff-lines");
+
+  const diffsBefore = reviewScenario.gitCompareDiffRequests;
+  await emitGitRefsChanged(page);
+  await expect.poll(() => reviewScenario.gitCompareDiffRequests).toBe(diffsBefore + 1);
+  await expect
+    .poll(() => readViewerReload(viewer, "caffold-diff-viewer", ".diff-lines"))
+    .toEqual({ reloaded: true, loadingSeen: false, top });
+});
+
+test("keeps the open Working Tree diff where it was after returning", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await controlPageVisibility(page);
+  const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.workingDiffText = longDiffText("working line");
+    },
+  });
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await taskReview
+    .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
+    .click();
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await expect(viewer).toContainText("working line 200");
+  const top = await scrollViewerAndWatchReload(viewer, "caffold-diff-viewer", ".diff-lines");
+
+  const diffsBefore = reviewScenario.gitDiffRequests;
+  await leavePage(page);
+  await returnToPage(page);
+  await expect.poll(() => reviewScenario.gitDiffRequests).toBe(diffsBefore + 1);
+  await expect
+    .poll(() => readViewerReload(viewer, "caffold-diff-viewer", ".diff-lines"))
+    .toEqual({ reloaded: true, loadingSeen: false, top });
+});
+
+test("keeps the open Branch Source where it was when Branch is read again", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  let fileReads = 0;
+  await page.route(/\/api\/file(?:\?|$)/, (route) => {
+    fileReads += 1;
+    return route.fallback();
+  });
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await selectTaskReviewScope(tasksPage, "branch");
+  const plannerChange = taskReview.locator(
+    'caffold-git-compare-tree button[data-file-tree-path="src/planner.rs"]',
+  );
+  await expect(plannerChange).toBeVisible();
+  // Choosing Source before the file opens it once, with no line carried over
+  // from the diff to scroll to afterwards.
+  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+  const openReads = fileReads;
+  await plannerChange.click();
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await expect(viewer).toContainText("planner source");
+  expect(fileReads).toBe(openReads + 1);
+  const top = await scrollViewerAndWatchReload(viewer, "caffold-code-viewer", ".code-lines");
+
+  const readsBefore = fileReads;
+  await emitGitRefsChanged(page);
+  await expect.poll(() => fileReads).toBe(readsBefore + 1);
+  await expect
+    .poll(() => readViewerReload(viewer, "caffold-code-viewer", ".code-lines"))
+    .toEqual({ reloaded: true, loadingSeen: false, top });
+});
+
 test("falls back when the selected Branch base disappears", { tag: "@all-viewports" }, async ({ page }) => {
   const { reviewScenario, taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
@@ -1704,4 +2082,113 @@ async function emitGitRefsChanged(page) {
       overflow: false,
     });
   });
+}
+
+async function emitGitStatusChanged(page, paths) {
+  await page.evaluate((changedPaths) => {
+    const source = window.__caffoldMockEventSources.find(
+      (candidate) =>
+        candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
+    );
+    if (!source) {
+      throw new Error("Missing Task Review watch source");
+    }
+    source.emit("change", {
+      revision: Date.now(),
+      paths: changedPaths,
+      gitStatusChanged: true,
+      gitRefsChanged: false,
+      overflow: false,
+    });
+  }, paths);
+}
+
+async function controlPageVisibility(page) {
+  await page.addInitScript(() => {
+    window.__caffoldVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => window.__caffoldVisibilityState,
+    });
+  });
+}
+
+// The watch must have been ready once for the return to count as a recovery.
+async function leavePage(page) {
+  await page.evaluate(() => {
+    const source = window.__caffoldMockEventSources.find(
+      (candidate) =>
+        candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
+    );
+    if (!source) {
+      throw new Error("Missing Task Review watch source");
+    }
+    source.emit("ready", {
+      revision: 1,
+      scopePath: "src",
+      repositoryRootPath: "src",
+    });
+    window.__caffoldVisibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__caffoldMockEventSources
+          .filter((source) => source.url.startsWith("/api/watch?"))
+          .every((source) => source.readyState === 2),
+      ),
+    )
+    .toBe(true);
+}
+
+async function returnToPage(page) {
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+}
+
+function longDiffText(label) {
+  return Array.from({ length: 200 }, (_, index) => `${label} ${index + 1}`).join("\n+");
+}
+
+async function scrollViewerAndWatchReload(viewer, contentSelector, scrollSelector) {
+  return viewer.evaluate((element, { contentSelector, scrollSelector }) => {
+    const scroller = element.querySelector(`${contentSelector} ${scrollSelector}`);
+    scroller.scrollTop = scroller.scrollHeight / 2;
+    const probe = {
+      content: element.querySelector(contentSelector),
+      loadingSeen: false,
+      record(records) {
+        for (const record of records) {
+          for (const node of record.addedNodes) {
+            if (
+              node instanceof Element &&
+              (node.matches(".loading-panel") || node.querySelector(".loading-panel"))
+            ) {
+              probe.loadingSeen = true;
+            }
+          }
+        }
+      },
+    };
+    probe.observer = new MutationObserver((records) => probe.record(records));
+    probe.observer.observe(element, { childList: true, subtree: true });
+    window.__reviewViewerReloadProbe = probe;
+    return scroller.scrollTop;
+  }, { contentSelector, scrollSelector });
+}
+
+async function readViewerReload(viewer, contentSelector, scrollSelector) {
+  return viewer.evaluate((element, { contentSelector, scrollSelector }) => {
+    const probe = window.__reviewViewerReloadProbe;
+    probe.record(probe.observer.takeRecords());
+    const content = element.querySelector(contentSelector);
+    return {
+      reloaded: Boolean(content) && content !== probe.content,
+      loadingSeen: probe.loadingSeen,
+      top: content?.querySelector(scrollSelector)?.scrollTop ?? null,
+    };
+  }, { contentSelector, scrollSelector });
 }

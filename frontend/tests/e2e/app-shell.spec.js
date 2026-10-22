@@ -55,7 +55,7 @@ test("serves one Task workspace shell and only active static assets", { tag: "@a
     "/assets/keyboard-navigation/components/presentation.js",
     "/assets/keyboard-navigation/components/selector.js",
     "/assets/pages/(task-workspace)/layout.js",
-    "/assets/pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.js",
+    "/assets/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.js",
     "/assets/pages/(task-workspace)/tasks/(detail)/(git)/layout.js",
     "/assets/pages/(task-workspace)/tasks/(detail)/(github)/layout.js",
     "/assets/pages/(task-workspace)/codex-status.js",

@@ -1,0 +1,9 @@
+caffold-review-branch-changes {
+  display: grid;
+
+  & > caffold-git-compare-tree {
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+  }
+}

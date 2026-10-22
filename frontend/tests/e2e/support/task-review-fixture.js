@@ -13,8 +13,11 @@ export async function installTaskReviewFixture(page) {
   let cleanWorkingTree = false;
   let cleanBranch = false;
   let failNextGitStatus = false;
+  let failNextCompare = false;
+  let statusGate = null;
   let diffGate = null;
   let workingDiffText = "new planner behavior";
+  let branchDiffText = "new branch behavior";
   const compareDelays = new Map();
   const compareGates = new Map();
   let refs = [
@@ -28,8 +31,9 @@ export async function installTaskReviewFixture(page) {
   ];
   const compareDiffBaseRefs = [];
 
-  await page.route(/\/api\/git\/status(?:\?|$)/, (route) => {
+  await page.route(/\/api\/git\/status(?:\?|$)/, async (route) => {
     gitStatusRequests += 1;
+    await statusGate?.promise;
     if (failNextGitStatus) {
       failNextGitStatus = false;
       return route.fulfill({
@@ -252,6 +256,14 @@ export async function installTaskReviewFixture(page) {
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
     await compareGates.get(baseRef)?.promise;
+    if (failNextCompare) {
+      failNextCompare = false;
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "fixture compare unavailable" }),
+      });
+    }
     const path = baseRef === "origin/release" ? "src/release.rs" : "src/planner.rs";
     return route.fulfill({
       contentType: "application/json",
@@ -293,7 +305,7 @@ export async function installTaskReviewFixture(page) {
           `+++ b/${relativePath}`,
           "@@ -60 +60 @@",
           "-old branch behavior",
-          "+new branch behavior",
+          `+${branchDiffText}`,
         ].join("\n"),
       }),
     });
@@ -339,8 +351,14 @@ export async function installTaskReviewFixture(page) {
     set failNextGitStatus(value) {
       failNextGitStatus = value;
     },
+    set failNextCompare(value) {
+      failNextCompare = value;
+    },
     set workingDiffText(value) {
       workingDiffText = value;
+    },
+    set branchDiffText(value) {
+      branchDiffText = value;
     },
     setCompareDelay(baseRef, delayMs) {
       compareDelays.set(baseRef, delayMs);
@@ -359,6 +377,24 @@ export async function installTaskReviewFixture(page) {
       return () => {
         if (compareGates.get(baseRef) === gate) {
           compareGates.delete(baseRef);
+        }
+        releaseGate();
+      };
+    },
+    holdStatus() {
+      if (statusGate) {
+        throw new Error("Status requests already held");
+      }
+      let releaseGate;
+      const gate = {
+        promise: new Promise((resolve) => {
+          releaseGate = resolve;
+        }),
+      };
+      statusGate = gate;
+      return () => {
+        if (statusGate === gate) {
+          statusGate = null;
         }
         releaseGate();
       };

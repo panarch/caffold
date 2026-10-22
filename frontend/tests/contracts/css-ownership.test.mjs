@@ -28,12 +28,24 @@ const ownership = new Map([
   ],
   ["components/git-compare-browser.css", ["caffold-git-compare-browser"]],
   [
-    "components/git-compare-browser/compare-tree.css",
+    "components/git-compare-tree.css",
     ["caffold-git-compare-tree"],
   ],
   [
-    "pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.css",
+    "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css",
+    ["caffold-review-working-tree-changes"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.css",
     ["caffold-git-diff-changes-tree"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.css",
+    ["caffold-review-branch-changes"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.css",
+    ["caffold-review-selected-file"],
   ],
   ["components/pdf-viewer.css", ["caffold-pdf-viewer"]],
   ["components/docx-viewer.css", ["caffold-docx-viewer"]],
@@ -649,13 +661,16 @@ const componentChildren = new Map([
     "caffold-task-review",
     [
       "caffold-file-navigator",
-      "caffold-git-diff-changes-tree",
-      "caffold-git-compare-tree",
+      "caffold-review-working-tree-changes",
+      "caffold-review-branch-changes",
       "caffold-pane-resizer",
-      "caffold-review-file-viewer",
+      "caffold-review-selected-file",
       "caffold-segmented-control",
     ],
   ],
+  ["caffold-review-working-tree-changes", ["caffold-git-diff-changes-tree"]],
+  ["caffold-review-branch-changes", ["caffold-git-compare-tree"]],
+  ["caffold-review-selected-file", ["caffold-review-file-viewer"]],
   [
     "caffold-git-compare-browser",
     [

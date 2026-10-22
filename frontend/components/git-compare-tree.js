@@ -1,14 +1,14 @@
 import {
   buildFileTreeNodes,
   FILE_TREE_SELECT_EVENT,
-} from "../file-tree.js";
+} from "./file-tree.js";
 import {
   emptyActionHintScope,
   mergeActionHintScopes,
   selectActionHintTarget,
-} from "../../action-hint-scope.js";
-import { emptyScrollSurfaceScope } from "../../scroll-scope.js";
-import { showLoadingText } from "../loading-text.js";
+} from "../action-hint-scope.js";
+import { emptyScrollSurfaceScope } from "../scroll-scope.js";
+import { showLoadingText } from "./loading-text.js";
 
 class CaffoldGitCompareTree extends HTMLElement {
   connectedCallback() {
