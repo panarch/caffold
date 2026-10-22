@@ -3126,7 +3126,7 @@ test("applies extreme values to the retained Review code viewer", { tag: "@all-v
       size: 24,
       modifiedMs: null,
       content: "fn example() {}",
-      languageHint: "rust",
+      language: "Rust",
     });
     document.body.append(element);
     return element;
@@ -3755,7 +3755,7 @@ async function expectThemeState(page, { mode, resolvedTheme }) {
 
 async function representativeThemeStyles(page) {
   return page.evaluate(async () => {
-    await import("/assets/components/diff-viewer.js");
+    await import("/assets/components/file-viewer/components/diff-viewer.js");
 
     const review = document.createElement("caffold-task-review");
     review.style.cssText =

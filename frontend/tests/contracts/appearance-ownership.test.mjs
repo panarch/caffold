@@ -26,8 +26,8 @@ const conversationOwners = new Set([
 ]);
 
 const codeOwners = new Set([
-  "components/code-viewer.css",
-  "components/diff-viewer.css",
+  "components/file-viewer/components/code-viewer.css",
+  "components/file-viewer/components/diff-viewer.css",
   "components/markdown-preview.css",
   "components/terminal-view.js",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
@@ -48,8 +48,8 @@ const codeOwners = new Set([
 
 const typefaceOwners = new Set([
   "action-hints/components/dialog.css",
-  "components/code-viewer.css",
-  "components/diff-viewer.css",
+  "components/file-viewer/components/code-viewer.css",
+  "components/file-viewer/components/diff-viewer.css",
   "components/docx-viewer.js",
   "components/file-tree.css",
   "components/markdown-preview.css",
@@ -146,8 +146,8 @@ test("keyboard hint badges share the code typeface wherever they appear", () => 
 test("mobile interaction policies preserve pinch zoom and own viewer text sizing narrowly", () => {
   const root = readFrontend("styles.css");
   const index = readFrontend("index.html");
-  const codeViewer = readFrontend("components/code-viewer.css");
-  const diffViewer = readFrontend("components/diff-viewer.css");
+  const codeViewer = readFrontend("components/file-viewer/components/code-viewer.css");
+  const diffViewer = readFrontend("components/file-viewer/components/diff-viewer.css");
   const markdownPreview = readFrontend(
     "components/markdown-preview.css",
   );
@@ -159,8 +159,8 @@ test("mobile interaction policies preserve pinch zoom and own viewer text sizing
     "The viewport must retain user-controlled pinch zoom",
   );
   for (const [path, source, selector] of [
-    ["components/code-viewer.css", codeViewer, "& .code-lines {"],
-    ["components/diff-viewer.css", diffViewer, "& .diff-lines {"],
+    ["components/file-viewer/components/code-viewer.css", codeViewer, "& .code-lines {"],
+    ["components/file-viewer/components/diff-viewer.css", diffViewer, "& .diff-lines {"],
     [
       "components/markdown-preview.css",
       markdownPreview,
@@ -278,7 +278,7 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
     "The shared pane resizer must use the neutral resizer interaction role",
   );
 
-  const diffViewer = readFrontend("components/diff-viewer.css");
+  const diffViewer = readFrontend("components/file-viewer/components/diff-viewer.css");
   assert.match(diffViewer, /background: var\(--diff-added-bg\)/);
   assert.match(diffViewer, /background: var\(--diff-removed-bg\)/);
 });

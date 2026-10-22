@@ -1590,7 +1590,7 @@ test("maps the visible source line when Diff and Source representations switch",
   await viewer.locator("caffold-code-viewer").evaluate((element) => {
     element.setFile({
       content: "horizontal-only-source-segment-".repeat(30),
-      languageHint: "text",
+      language: "Plain Text",
     });
   });
   await expect(codeScroll).toContainText("horizontal-only-source-segment");

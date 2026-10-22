@@ -9,8 +9,8 @@ use super::{PathQuery, WorkspaceState};
 use crate::{
     app::error::ApiError,
     fs::{
-        GitCommitResponse, GitCompareResponse, GitDiffResponse, GitFetchResponse, GitLogResponse,
-        GitRefsResponse, GitStatusResponse,
+        FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse, GitFetchResponse,
+        GitLogResponse, GitRefsResponse, GitStatusResponse,
     },
 };
 
@@ -117,11 +117,8 @@ async fn git_diff(
     State(state): State<WorkspaceState>,
     Query(query): Query<GitDiffQuery>,
 ) -> Result<Json<GitDiffResponse>, ApiError> {
-    state
-        .fs
-        .git_diff(&query.path, &query.file, &query.kind)
-        .map(Json)
-        .map_err(ApiError::from)
+    let fs = state.fs.clone();
+    read_diff(move || fs.git_diff(&query.path, &query.file, &query.kind)).await
 }
 
 async fn git_log(
@@ -166,11 +163,8 @@ async fn git_commit_diff(
     State(state): State<WorkspaceState>,
     Query(query): Query<GitCommitDiffQuery>,
 ) -> Result<Json<GitDiffResponse>, ApiError> {
-    state
-        .fs
-        .git_commit_diff(&query.path, &query.sha, &query.file)
-        .map(Json)
-        .map_err(ApiError::from)
+    let fs = state.fs.clone();
+    read_diff(move || fs.git_commit_diff(&query.path, &query.sha, &query.file)).await
 }
 
 async fn git_compare(
@@ -188,14 +182,26 @@ async fn git_compare_diff(
     State(state): State<WorkspaceState>,
     Query(query): Query<GitCompareDiffQuery>,
 ) -> Result<Json<GitDiffResponse>, ApiError> {
-    state
-        .fs
-        .git_compare_diff(
+    let fs = state.fs.clone();
+    read_diff(move || {
+        fs.git_compare_diff(
             &query.path,
             query.base.as_deref(),
             query.head.as_deref(),
             &query.file,
         )
+    })
+    .await
+}
+
+/// A diff is read on the blocking pool: besides running git, coloring a
+/// large file takes a noticeable share of a second.
+async fn read_diff(
+    read: impl FnOnce() -> Result<GitDiffResponse, FsError> + Send + 'static,
+) -> Result<Json<GitDiffResponse>, ApiError> {
+    tokio::task::spawn_blocking(read)
+        .await
+        .map_err(|error| ApiError::Internal(format!("Git diff task failed: {error}")))?
         .map(Json)
         .map_err(ApiError::from)
 }
@@ -267,6 +273,45 @@ mod tests {
             std::fs::read_to_string(fetch_head).unwrap(),
             "existing fetch state\n"
         );
+    }
+
+    #[tokio::test]
+    async fn diff_routes_send_spans_for_each_diff_line() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().join("repo");
+        create_committed_repository(&repo);
+        std::fs::write(repo.join("sample.rs"), "fn old() {}\n").unwrap();
+        git(&repo, &["add", "sample.rs"]);
+        commit(&repo, "Add sample");
+        git(&repo, &["checkout", "-b", "feature"]);
+        std::fs::write(repo.join("sample.rs"), "fn new() {}\n").unwrap();
+        git(&repo, &["add", "sample.rs"]);
+        commit(&repo, "Rename sample");
+        std::fs::write(repo.join("sample.rs"), "fn newer() {}\n").unwrap();
+        let sha = git_output(&repo, &["rev-parse", "HEAD"]);
+
+        for uri in [
+            "/api/git/diff?path=repo&file=repo/sample.rs&kind=unstaged".to_string(),
+            format!("/api/git/commit-diff?path=repo&sha={sha}&file=repo/sample.rs"),
+            "/api/git/compare-diff?path=repo&base=main&head=feature&file=repo/sample.rs"
+                .to_string(),
+        ] {
+            let response = app(root.path())
+                .oneshot(Request::get(&uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{uri}");
+            let response = response_json(response).await;
+            let lines: Vec<&str> = response["diff"].as_str().unwrap().split('\n').collect();
+            let spans = response["syntaxSpans"].as_array().unwrap();
+            assert_eq!(spans.len(), lines.len(), "{uri}");
+            let added = lines
+                .iter()
+                .position(|line| line.starts_with("+fn"))
+                .unwrap();
+            assert_eq!(spans[added][0], json!([0, 2, 1]), "{uri}");
+            assert_eq!(spans[0], JsonValue::Null, "{uri}");
+        }
     }
 
     #[tokio::test]

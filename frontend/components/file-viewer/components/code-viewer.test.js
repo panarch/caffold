@@ -3,14 +3,14 @@ import test, { after } from "node:test";
 
 import {
   installCustomElementUnitRegistry,
-} from "../tests/support/custom-element-unit.js";
+} from "../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./diff-viewer.js");
-const diffViewer = registry.element("caffold-diff-viewer").prototype;
+await import("./code-viewer.js");
+const codeViewer = registry.element("caffold-code-viewer").prototype;
 after(() => registry.restore());
 
-test("provides only its retained diff-lines element", () => {
+test("provides only its retained code-lines element", () => {
   let current;
   const scrollport = {
     clientHeight: 100,
@@ -25,12 +25,12 @@ test("provides only its retained diff-lines element", () => {
     querySelector: () => current,
   };
 
-  const scope = diffViewer.scrollSurfaceScope.call(owner, {
-    scopeId: "review:file:diff",
-    label: "PLAN.md diff",
+  const scope = codeViewer.scrollSurfaceScope.call(owner, {
+    scopeId: "review:file:source",
+    label: "PLAN.md source",
   });
-  assert.equal(scope.surfaces[0].id, "review:file:diff:scroll");
-  assert.equal(scope.surfaces[0].label, "PLAN.md diff");
+  assert.equal(scope.surfaces[0].id, "review:file:source:scroll");
+  assert.equal(scope.surfaces[0].label, "PLAN.md source");
   assert.equal(scope.surfaces[0].scrollport, scrollport);
   assert.deepEqual(scope.surfaces[0].axes, ["vertical", "horizontal"]);
   assert.equal(scope.surfaces[0].isEligible(), true);

@@ -18,8 +18,10 @@ lists what is planned.
 - **Read-only Git and GitHub.** Ask the agent to commit or push; see
   [Git](../review/git.md#what-git-does-not-do).
 - **No editing of plans or Notes in Caffold.** Ask the agent to change them.
-- **Plain diffs.** Diffs are unified text, without a split view, syntax
-  highlighting, or review comments.
+- **Unified diffs.** Diffs are unified text, without a split view or review
+  comments. Pull Request diffs have no syntax colors, and neither do files in a
+  language Caffold does not recognize, files with very long lines such as
+  minified code, or diffs of very large files.
 - **Worktrees only on request.** Ask the agent; see
   [Worktrees](../tasks/worktrees.md).
 - **No notification retries.** See

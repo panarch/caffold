@@ -1,10 +1,14 @@
-import { escapeHtml } from "./dom.js";
+import { escapeHtml } from "../../dom.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../scroll-scope.js";
+} from "#app/scroll-scope.js";
+import { syntaxLineHtml } from "../syntax-spans.js";
 
 const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/;
+// Rows of file text, which the server's `syntaxSpans` color by their line in
+// the diff.
+const SOURCE_ROWS = new Set(["added", "removed", "context"]);
 
 class CaffoldDiffViewer extends HTMLElement {
   connectedCallback() {
@@ -173,6 +177,9 @@ class CaffoldDiffViewer extends HTMLElement {
 
   renderRow(row) {
     const sourceLine = row.newLine ?? row.oldLine;
+    const code = SOURCE_ROWS.has(row.type)
+      ? syntaxLineHtml(row.content, this.diff.syntaxSpans?.[row.index])
+      : escapeHtml(row.content);
     return `
       <div class="diff-row diff-row-${escapeHtml(row.type)}"${
         sourceLine ? ` data-source-line="${sourceLine}"` : ""
@@ -182,7 +189,7 @@ class CaffoldDiffViewer extends HTMLElement {
           <span class="diff-new-line">${escapeHtml(row.newLine ?? "")}</span>
           <span class="diff-prefix">${escapeHtml(row.prefix)}</span>
         </span>
-        <span class="diff-code">${escapeHtml(row.content)}</span>
+        <span class="diff-code">${code}</span>
       </div>
     `;
   }
@@ -229,7 +236,7 @@ function parseUnifiedDiff(diffText) {
   let oldLinesRemaining = 0;
   let newLinesRemaining = 0;
 
-  for (const line of diffText.split("\n")) {
+  for (const [index, line] of diffText.split("\n").entries()) {
     const hunkMatch = line.match(HUNK_HEADER_PATTERN);
     if (hunkMatch) {
       oldLine = Number(hunkMatch[1]);
@@ -237,6 +244,7 @@ function parseUnifiedDiff(diffText) {
       newLine = Number(hunkMatch[3]);
       newLinesRemaining = hunkLineCount(hunkMatch[4]);
       rows.push({
+        index,
         type: "hunk",
         oldLine: null,
         newLine: null,
@@ -248,6 +256,7 @@ function parseUnifiedDiff(diffText) {
 
     if (line.startsWith("\\ No newline at end of file")) {
       rows.push({
+        index,
         type: "note",
         oldLine: null,
         newLine: null,
@@ -259,6 +268,7 @@ function parseUnifiedDiff(diffText) {
 
     if (line.startsWith("+") && newLinesRemaining > 0) {
       rows.push({
+        index,
         type: "added",
         oldLine: null,
         newLine,
@@ -272,6 +282,7 @@ function parseUnifiedDiff(diffText) {
 
     if (line.startsWith("-") && oldLinesRemaining > 0) {
       rows.push({
+        index,
         type: "removed",
         oldLine,
         newLine: null,
@@ -285,6 +296,7 @@ function parseUnifiedDiff(diffText) {
 
     if (line.startsWith(" ") && oldLinesRemaining > 0 && newLinesRemaining > 0) {
       rows.push({
+        index,
         type: "context",
         oldLine,
         newLine,
@@ -299,6 +311,7 @@ function parseUnifiedDiff(diffText) {
     }
 
     rows.push({
+      index,
       type: "metadata",
       oldLine: null,
       newLine: null,

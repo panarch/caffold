@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    ffi::OsStr,
     fs::File,
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -236,23 +237,48 @@ pub(crate) fn diff(
     repo_relative_path: &str,
     kind: &str,
 ) -> Option<String> {
-    let null_path = if cfg!(windows) { "NUL" } else { "/dev/null" };
-    let args = match kind {
-        "staged" => vec!["diff", "--cached", "--", repo_relative_path],
-        "untracked" => vec!["diff", "--no-index", "--", null_path, repo_relative_path],
-        _ => vec!["diff", "--", repo_relative_path],
-    };
-
-    let output = if kind == "untracked" {
-        run_git_allowing_status(&repository.root, &args, &[0, 1])?
-    } else {
-        run_git_bytes(&repository.root, &args)?
-    };
+    let args = diff_args(repo_relative_path, kind, false);
+    let output = run_git_allowing_status(&repository.root, &args, diff_exit_codes(kind))?;
 
     String::from_utf8(output)
         .ok()
         .map(|stdout| stdout.trim_end().to_string())
 }
+
+/// The same diff as `diff`, with both files whole as its context, unless its
+/// output exceeds `limit` bytes.
+pub(crate) fn whole_file_diff(
+    repository: &Repository,
+    repo_relative_path: &str,
+    kind: &str,
+    limit: u64,
+) -> Option<String> {
+    let args = diff_args(repo_relative_path, kind, true);
+    let output = run_git_bounded(&repository.root, &args, diff_exit_codes(kind), limit)?;
+    String::from_utf8(output).ok()
+}
+
+fn diff_args<'a>(repo_relative_path: &'a str, kind: &str, whole_file: bool) -> Vec<&'a str> {
+    let null_path = if cfg!(windows) { "NUL" } else { "/dev/null" };
+    let mut args = vec!["diff"];
+    if whole_file {
+        args.push(WHOLE_FILE_CONTEXT);
+    }
+    match kind {
+        "staged" => args.extend(["--cached", "--", repo_relative_path]),
+        "untracked" => args.extend(["--no-index", "--", null_path, repo_relative_path]),
+        _ => args.extend(["--", repo_relative_path]),
+    }
+    args
+}
+
+/// `git diff --no-index` exits with 1 when the files differ.
+fn diff_exit_codes(kind: &str) -> &'static [i32] {
+    if kind == "untracked" { &[0, 1] } else { &[0] }
+}
+
+/// Unified context wide enough to hold any file whole.
+const WHOLE_FILE_CONTEXT: &str = "--unified=2147483647";
 
 pub(crate) fn diff_stats(
     repository: &Repository,
@@ -382,20 +408,45 @@ pub(crate) fn commit_diff(
         return None;
     }
 
-    let commit_sha = normalize_commit_sha(commit_sha)?;
-    let args = vec![
-        "show".to_string(),
-        "--format=".to_string(),
-        "--first-parent".to_string(),
-        "--find-renames".to_string(),
-        commit_sha.to_string(),
-        "--".to_string(),
-        repo_relative_path.to_string(),
-    ];
+    let args = commit_diff_args(normalize_commit_sha(commit_sha)?, repo_relative_path, false);
 
     String::from_utf8(run_git_owned(&repository.root, &args)?)
         .ok()
         .map(|stdout| stdout.trim_end().to_string())
+}
+
+/// The same diff as `commit_diff`, with both files whole as its context,
+/// unless its output exceeds `limit` bytes.
+pub(crate) fn commit_whole_file_diff(
+    repository: &Repository,
+    commit_sha: &str,
+    repo_relative_path: &str,
+    limit: u64,
+) -> Option<String> {
+    if repo_relative_path.is_empty() {
+        return None;
+    }
+
+    let args = commit_diff_args(normalize_commit_sha(commit_sha)?, repo_relative_path, true);
+    String::from_utf8(run_git_bounded(&repository.root, &args, &[0], limit)?).ok()
+}
+
+fn commit_diff_args(commit_sha: &str, repo_relative_path: &str, whole_file: bool) -> Vec<String> {
+    let mut args = vec![
+        "show".to_string(),
+        "--format=".to_string(),
+        "--first-parent".to_string(),
+        "--find-renames".to_string(),
+    ];
+    if whole_file {
+        args.push(WHOLE_FILE_CONTEXT.to_string());
+    }
+    args.extend([
+        commit_sha.to_string(),
+        "--".to_string(),
+        repo_relative_path.to_string(),
+    ]);
+    args
 }
 
 pub(crate) fn commit_diff_stats(
@@ -505,18 +556,44 @@ pub(crate) fn compare_diff(
         return None;
     }
 
-    let range = compare_range(refs);
-    let args = vec![
-        "diff".to_string(),
-        "--find-renames".to_string(),
-        range,
-        "--".to_string(),
-        repo_relative_path.to_string(),
-    ];
+    let args = compare_diff_args(refs, repo_relative_path, false);
 
     String::from_utf8(run_git_owned(&repository.root, &args)?)
         .ok()
         .map(|stdout| stdout.trim_end().to_string())
+}
+
+/// The same diff as `compare_diff`, with both files whole as its context,
+/// unless its output exceeds `limit` bytes.
+pub(crate) fn compare_whole_file_diff(
+    repository: &Repository,
+    refs: &CompareRefs,
+    repo_relative_path: &str,
+    limit: u64,
+) -> Option<String> {
+    if repo_relative_path.is_empty() {
+        return None;
+    }
+
+    let args = compare_diff_args(refs, repo_relative_path, true);
+    String::from_utf8(run_git_bounded(&repository.root, &args, &[0], limit)?).ok()
+}
+
+fn compare_diff_args(
+    refs: &CompareRefs,
+    repo_relative_path: &str,
+    whole_file: bool,
+) -> Vec<String> {
+    let mut args = vec!["diff".to_string(), "--find-renames".to_string()];
+    if whole_file {
+        args.push(WHOLE_FILE_CONTEXT.to_string());
+    }
+    args.extend([
+        compare_range(refs),
+        "--".to_string(),
+        repo_relative_path.to_string(),
+    ]);
+    args
 }
 
 pub(crate) fn compare_diff_stats(
@@ -775,6 +852,39 @@ fn run_git_owned_allowing_status(
     }
 
     Some(output.stdout)
+}
+
+/// Runs git and keeps its output only when it fits in `limit` bytes; past
+/// that, git is stopped.
+fn run_git_bounded<S: AsRef<OsStr>>(
+    path: &Path,
+    args: &[S],
+    allowed_codes: &[i32],
+    limit: u64,
+) -> Option<Vec<u8>> {
+    let mut child = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut output = Vec::new();
+    let read = child
+        .stdout
+        .take()?
+        .take(limit + 1)
+        .read_to_end(&mut output);
+    if read.is_err() || output.len() as u64 > limit {
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
+    }
+
+    let status_code = child.wait().ok()?.code()?;
+    allowed_codes.contains(&status_code).then_some(output)
 }
 
 fn run_git_allowing_status(path: &Path, args: &[&str], allowed_codes: &[i32]) -> Option<Vec<u8>> {
@@ -1419,6 +1529,96 @@ mod tests {
                 deletions: 1,
             }))
         );
+    }
+
+    #[test]
+    fn reads_each_diff_with_both_files_whole_as_its_context() {
+        if !git_is_available() {
+            return;
+        }
+
+        let lines = |changes: &[(usize, &str)]| -> String {
+            (1..=20)
+                .map(|n| match changes.iter().find(|(line, _)| *line == n) {
+                    Some((_, text)) => format!("{text}\n"),
+                    None => format!("line {n}\n"),
+                })
+                .collect()
+        };
+        let base = lines(&[]);
+        let committed = lines(&[(10, "commit 10")]);
+        let staged = lines(&[(2, "staged 2"), (10, "commit 10")]);
+        let unstaged = lines(&[(2, "staged 2"), (10, "commit 10"), (18, "unstaged 18")]);
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init", "-b", "main"]);
+        fs::write(temp.path().join("sample.txt"), &base).unwrap();
+        git(temp.path(), &["add", "sample.txt"]);
+        commit(temp.path(), "Add sample");
+        git(temp.path(), &["checkout", "-b", "feature"]);
+        fs::write(temp.path().join("sample.txt"), &committed).unwrap();
+        git(temp.path(), &["add", "sample.txt"]);
+        commit(temp.path(), "Change line 10");
+        fs::write(temp.path().join("sample.txt"), &staged).unwrap();
+        git(temp.path(), &["add", "sample.txt"]);
+        fs::write(temp.path().join("sample.txt"), &unstaged).unwrap();
+        fs::write(temp.path().join("new.txt"), &base).unwrap();
+        let repository = repository_for(temp.path()).unwrap();
+        let limit = 1024 * 1024;
+        let head = run_git(temp.path(), &["rev-parse", "HEAD"]).unwrap();
+        let refs = compare_refs(&repository, Some("main"), Some("feature")).unwrap();
+
+        let unstaged_diff = whole_file_diff(&repository, "sample.txt", "unstaged", limit).unwrap();
+        let staged_diff = whole_file_diff(&repository, "sample.txt", "staged", limit).unwrap();
+        let untracked_diff = whole_file_diff(&repository, "new.txt", "untracked", limit).unwrap();
+        let commit_diff = commit_whole_file_diff(&repository, &head, "sample.txt", limit).unwrap();
+        let compare_diff =
+            compare_whole_file_diff(&repository, &refs, "sample.txt", limit).unwrap();
+
+        assert_eq!(
+            whole_files(&unstaged_diff),
+            (staged.clone(), unstaged.clone())
+        );
+        assert_eq!(whole_files(&staged_diff), (committed.clone(), staged));
+        assert_eq!(whole_files(&untracked_diff), (String::new(), base.clone()));
+        assert_eq!(whole_files(&commit_diff), (base.clone(), committed.clone()));
+        assert_eq!(whole_files(&compare_diff), (base, committed));
+        assert!(
+            !diff(&repository, "sample.txt", "unstaged")
+                .unwrap()
+                .contains("line 1\n")
+        );
+
+        let size = unstaged_diff.len() as u64;
+        assert_eq!(
+            whole_file_diff(&repository, "sample.txt", "unstaged", size).as_deref(),
+            Some(unstaged_diff.as_str())
+        );
+        assert_eq!(
+            whole_file_diff(&repository, "sample.txt", "unstaged", size - 1),
+            None
+        );
+    }
+
+    /// The old and new files a diff holds, read from its context, removed,
+    /// and added lines.
+    fn whole_files(diff: &str) -> (String, String) {
+        let (mut old, mut new) = (String::new(), String::new());
+        let body = diff
+            .split_inclusive('\n')
+            .skip_while(|line| !line.starts_with("@@"));
+        for line in body.skip(1) {
+            let text = &line[1..];
+            match line.as_bytes()[0] {
+                b' ' => {
+                    old.push_str(text);
+                    new.push_str(text);
+                }
+                b'-' => old.push_str(text),
+                b'+' => new.push_str(text),
+                _ => {}
+            }
+        }
+        (old, new)
     }
 
     #[test]

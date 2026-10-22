@@ -1818,7 +1818,7 @@ async function installCurrentPlanFileFixture(page, workspace) {
         name: path.split("/").at(-1),
         size: Buffer.byteLength(content),
         modifiedMs: null,
-        languageHint: "markdown",
+        language: "Markdown",
         content,
       },
     });

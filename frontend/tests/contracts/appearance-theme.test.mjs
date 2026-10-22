@@ -56,6 +56,12 @@ test("representative text, feedback, syntax, and diff roles meet contrast target
     ["syntax-type", "code-bg"],
     ["diff-added-text", "diff-added-bg"],
     ["diff-removed-text", "diff-removed-bg"],
+    ...["added", "removed"].flatMap((change) =>
+      ["comment", "keyword", "literal", "string", "title", "type"].map((color) => [
+        `syntax-${color}`,
+        `diff-${change}-bg`,
+      ]),
+    ),
   ];
 
   for (const [theme, block] of Object.entries(blocks)) {

@@ -47,5 +47,5 @@ scheduled standalone feature.
 ### Richer diff review
 
 Improve the Review panel beyond its current unified text presentation. Add a
-split diff, syntax highlighting, and clearer code-aware presentation across
-desktop, foldable, and mobile layouts.
+split diff, syntax highlighting for Pull Request diffs, and clearer code-aware
+presentation across desktop, foldable, and mobile layouts.
