@@ -1,6 +1,6 @@
-import { compactIconButton } from "../../component-styles.js";
-import { listDirectory } from "../../api.js";
-import { entryKindLabel, escapeHtml } from "../dom.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { listDirectory } from "#app/api.js";
+import { entryKindLabel, escapeHtml } from "../../dom.js";
 import {
   errorFileTreeChildren,
   FILE_TREE_LOAD_EVENT,
@@ -8,15 +8,15 @@ import {
   loadingFileTreeChildren,
   readyFileTreeChildren,
   unloadedFileTreeChildren,
-} from "../file-tree.js";
-import { renderInlineIcon } from "../icons.js";
-import "../loading-text.js";
+} from "../../file-tree.js";
+import { renderInlineIcon } from "../../icons.js";
+import "../../loading-text.js";
 import {
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../action-hint-scope.js";
-import { emptyScrollSurfaceScope } from "../../scroll-scope.js";
+} from "#app/action-hint-scope.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 
 const TREE_LOADING_DELAY_MS = 180;
 

@@ -321,8 +321,8 @@ test("structural shadows separate fixed regions from floating elevation", () => 
     [
       "pages/(task-workspace)/notes/components/document.css",
       "pages/(task-workspace)/notes/components/navigator.css",
+      "pages/(task-workspace)/settings/components/navigator.css",
       "pages/(task-workspace)/settings/layout.css",
-      "pages/(task-workspace)/settings/navigator.css",
       "pages/(task-workspace)/tasks/(detail)/layout.css",
       "pages/(task-workspace)/tasks/components/navigator.css",
       "pages/(task-workspace)/tasks/components/task-absence.css",
@@ -496,10 +496,10 @@ test("workspace header identity and titles share semantic ownership", () => {
     "pages/(task-workspace)/tasks/(detail)/(task)/layout.css",
   );
   const settingsNavigator = readFrontend(
-    "pages/(task-workspace)/settings/navigator.css",
+    "pages/(task-workspace)/settings/components/navigator.css",
   );
   const settingsNavigatorView = readFrontend(
-    "pages/(task-workspace)/settings/navigator.js",
+    "pages/(task-workspace)/settings/components/navigator.js",
   );
   const settingsLayout = readFrontend(
     "pages/(task-workspace)/settings/layout.css",
@@ -684,11 +684,11 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
     );
   }
   assert.match(
-    readFrontend("pages/(task-workspace)/settings/navigator.js"),
+    readFrontend("pages/(task-workspace)/settings/components/navigator.js"),
     /aria-label="Settings sections"/,
   );
   assert.doesNotMatch(
-    readFrontend("pages/(task-workspace)/settings/navigator.js"),
+    readFrontend("pages/(task-workspace)/settings/components/navigator.js"),
     /Local to this browser/,
   );
 
@@ -789,7 +789,7 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/(task-workspace)/tasks/components/archived-task-list.css", ".task-repository-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/archived-task-list.css", ".task-row-worktree-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/archived-task-list.css", ".task-archived-action-icon", "--interface-icon-size"],
-    ["components/file-navigator/list.css", ".file-refresh-icon", "--interface-icon-size"],
+    ["components/file-navigator/components/list.css", ".file-refresh-icon", "--interface-icon-size"],
     ["components/file-tree.css", ".entry-icon-svg", "--file-tree-icon-size"],
     ["components/file-viewer.css", ".viewer-refresh-icon", "--interface-icon-size"],
     ["components/file-viewer.css", ".viewer-info-icon", "--interface-icon-size"],
@@ -973,7 +973,7 @@ test("compact icon controls declare shared styles at their own component boundar
     ["pages/(task-workspace)/tasks/(detail)/(github)/layout", "caffold-task-github-layout", "> .task-github-surface > .task-domain-header > .task-domain-back"],
     ["pages/(task-workspace)/tasks/(detail)/terminal/page", "caffold-terminal-page", "> .terminal-page-bar > .terminal-page-button"],
     ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", "caffold-git-review-controls", "> .git-review-controls > .git-review-refresh"],
-    ["components/file-navigator/list", "caffold-file-list", "> .file-list-panel > header > .file-list-title-row > .file-list-actions > .file-refresh-button"],
+    ["components/file-navigator/components/list", "caffold-file-list", "> .file-list-panel > header > .file-list-title-row > .file-list-actions > .file-refresh-button"],
     ["components/pagination", "caffold-pagination", "> .pagination-panel > .pagination-button"],
     ["components/file-viewer", "caffold-review-file-viewer", "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-actions > .viewer-refresh-button"],
     ["components/file-viewer", "caffold-review-file-viewer", "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-close-button"],

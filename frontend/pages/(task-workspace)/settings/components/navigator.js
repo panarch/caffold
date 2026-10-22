@@ -1,4 +1,4 @@
-import "../components/workspace-brand.js";
+import "../../components/workspace-brand.js";
 import "./navigator/components/item.js";
 import {
   emptyActionHintScope,

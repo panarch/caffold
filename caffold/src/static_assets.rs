@@ -272,11 +272,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/file-navigator.js" => Some(js(include_str!(
             "../../frontend/components/file-navigator.js"
         ))),
-        "components/file-navigator/list.css" => Some(css(include_str!(
-            "../../frontend/components/file-navigator/list.css"
+        "components/file-navigator/components/list.css" => Some(css(include_str!(
+            "../../frontend/components/file-navigator/components/list.css"
         ))),
-        "components/file-navigator/list.js" => Some(js(include_str!(
-            "../../frontend/components/file-navigator/list.js"
+        "components/file-navigator/components/list.js" => Some(js(include_str!(
+            "../../frontend/components/file-navigator/components/list.js"
         ))),
         "components/pane-resizer.css" => Some(css(include_str!(
             "../../frontend/components/pane-resizer.css"
@@ -380,18 +380,22 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/layout.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/layout.js"
         ))),
-        "pages/(task-workspace)/settings/navigator.css" => Some(css(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/navigator.css"
+        "pages/(task-workspace)/settings/components/navigator.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/components/navigator.css"
         ))),
-        "pages/(task-workspace)/settings/navigator.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/navigator.js"
+        "pages/(task-workspace)/settings/components/navigator.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/components/navigator.js"
         ))),
-        "pages/(task-workspace)/settings/navigator/components/item.css" => Some(css(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/navigator/components/item.css"
-        ))),
-        "pages/(task-workspace)/settings/navigator/components/item.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/navigator/components/item.js"
-        ))),
+        "pages/(task-workspace)/settings/components/navigator/components/item.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/settings/components/navigator/components/item.css"
+            )))
+        }
+        "pages/(task-workspace)/settings/components/navigator/components/item.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/settings/components/navigator/components/item.js"
+            )))
+        }
         "pages/(task-workspace)/settings/service-status.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/service-status.js"
         ))),
@@ -1916,8 +1920,8 @@ mod tests {
             "pages/(task-workspace)/notes/components/navigator.js",
             "pages/(task-workspace)/notes/tree.js",
             "pages/(task-workspace)/settings/layout.js",
-            "pages/(task-workspace)/settings/navigator.js",
-            "pages/(task-workspace)/settings/navigator/components/item.js",
+            "pages/(task-workspace)/settings/components/navigator.js",
+            "pages/(task-workspace)/settings/components/navigator/components/item.js",
             "pages/(task-workspace)/settings/service-status.js",
             "pages/(task-workspace)/settings/keyboard/page.js",
             "pages/(task-workspace)/settings/files/page.js",
@@ -1968,7 +1972,7 @@ mod tests {
             "pages/(task-workspace)/notes/components/info/components/copy-markdown.css",
             "pages/(task-workspace)/notes/components/info/components/copy-path.css",
             "pages/(task-workspace)/notes/components/navigator.css",
-            "pages/(task-workspace)/settings/navigator/components/item.css",
+            "pages/(task-workspace)/settings/components/navigator/components/item.css",
             "pages/(task-workspace)/settings/keyboard/page.css",
             "pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
         ] {
@@ -3010,10 +3014,10 @@ mod tests {
         assert!(
             file_navigator_css
                 .body
-                .starts_with(b"@import \"./file-navigator/list.css\"")
+                .starts_with(b"@import \"./file-navigator/components/list.css\"")
         );
 
-        let file_list_component = get("components/file-navigator/list.js")
+        let file_list_component = get("components/file-navigator/components/list.js")
             .expect("file navigator list component js asset");
         assert_eq!(
             file_list_component.content_type,

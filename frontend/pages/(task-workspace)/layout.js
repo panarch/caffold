@@ -70,7 +70,7 @@ import "./tasks/components/navigator.js";
 import "./tasks/layout.js";
 import "./notes/components/navigator.js";
 import "./notes/layout.js";
-import "./settings/navigator.js";
+import "./settings/components/navigator.js";
 import "./settings/layout.js";
 
 const NAVIGATION_PANE_DEFAULT_WIDTH = 380;

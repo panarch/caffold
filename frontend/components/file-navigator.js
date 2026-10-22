@@ -1,6 +1,6 @@
 import { listDirectory } from "../api.js";
 import { createRefreshCoordinator, subscribeToWatch } from "../watch.js";
-import "./file-navigator/list.js";
+import "./file-navigator/components/list.js";
 import { emptyActionHintScope } from "../action-hint-scope.js";
 import { emptyScrollSurfaceScope } from "../scroll-scope.js";
 
