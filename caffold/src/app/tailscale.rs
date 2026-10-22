@@ -26,10 +26,13 @@ use tracing::warn;
 use url::Url;
 
 use super::error::ApiError;
-use cli::{ProcessTailscaleRunner, TailscaleExecutables, TailscaleRunner, summarize_output};
+use cli::{
+    ProcessTailscaleRunner, TailscaleExecutable, TailscaleExecutables, TailscaleRunner,
+    summarize_output,
+};
 use status::{
     TailscaleNodeResponse, TailscaleReason, TailscaleState, TailscaleStatus,
-    canonical_tailnet_url_value, classify_serve_status, command_failed_status,
+    canonical_tailnet_url_value, classify_serve_status, command_failed_status, describe_node,
 };
 
 const STATUS_COMMAND: &[&str] = &["status", "--json"];
@@ -178,7 +181,7 @@ impl TailscaleService {
         } else {
             current.status.state == TailscaleState::Ready
         };
-        let Some(cli) = current.cli.filter(|_| should_run) else {
+        let Some((cli, node_description)) = current.cli.filter(|_| should_run) else {
             return Ok(self.publish(current.status, current.failure).await);
         };
 
@@ -222,7 +225,10 @@ impl TailscaleService {
                 } else {
                     "tailscale serve could not be disabled"
                 },
-                detail: format!("{} {error}", command_line(&cli, arguments)),
+                detail: format!(
+                    "{} {error}; {node_description}",
+                    command_line(&cli, arguments)
+                ),
             };
             return Ok(self.publish(failed, Some(failure)).await);
         }
@@ -257,7 +263,7 @@ impl TailscaleService {
         let failure = Failure {
             event: "tailscale serve did not reach the requested state",
             detail: format!(
-                "{} succeeded, but Tailscale then reported: {}",
+                "{} succeeded, but Tailscale then reported: {}; {node_description}",
                 command_line(&cli, arguments),
                 inspected.status.diagnostic_message
             ),
@@ -296,7 +302,11 @@ impl TailscaleService {
         };
         let mut reported = None;
         let mut attempts = Vec::new();
-        for cli in candidates {
+        for TailscaleExecutable {
+            path: cli,
+            resolved,
+        } in candidates
+        {
             let stdout = match self.runner.run(&cli, STATUS_COMMAND).await {
                 Ok(stdout) => stdout,
                 Err(error) => {
@@ -319,7 +329,16 @@ impl TailscaleService {
                 ));
                 continue;
             };
-            return self.inspect_connection(cli, node).await;
+            let node_description = if resolved == cli {
+                describe_node(&stdout)
+            } else {
+                format!(
+                    "{}, executable resolves to {}",
+                    describe_node(&stdout),
+                    resolved.display()
+                )
+            };
+            return self.inspect_connection(cli, node, node_description).await;
         }
         Inspection {
             status: reported.unwrap_or_else(command_failed),
@@ -331,7 +350,12 @@ impl TailscaleService {
         }
     }
 
-    async fn inspect_connection(&self, cli: PathBuf, node: TailscaleNodeResponse) -> Inspection {
+    async fn inspect_connection(
+        &self,
+        cli: PathBuf,
+        node: TailscaleNodeResponse,
+        node_description: String,
+    ) -> Inspection {
         if node.backend_state != "Running" {
             return Inspection {
                 status: TailscaleStatus::new(
@@ -340,7 +364,7 @@ impl TailscaleService {
                     "Tailscale is installed but disconnected.",
                 ),
                 failure: None,
-                cli: Some(cli),
+                cli: Some((cli, node_description)),
             };
         }
 
@@ -354,9 +378,12 @@ impl TailscaleService {
                     ),
                     failure: Some(Failure {
                         event: "tailscale serve status could not be read",
-                        detail: format!("{} {error}", command_line(&cli, SERVE_STATUS_COMMAND)),
+                        detail: format!(
+                            "{} {error}; {node_description}",
+                            command_line(&cli, SERVE_STATUS_COMMAND)
+                        ),
                     }),
-                    cli: Some(cli),
+                    cli: Some((cli, node_description)),
                 };
             }
         };
@@ -364,7 +391,7 @@ impl TailscaleService {
         let failure = (status.state == TailscaleState::Failed).then(|| Failure {
             event: "tailscale serve status could not be read",
             detail: format!(
-                "{}: {} Output: {}",
+                "{}: {} Output: {}; {node_description}",
                 command_line(&cli, SERVE_STATUS_COMMAND),
                 status.diagnostic_message,
                 summarize_output(&stdout)
@@ -373,7 +400,7 @@ impl TailscaleService {
         Inspection {
             status,
             failure,
-            cli: Some(cli),
+            cli: Some((cli, node_description)),
         }
     }
 
@@ -394,7 +421,9 @@ impl TailscaleService {
 struct Inspection {
     status: TailscaleStatus,
     failure: Option<Failure>,
-    cli: Option<PathBuf>,
+    /// The CLI that answered, with what its `status --json` said about this
+    /// host. The description only goes into failure logs.
+    cli: Option<(PathBuf, String)>,
 }
 
 #[derive(PartialEq)]
@@ -533,6 +562,17 @@ mod tests {
         .refresh()
         .await;
         assert_eq!(off.state, TailscaleState::ServeOff);
+
+        let differently_shaped_details = service(MockTailscaleRunner::with_responses([
+            response(
+                true,
+                r#"{"BackendState":"Running","Version":7,"Self":[],"Health":"degraded"}"#,
+            ),
+            response(true, r#"{"Web":{}}"#),
+        ]))
+        .refresh()
+        .await;
+        assert_eq!(differently_shaped_details.state, TailscaleState::ServeOff);
 
         let ready = service(MockTailscaleRunner::with_responses([
             response(true, node_status("Running")),
@@ -676,16 +716,25 @@ mod tests {
             response(true, node_status("Running")),
             response(true, serve_status("http://127.0.0.1:5178")),
         ]);
-        let incomplete_disable = service(disable_runner.clone())
-            .set_serve(false)
-            .await
-            .unwrap();
+        let disable = service(disable_runner.clone());
+        let incomplete_disable = disable.set_serve(false).await.unwrap();
         assert_eq!(incomplete_disable.state, TailscaleState::Failed);
         assert_eq!(
             incomplete_disable.reason_code,
             TailscaleReason::ServeDisableIncomplete
         );
         assert_eq!(disable_runner.calls().len(), 5);
+        assert_eq!(
+            logged_failure(&disable).await,
+            Some((
+                "tailscale serve did not reach the requested state",
+                format!(
+                    "{CLI} serve --yes --https=443 off succeeded, but Tailscale then reported: \
+                     Caffold is available through Tailscale Serve.; \
+                     Tailscale unknown version, HTTPS capability unknown, health: none"
+                )
+            ))
+        );
     }
 
     #[tokio::test]
@@ -787,7 +836,8 @@ mod tests {
                 "tailscale serve could not be enabled",
                 format!(
                     "{CLI} serve --bg --yes --https=443 http://127.0.0.1:5178 exited with code 1: \
-                     Serve is not enabled on your tailnet."
+                     Serve is not enabled on your tailnet.; \
+                     Tailscale unknown version, HTTPS capability unknown, health: none"
                 )
             ))
         );
@@ -802,7 +852,26 @@ mod tests {
             logged_failure(&disable).await,
             Some((
                 "tailscale serve could not be disabled",
-                format!("{CLI} serve --yes --https=443 off exited with code 1: permission denied")
+                format!(
+                    "{CLI} serve --yes --https=443 off exited with code 1: permission denied; \
+                     Tailscale unknown version, HTTPS capability unknown, health: none"
+                )
+            ))
+        );
+
+        let serve_status_failed = service(MockTailscaleRunner::with_responses([
+            response(true, node_status("Running")),
+            response(false, "failed to connect"),
+        ]));
+        serve_status_failed.refresh().await;
+        assert_eq!(
+            logged_failure(&serve_status_failed).await,
+            Some((
+                "tailscale serve status could not be read",
+                format!(
+                    "{CLI} serve status --json exited with code 1: failed to connect; \
+                     Tailscale unknown version, HTTPS capability unknown, health: none"
+                )
             ))
         );
 
@@ -820,7 +889,46 @@ mod tests {
                 "tailscale serve status could not be read",
                 format!(
                     "{CLI} serve status --json: Tailscale returned an invalid Serve status response. \
-                     Output: not json"
+                     Output: not json; \
+                     Tailscale unknown version, HTTPS capability unknown, health: none"
+                )
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn logs_what_a_timed_out_serve_printed_and_what_tailscale_reports_about_the_host() {
+        let mut runner = MockTailscaleRunner::with_mock_responses([
+            immediate(
+                true,
+                r#"{"BackendState":"Running","Version":"1.90.0","Self":{"CapMap":{}},"Health":[]}"#,
+            ),
+            immediate(true, r#"{"Web":{}}"#),
+            MockResponse::Immediate(Err(TailscaleCommandError::TimedOut {
+                stdout: "Serve is not enabled on your tailnet. To enable, visit: \
+                         https://login.tailscale.com/f/serve?node=n1"
+                    .to_string(),
+                stderr: "Warning: client version differs".to_string(),
+            })),
+        ]);
+        runner.executables[0].1 = PathBuf::from(APP_CLI);
+        let enable = service(runner);
+        let failed = enable.set_serve(true).await.unwrap();
+        assert_eq!(failed.reason_code, TailscaleReason::ServeEnableFailed);
+        assert_eq!(
+            failed.diagnostic_message,
+            "Caffold's Tailscale Serve mapping could not be enabled."
+        );
+        assert_eq!(
+            logged_failure(&enable).await,
+            Some((
+                "tailscale serve could not be enabled",
+                format!(
+                    "{CLI} serve --bg --yes --https=443 http://127.0.0.1:5178 did not finish within \
+                     10 seconds; stdout: Serve is not enabled on your tailnet. To enable, visit: \
+                     https://login.tailscale.com/f/serve?node=n1; stderr: Warning: client version \
+                     differs; Tailscale 1.90.0, HTTPS capability absent, health: none, executable \
+                     resolves to {APP_CLI}"
                 )
             ))
         );
@@ -985,7 +1093,10 @@ mod tests {
     }
 
     fn timed_out() -> MockResponse {
-        MockResponse::Immediate(Err(TailscaleCommandError::TimedOut))
+        MockResponse::Immediate(Err(TailscaleCommandError::TimedOut {
+            stdout: String::new(),
+            stderr: String::new(),
+        }))
     }
 
     async fn logged_failure(service: &TailscaleService) -> Option<(&'static str, String)> {
@@ -997,7 +1108,8 @@ mod tests {
 
     #[derive(Clone)]
     struct MockTailscaleRunner {
-        executables: Vec<PathBuf>,
+        /// Each executable's path and the path its links resolve to.
+        executables: Vec<(PathBuf, PathBuf)>,
         responses: Arc<StdMutex<VecDeque<MockResponse>>>,
         calls: Arc<StdMutex<Vec<MockCall>>>,
     }
@@ -1025,7 +1137,9 @@ mod tests {
             responses: [MockResponse; N],
         ) -> Self {
             Self {
-                executables: executables.map(PathBuf::from).into(),
+                executables: executables
+                    .map(|path| (PathBuf::from(path), PathBuf::from(path)))
+                    .into(),
                 responses: Arc::new(StdMutex::new(responses.into())),
                 calls: Arc::new(StdMutex::new(Vec::new())),
             }
@@ -1049,7 +1163,15 @@ mod tests {
                     searched: vec![PathBuf::from(CLI)],
                 }
             } else {
-                TailscaleExecutables::Found(self.executables.clone())
+                TailscaleExecutables::Found(
+                    self.executables
+                        .iter()
+                        .map(|(path, resolved)| TailscaleExecutable {
+                            path: path.clone(),
+                            resolved: resolved.clone(),
+                        })
+                        .collect(),
+                )
             }
         }
 

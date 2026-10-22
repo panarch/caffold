@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 
+use super::cli::summarize_output;
+
 const MAX_TAILNET_URL_BYTES: usize = 512;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -197,6 +199,55 @@ pub(super) struct TailscaleNodeResponse {
     pub(super) backend_state: String,
 }
 
+/// Summarizes what `tailscale status --json` reports about this host, for
+/// failure logs only.
+pub(super) fn describe_node(status_json: &str) -> String {
+    let status = serde_json::from_str::<Value>(status_json).unwrap_or(Value::Null);
+    let version = status
+        .get("Version")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown version");
+    let https = match status.get("Self") {
+        Some(Value::Object(node)) => {
+            let in_cap_map = node
+                .get("CapMap")
+                .and_then(Value::as_object)
+                .is_some_and(|capabilities| capabilities.contains_key("https"));
+            let in_capabilities = node
+                .get("Capabilities")
+                .and_then(Value::as_array)
+                .is_some_and(|capabilities| {
+                    capabilities
+                        .iter()
+                        .any(|capability| capability.as_str() == Some("https"))
+                });
+            if in_cap_map || in_capabilities {
+                "present"
+            } else {
+                "absent"
+            }
+        }
+        _ => "unknown",
+    };
+    let warnings = status
+        .get("Health")
+        .and_then(Value::as_array)
+        .map(|warnings| {
+            warnings
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join("; ")
+        })
+        .unwrap_or_default();
+    let health = if warnings.is_empty() {
+        "none".to_string()
+    } else {
+        summarize_output(&warnings)
+    };
+    format!("Tailscale {version}, HTTPS capability {https}, health: {health}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,6 +318,45 @@ mod tests {
             assert_eq!(canonical_tailnet_url_value(invalid), None, "{invalid}");
         }
         assert_eq!(canonical_tailnet_url_value(&"x".repeat(513)), None);
+    }
+
+    #[test]
+    fn describes_the_node_for_failure_logs() {
+        assert_eq!(
+            describe_node(
+                r#"{"BackendState":"Running","Version":"1.104.1-t7f4efe814","Self":{"CapMap":{"https":null},"Capabilities":["https"]},"Health":[]}"#
+            ),
+            "Tailscale 1.104.1-t7f4efe814, HTTPS capability present, health: none"
+        );
+        assert_eq!(
+            describe_node(r#"{"Version":"1.90.0","Self":{"Capabilities":["https"]}}"#),
+            "Tailscale 1.90.0, HTTPS capability present, health: none"
+        );
+        assert_eq!(
+            describe_node(
+                r#"{"Version":"1.90.0","Self":{"CapMap":{"funnel":null}},"Health":["DNS is unreachable.","Peers are offline."]}"#
+            ),
+            "Tailscale 1.90.0, HTTPS capability absent, health: DNS is unreachable.; Peers are offline."
+        );
+
+        let health = describe_node(&format!(r#"{{"Health":["{}"]}}"#, "x".repeat(500)));
+        assert!(health.ends_with('…'), "{health}");
+        assert!(health.len() < 500, "{health}");
+    }
+
+    #[test]
+    fn reads_missing_or_differently_shaped_node_fields_as_unknown() {
+        for body in [
+            r#"{"BackendState":"Running"}"#,
+            r#"{"Version":7,"Self":[],"Health":"degraded"}"#,
+            "not json",
+        ] {
+            assert_eq!(
+                describe_node(body),
+                "Tailscale unknown version, HTTPS capability unknown, health: none",
+                "{body}"
+            );
+        }
     }
 
     fn serve_status(target: &str) -> String {
