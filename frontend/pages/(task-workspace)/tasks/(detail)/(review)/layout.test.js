@@ -234,8 +234,10 @@ test("drops a Branch compare that returns after Review leaves Branch", async (t)
     },
     route: { scope: "branch", baseRef: "origin/main", path: "" },
     branchGeneration: 0,
+    branchOutdated: false,
     compare: null,
     acceptRequest: review.acceptRequest,
+    patchRereadState: review.patchRereadState,
     branchTree: () => branchTree,
     patchControls() {},
     patchErrorState() {},
@@ -253,4 +255,67 @@ test("drops a Branch compare that returns after Review leaves Branch", async (t)
   compares.at(-1).resolve(new Response(JSON.stringify(payload)));
   assert.equal(await late, null);
   assert.equal(drawn.length, 1);
+});
+
+test("drops a Working Tree status read sent before the page came back", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const statuses = [];
+  globalThis.window = { location: { origin: "http://caffold.test" } };
+  globalThis.fetch = (input, ...options) => {
+    if (new URL(input).pathname !== "/api/git/status") {
+      return previousFetch(input, ...options);
+    }
+    const response = Promise.withResolvers();
+    statuses.push(response);
+    return response.promise;
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  });
+  const clean = { repository: { rootPath: "/repo" }, files: [] };
+  const changed = {
+    repository: { rootPath: "/repo" },
+    files: [{ path: "src/planner.rs", status: "M" }],
+  };
+  const drawn = [];
+  const workingTree = {
+    setLoading() {},
+    setStatus: (status) => drawn.push(status),
+    updateStatus: (status) => drawn.push(status),
+  };
+  const owner = {
+    active: true,
+    isConnected: true,
+    task: { threadId: "thread-a", worktree: { rootPath: "/repo", branch: "main" } },
+    route: { scope: "branch", baseRef: "origin/main", path: "" },
+    status: clean,
+    statusOutdated: false,
+    branchOutdated: false,
+    statusGeneration: 0,
+    branchGeneration: 0,
+    pendingWatchViewerRefresh: false,
+    acceptRequest: review.acceptRequest,
+    patchRereadState: review.patchRereadState,
+    workingTree: () => workingTree,
+    patchErrorState() {},
+    patchEmptyStates() {},
+    syncSelection() {},
+  };
+
+  const sentBefore = review.refreshWorking.call(owner, { background: true });
+  review.markScopesOutdated.call(owner);
+  statuses.at(-1).resolve(new Response(JSON.stringify(changed)));
+  assert.equal(await sentBefore, null);
+  assert.equal(owner.status, clean);
+  assert.equal(owner.statusOutdated, true);
+  assert.equal(drawn.length, 0);
+
+  const sentAfter = review.refreshWorking.call(owner, { background: true });
+  statuses.at(-1).resolve(new Response(JSON.stringify(changed)));
+  assert.deepEqual(await sentAfter, changed);
+  assert.equal(owner.statusOutdated, false);
+  assert.deepEqual(drawn, [changed]);
 });

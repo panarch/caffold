@@ -104,6 +104,35 @@ test("reopens the selected Review scope at its last semantic route", { tag: "@al
   ).toHaveAttribute("aria-current", "true");
 });
 
+test("reads Branch again when it is chosen after Review reopens on Working Tree", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  const { reviewScenario, taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page, {
+      configureReview(review) {
+        review.cleanBranch = true;
+      },
+    });
+  await selectTaskReviewScope(tasksPage, "branch");
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  await expect(compareTree).toContainText("No changes compared with origin/main.");
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
+
+  reviewScenario.cleanBranch = false;
+  const statusBefore = reviewScenario.gitStatusRequests;
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await expect.poll(() => reviewScenario.gitStatusRequests).toBe(statusBefore + 1);
+
+  const comparesBefore = reviewScenario.gitCompareRequests;
+  await selectTaskReviewScope(tasksPage, "branch");
+  await expect(
+    compareTree.locator('button[data-file-tree-path="src/planner.rs"]'),
+  ).toBeVisible();
+  expect(reviewScenario.gitCompareRequests).toBe(comparesBefore + 1);
+});
+
 test("keeps the selected Review viewer mounted during canonical task sync", { tag: "@all-viewports" }, async ({
   page,
 }) => {

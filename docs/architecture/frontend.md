@@ -1322,9 +1322,11 @@ modification time, and answer a browser that already holds that version with
 304 without reading the file. A file without a modification time is sent with
 `no-store`. Review's file viewer fetches the image or document it previews
 itself, once for the selected file, and draws it from that copy. It asks the
-server again only when Review learns the file may have changed: the watch
-reports a change to it or recovers. An answer that names the same version, the
-`ETag`, leaves the drawn copy in place; another version is drawn instead.
+server again only when Review reloads the preview because the file may have
+changed: the watch reports a change to it or recovers, or Review reads the
+scope's Git data again while the preview is on screen. An answer that names the
+same version, the `ETag`, leaves the drawn copy in place; another version is
+drawn instead.
 
 Images and documents also answer one `Range: bytes=` range with 206 and
 `Content-Range`, reading only that part of the file, and a range that starts
@@ -1435,6 +1437,17 @@ that cached review instance. Detail hands the active entry its context again
 with every subject snapshot; a handoff with the same identity, roots, and route
 keeps the newer Task fields, such as branch and HEAD, for later requests and
 starts no request.
+
+When its root watch recovers or a cached entry connects again, Integrated
+Review treats the Working Tree status and the Branch refs and comparison it
+holds as outdated, and drops answers to requests sent before that moment. It
+reads the scope on screen again at once, and the other scope when it is
+chosen. While outdated data is read again, an empty list and the viewer's
+"No changes in this scope." show loading instead, and the read's error if it
+fails; a list with files and an open diff stay as they are until the answer
+arrives. After reading Git data again, the viewer reloads a diff, source, or
+preview already on screen without the loading state and keeps its reading
+position.
 
 ### Git
 

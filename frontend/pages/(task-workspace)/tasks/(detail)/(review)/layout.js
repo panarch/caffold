@@ -49,6 +49,7 @@ class CaffoldTaskReview extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
     this.active = true;
+    this.markScopesOutdated();
     this.syncReview({ reactivated: true });
   }
 
@@ -75,9 +76,12 @@ class CaffoldTaskReview extends HTMLElement {
     this.refs = null;
     this.statusError = null;
     this.compareError = null;
+    this.statusOutdated = false;
+    this.branchOutdated = false;
     this.statusGeneration = 0;
     this.branchGeneration = 0;
     this.viewerGeneration = 0;
+    this.shownViewerStateKey = "";
     this.watchUnsubscribe = null;
     this.watchPath = "";
     this.pendingWatchViewerRefresh = false;
@@ -207,6 +211,7 @@ class CaffoldTaskReview extends HTMLElement {
     const routeChanged = Boolean(
       this.previousRouteKey && this.previousRouteKey !== nextRouteKey,
     );
+    const scopeChanged = routeChanged && previousRoute.scope !== nextRoute.scope;
     const revealFileSelection = Boolean(
       nextRoute.navigator === "files" &&
         nextRoute.path &&
@@ -240,7 +245,7 @@ class CaffoldTaskReview extends HTMLElement {
       this.requestRoute(normalizedForTask);
       return true;
     }
-    this.syncReview({ contextChanged, routeChanged, revealFileSelection });
+    this.syncReview({ contextChanged, routeChanged, scopeChanged, revealFileSelection });
     return true;
   }
 
@@ -464,11 +469,14 @@ class CaffoldTaskReview extends HTMLElement {
     this.refs = null;
     this.statusError = null;
     this.compareError = null;
+    this.statusOutdated = false;
+    this.branchOutdated = false;
     this.pendingWatchViewerRefresh = false;
     this.previousRouteKey = "";
     this.workingTree()?.reset();
     this.branchTree()?.reset();
     this.fileNavigator()?.clearSelectedPath();
+    this.shownViewerStateKey = "";
     this.viewer()?.setEmpty();
   }
 
@@ -476,6 +484,16 @@ class CaffoldTaskReview extends HTMLElement {
     this.statusGeneration += 1;
     this.branchGeneration += 1;
     this.viewerGeneration += 1;
+  }
+
+  // Git may have changed while the page was away or Review was hidden, so
+  // the data held for each scope is outdated until a request sent after
+  // this point answers.
+  markScopesOutdated() {
+    this.statusOutdated = true;
+    this.branchOutdated = true;
+    this.statusGeneration += 1;
+    this.branchGeneration += 1;
   }
 
   syncReview(options = {}) {
@@ -491,20 +509,27 @@ class CaffoldTaskReview extends HTMLElement {
     });
     this.subscribeWatch(taskRootPath(this.task));
     if (this.task.worktree) {
-      if (options.contextChanged || options.reactivated || !this.status) {
+      if (
+        options.contextChanged ||
+        options.reactivated ||
+        !this.status ||
+        (options.scopeChanged && this.route.scope === "working" && this.statusOutdated)
+      ) {
         void this.refreshWorking();
       }
       if (
         this.route.scope === "branch" &&
         (options.reactivated ||
+          (options.scopeChanged && this.branchOutdated) ||
           !this.refs ||
           !this.compare ||
           this.compare.baseRef !== this.route.baseRef)
       ) {
-        void this.ensureBranchData({ force: options.reactivated });
+        void this.ensureBranchData({ force: this.branchOutdated });
       }
     }
     if (!this.route.path) {
+      this.shownViewerStateKey = "";
       this.viewer()?.setEmpty();
     } else if (
       options.contextChanged ||
@@ -571,13 +596,16 @@ class CaffoldTaskReview extends HTMLElement {
         branch: this.task?.worktree?.branch ?? null,
       });
     }
+    this.patchRereadState("working");
     try {
       const status = await getGitStatus(rootPath);
       if (!this.acceptRequest("status", generation, rootPath)) {
         return null;
       }
       const hadStatus = Boolean(this.status);
+      const wasOutdated = this.statusOutdated;
       this.status = status;
+      this.statusOutdated = false;
       this.statusError = null;
       this.patchErrorState();
       if (hadStatus) {
@@ -590,11 +618,17 @@ class CaffoldTaskReview extends HTMLElement {
       const canRefreshViewer = this.route.path && this.route.scope === "working";
       const pendingWatchViewerRefresh = this.pendingWatchViewerRefresh;
       this.pendingWatchViewerRefresh = false;
+      // A watch change reloads the viewer only for its own file, unless the
+      // status it replaces was read before the page came back.
       const refreshViewer = options.background
-        ? canRefreshViewer && pendingWatchViewerRefresh
+        ? canRefreshViewer && (pendingWatchViewerRefresh || wasOutdated)
         : canRefreshViewer;
       if (refreshViewer) {
-        void this.loadViewer({ background: Boolean(options.background) });
+        void this.loadViewer({
+          background:
+            Boolean(options.background) ||
+            (hadStatus && this.shownViewerStateKey === this.viewerStateKey()),
+        });
       }
       return status;
     } catch (error) {
@@ -605,6 +639,7 @@ class CaffoldTaskReview extends HTMLElement {
       if (!this.status) {
         this.workingTree()?.setError(error, { rootPath });
       }
+      this.patchRereadState("working", error);
       this.patchErrorState();
       return null;
     }
@@ -616,6 +651,7 @@ class CaffoldTaskReview extends HTMLElement {
       return null;
     }
     const generation = ++this.branchGeneration;
+    this.patchRereadState("branch");
     try {
       const refs = force || !this.refs ? await getGitRefs(rootPath) : this.refs;
       if (!this.acceptRequest("branch", generation, rootPath)) {
@@ -645,6 +681,7 @@ class CaffoldTaskReview extends HTMLElement {
       }
       const hadCompare = Boolean(this.compare);
       this.compare = compare;
+      this.branchOutdated = false;
       this.compareError = null;
       this.patchErrorState();
       this.branchTree()?.setEmptyMessage(
@@ -659,7 +696,9 @@ class CaffoldTaskReview extends HTMLElement {
       this.patchControls();
       this.patchEmptyStates();
       if (this.route.path && this.route.scope === "branch") {
-        void this.loadViewer();
+        void this.loadViewer({
+          background: hadCompare && this.shownViewerStateKey === this.viewerStateKey(),
+        });
       }
       return compare;
     } catch (error) {
@@ -670,6 +709,7 @@ class CaffoldTaskReview extends HTMLElement {
       if (!this.compare) {
         this.branchTree()?.setError(error, this.refs?.repository ?? null);
       }
+      this.patchRereadState("branch", error);
       this.patchErrorState();
       return null;
     }
@@ -689,10 +729,20 @@ class CaffoldTaskReview extends HTMLElement {
   async loadViewer(options = {}) {
     const selectedPath = this.logicalSelectedPath();
     if (!selectedPath || !this.active) {
+      this.shownViewerStateKey = "";
       this.viewer()?.setEmpty();
       return;
     }
     const generation = ++this.viewerGeneration;
+    const stateKey = this.viewerStateKey();
+    // A background load follows a change the watch reported for the file, a
+    // recovered watch, or a reread of Git data while the view is on screen:
+    // it keeps the reading position and asks again whether a previewed file
+    // changed. Any other load shows the file the viewer already holds.
+    const background = Boolean(options.background);
+    if (!background) {
+      this.shownViewerStateKey = "";
+    }
     const sourceMode = this.route.viewer === "source";
     const previewMode = this.route.viewer === "preview";
     const fileMode = sourceMode || previewMode;
@@ -706,16 +756,13 @@ class CaffoldTaskReview extends HTMLElement {
     }
     const change = this.selectedChange();
     if (fileMode && change?.deleted) {
+      this.shownViewerStateKey = "";
       this.viewer()?.setNotice(
         "This file was deleted in the selected scope. Diff remains available.",
         { title: fileNameFromPath(selectedPath) },
       );
       return;
     }
-    // A background load follows a change the watch reported for the file or
-    // a recovered watch, so the file may have changed; any other load shows
-    // the file the viewer already holds.
-    const recheck = Boolean(options.background);
     if (previewMode && representations.previewKind === "document") {
       const entry = this.fileNavigator()?.entryForPath(selectedPath);
       this.viewer()?.setDocument({
@@ -724,7 +771,8 @@ class CaffoldTaskReview extends HTMLElement {
         name: fileNameFromPath(selectedPath),
         size: entry?.size,
         modifiedMs: entry?.modifiedMs,
-      }, { recheck });
+      }, { recheck: background });
+      this.shownViewerStateKey = stateKey;
       return;
     }
     if (previewMode && representations.previewKind === "image") {
@@ -735,10 +783,12 @@ class CaffoldTaskReview extends HTMLElement {
         imageType: imageTypeLabel(selectedPath),
         size: entry?.size,
         modifiedMs: entry?.modifiedMs,
-      }, { recheck });
+      }, { recheck: background });
+      this.shownViewerStateKey = stateKey;
       return;
     }
     if (sourceMode && !representations.source) {
+      this.shownViewerStateKey = "";
       this.viewer()?.setNotice("Source is unavailable for this file.", {
         actionLabel: "View preview",
         action: "view-preview",
@@ -747,6 +797,7 @@ class CaffoldTaskReview extends HTMLElement {
       return;
     }
     if (previewMode && !representations.previewKind) {
+      this.shownViewerStateKey = "";
       this.viewer()?.setNotice("Preview is unavailable for this file.", {
         actionLabel: "View source",
         action: "view-source",
@@ -755,6 +806,18 @@ class CaffoldTaskReview extends HTMLElement {
       return;
     }
     if (!fileMode && !change) {
+      this.shownViewerStateKey = "";
+      const branch = this.route.scope === "branch";
+      if (branch ? this.branchOutdated : this.statusOutdated) {
+        const error = branch ? this.compareError : this.statusError;
+        const presentation = this.diffPresentation(selectedPath, null);
+        if (error) {
+          this.viewer()?.setError(presentation, error);
+        } else {
+          this.viewer()?.setLoading(presentation);
+        }
+        return;
+      }
       this.viewer()?.setNotice("No changes in this scope.", {
         actionLabel: "View source",
         action: "view-source",
@@ -763,8 +826,7 @@ class CaffoldTaskReview extends HTMLElement {
       return;
     }
     const viewer = this.viewer();
-    const saved = this.viewerScroll.get(this.viewerStateKey());
-    const background = Boolean(options.background);
+    const saved = this.viewerScroll.get(stateKey);
     const presentation = fileMode
       ? sourceViewerPresentation({ path: selectedPath })
       : this.diffPresentation(selectedPath, change);
@@ -812,11 +874,13 @@ class CaffoldTaskReview extends HTMLElement {
           presentation: loadedPresentation,
         });
       }
+      this.shownViewerStateKey = stateKey;
       if (!background && !(sourceMode && this.route.line)) {
         this.restoreViewerPosition(saved);
       }
     } catch (error) {
       if (this.acceptViewer(generation, selectedPath)) {
+        this.shownViewerStateKey = "";
         viewer?.setError(presentation, error);
       }
     }
@@ -961,8 +1025,63 @@ class CaffoldTaskReview extends HTMLElement {
   }
 
   patchEmptyStates() {
-    const workingEmpty = Boolean(this.status && (this.status.files?.length ?? 0) === 0);
+    const workingEmpty = Boolean(
+      this.status && !this.statusOutdated && (this.status.files?.length ?? 0) === 0,
+    );
     this.querySelector(".task-review-empty-action")?.toggleAttribute("hidden", !workingEmpty);
+  }
+
+  // While a scope's data from before the page came back is read again, the
+  // places where that data says nothing changed show loading, then the read's
+  // error if it fails.
+  patchRereadState(scope, error = null) {
+    const working = scope === "working";
+    if (!(working ? this.statusOutdated : this.branchOutdated)) {
+      return;
+    }
+    const data = working ? this.status : this.compare;
+    if (data && !data.files?.length) {
+      if (working) {
+        const rootPath = taskWorktreeRootPath(this.task);
+        if (error) {
+          this.workingTree()?.setError(error, { rootPath });
+        } else {
+          this.workingTree()?.setLoading({
+            rootPath,
+            branch: this.task?.worktree?.branch ?? null,
+          });
+        }
+      } else {
+        const repository = this.refs?.repository ?? null;
+        if (error) {
+          this.branchTree()?.setError(error, repository);
+        } else {
+          this.branchTree()?.setLoading(repository, {
+            baseRef: this.route.baseRef,
+            headRef: taskCompareHeadRef(this.task, this.refs),
+          });
+        }
+      }
+    }
+    if (working) {
+      this.patchEmptyStates();
+    }
+    if (
+      !data ||
+      this.route.scope !== scope ||
+      !this.route.path ||
+      this.route.viewer !== "diff" ||
+      this.selectedChange()
+    ) {
+      return;
+    }
+    const presentation = this.diffPresentation(this.logicalSelectedPath(), null);
+    this.shownViewerStateKey = "";
+    if (error) {
+      this.viewer()?.setError(presentation, error);
+    } else {
+      this.viewer()?.setLoading(presentation);
+    }
   }
 
   syncSelection() {
@@ -1063,6 +1182,7 @@ class CaffoldTaskReview extends HTMLElement {
   }
 
   async refreshAll() {
+    this.markScopesOutdated();
     const requests = [
       this.fileNavigator()?.requestRefresh({
         allDirectories: true,
