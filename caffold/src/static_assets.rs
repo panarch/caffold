@@ -1152,14 +1152,65 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(review)/layout.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.js"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.css" => {
-            Some(css(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.css"
+        "pages/(task-workspace)/tasks/(detail)/(review)/layout/paths.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout/paths.js"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/(review)/layout/route.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout/route.js"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/(review)/changes-reading.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/changes-reading.js"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/representations.js" => {
             Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/representations.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file/content.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file/content.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.js"
             )))
         }
         "pages/(task-workspace)/tasks/components/active-task-list.css" => Some(css(include_str!(
@@ -1268,11 +1319,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/git-compare-browser.js" => Some(js(include_str!(
             "../../frontend/components/git-compare-browser.js"
         ))),
-        "components/git-compare-browser/compare-tree.css" => Some(css(include_str!(
-            "../../frontend/components/git-compare-browser/compare-tree.css"
+        "components/git-compare-tree.css" => Some(css(include_str!(
+            "../../frontend/components/git-compare-tree.css"
         ))),
-        "components/git-compare-browser/compare-tree.js" => Some(js(include_str!(
-            "../../frontend/components/git-compare-browser/compare-tree.js"
+        "components/git-compare-tree.js" => Some(js(include_str!(
+            "../../frontend/components/git-compare-tree.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css"
@@ -2033,8 +2084,7 @@ mod tests {
                 .windows(b"caffold-git-compare-browser".len())
                 .any(|window| window == b"caffold-git-compare-browser")
         );
-        let compare_tree =
-            get("components/git-compare-browser/compare-tree.js").expect("compare tree js");
+        let compare_tree = get("components/git-compare-tree.js").expect("compare tree js");
         assert_eq!(compare_tree.content_type, "text/javascript; charset=utf-8");
         assert!(
             compare_tree
@@ -2480,6 +2530,18 @@ mod tests {
                 "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",
                 b"caffold-task-review".as_slice(),
             ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.js",
+                b"caffold-review-working-tree-changes".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.js",
+                b"caffold-review-branch-changes".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.js",
+                b"caffold-review-selected-file".as_slice(),
+            ),
         ] {
             let asset = get(path).expect("tasks component js");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
@@ -2708,6 +2770,18 @@ mod tests {
                 b"caffold-task-review".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css",
+                b"caffold-review-working-tree-changes".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.css",
+                b"caffold-review-branch-changes".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.css",
+                b"caffold-review-selected-file".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/task-status.css",
                 b"caffold-tasks-page".as_slice(),
             ),
@@ -2720,7 +2794,7 @@ mod tests {
         assert!(get("pages/tasks/page.css").is_none());
 
         let diff_changes_tree =
-            get("pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.js")
+            get("pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.js")
                 .expect("integrated review changes tree js");
         assert_eq!(
             diff_changes_tree.content_type,

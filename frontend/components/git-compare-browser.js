@@ -1,7 +1,7 @@
 import { getGitCompare, getGitCompareDiff, getGitRefs } from "../api.js";
 import { diffViewerPresentation } from "./file-viewer-presentation.js";
 import "./file-viewer.js";
-import "./git-compare-browser/compare-tree.js";
+import "./git-compare-tree.js";
 import "./pane-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.js";
 import {

@@ -3,10 +3,10 @@ import test, { after } from "node:test";
 
 import {
   installCustomElementUnitRegistry,
-} from "../../tests/support/custom-element-unit.js";
+} from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./compare-tree.js");
+await import("./git-compare-tree.js");
 const compareTree = registry.element("caffold-git-compare-tree").prototype;
 after(() => registry.restore());
 

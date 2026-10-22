@@ -1,0 +1,37 @@
+caffold-review-working-tree-changes {
+  display: grid;
+
+  & > caffold-git-diff-changes-tree {
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+  }
+
+  & > .working-tree-changes-empty-action {
+    position: absolute;
+    z-index: 2;
+    inset: calc(
+        var(--review-header-height) + var(--interface-space-16) + var(--interface-space-8)
+      )
+      var(--interface-space-5) auto;
+    box-sizing: border-box;
+    width: fit-content;
+    max-width: calc(100% - var(--interface-space-10));
+    margin: 0;
+    padding: var(--interface-space-5);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    box-shadow: 0 8px 24px rgb(var(--shadow-rgb) / 10%);
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & > .working-tree-changes-empty-action[hidden] {
+    display: none;
+  }
+
+  & > .working-tree-changes-empty-action p {
+    margin: 0 0 var(--interface-space-4);
+  }
+}

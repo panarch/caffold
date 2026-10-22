@@ -83,9 +83,9 @@ caffold-task-review {
   & .task-review-viewer-pane,
   & .task-review-navigator,
   & caffold-file-navigator,
-  & caffold-git-diff-changes-tree,
-  & caffold-git-compare-tree,
-  & caffold-review-file-viewer {
+  & caffold-review-working-tree-changes,
+  & caffold-review-branch-changes,
+  & caffold-review-selected-file {
     min-width: 0;
     min-height: 0;
     height: 100%;
@@ -167,34 +167,6 @@ caffold-task-review {
 
   & .task-review-navigator[hidden] {
     display: none;
-  }
-
-  & .task-review-empty-action {
-    position: absolute;
-    z-index: 2;
-    inset: calc(
-        var(--review-header-height) + var(--interface-space-16) + var(--interface-space-8)
-      )
-      var(--interface-space-5) auto;
-    box-sizing: border-box;
-    width: fit-content;
-    max-width: calc(100% - var(--interface-space-10));
-    margin: 0;
-    padding: var(--interface-space-5);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface);
-    box-shadow: 0 8px 24px rgb(var(--shadow-rgb) / 10%);
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-  }
-
-  & .task-review-empty-action[hidden] {
-    display: none;
-  }
-
-  & .task-review-empty-action p {
-    margin: 0 0 var(--interface-space-4);
   }
 
   & .task-review-layout > caffold-pane-resizer {

@@ -37,8 +37,8 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   const taskSummary = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
   );
-  const taskReview = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",
+  const reviewBranchChanges = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.js",
   );
   const settingsWorkspace = readFrontend(
     "pages/(task-workspace)/settings/layout.js",
@@ -104,7 +104,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   assert.doesNotMatch(tasksPage, /<caffold-task-navigator|workspaceNavigationHost/);
   assert.doesNotMatch(tasksPage, /closeActiveSubview/);
   assert.doesNotMatch(taskSummary, /getGitRefs|\/api\/git\/refs/);
-  assert.match(taskReview, /getGitRefs/);
+  assert.match(reviewBranchChanges, /getGitRefs/);
   assert.doesNotMatch(
     settingsWorkspace,
     /<caffold-settings-navigator|workspaceNavigationHost/,
