@@ -1,4 +1,4 @@
-@import "./file-navigator/list.css";
+@import "./file-navigator/components/list.css";
 
 caffold-file-navigator {
   display: block;

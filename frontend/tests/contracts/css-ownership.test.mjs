@@ -16,7 +16,7 @@ const ownership = new Map([
   ["components/file-viewer/components/code-viewer.css", ["caffold-code-viewer"]],
   ["components/file-viewer/components/diff-viewer.css", ["caffold-diff-viewer"]],
   ["components/file-navigator.css", ["caffold-file-navigator"]],
-  ["components/file-navigator/list.css", ["caffold-file-list"]],
+  ["components/file-navigator/components/list.css", ["caffold-file-list"]],
   ["components/file-tree.css", ["caffold-file-tree"]],
   [
     "components/file-viewer.css",
@@ -430,11 +430,11 @@ const ownership = new Map([
     ["caffold-settings-workspace"],
   ],
   [
-    "pages/(task-workspace)/settings/navigator.css",
+    "pages/(task-workspace)/settings/components/navigator.css",
     ["caffold-settings-navigator"],
   ],
   [
-    "pages/(task-workspace)/settings/navigator/components/item.css",
+    "pages/(task-workspace)/settings/components/navigator/components/item.css",
     ["caffold-settings-navigator-item"],
   ],
   [

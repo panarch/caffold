@@ -495,12 +495,9 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(tasksLayout, /createAndAdoptTask/);
 });
 
-test("Tasks custom elements use routed owners or the nearest components namespace", () => {
-  const taskRoot = "pages/(task-workspace)/tasks/";
+test("custom elements use routed owners or the nearest components namespace", () => {
   const invalidOwners = frontendJavascriptFiles()
-    .filter(([path, source]) =>
-      path.startsWith(taskRoot) && source.includes("customElements.define")
-    )
+    .filter(([, source]) => source.includes("customElements.define"))
     .filter(([path]) => {
       const segments = path.split("/");
       const fileName = segments.at(-1);
@@ -540,7 +537,7 @@ test("workspace brand owns the shared Tasks, Notes, and Settings navigator ident
     "pages/(task-workspace)/tasks/components/navigator.js",
   );
   const settingsNavigator = readFrontend(
-    "pages/(task-workspace)/settings/navigator.js",
+    "pages/(task-workspace)/settings/components/navigator.js",
   );
   const notesNavigator = readFrontend(
     "pages/(task-workspace)/notes/components/navigator.js",

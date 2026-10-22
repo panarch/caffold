@@ -66,7 +66,7 @@ test("serves one Task workspace shell and only active static assets", { tag: "@a
     "/assets/pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
     "/assets/pages/(task-workspace)/settings/components/detail-list.css",
     "/assets/pages/(task-workspace)/settings/components/detail-list.js",
-    "/assets/components/file-navigator/list.js",
+    "/assets/components/file-navigator/components/list.js",
   ]) {
     expect(serviceWorker).toContain(asset);
     expect((await request.get(asset)).ok(), asset).toBe(true);
