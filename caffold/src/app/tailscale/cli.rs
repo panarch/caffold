@@ -7,10 +7,15 @@ use std::{
     io, iter,
     path::{Path, PathBuf},
     pin::Pin,
+    process::Stdio,
     time::Duration,
 };
 
-use tokio::{process::Command, time::timeout};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt},
+    process::Command,
+    time::timeout,
+};
 
 const TAILSCALE_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const COMMAND_DIRECTORIES: [&str; 4] = [
@@ -32,14 +37,21 @@ pub(super) trait TailscaleRunner: Send + Sync {
 }
 
 pub(super) enum TailscaleExecutables {
-    Found(Vec<PathBuf>),
+    Found(Vec<TailscaleExecutable>),
     Missing { searched: Vec<PathBuf> },
+}
+
+pub(super) struct TailscaleExecutable {
+    pub(super) path: PathBuf,
+    /// `path` with every symbolic link followed, or `path` itself when it
+    /// cannot be resolved.
+    pub(super) resolved: PathBuf,
 }
 
 #[derive(Debug)]
 pub(super) enum TailscaleCommandError {
     Start(io::Error),
-    TimedOut,
+    TimedOut { stdout: String, stderr: String },
     Exited { code: Option<i32>, output: String },
 }
 
@@ -47,11 +59,19 @@ impl fmt::Display for TailscaleCommandError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Start(error) => write!(formatter, "could not start: {error}"),
-            Self::TimedOut => write!(
-                formatter,
-                "did not finish within {} seconds",
-                TAILSCALE_COMMAND_TIMEOUT.as_secs()
-            ),
+            Self::TimedOut { stdout, stderr } => {
+                write!(
+                    formatter,
+                    "did not finish within {} seconds",
+                    TAILSCALE_COMMAND_TIMEOUT.as_secs()
+                )?;
+                for (stream, output) in [("stdout", stdout), ("stderr", stderr)] {
+                    if !output.is_empty() {
+                        write!(formatter, "; {stream}: {output}")?;
+                    }
+                }
+                Ok(())
+            }
             Self::Exited { code, output } => {
                 match code {
                     Some(code) => write!(formatter, "exited with code {code}")?,
@@ -76,28 +96,62 @@ impl TailscaleRunner for ProcessTailscaleRunner {
 
     fn run(&self, executable: &Path, arguments: &[&str]) -> TailscaleCommandFuture {
         let mut command = Command::new(executable);
-        command.kill_on_drop(true).args(arguments);
+        command
+            .kill_on_drop(true)
+            .args(arguments)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         Box::pin(async move {
-            let output = timeout(TAILSCALE_COMMAND_TIMEOUT, command.output())
-                .await
-                .map_err(|_| TailscaleCommandError::TimedOut)?
-                .map_err(TailscaleCommandError::Start)?;
-            let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-            if output.status.success() {
+            let mut child = command.spawn().map_err(TailscaleCommandError::Start)?;
+            let mut stdout_pipe = child.stdout.take();
+            let mut stderr_pipe = child.stderr.take();
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            let finished = timeout(TAILSCALE_COMMAND_TIMEOUT, async {
+                tokio::try_join!(
+                    child.wait(),
+                    read_until_closed(stdout_pipe.as_mut(), &mut stdout),
+                    read_until_closed(stderr_pipe.as_mut(), &mut stderr),
+                )
+            })
+            .await;
+            let Ok(finished) = finished else {
+                // Keep what was read so far without waiting for the pipes to
+                // close: a process the command started may hold them open.
+                let _ = child.start_kill();
+                return Err(TailscaleCommandError::TimedOut {
+                    stdout: summarize_output(&String::from_utf8_lossy(&stdout)),
+                    stderr: summarize_output(&String::from_utf8_lossy(&stderr)),
+                });
+            };
+            let (status, (), ()) = finished.map_err(TailscaleCommandError::Start)?;
+            let stdout = String::from_utf8_lossy(&stdout).into_owned();
+            if status.success() {
                 return Ok(stdout);
             }
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr = String::from_utf8_lossy(&stderr);
             let reported: &str = if stderr.trim().is_empty() {
                 &stdout
             } else {
                 &stderr
             };
             Err(TailscaleCommandError::Exited {
-                code: output.status.code(),
+                code: status.code(),
                 output: summarize_output(reported),
             })
         })
     }
+}
+
+async fn read_until_closed(
+    pipe: Option<&mut (impl AsyncRead + Unpin)>,
+    output: &mut Vec<u8>,
+) -> io::Result<()> {
+    let Some(pipe) = pipe else {
+        return Ok(());
+    };
+    while pipe.read_buf(output).await? != 0 {}
+    Ok(())
 }
 
 fn candidate_paths(search_path: Option<OsString>, home: Option<OsString>) -> Vec<PathBuf> {
@@ -127,13 +181,18 @@ fn candidate_paths(search_path: Option<OsString>, home: Option<OsString>) -> Vec
 
 fn find_executables(candidates: Vec<PathBuf>) -> TailscaleExecutables {
     let mut targets = HashSet::new();
-    let found: Vec<PathBuf> = candidates
+    let found: Vec<TailscaleExecutable> = candidates
         .iter()
         .filter(|candidate| is_executable_file(candidate))
-        .filter(|candidate| {
-            targets.insert(fs::canonicalize(candidate).unwrap_or_else(|_| candidate.to_path_buf()))
+        .filter_map(|candidate| {
+            let resolved = fs::canonicalize(candidate).unwrap_or_else(|_| candidate.clone());
+            targets
+                .insert(resolved.clone())
+                .then(|| TailscaleExecutable {
+                    path: candidate.clone(),
+                    resolved,
+                })
         })
-        .cloned()
         .collect();
     if found.is_empty() {
         TailscaleExecutables::Missing {
@@ -172,7 +231,10 @@ pub(super) fn summarize_output(output: &str) -> String {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use std::{fs, os::unix::fs::PermissionsExt};
+    use std::{fs, os::unix::fs::PermissionsExt, thread, time::Instant};
+
+    use futures_util::poll;
+    use rustix::process::{Pid, Signal, kill_process};
 
     use super::*;
 
@@ -247,10 +309,15 @@ mod tests {
             link.join("tailscale"),
             binary.join("tailscale"),
         ]);
-        assert!(matches!(
-            found,
-            TailscaleExecutables::Found(paths) if paths == [link.join("tailscale")]
-        ));
+        let TailscaleExecutables::Found(found) = found else {
+            panic!("the linked executable was not found");
+        };
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, link.join("tailscale"));
+        assert_eq!(
+            found[0].resolved,
+            fs::canonicalize(binary.join("tailscale")).unwrap()
+        );
 
         let searched = vec![plain.join("tailscale"), temp.path().join("missing")];
         let missing = find_executables(searched.clone());
@@ -311,8 +378,65 @@ mod tests {
             .run(Path::new("/bin/sh"), &["-c", "exec sleep 30"])
             .await
             .unwrap_err();
-        assert!(matches!(error, TailscaleCommandError::TimedOut));
+        assert!(matches!(error, TailscaleCommandError::TimedOut { .. }));
         assert_eq!(error.to_string(), "did not finish within 10 seconds");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn keeps_what_a_command_wrote_before_it_timed_out() {
+        let temp = tempfile::tempdir().unwrap();
+        let written = temp.path().join("written");
+        let mut run = ProcessTailscaleRunner.run(
+            Path::new("/bin/sh"),
+            &[
+                "-c",
+                r#"echo 'To enable, visit: https://example.test/enable'; echo warning >&2; : > "$0"; exec sleep 30"#,
+                written.to_str().unwrap(),
+            ],
+        );
+        // Start the command, and let the paused clock reach the timeout only
+        // after its output is in the pipes.
+        assert!(poll!(&mut run).is_pending());
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !written.exists() {
+            assert!(Instant::now() < deadline, "the command wrote nothing");
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        let error = run.await.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "did not finish within 10 seconds; \
+             stdout: To enable, visit: https://example.test/enable; stderr: warning"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn returns_at_the_timeout_while_a_process_the_command_started_holds_its_pipes() {
+        let temp = tempfile::tempdir().unwrap();
+        let holder = temp.path().join("holder");
+        let mut run = ProcessTailscaleRunner.run(
+            Path::new("/bin/sh"),
+            &[
+                "-c",
+                r#"echo started; sleep 30 & echo $! > "$0.tmp"; mv "$0.tmp" "$0"; exec sleep 30"#,
+                holder.to_str().unwrap(),
+            ],
+        );
+        assert!(poll!(&mut run).is_pending());
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !holder.exists() {
+            assert!(Instant::now() < deadline, "the command started nothing");
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        let error = run.await.unwrap_err();
+        let holder_pid = fs::read_to_string(&holder).unwrap().trim().parse().unwrap();
+        let _ = kill_process(Pid::from_raw(holder_pid).unwrap(), Signal::KILL);
+        assert_eq!(
+            error.to_string(),
+            "did not finish within 10 seconds; stdout: started"
+        );
     }
 
     #[test]
