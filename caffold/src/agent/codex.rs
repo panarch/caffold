@@ -356,6 +356,10 @@ pub(crate) enum CodexThreadError {
     InvalidParams(String),
     #[error("Codex app-server protocol error: {0}")]
     Protocol(String),
+    #[error(
+        "Codex keeps this conversation because a fork of it still reads its history. Delete the fork first."
+    )]
+    ReferencedByFork,
     #[error("Codex app-server {method} request {request_id} timed out after {timeout_ms}ms.")]
     RequestTimeout {
         method: &'static str,
@@ -390,7 +394,8 @@ impl From<CodexThreadError> for super::AgentError {
             | CodexThreadError::UpdateFailed(_)
             | CodexThreadError::InitializationFailed { .. }
             | CodexThreadError::InvalidParams(_)
-            | CodexThreadError::Protocol(_) => AgentError::Failed(error.to_string()),
+            | CodexThreadError::Protocol(_)
+            | CodexThreadError::ReferencedByFork => AgentError::Failed(error.to_string()),
         }
     }
 }
@@ -1798,10 +1803,19 @@ fn classify_json_rpc_error(method: Option<&str>, value: &Value) -> CodexThreadEr
         CodexThreadError::ThreadUnavailable(message)
     } else if error.code == -32600 && matches!(method, Some(TURN_STEER)) {
         CodexThreadError::TurnUnavailable(message)
+    } else if error.code == -32600
+        && matches!(method, Some(THREAD_DELETE))
+        && message.contains(FORK_HISTORY_REFUSAL)
+    {
+        CodexThreadError::ReferencedByFork
     } else {
         CodexThreadError::Protocol(format!("{message} (code {})", error.code))
     }
 }
+
+/// Codex words this `thread/delete` refusal without giving it a code of its
+/// own.
+const FORK_HISTORY_REFUSAL: &str = "forked history still references it";
 
 async fn read_thread_server_stderr<R>(
     mut lines: Lines<BufReader<R>>,
@@ -3246,6 +3260,45 @@ esac
             error,
             CodexThreadError::TurnUnavailable(message)
                 if message == "no active turn to steer"
+        ));
+    }
+
+    #[test]
+    fn explains_a_delete_refused_because_a_fork_reads_the_history() {
+        use crate::agent::AgentError;
+
+        // The refusal as Codex 0.162.1 words it.
+        let error = classify_json_rpc_error(
+            Some(THREAD_DELETE),
+            &json!({
+                "code": -32600,
+                "message": "cannot delete thread 01a12000-0000-7000-8000-000000000001: forked history still references it"
+            }),
+        );
+
+        assert!(matches!(error, CodexThreadError::ReferencedByFork));
+        let AgentError::Failed(message) = AgentError::from(error) else {
+            panic!("expected a failed deletion");
+        };
+        assert!(message.contains("Delete the fork first."));
+        assert!(!message.contains("01a12000-0000-7000-8000-000000000001"));
+        assert!(!message.contains("-32600"));
+    }
+
+    #[test]
+    fn keeps_other_delete_refusals_in_codex_words() {
+        let error = classify_json_rpc_error(
+            Some(THREAD_DELETE),
+            &json!({
+                "code": -32600,
+                "message": "request rejected"
+            }),
+        );
+
+        assert!(matches!(
+            error,
+            CodexThreadError::Protocol(message)
+                if message == "request rejected (code -32600)"
         ));
     }
 
