@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -793,7 +793,7 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["components/file-tree.css", ".entry-icon-svg", "--file-tree-icon-size"],
     ["components/file-viewer.css", ".viewer-refresh-icon", "--interface-icon-size"],
     ["components/file-viewer.css", ".viewer-info-icon", "--interface-icon-size"],
-    ["components/pagination.css", ".pagination-icon", "--interface-icon-small-size"],
+    ["components/pagination/components/button.css", ".pagination-icon", "--interface-icon-small-size"],
   ];
 
   for (const [path, selector, token] of owners) {
@@ -974,12 +974,12 @@ test("compact icon controls declare shared styles at their own component boundar
     ["pages/(task-workspace)/tasks/(detail)/terminal/page", "caffold-terminal-page", "> .terminal-page-bar > .terminal-page-button"],
     ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", "caffold-git-review-controls", "> .git-review-controls > .git-review-refresh"],
     ["components/file-navigator/components/list", "caffold-file-list", "> .file-list-panel > header > .file-list-title-row > .file-list-actions > .file-refresh-button"],
-    ["components/pagination", "caffold-pagination", "> .pagination-panel > .pagination-button"],
+    ["components/pagination/components/button", "caffold-pagination-button", "> .pagination-button"],
     ["components/file-viewer", "caffold-review-file-viewer", "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-actions > .viewer-refresh-button"],
     ["components/file-viewer", "caffold-review-file-viewer", "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-close-button"],
   ];
   for (const [path, owner, target] of consumers) {
-    const javascript = readFrontend(`${path}.js`);
+    const javascript = readFrontendModule(path);
     const declarations = [...javascript.matchAll(/await compactIconButton\.register\(\s*"([^"]+)",\s*"([^"]+)"\s*,?\s*\)/g)];
     assert.ok(declarations.some(([, name, selector]) => name === owner && selector === target), path);
   }
@@ -1472,6 +1472,13 @@ function frontendSources() {
 
 function readFrontend(path) {
   return readFileSync(resolve(frontendRoot, path), "utf8");
+}
+
+// A module still in JavaScript or already moved to TypeScript, by its stem.
+function readFrontendModule(stem) {
+  return existsSync(resolve(frontendRoot, `${stem}.ts`))
+    ? readFrontend(`${stem}.ts`)
+    : readFrontend(`${stem}.js`);
 }
 
 function cssBlock(source, selector) {

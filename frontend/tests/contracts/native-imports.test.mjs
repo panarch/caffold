@@ -8,6 +8,10 @@ const importMapScript = index.match(
   /<script type="importmap">([\s\S]*?)<\/script>/,
 );
 const browserImports = JSON.parse(importMapScript?.[1] ?? "{}").imports;
+// Package entries such as lit-html have their own contract.
+const browserAliases = Object.fromEntries(
+  Object.entries(browserImports).filter(([specifier]) => specifier.startsWith("#")),
+);
 const nodeImports = JSON.parse(
   readFileSync(new URL("package.json", frontendUrl), "utf8"),
 ).imports;
@@ -19,14 +23,14 @@ const workerEntrypoints = new Set([
 test("native browser aliases precede app loading and match Node namespace roots", () => {
   assert.ok(importMapScript, "the document must declare an inline import map");
   assert.ok(importMapScript.index < index.indexOf('<script type="module"'));
-  assert.deepEqual(Object.keys(browserImports).sort(), [
+  assert.deepEqual(Object.keys(browserAliases).sort(), [
     "#app/",
     "#components/",
     "#tasks/",
   ]);
-  assert.equal(Object.keys(nodeImports).length, Object.keys(browserImports).length);
+  assert.equal(Object.keys(nodeImports).length, Object.keys(browserAliases).length);
 
-  for (const [prefix, browserRoot] of Object.entries(browserImports)) {
+  for (const [prefix, browserRoot] of Object.entries(browserAliases)) {
     assert.ok(browserRoot.startsWith("/assets/") && browserRoot.endsWith("/"));
     const nodePattern = nodeImports[`${prefix}*`];
     assert.ok(nodePattern?.endsWith("*"), `${prefix} needs a Node pattern`);
@@ -53,19 +57,19 @@ test("production alias imports resolve to the same served and precached files in
     for (const [, specifier] of source.matchAll(
       /(?:\bfrom\s*|\bimport\s*\(?\s*)["'](#[^"']+)["']/g,
     )) {
-      const prefix = Object.keys(browserImports).find((key) => specifier.startsWith(key));
+      const prefix = Object.keys(browserAliases).find((key) => specifier.startsWith(key));
       assert.ok(prefix, `${path} uses an unknown alias: ${specifier}`);
       assert.ok(!workerEntrypoints.has(path), `${path} cannot use the document's import map`);
       usedPrefixes.add(prefix);
 
-      const assetPath = browserImports[prefix].slice("/assets/".length) +
+      const assetPath = browserAliases[prefix].slice("/assets/".length) +
         specifier.slice(prefix.length);
       assert.equal(
         import.meta.resolve(specifier),
         new URL(assetPath, frontendUrl).href,
         `${path}: ${specifier} must resolve identically in both runtimes`,
       );
-      assert.ok(assetPath.endsWith(".js") && !assetPath.endsWith(".test.js"));
+      assert.ok(/\.[jt]s$/.test(assetPath) && !/\.(?:test|d)\.[jt]s$/.test(assetPath));
       assert.ok(!assetPath.split("/").includes("tests"));
       // Rust generates build-info.js; it is served and cached with source modules.
       if (assetPath !== "build-info.js") {
@@ -80,7 +84,7 @@ test("production alias imports resolve to the same served and precached files in
     }
   }
 
-  assert.deepEqual([...usedPrefixes].sort(), Object.keys(browserImports).sort());
+  assert.deepEqual([...usedPrefixes].sort(), Object.keys(browserAliases).sort());
 });
 
 test("document modules use aliases instead of ascending three or more directories", () => {
@@ -105,7 +109,7 @@ function productionModules(directory = frontendUrl, prefix = "") {
     if (entry.isDirectory()) {
       return productionModules(new URL(`${entry.name}/`, directory), `${path}/`);
     }
-    return entry.isFile() && entry.name.endsWith(".js") && !entry.name.endsWith(".test.js")
+    return entry.isFile() && /\.[jt]s$/.test(entry.name) && !/\.(?:test|d)\.[jt]s$/.test(entry.name)
       ? [[path, readFileSync(new URL(entry.name, directory), "utf8")]]
       : [];
   });

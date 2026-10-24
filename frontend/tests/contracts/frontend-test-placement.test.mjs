@@ -47,18 +47,18 @@ test("the frontend unit-test command reaches every colocated test", () => {
 test("focused frontend Node tests stay beside exact same-stem owners", () => {
   assert.ok(unitTestPaths.length > 0);
   for (const testPath of unitTestPaths) {
-    const ownerPath = testPath.replace(/[.]test[.]js$/, ".js");
+    const ownerPaths = [".js", ".ts"].map((extension) => testPath.replace(/[.]test[.]js$/, extension));
     assert.equal(
-      existsSync(join(frontendRoot, ownerPath)),
+      ownerPaths.some((ownerPath) => existsSync(join(frontendRoot, ownerPath))),
       true,
-      `${testPath} must be owned by ${ownerPath}`,
+      `${testPath} must be owned by ${ownerPaths.join(" or ")}`,
     );
   }
 });
 
 test("colocated tests stay outside production imports and runtime assets", () => {
   for (const path of frontendFiles) {
-    if (!path.endsWith(".js") || path.endsWith(".test.js")) {
+    if (!/[.][jt]s$/.test(path) || path.endsWith(".test.js")) {
       continue;
     }
     assert.doesNotMatch(

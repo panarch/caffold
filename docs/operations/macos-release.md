@@ -25,7 +25,9 @@ The app bundle uses:
 
 ## Local preparation
 
-Run from a clean `main` worktree:
+Run from a clean `main` worktree, after `npm ci` in `frontend/`; the backend
+embeds Lit from `frontend/node_modules` and runs Node.js to build the
+frontend's TypeScript modules:
 
 ```sh
 desktop/macos/release --dry-run
@@ -58,7 +60,7 @@ artifact; it does not publish anything.
 
 The Checks and Release entrypoints directly call the same owner workflows on Ubuntu. Each checks out the caller's commit and takes no release-specific inputs:
 
-- `frontend-tests.yml`: frontend units and contracts.
+- `frontend-tests.yml`: frontend types, TypeScript formatting and lints, units, and contracts.
 - `documentation-contracts.yml`: documentation contracts.
 - `repository-tooling-tests.yml`: release version tooling.
 - `macos-packaging-contracts.yml`: portable packaging and installer contracts.

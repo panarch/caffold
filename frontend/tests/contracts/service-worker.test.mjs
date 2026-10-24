@@ -92,8 +92,8 @@ function runtimeFrontendFiles(root) {
     if (
       relative === "service-worker.js" ||
       relative === "assets/fonts/D2Coding-OFL.txt" ||
-      relative.endsWith(".test.js") ||
-      !/[.](?:css|html|js|png|svg|webmanifest|woff2)$/.test(relative)
+      /\.(?:test|d)\.[jt]s$/.test(relative) ||
+      !/[.](?:css|html|js|png|svg|ts|webmanifest|woff2)$/.test(relative)
     ) {
       continue;
     }

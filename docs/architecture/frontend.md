@@ -37,8 +37,21 @@ directories, an expanded module directory contains no `page.js` or `layout.js`.
 
 ## Native module imports
 
-JavaScript modules run directly without a bundler or transpiler. Shared imports
-can use three native aliases:
+Modules run in the browser without a bundler. A TypeScript module (`.ts`) loses
+only its type syntax: when the server is built, `frontend/strip-types.mjs`
+replaces that syntax with spaces, and the server serves the result at the
+module's own path as JavaScript, so its lines and columns match the source.
+Node runs the same `.ts` files directly in unit tests. Because the build only
+removes types, modules use TypeScript syntax that erases cleanly, without
+`enum`, `namespace`, or decorators.
+
+A module moves to TypeScript whole: `name.ts` is typed throughout under the
+strict check, and `name.js` has not moved yet. While a JavaScript module has
+TypeScript callers, a same-stem `name.d.ts` beside it declares the part they
+use, and it goes when the module becomes `name.ts`. The TypeScript-modules
+contract keeps each `.d.ts` beside its `.js` and no module in both languages.
+
+Shared imports can use three native aliases:
 
 | Prefix | Frontend-relative directory | Example |
 | --- | --- | --- |
@@ -53,8 +66,9 @@ the browser's `/assets/` URL and the frontend package directory respectively.
 
 Use relative imports within the same owner and aliases for shared dependencies.
 Use `#components/` for shared components and `#tasks/` for Task-owned shared
-modules; `#app/` covers other app-wide modules. Retain explicit `.js` extensions
-and the existing public-entry-point and private-implementation boundaries.
+modules; `#app/` covers other app-wide modules. Retain explicit `.js` or `.ts`
+extensions and the existing public-entry-point and private-implementation
+boundaries.
 Aliases only change path resolution, not module ownership or registration.
 
 Production imports that ascend three or more directories use these aliases.
@@ -63,6 +77,38 @@ contract checks that long relative imports do not return, that both runtimes
 resolve aliases to the same files, and that those files are served and cached.
 Worker and AudioWorklet modules do not inherit the document's import map;
 their imports and asset URLs remain relative or explicit URLs.
+
+Lit is imported through its `lit` package, as `lit` and `lit/…`. The import
+map sends those, and the `lit-html`, `lit-element`, and `@lit/reactive-element`
+modules they import, to `/assets/`, which the server answers with the release
+`frontend/package.json` pins as a runtime dependency, embedded from
+`frontend/node_modules` when the server is built. A build therefore needs
+`npm ci` in `frontend/` first and Node.js on `PATH` for the TypeScript modules.
+Each package's modules reach its core through paths that resolve to one URL, so
+a page loads one module per package. Node unit tests resolve the same
+specifiers through the packages' exports to their Node builds, which stand in
+for the browser globals Node lacks.
+
+## Rendering
+
+A component that renders through Lit extends `LitElement` and renders into its
+own Light DOM. The state it shows lives in reactive properties. When one
+changes, Lit calls `render()` once the code that changed it has finished, so
+the DOM changes then rather than at the assignment. Work that reads the
+rendered DOM, such as scroll restoration, focus, or measurement, runs in
+`updated()`, and an owner that needs a child's rendered DOM awaits the child's
+`updateComplete`. Event listeners bound in a template come and go with their
+nodes.
+
+Lit keeps the nodes of a rendered template across later renders and commits
+only the bindings whose values changed. Rendering a different template at the
+same place, or reordering a list rendered without keys, creates new nodes
+there. While a template stays rendered, Lit leaves alone the children of an
+element that has no bindings inside. It escapes bound values; raw HTML goes
+through its `unsafeHTML` directive. Components choose templates, list keys, and
+binding-free containers so that the identity
+[Incremental DOM updates](../review/frontend.md#incremental-dom-updates)
+requires survives.
 
 ## Routed hierarchy
 
@@ -1976,7 +2022,8 @@ frontend/
     |-- git-compare-browser.js
     |-- git-compare-tree.js
     |-- markdown-preview.js
-    |-- pagination.js
+    |-- pagination.ts
+    |-- pagination/components/button.ts
     |-- pdf-viewer.js
     |-- docx-viewer.js
     |-- pptx-viewer.js
@@ -2122,8 +2169,11 @@ Every production JavaScript/CSS asset must be registered consistently in:
 - static asset and CSS ownership tests.
 
 The service-worker cache and Rust static-asset table are exact manifests of the
-assets imported by the active application hierarchy. pdf.js, docx-preview,
-pptx-renderer, SheetJS, and xterm.js with its fit addon are the exceptions:
+assets imported by the active application hierarchy. Lit's modules are part
+of both even though they come from `frontend/node_modules`, and a TypeScript
+module is listed at its `.ts` path. pdf.js,
+docx-preview, pptx-renderer, SheetJS, and xterm.js with its fit addon are the
+exceptions:
 their owners import pinned releases at first use, and the browser suite answers
 those URLs from the same versions in `node_modules`. SheetJS comes from its own
 CDN, which publishes its current releases there rather than on npm, and the

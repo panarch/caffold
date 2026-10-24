@@ -17,6 +17,31 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         )))),
         "styles.css" => Some(css(include_str!("../../frontend/styles.css"))),
         "app.js" => Some(js(include_str!("../../frontend/app.js"))),
+        "lit/index.js" => Some(js(include_str!("../../frontend/node_modules/lit/index.js"))),
+        "lit/directives/unsafe-html.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit/directives/unsafe-html.js"
+        ))),
+        "lit-html/lit-html.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit-html/lit-html.js"
+        ))),
+        "lit-html/directive.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit-html/directive.js"
+        ))),
+        "lit-html/directives/unsafe-html.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit-html/directives/unsafe-html.js"
+        ))),
+        "lit-html/is-server.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit-html/is-server.js"
+        ))),
+        "lit-element/lit-element.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit-element/lit-element.js"
+        ))),
+        "@lit/reactive-element/reactive-element.js" => Some(js(include_str!(
+            "../../frontend/node_modules/@lit/reactive-element/reactive-element.js"
+        ))),
+        "@lit/reactive-element/css-tag.js" => Some(js(include_str!(
+            "../../frontend/node_modules/@lit/reactive-element/css-tag.js"
+        ))),
         "api.js" => Some(js(include_str!("../../frontend/api.js"))),
         "action-hint-scope.js" => Some(js(include_str!("../../frontend/action-hint-scope.js"))),
         "component-styles.js" => Some(js(include_str!("../../frontend/component-styles.js"))),
@@ -1555,9 +1580,17 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/pagination.css" => Some(css(include_str!(
             "../../frontend/components/pagination.css"
         ))),
-        "components/pagination.js" => {
-            Some(js(include_str!("../../frontend/components/pagination.js")))
-        }
+        "components/pagination.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/pagination.ts"
+        )))),
+        "components/pagination/components/button.css" => Some(css(include_str!(
+            "../../frontend/components/pagination/components/button.css"
+        ))),
+        "components/pagination/components/button.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/pagination/components/button.ts"
+        )))),
         "components/terminal-view.css" => Some(css(include_str!(
             "../../frontend/components/terminal-view.css"
         ))),
@@ -1649,6 +1682,53 @@ mod tests {
             assert!(!asset.body.is_empty());
         }
         assert!(get("component-styles.test.js").is_none());
+    }
+
+    #[test]
+    fn serves_lit_from_the_installed_packages() {
+        for path in [
+            "lit/index.js",
+            "lit/directives/unsafe-html.js",
+            "lit-html/lit-html.js",
+            "lit-html/directive.js",
+            "lit-html/directives/unsafe-html.js",
+            "lit-html/is-server.js",
+            "lit-element/lit-element.js",
+            "@lit/reactive-element/reactive-element.js",
+            "@lit/reactive-element/css-tag.js",
+        ] {
+            let asset = get(path).unwrap_or_else(|| panic!("missing Lit asset {path}"));
+            assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
+            // The body is the module itself: a license comment or a module statement.
+            assert!(
+                [b"/**".as_slice(), b"import", b"export"]
+                    .iter()
+                    .any(|start| asset.body.starts_with(start))
+            );
+        }
+        assert!(get("lit-html/lit-html.js.map").is_none());
+    }
+
+    #[test]
+    fn serves_typescript_modules_as_javascript_without_their_types() {
+        for (path, class) in [
+            (
+                "components/pagination.ts",
+                "class CaffoldPagination extends LitElement",
+            ),
+            (
+                "components/pagination/components/button.ts",
+                "class CaffoldPaginationButton extends LitElement",
+            ),
+        ] {
+            let module = get(path).unwrap_or_else(|| panic!("missing TypeScript module {path}"));
+            assert_eq!(module.content_type, "text/javascript; charset=utf-8");
+            let source = std::str::from_utf8(module.body).expect("UTF-8 module");
+            assert!(source.contains(class));
+            assert!(!source.contains("declare page: number"));
+        }
+        assert!(get("components/pagination.js").is_none());
+        assert!(get("action-hint-scope.d.ts").is_none());
     }
 
     #[test]
@@ -1960,6 +2040,7 @@ mod tests {
         );
 
         for path in [
+            "components/pagination/components/button.css",
             "keyboard-navigation/components/hud.css",
             "keyboard-navigation/components/selector.css",
             "keyboard-navigation/components/presentation.css",

@@ -15,6 +15,8 @@ npx playwright install chromium
 
 | Command | Boundary |
 | --- | --- |
+| `npm run typecheck` | TypeScript types of the frontend's `.ts` modules |
+| `npm run lint` | Biome formatting, import order, and lint rules of the frontend's `.ts` modules; `npx biome check --write` applies the fixes |
 | `npm run test:unit` | colocated frontend unit tests |
 | `npm run test:contract` | frontend contracts in `tests/contracts/` |
 | `npm run test:e2e` | deterministic fixture-backed browser coverage |
@@ -39,5 +41,13 @@ working directory.
 
 Browser sources are embedded by `caffold/src/static_assets.rs` at build time,
 so a new runtime asset must be added there and precached by
-`service-worker.js`. Nothing in `tests/` or `node_modules/` is part of that
-inventory.
+`service-worker.js`. Nothing in `tests/` is part of that inventory. From
+`node_modules/`, only the Lit modules a page reaches are: the server embeds the
+Lit release `package.json` pins under `dependencies`, so a Cargo build needs
+`npm ci` here first. `npm ci --omit=dev` installs that dependency alone when the
+browser suites and type checks are not needed. To change the release, change
+the pin and run `npm install`. A `.ts` module is embedded as
+[`strip-types.mjs`](strip-types.mjs) writes it, which needs Node.js on `PATH`
+during the build; the
+[frontend architecture](../docs/architecture/frontend.md#native-module-imports)
+describes how pages and unit tests load both.

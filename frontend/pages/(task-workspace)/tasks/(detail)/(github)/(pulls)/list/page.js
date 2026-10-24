@@ -1,7 +1,7 @@
 import { escapeHtml } from "#components/dom.js";
 import { renderInlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
-import "#components/pagination.js";
+import "#components/pagination.ts";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,

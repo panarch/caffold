@@ -177,3 +177,63 @@ test("pagination keeps its compact surface, disabled appearance and native activ
   await next.press("Enter");
   await expect(pagination).toHaveAttribute("data-selected-page", "2");
 });
+
+test("pagination changes its page in place and leaves the same page untouched", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-pagination"));
+  const result = await page.evaluate(async () => {
+    const pagination = document.createElement("caffold-pagination");
+    pagination.setAttribute("page", "1");
+    pagination.setAttribute("total-pages", "3");
+    pagination.setAttribute("has-next", "");
+    document.body.append(pagination);
+    const rendered = async () => {
+      await pagination.updateComplete;
+      await Promise.all([...pagination.querySelectorAll("caffold-pagination-button")].map((button) => button.updateComplete));
+    };
+    await rendered();
+    const buttons = () => [...pagination.querySelectorAll(
+      ":scope > .pagination-panel > caffold-pagination-button > .pagination-button",
+    )];
+    const indicator = () => pagination.querySelector(":scope > .pagination-panel > .pagination-indicator");
+    const firstButtons = buttons();
+    const firstIndicator = indicator();
+    const records = [];
+    const observer = new MutationObserver((delivered) => records.push(...delivered));
+    observer.observe(pagination, { subtree: true, childList: true, attributes: true, characterData: true });
+    const renderedChanges = () => records.splice(0).concat(observer.takeRecords())
+      .filter((record) => record.target !== pagination || record.type !== "attributes");
+
+    pagination.setAttribute("page", "1");
+    await rendered();
+    const samePageRecords = renderedChanges().length;
+    pagination.setAttribute("has-previous", "");
+    pagination.setAttribute("page", "2");
+    await rendered();
+    const removedElements = renderedChanges()
+      .flatMap((record) => [...record.removedNodes])
+      .filter((node) => node.nodeType === Node.ELEMENT_NODE).length;
+    observer.disconnect();
+
+    const [first, previous, next] = buttons();
+    return {
+      samePageRecords,
+      removedElements,
+      sameButtons: firstButtons.length === 4 && buttons().every((button, index) => button === firstButtons[index]),
+      sameIndicator: indicator() === firstIndicator,
+      indicator: [indicator().textContent.trim(), indicator().getAttribute("aria-label")],
+      enabled: [first.disabled, previous.disabled].map((disabled) => !disabled),
+      nextPage: next.dataset.page,
+    };
+  });
+  expect(result).toEqual({
+    samePageRecords: 0,
+    removedElements: 0,
+    sameButtons: true,
+    sameIndicator: true,
+    indicator: ["2 / 3", "Page 2 of 3"],
+    enabled: [true, true],
+    nextPage: "3",
+  });
+});

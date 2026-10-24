@@ -17,9 +17,11 @@ export function installCustomElementUnitRegistry() {
       ? readFile(url, "utf8").then((text) => new Response(text))
       : previousFetch(input, ...options);
   };
+  // lit-html walks templates with a document tree walker it creates on import.
   globalThis.document = {
     documentElement: { dataset: {}, style: { setProperty() {} } },
     querySelector: () => null,
+    createTreeWalker: () => ({}),
     ...previousDocument,
     adoptedStyleSheets: [],
   };
