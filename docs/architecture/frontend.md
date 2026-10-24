@@ -97,8 +97,10 @@ changes, Lit calls `render()` once the code that changed it has finished, so
 the DOM changes then rather than at the assignment. Work that reads the
 rendered DOM, such as scroll restoration, focus, or measurement, runs in
 `updated()`, and an owner that needs a child's rendered DOM awaits the child's
-`updateComplete`. Event listeners bound in a template come and go with their
-nodes.
+`updateComplete`. A method that changes the component's rendered DOM on its
+owner's request, such as opening its native dialog, first awaits its own
+`updateComplete`, so the owner can call it right after mounting the component.
+Event listeners bound in a template come and go with their nodes.
 
 Lit keeps the nodes of a rendered template across later renders and commits
 only the bindings whose values changed. Rendering a different template at the
@@ -1928,7 +1930,7 @@ frontend/
 |   |-- layout.js
 |   |-- components/
 |   |   |-- build-mismatch-alert.js
-|   |   `-- update-dialog.js
+|   |   `-- update-dialog.ts
 |   |-- foreground-recovery.js
 |   |-- foreground-recovery/...
 |   |-- pwa-update-lifecycle.js

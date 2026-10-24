@@ -39,8 +39,8 @@ import { PwaUpdateLifecycle } from "./pwa-update-lifecycle.js";
 import {
   CAFFOLD_UPDATE_LATER_EVENT,
   CAFFOLD_UPDATE_RELOAD_EVENT,
-} from "./components/update-dialog.js";
-import "./components/update-result-dialog.js";
+} from "./components/update-dialog.ts";
+import "./components/update-result-dialog.ts";
 import { CAFFOLD_UPDATE_CHECK_REQUEST_EVENT } from "./(task-workspace)/settings/about/page.js";
 import "../keyboard-navigation/components/presentation.js";
 import "../keyboard-navigation/components/shortcut-dialog.js";

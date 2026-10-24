@@ -276,15 +276,17 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/components/update-dialog.css" => Some(css(include_str!(
             "../../frontend/pages/components/update-dialog.css"
         ))),
-        "pages/components/update-dialog.js" => Some(js(include_str!(
-            "../../frontend/pages/components/update-dialog.js"
-        ))),
+        "pages/components/update-dialog.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/components/update-dialog.ts"
+        )))),
         "pages/components/update-result-dialog.css" => Some(css(include_str!(
             "../../frontend/pages/components/update-result-dialog.css"
         ))),
-        "pages/components/update-result-dialog.js" => Some(js(include_str!(
-            "../../frontend/pages/components/update-result-dialog.js"
-        ))),
+        "pages/components/update-result-dialog.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/components/update-result-dialog.ts"
+        )))),
         "components/file-tree.css" => {
             Some(css(include_str!("../../frontend/components/file-tree.css")))
         }
@@ -483,10 +485,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css"
             )))
         }
-        "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js"
-            )))
+        "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.ts"
+            ))))
         }
         "pages/(task-workspace)/settings/about/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/about/page.css"
@@ -607,20 +610,22 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css"
             )))
         }
-        "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js"
-            )))
+        "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts"
+            ))))
         }
         "pages/(task-workspace)/codex-status/components/reset-credit-dialog.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/codex-status/components/reset-credit-dialog.css"
             )))
         }
-        "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/codex-status/components/reset-credit-dialog.js"
-            )))
+        "pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts"
+            ))))
         }
         "pages/(task-workspace)/codex-status/runtime-update-lifecycle.js" => {
             Some(js(include_str!(
@@ -632,10 +637,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/codex-status/components/runtime-update-dialog.css"
             )))
         }
-        "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/codex-status/components/runtime-update-dialog.js"
-            )))
+        "pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/layout.css"
@@ -778,10 +784,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/archived-delete-dialog.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.js"
-            )))
+        "pages/(task-workspace)/tasks/components/archived-delete-dialog.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/components/task-switcher-dialog.css" => {
             Some(css(include_str!(
@@ -1872,12 +1879,12 @@ mod tests {
         }
 
         let update_dialog =
-            get("pages/components/update-dialog.js").expect("update dialog js asset");
+            get("pages/components/update-dialog.ts").expect("update dialog js asset");
         assert_eq!(update_dialog.content_type, "text/javascript; charset=utf-8");
         assert!(update_dialog.body.starts_with(b"import "));
 
         for path in [
-            "pages/components/update-result-dialog.js",
+            "pages/components/update-result-dialog.ts",
             "pages/(task-workspace)/components/update-task-dialog.js",
         ] {
             let dialog = get(path).expect("update dialog js asset");
@@ -2013,10 +2020,10 @@ mod tests {
             "pages/(task-workspace)/settings/jev/page.js",
             "pages/(task-workspace)/settings/jev/lifecycle.js",
             "pages/(task-workspace)/settings/codex/page.js",
-            "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
+            "pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts",
             "pages/(task-workspace)/settings/claude/page.js",
             "pages/(task-workspace)/settings/claude/display.js",
-            "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
+            "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.ts",
             "pages/(task-workspace)/settings/grok/page.js",
             "pages/(task-workspace)/settings/grok/display.js",
             "pages/(task-workspace)/settings/about/page.js",
@@ -2072,7 +2079,7 @@ mod tests {
         assert!(notification_lifecycle.body.starts_with(b"export const"));
 
         let runtime_restart_dialog =
-            get("pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js")
+            get("pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts")
                 .expect("Codex runtime restart dialog asset");
         assert_eq!(
             runtime_restart_dialog.content_type,
@@ -2081,7 +2088,7 @@ mod tests {
         assert!(runtime_restart_dialog.body.starts_with(b"import "));
 
         let runtime_update_dialog =
-            get("pages/(task-workspace)/codex-status/components/runtime-update-dialog.js")
+            get("pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts")
                 .expect("Codex runtime update dialog asset");
         assert_eq!(
             runtime_update_dialog.content_type,
@@ -2472,7 +2479,7 @@ mod tests {
                 b"caffold-task-directory-field".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
+                "pages/(task-workspace)/tasks/components/archived-delete-dialog.ts",
                 b"caffold-task-archived-delete-dialog".as_slice(),
             ),
             (
@@ -2691,7 +2698,7 @@ mod tests {
             "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.js",
             "/assets/pages/(task-workspace)/codex-status/lifecycle.js",
             "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
-            "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
+            "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts",
         ] {
             assert!(
                 service_worker

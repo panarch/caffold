@@ -434,9 +434,9 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
   ];
   const declarations = [];
   for (const [path, source] of frontendSources()) {
-    if (!path.endsWith(".js") || path.endsWith(".test.js")) continue;
+    if (!/\.(?:js|ts)$/.test(path)) continue;
     for (const [, owner, target] of source.matchAll(/await busySpin\.register\(\s*"([^"]+)",\s*"([^"]+)"\s*,?\s*\)/g)) {
-      declarations.push([path.replace(/\.js$/, ""), owner, target]);
+      declarations.push([path.replace(/\.(?:js|ts)$/, ""), owner, target]);
     }
   }
   assert.deepEqual(declarations.map((entry) => entry.join(" ")).sort(), consumers.map((entry) => entry.join(" ")).sort());
@@ -1530,8 +1530,8 @@ function walk(directory) {
     if (entry.isDirectory()) {
       return walk(path);
     }
-    return /\.(?:css|js)$/.test(entry.name) &&
-      !entry.name.endsWith(".test.js")
+    return /\.(?:css|js|ts)$/.test(entry.name) &&
+      !/\.(?:test|d)\.(?:js|ts)$/.test(entry.name)
       ? [path]
       : [];
   });

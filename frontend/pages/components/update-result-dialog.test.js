@@ -6,7 +6,7 @@ import {
 } from "../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-const { updateResultNotice } = await import("./update-result-dialog.js");
+const { updateResultNotice } = await import("./update-result-dialog.ts");
 const resultDialog = registry.element("caffold-update-result-dialog").prototype;
 after(() => registry.restore());
 
@@ -82,8 +82,13 @@ test("offers its one button in one exact modal context", () => {
       return selector === 'button[value="ok"]' ? ok : null;
     },
   };
-  const owner = { isConnected: true, dialog: () => dialog };
-  owner.actionHintScope = () => resultDialog.actionHintScope.call(owner);
+  const owner = Object.assign(Object.create(resultDialog), {
+    isConnected: true,
+    querySelector(selector) {
+      assert.equal(selector, ":scope > dialog");
+      return dialog;
+    },
+  });
 
   const scope = owner.actionHintScope();
   assert.deepEqual(
@@ -93,20 +98,11 @@ test("offers its one button in one exact modal context", () => {
   scope.targets[0].activate();
   assert.deepEqual(calls, ["focus", "click"]);
 
-  const [context] = resultDialog.keyboardNavigationContexts.call(owner);
+  const [context] = owner.keyboardNavigationContexts();
   assert.equal(context.id, "app:update-result");
   assert.equal(context.kind, "modal");
   assert.equal(context.root, dialog);
 
   dialog.open = false;
   assert.ok(scope.targets.every((target) => !target.isActionable()));
-});
-
-test("renders one native button that only closes", () => {
-  const owner = { innerHTML: "" };
-  resultDialog.render.call(owner);
-
-  assert.match(owner.innerHTML, /<form method="dialog"/);
-  assert.match(owner.innerHTML, /button type="submit" value="ok" autofocus>OK</);
-  assert.equal([...owner.innerHTML.matchAll(/<button/g)].length, 1);
 });

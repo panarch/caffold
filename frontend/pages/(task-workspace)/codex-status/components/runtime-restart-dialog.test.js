@@ -6,7 +6,7 @@ import {
 } from "../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./runtime-restart-dialog.js");
+await import("./runtime-restart-dialog.ts");
 const restartDialog = registry.element(
   "caffold-codex-runtime-restart-dialog",
 ).prototype;
@@ -22,12 +22,15 @@ test("provides both owned Codex restart dialog buttons", () => {
     open: true,
     querySelector: (selector) => controls.get(selector.match(/value="([^"]+)/)?.[1]),
   };
-  const owner = {
+  const owner = Object.assign(Object.create(restartDialog), {
     isConnected: true,
-    dialog: () => dialog,
-  };
+    querySelector(selector) {
+      assert.equal(selector, ":scope > dialog");
+      return dialog;
+    },
+  });
 
-  const scope = restartDialog.actionHintScope.call(owner);
+  const scope = owner.actionHintScope();
   assert.deepEqual(
     scope.targets.map(({ id, label }) => [id, label]),
     [

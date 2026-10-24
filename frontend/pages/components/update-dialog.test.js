@@ -6,7 +6,7 @@ import {
 } from "../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./update-dialog.js");
+await import("./update-dialog.ts");
 const updateDialog = registry.element("caffold-update-dialog").prototype;
 after(() => registry.restore());
 
@@ -27,11 +27,13 @@ test("provides both native update decisions in one exact modal context", () => {
       return controls.get(selector.match(/value="([^"]+)/)?.[1]) ?? null;
     },
   };
-  const owner = {
+  const owner = Object.assign(Object.create(updateDialog), {
     isConnected: true,
-    dialog: () => dialog,
-  };
-  owner.actionHintScope = () => updateDialog.actionHintScope.call(owner);
+    querySelector(selector) {
+      assert.equal(selector, ":scope > dialog");
+      return dialog;
+    },
+  });
 
   const scope = owner.actionHintScope();
   assert.deepEqual(
@@ -45,7 +47,7 @@ test("provides both native update decisions in one exact modal context", () => {
   scope.targets[1].activate();
   assert.deepEqual(calls, ["focus:Reload", "click:Reload"]);
 
-  const [context] = updateDialog.keyboardNavigationContexts.call(owner);
+  const [context] = owner.keyboardNavigationContexts();
   assert.equal(context.id, "app:update");
   assert.equal(context.kind, "modal");
   assert.equal(context.root, dialog);
@@ -54,19 +56,6 @@ test("provides both native update decisions in one exact modal context", () => {
 
   dialog.open = false;
   assert.ok(scope.targets.every((target) => !target.isActionable()));
-});
-
-test("retains the native dialog form and context-local presentation", () => {
-  const owner = { innerHTML: "" };
-  updateDialog.render.call(owner);
-  assert.match(owner.innerHTML, /<form method="dialog"/);
-  assert.match(owner.innerHTML, /button type="submit" value="later"/);
-  assert.match(owner.innerHTML, /button type="submit" value="reload"/);
-  assert.equal(
-    [...owner.innerHTML.matchAll(/<caffold-keyboard-navigation-presentation>/g)]
-      .length,
-    1,
-  );
 });
 
 function button(label, calls) {

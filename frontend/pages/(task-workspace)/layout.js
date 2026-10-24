@@ -18,13 +18,13 @@ import {
 } from "./task-store-status.js";
 import {
   CODEX_RESET_CREDIT_CONFIRMED_EVENT,
-} from "./codex-status/components/reset-credit-dialog.js";
+} from "./codex-status/components/reset-credit-dialog.ts";
 import {
   CODEX_RUNTIME_RESTART_CONFIRMED_EVENT,
-} from "./codex-status/components/runtime-restart-dialog.js";
+} from "./codex-status/components/runtime-restart-dialog.ts";
 import {
   CODEX_RUNTIME_UPDATE_CONFIRMED_EVENT,
-} from "./codex-status/components/runtime-update-dialog.js";
+} from "./codex-status/components/runtime-update-dialog.ts";
 import { restartClaudeRuntime } from "../../api.js";
 import {
   LIVE_CONNECTION_REPORT_EVENT,
@@ -39,7 +39,7 @@ import {
 import "./components/update-task-dialog.js";
 import {
   CLAUDE_RUNTIME_RESTART_CONFIRMED_EVENT,
-} from "./settings/claude/components/runtime-restart-dialog.js";
+} from "./settings/claude/components/runtime-restart-dialog.ts";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -62,7 +62,7 @@ import {
 } from "./tasks/components/active-task-list.js";
 import {
   TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
-} from "./tasks/components/archived-delete-dialog.js";
+} from "./tasks/components/archived-delete-dialog.ts";
 import {
   TASK_SWITCHER_SELECT_EVENT,
 } from "./tasks/components/task-switcher-dialog.js";

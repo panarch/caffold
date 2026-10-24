@@ -9,7 +9,7 @@ function readFrontend(path) {
   return readFileSync(new URL(path, `file://${frontendRoot}/`), "utf8");
 }
 
-function frontendJavascriptFiles(directory = frontendRoot, prefix = "") {
+function frontendModules(directory = frontendRoot, prefix = "") {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     if (entry.name === "node_modules" || entry.name === "tests") {
       return [];
@@ -17,11 +17,11 @@ function frontendJavascriptFiles(directory = frontendRoot, prefix = "") {
     const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
     const absolutePath = `${directory}/${entry.name}`;
     if (entry.isDirectory()) {
-      return frontendJavascriptFiles(absolutePath, relativePath);
+      return frontendModules(absolutePath, relativePath);
     }
     return entry.isFile() &&
-      entry.name.endsWith(".js") &&
-      !entry.name.endsWith(".test.js")
+      /\.(js|ts)$/.test(entry.name) &&
+      !/\.(test|d)\.(js|ts)$/.test(entry.name)
       ? [[relativePath, readFileSync(absolutePath, "utf8")]]
       : [];
   });
@@ -133,7 +133,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     /document\.addEventListener\("keydown", this\.boundKeydown, true\)/,
   );
   assert.doesNotMatch(actionHints, /document\.addEventListener\("keydown"/);
-  for (const [path, source] of frontendJavascriptFiles()) {
+  for (const [path, source] of frontendModules()) {
     if (path !== "action-hints.js" && !path.startsWith("action-hints/")) {
       assert.doesNotMatch(
         source,
@@ -173,7 +173,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
 });
 
 test("App Shell owns one global keyboard listener over explicit Scroll providers", () => {
-  const keyboardOwners = frontendJavascriptFiles()
+  const keyboardOwners = frontendModules()
     .filter(([, source]) =>
       /document\.addEventListener\(\s*["']keydown["']/.test(source)
     )
@@ -280,14 +280,14 @@ test("registered dialog contexts stay owned and compose through public providers
 
 test("registered product dialogs retain one context-local keyboard presentation", () => {
   const dialogs = [
-    "pages/components/update-dialog.js",
-    "pages/components/update-result-dialog.js",
+    "pages/components/update-dialog.ts",
+    "pages/components/update-result-dialog.ts",
     "pages/(task-workspace)/components/update-task-dialog.js",
-    "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
-    "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
-    "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
-    "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
-    "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
+    "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts",
+    "pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts",
+    "pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts",
+    "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.ts",
+    "pages/(task-workspace)/tasks/components/archived-delete-dialog.ts",
     "pages/(task-workspace)/tasks/components/task-switcher-dialog.js",
     "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
     "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
@@ -300,7 +300,7 @@ test("registered product dialogs retain one context-local keyboard presentation"
   for (const path of dialogs) {
     const source = readFrontend(path);
     assert.equal(
-      [...source.matchAll(/<caffold-keyboard-navigation-presentation>/g)].length,
+      [...source.matchAll(/<caffold-keyboard-navigation-presentation\s*>/g)].length,
       1,
       path,
     );
@@ -496,7 +496,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
 });
 
 test("custom elements use routed owners or the nearest components namespace", () => {
-  const invalidOwners = frontendJavascriptFiles()
+  const invalidOwners = frontendModules()
     .filter(([, source]) => source.includes("customElements.define"))
     .filter(([path]) => {
       const segments = path.split("/");
@@ -986,7 +986,7 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
 test("archived task deletion dialog owns its modal state and markup", () => {
   const workspace = readFrontend("pages/(task-workspace)/layout.js");
   const deleteDialog = readFrontend(
-    "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
+    "pages/(task-workspace)/tasks/components/archived-delete-dialog.ts",
   );
 
   assert.match(
@@ -1021,13 +1021,13 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
     "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js",
   );
   const restartDialog = readFrontend(
-    "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
+    "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts",
   );
   const updateLifecycle = readFrontend(
     "pages/(task-workspace)/codex-status/runtime-update-lifecycle.js",
   );
   const updateDialog = readFrontend(
-    "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
+    "pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts",
   );
   const tasks = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const settings = readFrontend(
@@ -1037,7 +1037,7 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   assert.match(workspace, /from "\.\/codex-status\.js"/);
   assert.match(
     workspace,
-    /from "\.\/codex-status\/components\/runtime-restart-dialog\.js"/,
+    /from "\.\/codex-status\/components\/runtime-restart-dialog\.ts"/,
   );
   assert.match(
     workspace,
@@ -1045,7 +1045,7 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   );
   assert.match(
     workspace,
-    /from "\.\/codex-status\/components\/runtime-update-dialog\.js"/,
+    /from "\.\/codex-status\/components\/runtime-update-dialog\.ts"/,
   );
   assert.match(
     workspace,
@@ -1099,7 +1099,7 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   assert.doesNotMatch(settings, /restartCodexRuntime|<dialog|runtime-restart-dialog/);
   assert.doesNotMatch(settings, /updateCodexRuntime|runtime-update-dialog/);
 
-  for (const [path, source] of frontendJavascriptFiles()) {
+  for (const [path, source] of frontendModules()) {
     const insideOwner =
       path === "pages/(task-workspace)/codex-status.js" ||
       path.startsWith("pages/(task-workspace)/codex-status/");

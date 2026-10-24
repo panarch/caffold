@@ -6,7 +6,7 @@ import {
 } from "../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./archived-delete-dialog.js");
+await import("./archived-delete-dialog.ts");
 const deleteDialog = registry.element("caffold-task-archived-delete-dialog").prototype;
 after(() => registry.restore());
 
@@ -19,12 +19,15 @@ test("binds Cancel and Delete to the pending archived Task identity", () => {
     open: true,
     querySelector: (selector) => controls.get(selector.match(/value="([^"]+)/)?.[1]),
   };
-  const owner = {
+  const owner = Object.assign(Object.create(deleteDialog), {
     isConnected: true,
     pendingThreadId: "thread/1",
-    dialog: () => dialog,
-  };
-  const scope = deleteDialog.actionHintScope.call(owner);
+    querySelector(selector) {
+      assert.equal(selector, ":scope > dialog");
+      return dialog;
+    },
+  });
+  const scope = owner.actionHintScope();
 
   assert.deepEqual(scope.targets.map(({ id }) => id), [
     "archived-task-delete:thread%2F1:cancel",
@@ -36,20 +39,19 @@ test("binds Cancel and Delete to the pending archived Task identity", () => {
 });
 
 test("keeps a reopened retained dialog bound across a stale close event", () => {
-  const title = { textContent: "Delete archived task" };
-  const owner = {
+  const owner = Object.assign(Object.create(deleteDialog), {
     pendingThreadId: "thread/1",
-    dialog: () => ({ open: true, returnValue: "cancel" }),
-    querySelector: () => title,
+    taskTitle: "Delete archived task",
+    querySelector: () => ({ open: true, returnValue: "cancel" }),
     dispatchEvent() {
       throw new Error("A stale close event must not dispatch deletion.");
     },
-  };
+  });
 
-  deleteDialog.handleClose.call(owner);
+  owner.handleClose();
 
   assert.equal(owner.pendingThreadId, "thread/1");
-  assert.equal(title.textContent, "Delete archived task");
+  assert.equal(owner.taskTitle, "Delete archived task");
 });
 
 function button(textContent) {

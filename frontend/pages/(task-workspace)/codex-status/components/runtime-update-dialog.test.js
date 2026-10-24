@@ -6,7 +6,7 @@ import {
 } from "../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./runtime-update-dialog.js");
+await import("./runtime-update-dialog.ts");
 const updateDialog = registry.element(
   "caffold-codex-runtime-update-dialog",
 ).prototype;
@@ -22,12 +22,15 @@ test("provides both owned Codex update dialog buttons", () => {
     open: true,
     querySelector: (selector) => controls.get(selector.match(/value="([^"]+)/)?.[1]),
   };
-  const owner = {
+  const owner = Object.assign(Object.create(updateDialog), {
     isConnected: true,
-    dialog: () => dialog,
-  };
+    querySelector(selector) {
+      assert.equal(selector, ":scope > dialog");
+      return dialog;
+    },
+  });
 
-  const scope = updateDialog.actionHintScope.call(owner);
+  const scope = owner.actionHintScope();
   assert.deepEqual(
     scope.targets.map(({ id, label }) => [id, label]),
     [
