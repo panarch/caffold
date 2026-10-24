@@ -1,5 +1,5 @@
 import { createTask } from "#app/api.js";
-import { escapeHtml } from "#components/dom.js";
+import { escapeHtml } from "#components/dom.ts";
 import "#tasks/components/task-turn-options.js";
 import "./task-start-dialog/components/github-issue.js";
 import "./task-start-dialog/components/github-pull.js";

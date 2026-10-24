@@ -9,7 +9,7 @@ function read(path) {
 }
 
 test("the browser and the browser suite load the same pptx-renderer release", () => {
-  const viewer = read("components/pptx-viewer.js");
+  const viewer = read("components/pptx-viewer.ts");
   const manifest = JSON.parse(read("package.json"));
 
   const [, sourceVersion] =
@@ -42,6 +42,6 @@ test("pptx-renderer stays a runtime CDN import rather than a shipped asset", () 
   for (const manifest of [serviceWorker, staticAssets]) {
     assert.doesNotMatch(manifest, /pptx-renderer/);
   }
-  assert.match(serviceWorker, /"\/assets\/components\/pptx-viewer\.js"/);
-  assert.match(staticAssets, /"components\/pptx-viewer\.js"/);
+  assert.match(serviceWorker, /"\/assets\/components\/pptx-viewer\.ts"/);
+  assert.match(staticAssets, /"components\/pptx-viewer\.ts"/);
 });

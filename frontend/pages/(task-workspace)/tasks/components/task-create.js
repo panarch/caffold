@@ -1,7 +1,7 @@
 import { mergeActionHintScopes } from "#app/action-hints.js";
 import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
-import { escapeHtml } from "#components/dom.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { escapeHtml } from "#components/dom.ts";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
 import { taskStoreBlocksTaskOperations } from "../../task-store-status.js";
 import { cleanLogicalPath } from "../task-format.js";
 import { DIRECTORY_CHOSEN_EVENT } from "./task-create/components/directory-field.js";

@@ -1,7 +1,7 @@
 import {
   FILE_TREE_LOAD_EVENT,
   FILE_TREE_SELECT_EVENT,
-} from "#components/file-tree.js";
+} from "#components/file-tree.ts";
 import {
   buttonActionHintTarget,
   emptyActionHintScope,
@@ -11,8 +11,8 @@ import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import "../../components/workspace-brand.js";
 import { compactIconButton } from "#app/component-styles.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
-import { showLoadingText } from "#components/loading-text.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
+import { showLoadingText } from "#components/loading-text.ts";
 import { directoryIdFromKey, noteKey, notesTreeNodes } from "../tree.js";
 
 export const NOTES_NAVIGATOR_INTENT_EVENT = "caffold:notes-navigator-intent";

@@ -5,7 +5,7 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../action-hint-scope.js";
-import { warmIcons } from "./icons.js";
+import { warmIcons } from "./icons.ts";
 import "./pagination/components/button.ts";
 import type { CaffoldPaginationButton } from "./pagination/components/button.ts";
 

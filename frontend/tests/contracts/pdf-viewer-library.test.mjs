@@ -9,7 +9,7 @@ function read(path) {
 }
 
 test("the browser and the browser suite load the same pdf.js release", () => {
-  const viewer = read("components/pdf-viewer.js");
+  const viewer = read("components/pdf-viewer.ts");
   const manifest = JSON.parse(read("package.json"));
 
   const [, sourceVersion] = viewer.match(/const PDFJS_VERSION = "([^"]+)";/) ?? [];
@@ -47,6 +47,6 @@ test("pdf.js stays a runtime CDN import rather than a shipped asset", () => {
 
   assert.doesNotMatch(serviceWorker, /pdfjs/);
   assert.doesNotMatch(staticAssets, /pdfjs/);
-  assert.match(serviceWorker, /"\/assets\/components\/pdf-viewer\.js"/);
-  assert.match(staticAssets, /"components\/pdf-viewer\.js"/);
+  assert.match(serviceWorker, /"\/assets\/components\/pdf-viewer\.ts"/);
+  assert.match(staticAssets, /"components\/pdf-viewer\.ts"/);
 });

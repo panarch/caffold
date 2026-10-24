@@ -1,82 +1,95 @@
-import { listDirectory } from "../api.js";
-import { createRefreshCoordinator, subscribeToWatch } from "../watch.js";
-import "./file-navigator/components/list.js";
-import { emptyActionHintScope } from "../action-hint-scope.js";
-import { emptyScrollSurfaceScope } from "../scroll-scope.js";
+import { html, LitElement } from "lit";
+import {
+  type ActionHintScope,
+  type ActionHintScopeOptions,
+  emptyActionHintScope,
+} from "../action-hint-scope.js";
+import { type DirectoryListing, listDirectory } from "../api.js";
+import {
+  emptyScrollSurfaceScope,
+  type ScrollSurfaceScope,
+  type ScrollSurfaceScopeOptions,
+} from "../scroll-scope.js";
+import {
+  createRefreshCoordinator,
+  type RefreshCoordinator,
+  type RefreshState,
+  subscribeToWatch,
+  type WatchChange,
+} from "../watch.js";
+import "./file-navigator/components/list.ts";
+import type {
+  CaffoldFileList,
+  RefreshButtonState,
+} from "./file-navigator/components/list.ts";
 
 const LOADING_DELAY_MS = 180;
 
-class CaffoldFileNavigator extends HTMLElement {
+interface PendingRefresh {
+  allDirectories: boolean;
+  selected: boolean;
+  paths: Set<string>;
+  revision: unknown;
+}
+
+export type ResolvedPath =
+  | { kind: "file"; directory: DirectoryListing | null; entry: unknown }
+  | { kind: "directory"; directory: DirectoryListing }
+  | { kind: "stale"; directory: null }
+  | { kind: "error"; directory: DirectoryListing | false | null };
+
+class CaffoldFileNavigator extends LitElement {
+  private currentPath = "";
+  private directoryRequestId = 0;
+  private refreshGeneration = 0;
+  private loadedDirectoryPath: string | null = null;
+  private selectedPath = "";
+  private storageKey: string | null = null;
+  private watchActive = true;
+  private liveUpdates: unknown = null;
+  private watchScopePath: string | undefined;
+  private watchUnsubscribe: (() => void) | null = null;
+  private watchUnavailable = false;
+  private pendingRefresh = createPendingRefresh();
+  private readonly refreshCoordinator: RefreshCoordinator =
+    createRefreshCoordinator(
+      () => this.performPendingRefresh(),
+      (state) => this.setRefreshState(state),
+    );
+
+  createRenderRoot() {
+    return this;
+  }
+
   connectedCallback() {
-    this.ensureRendered();
+    super.connectedCallback();
+    this.performUpdate();
     if (this.watchActive && this.watchScopePath !== undefined) {
       this.subscribeWatchScope(this.watchScopePath);
     }
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     this.directoryRequestId += 1;
     this.refreshGeneration += 1;
     this.watchUnsubscribe?.();
     this.watchUnsubscribe = null;
   }
 
-  ensureRendered() {
-    if (this.rendered) {
-      return;
-    }
-
-    this.rendered = true;
-    this.currentPath ??= "";
-    this.directoryRequestId ??= 0;
-    this.refreshGeneration ??= 0;
-    this.loadedDirectoryPath ??= null;
-    this.selectedPath ??= "";
-    this.storageKey ??= null;
-    this.watchActive ??= true;
-    this.liveUpdates ??= null;
-    this.watchUnavailable = false;
-    this.pendingRefresh = createPendingRefresh();
-    this.innerHTML = `<caffold-file-list></caffold-file-list>`;
-    this.fileList = this.querySelector("caffold-file-list");
-    this.refreshCoordinator = createRefreshCoordinator(
-      () => this.performPendingRefresh(),
-      (state) => this.setRefreshState(state),
-    );
-
-    this.addEventListener("caffold:open-directory", (event) => {
-      if (this.usesExternalNavigation()) {
-        return;
-      }
-      event.stopPropagation();
-      void this.loadDirectory(event.detail?.path ?? "");
-    });
-    this.addEventListener("caffold:open-file", (event) => {
-      if (this.usesExternalNavigation()) {
-        return;
-      }
-      event.stopPropagation();
-      const path = event.detail?.path ?? "";
-      this.setSelectedPath(path);
-      this.dispatchEvent(
-        new CustomEvent("caffold:file-navigator-open-file", {
-          bubbles: true,
-          detail: { path, entry: event.detail?.entry ?? null },
-        }),
-      );
-    });
-    this.addEventListener("caffold:refresh-file-list", (event) => {
-      event.stopPropagation();
-      this.requestRefresh({ allDirectories: true });
-    });
+  render() {
+    return html`<caffold-file-list
+      @caffold:open-directory=${this.openDirectory}
+      @caffold:open-file=${this.openFile}
+      @caffold:refresh-file-list=${this.refreshFileList}
+    ></caffold-file-list>`;
   }
 
-  usesExternalNavigation() {
-    return this.hasAttribute("external-navigation");
-  }
-
-  async loadDirectory(path, options = {}) {
-    this.ensureRendered();
+  async loadDirectory(
+    path: string | null | undefined,
+    options: { fallbackPath?: string; allowFailure?: boolean } = {},
+  ): Promise<DirectoryListing | false | null> {
+    const fileList = this.fileList;
     const requestId = ++this.directoryRequestId;
     this.currentPath = path ?? "";
     this.clearSelectedPath();
@@ -90,7 +103,7 @@ class CaffoldFileNavigator extends HTMLElement {
 
       this.currentPath = directory.path;
       this.loadedDirectoryPath = directory.path;
-      this.fileList.setDirectory(directory);
+      fileList.setDirectory(directory);
       this.setWatchScope(directory.git?.rootPath ?? directory.path);
       this.storeDirectoryPath(directory.path);
       return directory;
@@ -103,28 +116,32 @@ class CaffoldFileNavigator extends HTMLElement {
         this.currentPath !== options.fallbackPath
       ) {
         this.clearStoredDirectoryPath();
-        const { fallbackPath: _fallbackPath, ...nextOptions } = options;
-        return this.loadDirectory(options.fallbackPath, nextOptions);
+        const { fallbackPath, ...nextOptions } = options;
+        return this.loadDirectory(fallbackPath, nextOptions);
       }
       if (options.allowFailure) {
         return false;
       }
-      this.fileList.setError(error);
+      fileList.setError(error as Error);
       return false;
     } finally {
       window.clearTimeout(loadingTimer);
     }
   }
 
-  async resolvePath(path, options = {}) {
-    this.ensureRendered();
+  async resolvePath(
+    path: string | null | undefined,
+    options: { fallbackPath?: string } = {},
+  ): Promise<ResolvedPath> {
     const targetPath = path ?? "";
     const loadedEntry = this.entryForPath(targetPath);
     if (loadedEntry && loadedEntry.kind !== "directory") {
       return { kind: "file", directory: null, entry: loadedEntry };
     }
 
-    const directory = await this.loadDirectory(targetPath, { allowFailure: true });
+    const directory = await this.loadDirectory(targetPath, {
+      allowFailure: true,
+    });
     if (directory) {
       return { kind: "directory", directory };
     }
@@ -144,8 +161,7 @@ class CaffoldFileNavigator extends HTMLElement {
       : { kind: "error", directory: parentDirectory };
   }
 
-  setSelectedPath(path) {
-    this.ensureRendered();
+  setSelectedPath(path: string | null | undefined) {
     this.selectedPath = path ?? "";
     this.fileList.setSelectedPath(this.selectedPath);
   }
@@ -154,14 +170,13 @@ class CaffoldFileNavigator extends HTMLElement {
     this.setSelectedPath("");
   }
 
-  async revealPath(path) {
-    this.ensureRendered();
+  async revealPath(path: string) {
     this.setSelectedPath(path);
-    await this.fileList.revealPath?.(path);
+    await this.fileList.revealPath(path);
   }
 
   captureScroll() {
-    const scroller = this.fileList?.querySelector(".file-tree-scroll");
+    const scroller = this.querySelector<HTMLElement>(".file-tree-scroll");
     return scroller
       ? { top: scroller.scrollTop, left: scroller.scrollLeft }
       : null;
@@ -173,9 +188,11 @@ class CaffoldFileNavigator extends HTMLElement {
     disclosureActionId = "",
     refreshActionId = "",
     clipRoots = [],
-  } = {}) {
-    this.ensureRendered();
-    if (!scopeId || this.hidden || !this.fileList) {
+  }: ActionHintScopeOptions & {
+    disclosureActionId?: string;
+    refreshActionId?: string;
+  } = {}): ActionHintScope {
+    if (!scopeId || this.hidden) {
       return emptyActionHintScope();
     }
     return this.fileList.actionHintScope({
@@ -191,9 +208,8 @@ class CaffoldFileNavigator extends HTMLElement {
     scopeId = "",
     label = "Files",
     clipRoots = [],
-  } = {}) {
-    this.ensureRendered();
-    if (!scopeId || this.hidden || !this.fileList) {
+  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
+    if (!scopeId || this.hidden) {
       return emptyScrollSurfaceScope();
     }
     return this.fileList.scrollSurfaceScope({
@@ -203,12 +219,12 @@ class CaffoldFileNavigator extends HTMLElement {
     });
   }
 
-  restoreScroll(scroll) {
+  restoreScroll(scroll: { top: number; left: number } | null | undefined) {
     if (!scroll) {
       return;
     }
     window.requestAnimationFrame(() => {
-      const scroller = this.fileList?.querySelector(".file-tree-scroll");
+      const scroller = this.querySelector<HTMLElement>(".file-tree-scroll");
       if (scroller) {
         scroller.scrollTop = scroll.top;
         scroller.scrollLeft = scroll.left;
@@ -216,60 +232,44 @@ class CaffoldFileNavigator extends HTMLElement {
     });
   }
 
-  entryForPath(path) {
-    this.ensureRendered();
+  entryForPath(path: string | null | undefined) {
     return this.fileList.entryForPath(path);
   }
 
-  hasLoadedDirectory(path) {
+  hasLoadedDirectory(path: string | null | undefined) {
     return this.loadedDirectoryPath === (path ?? "");
   }
 
-  setStorageKey(key) {
+  setStorageKey(key: string | null | undefined) {
     this.storageKey = key ?? null;
   }
 
-  setRefreshVisible(visible) {
-    this.ensureRendered();
+  setRefreshVisible(visible: boolean) {
     this.fileList.setRefreshVisible(visible);
   }
 
-  setError(error) {
-    this.ensureRendered();
+  setError(error: Error) {
     this.loadedDirectoryPath = null;
     this.fileList.setError(error);
   }
 
-  setWatchScope(path) {
-    const nextPath = path ?? "";
-    if (this.watchScopePath === nextPath && this.watchUnsubscribe) {
-      return;
-    }
-    this.watchScopePath = nextPath;
-    this.watchUnsubscribe?.();
-    this.watchUnsubscribe = null;
-    this.watchUnavailable = false;
-    this.setRefreshState("idle");
-    if (this.isConnected && this.watchActive) {
-      this.subscribeWatchScope(nextPath);
-    }
-  }
-
-  setLiveUpdates(liveUpdates) {
-    this.ensureRendered();
+  setLiveUpdates(liveUpdates: unknown) {
     if (this.liveUpdates === liveUpdates) {
       return;
     }
     this.watchUnsubscribe?.();
     this.watchUnsubscribe = null;
     this.liveUpdates = liveUpdates ?? null;
-    if (this.isConnected && this.watchActive && this.watchScopePath !== undefined) {
+    if (
+      this.isConnected &&
+      this.watchActive &&
+      this.watchScopePath !== undefined
+    ) {
       this.subscribeWatchScope(this.watchScopePath);
     }
   }
 
-  setWatchActive(active) {
-    this.ensureRendered();
+  setWatchActive(active: boolean) {
     const nextActive = Boolean(active);
     if (this.watchActive === nextActive) {
       return;
@@ -287,42 +287,14 @@ class CaffoldFileNavigator extends HTMLElement {
     }
   }
 
-  subscribeWatchScope(path) {
-    if (this.watchUnsubscribe) {
-      return;
-    }
-    this.watchUnsubscribe = subscribeToWatch(this.liveUpdates, path, {
-      onReady: ({ recovered }) => {
-        this.watchUnavailable = false;
-        this.setRefreshState("idle");
-        if (recovered) {
-          this.requestRefresh({ allDirectories: true, selected: true });
-        }
-      },
-      onChange: (change) => this.handleWatchChange(change),
-      onRecover: () =>
-        this.requestRefresh({ allDirectories: true, selected: true }),
-      onError: () => {
-        this.watchUnavailable = true;
-        this.setRefreshState("unavailable");
-      },
-    });
-  }
-
-  handleWatchChange(change) {
-    const paths = Array.isArray(change.paths) ? change.paths : [];
-    this.requestRefresh({
-      paths,
-      allDirectories: Boolean(change.overflow),
-      selected: Boolean(
-        this.selectedPath &&
-          (change.overflow || paths.includes(this.selectedPath)),
-      ),
-      revision: change.revision,
-    });
-  }
-
-  requestRefresh(options = {}) {
+  requestRefresh(
+    options: {
+      allDirectories?: boolean;
+      selected?: boolean;
+      revision?: unknown;
+      paths?: string[];
+    } = {},
+  ) {
     this.pendingRefresh.allDirectories ||= Boolean(options.allDirectories);
     this.pendingRefresh.selected ||= Boolean(options.selected);
     this.pendingRefresh.revision =
@@ -333,7 +305,96 @@ class CaffoldFileNavigator extends HTMLElement {
     return this.refreshCoordinator.request();
   }
 
-  async performPendingRefresh() {
+  // The list is drawn the first time it is needed, which can be before the
+  // navigator is in the document.
+  private get fileList() {
+    this.performUpdate();
+    return this.querySelector(":scope > caffold-file-list") as CaffoldFileList;
+  }
+
+  private usesExternalNavigation() {
+    return this.hasAttribute("external-navigation");
+  }
+
+  private openDirectory(event: CustomEvent<{ path?: string }>) {
+    if (this.usesExternalNavigation()) {
+      return;
+    }
+    event.stopPropagation();
+    void this.loadDirectory(event.detail?.path ?? "");
+  }
+
+  private openFile(event: CustomEvent<{ path?: string; entry?: unknown }>) {
+    if (this.usesExternalNavigation()) {
+      return;
+    }
+    event.stopPropagation();
+    const path = event.detail?.path ?? "";
+    this.setSelectedPath(path);
+    this.dispatchEvent(
+      new CustomEvent("caffold:file-navigator-open-file", {
+        bubbles: true,
+        detail: { path, entry: event.detail?.entry ?? null },
+      }),
+    );
+  }
+
+  private refreshFileList(event: Event) {
+    event.stopPropagation();
+    void this.requestRefresh({ allDirectories: true });
+  }
+
+  private setWatchScope(path: string | null | undefined) {
+    const nextPath = path ?? "";
+    if (this.watchScopePath === nextPath && this.watchUnsubscribe) {
+      return;
+    }
+    this.watchScopePath = nextPath;
+    this.watchUnsubscribe?.();
+    this.watchUnsubscribe = null;
+    this.watchUnavailable = false;
+    this.setRefreshState("idle");
+    if (this.isConnected && this.watchActive) {
+      this.subscribeWatchScope(nextPath);
+    }
+  }
+
+  private subscribeWatchScope(path: string) {
+    if (this.watchUnsubscribe) {
+      return;
+    }
+    this.watchUnsubscribe = subscribeToWatch(this.liveUpdates, path, {
+      onReady: ({ recovered }) => {
+        this.watchUnavailable = false;
+        this.setRefreshState("idle");
+        if (recovered) {
+          void this.requestRefresh({ allDirectories: true, selected: true });
+        }
+      },
+      onChange: (change) => this.handleWatchChange(change),
+      onRecover: () =>
+        void this.requestRefresh({ allDirectories: true, selected: true }),
+      onError: () => {
+        this.watchUnavailable = true;
+        this.setRefreshState("unavailable");
+      },
+    });
+  }
+
+  private handleWatchChange(change: WatchChange) {
+    const paths = Array.isArray(change.paths) ? change.paths : [];
+    void this.requestRefresh({
+      paths,
+      allDirectories: Boolean(change.overflow),
+      selected: Boolean(
+        this.selectedPath &&
+          (change.overflow || paths.includes(this.selectedPath)),
+      ),
+      revision: change.revision,
+    });
+  }
+
+  private async performPendingRefresh() {
     const generation = this.refreshGeneration;
     const pending = this.pendingRefresh;
     this.pendingRefresh = createPendingRefresh();
@@ -355,11 +416,16 @@ class CaffoldFileNavigator extends HTMLElement {
     }
   }
 
-  async refreshDirectories(pending, generation = this.refreshGeneration) {
+  private async refreshDirectories(
+    pending: PendingRefresh,
+    generation = this.refreshGeneration,
+  ) {
     const cachedPaths = this.fileList.cachedDirectoryPaths();
-    const targets = new Set();
+    const targets = new Set<string>();
     if (pending.allDirectories) {
-      cachedPaths.forEach((path) => targets.add(path));
+      for (const path of cachedPaths) {
+        targets.add(path);
+      }
     } else {
       for (const changedPath of pending.paths) {
         const parent = parentPath(changedPath);
@@ -375,7 +441,7 @@ class CaffoldFileNavigator extends HTMLElement {
       return;
     }
 
-    const directories = [];
+    const directories: DirectoryListing[] = [];
     const paths = Array.from(targets);
     for (let index = 0; index < paths.length; index += 4) {
       const batch = paths.slice(index, index + 4);
@@ -396,12 +462,12 @@ class CaffoldFileNavigator extends HTMLElement {
     this.fileList.updateDirectories(directories);
   }
 
-  acceptRefresh(generation) {
+  private acceptRefresh(generation: number) {
     return this.isConnected && generation === this.refreshGeneration;
   }
 
-  setRefreshState(state) {
-    const nextState =
+  private setRefreshState(state: RefreshState | RefreshButtonState) {
+    const nextState: RefreshButtonState =
       state === "refreshing"
         ? "refreshing"
         : this.watchUnavailable
@@ -416,7 +482,7 @@ class CaffoldFileNavigator extends HTMLElement {
     );
   }
 
-  showDirectoryLoadingAfterDelay(requestId) {
+  private showDirectoryLoadingAfterDelay(requestId: number) {
     return window.setTimeout(() => {
       if (requestId === this.directoryRequestId) {
         this.fileList.setLoading();
@@ -424,18 +490,7 @@ class CaffoldFileNavigator extends HTMLElement {
     }, LOADING_DELAY_MS);
   }
 
-  loadStoredDirectoryPath() {
-    if (!this.storageKey) {
-      return null;
-    }
-    try {
-      return window.localStorage.getItem(this.storageKey);
-    } catch {
-      return null;
-    }
-  }
-
-  storeDirectoryPath(path) {
+  private storeDirectoryPath(path: string) {
     if (!this.storageKey) {
       return;
     }
@@ -446,7 +501,7 @@ class CaffoldFileNavigator extends HTMLElement {
     }
   }
 
-  clearStoredDirectoryPath() {
+  private clearStoredDirectoryPath() {
     if (!this.storageKey) {
       return;
     }
@@ -458,24 +513,22 @@ class CaffoldFileNavigator extends HTMLElement {
   }
 }
 
-if (!customElements.get("caffold-file-navigator")) {
-  customElements.define("caffold-file-navigator", CaffoldFileNavigator);
-}
+customElements.define("caffold-file-navigator", CaffoldFileNavigator);
 
-function parentPath(path) {
+function parentPath(path: string) {
   const parts = cleanPath(path).split("/").filter(Boolean);
   parts.pop();
   return parts.join("/");
 }
 
-function cleanPath(path) {
+function cleanPath(path: string) {
   return `${path ?? ""}`
     .split("/")
     .filter((segment) => segment && segment !== "." && segment !== "..")
     .join("/");
 }
 
-function createPendingRefresh() {
+function createPendingRefresh(): PendingRefresh {
   return {
     allDirectories: false,
     selected: false,

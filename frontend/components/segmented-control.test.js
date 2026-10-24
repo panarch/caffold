@@ -8,7 +8,7 @@ import {
 const previousCss = globalThis.CSS;
 globalThis.CSS = { escape: (value) => `${value}` };
 const registry = installCustomElementUnitRegistry();
-await import("./segmented-control.js");
+await import("./segmented-control.ts");
 const segmentedControl = registry.element("caffold-segmented-control").prototype;
 after(() => {
   registry.restore();

@@ -1,5 +1,5 @@
 import { getGitCompare, getGitCompareDiff, getGitRefs } from "#app/api.js";
-import "#components/git-compare-tree.js";
+import "#components/git-compare-tree.ts";
 import { ChangesReading } from "../changes-reading.js";
 
 class CaffoldReviewBranchChanges extends HTMLElement {

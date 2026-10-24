@@ -1,6 +1,6 @@
-import { fetchInChunks } from "#app/chunked-fetch.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
-import "#components/loading-text.js";
+import { fetchInChunks } from "#app/chunked-fetch.ts";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
+import "#components/loading-text.ts";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,

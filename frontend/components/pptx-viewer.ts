@@ -1,4 +1,7 @@
+import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
+  type ActionHintScope,
+  type ActionHintScopeOptions,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   linkActionHintLabel,
@@ -7,8 +10,10 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
+  type ScrollSurfaceScope,
+  type ScrollSurfaceScopeOptions,
 } from "../scroll-scope.js";
-import "./loading-text.js";
+import "./loading-text.ts";
 
 const PPTX_RENDERER_VERSION = "1.3.0";
 const PPTX_RENDERER_IMPORT =
@@ -60,25 +65,96 @@ const DOCUMENT_STYLES = `
   }
 `;
 
-let libraryPromise;
+// The parts of the PowerPoint renderer the viewer uses.
+interface PptxViewer {
+  load(presentation: unknown): void;
+  renderList(options: { windowed: boolean }): Promise<void>;
+  destroy(): void;
+}
 
-class CaffoldPptxViewer extends HTMLElement {
+interface PptxRenderer {
+  RECOMMENDED_ZIP_LIMITS: unknown;
+  parseZipLazyMedia(bytes: ArrayBuffer, limits: unknown): Promise<unknown>;
+  buildPresentation(
+    files: unknown,
+    options: { lazySlides: boolean },
+  ): { width: number };
+  PptxViewer: new (
+    container: HTMLElement,
+    options: {
+      fitMode: string;
+      scrollContainer: HTMLElement;
+      pdfjs: boolean;
+    },
+  ) => PptxViewer;
+}
+
+type RenderState = "empty" | "loading" | "error" | "pptx";
+
+let libraryPromise: Promise<PptxRenderer> | undefined;
+
+class CaffoldPptxViewer extends LitElement {
+  static properties = {
+    renderState: { state: true },
+    mount: { state: true },
+  };
+
+  declare private renderState: RenderState;
+  declare private mount: HTMLElement | null;
+  private generation = 0;
+  private slideObserver: MutationObserver | null = null;
+  private viewer: PptxViewer | null = null;
+
+  constructor() {
+    super();
+    this.renderState = "empty";
+    this.mount = null;
+  }
+
+  createRenderRoot() {
+    return this;
+  }
+
   connectedCallback() {
-    this.ensureRendered();
+    super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "PowerPoint preview");
+    this.performUpdate();
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     this.release();
+  }
+
+  // The deck is drawn into its mount while it still says it is loading.
+  render() {
+    const message =
+      this.renderState === "loading"
+        ? html`<caffold-loading-text>Loading document...</caffold-loading-text>`
+        : this.renderState === "error"
+          ? "This document could not be displayed."
+          : "";
+    const content = this.mount
+      ? this.mount
+      : message
+        ? html`<p class="pptx-viewer-message">${message}</p>`
+        : nothing;
+    return html`<div class="pptx-viewer-body">${content}</div>`;
+  }
+
+  updated(changed: PropertyValues) {
+    if (changed.has("renderState")) {
+      this.dataset.renderState = this.renderState;
+    }
   }
 
   // Opens the file the file viewer fetched for it: a Blob, or the promise of
   // one, which fails when the fetch does.
-  setFile(file) {
-    this.ensureRendered();
+  setFile(file: Blob | Promise<Blob>) {
     this.release();
-    this.showMessage("loading", "Loading document...");
+    this.renderState = "loading";
+    this.performUpdate();
     void this.open(this.generation, file);
   }
 
@@ -87,25 +163,26 @@ class CaffoldPptxViewer extends HTMLElement {
     label = "PowerPoint preview",
     clipRoots = [],
     isCurrent = () => true,
-  } = {}) {
-    this.ensureRendered();
+  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
     if (!scopeId || !label || this.hidden) {
       return emptyScrollSurfaceScope();
     }
     return {
       blocked: false,
-      surfaces: [{
-        id: `${scopeId}:scroll`,
-        label,
-        scrollport: this,
-        axes: ["vertical"],
-        clipRoots: [this, ...clipRoots].filter(Boolean),
-        isEligible: () =>
-          this.isConnected &&
-          !this.hidden &&
-          isCurrent() &&
-          hasScrollLayoutBox(this),
-      }],
+      surfaces: [
+        {
+          id: `${scopeId}:scroll`,
+          label,
+          scrollport: this,
+          axes: ["vertical"],
+          clipRoots: [this, ...clipRoots].filter(Boolean),
+          isEligible: () =>
+            this.isConnected &&
+            !this.hidden &&
+            isCurrent() &&
+            hasScrollLayoutBox(this),
+        },
+      ],
       mutationRoots: [this],
       resizeElements: [this],
       scrollRoots: [this],
@@ -119,7 +196,10 @@ class CaffoldPptxViewer extends HTMLElement {
     linkActionId = "",
     clipRoots = [],
     isCurrent = () => true,
-  } = {}) {
+  }: ActionHintScopeOptions & {
+    linkActionId?: string;
+    isCurrent?: () => boolean;
+  } = {}): ActionHintScope {
     const root = this.mount?.shadowRoot;
     if (
       !scopeId ||
@@ -127,35 +207,42 @@ class CaffoldPptxViewer extends HTMLElement {
       !root ||
       !this.isConnected ||
       this.hidden ||
-      this.dataset.renderState !== "pptx"
+      this.renderState !== "pptx"
     ) {
       return emptyActionHintScope();
     }
     const targets = [];
-    for (const slide of root.querySelectorAll("[data-slide-index]")) {
-      const links = slide.querySelectorAll('a[href], [role="link"]');
+    for (const slide of root.querySelectorAll<HTMLElement>(
+      "[data-slide-index]",
+    )) {
+      const links = slide.querySelectorAll<HTMLElement>(
+        'a[href], [role="link"]',
+      );
       for (const [ordinal, control] of [...links].entries()) {
-        const label = control.localName === "a"
-          ? linkActionHintLabel(control)
-          : scriptedLinkLabel(control);
+        const label =
+          control.localName === "a"
+            ? linkActionHintLabel(control)
+            : scriptedLinkLabel(control);
         if (!label || !hasActionHintLayoutBox(control)) {
           continue;
         }
-        targets.push(linkActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:slide:${slide.dataset.slideIndex}:link:${ordinal}`,
-          actionId: linkActionId,
-          label,
-          control,
-          clipRoots: [this, ...clipRoots].filter(Boolean),
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.dataset.renderState === "pptx" &&
-            root.contains(control) &&
-            hasActionHintLayoutBox(control),
-        }));
+        targets.push(
+          linkActionHintTarget({
+            invalidationOwner: this,
+            id: `${scopeId}:slide:${slide.dataset.slideIndex}:link:${ordinal}`,
+            actionId: linkActionId,
+            label,
+            control,
+            clipRoots: [this, ...clipRoots].filter(Boolean),
+            isActionable: () =>
+              this.isConnected &&
+              !this.hidden &&
+              isCurrent() &&
+              this.renderState === "pptx" &&
+              root.contains(control) &&
+              hasActionHintLayoutBox(control),
+          }),
+        );
       }
     }
     return {
@@ -166,18 +253,26 @@ class CaffoldPptxViewer extends HTMLElement {
     };
   }
 
-  async open(generation, file) {
+  private async open(generation: number, file: Blob | Promise<Blob>) {
     try {
-      const [library, bytes] = await Promise.all([loadLibrary(), readBytes(file)]);
+      const [library, bytes] = await Promise.all([
+        loadLibrary(),
+        readBytes(file),
+      ]);
       if (!this.isCurrent(generation)) {
         return;
       }
       // Media and slide contents are unpacked when a slide is drawn.
-      const files = await library.parseZipLazyMedia(bytes, library.RECOMMENDED_ZIP_LIMITS);
+      const files = await library.parseZipLazyMedia(
+        bytes,
+        library.RECOMMENDED_ZIP_LIMITS,
+      );
       if (!this.isCurrent(generation)) {
         return;
       }
-      const presentation = library.buildPresentation(files, { lazySlides: true });
+      const presentation = library.buildPresentation(files, {
+        lazySlides: true,
+      });
       const container = this.mountDocument();
       // `contain` scales a slide to its container's width, so a container no
       // wider than the slide keeps a wide panel from enlarging it.
@@ -194,13 +289,17 @@ class CaffoldPptxViewer extends HTMLElement {
       if (!this.isCurrent(generation)) {
         return;
       }
-      this.dataset.renderState = "pptx";
+      this.renderState = "pptx";
     } catch (error) {
       // A fetch let go of is followed by another file or by nothing at all.
-      if (this.isCurrent(generation) && error?.name !== "AbortError") {
+      if (
+        this.isCurrent(generation) &&
+        (error as Error | null)?.name !== "AbortError"
+      ) {
         this.viewer?.destroy();
         this.viewer = null;
-        this.showMessage("error", "This document could not be displayed.");
+        this.mount = null;
+        this.renderState = "error";
       }
     }
   }
@@ -208,7 +307,7 @@ class CaffoldPptxViewer extends HTMLElement {
   // The deck's slides live in a shadow root of their own. Media and links on
   // whole shapes are prepared as the renderer adds them, which can be after a
   // slide is drawn, and before the page paints.
-  mountDocument() {
+  private mountDocument() {
     const mount = window.document.createElement("div");
     mount.className = "pptx-viewer-document";
     const root = mount.attachShadow({ mode: "open" });
@@ -222,13 +321,13 @@ class CaffoldPptxViewer extends HTMLElement {
       exposeShapeLinks(container);
     });
     this.slideObserver.observe(container, { childList: true, subtree: true });
-    this.body().replaceChildren(mount);
     this.mount = mount;
+    this.performUpdate();
     return container;
   }
 
-  release() {
-    this.generation = (this.generation ?? 0) + 1;
+  private release() {
+    this.generation += 1;
     this.slideObserver?.disconnect();
     this.slideObserver = null;
     this.viewer?.destroy();
@@ -236,45 +335,15 @@ class CaffoldPptxViewer extends HTMLElement {
     this.mount = null;
   }
 
-  isCurrent(generation) {
+  private isCurrent(generation: number) {
     return this.isConnected && this.generation === generation;
-  }
-
-  ensureRendered() {
-    if (this.initialized) {
-      return;
-    }
-    this.initialized = true;
-    this.generation = 0;
-    this.dataset.renderState = "empty";
-    this.innerHTML = '<div class="pptx-viewer-body"></div>';
-  }
-
-  showMessage(renderState, message) {
-    const body = this.body();
-    this.dataset.renderState = renderState;
-    body.replaceChildren();
-    const paragraph = window.document.createElement("p");
-    paragraph.className = "pptx-viewer-message";
-    if (renderState === "loading") {
-      const loadingText = window.document.createElement("caffold-loading-text");
-      loadingText.textContent = message;
-      paragraph.append(loadingText);
-    } else {
-      paragraph.textContent = message;
-    }
-    body.append(paragraph);
-  }
-
-  body() {
-    return this.querySelector(":scope > .pptx-viewer-body");
   }
 }
 
 // The renderer titles a link without an href by the deck's tooltip, or else
 // "Go to slide N" for a link to another slide and the address for a link out
 // of the deck.
-function scriptedLinkLabel(control) {
+function scriptedLinkLabel(control: Element) {
   const title = control.getAttribute("title")?.trim() ?? "";
   const text = control.textContent?.replace(/\s+/g, " ").trim() ?? "";
   const slide = title.match(/^Go to slide (\d+)$/)?.[1];
@@ -289,8 +358,10 @@ function scriptedLinkLabel(control) {
 
 // The renderer makes a whole shape or picture a link with a pointer cursor, a
 // title, and a click handler, but leaves it out of the keyboard's reach.
-function exposeShapeLinks(container) {
-  for (const shape of container.querySelectorAll("[title]:not(a, [role])")) {
+function exposeShapeLinks(container: HTMLElement) {
+  for (const shape of container.querySelectorAll<HTMLElement>(
+    "[title]:not(a, [role])",
+  )) {
     if (shape.style.cursor !== "pointer") {
       continue;
     }
@@ -307,9 +378,10 @@ function exposeShapeLinks(container) {
 
 // A video shows its poster and an audio clip the picture the deck gives it;
 // neither plays.
-function withholdMedia(container) {
+function withholdMedia(container: HTMLElement) {
   for (const media of container.querySelectorAll("video, audio")) {
-    const poster = media.localName === "video" ? media.getAttribute("poster") : "";
+    const poster =
+      media.localName === "video" ? media.getAttribute("poster") : "";
     if (poster) {
       const image = window.document.createElement("img");
       image.className = "pptx-viewer-media-poster";
@@ -327,7 +399,7 @@ function withholdMedia(container) {
   }
 }
 
-async function readBytes(file) {
+async function readBytes(file: Blob | Promise<Blob>) {
   return (await file).arrayBuffer();
 }
 

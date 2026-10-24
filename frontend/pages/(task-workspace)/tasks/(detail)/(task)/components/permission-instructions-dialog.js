@@ -1,7 +1,7 @@
 import {
   renderInlineIcon,
   warmIcons,
-} from "#components/icons.js";
+} from "#components/icons.ts";
 import {
   forgetTaskPermissionInstructions,
   getTaskPermissionInstructions,

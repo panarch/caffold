@@ -1,7 +1,7 @@
 import { compactIconButton } from "#app/component-styles.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
-import { showLoadingText } from "#components/loading-text.js";
-import "#components/markdown-preview.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
+import { showLoadingText } from "#components/loading-text.ts";
+import "#components/markdown-preview.ts";
 import {
   buttonActionHintTarget, emptyActionHintScope, hasActionHintLayoutBox, mergeActionHintScopes,
 } from "#app/action-hint-scope.js";

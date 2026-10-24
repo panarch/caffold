@@ -18,6 +18,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "styles.css" => Some(css(include_str!("../../frontend/styles.css"))),
         "app.js" => Some(js(include_str!("../../frontend/app.js"))),
         "lit/index.js" => Some(js(include_str!("../../frontend/node_modules/lit/index.js"))),
+        "lit/directives/repeat.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit/directives/repeat.js"
+        ))),
         "lit/directives/unsafe-html.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit/directives/unsafe-html.js"
         ))),
@@ -26,6 +29,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "lit-html/directive.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit-html/directive.js"
+        ))),
+        "lit-html/directive-helpers.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit-html/directive-helpers.js"
+        ))),
+        "lit-html/directives/repeat.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit-html/directives/repeat.js"
         ))),
         "lit-html/directives/unsafe-html.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit-html/directives/unsafe-html.js"
@@ -52,17 +61,26 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             "../../frontend/component-styles/busy-spin.css"
         ))),
         "origin-reachability.js" => Some(js(include_str!("../../frontend/origin-reachability.js"))),
-        "file-status.js" => Some(js(include_str!("../../frontend/file-status.js"))),
-        "chunked-fetch.js" => Some(js(include_str!("../../frontend/chunked-fetch.js"))),
-        "chunked-fetch/cell-scheduler.js" => Some(js(include_str!(
-            "../../frontend/chunked-fetch/cell-scheduler.js"
-        ))),
-        "chunked-fetch/in-flight-limit.js" => Some(js(include_str!(
-            "../../frontend/chunked-fetch/in-flight-limit.js"
-        ))),
-        "chunked-fetch/transfer.js" => {
-            Some(js(include_str!("../../frontend/chunked-fetch/transfer.js")))
-        }
+        "file-status.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/file-status.ts"
+        )))),
+        "chunked-fetch.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/chunked-fetch.ts"
+        )))),
+        "chunked-fetch/cell-scheduler.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/chunked-fetch/cell-scheduler.ts"
+        )))),
+        "chunked-fetch/in-flight-limit.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/chunked-fetch/in-flight-limit.ts"
+        )))),
+        "chunked-fetch/transfer.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/chunked-fetch/transfer.ts"
+        )))),
         "fonts.js" => Some(js(include_str!("../../frontend/fonts.js"))),
         "navigation-routes.js" => Some(js(include_str!("../../frontend/navigation-routes.js"))),
         "settings.js" => Some(js(include_str!("../../frontend/settings.js"))),
@@ -290,30 +308,35 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/file-tree.css" => {
             Some(css(include_str!("../../frontend/components/file-tree.css")))
         }
-        "components/file-tree.js" => {
-            Some(js(include_str!("../../frontend/components/file-tree.js")))
-        }
+        "components/file-tree.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/file-tree.ts"
+        )))),
         "components/file-navigator.css" => Some(css(include_str!(
             "../../frontend/components/file-navigator.css"
         ))),
-        "components/file-navigator.js" => Some(js(include_str!(
-            "../../frontend/components/file-navigator.js"
-        ))),
+        "components/file-navigator.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/file-navigator.ts"
+        )))),
         "components/file-navigator/components/list.css" => Some(css(include_str!(
             "../../frontend/components/file-navigator/components/list.css"
         ))),
-        "components/file-navigator/components/list.js" => Some(js(include_str!(
-            "../../frontend/components/file-navigator/components/list.js"
-        ))),
+        "components/file-navigator/components/list.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/file-navigator/components/list.ts"
+        )))),
         "components/pane-resizer.css" => Some(css(include_str!(
             "../../frontend/components/pane-resizer.css"
         ))),
-        "components/pane-resizer.js" => Some(js(include_str!(
-            "../../frontend/components/pane-resizer.js"
-        ))),
-        "components/review-responsive.js" => Some(js(include_str!(
-            "../../frontend/components/review-responsive.js"
-        ))),
+        "components/pane-resizer.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/pane-resizer.ts"
+        )))),
+        "components/review-responsive.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/review-responsive.ts"
+        )))),
         "watch.js" => Some(js(include_str!("../../frontend/watch.js"))),
         "pages/(task-workspace)/settings/appearance/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/appearance/page.css"
@@ -1352,15 +1375,17 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/git-compare-browser.css" => Some(css(include_str!(
             "../../frontend/components/git-compare-browser.css"
         ))),
-        "components/git-compare-browser.js" => Some(js(include_str!(
-            "../../frontend/components/git-compare-browser.js"
-        ))),
+        "components/git-compare-browser.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/git-compare-browser.ts"
+        )))),
         "components/git-compare-tree.css" => Some(css(include_str!(
             "../../frontend/components/git-compare-tree.css"
         ))),
-        "components/git-compare-tree.js" => Some(js(include_str!(
-            "../../frontend/components/git-compare-tree.js"
-        ))),
+        "components/git-compare-tree.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/git-compare-tree.ts"
+        )))),
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css"
         ))),
@@ -1519,71 +1544,90 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/file-viewer/components/code-viewer.css" => Some(css(include_str!(
             "../../frontend/components/file-viewer/components/code-viewer.css"
         ))),
-        "components/file-viewer/components/code-viewer.js" => Some(js(include_str!(
-            "../../frontend/components/file-viewer/components/code-viewer.js"
-        ))),
+        "components/file-viewer/components/code-viewer.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/file-viewer/components/code-viewer.ts"
+        )))),
         "components/file-viewer/components/diff-viewer.css" => Some(css(include_str!(
             "../../frontend/components/file-viewer/components/diff-viewer.css"
         ))),
-        "components/file-viewer/components/diff-viewer.js" => Some(js(include_str!(
-            "../../frontend/components/file-viewer/components/diff-viewer.js"
-        ))),
-        "components/file-viewer/syntax-spans.js" => Some(js(include_str!(
-            "../../frontend/components/file-viewer/syntax-spans.js"
-        ))),
-        "components/dom.js" => Some(js(include_str!("../../frontend/components/dom.js"))),
+        "components/file-viewer/components/diff-viewer.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/file-viewer/components/diff-viewer.ts"
+        )))),
+        "components/file-viewer/syntax-spans.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/file-viewer/syntax-spans.ts"
+        )))),
+        "components/dom.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/dom.ts"
+        )))),
         "components/file-viewer.css" => Some(css(include_str!(
             "../../frontend/components/file-viewer.css"
         ))),
-        "components/file-viewer.js" => {
-            Some(js(include_str!("../../frontend/components/file-viewer.js")))
-        }
+        "components/file-viewer.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/file-viewer.ts"
+        )))),
         "components/markdown-preview.css" => Some(css(include_str!(
             "../../frontend/components/markdown-preview.css"
         ))),
-        "components/markdown-preview.js" => Some(js(include_str!(
-            "../../frontend/components/markdown-preview.js"
-        ))),
+        "components/markdown-preview.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/markdown-preview.ts"
+        )))),
         "components/pdf-viewer.css" => Some(css(include_str!(
             "../../frontend/components/pdf-viewer.css"
         ))),
-        "components/pdf-viewer.js" => {
-            Some(js(include_str!("../../frontend/components/pdf-viewer.js")))
-        }
+        "components/pdf-viewer.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/pdf-viewer.ts"
+        )))),
         "components/docx-viewer.css" => Some(css(include_str!(
             "../../frontend/components/docx-viewer.css"
         ))),
-        "components/docx-viewer.js" => {
-            Some(js(include_str!("../../frontend/components/docx-viewer.js")))
-        }
+        "components/docx-viewer.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/docx-viewer.ts"
+        )))),
         "components/pptx-viewer.css" => Some(css(include_str!(
             "../../frontend/components/pptx-viewer.css"
         ))),
-        "components/pptx-viewer.js" => {
-            Some(js(include_str!("../../frontend/components/pptx-viewer.js")))
-        }
+        "components/pptx-viewer.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/pptx-viewer.ts"
+        )))),
         "components/xlsx-viewer.css" => Some(css(include_str!(
             "../../frontend/components/xlsx-viewer.css"
         ))),
-        "components/xlsx-viewer.js" => {
-            Some(js(include_str!("../../frontend/components/xlsx-viewer.js")))
-        }
-        "components/xlsx-viewer/window.js" => Some(js(include_str!(
-            "../../frontend/components/xlsx-viewer/window.js"
-        ))),
-        "components/xlsx-viewer/workbook.js" => Some(js(include_str!(
-            "../../frontend/components/xlsx-viewer/workbook.js"
-        ))),
-        "components/file-viewer-presentation.js" => Some(js(include_str!(
-            "../../frontend/components/file-viewer-presentation.js"
-        ))),
-        "components/icons.js" => Some(js(include_str!("../../frontend/components/icons.js"))),
+        "components/xlsx-viewer.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/xlsx-viewer.ts"
+        )))),
+        "components/xlsx-viewer/window.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/xlsx-viewer/window.ts"
+        )))),
+        "components/xlsx-viewer/workbook.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/xlsx-viewer/workbook.ts"
+        )))),
+        "components/file-viewer-presentation.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/file-viewer-presentation.ts"
+        )))),
+        "components/icons.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/icons.ts"
+        )))),
         "components/loading-text.css" => Some(css(include_str!(
             "../../frontend/components/loading-text.css"
         ))),
-        "components/loading-text.js" => Some(js(include_str!(
-            "../../frontend/components/loading-text.js"
-        ))),
+        "components/loading-text.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/loading-text.ts"
+        )))),
         "components/pagination.css" => Some(css(include_str!(
             "../../frontend/components/pagination.css"
         ))),
@@ -1601,15 +1645,17 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/terminal-view.css" => Some(css(include_str!(
             "../../frontend/components/terminal-view.css"
         ))),
-        "components/terminal-view.js" => Some(js(include_str!(
-            "../../frontend/components/terminal-view.js"
-        ))),
+        "components/terminal-view.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/terminal-view.ts"
+        )))),
         "components/segmented-control.css" => Some(css(include_str!(
             "../../frontend/components/segmented-control.css"
         ))),
-        "components/segmented-control.js" => Some(js(include_str!(
-            "../../frontend/components/segmented-control.js"
-        ))),
+        "components/segmented-control.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/segmented-control.ts"
+        )))),
         _ => None,
     }
 }
@@ -1695,9 +1741,12 @@ mod tests {
     fn serves_lit_from_the_installed_packages() {
         for path in [
             "lit/index.js",
+            "lit/directives/repeat.js",
             "lit/directives/unsafe-html.js",
             "lit-html/lit-html.js",
             "lit-html/directive.js",
+            "lit-html/directive-helpers.js",
+            "lit-html/directives/repeat.js",
             "lit-html/directives/unsafe-html.js",
             "lit-html/is-server.js",
             "lit-element/lit-element.js",
@@ -1794,7 +1843,7 @@ mod tests {
         assert!(codex_status_lifecycle.body.starts_with(b"import "));
 
         let review_responsive_js =
-            get("components/review-responsive.js").expect("review responsive js asset");
+            get("components/review-responsive.ts").expect("review responsive js asset");
         assert_eq!(
             review_responsive_js.content_type,
             "text/javascript; charset=utf-8"
@@ -1989,11 +2038,11 @@ mod tests {
             "keyboard-navigation/components/presentation.js",
             "keyboard-navigation/components/shortcut-list.js",
             "keyboard-navigation/components/shortcut-dialog.js",
-            "chunked-fetch.js",
-            "chunked-fetch/cell-scheduler.js",
-            "chunked-fetch/in-flight-limit.js",
-            "chunked-fetch/transfer.js",
-            "components/file-viewer/syntax-spans.js",
+            "chunked-fetch.ts",
+            "chunked-fetch/cell-scheduler.ts",
+            "chunked-fetch/in-flight-limit.ts",
+            "chunked-fetch/transfer.ts",
+            "components/file-viewer/syntax-spans.ts",
             "action-hints.js",
             "action-hints/control.js",
             "action-hints/model.js",
@@ -2143,7 +2192,7 @@ mod tests {
                 .body
                 .starts_with(b"caffold-git-review-controls")
         );
-        let pane_resizer = get("components/pane-resizer.js").expect("pane resizer js");
+        let pane_resizer = get("components/pane-resizer.ts").expect("pane resizer js");
         assert_eq!(pane_resizer.content_type, "text/javascript; charset=utf-8");
         assert!(
             pane_resizer
@@ -2165,7 +2214,7 @@ mod tests {
                 .windows(b"caffold-git-compare-page".len())
                 .any(|window| window == b"caffold-git-compare-page")
         );
-        let compare_browser = get("components/git-compare-browser.js").expect("compare browser js");
+        let compare_browser = get("components/git-compare-browser.ts").expect("compare browser js");
         assert_eq!(
             compare_browser.content_type,
             "text/javascript; charset=utf-8"
@@ -2176,7 +2225,7 @@ mod tests {
                 .windows(b"caffold-git-compare-browser".len())
                 .any(|window| window == b"caffold-git-compare-browser")
         );
-        let compare_tree = get("components/git-compare-tree.js").expect("compare tree js");
+        let compare_tree = get("components/git-compare-tree.ts").expect("compare tree js");
         assert_eq!(compare_tree.content_type, "text/javascript; charset=utf-8");
         assert!(
             compare_tree
@@ -2567,11 +2616,11 @@ mod tests {
                 b"caffold-detail-layout".as_slice(),
             ),
             (
-                "components/segmented-control.js",
+                "components/segmented-control.ts",
                 b"caffold-segmented-control".as_slice(),
             ),
             (
-                "components/loading-text.js",
+                "components/loading-text.ts",
                 b"caffold-loading-text".as_slice(),
             ),
             (
@@ -3084,7 +3133,7 @@ mod tests {
         assert!(get("components/file-browser.js").is_none());
 
         let file_navigator_component =
-            get("components/file-navigator.js").expect("file navigator component js asset");
+            get("components/file-navigator.ts").expect("file navigator component js asset");
         assert_eq!(
             file_navigator_component.content_type,
             "text/javascript; charset=utf-8"
@@ -3105,7 +3154,7 @@ mod tests {
                 .starts_with(b"@import \"./file-navigator/components/list.css\"")
         );
 
-        let file_list_component = get("components/file-navigator/components/list.js")
+        let file_list_component = get("components/file-navigator/components/list.ts")
             .expect("file navigator list component js asset");
         assert_eq!(
             file_list_component.content_type,
@@ -3119,7 +3168,7 @@ mod tests {
                 .any(|window| window == b"caffold-file-list")
         );
         let file_tree_component =
-            get("components/file-tree.js").expect("file tree component js asset");
+            get("components/file-tree.ts").expect("file tree component js asset");
         assert_eq!(
             file_tree_component.content_type,
             "text/javascript; charset=utf-8"
@@ -3131,7 +3180,7 @@ mod tests {
                 .windows(b"caffold-file-tree".len())
                 .any(|window| window == b"caffold-file-tree")
         );
-        let file_status_module = get("file-status.js").expect("file status js asset");
+        let file_status_module = get("file-status.ts").expect("file status js asset");
         assert_eq!(
             file_status_module.content_type,
             "text/javascript; charset=utf-8"

@@ -56,7 +56,7 @@ Shared imports can use three native aliases:
 | Prefix | Frontend-relative directory | Example |
 | --- | --- | --- |
 | `#app/` | `./` | `#app/api.js` |
-| `#components/` | `components/` | `#components/icons.js` |
+| `#components/` | `components/` | `#components/icons.ts` |
 | `#tasks/` | `pages/(task-workspace)/tasks/` | `#tasks/task-format.js` |
 
 `frontend/index.html` declares the browser import map before the app module.
@@ -97,10 +97,11 @@ changes, Lit calls `render()` once the code that changed it has finished, so
 the DOM changes then rather than at the assignment. Work that reads the
 rendered DOM, such as scroll restoration, focus, or measurement, runs in
 `updated()`, and an owner that needs a child's rendered DOM awaits the child's
-`updateComplete`. A method that changes the component's rendered DOM on its
-owner's request, such as opening its native dialog, first awaits its own
-`updateComplete`, so the owner can call it right after mounting the component.
-Event listeners bound in a template come and go with their nodes.
+`updateComplete`. While the owners that command a component are still
+JavaScript, the component renders at once, with `performUpdate()`, when it
+connects and when one of its public methods changes what it shows, so those
+owners can read its DOM right after mounting or calling it. Event listeners
+bound in a template come and go with their nodes.
 
 Lit keeps the nodes of a rendered template across later renders and commits
 only the bindings whose values changed. Rendering a different template at the
@@ -1396,7 +1397,7 @@ Images and documents also answer one `Range: bytes=` range with 206 and
 `Content-Range`, reading only that part of the file, and a range that starts
 past the end with 416. `If-None-Match` is answered before the range, and an
 `If-Range` that does not name the current version gets the whole file. Their
-viewers fetch them through `fetchInChunks` (`frontend/chunked-fetch.js`) in
+viewers fetch them through `fetchInChunks` (`frontend/chunked-fetch.ts`) in
 64 KB cells cut at the same places every time, so the bytes of a large file
 wait in line on the shared connection ahead of the page's other requests, the
 live updates included, by no more than the cells in flight. The first cell
@@ -1460,7 +1461,7 @@ names of its own, so they cannot replace the app's fonts. Its PDF fallback for
 SmartArt and EMF pictures is off.
 
 `caffold-xlsx-viewer` imports its pinned SheetJS release at first use and
-turns the workbook into a drawing model (`xlsx-viewer/workbook.js`): each
+turns the workbook into a drawing model (`xlsx-viewer/workbook.ts`): each
 sheet's track sizes, hidden rows and columns, merges, frozen panes, cell text
 as Excel displays it, links, and the CSS declarations of every cell style.
 SheetJS reads values, sizes, merges, fills, fonts, and alignment; which style
@@ -1572,7 +1573,7 @@ terminal is the presented surface, announces each change with
 `caffold:detail-header-change`, and Tasks publishes it in its presentation
 snapshot for Task Workspace.
 
-`caffold-terminal-view` in `frontend/components/terminal-view.js` is the
+`caffold-terminal-view` in `frontend/components/terminal-view.ts` is the
 reusable leaf that loads xterm.js, opens and closes its terminal, sizes it to
 its box, applies the Code typeface, Code size, and theme colors, scrolls the
 history under a dragged finger as [Terminals](terminal.md#browser) describes,
@@ -1710,7 +1711,7 @@ colored within the old file and an added or context line within the new one.
 Text stays uncolored when no syntax matches, when a line is longer than 5,000
 characters, when that whole-file diff exceeds 1 MiB, and in GitHub Pull Request
 diffs. `/api/file` also names the syntax in `language`, which File details shows
-as Language, "Plain Text" when none matches. The file viewer's `syntax-spans.js`
+as Language, "Plain Text" when none matches. The file viewer's `syntax-spans.ts`
 turns a line and its spans into markup for both viewers, and each viewer's
 stylesheet gives the six classes their `--syntax-*` colors.
 
@@ -2018,23 +2019,23 @@ frontend/
 |                   |-- (issues)/...
 |                   `-- (pulls)/...
 `-- components/
-    |-- file-tree.js
-    |-- file-navigator.js
-    |-- file-viewer.js
-    |-- git-compare-browser.js
-    |-- git-compare-tree.js
-    |-- markdown-preview.js
+    |-- file-tree.ts
+    |-- file-navigator.ts
+    |-- file-viewer.ts
+    |-- git-compare-browser.ts
+    |-- git-compare-tree.ts
+    |-- markdown-preview.ts
     |-- pagination.ts
     |-- pagination/components/button.ts
-    |-- pdf-viewer.js
-    |-- docx-viewer.js
-    |-- pptx-viewer.js
-    |-- xlsx-viewer.js
-    |-- xlsx-viewer/workbook.js
-    |-- xlsx-viewer/window.js
-    |-- pane-resizer.js
-    |-- segmented-control.js
-    `-- terminal-view.js
+    |-- pdf-viewer.ts
+    |-- docx-viewer.ts
+    |-- pptx-viewer.ts
+    |-- xlsx-viewer.ts
+    |-- xlsx-viewer/workbook.ts
+    |-- xlsx-viewer/window.ts
+    |-- pane-resizer.ts
+    |-- segmented-control.ts
+    `-- terminal-view.ts
 ```
 
 Parenthesized directories are pathless ownership nodes. A directory with its
@@ -2097,7 +2098,7 @@ do not turn in step.
 Busy controls and waiting content use two presentations. A busy control or
 icon slot turns its ring or icon in place through `busySpin`. A place
 where content is about to appear shows `caffold-loading-text` from
-`frontend/components/loading-text.js`: a short muted phrase crossed by a moving
+`frontend/components/loading-text.ts`: a short muted phrase crossed by a moving
 highlight and announced as a status. It stays invisible for 180 ms and then
 fades in, so a load that finishes sooner never shows it; reduced motion keeps
 the delay and drops the highlight and the fade. Its one attribute,
@@ -2112,8 +2113,8 @@ remove it, its text, and its place: the first row's position in list and tree
 panels, the center of other content areas, and the existing slot inside a row
 or a value. Its text size follows that Interface container. An owner keeps the
 same element while the wait lasts, because a new element starts the delay and
-the animation again; owners that patch their DOM use `retainLoadingText` or
-`showLoadingText`, which keep a phrase that already says the same thing.
+the animation again; owners that patch their DOM use `showLoadingText`, which
+keeps a phrase that already says the same thing.
 
 `--font-ui` and `--font-code` are the two typeface roles. `--font-ui` covers
 interface chrome and conversation prose, including the Composer textarea;

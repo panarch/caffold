@@ -3755,7 +3755,7 @@ async function expectThemeState(page, { mode, resolvedTheme }) {
 
 async function representativeThemeStyles(page) {
   return page.evaluate(async () => {
-    await import("/assets/components/file-viewer/components/diff-viewer.js");
+    await import("/assets/components/file-viewer/components/diff-viewer.ts");
 
     const review = document.createElement("caffold-task-review");
     review.style.cssText =

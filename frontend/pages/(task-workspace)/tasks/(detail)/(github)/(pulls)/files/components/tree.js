@@ -1,9 +1,9 @@
-import { escapeHtml } from "#components/dom.js";
-import "#components/loading-text.js";
+import { escapeHtml } from "#components/dom.ts";
+import "#components/loading-text.ts";
 import {
   buildFileTreeNodes,
   FILE_TREE_SELECT_EVENT,
-} from "#components/file-tree.js";
+} from "#components/file-tree.ts";
 import { emptyActionHintScope } from "#app/action-hint-scope.js";
 import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 

@@ -1,6 +1,6 @@
 import { BUILD_INFO } from "#app/build-info.js";
 import { getCodexMcpDiagnostics } from "#app/api.js";
-import { showLoadingText } from "#components/loading-text.js";
+import { showLoadingText } from "#components/loading-text.ts";
 import "../components/detail-list.js";
 import {
   ACTION_HINT_ACTION,

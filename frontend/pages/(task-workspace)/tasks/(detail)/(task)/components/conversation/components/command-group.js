@@ -1,4 +1,4 @@
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
 import { eventIdentityKey } from "#tasks/task-events.js";
 import { formatDate, taskEventObservedMs } from "#tasks/task-format.js";
 import {

@@ -1,4 +1,4 @@
-import { escapeHtml } from "#components/dom.js";
+import { escapeHtml } from "#components/dom.ts";
 import { formatDecision } from "#tasks/task-format.js";
 import {
   ACTION_HINT_ACTION,

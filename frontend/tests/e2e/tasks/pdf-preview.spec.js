@@ -236,16 +236,18 @@ test("reads a document once when the file list arrives after it", { tag: "@viewp
       .locator("caffold-file-navigator")
       .locator(`button[data-file-tree-path="src/${documentRoute(testInfo)}"]`),
   ).toHaveAttribute("aria-current", "true");
-  const header = taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header");
-  await header.evaluate((element) => {
-    element.dataset.beforeStatus = "";
+  const fileViewer = taskReview.locator("caffold-review-file-viewer");
+  await fileViewer.evaluate((element) => {
+    const setDocument = element.setDocument;
+    element.setDocument = function (...args) {
+      this.dataset.shownAgain = "";
+      return setDocument.apply(this, args);
+    };
   });
   const statusArrived = page.waitForResponse(statusPattern);
   status.letThrough();
   await statusArrived;
-  await expect(
-    taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header[data-before-status]"),
-  ).toHaveCount(0);
+  await expect(fileViewer).toHaveAttribute("data-shown-again", "");
 
   const viewer = taskReview.locator("caffold-pdf-viewer");
   await expect(viewer).toHaveAttribute("data-render-state", "pdf");

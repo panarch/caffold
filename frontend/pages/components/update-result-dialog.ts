@@ -37,6 +37,11 @@ class CaffoldUpdateResultDialog extends LitElement {
     return this;
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    this.performUpdate();
+  }
+
   render() {
     return html`
       <dialog
@@ -60,13 +65,13 @@ class CaffoldUpdateResultDialog extends LitElement {
   }
 
   /** Shows what happened to the attempt, which must have failed. */
-  async open(attempt: UpdateAttempt | null | undefined) {
+  open(attempt: UpdateAttempt | null | undefined) {
     const notice = updateResultNotice(attempt);
     if (!notice) {
       return;
     }
     this.notice = notice;
-    await this.updateComplete;
+    this.performUpdate();
     const dialog = this.dialog;
     if (!dialog || dialog.open) {
       return;

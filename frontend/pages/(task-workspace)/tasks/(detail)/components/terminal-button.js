@@ -4,7 +4,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "#app/action-hints.js";
-import { renderInlineIcon } from "#components/icons.js";
+import { renderInlineIcon } from "#components/icons.ts";
 
 export const TERMINAL_BUTTON_INTENT_EVENT = "caffold:task-detail-terminal-intent";
 

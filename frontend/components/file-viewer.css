@@ -206,10 +206,6 @@ caffold-review-file-viewer {
     background: var(--control-hover-bg);
   }
 
-  & .viewer-refresh-button.is-unavailable {
-    color: var(--warning);
-  }
-
   & .viewer-refresh-icon {
     position: relative;
     display: block;

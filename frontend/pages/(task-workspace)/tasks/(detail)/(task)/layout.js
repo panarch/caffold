@@ -13,8 +13,8 @@ import {
   taskResponseError,
   uploadTaskFile,
 } from "#app/api.js";
-import { escapeHtml } from "#components/dom.js";
-import "#components/loading-text.js";
+import { escapeHtml } from "#components/dom.ts";
+import "#components/loading-text.ts";
 import { routeDomain } from "#app/navigation-routes.js";
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.js";
 import {

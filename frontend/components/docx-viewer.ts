@@ -1,12 +1,14 @@
+import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
+  type ScrollSurfaceScope,
+  type ScrollSurfaceScopeOptions,
 } from "../scroll-scope.js";
-import "./loading-text.js";
+import "./loading-text.ts";
 
 const DOCX_PREVIEW_VERSION = "0.4.1";
-const DOCX_PREVIEW_IMPORT =
-  `https://cdn.jsdelivr.net/npm/docx-preview@${DOCX_PREVIEW_VERSION}/+esm`;
+const DOCX_PREVIEW_IMPORT = `https://cdn.jsdelivr.net/npm/docx-preview@${DOCX_PREVIEW_VERSION}/+esm`;
 
 // A document's text uses the fonts installed on the device rather than the ones
 // it embeds. Pictures as data URLs leave no object URLs behind when a document
@@ -18,7 +20,8 @@ const RENDER_OPTIONS = {
   ignoreLastRenderedPageBreak: false,
 };
 
-const EMBEDDED_HTML_NOTICE = "Embedded HTML content is not shown in this preview.";
+const EMBEDDED_HTML_NOTICE =
+  "Embedded HTML content is not shown in this preview.";
 
 // The library's own rules come first in the shadow root; these follow them to
 // replace its grey backdrop and shadowed pages with the viewer's surface.
@@ -49,25 +52,89 @@ const DOCUMENT_STYLES = `
   }
 `;
 
-let libraryPromise;
+// The parts of docx-preview the viewer uses.
+interface DocxPreview {
+  parseAsync(
+    bytes: ArrayBuffer,
+    options: typeof RENDER_OPTIONS,
+  ): Promise<unknown>;
+  renderDocument(
+    document: unknown,
+    options: typeof RENDER_OPTIONS,
+  ): Promise<Node[]>;
+}
 
-class CaffoldDocxViewer extends HTMLElement {
+interface PageRecord {
+  element: HTMLElement;
+  width: number;
+}
+
+type RenderState = "empty" | "loading" | "error" | "docx";
+
+let libraryPromise: Promise<DocxPreview> | undefined;
+
+class CaffoldDocxViewer extends LitElement {
+  static properties = {
+    renderState: { state: true },
+    mount: { state: true },
+  };
+
+  declare private renderState: RenderState;
+  declare private mount: HTMLElement | null;
+  private generation = 0;
+  private pages: PageRecord[] | null = null;
+  private widthObserver: ResizeObserver | null = null;
+
+  constructor() {
+    super();
+    this.renderState = "empty";
+    this.mount = null;
+  }
+
+  createRenderRoot() {
+    return this;
+  }
+
   connectedCallback() {
-    this.ensureRendered();
+    super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "Word document preview");
+    this.performUpdate();
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     this.release();
+  }
+
+  render() {
+    const message =
+      this.renderState === "loading"
+        ? html`<caffold-loading-text>Loading document...</caffold-loading-text>`
+        : this.renderState === "error"
+          ? "This document could not be displayed."
+          : "";
+    const content =
+      this.renderState === "docx"
+        ? this.mount
+        : message
+          ? html`<p class="docx-viewer-message">${message}</p>`
+          : nothing;
+    return html`<div class="docx-viewer-body">${content}</div>`;
+  }
+
+  updated(changed: PropertyValues) {
+    if (changed.has("renderState")) {
+      this.dataset.renderState = this.renderState;
+    }
   }
 
   // Opens the file the file viewer fetched for it: a Blob, or the promise of
   // one, which fails when the fetch does.
-  setFile(file) {
-    this.ensureRendered();
+  setFile(file: Blob | Promise<Blob>) {
     this.release();
-    this.showMessage("loading", "Loading document...");
+    this.renderState = "loading";
+    this.performUpdate();
     void this.open(this.generation, file);
   }
 
@@ -76,32 +143,33 @@ class CaffoldDocxViewer extends HTMLElement {
     label = "Word document preview",
     clipRoots = [],
     isCurrent = () => true,
-  } = {}) {
-    this.ensureRendered();
+  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
     if (!scopeId || !label || this.hidden) {
       return emptyScrollSurfaceScope();
     }
     return {
       blocked: false,
-      surfaces: [{
-        id: `${scopeId}:scroll`,
-        label,
-        scrollport: this,
-        axes: ["vertical"],
-        clipRoots: [this, ...clipRoots].filter(Boolean),
-        isEligible: () =>
-          this.isConnected &&
-          !this.hidden &&
-          isCurrent() &&
-          hasScrollLayoutBox(this),
-      }],
+      surfaces: [
+        {
+          id: `${scopeId}:scroll`,
+          label,
+          scrollport: this,
+          axes: ["vertical"],
+          clipRoots: [this, ...clipRoots].filter(Boolean),
+          isEligible: () =>
+            this.isConnected &&
+            !this.hidden &&
+            isCurrent() &&
+            hasScrollLayoutBox(this),
+        },
+      ],
       mutationRoots: [this],
       resizeElements: [this],
       scrollRoots: [this],
     };
   }
 
-  async open(generation, file) {
+  private async open(generation: number, file: Blob | Promise<Blob>) {
     try {
       const [docx, bytes] = await Promise.all([loadLibrary(), readBytes(file)]);
       if (!this.isCurrent(generation)) {
@@ -115,13 +183,16 @@ class CaffoldDocxViewer extends HTMLElement {
       this.mountDocument(generation, nodes);
     } catch (error) {
       // A fetch let go of is followed by another file or by nothing at all.
-      if (this.isCurrent(generation) && error?.name !== "AbortError") {
-        this.showMessage("error", "This document could not be displayed.");
+      if (
+        this.isCurrent(generation) &&
+        (error as Error | null)?.name !== "AbortError"
+      ) {
+        this.renderState = "error";
       }
     }
   }
 
-  mountDocument(generation, nodes) {
+  private mountDocument(generation: number, nodes: Node[]) {
     const content = window.document.createDocumentFragment();
     content.append(...nodes);
     withholdActiveContent(content);
@@ -133,18 +204,19 @@ class CaffoldDocxViewer extends HTMLElement {
     // stylesheet does not reach the document.
     const mount = window.document.createElement("div");
     mount.className = "docx-viewer-document";
-    mount.attachShadow({ mode: "open" }).append(content, style);
-    this.body().replaceChildren(mount);
-
+    const root = mount.attachShadow({ mode: "open" });
+    root.append(content, style);
     this.mount = mount;
+    this.renderState = "docx";
+    this.performUpdate();
+
     this.pages = Array.from(
-      mount.shadowRoot.querySelectorAll("section.docx"),
+      root.querySelectorAll<HTMLElement>("section.docx"),
       (element) => ({ element, width: 0 }),
     );
     // Fitted at once, so the document is never shown at a width it overflows;
     // the observer refits it when the viewer's width changes.
     this.fitPages(generation);
-    this.dataset.renderState = "docx";
     this.widthObserver = new ResizeObserver(() => this.fitPages(generation));
     this.widthObserver.observe(mount);
   }
@@ -152,7 +224,7 @@ class CaffoldDocxViewer extends HTMLElement {
   // A page is laid out at the width its document declares, which CSS cannot
   // scale to the space it is given, so a narrower viewer zooms each page down
   // by its own width. A wider viewer leaves the page at its own size.
-  fitPages(generation) {
+  private fitPages(generation: number) {
     if (!this.isCurrent(generation)) {
       return;
     }
@@ -163,52 +235,21 @@ class CaffoldDocxViewer extends HTMLElement {
     for (const page of this.pages ?? []) {
       // Measured once, before any zoom applies.
       page.width ||= page.element.offsetWidth;
-      page.element.style.zoom = page.width > available
-        ? `${available / page.width}`
-        : "";
+      page.element.style.zoom =
+        page.width > available ? `${available / page.width}` : "";
     }
   }
 
-  release() {
-    this.generation = (this.generation ?? 0) + 1;
+  private release() {
+    this.generation += 1;
     this.widthObserver?.disconnect();
     this.widthObserver = null;
     this.mount = null;
     this.pages = null;
   }
 
-  isCurrent(generation) {
+  private isCurrent(generation: number) {
     return this.isConnected && this.generation === generation;
-  }
-
-  ensureRendered() {
-    if (this.initialized) {
-      return;
-    }
-    this.initialized = true;
-    this.generation = 0;
-    this.dataset.renderState = "empty";
-    this.innerHTML = '<div class="docx-viewer-body"></div>';
-  }
-
-  showMessage(renderState, message) {
-    const body = this.body();
-    this.dataset.renderState = renderState;
-    body.replaceChildren();
-    const paragraph = window.document.createElement("p");
-    paragraph.className = "docx-viewer-message";
-    if (renderState === "loading") {
-      const loadingText = window.document.createElement("caffold-loading-text");
-      loadingText.textContent = message;
-      paragraph.append(loadingText);
-    } else {
-      paragraph.textContent = message;
-    }
-    body.append(paragraph);
-  }
-
-  body() {
-    return this.querySelector(":scope > .docx-viewer-body");
   }
 }
 
@@ -216,7 +257,7 @@ class CaffoldDocxViewer extends HTMLElement {
 // library draws embedded HTML into an iframe of the app's own origin, and an
 // iframe still outside the page has loaded nothing yet, so each one is
 // replaced before the document is attached. Links keep their text.
-function withholdActiveContent(content) {
+function withholdActiveContent(content: DocumentFragment) {
   for (const frame of content.querySelectorAll("iframe")) {
     const notice = window.document.createElement("p");
     notice.className = "docx-viewer-embedded-html";
@@ -233,7 +274,7 @@ function withholdActiveContent(content) {
 // and leaves an empty page between them. A page after the first with nothing in
 // its body is not shown; a document that starts with a page break keeps its
 // empty first page.
-function dropEmptyPages(content) {
+function dropEmptyPages(content: DocumentFragment) {
   const [, ...followingPages] = content.querySelectorAll("section.docx");
   for (const page of followingPages) {
     const bodies = [...page.querySelectorAll(":scope > article")];
@@ -243,12 +284,14 @@ function dropEmptyPages(content) {
   }
 }
 
-function hasVisibleContent(element) {
-  return element.textContent.trim() !== "" ||
-    element.querySelector("img, svg, table") !== null;
+function hasVisibleContent(element: Element) {
+  return (
+    (element.textContent ?? "").trim() !== "" ||
+    element.querySelector("img, svg, table") !== null
+  );
 }
 
-async function readBytes(file) {
+async function readBytes(file: Blob | Promise<Blob>) {
   return (await file).arrayBuffer();
 }
 

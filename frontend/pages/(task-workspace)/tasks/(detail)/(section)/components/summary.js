@@ -1,4 +1,4 @@
-import { escapeHtml } from "#components/dom.js";
+import { escapeHtml } from "#components/dom.ts";
 import { sectionLabel } from "#tasks/task-format.js";
 
 class CaffoldSectionDetailSummary extends HTMLElement {

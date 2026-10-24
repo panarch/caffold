@@ -1,16 +1,16 @@
-import { escapeHtml } from "#components/dom.js";
+import { escapeHtml } from "#components/dom.ts";
 import {
   renderInlineIcon,
   warmIcons,
-} from "#components/icons.js";
+} from "#components/icons.ts";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
 } from "#app/action-hints.js";
-import { fetchInChunks } from "#app/chunked-fetch.js";
-import "#components/loading-text.js";
+import { fetchInChunks } from "#app/chunked-fetch.ts";
+import "#components/loading-text.ts";
 import { requestTaskImagePreview } from "#tasks/components/image-preview-dialog.js";
 
 // A picture is fetched when it comes this near view, in the viewport and in

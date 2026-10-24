@@ -2,7 +2,7 @@ import {
   getGitHubPull,
   prepareGitHubPullHead,
 } from "#app/api.js";
-import { escapeHtml } from "#components/dom.js";
+import { escapeHtml } from "#components/dom.ts";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,

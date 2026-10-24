@@ -1,8 +1,8 @@
 import {
   renderInlineIcon,
   warmIcons,
-} from "#components/icons.js";
-import "#components/markdown-preview.js";
+} from "#components/icons.ts";
+import "#components/markdown-preview.ts";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,

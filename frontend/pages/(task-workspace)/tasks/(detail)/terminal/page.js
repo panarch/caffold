@@ -6,12 +6,12 @@ import {
   emptyActionHintScope,
   textboxActionHintTarget,
 } from "#app/action-hints.js";
-import { renderInlineIcon } from "#components/icons.js";
+import { renderInlineIcon } from "#components/icons.ts";
 import {
   TERMINAL_VIEW_INPUT_EVENT,
   TERMINAL_VIEW_RESIZE_EVENT,
   terminalInputBytes,
-} from "#components/terminal-view.js";
+} from "#components/terminal-view.ts";
 import { TASK_TRANSPORT_STATE } from "../../runtime-state.js";
 import { TERMINAL_SPECIAL_KEY_EVENT } from "./components/special-keys.js";
 import { TerminalConnection } from "./page/connection.js";

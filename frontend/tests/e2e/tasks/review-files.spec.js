@@ -1093,16 +1093,12 @@ test("fetches an image once when the file list arrives after it", { tag: "@viewp
         .locator("caffold-file-navigator")
         .locator(`button[data-file-tree-path="src/${imageName}"]`),
     ).toHaveAttribute("aria-current", "true");
-    const header = taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header");
-    await header.evaluate((element) => {
-      element.dataset.beforeStatus = "";
-    });
+    const viewer = taskReview.locator("caffold-review-file-viewer");
+    await markShownAgain(viewer, "setImage");
     const statusArrived = page.waitForResponse(statusPattern);
     status.letThrough();
     await statusArrived;
-    await expect(
-      taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header[data-before-status]"),
-    ).toHaveCount(0);
+    await expect(viewer).toHaveAttribute("data-shown-again", "");
 
     await expectFetchedPicture(taskReview.locator("caffold-review-file-viewer img.image-preview"));
     expect(requests).toHaveLength(1);
@@ -1241,18 +1237,25 @@ async function openGuidePreview(page, folder) {
   );
   const preview = taskReview.locator("caffold-review-file-viewer caffold-markdown-preview");
   await expect(preview).toHaveAttribute("data-render-state", "markdown");
-  const header = taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header");
-  await header.evaluate((element) => {
-    element.dataset.beforeStatus = "";
-  });
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await markShownAgain(viewer, "setMarkdown");
   const statusArrived = page.waitForResponse(statusPattern);
   status.letThrough();
   await statusArrived;
-  await expect(
-    taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header[data-before-status]"),
-  ).toHaveCount(0);
+  await expect(viewer).toHaveAttribute("data-shown-again", "");
   await expect(preview).toHaveAttribute("data-render-state", "markdown");
   return { taskReview, preview };
+}
+
+// Marks the viewer once the Review hands it its file again through `method`.
+async function markShownAgain(viewer, method) {
+  await viewer.evaluate((element, name) => {
+    const show = element[name];
+    element[name] = function (...args) {
+      this.dataset.shownAgain = "";
+      return show.apply(this, args);
+    };
+  }, method);
 }
 
 // Tells the Review's open watch on the Task root that a test's guide.md

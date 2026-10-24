@@ -17,6 +17,11 @@ class CaffoldCodexRuntimeUpdateDialog extends LitElement {
     return this;
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    this.performUpdate();
+  }
+
   render() {
     return html`
       <dialog
@@ -45,8 +50,7 @@ class CaffoldCodexRuntimeUpdateDialog extends LitElement {
     `;
   }
 
-  async open() {
-    await this.updateComplete;
+  open() {
     const dialog = this.dialog;
     if (!dialog || dialog.open) {
       return;
@@ -55,8 +59,7 @@ class CaffoldCodexRuntimeUpdateDialog extends LitElement {
     dialog.showModal();
   }
 
-  async close() {
-    await this.updateComplete;
+  close() {
     this.dialog?.close();
   }
 

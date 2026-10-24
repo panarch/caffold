@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { CellScheduler } from "./cell-scheduler.js";
-import { CELL_BYTES } from "./transfer.js";
+import { CellScheduler } from "./cell-scheduler.ts";
+import { CELL_BYTES } from "./transfer.ts";
 
 const ORIGIN = "https://caffold.test";
 

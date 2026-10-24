@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./markdown-preview.js");
+await import("./markdown-preview.ts");
 const markdownPreview = registry.element("caffold-markdown-preview").prototype;
 after(() => registry.restore());
 
@@ -16,7 +16,6 @@ test("provides its host as the retained Markdown scrollport", () => {
     isConnected: true,
     clientHeight: 100,
     scrollHeight: 260,
-    ensureRendered() {},
     body: () => null,
     scrollSurfaceRecords: [],
     getClientRects: () => [{}],
@@ -56,10 +55,9 @@ test("composes retained code and table scrollports with the preview host", () =>
   };
   let current = true;
   const owner = layoutElement({
-    dataset: { renderState: "markdown" },
+    renderState: "markdown",
     hidden: false,
     isConnected: true,
-    ensureRendered() {},
     body: () => body,
     scrollSurfaceRecords: [codeRecord, tableRecord],
   });
@@ -136,10 +134,9 @@ test("provides retained final links through its own scroll boundary", () => {
   let current = true;
   const owner = {
     actionHintLinks: [record],
-    dataset: { renderState: "markdown" },
+    renderState: "markdown",
     hidden: false,
     isConnected: true,
-    ensureRendered() {},
     body: () => body,
   };
   const scope = markdownPreview.actionHintScope.call(owner, {

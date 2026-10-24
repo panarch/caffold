@@ -1,4 +1,4 @@
-import { escapeHtml } from "#components/dom.js";
+import { escapeHtml } from "#components/dom.ts";
 import { taskThreadId } from "#tasks/task-list-model.js";
 import "./summary/components/info.js";
 

@@ -1,8 +1,8 @@
 import { getGitCommit, getGitCommitDiff } from "#app/api.js";
-import { diffViewerPresentation } from "#components/file-viewer-presentation.js";
-import "#components/file-viewer.js";
-import "#components/pane-resizer.js";
-import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "#components/review-responsive.js";
+import { diffViewerPresentation } from "#components/file-viewer-presentation.ts";
+import "#components/file-viewer.ts";
+import "#components/pane-resizer.ts";
+import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "#components/review-responsive.ts";
 import "./components/changes-tree.js";
 import {
   ACTION_HINT_ACTION,

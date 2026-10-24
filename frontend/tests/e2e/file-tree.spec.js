@@ -11,7 +11,7 @@ test("reorders existing rows while preserving structural and reconciled state", 
   await page.goto("/settings/files");
 
   const result = await page.evaluate(async () => {
-    await import("/assets/components/file-tree.js");
+    await import("/assets/components/file-tree.ts");
     const { setFileSortMode } = await import("/assets/settings.js");
     const ready = (nodes) => ({ status: "ready", nodes });
     const tree = document.createElement("caffold-file-tree");
@@ -76,9 +76,13 @@ test("reorders existing rows while preserving structural and reconciled state", 
     selectedRow.contractMarker = "retained-row";
     selectedButton.contractMarker = "retained-button";
     selectedButton.focus();
+    const loadingPhrase = () =>
+      tree.rowForKey("directory:beta:children-state").querySelector("caffold-loading-text");
+    const phrase = loadingPhrase();
 
     const foldersFirst = rowKeys(tree);
     setFileSortMode("name");
+    await tree.updateComplete;
     const byName = rowKeys(tree);
 
     const overrideTree = document.createElement("caffold-file-tree");
@@ -110,6 +114,17 @@ test("reorders existing rows while preserving structural and reconciled state", 
         tree.isExpanded("directory:beta") &&
         tree.isExpanded("directory:error"),
       entityPreserved: tree.entityKey === "ordering-contract",
+      // Its owner waited before adding the row, so the phrase shows at once,
+      // and moving the row keeps it from starting over.
+      loadingPhrase: {
+        immediate: phrase.hasAttribute("immediate"),
+        text: phrase.textContent,
+        preserved: loadingPhrase() === phrase,
+      },
+      errorPhrase: tree.rowForKey("directory:error:children-state").textContent,
+      errorIsPlainText: !tree
+        .rowForKey("directory:error:children-state")
+        .querySelector("caffold-loading-text"),
     };
   });
 
@@ -151,6 +166,9 @@ test("reorders existing rows while preserving structural and reconciled state", 
     selectionPreserved: true,
     expansionPreserved: true,
     entityPreserved: true,
+    loadingPhrase: { immediate: true, text: "Loading beta", preserved: true },
+    errorPhrase: "Unable to load Error",
+    errorIsPlainText: true,
   }));
 });
 
@@ -160,8 +178,8 @@ for (const themeMode of ["light", "dark"]) {
   }) => {
     await page.goto("/settings/files");
     await page.evaluate(async (mode) => {
-      await import("/assets/components/file-tree.js");
-      const { warmIcons } = await import("/assets/components/icons.js");
+      await import("/assets/components/file-tree.ts");
+      const { warmIcons } = await import("/assets/components/icons.ts");
       await warmIcons();
       const { setThemeMode } = await import("/assets/settings.js");
       setThemeMode(mode);
@@ -315,7 +333,7 @@ test("places a status row's message on its branch guide below its folder's name"
 }) => {
   await page.goto("/settings/files");
   const offsets = await page.evaluate(async () => {
-    await import("/assets/components/file-tree.js");
+    await import("/assets/components/file-tree.ts");
     const directory = (name, children) => ({
       key: `directory:${name}`,
       kind: "directory",

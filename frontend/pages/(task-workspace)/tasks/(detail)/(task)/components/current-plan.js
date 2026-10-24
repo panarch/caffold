@@ -2,7 +2,7 @@ import { getCurrentPlan } from "#app/api.js";
 import {
   renderInlineIcon,
   warmIcons,
-} from "#components/icons.js";
+} from "#components/icons.ts";
 import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.js";
 import {
   ACTION_HINT_ACTION,

@@ -3,7 +3,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "../../action-hints.js";
-import { renderInlineIcon, warmIcons } from "../../components/icons.js";
+import { renderInlineIcon, warmIcons } from "../../components/icons.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

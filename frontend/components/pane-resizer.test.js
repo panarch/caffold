@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./pane-resizer.js");
+await import("./pane-resizer.ts");
 const resizer = registry.element("caffold-pane-resizer").prototype;
 after(() => registry.restore());
 

@@ -1,6 +1,6 @@
 import { busySpin } from "#app/component-styles.js";
-import { escapeHtml } from "#components/dom.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { escapeHtml } from "#components/dom.ts";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
 import { taskStoreOperationsPresentation } from "#app/pages/(task-workspace)/task-store-status.js";
 import {
   ACTION_HINT_ACTION,

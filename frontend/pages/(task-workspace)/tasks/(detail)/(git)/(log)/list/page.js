@@ -1,6 +1,6 @@
-import { escapeHtml } from "#components/dom.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
-import "#components/loading-text.js";
+import { escapeHtml } from "#components/dom.ts";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
+import "#components/loading-text.ts";
 import "#components/pagination.ts";
 import {
   ACTION_HINT_ACTION,

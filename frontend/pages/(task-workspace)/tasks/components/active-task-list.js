@@ -3,8 +3,8 @@ import {
   reorderSection,
   reorderTask,
 } from "#app/api.js";
-import { escapeHtml } from "#components/dom.js";
-import "#components/loading-text.js";
+import { escapeHtml } from "#components/dom.ts";
+import "#components/loading-text.ts";
 import { taskStoreOperationsPresentation } from "../../task-store-status.js";
 import {
   TASK_TRANSPORT_STATE,

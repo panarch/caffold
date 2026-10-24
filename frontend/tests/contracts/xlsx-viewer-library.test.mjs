@@ -9,7 +9,7 @@ function read(path) {
 }
 
 test("the browser and the browser suite load the same SheetJS release", () => {
-  const viewer = read("components/xlsx-viewer.js");
+  const viewer = read("components/xlsx-viewer.ts");
   const manifest = JSON.parse(read("package.json"));
 
   const [, sourceVersion] =
@@ -47,6 +47,6 @@ test("SheetJS stays a runtime CDN import rather than a shipped asset", () => {
   for (const manifest of [serviceWorker, staticAssets]) {
     assert.doesNotMatch(manifest, /sheetjs|xlsx\.(?:mjs|full|core|mini)/i);
   }
-  assert.match(serviceWorker, /"\/assets\/components\/xlsx-viewer\.js"/);
-  assert.match(staticAssets, /"components\/xlsx-viewer\.js"/);
+  assert.match(serviceWorker, /"\/assets\/components\/xlsx-viewer\.ts"/);
+  assert.match(staticAssets, /"components\/xlsx-viewer\.ts"/);
 });

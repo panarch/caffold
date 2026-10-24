@@ -1,5 +1,5 @@
 import { getCodexUpdates } from "#app/api.js";
-import { showLoadingText } from "#components/loading-text.js";
+import { showLoadingText } from "#components/loading-text.ts";
 import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
   CODEX_RUNTIME_UPDATE_REQUEST_EVENT,

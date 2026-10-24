@@ -1228,7 +1228,7 @@ test("keeps the open Branch diff where it was when Branch is read again", { tag:
   await expect.poll(() => reviewScenario.gitCompareDiffRequests).toBe(diffsBefore + 1);
   await expect
     .poll(() => readViewerReload(viewer, "caffold-diff-viewer", ".diff-lines"))
-    .toEqual({ reloaded: true, loadingSeen: false, top });
+    .toEqual({ handedAgain: true, sameContent: true, loadingSeen: false, top });
 });
 
 test("keeps the open Working Tree diff where it was after returning", { tag: "@viewport-independent" }, async ({
@@ -1254,7 +1254,7 @@ test("keeps the open Working Tree diff where it was after returning", { tag: "@v
   await expect.poll(() => reviewScenario.gitDiffRequests).toBe(diffsBefore + 1);
   await expect
     .poll(() => readViewerReload(viewer, "caffold-diff-viewer", ".diff-lines"))
-    .toEqual({ reloaded: true, loadingSeen: false, top });
+    .toEqual({ handedAgain: true, sameContent: true, loadingSeen: false, top });
 });
 
 test("keeps the open Branch Source where it was when Branch is read again", { tag: "@viewport-independent" }, async ({
@@ -1286,7 +1286,7 @@ test("keeps the open Branch Source where it was when Branch is read again", { ta
   await expect.poll(() => fileReads).toBe(readsBefore + 1);
   await expect
     .poll(() => readViewerReload(viewer, "caffold-code-viewer", ".code-lines"))
-    .toEqual({ reloaded: true, loadingSeen: false, top });
+    .toEqual({ handedAgain: true, sameContent: true, loadingSeen: false, top });
 });
 
 test("falls back when the selected Branch base disappears", { tag: "@all-viewports" }, async ({ page }) => {
@@ -2159,6 +2159,7 @@ async function scrollViewerAndWatchReload(viewer, contentSelector, scrollSelecto
     scroller.scrollTop = scroller.scrollHeight / 2;
     const probe = {
       content: element.querySelector(contentSelector),
+      handedAgain: false,
       loadingSeen: false,
       record(records) {
         for (const record of records) {
@@ -2173,6 +2174,16 @@ async function scrollViewerAndWatchReload(viewer, contentSelector, scrollSelecto
         }
       },
     };
+    // The diff or source viewer stays and is handed the file read again.
+    for (const name of ["setDiff", "setFile"]) {
+      const handOver = probe.content[name];
+      if (handOver) {
+        probe.content[name] = function (...args) {
+          probe.handedAgain = true;
+          return handOver.apply(this, args);
+        };
+      }
+    }
     probe.observer = new MutationObserver((records) => probe.record(records));
     probe.observer.observe(element, { childList: true, subtree: true });
     window.__reviewViewerReloadProbe = probe;
@@ -2186,7 +2197,8 @@ async function readViewerReload(viewer, contentSelector, scrollSelector) {
     probe.record(probe.observer.takeRecords());
     const content = element.querySelector(contentSelector);
     return {
-      reloaded: Boolean(content) && content !== probe.content,
+      handedAgain: probe.handedAgain,
+      sameContent: content === probe.content,
       loadingSeen: probe.loadingSeen,
       top: content?.querySelector(scrollSelector)?.scrollTop ?? null,
     };

@@ -1,6 +1,6 @@
 import { compactIconButton } from "../../component-styles.js";
-import { renderInlineIcon, warmIcons } from "../../components/icons.js";
-import "../../components/pane-resizer.js";
+import { renderInlineIcon, warmIcons } from "../../components/icons.ts";
+import "../../components/pane-resizer.ts";
 import { routeDomain, routeTab, routeTarget } from "../../navigation-routes.js";
 import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,

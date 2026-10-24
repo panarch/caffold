@@ -4,11 +4,12 @@
 // column count. xterm.js and its fit addon load from a pinned jsDelivr release
 // the first time a terminal opens.
 
+import { html, LitElement } from "lit";
+
 const XTERM_VERSION = "6.0.0";
 const FIT_ADDON_VERSION = "0.11.0";
 const XTERM_BASE = `https://cdn.jsdelivr.net/npm/@xterm/xterm@${XTERM_VERSION}`;
-const FIT_ADDON_BASE =
-  `https://cdn.jsdelivr.net/npm/@xterm/addon-fit@${FIT_ADDON_VERSION}`;
+const FIT_ADDON_BASE = `https://cdn.jsdelivr.net/npm/@xterm/addon-fit@${FIT_ADDON_VERSION}`;
 // The backend keeps the same number of lines when it restores a screen.
 const SCROLLBACK_LINES = 5_000;
 const MIN_COLUMNS = 2;
@@ -16,22 +17,91 @@ const MIN_COLUMNS = 2;
 export const TERMINAL_VIEW_INPUT_EVENT = "caffold:terminal-view-input";
 export const TERMINAL_VIEW_RESIZE_EVENT = "caffold:terminal-view-resize";
 
-let libraryPromise;
+// The parts of xterm.js 6.0.0 and its fit addon this view uses.
+interface TerminalTheme {
+  background: string;
+  foreground: string;
+  cursor: string;
+  cursorAccent: string;
+  selectionBackground: string;
+}
+
+interface TerminalOptions {
+  fontFamily: string;
+  fontSize: number;
+  theme: TerminalTheme;
+  scrollback: number;
+  disableStdin: boolean;
+}
+
+interface Terminal {
+  readonly cols: number;
+  readonly rows: number;
+  readonly element: HTMLElement;
+  readonly textarea: HTMLTextAreaElement | undefined;
+  readonly modes: { applicationCursorKeysMode: boolean };
+  options: TerminalOptions;
+  loadAddon(addon: FitAddon): void;
+  open(parent: HTMLElement): void;
+  onData(listener: (data: string) => void): void;
+  onBinary(listener: (data: string) => void): void;
+  dispose(): void;
+  reset(): void;
+  write(data: Uint8Array | string): void;
+  focus(): void;
+  input(data: string, wasUserInput: boolean): void;
+  resize(columns: number, rows: number): void;
+  scrollLines(amount: number): void;
+}
+
+interface FitAddon {
+  proposeDimensions(): { cols: number; rows: number } | undefined;
+}
+
+interface TerminalLibrary {
+  Terminal: new (options: TerminalOptions) => Terminal;
+  FitAddon: new () => FitAddon;
+}
+
+export interface TerminalSize {
+  cols: number;
+  rows: number;
+}
+
+let libraryPromise: Promise<TerminalLibrary> | null = null;
 // A module that failed to load stays failed under its URL for the life of the
 // page, so each later attempt imports it under a new fragment.
 let libraryFailures = 0;
 
-class CaffoldTerminalView extends HTMLElement {
+class CaffoldTerminalView extends LitElement {
+  size: TerminalSize | null = null;
+  private terminal: Terminal | null = null;
+  private fitAddon: FitAddon | null = null;
+  private fitFrame = 0;
+  private readonly appearanceChanged = () => this.applyAppearance();
+  private readonly resizeObserver = new ResizeObserver(() =>
+    this.scheduleFit(),
+  );
+
+  createRenderRoot() {
+    return this;
+  }
+
   connectedCallback() {
-    this.ensureRendered();
-    window.addEventListener("caffold:theme-change", this.boundAppearance);
-    window.addEventListener("caffold:settings-change", this.boundAppearance);
+    super.connectedCallback();
+    this.performUpdate();
+    window.addEventListener("caffold:theme-change", this.appearanceChanged);
+    window.addEventListener("caffold:settings-change", this.appearanceChanged);
     this.resizeObserver.observe(this);
   }
 
   disconnectedCallback() {
-    window.removeEventListener("caffold:theme-change", this.boundAppearance);
-    window.removeEventListener("caffold:settings-change", this.boundAppearance);
+    super.disconnectedCallback();
+    window.removeEventListener("caffold:theme-change", this.appearanceChanged);
+    window.removeEventListener(
+      "caffold:settings-change",
+      this.appearanceChanged,
+    );
     this.resizeObserver.disconnect();
     if (this.fitFrame) {
       cancelAnimationFrame(this.fitFrame);
@@ -39,24 +109,14 @@ class CaffoldTerminalView extends HTMLElement {
     }
   }
 
-  ensureRendered() {
-    if (this.rendered) {
-      return;
-    }
-    this.rendered = true;
-    this.terminal = null;
-    this.fitAddon = null;
-    this.size = null;
-    this.fitFrame = 0;
-    this.encoder = new TextEncoder();
-    this.boundAppearance = () => this.applyAppearance();
-    this.resizeObserver = new ResizeObserver(() => this.scheduleFit());
-    this.innerHTML = `<div class="terminal-view-screen"></div>`;
+  // xterm.js draws everything inside the screen.
+  render() {
+    return html`<div class="terminal-view-screen"></div>`;
   }
 
   /** Opens a terminal unless one is open. Resolves with its size once it has a box. */
   async open() {
-    this.ensureRendered();
+    this.performUpdate();
     if (!this.terminal) {
       await this.createTerminal();
     }
@@ -79,7 +139,7 @@ class CaffoldTerminalView extends HTMLElement {
     this.terminal?.reset();
   }
 
-  write(bytes) {
+  write(bytes: Uint8Array | string) {
     this.terminal?.write(bytes);
   }
 
@@ -87,14 +147,14 @@ class CaffoldTerminalView extends HTMLElement {
     this.terminal?.focus();
   }
 
-  setInputEnabled(enabled) {
+  setInputEnabled(enabled: boolean) {
     if (this.terminal) {
       this.terminal.options.disableStdin = !enabled;
     }
   }
 
   /** Types `text` as if it came from the keyboard. */
-  sendInput(text) {
+  sendInput(text: string) {
     this.terminal?.input(text, true);
   }
 
@@ -107,17 +167,19 @@ class CaffoldTerminalView extends HTMLElement {
     return this.terminal?.textarea ?? null;
   }
 
-  ownsInput(element) {
+  ownsInput(element: Element | null | undefined) {
     return Boolean(element) && element === this.inputControl();
   }
 
-  async createTerminal() {
+  private async createTerminal() {
     const { Terminal, FitAddon } = await loadLibrary();
     const appearance = terminalAppearance(this);
     // Cells are measured when the terminal opens, so the Code font has to be
     // loaded by then.
     try {
-      await document.fonts?.load(`${appearance.fontSize}px ${appearance.fontFamily}`);
+      await document.fonts?.load(
+        `${appearance.fontSize}px ${appearance.fontFamily}`,
+      );
     } catch {
       // A fallback font still gives the terminal a size.
     }
@@ -132,7 +194,9 @@ class CaffoldTerminalView extends HTMLElement {
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
-    terminal.open(this.querySelector(":scope > .terminal-view-screen"));
+    terminal.open(
+      this.querySelector(":scope > .terminal-view-screen") as HTMLElement,
+    );
     terminal.onData((data) => this.emitInput(data, false));
     terminal.onBinary((data) => this.emitInput(data, true));
     scrollOnTouch(terminal);
@@ -140,13 +204,15 @@ class CaffoldTerminalView extends HTMLElement {
     this.fitAddon = fitAddon;
   }
 
-  emitInput(data, binary) {
-    this.dispatchEvent(new CustomEvent(TERMINAL_VIEW_INPUT_EVENT, {
-      detail: { data, binary },
-    }));
+  private emitInput(data: string, binary: boolean) {
+    this.dispatchEvent(
+      new CustomEvent(TERMINAL_VIEW_INPUT_EVENT, {
+        detail: { data, binary },
+      }),
+    );
   }
 
-  applyAppearance() {
+  private applyAppearance() {
     if (!this.terminal) {
       return;
     }
@@ -157,7 +223,7 @@ class CaffoldTerminalView extends HTMLElement {
     this.scheduleFit();
   }
 
-  scheduleFit() {
+  private scheduleFit() {
     if (this.fitFrame || !this.terminal) {
       return;
     }
@@ -168,12 +234,21 @@ class CaffoldTerminalView extends HTMLElement {
   }
 
   /** Matches the rows and columns to the box, and reports a change. */
-  fit() {
-    if (!this.terminal || !this.isConnected || !this.getClientRects().length) {
+  private fit() {
+    if (
+      !this.terminal ||
+      !this.fitAddon ||
+      !this.isConnected ||
+      !this.getClientRects().length
+    ) {
       return;
     }
     const proposed = this.fitAddon.proposeDimensions();
-    if (!proposed || !Number.isFinite(proposed.cols) || !Number.isFinite(proposed.rows)) {
+    if (
+      !proposed ||
+      !Number.isFinite(proposed.cols) ||
+      !Number.isFinite(proposed.rows)
+    ) {
       return;
     }
     const cols = Math.max(MIN_COLUMNS, proposed.cols);
@@ -185,18 +260,21 @@ class CaffoldTerminalView extends HTMLElement {
       return;
     }
     this.size = { cols, rows };
-    this.dispatchEvent(new CustomEvent(TERMINAL_VIEW_RESIZE_EVENT, {
-      detail: { ...this.size },
-    }));
+    this.dispatchEvent(
+      new CustomEvent(TERMINAL_VIEW_RESIZE_EVENT, {
+        detail: { ...this.size },
+      }),
+    );
   }
 }
 
-if (!customElements.get("caffold-terminal-view")) {
-  customElements.define("caffold-terminal-view", CaffoldTerminalView);
-}
+customElements.define("caffold-terminal-view", CaffoldTerminalView);
 
 /** Bytes for input xterm.js reported; binary input is one byte per character. */
-export function terminalInputBytes({ data, binary }, encoder = new TextEncoder()) {
+export function terminalInputBytes(
+  { data, binary }: { data: string; binary: boolean },
+  encoder = new TextEncoder(),
+) {
   return binary
     ? Uint8Array.from(`${data}`, (character) => character.charCodeAt(0) & 0xff)
     : encoder.encode(`${data}`);
@@ -223,24 +301,28 @@ function loadLibrary() {
   return libraryPromise;
 }
 
-function loadStylesheet(href) {
-  return new Promise((resolve, reject) => {
+function loadStylesheet(href: string) {
+  return new Promise<void>((resolve, reject) => {
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = href;
     link.addEventListener("load", () => resolve(), { once: true });
-    link.addEventListener("error", () => {
-      link.remove();
-      reject(new Error(`${href} did not load.`));
-    }, { once: true });
+    link.addEventListener(
+      "error",
+      () => {
+        link.remove();
+        reject(new Error(`${href} did not load.`));
+      },
+      { once: true },
+    );
     document.head.append(link);
   });
 }
 
 /** The Code-axis font and the theme colors the stylesheet gives the view. */
-function terminalAppearance(element) {
+function terminalAppearance(element: Element) {
   const style = getComputedStyle(element);
-  const read = (name) => style.getPropertyValue(name).trim();
+  const read = (name: string) => style.getPropertyValue(name).trim();
   return {
     fontFamily: read("--font-code") || "monospace",
     fontSize: Number.parseFloat(read("--code-font-size")) || 13,
@@ -259,8 +341,8 @@ function terminalAppearance(element) {
  * which xterm.js 6.0.0 does only for the mouse wheel. A second finger leaves
  * the gesture to the browser.
  */
-function scrollOnTouch(terminal) {
-  const screen = terminal.element.querySelector(".xterm-screen");
+function scrollOnTouch(terminal: Terminal) {
+  const screen = terminal.element.querySelector(".xterm-screen") as HTMLElement;
   let dragging = false;
   let lastY = 0;
   let rowHeight = 0;
@@ -271,19 +353,23 @@ function scrollOnTouch(terminal) {
     rowHeight = screen.getBoundingClientRect().height / terminal.rows;
     pixels = 0;
   });
-  screen.addEventListener("touchmove", (event) => {
-    dragging &&= event.touches.length === 1;
-    if (!dragging) {
-      return;
-    }
-    event.preventDefault();
-    const y = event.touches[0].clientY;
-    pixels += lastY - y;
-    lastY = y;
-    const rows = Math.trunc(pixels / rowHeight);
-    if (rows) {
-      pixels -= rows * rowHeight;
-      terminal.scrollLines(rows);
-    }
-  }, { passive: false });
+  screen.addEventListener(
+    "touchmove",
+    (event) => {
+      dragging &&= event.touches.length === 1;
+      if (!dragging) {
+        return;
+      }
+      event.preventDefault();
+      const y = event.touches[0].clientY;
+      pixels += lastY - y;
+      lastY = y;
+      const rows = Math.trunc(pixels / rowHeight);
+      if (rows) {
+        pixels -= rows * rowHeight;
+        terminal.scrollLines(rows);
+      }
+    },
+    { passive: false },
+  );
 }

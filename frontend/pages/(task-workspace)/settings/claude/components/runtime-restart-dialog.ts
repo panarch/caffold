@@ -17,6 +17,11 @@ class CaffoldClaudeRuntimeRestartDialog extends LitElement {
     return this;
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    this.performUpdate();
+  }
+
   render() {
     return html`
       <dialog
@@ -42,8 +47,7 @@ class CaffoldClaudeRuntimeRestartDialog extends LitElement {
     `;
   }
 
-  async open() {
-    await this.updateComplete;
+  open() {
     const dialog = this.dialog;
     if (!dialog || dialog.open) {
       return;
@@ -52,8 +56,7 @@ class CaffoldClaudeRuntimeRestartDialog extends LitElement {
     dialog.showModal();
   }
 
-  async close() {
-    await this.updateComplete;
+  close() {
     this.dialog?.close();
   }
 

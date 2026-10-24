@@ -9,7 +9,7 @@ function read(path) {
 }
 
 test("the browser and the browser suite load the same xterm.js releases", () => {
-  const view = read("components/terminal-view.js");
+  const view = read("components/terminal-view.ts");
   const manifest = JSON.parse(read("package.json"));
 
   const [, xterm] = view.match(/const XTERM_VERSION = "([^"]+)";/) ?? [];
@@ -38,6 +38,6 @@ test("xterm.js stays a runtime CDN import rather than a shipped asset", () => {
 
   assert.doesNotMatch(serviceWorker, /@xterm|xterm\.(?:mjs|css)/);
   assert.doesNotMatch(staticAssets, /@xterm|xterm\.(?:mjs|css)/);
-  assert.match(serviceWorker, /"\/assets\/components\/terminal-view\.js"/);
-  assert.match(staticAssets, /"components\/terminal-view\.js"/);
+  assert.match(serviceWorker, /"\/assets\/components\/terminal-view\.ts"/);
+  assert.match(staticAssets, /"components\/terminal-view\.ts"/);
 });

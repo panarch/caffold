@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./pptx-viewer.js");
+await import("./pptx-viewer.ts");
 const pptxViewer = registry.element("caffold-pptx-viewer").prototype;
 after(() => registry.restore());
 
@@ -16,13 +16,9 @@ function drawingViewer() {
   return {
     opened,
     owner: {
-      initialized: true,
       generation: 4,
-      dataset: { renderState: "pptx" },
-      ensureRendered() {},
-      showMessage(renderState) {
-        this.dataset.renderState = renderState;
-      },
+      renderState: "pptx",
+      performUpdate() {},
       release() {
         pptxViewer.release.call(this);
       },
@@ -66,7 +62,7 @@ function deckViewer(slides) {
       mount: { shadowRoot: root },
       isConnected: true,
       hidden: false,
-      dataset: { renderState: "pptx" },
+      renderState: "pptx",
     },
   };
 }
@@ -77,16 +73,14 @@ test("lets go of the deck shown and opens the file it is handed", () => {
 
   pptxViewer.setFile.call(owner, file);
 
-  assert.equal(owner.dataset.renderState, "loading", "it says the file is loading until it is drawn");
+  assert.equal(owner.renderState, "loading", "it says the file is loading until it is drawn");
   assert.deepEqual(opened, [{ generation: 5, file }], "the deck shown before is let go of first");
 });
 
 test("publishes only the vertical axis of slides fitted to its width", () => {
   const owner = {
-    initialized: true,
     hidden: false,
     isConnected: true,
-    ensureRendered() {},
     getClientRects: () => [{}],
   };
 
@@ -170,7 +164,7 @@ test("offers no links before the deck is drawn or without a link action", () => 
   assert.deepEqual(pptxViewer.actionHintScope.call(owner, {
     scopeId: "review:viewer:document",
   }).targets, []);
-  owner.dataset.renderState = "loading";
+  owner.renderState = "loading";
   assert.deepEqual(pptxViewer.actionHintScope.call(owner, {
     scopeId: "review:viewer:document",
     linkActionId: "link.open",

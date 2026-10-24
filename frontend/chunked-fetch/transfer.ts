@@ -40,8 +40,16 @@ export const TRANSFER_EVENT = Object.freeze({
   CANCEL: "cancel",
 });
 
+export type TransferNode = (typeof TRANSFER_NODE)[keyof typeof TRANSFER_NODE];
+export type TransferEvent =
+  (typeof TRANSFER_EVENT)[keyof typeof TRANSFER_EVENT];
+
 // The complete set of allowed moves; any other event leaves the node alone.
-export const TRANSFER_EDGES = Object.freeze({
+export const TRANSFER_EDGES: Readonly<
+  Partial<
+    Record<TransferNode, Readonly<Partial<Record<TransferEvent, TransferNode>>>>
+  >
+> = Object.freeze({
   [TRANSFER_NODE.OPENING]: Object.freeze({
     [TRANSFER_EVENT.FIRST_PART]: TRANSFER_NODE.RECEIVING,
     [TRANSFER_EVENT.LAST_PART]: TRANSFER_NODE.FINISHED,
@@ -59,17 +67,60 @@ export const TRANSFER_EDGES = Object.freeze({
   }),
 });
 
+// A file, a Blob of the type the server named, and the version the server
+// named it by, or null when it named none.
+export interface FetchedFile {
+  file: Blob;
+  version: string | null;
+}
+
+export interface Cell {
+  transfer: Transfer;
+  index: number;
+  generation: number;
+  round: number;
+  url: string;
+  range: string;
+  controller: AbortController;
+}
+
+// What a cell's answer means for a file in cells.
+export type CellAnswer =
+  | {
+      kind: "part";
+      first: number;
+      size: number;
+      version: string;
+      type: string;
+      bytes: ArrayBuffer;
+    }
+  | { kind: "whole"; version: string; type: string; bytes: ArrayBuffer }
+  | { kind: "out-of-range"; size: number | null; version: string; type: string }
+  | { kind: "changed" }
+  | { kind: "failed"; status?: number; error?: unknown };
+
 export class Transfer {
-  constructor(url) {
+  readonly url: string;
+  node: TransferNode = TRANSFER_NODE.OPENING;
+  // Answers to cells asked for before a restart belong to an earlier
+  // generation and are dropped.
+  generation = 0;
+  restarts = 0;
+  callers = 0;
+  readonly done: Promise<FetchedFile>;
+  private readonly controllers = new Set<AbortController>();
+  private resolve!: (fetched: FetchedFile) => void;
+  private reject!: (error: unknown) => void;
+  private version = "";
+  private size = 0;
+  private type = "";
+  private parts: ArrayBuffer[] = [];
+  private receivedCells = 0;
+  private nextCell = 0;
+  private firstWaitMs: number | null = null;
+
+  constructor(url: string) {
     this.url = url;
-    this.node = TRANSFER_NODE.OPENING;
-    // Answers to cells asked for before a restart belong to an earlier
-    // generation and are dropped.
-    this.generation = 0;
-    this.restarts = 0;
-    this.callers = 0;
-    this.controllers = new Set();
-    this.forgetFile();
     this.done = new Promise((resolve, reject) => {
       this.resolve = resolve;
       this.reject = reject;
@@ -82,7 +133,7 @@ export class Transfer {
 
   // The next cell to ask for, or null when none may be asked for now: while
   // opening only the first cell, while receiving each later cell once.
-  takeCell(round) {
+  takeCell(round: number): Cell | null {
     const index = this.nextCell;
     if (
       (this.node === TRANSFER_NODE.OPENING && index > 0) ||
@@ -93,9 +144,10 @@ export class Transfer {
     }
     this.nextCell += 1;
     const first = index * CELL_BYTES;
-    const last = index === 0
-      ? CELL_BYTES - 1
-      : Math.min(first + CELL_BYTES, this.size) - 1;
+    const last =
+      index === 0
+        ? CELL_BYTES - 1
+        : Math.min(first + CELL_BYTES, this.size) - 1;
     const controller = new AbortController();
     this.controllers.add(controller);
     return {
@@ -114,7 +166,7 @@ export class Transfer {
   // always goes to the server, and nothing that does arrives sooner than a
   // round trip, so a later cell that took less than half the first one's wait
   // was kept by the browser.
-  recordWait(cell, waitMs) {
+  recordWait(cell: Cell, waitMs: number) {
     if (cell.generation !== this.generation) {
       return false;
     }
@@ -125,9 +177,7 @@ export class Transfer {
     return this.firstWaitMs !== null && waitMs < this.firstWaitMs / 2;
   }
 
-  // A cell's answer, already read into one of: part, whole, out-of-range,
-  // changed, failed.
-  answer(cell, answer) {
+  answer(cell: Cell, answer: CellAnswer) {
     this.controllers.delete(cell.controller);
     if (this.ended || cell.generation !== this.generation) {
       return false;
@@ -139,7 +189,11 @@ export class Transfer {
     return this.dispatch(TRANSFER_EVENT.CANCEL);
   }
 
-  dispatch(event, cell = null, answer = null) {
+  private dispatch(
+    event: TransferEvent,
+    cell: Cell | null = null,
+    answer: CellAnswer | null = null,
+  ) {
     const next = TRANSFER_EDGES[this.node]?.[event];
     if (!next) {
       return false;
@@ -150,7 +204,7 @@ export class Transfer {
   }
 
   // What an answer means for this file in its current state.
-  reduce(cell, answer) {
+  private reduce(cell: Cell, answer: CellAnswer): TransferEvent {
     const opening = cell.index === 0;
     if (answer.kind === "part") {
       const expectedFirst = cell.index * CELL_BYTES;
@@ -181,7 +235,11 @@ export class Transfer {
     return TRANSFER_EVENT.FAILED;
   }
 
-  apply(event, cell, answer) {
+  private apply(
+    event: TransferEvent,
+    cell: Cell | null,
+    answer: CellAnswer | null,
+  ) {
     switch (event) {
       case TRANSFER_EVENT.FIRST_PART:
       case TRANSFER_EVENT.PART:
@@ -195,16 +253,20 @@ export class Transfer {
         });
         return;
       case TRANSFER_EVENT.WHOLE:
-        this.resolve({
-          file: new Blob([answer.bytes], { type: answer.type }),
-          version: answer.version || null,
-        });
+        if (answer?.kind === "whole") {
+          this.resolve({
+            file: new Blob([answer.bytes], { type: answer.type }),
+            version: answer.version || null,
+          });
+        }
         return;
       case TRANSFER_EVENT.EMPTY:
-        this.resolve({
-          file: new Blob([], { type: answer.type }),
-          version: answer.version || null,
-        });
+        if (answer?.kind === "out-of-range") {
+          this.resolve({
+            file: new Blob([], { type: answer.type }),
+            version: answer.version || null,
+          });
+        }
         return;
       case TRANSFER_EVENT.CHANGED:
         this.abortCells();
@@ -223,7 +285,10 @@ export class Transfer {
     }
   }
 
-  keep(cell, answer) {
+  private keep(cell: Cell | null, answer: CellAnswer | null) {
+    if (!cell || answer?.kind !== "part") {
+      return;
+    }
     if (cell.index === 0) {
       this.version = answer.version;
       this.size = answer.size;
@@ -233,7 +298,7 @@ export class Transfer {
     this.receivedCells += 1;
   }
 
-  forgetFile() {
+  private forgetFile() {
     this.version = "";
     this.size = 0;
     this.type = "";
@@ -243,11 +308,11 @@ export class Transfer {
     this.firstWaitMs = null;
   }
 
-  cellCount() {
+  private cellCount() {
     return Math.ceil(this.size / CELL_BYTES);
   }
 
-  abortCells() {
+  private abortCells() {
     for (const controller of this.controllers) {
       controller.abort();
     }
@@ -259,20 +324,19 @@ export function abortError() {
   return new DOMException("The fetch was canceled.", "AbortError");
 }
 
-function cellUrl(url, version, index) {
+function cellUrl(url: string, version: string, index: number) {
   const address = new URL(url, globalThis.location?.href);
   address.searchParams.set("version", version);
   address.searchParams.set("cell", `${index}`);
   return address.href;
 }
 
-function failure(answer) {
-  if (answer?.error) {
+function failure(answer: CellAnswer | null) {
+  if (answer?.kind === "failed" && answer.error) {
     return answer.error;
   }
+  const status = answer?.kind === "failed" ? answer.status : undefined;
   return new Error(
-    answer?.status
-      ? `File request failed with ${answer.status}.`
-      : "File request failed.",
+    status ? `File request failed with ${status}.` : "File request failed.",
   );
 }

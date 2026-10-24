@@ -35,6 +35,11 @@ class CaffoldCodexResetCreditDialog extends LitElement {
     return this;
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    this.performUpdate();
+  }
+
   render() {
     const { creditId, title, expiry, retry = false } = this.request;
     const heading = retry
@@ -69,9 +74,9 @@ class CaffoldCodexResetCreditDialog extends LitElement {
     `;
   }
 
-  async open(request: ResetCreditRequest = {}) {
+  open(request: ResetCreditRequest = {}) {
     this.request = request;
-    await this.updateComplete;
+    this.performUpdate();
     const dialog = this.dialog;
     if (!dialog || dialog.open) {
       return;
@@ -80,8 +85,7 @@ class CaffoldCodexResetCreditDialog extends LitElement {
     dialog.showModal();
   }
 
-  async close() {
-    await this.updateComplete;
+  close() {
     this.dialog?.close();
   }
 

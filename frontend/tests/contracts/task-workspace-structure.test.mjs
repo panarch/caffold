@@ -1139,7 +1139,7 @@ test("split panes remember their widths and collapse under one key pair per kind
   const storageKeys = [
     "pages/(task-workspace)/layout.js",
     "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",
-    "components/git-compare-browser.js",
+    "components/git-compare-browser.ts",
     "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js",
     "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js",
   ].map((path) => {

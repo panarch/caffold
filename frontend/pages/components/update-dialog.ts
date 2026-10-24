@@ -19,6 +19,11 @@ class CaffoldUpdateDialog extends LitElement {
     return this;
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    this.performUpdate();
+  }
+
   render() {
     return html`
       <dialog
@@ -44,8 +49,7 @@ class CaffoldUpdateDialog extends LitElement {
     `;
   }
 
-  async open() {
-    await this.updateComplete;
+  open() {
     const dialog = this.dialog;
     if (!dialog || dialog.open) {
       return;
@@ -54,8 +58,7 @@ class CaffoldUpdateDialog extends LitElement {
     dialog.showModal();
   }
 
-  async close() {
-    await this.updateComplete;
+  close() {
     const dialog = this.dialog;
     if (!dialog?.open) {
       return;

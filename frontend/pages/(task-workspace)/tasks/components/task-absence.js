@@ -5,7 +5,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
 } from "#app/action-hints.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
 
 export const TASK_ABSENCE_INTENT_EVENT = "caffold:task-absence-intent";
 

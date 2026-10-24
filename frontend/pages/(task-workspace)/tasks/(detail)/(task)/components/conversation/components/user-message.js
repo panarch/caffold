@@ -1,4 +1,4 @@
-import { escapeHtml } from "#components/dom.js";
+import { escapeHtml } from "#components/dom.ts";
 import { PROMPT_SUBMISSION_STATE } from "#tasks/runtime-state.js";
 import {
   emptyActionHintScope,

@@ -1,4 +1,4 @@
-import { fileNameFromPath } from "#components/dom.js";
+import { fileNameFromPath } from "#components/dom.ts";
 import { fileRepresentationCapabilities } from "../../representations.js";
 
 // What the viewer shows for the selected file in its representation, from what

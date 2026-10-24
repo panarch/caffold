@@ -1,4 +1,4 @@
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
 import "./appearance/page.js";
 import "./keyboard/page.js";
 import "./files/page.js";

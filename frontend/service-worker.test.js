@@ -147,7 +147,7 @@ test("installs the complete shell without replacing the current worker", async (
   assert.ok(
     harness.puts.every(({ cache }) => cache === "caffold-shell-test-build"),
   );
-  assert.ok(installedAssets.includes("/assets/file-status.js"));
+  assert.ok(installedAssets.includes("/assets/file-status.ts"));
   assert.ok(installedAssets.includes("/assets/pages/foreground-recovery.js"));
   assert.ok(
     installedAssets.includes(

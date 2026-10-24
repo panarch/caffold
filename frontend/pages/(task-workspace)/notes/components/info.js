@@ -1,6 +1,6 @@
 import { compactIconButton } from "#app/component-styles.js";
-import { formatModified } from "#components/dom.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { formatModified } from "#components/dom.ts";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
 import {
   buttonActionHintTarget,
   emptyActionHintScope,

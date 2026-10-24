@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./xlsx-viewer.js");
+await import("./xlsx-viewer.ts");
 const xlsxViewer = registry.element("caffold-xlsx-viewer").prototype;
 after(() => registry.restore());
 
@@ -16,14 +16,10 @@ function drawingViewer() {
   return {
     opened,
     owner: {
-      initialized: true,
       generation: 4,
       selectedSheetName: "Q3",
-      dataset: { renderState: "xlsx" },
-      ensureRendered() {},
-      showMessage(renderState) {
-        this.dataset.renderState = renderState;
-      },
+      renderState: "xlsx",
+      performUpdate() {},
       release() {
         xlsxViewer.release.call(this);
       },
@@ -73,11 +69,9 @@ function workbookViewer({ links = [], tabsHidden = false, tabScope = null } = {}
     querySelector: () => control,
   };
   const owner = {
-    initialized: true,
     isConnected: true,
     hidden: false,
-    dataset: { renderState: "xlsx" },
-    ensureRendered() {},
+    renderState: "xlsx",
     sheetport: () => sheetport,
     tabStrip: () => tabs,
   };
@@ -90,7 +84,7 @@ test("lets go of the workbook shown and opens the file it is handed", () => {
 
   xlsxViewer.setFile.call(owner, file);
 
-  assert.equal(owner.dataset.renderState, "loading", "it says the file is loading until it is drawn");
+  assert.equal(owner.renderState, "loading", "it says the file is loading until it is drawn");
   assert.deepEqual(opened, [{ generation: 5, file }], "the workbook shown before is let go of first");
 });
 
@@ -200,7 +194,7 @@ test("offers nothing while the workbook loads or failed", () => {
   });
 
   for (const renderState of ["loading", "error"]) {
-    owner.dataset.renderState = renderState;
+    owner.renderState = renderState;
     assert.deepEqual(xlsxViewer.actionHintScope.call(owner, {
       scopeId: "review:viewer:document",
       linkActionId: "link.open",

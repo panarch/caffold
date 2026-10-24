@@ -9,7 +9,7 @@ const previousWindow = globalThis.window;
 let singlePane = false;
 globalThis.window = { matchMedia: () => ({ matches: singlePane }) };
 const registry = installCustomElementUnitRegistry();
-await import("./git-compare-browser.js");
+await import("./git-compare-browser.ts");
 const browser = registry.element("caffold-git-compare-browser").prototype;
 after(() => {
   registry.restore();
@@ -47,7 +47,6 @@ test("composes only active Compare tree/viewer leaves", () => {
     viewer,
     panelResizer: { collapsed: false },
     sidePaneCollapsed: browser.sidePaneCollapsed,
-    ensureRendered() {},
   };
   const actionOptions = {
     scopeId: "git:compare",
@@ -100,7 +99,6 @@ test("composes the shared panel resizer through its public scope", () => {
     sidePaneCollapsed: browser.sidePaneCollapsed,
     compareTree: { actionHintScope: () => ({ targets: [] }) },
     viewer: { actionHintScope: () => ({ targets: [] }) },
-    ensureRendered() {},
   };
   const actionOptions = {
     scopeId: "git:compare",

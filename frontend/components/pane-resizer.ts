@@ -1,4 +1,7 @@
+import { html, LitElement } from "lit";
 import {
+  type ActionHintScope,
+  type ActionHintScopeOptions,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   separatorActionHintTarget,
@@ -9,23 +12,37 @@ const START_MIN_WIDTH = 180;
 const END_MIN_WIDTH = 320;
 const START_MAX_RATIO = 0.7;
 
-export class CaffoldPaneResizer extends HTMLElement {
-  constructor() {
-    super();
-    this.currentValue = START_DEFAULT_WIDTH;
-    this.preferredValue = null;
-    this.collapsedPreference = false;
-    this.resizePointerId = null;
-    this.boundPointerDown = (event) => this.startResize(event);
-    this.boundPointerMove = (event) => this.moveResize(event);
-    this.boundPointerUp = (event) => this.endResize(event);
-    this.boundLostPointerCapture = (event) => this.endResize(event);
-    this.boundKeyDown = (event) => this.adjustFromKeyboard(event);
-    this.boundFocus = () => this.syncRange();
-    this.resizeObserver = new ResizeObserver(() => this.handleContainerResize());
+export type PaneResizePhase = "start" | "update" | "end";
+
+export class CaffoldPaneResizer extends LitElement {
+  private currentValue = START_DEFAULT_WIDTH;
+  private preferredValue: number | null = null;
+  private collapsedPreference = false;
+  private resizePointerId: number | null = null;
+  private readonly resizeObserver = new ResizeObserver(() =>
+    this.handleContainerResize(),
+  );
+  private readonly onPointerDown = (event: PointerEvent) =>
+    this.startResize(event);
+  private readonly onPointerMove = (event: PointerEvent) =>
+    this.moveResize(event);
+  private readonly onPointerEnd = (event: PointerEvent) =>
+    this.endResize(event);
+  private readonly onKeyDown = (event: KeyboardEvent) =>
+    this.adjustFromKeyboard(event);
+  private readonly onFocus = () => this.syncRange();
+
+  createRenderRoot() {
+    return this;
+  }
+
+  render() {
+    return html`<span class="pane-resizer-handle" aria-hidden="true"></span>`;
   }
 
   connectedCallback() {
+    super.connectedCallback();
+    this.performUpdate();
     this.setAttribute("role", "separator");
     this.setAttribute("aria-orientation", "vertical");
     if (!this.hasAttribute("aria-label")) {
@@ -34,20 +51,13 @@ export class CaffoldPaneResizer extends HTMLElement {
     if (!this.hasAttribute("tabindex")) {
       this.tabIndex = 0;
     }
-    if (!this.handle) {
-      this.handle = document.createElement("span");
-      this.handle.className = "pane-resizer-handle";
-      this.handle.setAttribute("aria-hidden", "true");
-      this.append(this.handle);
-    }
-
-    this.addEventListener("pointerdown", this.boundPointerDown);
-    this.addEventListener("pointermove", this.boundPointerMove);
-    this.addEventListener("pointerup", this.boundPointerUp);
-    this.addEventListener("pointercancel", this.boundPointerUp);
-    this.addEventListener("lostpointercapture", this.boundLostPointerCapture);
-    this.addEventListener("keydown", this.boundKeyDown);
-    this.addEventListener("focus", this.boundFocus);
+    this.addEventListener("pointerdown", this.onPointerDown);
+    this.addEventListener("pointermove", this.onPointerMove);
+    this.addEventListener("pointerup", this.onPointerEnd);
+    this.addEventListener("pointercancel", this.onPointerEnd);
+    this.addEventListener("lostpointercapture", this.onPointerEnd);
+    this.addEventListener("keydown", this.onKeyDown);
+    this.addEventListener("focus", this.onFocus);
     if (this.parentElement) {
       this.resizeObserver.observe(this.parentElement);
     }
@@ -56,15 +66,16 @@ export class CaffoldPaneResizer extends HTMLElement {
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     this.cancelResize();
     this.resizeObserver.disconnect();
-    this.removeEventListener("pointerdown", this.boundPointerDown);
-    this.removeEventListener("pointermove", this.boundPointerMove);
-    this.removeEventListener("pointerup", this.boundPointerUp);
-    this.removeEventListener("pointercancel", this.boundPointerUp);
-    this.removeEventListener("lostpointercapture", this.boundLostPointerCapture);
-    this.removeEventListener("keydown", this.boundKeyDown);
-    this.removeEventListener("focus", this.boundFocus);
+    this.removeEventListener("pointerdown", this.onPointerDown);
+    this.removeEventListener("pointermove", this.onPointerMove);
+    this.removeEventListener("pointerup", this.onPointerEnd);
+    this.removeEventListener("pointercancel", this.onPointerEnd);
+    this.removeEventListener("lostpointercapture", this.onPointerEnd);
+    this.removeEventListener("keydown", this.onKeyDown);
+    this.removeEventListener("focus", this.onFocus);
   }
 
   actionHintScope({
@@ -72,7 +83,9 @@ export class CaffoldPaneResizer extends HTMLElement {
     actionId = "",
     clipRoots = [],
     isCurrent = () => true,
-  } = {}) {
+  }: ActionHintScopeOptions & {
+    isCurrent?: () => boolean;
+  } = {}): ActionHintScope {
     const parent = this.parentElement;
     if (
       !scopeId ||
@@ -85,22 +98,24 @@ export class CaffoldPaneResizer extends HTMLElement {
     }
     return {
       blocked: false,
-      targets: [separatorActionHintTarget({
-        invalidationOwner: this,
-        id: `${scopeId}:separator`,
-        actionId,
-        label: this.getAttribute("aria-label") || "Resize pane",
-        control: this,
-        anchor: this.handle,
-        clipRoots: [this, ...clipRoots].filter(Boolean),
-        isActionable: () =>
-          this.isConnected &&
-          !this.hidden &&
-          this.parentElement === parent &&
-          isCurrent() &&
-          this.canResize() &&
-          hasActionHintLayoutBox(this),
-      })],
+      targets: [
+        separatorActionHintTarget({
+          invalidationOwner: this,
+          id: `${scopeId}:separator`,
+          actionId,
+          label: this.getAttribute("aria-label") || "Resize pane",
+          control: this,
+          anchor: this.handle,
+          clipRoots: [this, ...clipRoots].filter(Boolean),
+          isActionable: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.parentElement === parent &&
+            isCurrent() &&
+            this.canResize() &&
+            hasActionHintLayoutBox(this),
+        }),
+      ],
       mutationRoots: [this],
       scrollRoots: [],
     };
@@ -116,7 +131,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     return this.collapsedPreference;
   }
 
-  setCollapsed(collapsed) {
+  setCollapsed(collapsed: boolean) {
     this.collapsedPreference = Boolean(collapsed);
     writeStoredValue(
       this.getAttribute("collapsed-storage-key"),
@@ -124,7 +139,14 @@ export class CaffoldPaneResizer extends HTMLElement {
     );
   }
 
-  startResize(event) {
+  private get handle() {
+    return (
+      this.querySelector<HTMLElement>(":scope > .pane-resizer-handle") ??
+      undefined
+    );
+  }
+
+  private startResize(event: PointerEvent) {
     if (!this.canResize()) {
       return;
     }
@@ -137,7 +159,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     this.updateFromPointer(event);
   }
 
-  moveResize(event) {
+  private moveResize(event: PointerEvent) {
     if (event.pointerId !== this.resizePointerId) {
       return;
     }
@@ -146,7 +168,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     this.updateFromPointer(event);
   }
 
-  endResize(event) {
+  private endResize(event: PointerEvent) {
     if (event.pointerId !== this.resizePointerId) {
       return;
     }
@@ -161,7 +183,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     this.emitResize("end");
   }
 
-  cancelResize() {
+  private cancelResize() {
     if (this.resizePointerId === null) {
       return;
     }
@@ -176,7 +198,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     this.emitResize("end");
   }
 
-  adjustFromKeyboard(event) {
+  private adjustFromKeyboard(event: KeyboardEvent) {
     if (!this.canResize()) {
       return;
     }
@@ -200,7 +222,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     this.storePreferredValue();
   }
 
-  updateFromPointer(event) {
+  private updateFromPointer(event: PointerEvent) {
     const container = this.parentElement;
     if (!container) {
       return;
@@ -210,14 +232,14 @@ export class CaffoldPaneResizer extends HTMLElement {
     this.updateValue(event.clientX - rect.left);
   }
 
-  updateValue(value) {
+  private updateValue(value: number) {
     this.currentValue = this.clampValue(value);
     this.preferredValue = this.currentValue;
     this.syncRange();
     this.emitResize("update", this.currentValue);
   }
 
-  handleContainerResize() {
+  private handleContainerResize() {
     if (!this.canResize()) {
       this.syncRange();
       return;
@@ -226,7 +248,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     this.applyPreferredValue();
   }
 
-  restorePreferredValue() {
+  private restorePreferredValue() {
     this.preferredValue =
       readStoredWidth(this.getAttribute("storage-key")) ??
       this.preferredValue ??
@@ -234,7 +256,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     this.applyPreferredValue();
   }
 
-  applyPreferredValue() {
+  private applyPreferredValue() {
     const nextValue = this.clampValue(this.preferredValue);
     if (nextValue === this.currentValue) {
       this.syncRange();
@@ -246,20 +268,23 @@ export class CaffoldPaneResizer extends HTMLElement {
     this.emitResize("update", nextValue);
   }
 
-  storePreferredValue() {
-    if (Number.isFinite(this.preferredValue)) {
-      writeStoredValue(this.getAttribute("storage-key"), `${this.preferredValue}`);
+  private storePreferredValue() {
+    if (this.preferredValue !== null && Number.isFinite(this.preferredValue)) {
+      writeStoredValue(
+        this.getAttribute("storage-key"),
+        `${this.preferredValue}`,
+      );
     }
   }
 
-  restoreCollapsed() {
+  private restoreCollapsed() {
     const stored = readStoredValue(this.getAttribute("collapsed-storage-key"));
     if (stored === "true" || stored === "false") {
       this.collapsedPreference = stored === "true";
     }
   }
 
-  syncRange() {
+  private syncRange() {
     const maxValue = this.maxValue();
     const ariaMax = this.canResize()
       ? maxValue
@@ -269,7 +294,7 @@ export class CaffoldPaneResizer extends HTMLElement {
     this.setAttribute("aria-valuenow", `${this.currentValue}`);
   }
 
-  clampValue(value) {
+  private clampValue(value: number | null) {
     const numericValue = Number(value);
     const normalizedValue = Number.isFinite(numericValue)
       ? numericValue
@@ -283,7 +308,7 @@ export class CaffoldPaneResizer extends HTMLElement {
       : minimumClampedValue;
   }
 
-  maxValue() {
+  private maxValue() {
     const width = this.parentElement?.getBoundingClientRect().width ?? 0;
     if (!width) {
       return START_DEFAULT_WIDTH;
@@ -291,24 +316,28 @@ export class CaffoldPaneResizer extends HTMLElement {
 
     const ratioMax = Math.round(width * START_MAX_RATIO);
     const minimum = this.minimumValue();
-    const startMax = numericAttribute(this, "start-max", Number.POSITIVE_INFINITY);
+    const startMax = numericAttribute(
+      this,
+      "start-max",
+      Number.POSITIVE_INFINITY,
+    );
     const endMinimumLimit = Math.max(minimum, width - this.endMinimumValue());
     return Math.max(minimum, Math.min(startMax, ratioMax, endMinimumLimit));
   }
 
-  minimumValue() {
+  private minimumValue() {
     return numericAttribute(this, "start-min", START_MIN_WIDTH);
   }
 
-  endMinimumValue() {
+  private endMinimumValue() {
     return numericAttribute(this, "end-min", END_MIN_WIDTH);
   }
 
-  canResize() {
+  private canResize() {
     return Boolean(this.parentElement && this.getClientRects().length > 0);
   }
 
-  emitResize(phase, value = null) {
+  private emitResize(phase: PaneResizePhase, value: number | null = null) {
     const detail = value === null ? { phase } : { phase, value };
     this.dispatchEvent(
       new CustomEvent("caffold:pane-resize", {
@@ -322,15 +351,15 @@ export class CaffoldPaneResizer extends HTMLElement {
 
 customElements.define("caffold-pane-resizer", CaffoldPaneResizer);
 
-function numericAttribute(element, name, fallback) {
+function numericAttribute(element: Element, name: string, fallback: number) {
   return positiveWidth(element.getAttribute(name)) ?? fallback;
 }
 
-function readStoredWidth(key) {
+function readStoredWidth(key: string | null) {
   return positiveWidth(readStoredValue(key));
 }
 
-function readStoredValue(key) {
+function readStoredValue(key: string | null) {
   if (!key) {
     return null;
   }
@@ -341,7 +370,7 @@ function readStoredValue(key) {
   }
 }
 
-function writeStoredValue(key, value) {
+function writeStoredValue(key: string | null, value: string) {
   if (!key) {
     return;
   }
@@ -352,7 +381,7 @@ function writeStoredValue(key, value) {
   }
 }
 
-function positiveWidth(value) {
+function positiveWidth(value: string | null) {
   const width = Number(value);
   return Number.isFinite(width) && width > 0 ? Math.round(width) : null;
 }

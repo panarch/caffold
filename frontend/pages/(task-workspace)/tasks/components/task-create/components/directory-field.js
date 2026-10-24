@@ -7,8 +7,8 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
-import { FILE_TREE_SELECT_EVENT } from "#components/file-tree.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { FILE_TREE_SELECT_EVENT } from "#components/file-tree.ts";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
 import { directoryPathDisplay } from "../directory-path.js";
 import {
   DIRECTORY_FIELD_NODE,

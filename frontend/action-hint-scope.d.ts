@@ -29,9 +29,7 @@ export interface ActionHintScope {
   scrollRoots: Element[];
 }
 
-export function emptyActionHintScope(): ActionHintScope;
-
-export function buttonActionHintTarget(options: {
+interface ActionHintTargetOptions {
   id: string;
   actionId: string;
   label: string;
@@ -39,9 +37,51 @@ export function buttonActionHintTarget(options: {
   control: HTMLElement;
   anchor?: Element;
   clipRoots: Element[];
-  badgeAtEnd?: boolean;
   isActionable: () => boolean;
-}): ActionHintTarget;
+}
+
+export interface LinkActionHintBinding {
+  readonly href: string | null;
+  readonly target: string | null;
+  readonly rel: string | null;
+}
+
+export function emptyActionHintScope(): ActionHintScope;
+
+export function buttonActionHintTarget(
+  options: ActionHintTargetOptions & { badgeAtEnd?: boolean },
+): ActionHintTarget;
+
+export function disclosureActionHintTarget(
+  options: ActionHintTargetOptions,
+): ActionHintTarget;
+
+export function linkActionHintTarget(
+  options: ActionHintTargetOptions,
+): ActionHintTarget;
+
+export function selectActionHintTarget(
+  options: ActionHintTargetOptions,
+): ActionHintTarget;
+
+export function separatorActionHintTarget(
+  options: ActionHintTargetOptions,
+): ActionHintTarget;
+
+export function linkActionHintLabel(control: Element): string;
+
+export function captureLinkActionHintBinding(
+  control: Element,
+): LinkActionHintBinding;
+
+export function matchesLinkActionHintBinding(
+  control: Element,
+  binding: LinkActionHintBinding,
+): boolean;
+
+export function hasActionHintLayoutBox(
+  element: Element | null | undefined,
+): boolean;
 
 export function mergeActionHintScopes(
   ...scopes: Array<ActionHintScope | null | undefined>

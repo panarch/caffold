@@ -5,6 +5,10 @@ export class InFlightLimit {
   // The count follows how long a cell waits for its first byte: within the
   // usual round trip and a quarter of a second the link has room, and longer
   // means cells are waiting in line.
+  cells!: number;
+  usualWaitMs!: number;
+  round!: number;
+
   constructor() {
     this.reset();
   }
@@ -26,7 +30,15 @@ export class InFlightLimit {
   // the browser's cache answered says nothing about the link. The count
   // changes once a round, because only a cell requested since the last change
   // shows what that change did.
-  observe({ round, waitMs, fromCache = false }) {
+  observe({
+    round,
+    waitMs,
+    fromCache = false,
+  }: {
+    round: number;
+    waitMs: number;
+    fromCache?: boolean;
+  }) {
     if (fromCache) {
       return;
     }
@@ -49,6 +61,6 @@ const MIN_CELLS = 1;
 const MAX_CELLS = 128;
 const ALLOWED_WAIT_IN_LINE_MS = 250;
 
-function clamp(value, min, max) {
+function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }

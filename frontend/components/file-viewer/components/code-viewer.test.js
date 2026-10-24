@@ -6,7 +6,7 @@ import {
 } from "../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./code-viewer.js");
+await import("./code-viewer.ts");
 const codeViewer = registry.element("caffold-code-viewer").prototype;
 after(() => registry.restore());
 

@@ -2,7 +2,7 @@ import { busySpin, compactIconButton } from "#app/component-styles.js";
 import {
   renderInlineIcon,
   warmIcons,
-} from "#components/icons.js";
+} from "#components/icons.ts";
 import { formatTaskStatus } from "#tasks/runtime-state.js";
 import { shortId } from "#tasks/task-format.js";
 import { taskThreadId } from "#tasks/task-list-model.js";

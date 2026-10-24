@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./pdf-viewer.js");
+await import("./pdf-viewer.ts");
 const pdfViewer = registry.element("caffold-pdf-viewer").prototype;
 after(() => registry.restore());
 
@@ -16,13 +16,9 @@ function drawingViewer() {
   return {
     opened,
     owner: {
-      initialized: true,
       generation: 4,
-      dataset: { renderState: "pdf" },
-      ensureRendered() {},
-      showMessage(renderState) {
-        this.dataset.renderState = renderState;
-      },
+      renderState: "pdf",
+      performUpdate() {},
       release() {
         pdfViewer.release.call(this);
       },
@@ -39,16 +35,14 @@ test("lets go of the document shown and opens the file it is handed", () => {
 
   pdfViewer.setFile.call(owner, file);
 
-  assert.equal(owner.dataset.renderState, "loading", "it says the file is loading until it is drawn");
+  assert.equal(owner.renderState, "loading", "it says the file is loading until it is drawn");
   assert.deepEqual(opened, [{ generation: 5, file }], "the document shown before is let go of first");
 });
 
 test("publishes only the axis a scaled page can overflow", () => {
   const owner = {
-    initialized: true,
     hidden: false,
     isConnected: true,
-    ensureRendered() {},
     getClientRects: () => [{}],
   };
 
@@ -65,7 +59,7 @@ test("publishes only the axis a scaled page can overflow", () => {
 });
 
 test("publishes no scroll surface without a scope identity", () => {
-  const owner = { initialized: true, hidden: false, ensureRendered() {} };
+  const owner = { hidden: false };
 
   assert.deepEqual(
     pdfViewer.scrollSurfaceScope.call(owner, {}).surfaces,

@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./file-viewer.js");
+await import("./file-viewer.ts");
 const fileViewer = registry.element("caffold-review-file-viewer").prototype;
 after(() => registry.restore());
 
@@ -27,6 +27,7 @@ test("provides only the visible owned Back or close button", () => {
     },
   };
   const owner = {
+    state: { status: "file" },
     hidden: false,
     isConnected: true,
     closeLabel: "Close file",
@@ -89,6 +90,7 @@ test("provides a direct notice representation action through its owned button", 
     },
   };
   const owner = {
+    state: { status: "notice" },
     hidden: false,
     isConnected: true,
     querySelector(selector) {
@@ -160,6 +162,7 @@ test("provides file details opener and no action inside a diff's popover", () =>
     },
   };
   const owner = {
+    state: { status: "file" },
     hidden: false,
     isConnected: true,
     detailsPopover: () => popover,
@@ -255,6 +258,7 @@ test("provides its owned refresh button beside existing viewer actions", () => {
   };
   current = refresh;
   const owner = {
+    state: { status: "file" },
     hidden: false,
     isConnected: true,
     querySelector(selector) {
@@ -510,12 +514,13 @@ function retainingViewer(state) {
     state,
     retainedContent: null,
     renders: [],
-    render() {
+    performUpdate() {
       this.renders.push(this.state);
     },
     detailsPopover: () => null,
   };
   for (const method of [
+    "show",
     "setLoading",
     "finishRetainedContent",
     "cancelRetainedContent",
@@ -604,7 +609,7 @@ test("deactivation ends the wait and leaves the previous content shown", () => {
 
   owner.setLoading({ title: "next.md" });
   owner.closeDetailsPopover();
-  assert.equal(timers.size, 1, "closing the details popover, as every render does, keeps the wait");
+  assert.equal(timers.size, 1, "closing the details popover, as every new state does, keeps the wait");
   owner.deactivate();
   assert.equal(timers.size, 0);
   assert.equal(owner.retainedContent, null);
@@ -623,34 +628,6 @@ test("a deadline whose wait already ended changes nothing", () => {
   stale.callback();
   assert.deepEqual(owner.state, { status: "empty" });
   assert.equal(owner.renders.length, 1);
-});
-
-test("the loading state keeps its phrase when only the header changes", () => {
-  let header = null;
-  let html = "";
-  const panel = {};
-  const owner = {
-    state: { status: "loading", presentation: { title: "next.md" }, waited: true },
-    querySelector: () => panel,
-    replacePresentationHeader(target, presentation) {
-      header = { target, presentation };
-    },
-    set innerHTML(value) {
-      html = value;
-    },
-  };
-  fileViewer.renderLoading.call(owner);
-  assert.deepEqual(header, { target: panel, presentation: { title: "next.md" } });
-  assert.equal(html, "", "the phrase element is left in place");
-
-  owner.querySelector = () => null;
-  owner.renderPresentationHeader = () => "<header></header>";
-  fileViewer.renderLoading.call(owner);
-  assert.match(html, /<caffold-loading-text immediate>Loading file\.\.\.<\/caffold-loading-text>/);
-
-  owner.state = { ...owner.state, waited: false };
-  fileViewer.renderLoading.call(owner);
-  assert.match(html, /<caffold-loading-text>Loading file\.\.\.<\/caffold-loading-text>/);
 });
 
 // A preview file is fetched by the viewer and moves between reading, shown,
@@ -708,6 +685,12 @@ function previewHost(status = "document") {
   const handed = [];
   const errors = [];
   const image = { src: "" };
+  const documentViewer = {
+    setFile(file, options) {
+      Promise.resolve(file).catch(() => {});
+      handed.push({ file, options });
+    },
+  };
   const host = Object.assign(Object.create(fileViewer), {
     state: status === "image"
       ? { status, image: { path: "picture.png", name: "picture.png" } }
@@ -716,16 +699,10 @@ function previewHost(status = "document") {
     // A document viewer waits for the file it is handed, so a fetch let go of
     // ends there.
     documentViewer: () =>
-      host.state.status === "document"
-        ? {
-          setFile(file, options) {
-            Promise.resolve(file).catch(() => {});
-            handed.push({ file, options });
-          },
-        }
-        : null,
+      host.state.status === "document" ? documentViewer : null,
     querySelector: (selector) => (selector.includes("image-preview") ? image : null),
     setError: (presentation, error) => errors.push(error.message),
+    performUpdate() {},
   });
   return { host, handed, errors, image };
 }
@@ -906,8 +883,7 @@ test("another file, or letting go, ends the fetch of the one before", () => {
 test("a recheck applies only to a preview held before the new state", async () => {
   const server = fileServer({ "a10.pdf": { text: "first", version: "v1" } });
   const { host } = previewHost();
-  host.render = () => host.showPreviewFile(previewAddress(host.state.document.path));
-  host.cancelRetainedContent = () => {};
+  globalThis.window = { location: new URL(ORIGIN) };
 
   host.setDocument({ kind: "pdf", path: "a10.pdf" }, { recheck: true });
   await until(() => host.previewFile.phase === "shown");

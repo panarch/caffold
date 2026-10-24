@@ -3,8 +3,8 @@ import {
   buttonActionHintTarget,
 } from "#app/action-hints.js";
 import { busySpin } from "#app/component-styles.js";
-import { escapeHtml } from "#components/dom.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { escapeHtml } from "#components/dom.ts";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,

@@ -1,6 +1,6 @@
-import "#components/file-navigator.js";
-import "#components/segmented-control.js";
-import "#components/pane-resizer.js";
+import "#components/file-navigator.ts";
+import "#components/segmented-control.ts";
+import "#components/pane-resizer.ts";
 import "./components/working-tree-changes.js";
 import "./components/branch-changes.js";
 import "./components/selected-file.js";

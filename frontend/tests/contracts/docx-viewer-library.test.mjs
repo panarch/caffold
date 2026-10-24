@@ -9,7 +9,7 @@ function read(path) {
 }
 
 test("the browser and the browser suite load the same docx-preview release", () => {
-  const viewer = read("components/docx-viewer.js");
+  const viewer = read("components/docx-viewer.ts");
   const manifest = JSON.parse(read("package.json"));
 
   const [, sourceVersion] =
@@ -47,6 +47,6 @@ test("docx-preview stays a runtime CDN import rather than a shipped asset", () =
   for (const manifest of [serviceWorker, staticAssets]) {
     assert.doesNotMatch(manifest, /docx-preview|jszip/);
   }
-  assert.match(serviceWorker, /"\/assets\/components\/docx-viewer\.js"/);
-  assert.match(staticAssets, /"components\/docx-viewer\.js"/);
+  assert.match(serviceWorker, /"\/assets\/components\/docx-viewer\.ts"/);
+  assert.match(staticAssets, /"components\/docx-viewer\.ts"/);
 });

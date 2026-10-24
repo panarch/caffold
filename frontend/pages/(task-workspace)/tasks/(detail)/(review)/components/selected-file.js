@@ -1,11 +1,11 @@
 import { readFile } from "#app/api.js";
-import { fileStatusPresentation } from "#app/file-status.js";
-import { fileNameFromPath, imageTypeLabel } from "#components/dom.js";
-import "#components/file-viewer.js";
+import { fileStatusPresentation } from "#app/file-status.ts";
+import { fileNameFromPath, imageTypeLabel } from "#components/dom.ts";
+import "#components/file-viewer.ts";
 import {
   diffViewerPresentation,
   sourceViewerPresentation,
-} from "#components/file-viewer-presentation.js";
+} from "#components/file-viewer-presentation.ts";
 import { contentFor } from "./selected-file/content.js";
 
 class CaffoldReviewSelectedFile extends HTMLElement {

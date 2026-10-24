@@ -8,8 +8,8 @@ import {
   buttonActionHintTarget,
   hasActionHintLayoutBox,
 } from "#app/action-hints.js";
-import { escapeHtml } from "#components/dom.js";
-import { renderInlineIcon } from "#components/icons.js";
+import { escapeHtml } from "#components/dom.ts";
+import { renderInlineIcon } from "#components/icons.ts";
 import { requestTaskImagePreview } from "../../image-preview-dialog.js";
 
 const ATTACHMENT_ACTIONS = ["preview-image", "remove-image", "remove-file"];

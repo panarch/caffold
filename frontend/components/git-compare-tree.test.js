@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./git-compare-tree.js");
+await import("./git-compare-tree.ts");
 const compareTree = registry.element("caffold-git-compare-tree").prototype;
 after(() => registry.restore());
 

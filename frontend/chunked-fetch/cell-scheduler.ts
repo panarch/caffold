@@ -1,23 +1,43 @@
-import { InFlightLimit } from "./in-flight-limit.js";
-import { Transfer, abortError } from "./transfer.js";
+import { InFlightLimit } from "./in-flight-limit.ts";
+import {
+  abortError,
+  type Cell,
+  type CellAnswer,
+  type FetchedFile,
+  Transfer,
+} from "./transfer.ts";
+
+type FetchCell = (url: string, init: RequestInit) => Promise<Response>;
 
 // Decides which cell is asked for next, across every file being fetched, and
 // keeps no more cells in flight than the limit allows. The file asked for
 // most recently goes first, so what was just opened appears first; an earlier
 // file waits, without being dropped, until that one is done.
 export class CellScheduler {
-  constructor({ fetch, now = () => performance.now() }) {
+  private readonly fetchCell: FetchCell;
+  private readonly now: () => number;
+  private readonly limit = new InFlightLimit();
+  // Most recently asked for last.
+  private readonly transfers: Transfer[] = [];
+  private inFlight = 0;
+
+  constructor({
+    fetch,
+    now = () => performance.now(),
+  }: {
+    fetch: FetchCell;
+    now?: () => number;
+  }) {
     this.fetchCell = fetch;
     this.now = now;
-    this.limit = new InFlightLimit();
-    // Most recently asked for last.
-    this.transfers = [];
-    this.inFlight = 0;
   }
 
   // The same address asked for again while it is still arriving shares that
   // fetch, which stops only when every caller has let go.
-  fetchFile(url, { signal } = {}) {
+  fetchFile(
+    url: string,
+    { signal }: { signal?: AbortSignal } = {},
+  ): Promise<FetchedFile> {
     if (signal?.aborted) {
       return Promise.reject(abortError());
     }
@@ -27,9 +47,10 @@ export class CellScheduler {
     if (transfer) {
       this.transfers.splice(this.transfers.indexOf(transfer), 1);
     } else {
-      transfer = new Transfer(url);
-      const forget = () => this.forget(transfer);
-      transfer.done.then(forget, forget);
+      const created = new Transfer(url);
+      const forget = () => this.forget(created);
+      created.done.then(forget, forget);
+      transfer = created;
     }
     this.transfers.push(transfer);
     transfer.callers += 1;
@@ -38,7 +59,7 @@ export class CellScheduler {
     return answer;
   }
 
-  pump() {
+  private pump() {
     while (this.inFlight < this.limit.allowedCells()) {
       const cell = this.nextCell();
       if (!cell) {
@@ -49,7 +70,7 @@ export class CellScheduler {
     }
   }
 
-  nextCell() {
+  private nextCell() {
     for (let index = this.transfers.length - 1; index >= 0; index -= 1) {
       const cell = this.transfers[index].takeCell(this.limit.round);
       if (cell) {
@@ -61,9 +82,9 @@ export class CellScheduler {
 
   // A cell is in flight until all its bytes have arrived; its first byte, the
   // answer's headers, tells the limit how long it waited.
-  async request(cell) {
+  private async request(cell: Cell) {
     const sent = this.now();
-    let answer;
+    let answer: CellAnswer;
     try {
       const response = await this.fetchCell(cell.url, {
         headers: { Range: cell.range },
@@ -85,7 +106,7 @@ export class CellScheduler {
     this.pump();
   }
 
-  forget(transfer) {
+  private forget(transfer: Transfer) {
     const index = this.transfers.indexOf(transfer);
     if (index >= 0) {
       this.transfers.splice(index, 1);
@@ -97,10 +118,10 @@ export class CellScheduler {
   }
 }
 
-function callerAnswer(transfer, signal) {
-  return new Promise((resolve, reject) => {
+function callerAnswer(transfer: Transfer, signal: AbortSignal | undefined) {
+  return new Promise<FetchedFile>((resolve, reject) => {
     let settled = false;
-    const settle = (finish, value) => {
+    const settle = <T>(finish: (value: T) => void, value: T) => {
       if (settled) {
         return;
       }
@@ -126,8 +147,7 @@ function callerAnswer(transfer, signal) {
   });
 }
 
-// An answer read into what it means for a file in cells.
-async function readAnswer(response) {
+async function readAnswer(response: Response): Promise<CellAnswer> {
   const type = response.headers.get("Content-Type") ?? "";
   if (response.status === 206) {
     const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(
@@ -170,6 +190,6 @@ async function readAnswer(response) {
   return { kind: "failed", status: response.status };
 }
 
-function versionOf(etag) {
+function versionOf(etag: string | null) {
   return /^(?:W\/)?"([^"]*)"$/.exec(etag ?? "")?.[1] ?? "";
 }

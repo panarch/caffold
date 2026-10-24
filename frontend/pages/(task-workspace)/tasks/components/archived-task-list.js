@@ -4,9 +4,9 @@ import {
   restoreTask,
 } from "#app/api.js";
 import { busySpin } from "#app/component-styles.js";
-import { escapeHtml } from "#components/dom.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
-import "#components/loading-text.js";
+import { escapeHtml } from "#components/dom.ts";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
+import "#components/loading-text.ts";
 import { taskStoreOperationsPresentation } from "../../task-store-status.js";
 import {
   TASK_TRANSPORT_STATE,

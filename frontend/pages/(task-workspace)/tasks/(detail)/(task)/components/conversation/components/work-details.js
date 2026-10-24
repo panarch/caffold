@@ -1,8 +1,8 @@
-import { escapeHtml } from "#components/dom.js";
+import { escapeHtml } from "#components/dom.ts";
 import {
   renderInlineIcon,
   warmIcons,
-} from "#components/icons.js";
+} from "#components/icons.ts";
 import {
   eventIdentityKey,
   fileChangePathPresentations,

@@ -1,4 +1,7 @@
-import { CellScheduler } from "./chunked-fetch/cell-scheduler.js";
+import { CellScheduler } from "./chunked-fetch/cell-scheduler.ts";
+import type { FetchedFile } from "./chunked-fetch/transfer.ts";
+
+export type { FetchedFile } from "./chunked-fetch/transfer.ts";
 
 // A large file a viewer shows is fetched in cells of 64 KB rather than in one
 // response, so the bytes of an image or document never wait in line ahead of
@@ -11,6 +14,9 @@ const scheduler = new CellScheduler({
 // Resolves to the file, a Blob of the type the server named, and the version
 // the server named it by (its ETag), or null when it named none. Aborting the
 // signal lets go of the fetch, which stops once nothing else waits for it.
-export function fetchInChunks(url, { signal } = {}) {
+export function fetchInChunks(
+  url: string,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<FetchedFile> {
   return scheduler.fetchFile(url, { signal });
 }

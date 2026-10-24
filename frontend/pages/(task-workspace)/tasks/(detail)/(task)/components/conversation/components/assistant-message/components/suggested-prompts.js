@@ -4,7 +4,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
 } from "#app/action-hints.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
 
 const drawnIcons = new WeakMap();
 

@@ -1,8 +1,11 @@
+import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
+  type ScrollSurfaceScope,
+  type ScrollSurfaceScopeOptions,
 } from "../scroll-scope.js";
-import "./loading-text.js";
+import "./loading-text.ts";
 
 const PDFJS_VERSION = "6.3.289";
 const PDFJS_BASE = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}`;
@@ -13,25 +16,116 @@ const PDFJS_IMPORT = `${PDFJS_BASE}/build/pdf.min.mjs`;
 const MAX_RENDER_PIXEL_RATIO = 2;
 const NEARBY_PAGE_MARGIN = "200% 0px";
 
-let libraryPromise;
+// The parts of pdf.js the viewer uses.
+interface PdfViewport {
+  width: number;
+  height: number;
+}
 
-class CaffoldPdfViewer extends HTMLElement {
+interface PdfRenderTask {
+  promise: Promise<void>;
+  cancel(): void;
+}
+
+interface PdfPage {
+  getViewport(options: { scale: number }): PdfViewport;
+  render(options: {
+    canvasContext: CanvasRenderingContext2D | null;
+    viewport: PdfViewport;
+  }): PdfRenderTask;
+}
+
+interface PdfDocument {
+  numPages: number;
+  getPage(number: number): Promise<PdfPage>;
+}
+
+interface PdfLoadingTask {
+  promise: Promise<PdfDocument>;
+  destroy(): Promise<void>;
+}
+
+interface PdfJs {
+  getDocument(options: Record<string, unknown>): PdfLoadingTask;
+  GlobalWorkerOptions: { workerSrc: string };
+}
+
+interface PageRecord {
+  page: PdfPage;
+  viewport: PdfViewport;
+  element: HTMLElement;
+  renderedWidth: number;
+  task: PdfRenderTask | null;
+}
+
+type RenderState = "empty" | "loading" | "error" | "pdf";
+
+let libraryPromise: Promise<PdfJs> | undefined;
+
+class CaffoldPdfViewer extends LitElement {
+  static properties = {
+    renderState: { state: true },
+    pages: { state: true },
+  };
+
+  declare private renderState: RenderState;
+  declare private pages: PageRecord[] | null;
+  private generation = 0;
+  private visiblePages: Set<PageRecord> | null = null;
+  private pageObserver: IntersectionObserver | null = null;
+  private widthObserver: ResizeObserver | null = null;
+  private loadingTask: PdfLoadingTask | null = null;
+
+  constructor() {
+    super();
+    this.renderState = "empty";
+    this.pages = null;
+  }
+
+  createRenderRoot() {
+    return this;
+  }
+
   connectedCallback() {
-    this.ensureRendered();
+    super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "PDF preview");
+    this.performUpdate();
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     this.release();
+  }
+
+  render() {
+    const message =
+      this.renderState === "loading"
+        ? html`<caffold-loading-text>Loading PDF...</caffold-loading-text>`
+        : this.renderState === "error"
+          ? "This PDF could not be displayed."
+          : "";
+    const content =
+      this.renderState === "pdf"
+        ? this.pages?.map((record) => record.element)
+        : message
+          ? html`<p class="pdf-viewer-message">${message}</p>`
+          : nothing;
+    return html`<div class="pdf-viewer-body">${content}</div>`;
+  }
+
+  updated(changed: PropertyValues) {
+    if (changed.has("renderState")) {
+      this.dataset.renderState = this.renderState;
+    }
   }
 
   // Opens the file the file viewer fetched for it: a Blob, or the promise of
   // one, which fails when the fetch does.
-  setFile(file) {
-    this.ensureRendered();
+  setFile(file: Blob | Promise<Blob>) {
     this.release();
-    this.showMessage("loading", "Loading PDF...");
+    this.renderState = "loading";
+    this.performUpdate();
     void this.open(this.generation, file);
   }
 
@@ -40,32 +134,33 @@ class CaffoldPdfViewer extends HTMLElement {
     label = "PDF preview",
     clipRoots = [],
     isCurrent = () => true,
-  } = {}) {
-    this.ensureRendered();
+  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
     if (!scopeId || !label || this.hidden) {
       return emptyScrollSurfaceScope();
     }
     return {
       blocked: false,
-      surfaces: [{
-        id: `${scopeId}:scroll`,
-        label,
-        scrollport: this,
-        axes: ["vertical"],
-        clipRoots: [this, ...clipRoots].filter(Boolean),
-        isEligible: () =>
-          this.isConnected &&
-          !this.hidden &&
-          isCurrent() &&
-          hasScrollLayoutBox(this),
-      }],
+      surfaces: [
+        {
+          id: `${scopeId}:scroll`,
+          label,
+          scrollport: this,
+          axes: ["vertical"],
+          clipRoots: [this, ...clipRoots].filter(Boolean),
+          isEligible: () =>
+            this.isConnected &&
+            !this.hidden &&
+            isCurrent() &&
+            hasScrollLayoutBox(this),
+        },
+      ],
       mutationRoots: [this],
       resizeElements: [this],
       scrollRoots: [this],
     };
   }
 
-  async open(generation, file) {
+  private async open(generation: number, file: Blob | Promise<Blob>) {
     try {
       const [pdfjs, data] = await Promise.all([loadLibrary(), readBytes(file)]);
       if (!this.isCurrent(generation)) {
@@ -92,23 +187,25 @@ class CaffoldPdfViewer extends HTMLElement {
       await this.mountPages(generation, await task.promise);
     } catch (error) {
       // A fetch let go of is followed by another file or by nothing at all.
-      if (this.isCurrent(generation) && error?.name !== "AbortError") {
-        this.showMessage("error", "This PDF could not be displayed.");
+      if (
+        this.isCurrent(generation) &&
+        (error as Error | null)?.name !== "AbortError"
+      ) {
+        this.renderState = "error";
       }
     }
   }
 
-  async mountPages(generation, document) {
+  private async mountPages(generation: number, document: PdfDocument) {
     const pages = await Promise.all(
       Array.from({ length: document.numPages }, (_, index) =>
-        document.getPage(index + 1)),
+        document.getPage(index + 1),
+      ),
     );
     if (!this.isCurrent(generation)) {
       return;
     }
 
-    const body = this.body();
-    body.replaceChildren();
     this.pages = pages.map((page, index) => {
       // The page box carries the document's own geometry the way an image
       // carries its intrinsic size; CSS still decides how it is placed and
@@ -117,12 +214,15 @@ class CaffoldPdfViewer extends HTMLElement {
       const element = window.document.createElement("div");
       element.className = "pdf-viewer-page";
       element.dataset.pdfPage = `${index + 1}`;
-      element.style.setProperty("--pdf-page-width", `${Math.round(viewport.width)}px`);
+      element.style.setProperty(
+        "--pdf-page-width",
+        `${Math.round(viewport.width)}px`,
+      );
       element.style.aspectRatio = `${viewport.width} / ${viewport.height}`;
-      body.append(element);
       return { page, viewport, element, renderedWidth: 0, task: null };
     });
-    this.dataset.renderState = "pdf";
+    this.renderState = "pdf";
+    this.performUpdate();
 
     this.visiblePages = new Set();
     this.pageObserver = new IntersectionObserver(
@@ -132,11 +232,18 @@ class CaffoldPdfViewer extends HTMLElement {
     for (const record of this.pages) {
       this.pageObserver.observe(record.element);
     }
-    this.widthObserver = new ResizeObserver(() => this.redrawVisiblePages(generation));
+    this.widthObserver = new ResizeObserver(() =>
+      this.redrawVisiblePages(generation),
+    );
     this.widthObserver.observe(this);
   }
 
-  observePages(generation, entries) {
+  private observePages(
+    generation: number,
+    entries: Array<
+      Pick<IntersectionObserverEntry, "target" | "isIntersecting">
+    >,
+  ) {
     if (!this.isCurrent(generation)) {
       return;
     }
@@ -154,7 +261,7 @@ class CaffoldPdfViewer extends HTMLElement {
     }
   }
 
-  redrawVisiblePages(generation) {
+  private redrawVisiblePages(generation: number) {
     if (!this.isCurrent(generation)) {
       return;
     }
@@ -163,7 +270,7 @@ class CaffoldPdfViewer extends HTMLElement {
     }
   }
 
-  async drawPage(generation, record) {
+  private async drawPage(generation: number, record: PageRecord) {
     const width = record.element.clientWidth;
     if (!width || record.renderedWidth === width) {
       return;
@@ -171,7 +278,10 @@ class CaffoldPdfViewer extends HTMLElement {
     record.task?.cancel();
     record.renderedWidth = width;
 
-    const ratio = Math.min(window.devicePixelRatio || 1, MAX_RENDER_PIXEL_RATIO);
+    const ratio = Math.min(
+      window.devicePixelRatio || 1,
+      MAX_RENDER_PIXEL_RATIO,
+    );
     const viewport = record.page.getViewport({
       scale: (width * ratio) / record.viewport.width,
     });
@@ -202,8 +312,8 @@ class CaffoldPdfViewer extends HTMLElement {
     record.element.replaceChildren(canvas);
   }
 
-  release() {
-    this.generation = (this.generation ?? 0) + 1;
+  private release() {
+    this.generation += 1;
     this.pageObserver?.disconnect();
     this.pageObserver = null;
     this.widthObserver?.disconnect();
@@ -219,44 +329,14 @@ class CaffoldPdfViewer extends HTMLElement {
     destroyLoadingTask(loadingTask);
   }
 
-  isCurrent(generation) {
+  private isCurrent(generation: number) {
     return this.isConnected && this.generation === generation;
-  }
-
-  ensureRendered() {
-    if (this.initialized) {
-      return;
-    }
-    this.initialized = true;
-    this.generation = 0;
-    this.dataset.renderState = "empty";
-    this.innerHTML = '<div class="pdf-viewer-body"></div>';
-  }
-
-  showMessage(renderState, message) {
-    const body = this.body();
-    this.dataset.renderState = renderState;
-    body.replaceChildren();
-    const paragraph = window.document.createElement("p");
-    paragraph.className = "pdf-viewer-message";
-    if (renderState === "loading") {
-      const loadingText = window.document.createElement("caffold-loading-text");
-      loadingText.textContent = message;
-      paragraph.append(loadingText);
-    } else {
-      paragraph.textContent = message;
-    }
-    body.append(paragraph);
-  }
-
-  body() {
-    return this.querySelector(":scope > .pdf-viewer-body");
   }
 }
 
 // The loading task owns the worker and the document it produced; the document
 // proxy itself exposes no teardown.
-function destroyLoadingTask(task) {
+function destroyLoadingTask(task: PdfLoadingTask | null) {
   if (!task) {
     return;
   }
@@ -267,12 +347,12 @@ function destroyLoadingTask(task) {
 
 // pdf.js is handed the bytes rather than the address, so the document arrives
 // in cells like every other file a viewer shows.
-async function readBytes(file) {
+async function readBytes(file: Blob | Promise<Blob>) {
   return new Uint8Array(await (await file).arrayBuffer());
 }
 
 function loadLibrary() {
-  libraryPromise ??= import(PDFJS_IMPORT).then((module) => {
+  libraryPromise ??= import(PDFJS_IMPORT).then((module: PdfJs) => {
     // pdf.js wraps a cross-origin worker source in a blob module itself, so the
     // CDN path can be handed over unchanged.
     module.GlobalWorkerOptions.workerSrc = `${PDFJS_BASE}/build/pdf.worker.min.mjs`;

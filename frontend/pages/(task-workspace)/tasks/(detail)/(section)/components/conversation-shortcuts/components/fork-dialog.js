@@ -3,7 +3,7 @@ import {
   previewTaskForkSource,
 } from "#app/api.js";
 import { formatDate } from "#tasks/task-format.js";
-import "#components/loading-text.js";
+import "#components/loading-text.ts";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,

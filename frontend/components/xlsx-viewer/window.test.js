@@ -6,7 +6,7 @@ import {
   coverMerges,
   trackOffsets,
   visibleTracks,
-} from "./window.js";
+} from "./window.ts";
 
 test("sums the sizes of the tracks after the frozen ones", () => {
   assert.deepEqual([...trackOffsets([10, 20, 30])], [0, 10, 30, 60]);

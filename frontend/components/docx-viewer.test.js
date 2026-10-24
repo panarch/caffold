@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./docx-viewer.js");
+await import("./docx-viewer.ts");
 const docxViewer = registry.element("caffold-docx-viewer").prototype;
 after(() => registry.restore());
 
@@ -16,13 +16,9 @@ function drawingViewer() {
   return {
     opened,
     owner: {
-      initialized: true,
       generation: 4,
-      dataset: { renderState: "docx" },
-      ensureRendered() {},
-      showMessage(renderState) {
-        this.dataset.renderState = renderState;
-      },
+      renderState: "docx",
+      performUpdate() {},
       release() {
         docxViewer.release.call(this);
       },
@@ -55,16 +51,14 @@ test("lets go of the document shown and opens the file it is handed", () => {
 
   docxViewer.setFile.call(owner, file);
 
-  assert.equal(owner.dataset.renderState, "loading", "it says the file is loading until it is drawn");
+  assert.equal(owner.renderState, "loading", "it says the file is loading until it is drawn");
   assert.deepEqual(opened, [{ generation: 5, file }], "the document shown before is let go of first");
 });
 
 test("publishes only the vertical axis of a page fitted to its width", () => {
   const owner = {
-    initialized: true,
     hidden: false,
     isConnected: true,
-    ensureRendered() {},
     getClientRects: () => [{}],
   };
 
@@ -81,7 +75,7 @@ test("publishes only the vertical axis of a page fitted to its width", () => {
 });
 
 test("publishes no scroll surface without a scope identity", () => {
-  const owner = { initialized: true, hidden: false, ensureRendered() {} };
+  const owner = { hidden: false };
 
   assert.deepEqual(docxViewer.scrollSurfaceScope.call(owner, {}).surfaces, []);
 });

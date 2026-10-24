@@ -1,5 +1,5 @@
-import { escapeHtml } from "#components/dom.js";
-import "#components/loading-text.js";
+import { escapeHtml } from "#components/dom.ts";
+import "#components/loading-text.ts";
 import "#components/pagination.ts";
 import {
   ACTION_HINT_ACTION,

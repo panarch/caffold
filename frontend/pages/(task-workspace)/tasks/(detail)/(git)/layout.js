@@ -1,5 +1,5 @@
 import { compactIconButton } from "#app/component-styles.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
 import { routeMode } from "#app/navigation-routes.js";
 import {
   createRefreshCoordinator,

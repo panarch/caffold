@@ -6,7 +6,7 @@ import {
 } from "../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./diff-viewer.js");
+await import("./diff-viewer.ts");
 const diffViewer = registry.element("caffold-diff-viewer").prototype;
 after(() => registry.restore());
 

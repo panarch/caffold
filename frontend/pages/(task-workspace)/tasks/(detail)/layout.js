@@ -15,7 +15,7 @@ import "./(task)/layout.js";
 import "./(git)/layout.js";
 import "./(github)/layout.js";
 import "./(review)/layout.js";
-import "#components/segmented-control.js";
+import "#components/segmented-control.ts";
 import "./components/git-menu.js";
 import "./components/github-menu.js";
 import { TERMINAL_BUTTON_INTENT_EVENT } from "./components/terminal-button.js";

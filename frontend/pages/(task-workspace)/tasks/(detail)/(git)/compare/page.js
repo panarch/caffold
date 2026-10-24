@@ -1,4 +1,4 @@
-import "#components/git-compare-browser.js";
+import "#components/git-compare-browser.ts";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 
 class CaffoldGitComparePage extends HTMLElement {
@@ -14,7 +14,6 @@ class CaffoldGitComparePage extends HTMLElement {
     this.rendered = true;
     this.innerHTML = `<caffold-git-compare-browser></caffold-git-compare-browser>`;
     this.browser = this.querySelector("caffold-git-compare-browser");
-    this.browser.ensureRendered();
     this.dataset.detailView = this.browser.detailView;
     this.browser.addEventListener("caffold:git-compare-state-change", () => {
       this.dataset.detailView = this.browser.detailView;

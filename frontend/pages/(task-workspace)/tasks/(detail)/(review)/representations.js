@@ -1,7 +1,7 @@
 import {
   documentPreviewKind,
   isPreviewableImagePath,
-} from "#components/dom.js";
+} from "#components/dom.ts";
 
 export function isFileRepresentation(viewer) {
   return viewer === "source" || viewer === "preview";

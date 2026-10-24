@@ -1,4 +1,4 @@
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
 import { taskStoreOperationsPresentation } from "#app/pages/(task-workspace)/task-store-status.js";
 import { sectionLabel } from "#tasks/task-format.js";
 import { taskThreadId } from "#tasks/task-list-model.js";

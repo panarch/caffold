@@ -3,4 +3,6 @@
 
 export interface CaffoldKeyboardNavigationPresentation extends HTMLElement {
   actionHintDialog(): HTMLElement | null;
+  scrollModeHud(): HTMLElement | null;
+  scrollSurfaceSelector(): HTMLElement | null;
 }

@@ -7,9 +7,9 @@ import {
   taskAbsence,
   taskAlreadyActive,
 } from "#app/api.js";
-import { escapeHtml } from "#components/dom.js";
-import { renderInlineIcon, warmIcons } from "#components/icons.js";
-import "#components/loading-text.js";
+import { escapeHtml } from "#components/dom.ts";
+import { renderInlineIcon, warmIcons } from "#components/icons.ts";
+import "#components/loading-text.ts";
 import { TASK_ABSENCE_INTENT_EVENT } from "../components/task-absence.js";
 import { taskThreadId } from "../task-list-model.js";
 import {

@@ -3,7 +3,7 @@ import test from "node:test";
 import * as XLSX from "xlsx";
 
 import { spreadsheetWorkbook } from "../../tests/support/spreadsheet-fixture.js";
-import { colorValue, readWorkbook } from "./workbook.js";
+import { colorValue, readWorkbook } from "./workbook.ts";
 
 // Office's default theme, in the order a theme declares its colors: dark 1,
 // light 1, dark 2, light 2, six accents, and the two link colors.
