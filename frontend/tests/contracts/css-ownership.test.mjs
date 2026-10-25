@@ -110,12 +110,12 @@ const ownership = new Map([
     ["caffold-task-context-usage"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/task-turn-options.css",
-    ["caffold-task-turn-options"],
+    "pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.css",
+    ["caffold-voice-level-meter"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/voice-level-meter.css",
-    ["caffold-voice-level-meter"],
+    "pages/(task-workspace)/tasks/components/task-turn-options.css",
+    ["caffold-task-turn-options"],
   ],
   [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",

@@ -22,11 +22,11 @@ import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
 } from "#app/scroll-scope.js";
-import "#tasks/components/task-turn-options.js";
+import "#tasks/components/task-turn-options.ts";
 import type {
   CaffoldTaskTurnOptions,
   TurnOptionsSelection,
-} from "#tasks/components/task-turn-options.js";
+} from "#tasks/components/task-turn-options.ts";
 import "./task-start-dialog/components/github-issue.ts";
 import type { CaffoldGithubIssueTaskSource } from "./task-start-dialog/components/github-issue.ts";
 import "./task-start-dialog/components/github-pull.ts";

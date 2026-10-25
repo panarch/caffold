@@ -8,7 +8,7 @@ import {
   resampleLinear,
   VoiceLevelTracker,
   VoiceRecorder,
-} from "./voice-recorder.js";
+} from "./voice-recorder.ts";
 
 test("formats recording durations without an unnecessary leading hour digit", () => {
   assert.equal(formatRecordingDuration(0), "0:00");

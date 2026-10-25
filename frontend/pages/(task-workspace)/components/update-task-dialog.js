@@ -1,4 +1,4 @@
-import "#tasks/components/task-turn-options.js";
+import "#tasks/components/task-turn-options.ts";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,

@@ -6,7 +6,7 @@ import {
   directoryFieldRows,
   initialDirectoryFieldState,
   reduceDirectoryField,
-} from "./control.js";
+} from "./control.ts";
 
 const SERVER = { root: "/", homePath: "Users/me" };
 const HOME = "Users/me";

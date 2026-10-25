@@ -6,8 +6,8 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./attachments.js");
-const strip = registry.element("caffold-task-composer-attachments").prototype;
+await import("./attachments.ts");
+const Strip = registry.element("caffold-task-composer-attachments");
 after(() => registry.restore());
 
 function attachmentButton(action, id, label) {
@@ -30,20 +30,22 @@ test("offers each attachment's Preview and Remove under the Composer's ids", () 
   const removeImage = attachmentButton("remove-image", "image-a", "Remove shot.png");
   const removeFile = attachmentButton("remove-file", "file-b", "Remove server.log");
   const controls = [preview, removeImage, removeFile];
-  const owner = {
-    isConnected: true,
-    nodes: new Map([
-      ["image-a", { contains: (control) => control === preview || control === removeImage }],
-      ["file-b", { contains: (control) => control === removeFile }],
-    ]),
-    querySelectorAll(selector) {
-      const action = /data-attachment-action="([^"]+)"/.exec(selector)[1];
-      return controls.filter(({ dataset }) => dataset.attachmentAction === action);
+  const owner = Object.create(Strip.prototype, {
+    isConnected: { value: true, writable: true },
+    attachments: {
+      value: [{ id: "image-a" }, { id: "file-b" }],
+      writable: true,
     },
-    actionHintTarget: strip.actionHintTarget,
-  };
+    contains: { value: (control) => controls.includes(control) },
+    querySelectorAll: {
+      value(selector) {
+        const action = /data-attachment-action="([^"]+)"/.exec(selector)[1];
+        return controls.filter(({ dataset }) => dataset.attachmentAction === action);
+      },
+    },
+  });
 
-  const targets = strip.actionHintTargets.call(owner, {
+  const targets = owner.actionHintTargets({
     scopeId: "new",
     clipRoots: [{}],
   });
@@ -56,10 +58,10 @@ test("offers each attachment's Preview and Remove under the Composer's ids", () 
   targets.forEach((target) => target.activate());
   assert.deepEqual(controls.map(({ clicks }) => clicks), [1, 1, 1]);
 
-  owner.nodes.delete("file-b");
+  owner.attachments = [{ id: "image-a" }];
   assert.equal(targets[2].isActionable(), false, "a removed attachment's key goes with it");
   assert.equal(targets[0].isActionable(), true);
   owner.isConnected = false;
   assert.equal(targets[0].isActionable(), false);
-  assert.deepEqual(strip.actionHintTargets.call(owner, {}), []);
+  assert.deepEqual(owner.actionHintTargets({}), []);
 });

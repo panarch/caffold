@@ -5,7 +5,7 @@ const LEVEL_CEILING_DB = 0;
 const LEVEL_ATTACK_MS = 35;
 const LEVEL_RELEASE_MS = 240;
 
-export function normalizeVoiceLevel(rms) {
+export function normalizeVoiceLevel(rms: number) {
   const amplitude = Math.max(0, Number(rms) || 0);
   if (!amplitude) {
     return 0;
@@ -19,6 +19,14 @@ export function normalizeVoiceLevel(rms) {
 }
 
 export class VoiceLevelTracker {
+  private readonly intervalMs: number;
+  private readonly attackMs: number;
+  private readonly releaseMs: number;
+  private sumSquares = 0;
+  private windowSamples = 0;
+  private lastDeliveryMs: number | null = null;
+  level = 0;
+
   constructor({
     intervalMs = LEVEL_INTERVAL_MS,
     attackMs = LEVEL_ATTACK_MS,
@@ -37,7 +45,7 @@ export class VoiceLevelTracker {
     this.level = 0;
   }
 
-  capture(samples, nowMs = voiceLevelNow()) {
+  capture(samples: Float32Array | null | undefined, nowMs = voiceLevelNow()) {
     if (!samples?.length) {
       return null;
     }
@@ -84,7 +92,7 @@ export function voiceCaptureSupport() {
       message: "This browser does not support microphone capture.",
     };
   }
-  if (!(window.AudioContext || window.webkitAudioContext)) {
+  if (!window.AudioContext) {
     return {
       supported: false,
       message: "This browser does not support Web Audio capture.",
@@ -99,18 +107,41 @@ export function voiceCaptureSupport() {
   return { supported: true, message: "" };
 }
 
+export interface VoiceRecorderHandlers {
+  maxSeconds: number;
+  onElapsed?: (elapsedSeconds: number) => void;
+  onLimit?: () => void;
+  onLevel?: (level: number) => void;
+}
+
 export class VoiceRecorder {
-  constructor({ maxSeconds, onElapsed, onLimit, onLevel }) {
+  private readonly maxSeconds: number;
+  private readonly onElapsed?: (elapsedSeconds: number) => void;
+  private readonly onLimit?: () => void;
+  private readonly onLevel?: (level: number) => void;
+  private readonly levelTracker = new VoiceLevelTracker();
+  private chunks: Float32Array[] = [];
+  private sampleCount = 0;
+  private elapsedSeconds = 0;
+  private limitNotified = false;
+  private active = false;
+  private limitTimer: number | null = null;
+  private context: AudioContext | null = null;
+  private stream: MediaStream | null = null;
+  private source: MediaStreamAudioSourceNode | null = null;
+  private capture: AudioWorkletNode | null = null;
+  private silence: GainNode | null = null;
+
+  constructor({
+    maxSeconds,
+    onElapsed,
+    onLimit,
+    onLevel,
+  }: VoiceRecorderHandlers) {
     this.maxSeconds = maxSeconds;
     this.onElapsed = onElapsed;
     this.onLimit = onLimit;
     this.onLevel = onLevel;
-    this.levelTracker = new VoiceLevelTracker();
-    this.chunks = [];
-    this.sampleCount = 0;
-    this.elapsedSeconds = 0;
-    this.limitNotified = false;
-    this.active = false;
   }
 
   async start() {
@@ -127,10 +158,10 @@ export class VoiceRecorder {
     this.limitNotified = false;
     this.levelTracker.reset();
 
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    this.context = new AudioContextClass({ latencyHint: "interactive" });
+    const context = new AudioContext({ latencyHint: "interactive" });
+    this.context = context;
     try {
-      await this.context.resume();
+      await context.resume();
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
@@ -140,31 +171,28 @@ export class VoiceRecorder {
         },
         video: false,
       });
-      if (!this.context.audioWorklet) {
+      if (!context.audioWorklet) {
         throw new Error("This browser does not support AudioWorklet capture.");
       }
-      await this.context.audioWorklet.addModule(
-        new URL("./voice-worklet.js", import.meta.url),
+      await context.audioWorklet.addModule(
+        new URL("./voice-worklet.ts", import.meta.url),
       );
-      await this.context.resume();
-      this.source = this.context.createMediaStreamSource(this.stream);
-      this.capture = new AudioWorkletNode(
-        this.context,
-        "caffold-voice-capture",
-        {
-          numberOfInputs: 1,
-          numberOfOutputs: 1,
-          outputChannelCount: [1],
-          channelCount: 1,
-          channelCountMode: "explicit",
-        },
-      );
-      this.silence = this.context.createGain();
+      await context.resume();
+      this.source = context.createMediaStreamSource(this.stream);
+      this.capture = new AudioWorkletNode(context, "caffold-voice-capture", {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+        channelCount: 1,
+        channelCountMode: "explicit",
+      });
+      this.silence = context.createGain();
       this.silence.gain.value = 0;
-      this.capture.port.onmessage = (event) => this.captureChunk(event.data);
+      this.capture.port.onmessage = (event: MessageEvent<unknown>) =>
+        this.captureChunk(event.data);
       this.source.connect(this.capture);
       this.capture.connect(this.silence);
-      this.silence.connect(this.context.destination);
+      this.silence.connect(context.destination);
       this.active = true;
       this.limitTimer = window.setTimeout(
         () => this.notifyLimit(),
@@ -176,8 +204,8 @@ export class VoiceRecorder {
     }
   }
 
-  captureChunk(value, nowMs) {
-    if (!this.active || !(value instanceof Float32Array)) {
+  captureChunk(value: unknown, nowMs?: number) {
+    if (!this.active || !this.context || !(value instanceof Float32Array)) {
       return;
     }
     const maximum = Math.ceil(this.context.sampleRate * this.maxSeconds);
@@ -222,7 +250,7 @@ export class VoiceRecorder {
   }
 
   async stop() {
-    if (!this.active) {
+    if (!this.active || !this.context) {
       throw new Error("Voice recording is not active.");
     }
     this.active = false;
@@ -254,8 +282,8 @@ export class VoiceRecorder {
     this.capture?.disconnect();
     this.source?.disconnect();
     this.silence?.disconnect();
-    this.capture?.port?.close();
-    for (const track of this.stream?.getTracks?.() ?? []) {
+    this.capture?.port.close();
+    for (const track of this.stream?.getTracks() ?? []) {
       track.stop();
     }
     if (this.context && this.context.state !== "closed") {
@@ -273,25 +301,32 @@ function voiceLevelNow() {
   return globalThis.performance?.now?.() ?? Date.now();
 }
 
-function clamp(value, minimum, maximum) {
+function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-export function formatRecordingDuration(seconds) {
+export function formatRecordingDuration(seconds: number) {
   const elapsed = Math.max(0, Math.floor(Number(seconds) || 0));
   const minutes = Math.floor(elapsed / 60);
   const remainder = `${elapsed % 60}`.padStart(2, "0");
   return `${minutes}:${remainder}`;
 }
 
-export function resampleLinear(samples, sourceRate, targetRate) {
+export function resampleLinear(
+  samples: Float32Array,
+  sourceRate: number,
+  targetRate: number,
+) {
   if (sourceRate === targetRate) {
     return samples.slice();
   }
   if (sourceRate < targetRate || !sourceRate || !targetRate) {
     throw new Error("The microphone sample rate is not supported.");
   }
-  const length = Math.max(1, Math.floor(samples.length * targetRate / sourceRate));
+  const length = Math.max(
+    1,
+    Math.floor((samples.length * targetRate) / sourceRate),
+  );
   const output = new Float32Array(length);
   const ratio = sourceRate / targetRate;
   for (let index = 0; index < length; index += 1) {
@@ -304,7 +339,10 @@ export function resampleLinear(samples, sourceRate, targetRate) {
   return output;
 }
 
-export function encodePcmWav(samples, sampleRate = TARGET_SAMPLE_RATE) {
+export function encodePcmWav(
+  samples: Float32Array,
+  sampleRate = TARGET_SAMPLE_RATE,
+) {
   const buffer = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buffer);
   writeAscii(view, 0, "RIFF");
@@ -331,7 +369,7 @@ export function encodePcmWav(samples, sampleRate = TARGET_SAMPLE_RATE) {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
-function joinChunks(chunks) {
+function joinChunks(chunks: Float32Array[]) {
   const length = chunks.reduce((total, chunk) => total + chunk.length, 0);
   const samples = new Float32Array(length);
   let offset = 0;
@@ -342,7 +380,7 @@ function joinChunks(chunks) {
   return samples;
 }
 
-function writeAscii(view, offset, text) {
+function writeAscii(view: DataView, offset: number, text: string) {
   for (let index = 0; index < text.length; index += 1) {
     view.setUint8(offset + index, text.charCodeAt(index));
   }

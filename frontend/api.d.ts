@@ -145,6 +145,47 @@ export interface FileContent {
 
 export function listDirectory(path?: string): Promise<DirectoryListing>;
 
+// The models the agents offer, and the agents that could not be asked.
+export interface AgentModels {
+  models: AgentModel[];
+  unavailable: Array<{ provider: string; message: string }>;
+}
+
+export interface AgentModel {
+  provider: string;
+  model: string;
+  displayName: string;
+  isDefault: boolean;
+  defaultEffort: string | null;
+  efforts: string[];
+  supportsFastMode: boolean;
+}
+
+// The ways an agent lets a model work in a directory, as the agent offers
+// them.
+export interface AgentPermissionModes {
+  defaultMode: string;
+  options: AgentPermissionMode[];
+  fixedWhenConversationStarts: boolean;
+}
+
+export interface AgentPermissionMode {
+  mode: string;
+  label: string;
+  description: string;
+  allowed: boolean;
+  unavailableReason?: string;
+  dangerous: boolean;
+}
+
+export function getAgentModels(): Promise<AgentModels>;
+
+export function getAgentPermissions(
+  cwd?: string,
+  provider?: string,
+  model?: string,
+): Promise<AgentPermissionModes>;
+
 export function documentUrl(path: string): string;
 
 export function downloadUrl(path: string): string;
@@ -683,6 +724,26 @@ export function removePushInstallation(clientId: string): Promise<unknown>;
 export function getTailscaleStatus(): Promise<unknown>;
 
 export function setTailscaleServe(enabled: boolean): Promise<unknown>;
+
+// What the Composer needs to offer voice input.
+export interface VoiceStatus {
+  provider: string;
+  ready: boolean;
+  maxRecordingSeconds: number;
+}
+
+export function getVoiceStatus(): Promise<VoiceStatus>;
+
+// What a recording said, and which provider heard it.
+export interface VoiceTranscript {
+  text: string;
+  provider: string;
+}
+
+export function transcribeVoice(
+  recording: Blob,
+  signal?: AbortSignal,
+): Promise<VoiceTranscript>;
 
 export function getVoiceSettings(): Promise<unknown>;
 

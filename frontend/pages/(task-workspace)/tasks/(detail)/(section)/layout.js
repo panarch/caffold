@@ -1,4 +1,4 @@
-import "../../components/task-create.js";
+import "../../components/task-create.ts";
 import "./components/conversation-shortcuts.js";
 import "./components/github-shortcuts.js";
 import { cleanLogicalPath } from "../../task-format.js";

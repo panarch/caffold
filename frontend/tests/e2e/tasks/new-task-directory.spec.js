@@ -117,7 +117,9 @@ test("lines the directory up with the Composer card, joins its list below it, an
     const icon = document.querySelector(".task-directory-field-icon").getBoundingClientRect();
     const chevron = document.querySelector(".task-directory-field-chevron").getBoundingClientRect();
     const pathElement = document.querySelector(".task-directory-field-path");
-    const text = pathElement.querySelector("span").firstChild;
+    const text = [...pathElement.querySelector("span").childNodes].find(
+      (node) => node.nodeType === Node.TEXT_NODE,
+    );
     const range = document.createRange();
     range.setStart(text, text.length - 1);
     range.setEnd(text, text.length);

@@ -1,5 +1,18 @@
+// The audio thread's half of voice capture: it mixes each block of the
+// microphone to mono and posts it to the recorder.
+
+// The audio worklet's own scope, which TypeScript's DOM types do not include.
+declare abstract class AudioWorkletProcessor {
+  readonly port: MessagePort;
+}
+
+declare function registerProcessor(
+  name: string,
+  processor: new () => AudioWorkletProcessor,
+): void;
+
 class CaffoldVoiceCaptureProcessor extends AudioWorkletProcessor {
-  process(inputs, outputs) {
+  process(inputs: Float32Array[][], outputs: Float32Array[][]) {
     const input = inputs[0];
     const output = outputs[0];
     if (input?.length) {
@@ -20,3 +33,5 @@ class CaffoldVoiceCaptureProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor("caffold-voice-capture", CaffoldVoiceCaptureProcessor);
+
+export {};

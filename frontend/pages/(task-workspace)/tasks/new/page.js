@@ -5,7 +5,7 @@ import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
 } from "#app/scroll-scope.js";
-import "../components/task-create.js";
+import "../components/task-create.ts";
 
 class CaffoldTaskNew extends HTMLElement {
   connectedCallback() {

@@ -745,9 +745,10 @@ character that leaves no match is likewise consumed and closes the selection
 mode.
 
 Each registered popover retains a small shared presentation host containing its
-own Action Hint dialog, Scroll selector, and Scroll HUD. Dynamic Model and
-Permission rendering replaces only an option-content child, preserving the
-popover root and presentation identity. The selected Model and Permission
+own Action Hint dialog, Scroll selector, and Scroll HUD. Model and Permission
+rendering keeps the popover root, its presentation host, and each option
+button, keyed by what the option chooses, so a refreshed list patches a renamed
+option's label onto its retained badge. The selected Model and Permission
 options carry native `autofocus`, so the popover's initial focus is settled
 before any keyboard session is captured. Popover option targets declare
 `badgeAtEnd`, so their badges sit at the trailing edge of each row instead of
@@ -1680,7 +1681,7 @@ is still present. Only Global New represents its selected directory in
 Where the surface lets the cwd change, Task Create mounts the directory field;
 otherwise it draws the fixed path in the same place with the same insets. The
 field owns its folder list, typed path, and the listing requests behind them.
-One transition function in `task-create/components/directory-field/control.js`
+One transition function in `task-create/components/directory-field/control.ts`
 decides its closed, browsing, and editing states, so a listing answer counts
 only for the request in flight. A chosen folder leaves the field as a
 `choose-cwd` Task Create intent, and Global New updates its cwd and route. The
@@ -1977,13 +1978,13 @@ frontend/
 |           |   |   `-- components/
 |           |   |       |-- section.js
 |           |   |       `-- section/components/row.js
-|           |   |-- task-create.js
-|           |   |-- task-create/components/directory-field.js
-|           |   |-- task-turn-options.js
-|           |   |-- composer.js
-|           |   |-- composer/action-hints.js
-|           |   |-- composer/components/attachments.js
-|           |   `-- composer/components/context-usage.js
+|           |   |-- task-create.ts
+|           |   |-- task-create/components/directory-field.ts
+|           |   |-- task-turn-options.ts
+|           |   |-- composer.ts
+|           |   |-- composer/action-hints.ts
+|           |   |-- composer/components/attachments.ts
+|           |   `-- composer/components/context-usage.ts
 |           `-- (detail)/
 |               |-- layout.js
 |               |-- components/

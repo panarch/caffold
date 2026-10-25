@@ -802,59 +802,69 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/composer.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/composer.css"
         ))),
-        "pages/(task-workspace)/tasks/components/composer.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/components/composer.js"
-        ))),
-        "pages/(task-workspace)/tasks/components/composer/action-hints.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/components/composer/action-hints.js"
-            )))
+        "pages/(task-workspace)/tasks/components/composer.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/tasks/components/composer.ts"
+        )))),
+        "pages/(task-workspace)/tasks/components/composer/action-hints.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/composer/action-hints.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/components/composer/components/attachments.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/components/composer/components/attachments.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/composer/components/attachments.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/components/composer/components/attachments.js"
-            )))
+        "pages/(task-workspace)/tasks/components/composer/components/attachments.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/composer/components/attachments.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/components/composer/components/context-usage.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/components/composer/components/context-usage.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/composer/components/context-usage.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/components/composer/components/context-usage.js"
-            )))
+        "pages/(task-workspace)/tasks/components/composer/components/context-usage.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/composer/components/context-usage.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/components/task-turn-options.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/task-turn-options.css"
         ))),
-        "pages/(task-workspace)/tasks/components/task-turn-options.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/components/task-turn-options.js"
-        ))),
+        "pages/(task-workspace)/tasks/components/task-turn-options.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/task-turn-options.ts"
+            ))))
+        }
         "pages/(task-workspace)/tasks/components/task-create/components/directory-field.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/task-create/components/directory-field.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field.js"
-            )))
+        "pages/(task-workspace)/tasks/components/task-create/components/directory-field.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field.ts"
+            ))))
         }
-        "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js"
-            )))
+        "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.ts"
+            ))))
         }
-        "pages/(task-workspace)/tasks/components/task-create/directory-path.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/components/task-create/directory-path.js"
-            )))
+        "pages/(task-workspace)/tasks/components/task-create/directory-path.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/task-create/directory-path.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/components/archived-delete-dialog.css" => {
             Some(css(include_str!(
@@ -887,18 +897,29 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/voice-level-meter.css" => Some(css(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/components/voice-level-meter.css"
-        ))),
-        "pages/(task-workspace)/tasks/components/voice-level-meter.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/components/voice-level-meter.js"
-        ))),
-        "pages/(task-workspace)/tasks/components/voice-recorder.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/components/voice-recorder.js"
-        ))),
-        "pages/(task-workspace)/tasks/components/voice-worklet.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/components/voice-worklet.js"
-        ))),
+        "pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.ts"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/components/composer/voice-recorder.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/composer/voice-recorder.ts"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/components/composer/voice-worklet.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/composer/voice-worklet.ts"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.css"
         ))),
@@ -1425,9 +1446,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/task-create.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/task-create.css"
         ))),
-        "pages/(task-workspace)/tasks/components/task-create.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/components/task-create.js"
-        ))),
+        "pages/(task-workspace)/tasks/components/task-create.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/task-create.ts"
+            ))))
+        }
         "pages/(task-workspace)/tasks/new/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/new/page.css"
         ))),
@@ -2198,9 +2222,9 @@ mod tests {
             "pages/(task-workspace)/settings/grok/page.ts",
             "pages/(task-workspace)/settings/grok/display.ts",
             "pages/(task-workspace)/settings/about/page.ts",
-            "pages/(task-workspace)/tasks/components/composer/action-hints.js",
-            "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js",
-            "pages/(task-workspace)/tasks/components/task-create/directory-path.js",
+            "pages/(task-workspace)/tasks/components/composer/action-hints.ts",
+            "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.ts",
+            "pages/(task-workspace)/tasks/components/task-create/directory-path.ts",
         ] {
             let asset = get(path).unwrap_or_else(|| panic!("missing frontend asset {path}"));
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
@@ -2646,15 +2670,15 @@ mod tests {
         }
         for (path, tag) in [
             (
-                "pages/(task-workspace)/tasks/components/composer.js",
+                "pages/(task-workspace)/tasks/components/composer.ts",
                 b"caffold-task-composer".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-turn-options.js",
+                "pages/(task-workspace)/tasks/components/task-turn-options.ts",
                 b"caffold-task-turn-options".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-create/components/directory-field.js",
+                "pages/(task-workspace)/tasks/components/task-create/components/directory-field.ts",
                 b"caffold-task-directory-field".as_slice(),
             ),
             (
@@ -2774,7 +2798,7 @@ mod tests {
                 b"caffold-section-detail-summary".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-create.js",
+                "pages/(task-workspace)/tasks/components/task-create.ts",
                 b"caffold-task-create".as_slice(),
             ),
             (
@@ -2820,23 +2844,23 @@ mod tests {
         }
         for (path, marker) in [
             (
-                "pages/(task-workspace)/tasks/components/voice-level-meter.js",
+                "pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.ts",
                 b"caffold-voice-level-meter".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/composer/components/attachments.js",
+                "pages/(task-workspace)/tasks/components/composer/components/attachments.ts",
                 b"caffold-task-composer-attachments".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/composer/components/context-usage.js",
+                "pages/(task-workspace)/tasks/components/composer/components/context-usage.ts",
                 b"caffold-task-context-usage".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/voice-recorder.js",
+                "pages/(task-workspace)/tasks/components/composer/voice-recorder.ts",
                 b"VoiceRecorder".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/voice-worklet.js",
+                "pages/(task-workspace)/tasks/components/composer/voice-worklet.ts",
                 b"caffold-voice-capture".as_slice(),
             ),
         ] {
@@ -2869,12 +2893,12 @@ mod tests {
             "/assets/pages/(task-workspace)/task-store-status.js",
             "/assets/pages/(task-workspace)/task-store-status/model.js",
             "/assets/pages/(task-workspace)/task-store-status/lifecycle.js",
-            "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.css",
-            "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.js",
+            "/assets/pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.css",
+            "/assets/pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.ts",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/attachments.css",
-            "/assets/pages/(task-workspace)/tasks/components/composer/components/attachments.js",
+            "/assets/pages/(task-workspace)/tasks/components/composer/components/attachments.ts",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.css",
-            "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.js",
+            "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.ts",
             "/assets/pages/(task-workspace)/codex-status/lifecycle.js",
             "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
             "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts",
@@ -2917,7 +2941,7 @@ mod tests {
                 b"caffold-task-absence".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/voice-level-meter.css",
+                "pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.css",
                 b"caffold-voice-level-meter".as_slice(),
             ),
             (

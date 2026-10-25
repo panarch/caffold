@@ -31,7 +31,7 @@ import {
 import {
   mergeKeyboardNavigationContexts,
 } from "#app/keyboard-navigation.js";
-import "../../components/composer.js";
+import "../../components/composer.ts";
 import { TASK_ABSENCE_INTENT_EVENT } from "../../components/task-absence.js";
 import "./components/conversation.ts";
 import "./components/command-dialog.js";

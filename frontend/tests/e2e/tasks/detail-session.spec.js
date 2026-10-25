@@ -618,7 +618,7 @@ test("updates stable detail regions and preserves an active IME composition", { 
             '.task-follow-up-form textarea[name="prompt"]',
           ) ===
           window.__detailRegionNodes.prompt,
-        renderDeferred: composer.pendingRender,
+        renderDeferred: composer.drewWhileComposing,
       };
     }),
   ).toEqual({ promptPreserved: true, renderDeferred: true });
@@ -643,7 +643,7 @@ test("updates stable detail regions and preserves an active IME composition", { 
         const composer = element.querySelector(
           ".task-follow-up-composer-slot > caffold-task-composer",
         );
-        return !composer.compositionActive && !composer.pendingRender;
+        return !composer.compositionActive && !composer.drewWhileComposing;
       }),
     )
     .toBe(true);
@@ -1537,7 +1537,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   await tasksPage.evaluate((element) => {
     const detail = element.querySelector("caffold-task-detail");
     const composer = detail.followUpComposer();
-    const image = composer.stateFor().attachments[0];
+    const image = composer.state.attachments[0];
     composer.dataset.cacheIdentity = "stateful";
     window.__statefulTaskComposer = composer;
     window.__statefulTaskImage = image;
@@ -1557,7 +1557,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
     const composer = detail.followUpComposers.get(threadId);
     return {
       sameComposer: composer === window.__statefulTaskComposer,
-      sameImage: composer.stateFor().attachments[0] === window.__statefulTaskImage,
+      sameImage: composer.state.attachments[0] === window.__statefulTaskImage,
       sameAttachment:
         composer.querySelector(".task-composer-attachment") ===
         window.__statefulTaskAttachment,
@@ -1596,11 +1596,11 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
       statefulRetained: stateful === window.__statefulTaskComposer,
       statefulConnected: window.__statefulTaskComposer.isConnected,
       statefulImageRetained:
-        stateful.stateFor().attachments[0] === window.__statefulTaskImage,
+        stateful.state.attachments[0] === window.__statefulTaskImage,
       oldestCleanRetained: detail.followUpComposers.has(ids[1]),
       oldestCleanConnected: window.__oldestCleanTaskComposer.isConnected,
       activeThreadId: active?.dataset.threadId ?? "",
-      activeImageCount: active.stateFor().attachments.length,
+      activeImageCount: active.state.attachments.length,
       connectedComposers: element.querySelectorAll(
         "caffold-task-detail caffold-task-composer",
       ).length,
@@ -1677,7 +1677,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
     return {
       sameComposer: detail.followUpComposer() === window.__statefulTaskComposer,
       sameImage:
-        detail.followUpComposer().stateFor().attachments[0] ===
+        detail.followUpComposer().state.attachments[0] ===
         window.__statefulTaskImage,
     };
   });

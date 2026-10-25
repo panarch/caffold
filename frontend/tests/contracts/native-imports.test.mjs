@@ -17,7 +17,7 @@ const nodeImports = JSON.parse(
 ).imports;
 const workerEntrypoints = new Set([
   "service-worker.js",
-  "pages/(task-workspace)/tasks/components/voice-worklet.js",
+  "pages/(task-workspace)/tasks/components/composer/voice-worklet.ts",
 ]);
 
 test("native browser aliases precede app loading and match Node namespace roots", () => {

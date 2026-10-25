@@ -7,7 +7,19 @@ import { cleanLogicalPath } from "../../task-format.js";
 // reads as `~`. A server started on another root keeps paths relative to it,
 // so that relative path is what you read and type there.
 
-export function directoryPathDisplay(path, server = {}) {
+// Where the server's root and home directory are.
+export interface ServerPaths {
+  root?: string;
+  homePath?: string | null;
+}
+
+// The folder typed text asks to list and the start of a name in it, or why
+// the text names no folder.
+export type TypedDirectoryPath =
+  | { folder: string; name: string; error?: undefined }
+  | { error: string; folder?: undefined; name?: undefined };
+
+export function directoryPathDisplay(path: string, server: ServerPaths = {}) {
   const logical = cleanLogicalPath(path);
   if (!absolutePaths(server)) {
     return logical || ".";
@@ -22,7 +34,10 @@ export function directoryPathDisplay(path, server = {}) {
 
 // The text an edit starts from: the shown path ending in `/`, so the list
 // shows what is inside it.
-export function directoryPathEditingText(path, server = {}) {
+export function directoryPathEditingText(
+  path: string,
+  server: ServerPaths = {},
+) {
   if (!absolutePaths(server)) {
     const logical = cleanLogicalPath(path);
     return logical ? `${logical}/` : "";
@@ -33,14 +48,17 @@ export function directoryPathEditingText(path, server = {}) {
 
 // What typed text asks for: the folder to list, and the start of a name in it.
 // Text ending in `/` lists that folder with no name typed yet.
-export function readTypedDirectoryPath(text, server = {}) {
-  const typed = `${text ?? ""}`.trim();
+export function readTypedDirectoryPath(
+  text: string,
+  server: ServerPaths = {},
+): TypedDirectoryPath {
+  const typed = text.trim();
   const start = typedStart(typed, server);
-  if (start.error) {
+  if (start.error !== undefined) {
     return { error: start.error };
   }
   const parts = start.rest.split("/");
-  const name = parts.pop();
+  const name = parts.pop() ?? "";
   const folders = parts.filter((part) => part && part !== ".");
   if (name === ".." || folders.includes("..")) {
     return { error: "A path cannot contain “..”." };
@@ -53,26 +71,29 @@ export function readTypedDirectoryPath(text, server = {}) {
 
 // The text after Tab completes a name: what was typed up to its last `/`, the
 // name, and a `/` to list inside it.
-export function completeTypedDirectoryPath(text, name) {
-  const typed = `${text ?? ""}`.trim();
+export function completeTypedDirectoryPath(text: string, name: string) {
+  const typed = text.trim();
   const cut = typed.lastIndexOf("/");
-  const base = cut >= 0
-    ? typed.slice(0, cut + 1)
-    : typed === "~"
-      ? "~/"
-      : "";
+  const base = cut >= 0 ? typed.slice(0, cut + 1) : typed === "~" ? "~/" : "";
   return `${base}${name}/`;
 }
 
-export function matchesTypedName(entryName, name) {
-  return !name ||
-    `${entryName ?? ""}`.toLocaleLowerCase().startsWith(name.toLocaleLowerCase());
+export function matchesTypedName(entryName: string, name: string) {
+  return (
+    !name || entryName.toLocaleLowerCase().startsWith(name.toLocaleLowerCase())
+  );
 }
 
-function typedStart(typed, server) {
+function typedStart(
+  typed: string,
+  server: ServerPaths,
+): { base: string; rest: string; error?: undefined } | { error: string } {
   if (!absolutePaths(server)) {
     return typed.startsWith("/") || typed.startsWith("~")
-      ? { error: "Type the path inside the server root, without / or ~ in front." }
+      ? {
+          error:
+            "Type the path inside the server root, without / or ~ in front.",
+        }
       : { base: "", rest: typed };
   }
   const home = homeDirectory(server);
@@ -85,21 +106,20 @@ function typedStart(typed, server) {
     return { base: "", rest: typed.slice(1) };
   }
   return {
-    error: home === null
-      ? "Start the path with /."
-      : "Start the path with / or ~.",
+    error:
+      home === null ? "Start the path with /." : "Start the path with / or ~.",
   };
 }
 
-function absolutePaths(server) {
-  return `${server?.root ?? ""}` === "/";
+function absolutePaths(server: ServerPaths) {
+  return server.root === "/";
 }
 
-function homeDirectory(server) {
-  const home = cleanLogicalPath(server?.homePath ?? "");
+function homeDirectory(server: ServerPaths) {
+  const home = cleanLogicalPath(server.homePath ?? "");
   return home ? home : null;
 }
 
-function isWithin(path, folder) {
+function isWithin(path: string, folder: string) {
   return path === folder || path.startsWith(`${folder}/`);
 }

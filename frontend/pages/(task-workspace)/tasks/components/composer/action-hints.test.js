@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { collectComposerActionHintTargets } from "./action-hints.js";
+import { collectComposerActionHintTargets } from "./action-hints.ts";
 
 test("collects Model, Permission, and Prompt targets for named create and follow-up scopes", () => {
   const model = { id: "model" };

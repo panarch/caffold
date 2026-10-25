@@ -1,0 +1,319 @@
+import { html, LitElement, nothing } from "lit";
+import { repeat } from "lit/directives/repeat.js";
+import {
+  type ActionHintTarget,
+  buttonActionHintTarget,
+  hasActionHintLayoutBox,
+} from "#app/action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+import { inlineIcon } from "#components/icons.ts";
+import { requestTaskImagePreview } from "../../image-preview-dialog.js";
+
+// A file a draft will send. A picture every agent can be shown also carries
+// its contents as a data URL.
+export interface ComposerAttachment {
+  id: string;
+  file: File;
+  name: string;
+  type: string;
+  size: number;
+  imageInput: boolean;
+  dataUrl: string;
+}
+
+export interface AttachmentRemoveDetail {
+  attachmentId: string;
+}
+
+const ATTACHMENT_ACTIONS = ["preview-image", "remove-image", "remove-file"];
+// Three device pixels for each of the 72px a thumbnail takes, so it stays
+// sharp on a phone.
+const THUMBNAIL_SHORT_SIDE = 216;
+
+/**
+ * The pictures and files a draft will send, above its prompt.
+ *
+ * The Composer owns the list and hands it over each time it draws; the strip
+ * keeps one node per attachment, so a picture already shown stays as it is.
+ * A thumbnail draws a reduced copy of its picture, never the whole photo.
+ */
+export class CaffoldTaskComposerAttachments extends LitElement {
+  static properties = {
+    thumbnails: { state: true },
+  };
+
+  // The reduced copy drawn for each picture, by attachment id, once made.
+  declare private thumbnails: ReadonlyMap<string, string>;
+  private attachments: ComposerAttachment[] = [];
+  private thumbnailQueue = Promise.resolve();
+  private readonly iconsReady = () => this.requestUpdate();
+
+  constructor() {
+    super();
+    this.thumbnails = new Map();
+  }
+
+  createRenderRoot() {
+    return this;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener("caffold:icons-ready", this.iconsReady);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    window.removeEventListener("caffold:icons-ready", this.iconsReady);
+  }
+
+  // `attachments` is the Composer's list as it stands. The strip draws it at
+  // once, as part of the Composer's own drawing.
+  setAttachments(attachments: ComposerAttachment[]) {
+    if (attachments === this.attachments) {
+      return;
+    }
+    const added = attachments.filter(
+      (attachment) =>
+        attachment.imageInput &&
+        !this.attachments.some((shown) => shown.id === attachment.id),
+    );
+    this.attachments = attachments;
+    this.thumbnails = new Map(
+      [...this.thumbnails].filter(([id]) => this.holds(id)),
+    );
+    this.requestUpdate();
+    this.performUpdate();
+    for (const image of added) {
+      this.drawThumbnail(image);
+    }
+  }
+
+  render() {
+    const pictures = this.attachments.filter(({ imageInput }) => imageInput);
+    const files = this.attachments.filter(({ imageInput }) => !imageInput);
+    return html`
+      <div
+        class="task-composer-attachments"
+        aria-label="Images to send"
+        ?hidden=${!pictures.length}
+      >${repeat(
+        pictures,
+        (image) => image.id,
+        (image) => this.pictureTemplate(image),
+      )}</div>
+      <div
+        class="task-composer-files"
+        aria-label="Files to send"
+        ?hidden=${!files.length}
+      >${repeat(
+        files,
+        (file) => file.id,
+        (file) => this.fileTemplate(file),
+      )}</div>
+    `;
+  }
+
+  // Preview and Remove for each attachment, in Action Hints beside the
+  // Composer's own buttons.
+  actionHintTargets({
+    scopeId = "",
+    clipRoots = [],
+  }: {
+    scopeId?: string;
+    clipRoots?: Element[];
+  } = {}) {
+    if (!scopeId) {
+      return [];
+    }
+    return ATTACHMENT_ACTIONS.flatMap((action) =>
+      Array.from(
+        this.querySelectorAll<HTMLButtonElement>(
+          `button[data-attachment-action="${action}"]`,
+        ),
+        (control) => this.actionHintTarget(control, { scopeId, clipRoots }),
+      ).filter((target): target is ActionHintTarget => Boolean(target)),
+    );
+  }
+
+  private actionHintTarget(
+    control: HTMLButtonElement,
+    { scopeId, clipRoots }: { scopeId: string; clipRoots: Element[] },
+  ) {
+    const { attachmentAction: action, attachmentId: id } = control.dataset;
+    if (!id || control.disabled || !hasActionHintLayoutBox(control)) {
+      return null;
+    }
+    return buttonActionHintTarget({
+      invalidationOwner: this,
+      id: `task-composer:${scopeId}:${action}:${id}`,
+      actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+      label:
+        control.getAttribute("aria-label") ||
+        control.title ||
+        `${action}:${id}`,
+      control,
+      clipRoots: [...clipRoots],
+      isActionable: () =>
+        this.isConnected &&
+        this.holds(id) &&
+        this.contains(control) &&
+        !control.disabled &&
+        hasActionHintLayoutBox(control),
+    });
+  }
+
+  private pictureTemplate(image: ComposerAttachment) {
+    return html`<figure
+      class="task-composer-attachment"
+      title=${image.name}
+    ><button
+        type="button"
+        class="task-composer-attachment-preview"
+        data-attachment-action="preview-image"
+        data-attachment-id=${image.id}
+        aria-label=${`Preview ${image.name}`}
+        title="Preview image"
+        @click=${(event: Event) => this.preview(event, image)}
+      ><img
+          alt=""
+          src=${this.thumbnails.get(image.id) ?? nothing}
+        ></button><button
+        type="button"
+        class="task-composer-attachment-remove"
+        data-attachment-action="remove-image"
+        data-attachment-id=${image.id}
+        aria-label=${`Remove ${image.name}`}
+        title="Remove image"
+        @click=${(event: Event) => this.requestRemoval(event, image)}
+      >${inlineIcon(
+        "X",
+        "Remove image",
+        "task-composer-attachment-remove-icon",
+      )}</button></figure>`;
+  }
+
+  // The extension stays whole when a long name is cut short, so a file is
+  // still told apart by its kind.
+  private fileTemplate(file: ComposerAttachment) {
+    const { stem, extension } = splitFileName(file.name);
+    return html`<span
+      class="task-composer-file"
+      title=${file.name}
+    >${inlineIcon(
+      "File",
+      "File",
+      "task-composer-file-icon",
+    )}<span class="task-composer-file-name"><span
+          class="task-composer-file-stem"
+        >${stem}</span><span
+          class="task-composer-file-extension"
+        >${extension}</span></span><button
+        type="button"
+        class="task-composer-file-remove"
+        data-attachment-action="remove-file"
+        data-attachment-id=${file.id}
+        aria-label=${`Remove ${file.name}`}
+        title="Remove file"
+        @click=${(event: Event) => this.requestRemoval(event, file)}
+      >${inlineIcon(
+        "X",
+        "Remove file",
+        "task-composer-file-remove-icon",
+      )}</button></span>`;
+  }
+
+  private preview(event: Event, image: ComposerAttachment) {
+    event.stopPropagation();
+    requestTaskImagePreview(this, { src: image.dataUrl, name: image.name });
+  }
+
+  private requestRemoval(event: Event, attachment: ComposerAttachment) {
+    event.stopPropagation();
+    this.dispatchEvent(
+      new CustomEvent<AttachmentRemoveDetail>(
+        "caffold:task-composer-attachment-remove",
+        {
+          bubbles: true,
+          composed: true,
+          detail: { attachmentId: attachment.id },
+        },
+      ),
+    );
+  }
+
+  // Pictures are reduced one at a time, so several large photos attached
+  // together are not opened all at once. A picture removed in the meantime is
+  // left alone.
+  private drawThumbnail(image: ComposerAttachment) {
+    this.thumbnailQueue = this.thumbnailQueue.then(async () => {
+      if (!this.holds(image.id)) {
+        return;
+      }
+      const source = await thumbnailSource(image);
+      if (this.holds(image.id)) {
+        this.thumbnails = new Map(this.thumbnails).set(image.id, source);
+      }
+    });
+  }
+
+  private holds(id: string) {
+    return this.attachments.some((attachment) => attachment.id === id);
+  }
+}
+
+// The original when it is already small, otherwise a copy whose short side is
+// THUMBNAIL_SHORT_SIDE. A picture the browser cannot reduce stays whole.
+async function thumbnailSource(image: ComposerAttachment) {
+  let picture: ImageBitmap | null = null;
+  try {
+    picture = await createImageBitmap(image.file);
+    const scale =
+      THUMBNAIL_SHORT_SIDE / Math.min(picture.width, picture.height);
+    if (scale >= 1) {
+      return image.dataUrl;
+    }
+    const canvas = new OffscreenCanvas(
+      Math.round(picture.width * scale),
+      Math.round(picture.height * scale),
+    );
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return image.dataUrl;
+    }
+    context.imageSmoothingQuality = "high";
+    context.drawImage(picture, 0, 0, canvas.width, canvas.height);
+    return await blobAsDataUrl(
+      await canvas.convertToBlob({ type: "image/png" }),
+    );
+  } catch {
+    return image.dataUrl;
+  } finally {
+    picture?.close();
+  }
+}
+
+function blobAsDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(`${reader.result ?? ""}`), {
+      once: true,
+    });
+    reader.addEventListener("error", () => reject(reader.error), {
+      once: true,
+    });
+    reader.readAsDataURL(blob);
+  });
+}
+
+function splitFileName(name: string) {
+  const dot = name.lastIndexOf(".");
+  return dot > 0
+    ? { stem: name.slice(0, dot), extension: name.slice(dot) }
+    : { stem: name, extension: "" };
+}
+
+customElements.define(
+  "caffold-task-composer-attachments",
+  CaffoldTaskComposerAttachments,
+);

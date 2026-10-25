@@ -426,7 +426,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
     "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
   );
   const taskCreate = readFrontend(
-    "pages/(task-workspace)/tasks/components/task-create.js",
+    "pages/(task-workspace)/tasks/components/task-create.ts",
   );
   const globalNew = readFrontend(
     "pages/(task-workspace)/tasks/new/page.js",
@@ -465,7 +465,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
     /<caffold-task-review|<caffold-task-git-layout|<caffold-task-github-layout|<caffold-task-detail-summary/,
   );
 
-  assert.match(sectionLayout, /import "\.\.\/\.\.\/components\/task-create\.js"/);
+  assert.match(sectionLayout, /import "\.\.\/\.\.\/components\/task-create\.ts"/);
   assert.match(sectionLayout, /import "\.\/components\/github-shortcuts\.js"/);
   assert.match(sectionLayout, /import "\.\/components\/conversation-shortcuts\.js"/);
   assert.match(sectionLayout, /<caffold-task-create>/);
@@ -484,7 +484,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(conversationForkDialog, /createTaskFork/);
   assert.match(conversationForkDialog, /caffold:task-created/);
   assert.match(sectionLayout, /browseCwd: false/);
-  assert.match(globalNew, /import "\.\.\/components\/task-create\.js"/);
+  assert.match(globalNew, /import "\.\.\/components\/task-create\.ts"/);
   assert.match(globalNew, /browseCwd: true/);
   assert.match(taskCreate, /class CaffoldTaskCreate/);
   assert.match(taskCreate, /caffold:task-create-intent/);
