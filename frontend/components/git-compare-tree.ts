@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
   type ActionHintScope,
   type ActionHintScopeOptions,
@@ -65,11 +65,6 @@ export class CaffoldGitCompareTree extends LitElement {
 
   createRenderRoot() {
     return this;
-  }
-
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
   }
 
   render() {
@@ -160,13 +155,29 @@ export class CaffoldGitCompareTree extends LitElement {
     `;
   }
 
-  // A `.value` binding would land before the options it names.
-  updated() {
+  // A `.value` binding would land before the options it names, and the tree
+  // is handed the compared files once it is drawn.
+  updated(changed: PropertyValues) {
     const select = this.baseRefSelect();
     const { enabled, value } = this.baseSelection;
     if (enabled && select && select.value !== value) {
       select.value = value;
     }
+    const state = this.state;
+    const tree = this.fileTree();
+    if (!changed.has("state") || state.status !== "ready" || !tree) {
+      return;
+    }
+    const { nodes, fileKeyByPath } = compareNodes(
+      state.comparePayload.files ?? [],
+    );
+    this.fileKeyByPath = fileKeyByPath;
+    tree.setModel({
+      entityKey: compareEntityKey(state.comparePayload),
+      nodes,
+      selectedKey: this.selectedKey(),
+      statusColumn: true,
+    });
   }
 
   setLoading(
@@ -179,22 +190,18 @@ export class CaffoldGitCompareTree extends LitElement {
       baseRef: `${comparison.baseRef ?? ""}`,
       headRef: `${comparison.headRef ?? ""}`,
     };
-    this.showState();
   }
 
   setCompare(comparePayload: GitCompare) {
     this.state = { status: "ready", comparePayload };
-    this.showState();
   }
 
   updateCompare(comparePayload: GitCompare) {
     this.state = { status: "ready", comparePayload };
-    this.showState();
   }
 
   setError(error: Error, repository: GitRepository | null = null) {
     this.state = { status: "error", error, repository };
-    this.showState();
   }
 
   setSelectedPath(path: string | null | undefined) {
@@ -214,19 +221,16 @@ export class CaffoldGitCompareTree extends LitElement {
       refs,
       value: `${selection.value ?? ""}`,
     };
-    this.performUpdate();
   }
 
   setEmptyMessage(message: string | null | undefined) {
     this.emptyMessage = message || "No files changed.";
-    this.performUpdate();
   }
 
   reset() {
     this.selectedPath = "";
     this.baseSelection = { enabled: false, refs: [], value: "" };
     this.state = { status: "idle" };
-    this.showState();
   }
 
   captureListScroll() {
@@ -355,33 +359,12 @@ export class CaffoldGitCompareTree extends LitElement {
     };
   }
 
-  // Draws the state, and for compared files hands the tree their nodes.
-  private showState() {
-    this.performUpdate();
-    const state = this.state;
-    const tree = this.fileTree();
-    if (state.status !== "ready" || !tree) {
-      return;
-    }
-    const { nodes, fileKeyByPath } = compareNodes(
-      state.comparePayload.files ?? [],
-    );
-    this.fileKeyByPath = fileKeyByPath;
-    tree.setModel({
-      entityKey: compareEntityKey(state.comparePayload),
-      nodes,
-      selectedKey: this.selectedKey(),
-      statusColumn: true,
-    });
-  }
-
   private chooseBase(event: Event) {
     const baseRef = (event.currentTarget as HTMLSelectElement).value;
     if (!baseRef || baseRef === this.baseSelection.value) {
       return;
     }
     this.baseSelection = { ...this.baseSelection, value: baseRef };
-    this.performUpdate();
     this.dispatchEvent(
       new CustomEvent("caffold:select-compare-base", {
         bubbles: true,

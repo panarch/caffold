@@ -1,10 +1,71 @@
-import { fileNameFromPath } from "#components/dom.ts";
-import { fileRepresentationCapabilities } from "../../representations.js";
+import type {
+  DirectoryEntry,
+  GitChangedFile,
+  GitCompareFile,
+  GitDiff,
+} from "#app/api.js";
+import { type DocumentPreviewKind, fileNameFromPath } from "#components/dom.ts";
+import {
+  fileRepresentationCapabilities,
+  type ReviewViewer,
+} from "../../representations.ts";
+
+// What the shown Working Tree or Branch changes say about one file.
+export interface ReviewChange {
+  file: GitChangedFile | GitCompareFile;
+  deleted: boolean;
+  kind: string;
+}
+
+export interface ReviewChanges {
+  ready: boolean;
+  outdated: boolean;
+  failed: boolean;
+  error: Error | null;
+  change: ReviewChange | null;
+  diffKind: string;
+  readDiff: (() => Promise<GitDiff>) | null;
+}
+
+// The selected file in its representation, with what the shown changes say
+// about it.
+export interface ReviewView {
+  stateKey: string;
+  scope: string;
+  path: string;
+  logicalPath: string;
+  representation: ReviewViewer;
+  line: number | null;
+  entry: DirectoryEntry | null;
+  changes: ReviewChanges;
+}
+
+export type ReviewContent =
+  | { kind: "unchanged" }
+  | { kind: "loading" }
+  | { kind: "error"; error: Error | null }
+  | {
+      kind: "notice";
+      message: string;
+      options: { actionLabel?: string; action?: string; title?: string };
+    }
+  | { kind: "document"; documentKind: DocumentPreviewKind }
+  | { kind: "image" }
+  | { kind: "markdown" }
+  | { kind: "file" }
+  | { kind: "diff"; change: ReviewChange | null };
 
 // What the viewer shows for the selected file in its representation, from what
 // the shown Working Tree or Branch changes say about that file. "unchanged"
 // keeps whatever the viewer holds until the changes are read.
-export function contentFor({ logicalPath, representation, changes }) {
+export function contentFor({
+  logicalPath,
+  representation,
+  changes,
+}: Pick<
+  ReviewView,
+  "logicalPath" | "representation" | "changes"
+>): ReviewContent {
   const sourceMode = representation === "source";
   const previewMode = representation === "preview";
   const fileMode = sourceMode || previewMode;
@@ -61,6 +122,9 @@ export function contentFor({ logicalPath, representation, changes }) {
   return { kind: "diff", change };
 }
 
-function notice(message, options) {
+function notice(
+  message: string,
+  options: { actionLabel?: string; action?: string; title?: string },
+): ReviewContent {
   return { kind: "notice", message, options };
 }

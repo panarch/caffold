@@ -11,7 +11,7 @@ globalThis.window = {
   matchMedia: () => ({ matches: singlePane }),
 };
 const registry = installCustomElementUnitRegistry();
-await import("./page.js");
+await import("./page.ts");
 const page = registry.element("caffold-github-pull-files-page").prototype;
 after(() => {
   registry.restore();
@@ -58,7 +58,6 @@ test("composes active PR tree/viewer actions and Scroll leaves", () => {
     fileViewer,
     panelResizer,
     sidePaneCollapsed: page.sidePaneCollapsed,
-    ensureRendered() {},
     currentPullNumber: () => 7,
   };
 

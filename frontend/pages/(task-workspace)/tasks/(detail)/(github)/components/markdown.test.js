@@ -6,16 +6,16 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./markdown.js");
+await import("./markdown.ts");
 const markdown = registry.element("caffold-github-markdown").prototype;
 after(() => registry.restore());
 
 test("provides the Issue Markdown host without inspecting Shadow DOM", () => {
-  const shadowRoot = { querySelector: () => null };
+  const renderRoot = { querySelector: () => null };
   const owner = {
     hidden: false,
     isConnected: true,
-    shadowRoot,
+    renderRoot,
     scrollSurfaceRecords: [],
     clientHeight: 100,
     scrollHeight: 320,
@@ -28,7 +28,7 @@ test("provides the Issue Markdown host without inspecting Shadow DOM", () => {
   });
   assert.equal(scope.surfaces[0].scrollport, owner);
   assert.deepEqual(scope.surfaces[0].axes, ["vertical", "horizontal"]);
-  assert.deepEqual(scope.mutationRoots, [owner, shadowRoot]);
+  assert.deepEqual(scope.mutationRoots, [owner, renderRoot]);
   assert.equal(scope.surfaces[0].isEligible(), true);
   current = false;
   assert.equal(scope.surfaces[0].isEligible(), false);
@@ -40,7 +40,7 @@ test("composes retained Shadow DOM code and table scrollports", () => {
   const body = {
     contains: (element) => [code, table].includes(element),
   };
-  const shadowRoot = {
+  const renderRoot = {
     querySelector: () => body,
   };
   const codeRecord = {
@@ -58,7 +58,7 @@ test("composes retained Shadow DOM code and table scrollports", () => {
   const owner = layoutElement({
     hidden: false,
     isConnected: true,
-    shadowRoot,
+    renderRoot,
     scrollSurfaceRecords: [codeRecord, tableRecord],
   });
 
@@ -92,7 +92,7 @@ test("composes retained Shadow DOM code and table scrollports", () => {
   assert.equal(scope.surfaces[1].isEligible(), false);
   assert.deepEqual(
     new Set(scope.mutationRoots),
-    new Set([owner, shadowRoot]),
+    new Set([owner, renderRoot]),
   );
 });
 
@@ -125,14 +125,15 @@ test("provides retained sanitized Shadow DOM links and table scroll roots", () =
   const body = {
     contains: (element) => [control, tableScrollRoot].includes(element),
   };
-  const shadowRoot = {
+  const renderRoot = {
     querySelector: () => body,
   };
   const owner = {
     actionHintLinks: [record],
+    actionHintDisclosures: [],
     hidden: false,
     isConnected: true,
-    shadowRoot,
+    renderRoot,
   };
   const scope = markdown.actionHintScope.call(owner, {
     scopeId: "github:issue:42:body",
@@ -140,7 +141,7 @@ test("provides retained sanitized Shadow DOM links and table scroll roots", () =
 
   assert.equal(scope.targets[0].id, "github:issue:42:body:link:1");
   assert.equal(scope.targets[0].label, "Open Repository in a new tab");
-  assert.deepEqual(scope.mutationRoots, [owner, shadowRoot]);
+  assert.deepEqual(scope.mutationRoots, [owner, renderRoot]);
   assert.deepEqual(scope.scrollRoots, [owner, tableScrollRoot]);
   assert.equal(scope.targets[0].isActionable(), true);
   attributes.set("target", "_self");
@@ -161,7 +162,7 @@ test("declares each folded section's summary and names it by its open state", ()
     actionHintDisclosures: [{ details, summary, ordinal: 2 }],
     hidden: false,
     isConnected: true,
-    shadowRoot: { querySelector: () => body },
+    renderRoot: { querySelector: () => body },
   };
   const scope = () => markdown.actionHintScope.call(owner, {
     scopeId: "github:pull:7:body",
@@ -211,7 +212,7 @@ test("leaves out what a closed section folds away, though it has a layout box", 
     ],
     hidden: false,
     isConnected: true,
-    shadowRoot: { querySelector: () => body },
+    renderRoot: { querySelector: () => body },
   };
   const labels = () => markdown.actionHintScope.call(owner, {
     scopeId: "github:pull:7:body",

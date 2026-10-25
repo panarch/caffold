@@ -9,7 +9,7 @@ import { warmIcons } from "./icons.ts";
 import "./pagination/components/button.ts";
 import type { CaffoldPaginationButton } from "./pagination/components/button.ts";
 
-class CaffoldPagination extends LitElement {
+export class CaffoldPagination extends LitElement {
   static properties = {
     page: { type: Number },
     totalPages: { type: Number, attribute: "total-pages" },

@@ -1208,69 +1208,85 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(review)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(review)/layout.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.js"
-        ))),
-        "pages/(task-workspace)/tasks/(detail)/(review)/layout/paths.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout/paths.js"
-        ))),
-        "pages/(task-workspace)/tasks/(detail)/(review)/layout/route.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout/route.js"
-        ))),
-        "pages/(task-workspace)/tasks/(detail)/(review)/changes-reading.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/changes-reading.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(review)/layout.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.ts"
+            ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/representations.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/representations.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(review)/layout/paths.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout/paths.ts"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/layout/route.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout/route.ts"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/changes-reading.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/changes-reading.ts"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/representations.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/representations.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.ts"
+            ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file/content.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file/content.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file/content.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file/content.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/components/active-task-list.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/active-task-list.css"
@@ -1353,25 +1369,30 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(git)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(git)/layout.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.js"
-        ))),
+        "pages/(task-workspace)/tasks/(detail)/(git)/layout.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.ts"
+        )))),
         "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/components/controls.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/components/controls.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js"
-        ))),
+        "pages/(task-workspace)/tasks/(detail)/(git)/compare/page.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/compare/page.ts"
+            ))))
+        }
         "components/git-compare-browser.css" => Some(css(include_str!(
             "../../frontend/components/git-compare-browser.css"
         ))),
@@ -1389,157 +1410,180 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.js"
-        ))),
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.ts"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.js"
-        ))),
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.ts"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(github)/layout.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/layout.js"
-        ))),
-        "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(github)/layout.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/layout.ts"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.ts"
+            ))))
         }
         "components/file-viewer/components/code-viewer.css" => Some(css(include_str!(
             "../../frontend/components/file-viewer/components/code-viewer.css"
@@ -2154,7 +2198,7 @@ mod tests {
 
         assert!(get("pages/(review-workspace)/layout.css").is_none());
 
-        let git_review_layout = get("pages/(task-workspace)/tasks/(detail)/(git)/layout.js")
+        let git_review_layout = get("pages/(task-workspace)/tasks/(detail)/(git)/layout.ts")
             .expect("git review layout js");
         assert_eq!(
             git_review_layout.content_type,
@@ -2168,7 +2212,7 @@ mod tests {
                 .any(|window| window == b"caffold-task-git-layout")
         );
         let git_review_controls =
-            get("pages/(task-workspace)/tasks/(detail)/(git)/components/controls.js")
+            get("pages/(task-workspace)/tasks/(detail)/(git)/components/controls.ts")
                 .expect("git review controls js");
         assert_eq!(
             git_review_controls.content_type,
@@ -2204,7 +2248,7 @@ mod tests {
         assert_eq!(pane_resizer_css.content_type, "text/css; charset=utf-8");
         assert!(pane_resizer_css.body.starts_with(b"caffold-pane-resizer"));
 
-        let compare_page = get("pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js")
+        let compare_page = get("pages/(task-workspace)/tasks/(detail)/(git)/compare/page.ts")
             .expect("compare page js");
         assert_eq!(compare_page.content_type, "text/javascript; charset=utf-8");
         assert!(compare_page.body.starts_with(b"import "));
@@ -2668,19 +2712,19 @@ mod tests {
                 b"caffold-task-detail-info-actions".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",
+                "pages/(task-workspace)/tasks/(detail)/(review)/layout.ts",
                 b"caffold-task-review".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.js",
+                "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.ts",
                 b"caffold-review-working-tree-changes".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.js",
+                "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.ts",
                 b"caffold-review-branch-changes".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.js",
+                "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.ts",
                 b"caffold-review-selected-file".as_slice(),
             ),
         ] {
@@ -2935,7 +2979,7 @@ mod tests {
         assert!(get("pages/tasks/page.css").is_none());
 
         let diff_changes_tree =
-            get("pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.js")
+            get("pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.ts")
                 .expect("integrated review changes tree js");
         assert_eq!(
             diff_changes_tree.content_type,
@@ -2950,7 +2994,7 @@ mod tests {
         assert!(get("components/git-diff-browser.js").is_none());
         assert!(get("pages/(task-workspace)/tasks/(detail)/(git)/diff/page.js").is_none());
 
-        let github_review_layout = get("pages/(task-workspace)/tasks/(detail)/(github)/layout.js")
+        let github_review_layout = get("pages/(task-workspace)/tasks/(detail)/(github)/layout.ts")
             .expect("github review layout js");
         assert_eq!(
             github_review_layout.content_type,
@@ -2964,7 +3008,7 @@ mod tests {
                 .any(|window| window == b"caffold-task-github-layout")
         );
         let github_markdown =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts")
                 .expect("github markdown component js");
         assert_eq!(
             github_markdown.content_type,
@@ -2979,7 +3023,7 @@ mod tests {
         );
 
         let issues_layout =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.ts")
                 .expect("issues layout js");
         assert_eq!(issues_layout.content_type, "text/javascript; charset=utf-8");
         assert!(issues_layout.body.starts_with(b"import "));
@@ -2991,7 +3035,7 @@ mod tests {
         );
 
         let issues_list_page =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.ts")
                 .expect("issues list page js");
         assert_eq!(
             issues_list_page.content_type,
@@ -3006,7 +3050,7 @@ mod tests {
         );
 
         let issue_detail_page =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.ts")
                 .expect("issue detail page js");
         assert_eq!(
             issue_detail_page.content_type,
@@ -3020,7 +3064,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-issue-detail-page")
         );
         let github_task_start_dialog =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.ts")
                 .expect("github task start dialog js");
         assert_eq!(
             github_task_start_dialog.content_type,
@@ -3033,7 +3077,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-task-start-dialog")
         );
         let github_issue_task_source = get(
-            "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.js",
+            "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.ts",
         )
         .expect("github issue task source js");
         assert!(
@@ -3043,7 +3087,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-issue-task-source")
         );
         let github_pull_task_source = get(
-            "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.js",
+            "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.ts",
         )
         .expect("github pull task source js");
         assert!(
@@ -3056,7 +3100,7 @@ mod tests {
         assert!(get("components/github-issue-viewer.js").is_none());
         assert!(get("components/github-markdown.js").is_none());
 
-        let pulls_layout = get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.js")
+        let pulls_layout = get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.ts")
             .expect("pulls layout js");
         assert_eq!(pulls_layout.content_type, "text/javascript; charset=utf-8");
         assert!(pulls_layout.body.starts_with(b"import "));
@@ -3068,7 +3112,7 @@ mod tests {
         );
 
         let pulls_list_page =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.ts")
                 .expect("pulls list page js");
         assert_eq!(
             pulls_list_page.content_type,
@@ -3083,7 +3127,7 @@ mod tests {
         );
 
         let pull_detail_page =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.ts")
                 .expect("pull detail page js");
         assert_eq!(
             pull_detail_page.content_type,
@@ -3098,7 +3142,7 @@ mod tests {
         );
 
         let pull_files_page =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.ts")
                 .expect("pull files page js");
         assert_eq!(
             pull_files_page.content_type,
@@ -3112,7 +3156,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-pull-files-page")
         );
         let pull_files_tree =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.ts")
                 .expect("pull files tree js");
         assert_eq!(
             pull_files_tree.content_type,
@@ -3208,7 +3252,7 @@ mod tests {
         assert!(get("watch.test.js").is_none());
         assert!(get("pages/(task-workspace)/codex-status/model.test.js").is_none());
         assert!(get("pages/(task-workspace)/tasks/task-format.test.js").is_none());
-        let log_layout = get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.js")
+        let log_layout = get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.ts")
             .expect("git log layout js asset");
         assert_eq!(log_layout.content_type, "text/javascript; charset=utf-8");
         assert!(log_layout.body.starts_with(b"import "));
@@ -3218,7 +3262,7 @@ mod tests {
                 .windows(b"caffold-git-log-layout".len())
                 .any(|window| window == b"caffold-git-log-layout")
         );
-        let log_list_page = get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.js")
+        let log_list_page = get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.ts")
             .expect("log list page js asset");
         assert_eq!(log_list_page.content_type, "text/javascript; charset=utf-8");
         assert!(log_list_page.body.starts_with(b"import "));
@@ -3229,7 +3273,7 @@ mod tests {
                 .any(|window| window == b"caffold-git-log-list-page")
         );
         let log_commit_page =
-            get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js")
+            get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.ts")
                 .expect("log commit page js asset");
         assert_eq!(
             log_commit_page.content_type,
@@ -3243,7 +3287,7 @@ mod tests {
                 .any(|window| window == b"caffold-git-log-commit-page")
         );
         let commit_tree_component = get(
-            "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.js",
+            "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.ts",
         )
         .expect("commit changes tree component js asset");
         assert_eq!(

@@ -6,7 +6,7 @@ import {
 } from "../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./layout.js");
+await import("./layout.ts");
 const githubLayout = registry.element("caffold-task-github-layout").prototype;
 after(() => registry.restore());
 
@@ -20,8 +20,7 @@ test("merges GitHub chrome with only the active Issues or Pulls child", () => {
     mode: "issues",
     repository: { rootPath: "/repo" },
     currentPath: "/repo",
-    backButton: back,
-    ensureRendered() {},
+    scopeId: githubLayout.scopeId,
     querySelector(selector) {
       return selector.includes("task-domain-body") ? {} : back;
     },
@@ -74,8 +73,7 @@ test("binds domain Back to its canonical GitHub parent", () => {
     mode: "pulls",
     repository: { rootPath: "/repo" },
     currentPath: "/repo",
-    backButton: back,
-    ensureRendered() {},
+    scopeId: githubLayout.scopeId,
     routeForWorkspaceBack: () => parentRoute,
     querySelector(selector) {
       return selector.includes("task-domain-body") ? {} : back;
@@ -105,7 +103,7 @@ test("merges Task Start contexts independently from the active GitHub child", ()
     mode: "pulls",
     repository: { rootPath: "/repo" },
     currentPath: "/repo",
-    ensureRendered() {},
+    scopeId: githubLayout.scopeId,
     pullsLayout: {
       keyboardNavigationContexts(options) {
         assert.equal(options.scopeId, "github:%2Frepo:pulls");
@@ -137,7 +135,7 @@ test("delegates Scroll only to the active GitHub domain child", () => {
     mode: "issues",
     repository: { rootPath: "/repo" },
     currentPath: "/repo",
-    ensureRendered() {},
+    scopeId: githubLayout.scopeId,
     querySelector: () => ({}),
     issuesLayout: {
       scrollSurfaceScope: () => ({ surfaces: [issuesSurface] }),

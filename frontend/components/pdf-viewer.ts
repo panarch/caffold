@@ -5,6 +5,7 @@ import {
   type ScrollSurfaceScope,
   type ScrollSurfaceScopeOptions,
 } from "../scroll-scope.js";
+import type { DocumentPreviewFile } from "./dom.ts";
 import "./loading-text.ts";
 
 const PDFJS_VERSION = "6.3.289";
@@ -64,10 +65,12 @@ let libraryPromise: Promise<PdfJs> | undefined;
 
 class CaffoldPdfViewer extends LitElement {
   static properties = {
+    file: { attribute: false },
     renderState: { state: true },
     pages: { state: true },
   };
 
+  declare file: DocumentPreviewFile | null;
   declare private renderState: RenderState;
   declare private pages: PageRecord[] | null;
   private generation = 0;
@@ -78,6 +81,7 @@ class CaffoldPdfViewer extends LitElement {
 
   constructor() {
     super();
+    this.file = null;
     this.renderState = "empty";
     this.pages = null;
   }
@@ -90,7 +94,6 @@ class CaffoldPdfViewer extends LitElement {
     super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "PDF preview");
-    this.performUpdate();
   }
 
   disconnectedCallback() {
@@ -114,19 +117,19 @@ class CaffoldPdfViewer extends LitElement {
     return html`<div class="pdf-viewer-body">${content}</div>`;
   }
 
+  // A file handed over again before it is drawn replaces the one before it.
+  willUpdate(changed: PropertyValues) {
+    if (changed.has("file") && this.file) {
+      this.release();
+      this.renderState = "loading";
+      void this.open(this.generation, this.file.file);
+    }
+  }
+
   updated(changed: PropertyValues) {
     if (changed.has("renderState")) {
       this.dataset.renderState = this.renderState;
     }
-  }
-
-  // Opens the file the file viewer fetched for it: a Blob, or the promise of
-  // one, which fails when the fetch does.
-  setFile(file: Blob | Promise<Blob>) {
-    this.release();
-    this.renderState = "loading";
-    this.performUpdate();
-    void this.open(this.generation, file);
   }
 
   scrollSurfaceScope({
@@ -206,7 +209,7 @@ class CaffoldPdfViewer extends LitElement {
       return;
     }
 
-    this.pages = pages.map((page, index) => {
+    const records: PageRecord[] = pages.map((page, index) => {
       // The page box carries the document's own geometry the way an image
       // carries its intrinsic size; CSS still decides how it is placed and
       // constrained.
@@ -221,15 +224,19 @@ class CaffoldPdfViewer extends LitElement {
       element.style.aspectRatio = `${viewport.width} / ${viewport.height}`;
       return { page, viewport, element, renderedWidth: 0, task: null };
     });
+    this.pages = records;
     this.renderState = "pdf";
-    this.performUpdate();
+    await this.updateComplete;
+    if (!this.isCurrent(generation)) {
+      return;
+    }
 
     this.visiblePages = new Set();
     this.pageObserver = new IntersectionObserver(
       (entries) => this.observePages(generation, entries),
       { root: this, rootMargin: NEARBY_PAGE_MARGIN },
     );
-    for (const record of this.pages) {
+    for (const record of records) {
       this.pageObserver.observe(record.element);
     }
     this.widthObserver = new ResizeObserver(() =>

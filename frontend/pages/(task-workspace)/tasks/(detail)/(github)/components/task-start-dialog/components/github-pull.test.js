@@ -6,7 +6,7 @@ import {
 } from "../../../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./github-pull.js");
+await import("./github-pull.ts");
 const pullSource = registry.element("caffold-github-pull-task-source").prototype;
 after(() => registry.restore());
 

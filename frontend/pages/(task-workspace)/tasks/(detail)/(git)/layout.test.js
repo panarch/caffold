@@ -6,7 +6,7 @@ import {
 } from "../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./layout.js");
+await import("./layout.ts");
 const gitLayout = registry.element("caffold-task-git-layout").prototype;
 after(() => registry.restore());
 
@@ -20,11 +20,11 @@ test("merges Git chrome with only the active Compare or Log child", () => {
     mode: "compare",
     repository: { rootPath: "/repo" },
     currentPath: "/repo",
-    backButton: back,
-    ensureRendered() {},
+    scopeId: gitLayout.scopeId,
     querySelector(selector) {
       return selector.includes("task-domain-body") ? {} : back;
     },
+    controls: { actionHintScope: () => null },
     comparePage: {
       actionHintScope() {
         calls.compare += 1;
@@ -55,7 +55,7 @@ test("delegates Scroll only to the active Git route", () => {
     mode: "compare",
     repository: { rootPath: "/repo" },
     currentPath: "/repo",
-    ensureRendered() {},
+    scopeId: gitLayout.scopeId,
     querySelector: () => ({}),
     comparePage: {
       scrollSurfaceScope: () => ({ surfaces: [compareSurface] }),

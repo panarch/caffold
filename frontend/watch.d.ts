@@ -17,7 +17,14 @@ export interface WatchChange {
   paths?: string[];
   overflow?: boolean;
   revision?: unknown;
+  gitStatusChanged?: boolean;
+  gitRefsChanged?: boolean;
 }
+
+export function watchChangeAffectsPath(
+  change: WatchChange | null | undefined,
+  path: string,
+): boolean;
 
 export function subscribeToWatch(
   liveUpdates: unknown,

@@ -79,7 +79,12 @@ class CaffoldTaskArchivedDeleteDialog extends LitElement {
     `;
   }
 
-  openTask(task: { title?: string | null } | null | undefined) {
+  openTask(
+    task:
+      | { threadId?: string | null; id?: string | null; title?: string | null }
+      | null
+      | undefined,
+  ) {
     const threadId = taskThreadId(task);
     if (!threadId) {
       return;

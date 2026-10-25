@@ -58,7 +58,7 @@ test("browses source through the shared Files navigator and one root watch", { t
     taskReview.getByRole("button", { name: "Files", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   if (testInfo.project.name === "phone") {
-    await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
+    await taskReview.evaluate((review) => review.updateRoute({ viewer: "source" }));
   } else {
     await activateActionHint(page, /Show Source$/);
   }
@@ -905,7 +905,7 @@ test("selects supported source and preview representations for images", { tag: "
     await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
     await taskReview.getByRole("button", { name: "Files", exact: true }).click();
     if (testInfo.project.name === "phone") {
-      await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
+      await taskReview.evaluate((review) => review.updateRoute({ viewer: "source" }));
     } else {
       await taskReview.getByRole("button", { name: "Source", exact: true }).click();
     }

@@ -13,6 +13,7 @@ import {
   type ScrollSurfaceScope,
   type ScrollSurfaceScopeOptions,
 } from "../scroll-scope.js";
+import type { DocumentPreviewFile } from "./dom.ts";
 import "./loading-text.ts";
 
 const PPTX_RENDERER_VERSION = "1.3.0";
@@ -95,10 +96,12 @@ let libraryPromise: Promise<PptxRenderer> | undefined;
 
 class CaffoldPptxViewer extends LitElement {
   static properties = {
+    file: { attribute: false },
     renderState: { state: true },
     mount: { state: true },
   };
 
+  declare file: DocumentPreviewFile | null;
   declare private renderState: RenderState;
   declare private mount: HTMLElement | null;
   private generation = 0;
@@ -107,6 +110,7 @@ class CaffoldPptxViewer extends LitElement {
 
   constructor() {
     super();
+    this.file = null;
     this.renderState = "empty";
     this.mount = null;
   }
@@ -119,7 +123,6 @@ class CaffoldPptxViewer extends LitElement {
     super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "PowerPoint preview");
-    this.performUpdate();
   }
 
   disconnectedCallback() {
@@ -143,19 +146,19 @@ class CaffoldPptxViewer extends LitElement {
     return html`<div class="pptx-viewer-body">${content}</div>`;
   }
 
+  // A file handed over again before it is drawn replaces the one before it.
+  willUpdate(changed: PropertyValues) {
+    if (changed.has("file") && this.file) {
+      this.release();
+      this.renderState = "loading";
+      void this.open(this.generation, this.file.file);
+    }
+  }
+
   updated(changed: PropertyValues) {
     if (changed.has("renderState")) {
       this.dataset.renderState = this.renderState;
     }
-  }
-
-  // Opens the file the file viewer fetched for it: a Blob, or the promise of
-  // one, which fails when the fetch does.
-  setFile(file: Blob | Promise<Blob>) {
-    this.release();
-    this.renderState = "loading";
-    this.performUpdate();
-    void this.open(this.generation, file);
   }
 
   scrollSurfaceScope({
@@ -274,6 +277,10 @@ class CaffoldPptxViewer extends LitElement {
         lazySlides: true,
       });
       const container = this.mountDocument();
+      await this.updateComplete;
+      if (!this.isCurrent(generation)) {
+        return;
+      }
       // `contain` scales a slide to its container's width, so a container no
       // wider than the slide keeps a wide panel from enlarging it.
       container.style.maxWidth = `${presentation.width}px`;
@@ -322,7 +329,6 @@ class CaffoldPptxViewer extends LitElement {
     });
     this.slideObserver.observe(container, { childList: true, subtree: true });
     this.mount = mount;
-    this.performUpdate();
     return container;
   }
 

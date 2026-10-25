@@ -6,7 +6,7 @@ import {
 } from "../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./layout.js");
+await import("./layout.ts");
 const review = registry.element("caffold-task-review").prototype;
 after(() => registry.restore());
 
@@ -35,7 +35,6 @@ test("merges Review axes with only the active navigator and selected viewer", ()
     task: { threadId: "thread-a", worktree: { rootPath: "/repo" } },
     contextKey: "thread-a\0/repo\0/repo",
     route: { navigator: "changes", scope: "working", viewer: "diff", path: "" },
-    ensureRendered() {},
     querySelector(selector) {
       if (selector.includes("navigator-pane")) return panes.navigator;
       if (selector.includes("viewer-pane")) return panes.viewer;
@@ -44,34 +43,35 @@ test("merges Review axes with only the active navigator and selected viewer", ()
     axisControl(axis) {
       return { actionHintScope: () => scope(`${axis}-axis`) };
     },
-    workingTreeChanges() {
-      return { actionHintScope: (options) => {
+    workingTreeChanges: {
+      actionHintScope: (options) => {
         calls.working += 1;
         actionOptions.working = options;
         return scope("working");
-      } };
+      },
     },
-    branchChanges() {
-      return { actionHintScope: (options) => {
+    branchChanges: {
+      actionHintScope: (options) => {
         calls.branch += 1;
         actionOptions.branch = options;
         return scope("branch");
-      } };
+      },
     },
-    fileNavigator() {
-      return { actionHintScope: (options) => {
+    fileNavigator: {
+      actionHintScope: (options) => {
         calls.files += 1;
         actionOptions.files = options;
         return scope("files");
-      } };
+      },
     },
-    selectedFile() {
-      return { actionHintScope: (options) => {
+    selectedFile: {
+      actionHintScope: (options) => {
         calls.viewer += 1;
         actionOptions.viewer = options;
         return scope("viewer");
-      } };
+      },
     },
+    resizer: { actionHintScope: () => null },
   };
 
   assert.deepEqual(
@@ -131,13 +131,12 @@ test("composes the shared Review panel resizer through its public scope", () => 
     task: { threadId: "thread-a" },
     contextKey: "thread-a\0/repo",
     route: { navigator: "changes", scope: "working", path: "" },
-    ensureRendered() {},
     querySelector() {
       return { getClientRects: () => [{}] };
     },
-    axisControl: () => null,
-    workingTreeChanges: () => ({ actionHintScope: () => scope("working") }),
-    resizer: () => panelResizer,
+    axisControl: () => ({ actionHintScope: () => null }),
+    workingTreeChanges: { actionHintScope: () => scope("working") },
+    resizer: panelResizer,
   };
 
   assert.deepEqual(
@@ -166,18 +165,15 @@ test("merges only visible Review navigator and viewer Scroll leaves", () => {
     task: { threadId: "thread-a" },
     contextKey: "thread-a\0/repo",
     route: { navigator: "changes", scope: "working", path: "src/a.js" },
-    ensureRendered() {},
     querySelector(selector) {
       return selector.includes("navigator-pane") ? panes.navigator : panes.viewer;
     },
-    workingTreeChanges: () => ({
+    workingTreeChanges: {
       scrollSurfaceScope: () => ({ surfaces: [navigatorSurface] }),
-    }),
-    branchChanges: () => null,
-    fileNavigator: () => null,
-    selectedFile: () => ({
+    },
+    selectedFile: {
       scrollSurfaceScope: () => ({ surfaces: [viewerSurface] }),
-    }),
+    },
   };
 
   assert.deepEqual(

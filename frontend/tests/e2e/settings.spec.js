@@ -2795,8 +2795,9 @@ test("updates independent ranges live without replacing their DOM", { tag: "@all
   const semanticProbe = await page.evaluate(async () => {
     await customElements.whenDefined("caffold-task-composer");
     const github = document.createElement("caffold-github-markdown");
-    github.setHtml("<p>Conversation <code>code</code></p>");
+    github.html = "<p>Conversation <code>code</code></p>";
     document.body.append(github);
+    await github.updateComplete;
     const githubBody = github.shadowRoot.querySelector("p");
     const githubCode = github.shadowRoot.querySelector("code");
 
@@ -3246,8 +3247,9 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
     host.append(composer);
 
     const github = document.createElement("caffold-github-markdown");
-    github.setHtml("<p>Long-form review <code>const value = 1;</code></p>");
+    github.html = "<p>Long-form review <code>const value = 1;</code></p>";
     host.append(github);
+    await github.updateComplete;
 
     const approvalText = approval.querySelector("p");
     const approvalCode = approval.querySelector("pre");
@@ -3769,9 +3771,8 @@ async function representativeThemeStyles(page) {
     diff.style.cssText =
       "position:fixed;inset:auto auto 0 -10000px;width:20rem;height:10rem";
     document.body.append(diff);
-    diff.setDiff({
-      diff: "@@ -1 +1 @@\n-old line\n+new line",
-    });
+    diff.diff = { diff: "@@ -1 +1 @@\n-old line\n+new line" };
+    await diff.updateComplete;
 
     const colorPair = (element) => {
       const style = getComputedStyle(element);

@@ -8,7 +8,7 @@ import {
 const previousCss = globalThis.CSS;
 globalThis.CSS = { escape: (value) => `${value}` };
 const registry = installCustomElementUnitRegistry();
-await import("./page.js");
+await import("./page.ts");
 const page = registry.element("caffold-github-pulls-list-page").prototype;
 after(() => {
   registry.restore();

@@ -15,6 +15,7 @@ import {
   type ScrollSurfaceScope,
   type ScrollSurfaceScopeOptions,
 } from "../scroll-scope.js";
+import type { DocumentPreviewFile } from "./dom.ts";
 import "./loading-text.ts";
 import "./segmented-control.ts";
 import type { CaffoldSegmentedControl } from "./segmented-control.ts";
@@ -53,10 +54,12 @@ let libraryPromise: Promise<SheetJs> | undefined;
 
 class CaffoldXlsxViewer extends LitElement {
   static properties = {
+    file: { attribute: false },
     renderState: { state: true },
     visibleSheets: { state: true },
   };
 
+  declare file: DocumentPreviewFile | null;
   declare private renderState: RenderState;
   declare private visibleSheets: VisibleSheet[] | null;
   private generation = 0;
@@ -72,6 +75,7 @@ class CaffoldXlsxViewer extends LitElement {
 
   constructor() {
     super();
+    this.file = null;
     this.renderState = "empty";
     this.visibleSheets = null;
   }
@@ -84,7 +88,6 @@ class CaffoldXlsxViewer extends LitElement {
     super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "Excel preview");
-    this.performUpdate();
   }
 
   disconnectedCallback() {
@@ -130,26 +133,25 @@ class CaffoldXlsxViewer extends LitElement {
     return html`<div class="xlsx-viewer-body">${content}</div>`;
   }
 
-  updated(changed: PropertyValues) {
-    if (changed.has("renderState")) {
-      this.dataset.renderState = this.renderState;
+  // A file handed over again before it is drawn replaces the one before it.
+  // A newer copy of the file already shown keeps the sheet the person was
+  // reading.
+  willUpdate(changed: PropertyValues) {
+    if (!changed.has("file") || !this.file) {
+      return;
     }
-  }
-
-  // Opens the file the file viewer fetched for it: a Blob, or the promise of
-  // one, which fails when the fetch does. A newer copy of the file already
-  // shown keeps the sheet the person was reading.
-  setFile(
-    file: Blob | Promise<Blob>,
-    { newerCopy = false }: { newerCopy?: boolean } = {},
-  ) {
-    if (!newerCopy) {
+    if (!this.file.newerCopy) {
       this.selectedSheetName = null;
     }
     this.release();
     this.renderState = "loading";
-    this.performUpdate();
-    void this.open(this.generation, file);
+    void this.open(this.generation, this.file.file);
+  }
+
+  updated(changed: PropertyValues) {
+    if (changed.has("renderState")) {
+      this.dataset.renderState = this.renderState;
+    }
   }
 
   scrollSurfaceScope({
@@ -283,7 +285,7 @@ class CaffoldXlsxViewer extends LitElement {
       if (!this.isCurrent(generation)) {
         return;
       }
-      this.mountWorkbook(generation, XLSX, workbook);
+      await this.mountWorkbook(generation, XLSX, workbook);
     } catch (error) {
       // A fetch let go of is followed by another file or by nothing at all.
       if (
@@ -295,7 +297,7 @@ class CaffoldXlsxViewer extends LitElement {
     }
   }
 
-  private mountWorkbook(
+  private async mountWorkbook(
     generation: number,
     XLSX: SheetJs,
     workbook: WorkbookModel,
@@ -310,7 +312,10 @@ class CaffoldXlsxViewer extends LitElement {
     this.columnName = (column) => XLSX.utils.encode_col(column);
     this.visibleSheets = visibleSheets;
     this.renderState = "xlsx";
-    this.performUpdate();
+    await this.updateComplete;
+    if (!this.isCurrent(generation)) {
+      return;
+    }
 
     const sheetport = this.sheetport();
     if (sheetport) {

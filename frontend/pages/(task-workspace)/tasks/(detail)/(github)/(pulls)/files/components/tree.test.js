@@ -6,7 +6,7 @@ import {
 } from "../../../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./tree.js");
+await import("./tree.ts");
 const pullFilesTree = registry.element("caffold-github-pull-files-tree").prototype;
 after(() => registry.restore());
 

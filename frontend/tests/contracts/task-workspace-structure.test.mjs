@@ -38,7 +38,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
   );
   const reviewBranchChanges = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.js",
+    "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.ts",
   );
   const settingsWorkspace = readFrontend(
     "pages/(task-workspace)/settings/layout.js",
@@ -253,7 +253,7 @@ test("registered dialog contexts stay owned and compose through public providers
     "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
   );
   const github = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(github)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(github)/layout.ts",
   );
 
   for (const source of [appShell, workspace, tasks, section, task, github]) {
@@ -294,7 +294,7 @@ test("registered product dialogs retain one context-local keyboard presentation"
     "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js",
-    "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js",
+    "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.ts",
   ];
 
   for (const path of dialogs) {
@@ -439,7 +439,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   );
 
   for (const child of ["(review)", "(git)", "(github)"]) {
-    assert.ok(detailLayout.includes(`import "./${child}/layout.js"`));
+    assert.ok(detailLayout.includes(`import "./${child}/layout.ts"`));
   }
   assert.match(detailLayout, /<caffold-task-detail hidden>/);
   assert.match(detailLayout, /<caffold-section-detail hidden>/);
@@ -501,7 +501,7 @@ test("custom elements use routed owners or the nearest components namespace", ()
     .filter(([path]) => {
       const segments = path.split("/");
       const fileName = segments.at(-1);
-      return !["page.js", "layout.js"].includes(fileName) &&
+      return !["page.js", "page.ts", "layout.js", "layout.ts"].includes(fileName) &&
         segments.at(-2) !== "components";
     })
     .map(([path]) => path);
@@ -1138,10 +1138,10 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
 test("split panes remember their widths and collapse under one key pair per kind of pane", () => {
   const storageKeys = [
     "pages/(task-workspace)/layout.js",
-    "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(review)/layout.ts",
     "components/git-compare-browser.ts",
-    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js",
-    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js",
+    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.ts",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.ts",
   ].map((path) => {
     const resizers = [...readFrontend(path).matchAll(
       /<caffold-pane-resizer\b[^>]*>/g,

@@ -5,6 +5,7 @@ import {
   type ScrollSurfaceScope,
   type ScrollSurfaceScopeOptions,
 } from "../scroll-scope.js";
+import type { DocumentPreviewFile } from "./dom.ts";
 import "./loading-text.ts";
 
 const DOCX_PREVIEW_VERSION = "0.4.1";
@@ -75,10 +76,12 @@ let libraryPromise: Promise<DocxPreview> | undefined;
 
 class CaffoldDocxViewer extends LitElement {
   static properties = {
+    file: { attribute: false },
     renderState: { state: true },
     mount: { state: true },
   };
 
+  declare file: DocumentPreviewFile | null;
   declare private renderState: RenderState;
   declare private mount: HTMLElement | null;
   private generation = 0;
@@ -87,6 +90,7 @@ class CaffoldDocxViewer extends LitElement {
 
   constructor() {
     super();
+    this.file = null;
     this.renderState = "empty";
     this.mount = null;
   }
@@ -99,7 +103,6 @@ class CaffoldDocxViewer extends LitElement {
     super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "Word document preview");
-    this.performUpdate();
   }
 
   disconnectedCallback() {
@@ -123,19 +126,19 @@ class CaffoldDocxViewer extends LitElement {
     return html`<div class="docx-viewer-body">${content}</div>`;
   }
 
+  // A file handed over again before it is drawn replaces the one before it.
+  willUpdate(changed: PropertyValues) {
+    if (changed.has("file") && this.file) {
+      this.release();
+      this.renderState = "loading";
+      void this.open(this.generation, this.file.file);
+    }
+  }
+
   updated(changed: PropertyValues) {
     if (changed.has("renderState")) {
       this.dataset.renderState = this.renderState;
     }
-  }
-
-  // Opens the file the file viewer fetched for it: a Blob, or the promise of
-  // one, which fails when the fetch does.
-  setFile(file: Blob | Promise<Blob>) {
-    this.release();
-    this.renderState = "loading";
-    this.performUpdate();
-    void this.open(this.generation, file);
   }
 
   scrollSurfaceScope({
@@ -180,7 +183,7 @@ class CaffoldDocxViewer extends LitElement {
       if (!this.isCurrent(generation)) {
         return;
       }
-      this.mountDocument(generation, nodes);
+      await this.mountDocument(generation, nodes);
     } catch (error) {
       // A fetch let go of is followed by another file or by nothing at all.
       if (
@@ -192,7 +195,7 @@ class CaffoldDocxViewer extends LitElement {
     }
   }
 
-  private mountDocument(generation: number, nodes: Node[]) {
+  private async mountDocument(generation: number, nodes: Node[]) {
     const content = window.document.createDocumentFragment();
     content.append(...nodes);
     withholdActiveContent(content);
@@ -208,7 +211,10 @@ class CaffoldDocxViewer extends LitElement {
     root.append(content, style);
     this.mount = mount;
     this.renderState = "docx";
-    this.performUpdate();
+    await this.updateComplete;
+    if (!this.isCurrent(generation)) {
+      return;
+    }
 
     this.pages = Array.from(
       root.querySelectorAll<HTMLElement>("section.docx"),

@@ -66,6 +66,10 @@ export class CaffoldFileList extends LitElement {
   private selectedPath = "";
   private keyByPath = new Map<string, string>();
   private treeState: TreeState | null = null;
+  // The tree is handed its model again once the list it shows is drawn, and a
+  // directory shown anew starts at its top.
+  private modelPending = false;
+  private scrollToTop = false;
   private readonly iconsReady = () => this.requestUpdate();
 
   constructor() {
@@ -82,7 +86,6 @@ export class CaffoldFileList extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
-    this.performUpdate();
     void warmIcons();
   }
 
@@ -181,28 +184,35 @@ export class CaffoldFileList extends LitElement {
     `;
   }
 
+  updated() {
+    if (!this.modelPending) {
+      return;
+    }
+    this.modelPending = false;
+    this.updateTreeModel();
+    const scroller = this.scrollToTop ? this.fileTree()?.scroller() : null;
+    this.scrollToTop = false;
+    if (scroller) {
+      scroller.scrollTop = 0;
+      scroller.scrollLeft = 0;
+    }
+  }
+
   setLoading() {
     this.resetTreeState();
     this.state = { status: "loading" };
-    this.performUpdate();
   }
 
   setIdle() {
     this.resetTreeState();
     this.state = { status: "idle" };
-    this.performUpdate();
   }
 
   setDirectory(directory: DirectoryListing) {
     this.prepareTreeState(directory);
     this.state = { status: "ready", directory };
-    this.performUpdate();
-    this.updateTreeModel();
-    const scroller = this.fileTree()?.scroller();
-    if (scroller) {
-      scroller.scrollTop = 0;
-      scroller.scrollLeft = 0;
-    }
+    this.modelPending = true;
+    this.scrollToTop = true;
   }
 
   updateDirectories(directories: DirectoryListing[]) {
@@ -229,8 +239,8 @@ export class CaffoldFileList extends LitElement {
       }
     }
     if (changed) {
-      this.performUpdate();
-      this.updateTreeModel();
+      this.modelPending = true;
+      this.requestUpdate();
     }
   }
 
@@ -247,18 +257,15 @@ export class CaffoldFileList extends LitElement {
 
   setRefreshState(state: RefreshButtonState) {
     this.refreshState = state;
-    this.performUpdate();
   }
 
   setRefreshVisible(visible: boolean) {
-    this.refreshVisible = Boolean(visible);
-    this.performUpdate();
+    this.refreshVisible = visible;
   }
 
   setError(error: Error) {
     this.resetTreeState();
     this.state = { status: "error", error };
-    this.performUpdate();
   }
 
   fileTree() {
@@ -354,6 +361,7 @@ export class CaffoldFileList extends LitElement {
 
   async revealPath(path: string) {
     this.setSelectedPath(path);
+    await this.updateComplete;
     if (this.treeState) {
       const directories = ancestorDirectories(path, this.treeState.rootPath);
       for (const directory of directories) {

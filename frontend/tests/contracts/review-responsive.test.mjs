@@ -31,7 +31,7 @@ test("review file workspaces share one single-pane boundary", () => {
 
   const behaviorSources = [
     "components/git-compare-browser.ts",
-    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js",
+    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.ts",
   ];
   for (const path of behaviorSources) {
     const source = readFrontend(path);

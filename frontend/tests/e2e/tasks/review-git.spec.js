@@ -400,7 +400,7 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
 
   if (testInfo.project.name === "phone") {
     await expect(taskReview.locator(".task-review-navigator-axis")).toBeHidden();
-    await taskReview.evaluate((review) => review.updateAxis("navigator", "files"));
+    await taskReview.evaluate((review) => review.updateRoute({ navigator: "files" }));
   } else {
     await taskReview.getByRole("button", { name: "Files", exact: true }).click();
   }
@@ -442,7 +442,8 @@ test("supports every scope navigator and viewer combination", { tag: "@all-viewp
       await selectTaskReviewScope(tasksPage, scope);
       if (test.info().project.name === "phone") {
         await taskReview.evaluate(
-          (review, nextNavigator) => review.updateAxis("navigator", nextNavigator),
+          (review, nextNavigator) =>
+            review.updateRoute({ navigator: nextNavigator }),
           navigator,
         );
       } else {
@@ -1966,10 +1967,9 @@ test("maps the visible source line when Diff and Source representations switch",
     .toBe(sourceLine);
 
   await viewer.locator("caffold-code-viewer").evaluate((element) => {
-    element.setFile({
+    element.file = {
       content: "horizontal-only-source-segment-".repeat(30),
-      language: "Plain Text",
-    });
+    };
   });
   await expect(codeScroll).toContainText("horizontal-only-source-segment");
   await expect.poll(() => codeScroll.evaluate(
@@ -1997,13 +1997,13 @@ test("maps the visible source line when Diff and Source representations switch",
   await taskReview.getByRole("button", { name: "Diff", exact: true }).click();
   const horizontalDiff = viewer.locator("caffold-diff-viewer .diff-lines");
   await viewer.locator("caffold-diff-viewer").evaluate((element) => {
-    element.setDiff({
+    element.diff = {
       diff: [
         "@@ -1 +1 @@",
         "-short",
         `+${"horizontal-only-diff-segment-".repeat(30)}`,
       ].join("\n"),
-    });
+    };
   });
   await expect(horizontalDiff).toContainText("horizontal-only-diff-segment");
   await expect.poll(() => horizontalDiff.evaluate(
@@ -2175,15 +2175,13 @@ async function scrollViewerAndWatchReload(viewer, contentSelector, scrollSelecto
       },
     };
     // The diff or source viewer stays and is handed the file read again.
-    for (const name of ["setDiff", "setFile"]) {
-      const handOver = probe.content[name];
-      if (handOver) {
-        probe.content[name] = function (...args) {
-          probe.handedAgain = true;
-          return handOver.apply(this, args);
-        };
+    const updated = probe.content.updated;
+    probe.content.updated = function (changed) {
+      if (changed.has("diff") || changed.has("file")) {
+        probe.handedAgain = true;
       }
-    }
+      return updated.call(this, changed);
+    };
     probe.observer = new MutationObserver((records) => probe.record(records));
     probe.observer.observe(element, { childList: true, subtree: true });
     window.__reviewViewerReloadProbe = probe;

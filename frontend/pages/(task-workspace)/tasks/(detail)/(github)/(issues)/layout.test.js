@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./layout.js");
+await import("./layout.ts");
 const layout = registry.element("caffold-github-issues-layout").prototype;
 after(() => registry.restore());
 
@@ -16,7 +16,6 @@ test("provides only the active Issue list or detail scope", () => {
     hidden: false,
     view: "detail",
     page: 3,
-    ensureRendered() {},
     detailPage: {
       actionHintScope(options) {
         calls.push(["detail", options]);
@@ -57,7 +56,6 @@ test("delegates Scroll only to the active Issue view", () => {
     hidden: false,
     view: "list",
     page: 2,
-    ensureRendered() {},
     listPage: { scrollSurfaceScope: () => ({ surfaces: [listSurface] }) },
     detailPage: { scrollSurfaceScope: () => ({ surfaces: [detailSurface] }) },
   };

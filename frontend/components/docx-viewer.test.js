@@ -18,7 +18,6 @@ function drawingViewer() {
     owner: {
       generation: 4,
       renderState: "docx",
-      performUpdate() {},
       release() {
         docxViewer.release.call(this);
       },
@@ -49,7 +48,8 @@ test("lets go of the document shown and opens the file it is handed", () => {
   const { owner, opened } = drawingViewer();
   const file = Promise.resolve(new Blob(["bytes"]));
 
-  docxViewer.setFile.call(owner, file);
+  owner.file = { file, newerCopy: false };
+  docxViewer.willUpdate.call(owner, new Map([["file", null]]));
 
   assert.equal(owner.renderState, "loading", "it says the file is loading until it is drawn");
   assert.deepEqual(opened, [{ generation: 5, file }], "the document shown before is let go of first");

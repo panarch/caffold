@@ -11,10 +11,30 @@ const OUTDATED = "outdated";
 const REREADING = "rereading";
 const REREAD_FAILED = "rereadFailed";
 
+type ReadingNode =
+  | typeof EMPTY
+  | typeof LOADING
+  | typeof FAILED
+  | typeof CURRENT
+  | typeof OUTDATED
+  | typeof REREADING
+  | typeof REREAD_FAILED;
+
+type ReadingEvent = "start" | "succeed" | "fail" | "return" | "reset";
+
+export interface ReadingState {
+  readonly hasData: boolean;
+  readonly fromBeforeReturn: boolean;
+  readonly reading: boolean;
+  readonly failed: boolean;
+}
+
 // The complete transition table; an event a node does not list is rejected.
 // A completion can only arrive for a read started after the last return or
 // reset, because both invalidate earlier requests.
-const EDGES = Object.freeze({
+const EDGES: Readonly<
+  Record<ReadingNode, Partial<Record<ReadingEvent, ReadingNode>>>
+> = Object.freeze({
   [EMPTY]: { start: LOADING, return: EMPTY, reset: EMPTY },
   [LOADING]: {
     start: LOADING,
@@ -43,9 +63,9 @@ const EDGES = Object.freeze({
 });
 
 export class ChangesReading {
-  #node = EMPTY;
+  #node: ReadingNode = EMPTY;
 
-  get state() {
+  get state(): ReadingState {
     return STATES[this.#node];
   }
 
@@ -69,7 +89,7 @@ export class ChangesReading {
     return this.#apply("reset");
   }
 
-  #apply(event) {
+  #apply(event: ReadingEvent) {
     const previous = this.state;
     const next = EDGES[this.#node][event];
     if (!next) {
@@ -80,14 +100,18 @@ export class ChangesReading {
   }
 }
 
-const STATES = Object.freeze({
+const STATES: Readonly<Record<ReadingNode, ReadingState>> = Object.freeze({
   [EMPTY]: state({}),
   [LOADING]: state({ reading: true }),
   [FAILED]: state({ failed: true }),
   [CURRENT]: state({ hasData: true }),
   [OUTDATED]: state({ hasData: true, fromBeforeReturn: true }),
   [REREADING]: state({ hasData: true, fromBeforeReturn: true, reading: true }),
-  [REREAD_FAILED]: state({ hasData: true, fromBeforeReturn: true, failed: true }),
+  [REREAD_FAILED]: state({
+    hasData: true,
+    fromBeforeReturn: true,
+    failed: true,
+  }),
 });
 
 function state({
@@ -95,6 +119,6 @@ function state({
   fromBeforeReturn = false,
   reading = false,
   failed = false,
-}) {
+}: Partial<ReadingState>): ReadingState {
   return Object.freeze({ hasData, fromBeforeReturn, reading, failed });
 }

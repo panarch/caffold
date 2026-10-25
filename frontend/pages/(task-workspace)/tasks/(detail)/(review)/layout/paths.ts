@@ -1,16 +1,30 @@
 import { cleanLogicalPath } from "#tasks/task-format.js";
 
-export function taskRootPath(task) {
+// What Review reads from the Task it reviews.
+export interface ReviewTask {
+  threadId?: string | null;
+  cwdPath?: string | null;
+  cwd?: string | null;
+  worktree?: {
+    rootPath?: string | null;
+    branch?: string | null;
+  } | null;
+}
+
+export function taskRootPath(task: ReviewTask | null | undefined) {
   const path = task?.worktree?.rootPath || task?.cwdPath || task?.cwd || ".";
   return cleanLogicalPath(path) || ".";
 }
 
-export function taskWorktreeRootPath(task) {
+export function taskWorktreeRootPath(task: ReviewTask | null | undefined) {
   const path = task?.worktree?.rootPath;
   return path ? cleanLogicalPath(path) || "." : "";
 }
 
-export function relativeTaskPath(path, rootPath) {
+export function relativeTaskPath(
+  path: string | null | undefined,
+  rootPath: string,
+) {
   const normalizedPath = cleanLogicalPath(path);
   const normalizedRoot = cleanLogicalPath(rootPath) || ".";
   if (!normalizedPath) {
@@ -21,17 +35,18 @@ export function relativeTaskPath(path, rootPath) {
   }
   const rootSegments = logicalSegments(normalizedRoot);
   const pathSegments = logicalSegments(normalizedPath);
-  const common = rootSegments.findIndex((segment, index) => pathSegments[index] !== segment);
-  const commonLength = common < 0
-    ? Math.min(rootSegments.length, pathSegments.length)
-    : common;
+  const common = rootSegments.findIndex(
+    (segment, index) => pathSegments[index] !== segment,
+  );
+  const commonLength =
+    common < 0 ? Math.min(rootSegments.length, pathSegments.length) : common;
   return [
     ...Array(rootSegments.length - commonLength).fill(".."),
     ...pathSegments.slice(commonLength),
   ].join("/");
 }
 
-export function joinLogicalPath(root, relative) {
+export function joinLogicalPath(root: string, relative: string) {
   const segments = logicalSegments(cleanLogicalPath(root) || ".");
   for (const segment of reviewFilePath(relative).split("/")) {
     if (!segment) {
@@ -49,8 +64,8 @@ export function joinLogicalPath(root, relative) {
   return segments.join("/");
 }
 
-export function reviewFilePath(path) {
-  const segments = [];
+export function reviewFilePath(path: string | null | undefined) {
+  const segments: string[] = [];
   for (const segment of `${path ?? ""}`.replaceAll("\\", "/").split("/")) {
     if (!segment || segment === ".") {
       continue;
@@ -68,6 +83,8 @@ export function reviewFilePath(path) {
   return segments.join("/");
 }
 
-function logicalSegments(path) {
-  return `${path ?? ""}`.split("/").filter((segment) => segment && segment !== ".");
+function logicalSegments(path: string) {
+  return `${path ?? ""}`
+    .split("/")
+    .filter((segment) => segment && segment !== ".");
 }

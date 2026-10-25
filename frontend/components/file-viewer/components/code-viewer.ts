@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, LitElement, nothing, type PropertyValues } from "lit";
 import type { SyntaxSpan } from "#app/api.js";
 import {
   emptyScrollSurfaceScope,
@@ -18,33 +18,37 @@ export interface ScrollPosition {
   left: number;
 }
 
-// Where a newly shown file or diff opens: at a kept scroll position, at a
-// line, or at the top.
+// Where a newly shown file or diff opens, as its owner asks: at a kept scroll
+// position, at a line, or at the top.
 export interface ViewerPositionOptions {
   scroll?: ScrollPosition | null;
   preserveScroll?: boolean;
   line?: number | string | null;
 }
 
+// Where a code or diff viewer opens what it is handed.
+export interface ViewerPosition {
+  scroll: ScrollPosition | null;
+  line?: number | string | null;
+}
+
 export class CaffoldCodeViewer extends LitElement {
   static properties = {
-    file: { state: true },
+    file: { attribute: false },
+    position: { attribute: false },
   };
 
-  declare private file: CodeFile | null;
+  declare file: CodeFile | null;
+  declare position: ViewerPosition | null;
 
   constructor() {
     super();
     this.file = null;
+    this.position = null;
   }
 
   createRenderRoot() {
     return this;
-  }
-
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
   }
 
   render() {
@@ -84,13 +88,12 @@ export class CaffoldCodeViewer extends LitElement {
     `;
   }
 
-  setFile(file: CodeFile, options: ViewerPositionOptions = {}) {
-    const scroll =
-      options.scroll ?? (options.preserveScroll ? this.captureScroll() : null);
-    const line = normalizeLine(options.line);
-    this.file = file;
-    this.performUpdate();
-    this.restorePosition(scroll, line);
+  // The lines stay in place from one file to the next, so a file that keeps
+  // no position starts from the top again.
+  updated(changed: PropertyValues) {
+    if (changed.has("file") || changed.has("position")) {
+      this.restorePosition(this.position);
+    }
   }
 
   getScrollState() {
@@ -186,15 +189,13 @@ export class CaffoldCodeViewer extends LitElement {
     }
   }
 
-  // The lines stay in place from one file to the next, so a file that keeps
-  // no position starts from the top again.
-  private restorePosition(scroll: ScrollPosition | null, line: number | null) {
-    if (scroll) {
-      this.restoreScroll(scroll);
+  private restorePosition(position: ViewerPosition | null) {
+    if (position?.scroll) {
+      this.restoreScroll(position.scroll);
       return;
     }
     this.restoreScroll({ top: 0, left: 0 });
-    this.scrollToLine(line);
+    this.scrollToLine(position?.line);
   }
 }
 

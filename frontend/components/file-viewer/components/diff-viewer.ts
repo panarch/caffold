@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, LitElement, nothing, type PropertyValues } from "lit";
 import type { SyntaxSpan } from "#app/api.js";
 import {
   emptyScrollSurfaceScope,
@@ -7,7 +7,7 @@ import {
   type ScrollSurfaceScopeOptions,
 } from "#app/scroll-scope.js";
 import { syntaxLine } from "../syntax-spans.ts";
-import type { ScrollPosition, ViewerPositionOptions } from "./code-viewer.ts";
+import type { ScrollPosition, ViewerPosition } from "./code-viewer.ts";
 
 export interface FileDiff {
   diff?: string;
@@ -39,23 +39,21 @@ const SOURCE_ROWS = new Set<DiffRowType>(["added", "removed", "context"]);
 
 export class CaffoldDiffViewer extends LitElement {
   static properties = {
-    diff: { state: true },
+    diff: { attribute: false },
+    position: { attribute: false },
   };
 
-  declare private diff: FileDiff | null;
+  declare diff: FileDiff | null;
+  declare position: ViewerPosition | null;
 
   constructor() {
     super();
     this.diff = null;
+    this.position = null;
   }
 
   createRenderRoot() {
     return this;
-  }
-
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
   }
 
   render() {
@@ -118,13 +116,12 @@ export class CaffoldDiffViewer extends LitElement {
     `;
   }
 
-  setDiff(diff: FileDiff, options: ViewerPositionOptions = {}) {
-    const scroll =
-      options.scroll ?? (options.preserveScroll ? this.captureScroll() : null);
-    const line = normalizeLine(options.line);
-    this.diff = diff;
-    this.performUpdate();
-    this.restorePosition(scroll, line);
+  // The rows stay in place from one diff to the next, so a diff that keeps
+  // no position starts from the top again.
+  updated(changed: PropertyValues) {
+    if (changed.has("diff") || changed.has("position")) {
+      this.restorePosition(this.position);
+    }
   }
 
   getScrollState() {
@@ -238,15 +235,13 @@ export class CaffoldDiffViewer extends LitElement {
     }
   }
 
-  // The rows stay in place from one diff to the next, so a diff that keeps
-  // no position starts from the top again.
-  private restorePosition(scroll: ScrollPosition | null, line: number | null) {
-    if (scroll) {
-      this.restoreScroll(scroll);
+  private restorePosition(position: ViewerPosition | null) {
+    if (position?.scroll) {
+      this.restoreScroll(position.scroll);
       return;
     }
     this.restoreScroll({ top: 0, left: 0 });
-    this.scrollToLine(line);
+    this.scrollToLine(position?.line);
   }
 }
 

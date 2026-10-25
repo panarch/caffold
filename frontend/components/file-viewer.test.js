@@ -514,13 +514,14 @@ function retainingViewer(state) {
     state,
     retainedContent: null,
     renders: [],
-    performUpdate() {
-      this.renders.push(this.state);
-    },
     detailsPopover: () => null,
   };
+  // Each state the viewer shows is one it draws.
+  owner.show = () => {
+    owner.renders.push(owner.state);
+    fileViewer.show.call(owner);
+  };
   for (const method of [
-    "show",
     "setLoading",
     "finishRetainedContent",
     "cancelRetainedContent",
@@ -684,27 +685,27 @@ function fileServer(files) {
 function previewHost(status = "document") {
   const handed = [];
   const errors = [];
-  const image = { src: "" };
-  const documentViewer = {
-    setFile(file, options) {
-      Promise.resolve(file).catch(() => {});
-      handed.push({ file, options });
-    },
-  };
   const host = Object.assign(Object.create(fileViewer), {
     state: status === "image"
       ? { status, image: { path: "picture.png", name: "picture.png" } }
       : { status, document: { kind: "pdf", path: "document.pdf" } },
     previewFile: null,
-    // A document viewer waits for the file it is handed, so a fetch let go of
-    // ends there.
-    documentViewer: () =>
-      host.state.status === "document" ? documentViewer : null,
-    querySelector: (selector) => (selector.includes("image-preview") ? image : null),
+    imageSource: "",
+    querySelector: () => null,
     setError: (presentation, error) => errors.push(error.message),
-    performUpdate() {},
   });
-  return { host, handed, errors, image };
+  // The document viewer is handed what the template binds; it waits for the
+  // file, so a fetch let go of ends there.
+  Object.defineProperty(host, "documentFile", {
+    get: () => handed.at(-1) ?? null,
+    set: (documentFile) => {
+      if (documentFile) {
+        Promise.resolve(documentFile.file).catch(() => {});
+        handed.push(documentFile);
+      }
+    },
+  });
+  return { host, handed, errors };
 }
 
 async function until(condition) {
@@ -760,7 +761,7 @@ test("a recheck hands over a newer version as a newer copy", async () => {
   await until(() => host.previewFile.phase === "shown" && handed.length === 2);
 
   assert.equal(await blobText(handed[1].file), "second");
-  assert.deepEqual(handed[1].options, { newerCopy: true });
+  assert.equal(handed[1].newerCopy, true);
   assert.equal(host.previewFile.version, "v2");
 });
 
@@ -825,25 +826,25 @@ test("a failed recheck keeps the copy already drawn", async () => {
 test("an image is drawn from its copy, again only for a newer version", async () => {
   const files = { "a7.png": { text: "png", version: "v1", type: "image/png" } };
   fileServer(files);
-  const { host, image } = previewHost("image");
+  const { host } = previewHost("image");
   host.showPreviewFile(previewAddress("a7.png"));
-  await until(() => image.src !== "");
-  const first = image.src;
+  await until(() => host.imageSource !== "");
+  const first = host.imageSource;
   assert.match(first, /^blob:/);
 
-  image.src = "";
+  host.imageSource = "";
   host.drawPreviewImage();
-  assert.equal(image.src, first, "a new picture element takes the same copy");
+  assert.equal(host.imageSource, first, "a picture shown anew takes the same copy");
 
   host.recheckPreviewFile();
   await until(() => host.previewFile.phase === "shown");
-  assert.equal(image.src, first, "the same version is not drawn again");
+  assert.equal(host.imageSource, first, "the same version is not drawn again");
 
   files["a7.png"] = { text: "png2", version: "v2", type: "image/png" };
   host.recheckPreviewFile();
   await until(() => host.previewFile.version === "v2");
-  assert.notEqual(image.src, first);
-  assert.match(image.src, /^blob:/);
+  assert.notEqual(host.imageSource, first);
+  assert.match(host.imageSource, /^blob:/);
 });
 
 test("deactivation lets go of the preview file and its fetch", () => {

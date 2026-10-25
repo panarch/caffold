@@ -6,7 +6,7 @@ import {
 } from "../../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./page.js");
+await import("./page.ts");
 const page = registry.element("caffold-github-issue-detail-page").prototype;
 after(() => registry.restore());
 

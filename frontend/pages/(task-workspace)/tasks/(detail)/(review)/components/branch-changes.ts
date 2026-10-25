@@ -1,43 +1,55 @@
-import { getGitCompare, getGitCompareDiff, getGitRefs } from "#app/api.js";
+import { html, LitElement } from "lit";
+import type { ActionHintScopeOptions } from "#app/action-hint-scope.js";
+import {
+  type GitCompare,
+  type GitRefs,
+  getGitCompare,
+  getGitCompareDiff,
+  getGitRefs,
+} from "#app/api.js";
+import type { ScrollSurfaceScopeOptions } from "#app/scroll-scope.js";
 import "#components/git-compare-tree.ts";
-import { ChangesReading } from "../changes-reading.js";
+import type { CaffoldGitCompareTree } from "#components/git-compare-tree.ts";
+import { ChangesReading } from "../changes-reading.ts";
+import type { ReviewChange } from "./selected-file/content.ts";
 
-class CaffoldReviewBranchChanges extends HTMLElement {
-  connectedCallback() {
-    this.ensureRendered();
+export class CaffoldReviewBranchChanges extends LitElement {
+  private rootPath = "";
+  private branch: string | null = null;
+  private baseRef = "";
+  private shown = false;
+  private refs: GitRefs | null = null;
+  private compare: GitCompare | null = null;
+  private error: Error | null = null;
+  private readonly reading = new ChangesReading();
+  private listShows = "";
+  private generation = 0;
+  private selectedPath = "";
+
+  createRenderRoot() {
+    return this;
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     this.generation += 1;
   }
 
-  ensureRendered() {
-    if (this.rendered) {
-      return;
-    }
-    this.rendered = true;
-    this.rootPath = "";
-    this.branch = null;
-    this.baseRef = "";
-    this.shown = false;
-    this.refs = null;
-    this.compare = null;
-    this.error = null;
-    this.reading = new ChangesReading();
-    this.listShows = "";
-    this.generation = 0;
-    this.selectedPath = "";
-
-    this.innerHTML = `<caffold-git-compare-tree></caffold-git-compare-tree>`;
-
-    this.addEventListener("caffold:select-compare-base", (event) => {
-      event.stopPropagation();
-      this.selectBase(event.detail?.baseRef);
-    });
+  render() {
+    return html`<caffold-git-compare-tree
+      @caffold:select-compare-base=${this.chooseBase}
+    ></caffold-git-compare-tree>`;
   }
 
-  setContext({ rootPath = "", branch = null, baseRef = "" } = {}) {
-    this.ensureRendered();
+  setContext({
+    rootPath = "",
+    branch = null,
+    baseRef = "",
+  }: {
+    rootPath?: string;
+    branch?: string | null;
+    baseRef?: string;
+  } = {}) {
     this.branch = branch;
     if (rootPath !== this.rootPath) {
       this.rootPath = rootPath;
@@ -48,7 +60,7 @@ class CaffoldReviewBranchChanges extends HTMLElement {
       this.reading.reset();
       this.listShows = "";
       this.generation += 1;
-      this.tree()?.reset();
+      this.tree.reset();
       return;
     }
     if (baseRef !== this.baseRef) {
@@ -59,27 +71,24 @@ class CaffoldReviewBranchChanges extends HTMLElement {
     }
   }
 
-  setShown(shown) {
-    this.ensureRendered();
-    this.shown = Boolean(shown);
+  setShown(shown: boolean) {
+    this.shown = shown;
   }
 
   // Git may have changed while the page was away or Review was hidden, so
   // the refs and comparison held are outdated until a request sent after
   // this point answers.
   markOutdated() {
-    this.ensureRendered();
     this.reading.markReturned();
     this.generation += 1;
     this.showReadingState();
   }
 
   forgetRefs() {
-    this.ensureRendered();
     this.refs = null;
   }
 
-  async read({ force = false } = {}) {
+  async read({ force = false }: { force?: boolean } = {}) {
     const rootPath = this.rootPath;
     if (!rootPath) {
       return null;
@@ -94,19 +103,23 @@ class CaffoldReviewBranchChanges extends HTMLElement {
       }
       this.refs = refs;
       const baseRef = selectedCompareBaseRef(this.baseRef, refs);
-      this.tree()?.setBaseSelection({ refs: refs.refs, value: baseRef });
+      this.tree.setBaseSelection({ refs: refs.refs, value: baseRef });
       if (this.baseRef !== baseRef) {
         this.requestBase(baseRef);
         return null;
       }
       if (!this.compare) {
-        this.tree()?.setLoading(refs.repository, {
+        this.tree.setLoading(refs.repository, {
           baseRef,
           headRef: this.headRef(refs),
         });
         this.listShows = "loading";
       }
-      const compare = await getGitCompare(rootPath, baseRef, this.headRef(refs));
+      const compare = await getGitCompare(
+        rootPath,
+        baseRef,
+        this.headRef(refs),
+      );
       if (!this.acceptsRead(generation, rootPath)) {
         return null;
       }
@@ -116,16 +129,16 @@ class CaffoldReviewBranchChanges extends HTMLElement {
       }
       this.compare = compare;
       this.error = null;
-      this.tree()?.setEmptyMessage(
+      this.tree.setEmptyMessage(
         `No changes compared with ${baseRef || "the selected base"}.`,
       );
       if (previous.hasData) {
-        this.tree()?.updateCompare(compare);
+        this.tree.updateCompare(compare);
       } else {
-        this.tree()?.setCompare(compare);
+        this.tree.setCompare(compare);
       }
       this.listShows = "data";
-      this.tree()?.setSelectedPath(this.selectedPath);
+      this.tree.setSelectedPath(this.selectedPath);
       this.announceRead({
         ok: true,
         hadData: previous.hasData,
@@ -139,7 +152,7 @@ class CaffoldReviewBranchChanges extends HTMLElement {
       if (!this.reading.fail().accepted) {
         return null;
       }
-      this.error = error;
+      this.error = error as Error;
       this.showReadingState();
       this.announceRead({ ok: false, error });
       return null;
@@ -147,7 +160,6 @@ class CaffoldReviewBranchChanges extends HTMLElement {
   }
 
   snapshot() {
-    this.ensureRendered();
     const { fromBeforeReturn, failed } = this.reading.state;
     return {
       data: this.compare,
@@ -158,19 +170,21 @@ class CaffoldReviewBranchChanges extends HTMLElement {
     };
   }
 
-  change(path) {
-    const file = (this.compare?.files ?? []).find((entry) => entry.path === path);
+  change(path: string): ReviewChange | null {
+    const file = (this.compare?.files ?? []).find(
+      (entry) => entry.path === path,
+    );
     if (!file) {
       return null;
     }
     return {
       file,
-      deleted: `${file.status ?? ""}`.includes("D"),
-      kind: file.untracked ? "untracked" : file.category || "unstaged",
+      deleted: Boolean(file.status?.includes("D")),
+      kind: "unstaged",
     };
   }
 
-  readDiff(path) {
+  readDiff(path: string) {
     return getGitCompareDiff(this.rootPath, this.baseRef, this.headRef(), path);
   }
 
@@ -178,30 +192,35 @@ class CaffoldReviewBranchChanges extends HTMLElement {
     return `${this.baseRef}...${this.headRef()}`;
   }
 
-  setSelectedPath(path) {
-    this.ensureRendered();
+  setSelectedPath(path: string | null | undefined) {
     this.selectedPath = path ?? "";
-    this.tree()?.setSelectedPath(this.selectedPath);
+    this.tree.setSelectedPath(this.selectedPath);
   }
 
   captureListScroll() {
-    return this.tree()?.captureListScroll() ?? null;
+    return this.tree.captureListScroll();
   }
 
-  restoreListScroll(scroll) {
-    this.tree()?.restoreListScroll(scroll);
+  restoreListScroll(scroll: { top: number; left: number } | null | undefined) {
+    this.tree.restoreListScroll(scroll);
   }
 
-  actionHintScope(options = {}) {
-    return this.tree()?.actionHintScope(options);
+  actionHintScope(
+    options: ActionHintScopeOptions & {
+      disclosureActionId?: string;
+      selectActionId?: string;
+    } = {},
+  ) {
+    return this.tree.actionHintScope(options);
   }
 
-  scrollSurfaceScope(options = {}) {
-    return this.tree()?.scrollSurfaceScope(options);
+  scrollSurfaceScope(options: ScrollSurfaceScopeOptions = {}) {
+    return this.tree.scrollSurfaceScope(options);
   }
 
-  selectBase(baseRef) {
-    const next = `${baseRef ?? ""}`;
+  private chooseBase(event: CustomEvent<{ baseRef?: string }>) {
+    event.stopPropagation();
+    const next = `${event.detail?.baseRef ?? ""}`;
     if (
       !next ||
       next === this.baseRef ||
@@ -212,7 +231,7 @@ class CaffoldReviewBranchChanges extends HTMLElement {
     this.requestBase(next);
   }
 
-  requestBase(baseRef) {
+  private requestBase(baseRef: string) {
     this.dispatchEvent(
       new CustomEvent("caffold:review-base-intent", {
         bubbles: true,
@@ -221,11 +240,11 @@ class CaffoldReviewBranchChanges extends HTMLElement {
     );
   }
 
-  headRef(refs = this.refs) {
+  private headRef(refs = this.refs) {
     return this.branch || refs?.defaultHeadRef || "HEAD";
   }
 
-  acceptsRead(generation, rootPath) {
+  private acceptsRead(generation: number, rootPath: string) {
     return (
       this.isConnected &&
       this.shown &&
@@ -234,7 +253,7 @@ class CaffoldReviewBranchChanges extends HTMLElement {
     );
   }
 
-  announceRead(detail) {
+  private announceRead(detail: Record<string, unknown>) {
     this.dispatchEvent(
       new CustomEvent("caffold:review-changes-read", { bubbles: true, detail }),
     );
@@ -244,14 +263,16 @@ class CaffoldReviewBranchChanges extends HTMLElement {
   // or the read's error where it holds only a comparison from before the page
   // came back that lists no changes. It is drawn again only when that choice
   // changes. A first comparison shows loading once the refs name its base.
-  showReadingState() {
+  private showReadingState() {
     const { hasData, fromBeforeReturn, reading, failed } = this.reading.state;
     const hidesData =
       !hasData || (fromBeforeReturn && !this.compare?.files?.length);
     const shows = !hidesData
       ? "data"
       : !hasData
-        ? failed ? "error" : this.listShows
+        ? failed
+          ? "error"
+          : this.listShows
         : reading
           ? "loading"
           : failed
@@ -263,32 +284,38 @@ class CaffoldReviewBranchChanges extends HTMLElement {
     this.listShows = shows;
     const repository = this.refs?.repository ?? null;
     if (shows === "loading") {
-      this.tree()?.setLoading(repository, {
+      this.tree.setLoading(repository, {
         baseRef: this.baseRef,
         headRef: this.headRef(),
       });
-    } else if (shows === "error") {
-      this.tree()?.setError(this.error, repository);
-    } else if (shows === "data") {
-      this.tree()?.updateCompare(this.compare);
+    } else if (shows === "error" && this.error) {
+      this.tree.setError(this.error, repository);
+    } else if (shows === "data" && this.compare) {
+      this.tree.updateCompare(this.compare);
     }
   }
 
-  tree() {
-    return this.querySelector(":scope > caffold-git-compare-tree");
+  // The tree is drawn the first time it is needed, which can be before the
+  // changes are in the document.
+  private get tree() {
+    this.performUpdate();
+    return this.querySelector(
+      ":scope > caffold-git-compare-tree",
+    ) as CaffoldGitCompareTree;
   }
 }
 
-if (!customElements.get("caffold-review-branch-changes")) {
-  customElements.define("caffold-review-branch-changes", CaffoldReviewBranchChanges);
-}
+customElements.define(
+  "caffold-review-branch-changes",
+  CaffoldReviewBranchChanges,
+);
 
-function selectedCompareBaseRef(preferredRef, refsPayload = {}) {
+function selectedCompareBaseRef(preferredRef: string, refsPayload: GitRefs) {
   const refs = Array.isArray(refsPayload.refs) ? refsPayload.refs : [];
-  const hasRef = (candidate) =>
+  const hasRef = (candidate: string | null | undefined) =>
     Boolean(candidate && refs.some((ref) => ref.name === candidate));
   if (hasRef(preferredRef)) {
-    return `${preferredRef}`;
+    return preferredRef;
   }
   if (hasRef(refsPayload.defaultBaseRef)) {
     return `${refsPayload.defaultBaseRef}`;

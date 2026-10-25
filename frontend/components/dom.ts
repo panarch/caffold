@@ -18,6 +18,13 @@ const IMAGE_TYPES: Readonly<Record<string, string>> = {
 
 export type DocumentPreviewKind = "docx" | "pdf" | "pptx" | "xlsx";
 
+// The file a document viewer opens: the fetched file, or the promise of one
+// that fails when the fetch does. A newer copy replaces the file shown.
+export interface DocumentPreviewFile {
+  file: Blob | Promise<Blob>;
+  newerCopy: boolean;
+}
+
 // The documents a library-backed viewer draws, by file extension.
 const DOCUMENT_KINDS = new Map<string, DocumentPreviewKind>([
   ["docx", "docx"],

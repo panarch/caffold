@@ -38,7 +38,7 @@ export type ResolvedPath =
   | { kind: "stale"; directory: null }
   | { kind: "error"; directory: DirectoryListing | false | null };
 
-class CaffoldFileNavigator extends LitElement {
+export class CaffoldFileNavigator extends LitElement {
   private currentPath = "";
   private directoryRequestId = 0;
   private refreshGeneration = 0;
@@ -63,7 +63,6 @@ class CaffoldFileNavigator extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    this.performUpdate();
     if (this.watchActive && this.watchScopePath !== undefined) {
       this.subscribeWatchScope(this.watchScopePath);
     }

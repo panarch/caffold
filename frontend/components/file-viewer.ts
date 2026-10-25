@@ -28,6 +28,7 @@ import {
 } from "../scroll-scope.js";
 import "./docx-viewer.ts";
 import {
+  type DocumentPreviewFile,
   type DocumentPreviewKind,
   formatBytes,
   formatLineStats,
@@ -38,6 +39,7 @@ import type {
   CaffoldCodeViewer,
   CodeFile,
   ScrollPosition,
+  ViewerPosition,
   ViewerPositionOptions,
 } from "./file-viewer/components/code-viewer.ts";
 import "./file-viewer/components/diff-viewer.ts";
@@ -67,23 +69,30 @@ const RETAINED_CONTENT_MS = 180;
 // A document preview hands its file to the viewer of its kind.
 const DOCUMENT_VIEWERS: Record<
   DocumentPreviewKind,
-  { tagName: string; element: TemplateResult }
+  {
+    tagName: string;
+    element: (file: DocumentPreviewFile | null) => TemplateResult;
+  }
 > = {
   pdf: {
     tagName: "caffold-pdf-viewer",
-    element: html`<caffold-pdf-viewer></caffold-pdf-viewer>`,
+    element: (file) =>
+      html`<caffold-pdf-viewer .file=${file}></caffold-pdf-viewer>`,
   },
   docx: {
     tagName: "caffold-docx-viewer",
-    element: html`<caffold-docx-viewer></caffold-docx-viewer>`,
+    element: (file) =>
+      html`<caffold-docx-viewer .file=${file}></caffold-docx-viewer>`,
   },
   pptx: {
     tagName: "caffold-pptx-viewer",
-    element: html`<caffold-pptx-viewer></caffold-pptx-viewer>`,
+    element: (file) =>
+      html`<caffold-pptx-viewer .file=${file}></caffold-pptx-viewer>`,
   },
   xlsx: {
     tagName: "caffold-xlsx-viewer",
-    element: html`<caffold-xlsx-viewer></caffold-xlsx-viewer>`,
+    element: (file) =>
+      html`<caffold-xlsx-viewer .file=${file}></caffold-xlsx-viewer>`,
   },
 };
 
@@ -168,7 +177,6 @@ interface PreviewDocument extends ViewerSource {
 
 // What the viewer of every document kind offers.
 interface DocumentViewer extends HTMLElement {
-  setFile(file: Blob | Promise<Blob>, options?: { newerCopy?: boolean }): void;
   scrollSurfaceScope(options: ScrollSurfaceScopeOptions): ScrollSurfaceScope;
   actionHintScope?(
     options: ActionHintScopeOptions & {
@@ -194,7 +202,12 @@ type ViewerState =
       action: string;
       title: string;
     }
-  | { status: "file"; presentation: ViewerPresentation }
+  | {
+      status: "file";
+      presentation: ViewerPresentation;
+      file: CodeFile;
+      position: ViewerPosition;
+    }
   | { status: "markdown"; presentation: ViewerPresentation }
   | { status: "image"; image: PreviewImage; presentation: ViewerPresentation }
   | {
@@ -202,7 +215,12 @@ type ViewerState =
       document: PreviewDocument;
       presentation: ViewerPresentation;
     }
-  | { status: "diff"; presentation: ViewerPresentation };
+  | {
+      status: "diff";
+      presentation: ViewerPresentation;
+      diff: FileDiff;
+      position: ViewerPosition;
+    };
 
 interface RetainedContent {
   presentation: ViewerPresentation | null;
@@ -217,6 +235,8 @@ export class CaffoldReviewFileViewer extends LitElement {
     closeLabel: { state: true },
     closeMode: { state: true },
     imageDrawn: { state: true },
+    imageSource: { state: true },
+    documentFile: { state: true },
   };
 
   declare private state: ViewerState;
@@ -225,6 +245,9 @@ export class CaffoldReviewFileViewer extends LitElement {
   // Until the picture is drawn, its place says it is loading rather than
   // showing an empty image the browser would draw as broken.
   declare private imageDrawn: boolean;
+  // The fetched copy of the previewed file the image or document draws from.
+  declare private imageSource: string;
+  declare private documentFile: DocumentPreviewFile | null;
   private readonly detailsPopoverId: string;
   private previewFile: PreviewFile | null = null;
   private retainedContent: RetainedContent | null = null;
@@ -236,6 +259,8 @@ export class CaffoldReviewFileViewer extends LitElement {
     this.closeLabel = "Back to files";
     this.closeMode = "close";
     this.imageDrawn = false;
+    this.imageSource = "";
+    this.documentFile = null;
     viewerInstanceId += 1;
     this.detailsPopoverId = `caffold-viewer-details-${viewerInstanceId}`;
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) => {
@@ -252,7 +277,6 @@ export class CaffoldReviewFileViewer extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
-    this.performUpdate();
     void warmIcons();
   }
 
@@ -443,7 +467,10 @@ export class CaffoldReviewFileViewer extends LitElement {
         return html`
           <section class="viewer-panel file-panel diff-panel">
             ${header}
-            <caffold-diff-viewer></caffold-diff-viewer>
+            <caffold-diff-viewer
+              .diff=${state.diff}
+              .position=${state.position}
+            ></caffold-diff-viewer>
           </section>
         `;
       case "image": {
@@ -456,6 +483,7 @@ export class CaffoldReviewFileViewer extends LitElement {
             <div class="image-stage">
               <img
                 class="image-preview"
+                src=${this.imageSource || nothing}
                 alt=${state.image.name}
                 ?hidden=${!this.imageDrawn}
                 @load=${this.showDrawnImage}
@@ -470,7 +498,7 @@ export class CaffoldReviewFileViewer extends LitElement {
         return html`
           <section class="viewer-panel file-panel document-panel">
             ${header}
-            ${DOCUMENT_VIEWERS[state.document.kind].element}
+            ${DOCUMENT_VIEWERS[state.document.kind].element(this.documentFile)}
           </section>
         `;
       case "markdown":
@@ -484,10 +512,17 @@ export class CaffoldReviewFileViewer extends LitElement {
         return html`
           <section class="viewer-panel file-panel">
             ${header}
-            <caffold-code-viewer></caffold-code-viewer>
+            <caffold-code-viewer
+              .file=${state.file}
+              .position=${state.position}
+            ></caffold-code-viewer>
           </section>
         `;
     }
+  }
+
+  get status() {
+    return this.state.status;
   }
 
   deactivate() {
@@ -530,15 +565,13 @@ export class CaffoldReviewFileViewer extends LitElement {
 
   setFile(file: CodeFile & ViewerSource, options: ViewerPositionOptions = {}) {
     this.cancelRetainedContent();
-    const scroll = options.preserveScroll ? this.captureContentScroll() : null;
     this.state = {
       status: "file",
       presentation: sourceViewerPresentation(file),
+      file,
+      position: this.nextPosition(options),
     };
     this.show();
-    this.querySelector<CaffoldCodeViewer>(
-      ":scope > .file-panel > caffold-code-viewer",
-    )?.setFile(file, { ...options, scroll });
   }
 
   // `imageRoot` is the Task root that an image address starting with "/"
@@ -556,9 +589,7 @@ export class CaffoldReviewFileViewer extends LitElement {
       presentation: sourceViewerPresentation(file),
     };
     this.show();
-    this.querySelector<CaffoldMarkdownPreview>(
-      ":scope > .markdown-panel > caffold-markdown-preview",
-    )?.setMarkdown(file.content, {
+    this.markdownPreview?.setMarkdown(file.content, {
       ...options,
       images: {
         folder: `${file.path ?? ""}`.split("/").slice(0, -1).join("/"),
@@ -611,14 +642,17 @@ export class CaffoldReviewFileViewer extends LitElement {
   ) {
     this.cancelRetainedContent();
     const held = this.previewFile;
-    const viewer = this.documentViewer();
+    const previous = this.state;
     this.state = {
       status: "document",
       document: previewDocument,
       presentation: sourceViewerPresentation(previewDocument),
     };
     this.show();
-    if (this.documentViewer() !== viewer) {
+    if (
+      previous.status !== "document" ||
+      previous.document.kind !== previewDocument.kind
+    ) {
       // A new viewer holds nothing yet, so the file is fetched for it.
       this.releasePreviewFile();
     }
@@ -633,14 +667,15 @@ export class CaffoldReviewFileViewer extends LitElement {
     options: ViewerPositionOptions & { presentation?: ViewerPresentation } = {},
   ) {
     this.cancelRetainedContent();
-    const scroll = options.preserveScroll ? this.captureContentScroll() : null;
     const { presentation = diffViewerPresentation(diff), ...viewerOptions } =
       options;
-    this.state = { status: "diff", presentation };
+    this.state = {
+      status: "diff",
+      presentation,
+      diff,
+      position: this.nextPosition(viewerOptions),
+    };
     this.show();
-    this.querySelector<CaffoldDiffViewer>(
-      ":scope > .diff-panel > caffold-diff-viewer",
-    )?.setDiff(diff, { ...viewerOptions, scroll });
   }
 
   setNotice(
@@ -694,12 +729,10 @@ export class CaffoldReviewFileViewer extends LitElement {
 
   setCloseLabel(label: string) {
     this.closeLabel = label;
-    this.performUpdate();
   }
 
   setCloseMode(mode: string) {
     this.closeMode = mode === "back" ? "back" : "close";
-    this.performUpdate();
   }
 
   actionHintScope({
@@ -1030,7 +1063,15 @@ export class CaffoldReviewFileViewer extends LitElement {
     if (this.state.status !== "image" && this.state.status !== "document") {
       this.releasePreviewFile();
     }
-    this.performUpdate();
+  }
+
+  // A file kept in place keeps where it is read; any other opens at its line
+  // or its top.
+  private nextPosition(options: ViewerPositionOptions): ViewerPosition {
+    return {
+      scroll: options.preserveScroll ? this.captureContentScroll() : null,
+      line: options.line,
+    };
   }
 
   private finishRetainedContent(retained: RetainedContent) {
@@ -1213,6 +1254,8 @@ export class CaffoldReviewFileViewer extends LitElement {
       return;
     }
     this.previewFile = null;
+    this.imageSource = "";
+    this.documentFile = null;
     preview.fetching?.abort();
     if (preview.objectUrl) {
       URL.revokeObjectURL(preview.objectUrl);
@@ -1268,8 +1311,14 @@ export class CaffoldReviewFileViewer extends LitElement {
     const fetching = new AbortController();
     preview.fetching = fetching;
     const reading = fetchInChunks(preview.url, { signal: fetching.signal });
-    if (preview.phase === PREVIEW_PHASE.READING) {
-      this.documentViewer()?.setFile(reading.then(({ file }) => file));
+    if (
+      preview.phase === PREVIEW_PHASE.READING &&
+      this.state.status === "document"
+    ) {
+      this.documentFile = {
+        file: reading.then(({ file }) => file),
+        newerCopy: false,
+      };
     }
     const current = () =>
       this.previewFile === preview && preview.fetching === fetching;
@@ -1300,31 +1349,27 @@ export class CaffoldReviewFileViewer extends LitElement {
     }
     if (this.state.status === "image") {
       this.drawPreviewImage();
-    } else if (newerCopy) {
-      this.documentViewer()?.setFile(file, { newerCopy: true });
+    } else if (newerCopy && this.state.status === "document") {
+      this.documentFile = { file, newerCopy: true };
     }
   }
 
-  // A picture element drawn anew takes the copy already fetched.
+  // A picture shown anew takes the copy already fetched.
   private drawPreviewImage() {
     const preview = this.previewFile;
-    const image = this.querySelector<HTMLImageElement>(
-      ":scope > .image-panel .image-preview",
-    );
-    if (!preview?.file || !image) {
+    if (!preview?.file) {
       return;
     }
     preview.objectUrl ||= URL.createObjectURL(preview.file);
-    image.src = preview.objectUrl;
+    this.imageSource = preview.objectUrl;
   }
 
-  private documentViewer() {
-    if (this.state.status !== "document") {
-      return null;
-    }
-    const { tagName } = DOCUMENT_VIEWERS[this.state.document.kind];
-    return this.querySelector<DocumentViewer>(
-      `:scope > .document-panel > ${tagName}`,
+  // The preview is drawn the first time it is needed, which is right after
+  // the viewer switches to it.
+  private get markdownPreview() {
+    this.performUpdate();
+    return this.querySelector<CaffoldMarkdownPreview>(
+      ":scope > .markdown-panel > caffold-markdown-preview",
     );
   }
 

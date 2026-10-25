@@ -92,16 +92,21 @@ for the browser globals Node lacks.
 ## Rendering
 
 A component that renders through Lit extends `LitElement` and renders into its
-own Light DOM. The state it shows lives in reactive properties. When one
-changes, Lit calls `render()` once the code that changed it has finished, so
-the DOM changes then rather than at the assignment. Work that reads the
+own Light DOM. The state it shows lives in reactive properties, and an owner
+hands a child what it shows through property bindings in its template. When
+one changes, Lit calls `render()` once the code that changed it has finished,
+so the DOM changes then rather than at the assignment. Work that reads the
 rendered DOM, such as scroll restoration, focus, or measurement, runs in
-`updated()`, and an owner that needs a child's rendered DOM awaits the child's
-`updateComplete`. While the owners that command a component are still
-JavaScript, the component renders at once, with `performUpdate()`, when it
-connects and when one of its public methods changes what it shows, so those
-owners can read its DOM right after mounting or calling it. Event listeners
-bound in a template come and go with their nodes.
+`updated()`, or, in a flow that is already asynchronous, after
+`updateComplete` once it has checked that its request is still current. An
+owner that needs a child's rendered DOM awaits the child's `updateComplete`.
+A component that calls methods on a child its own template draws renders its
+pending update, with `performUpdate()`, before it looks the child up, so the
+child is there even before the component is in the document. While the owners
+that command a component are still JavaScript, the component also renders at
+once when it connects and when one of its public methods changes what it
+shows, so those owners can read its DOM right after mounting or calling it.
+Event listeners bound in a template come and go with their nodes.
 
 Lit keeps the nodes of a rendered template across later renders and commits
 only the bindings whose values changed. Rendering a different template at the
@@ -1504,7 +1509,7 @@ keeps the newer Task fields, such as branch and HEAD, for later requests and
 starts no request.
 
 Each changes component tracks how far its read has come in one explicit graph
-(`changes-reading.js`): no data, a first read, a failed first read, data read
+(`changes-reading.ts`): no data, a first read, a failed first read, data read
 since Review last came back, data from before that, a reread of it, or a
 failed reread. When the root watch recovers or a cached entry connects again,
 both components mark their data as from before the return and drop answers to
@@ -2003,19 +2008,19 @@ frontend/
 |               |       |-- github-shortcuts.js
 |               |       `-- summary.js
 |               |-- (review)/
-|               |   |-- layout.js
-|               |   |-- changes-reading.js
+|               |   |-- layout.ts
+|               |   |-- changes-reading.ts
 |               |   `-- components/
-|               |       |-- working-tree-changes.js
-|               |       |-- branch-changes.js
-|               |       `-- selected-file.js
+|               |       |-- working-tree-changes.ts
+|               |       |-- branch-changes.ts
+|               |       `-- selected-file.ts
 |               |-- (git)/
-|               |   |-- layout.js
-|               |   |-- compare/page.js
+|               |   |-- layout.ts
+|               |   |-- compare/page.ts
 |               |   `-- (log)/...
 |               `-- (github)/
-|                   |-- layout.js
-|                   |-- components/task-start-dialog.js
+|                   |-- layout.ts
+|                   |-- components/task-start-dialog.ts
 |                   |-- (issues)/...
 |                   `-- (pulls)/...
 `-- components/

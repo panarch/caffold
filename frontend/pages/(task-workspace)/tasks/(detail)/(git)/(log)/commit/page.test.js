@@ -9,7 +9,7 @@ const previousWindow = globalThis.window;
 let singlePane = false;
 globalThis.window = { matchMedia: () => ({ matches: singlePane }) };
 const registry = installCustomElementUnitRegistry();
-await import("./page.js");
+await import("./page.ts");
 const page = registry.element("caffold-git-log-commit-page").prototype;
 after(() => {
   registry.restore();
@@ -56,7 +56,6 @@ test("composes only active Commit tree/viewer leaves", () => {
     fileViewer,
     panelResizer,
     sidePaneCollapsed: page.sidePaneCollapsed,
-    ensureRendered() {},
     currentCommitSha: () => "abcdef123456",
   };
   assert.deepEqual(page.actionHintScope.call(owner).targets, [

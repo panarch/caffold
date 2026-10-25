@@ -6,7 +6,7 @@ import {
 } from "../../../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./changes-tree.js");
+await import("./changes-tree.ts");
 const changesTree = registry.element("caffold-commit-changes-tree").prototype;
 after(() => registry.restore());
 

@@ -1,52 +1,120 @@
+import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
+  type ActionHintScopeOptions,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "#app/action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+import {
+  type GitHubPull,
+  type GitHubPullDetail,
+  type GitHubPullRepositoryInfo,
+  type GitRepository,
   getGitHubPull,
   prepareGitHubPullHead,
 } from "#app/api.js";
-import { escapeHtml } from "#components/dom.ts";
-import {
-  ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
+  type ScrollSurfaceScopeOptions,
 } from "#app/scroll-scope.js";
 
-class CaffoldGithubPullTaskSource extends HTMLElement {
-  connectedCallback() {
-    if (this.initialized) {
-      return;
-    }
-    this.initialized = true;
+export class CaffoldGithubPullTaskSource extends LitElement {
+  static properties = {
+    payload: { state: true },
+    pending: { state: true },
+    error: { state: true },
+    locked: { state: true },
+  };
+
+  declare private payload: GitHubPull | null;
+  declare private pending: boolean;
+  declare private error: Error | null;
+  declare private locked: boolean;
+  private repository: GitRepository | null = null;
+  private sourceRequestId = 0;
+  private prepareRequestId = 0;
+
+  constructor() {
+    super();
     this.payload = null;
-    this.repository = null;
     this.pending = false;
     this.error = null;
-    this.sourceRequestId = 0;
-    this.prepareRequestId = 0;
     this.locked = false;
-    this.render();
-    this.addEventListener("click", (event) => {
-      const action = event.target.closest?.("[data-github-pull-source-action]");
-      if (action?.dataset.githubPullSourceAction === "refresh") {
-        void this.refreshPull();
-      }
-    });
   }
 
-  setContext({ payload, repository } = {}) {
-    const rootPath = `${repository?.rootPath ?? payload?.repository?.rootPath ?? ""}`.trim();
+  createRenderRoot() {
+    return this;
+  }
+
+  render() {
+    const pull = this.payload?.pull;
+    return html`
+      <span>Pull request head</span>
+      <dl tabindex="0" aria-label="Pull request base and head relationship">
+        <div>
+          <dt>Base</dt>
+          <dd data-pull-ref="base">${pullRefLabel(
+            pull?.baseRepository,
+            pull?.baseRefName,
+            pull?.baseRefOid,
+          )}</dd>
+        </div>
+        <div>
+          <dt>Head</dt>
+          <dd data-pull-ref="head">${pullRefLabel(
+            pull?.headRepository,
+            pull?.headRefName,
+            pull?.headRefOid,
+          )}</dd>
+        </div>
+      </dl>
+      <p class="github-pull-task-source-help">
+        The Task starts from this exact head commit. Your current checkout stays
+        in place.
+      </p>
+      <div class="github-pull-task-source-error" aria-live="assertive">${
+        this.error
+          ? html`<p role="alert">${this.error.message}</p>
+              <button
+                type="button"
+                data-github-pull-source-action="refresh"
+                ?disabled=${this.locked}
+                @click=${this.refreshPull}
+              >${this.pending ? "Refreshing..." : "Refresh PR"}</button>`
+          : nothing
+      }</div>
+    `;
+  }
+
+  updated(changed: PropertyValues) {
+    if (changed.has("pending")) {
+      this.setAttribute("aria-busy", this.pending ? "true" : "false");
+    }
+  }
+
+  setContext({
+    payload,
+    repository,
+  }: {
+    payload?: GitHubPull | null;
+    repository?: GitRepository | null;
+  } = {}) {
+    const rootPath =
+      `${repository?.rootPath ?? payload?.repository?.rootPath ?? ""}`.trim();
     this.sourceRequestId += 1;
     this.prepareRequestId += 1;
     this.payload = payload?.pull && rootPath ? payload : null;
-    this.repository = this.payload ? { ...(repository ?? payload.repository), rootPath } : null;
+    this.repository = this.payload
+      ? { ...(repository ?? this.payload.repository), rootPath }
+      : null;
     this.pending = false;
     this.error = pullIsValid(this.source())
       ? null
-      : new Error("The exact pull request head is unavailable. Refresh the PR details and try again.");
+      : new Error(
+          "The exact pull request head is unavailable. Refresh the PR details and try again.",
+        );
     this.locked = false;
-    this.patch();
   }
 
   deactivate() {
@@ -57,16 +125,10 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
     this.pending = false;
     this.error = null;
     this.locked = false;
-    this.patch();
   }
 
-  setLocked(locked) {
-    const nextLocked = Boolean(locked);
-    if (this.locked === nextLocked) {
-      return;
-    }
-    this.locked = nextLocked;
-    this.patch();
+  setLocked(locked: boolean) {
+    this.locked = locked;
   }
 
   source() {
@@ -74,11 +136,16 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
   }
 
   readyForSubmission() {
-    return Boolean(this.repository?.rootPath && pullIsValid(this.source()) && !this.pending);
+    return Boolean(
+      this.repository?.rootPath && pullIsValid(this.source()) && !this.pending,
+    );
   }
 
-  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
-    const control = this.querySelector(
+  actionHintScope({
+    scopeId = "",
+    clipRoots = [],
+  }: ActionHintScopeOptions = {}) {
+    const control = this.querySelector<HTMLButtonElement>(
       '[data-github-pull-source-action="refresh"]',
     );
     if (!scopeId || !control || this.hidden) {
@@ -88,76 +155,82 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
     const sourceNumber = `${this.source()?.number ?? ""}`;
     return {
       blocked: false,
-      targets: [buttonActionHintTarget({
-        invalidationOwner: this,
-        id: `${scopeId}:refresh`,
-        actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-        label: control.textContent?.trim() || "Refresh PR",
-        control,
-        clipRoots: [...clipRoots],
-        isActionable: () =>
-          this.isConnected &&
-          !this.hidden &&
-          this.repository?.rootPath === rootPath &&
-          `${this.source()?.number ?? ""}` === sourceNumber &&
-          this.querySelector(
-            '[data-github-pull-source-action="refresh"]',
-          ) === control &&
-          !this.pending &&
-          !this.locked &&
-          !control.disabled,
-      })],
+      targets: [
+        buttonActionHintTarget({
+          invalidationOwner: this,
+          id: `${scopeId}:refresh`,
+          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+          label: control.textContent?.trim() || "Refresh PR",
+          control,
+          clipRoots: [...clipRoots],
+          isActionable: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.repository?.rootPath === rootPath &&
+            `${this.source()?.number ?? ""}` === sourceNumber &&
+            this.querySelector('[data-github-pull-source-action="refresh"]') ===
+              control &&
+            !this.pending &&
+            !this.locked &&
+            !control.disabled,
+        }),
+      ],
       mutationRoots: [this],
       scrollRoots: [],
     };
   }
 
-  scrollSurfaceScope({ scopeId = "", clipRoots = [] } = {}) {
+  scrollSurfaceScope({
+    scopeId = "",
+    clipRoots = [],
+  }: ScrollSurfaceScopeOptions = {}) {
     const scrollport = this.querySelector(":scope > dl");
     const rootPath = `${this.repository?.rootPath ?? ""}`;
     const sourceNumber = `${this.source()?.number ?? ""}`;
-    if (
-      !scopeId ||
-      !scrollport ||
-      !rootPath ||
-      !sourceNumber ||
-      this.hidden
-    ) {
+    if (!scopeId || !scrollport || !rootPath || !sourceNumber || this.hidden) {
       return emptyScrollSurfaceScope();
     }
     return {
       blocked: false,
-      surfaces: [{
-        id: `${scopeId}:relationship`,
-        label: "Pull request base and head relationship",
-        scrollport,
-        axes: ["horizontal"],
-        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-        isEligible: () =>
-          this.isConnected &&
-          !this.hidden &&
-          `${this.repository?.rootPath ?? ""}` === rootPath &&
-          `${this.source()?.number ?? ""}` === sourceNumber &&
-          this.querySelector(":scope > dl") === scrollport &&
-          hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport),
-      }],
+      surfaces: [
+        {
+          id: `${scopeId}:relationship`,
+          label: "Pull request base and head relationship",
+          scrollport,
+          axes: ["horizontal" as const],
+          clipRoots: [this, scrollport, ...clipRoots],
+          isEligible: () =>
+            this.isConnected &&
+            !this.hidden &&
+            `${this.repository?.rootPath ?? ""}` === rootPath &&
+            `${this.source()?.number ?? ""}` === sourceNumber &&
+            this.querySelector(":scope > dl") === scrollport &&
+            hasScrollLayoutBox(this) &&
+            hasScrollLayoutBox(scrollport),
+        },
+      ],
       mutationRoots: [this],
       resizeElements: [this, scrollport],
       scrollRoots: [scrollport],
     };
   }
 
-  async prepareSetup(provider) {
+  async prepareSetup(provider: string) {
     const pull = this.source();
     const rootPath = this.repository?.rootPath;
-    if (!pullIsValid(pull) || !rootPath || this.pending) {
+    if (
+      !this.payload ||
+      !pull ||
+      !pullIsValid(pull) ||
+      !rootPath ||
+      this.pending
+    ) {
       return null;
     }
+    const nameWithOwner = this.payload.github.nameWithOwner;
     const requestId = ++this.prepareRequestId;
     this.pending = true;
     this.error = null;
-    this.patch();
     this.emitChange();
     try {
       const prepared = await prepareGitHubPullHead(
@@ -174,8 +247,8 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
       }
       return pullSetupPrompt({
         pull,
-        github: this.payload.github,
-        repository: this.repository,
+        nameWithOwner,
+        rootPath,
         headRef: prepared.headRef,
         provider,
       });
@@ -188,13 +261,12 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
     } finally {
       if (requestId === this.prepareRequestId) {
         this.pending = false;
-        this.patch();
         this.emitChange();
       }
     }
   }
 
-  async refreshPull() {
+  private async refreshPull() {
     const pull = this.source();
     const rootPath = this.repository?.rootPath;
     if (!pull || !rootPath || this.pending || this.locked) {
@@ -203,7 +275,6 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
     const requestId = ++this.sourceRequestId;
     this.pending = true;
     this.error = null;
-    this.patch();
     this.emitChange();
     try {
       const payload = await getGitHubPull(rootPath, pull.number);
@@ -222,56 +293,12 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
     } finally {
       if (requestId === this.sourceRequestId) {
         this.pending = false;
-        this.patch();
         this.emitChange();
       }
     }
   }
 
-  render() {
-    this.innerHTML = `
-      <span>Pull request head</span>
-      <dl
-        tabindex="0"
-        aria-label="Pull request base and head relationship"
-      >
-        <div>
-          <dt>Base</dt>
-          <dd data-pull-ref="base"></dd>
-        </div>
-        <div>
-          <dt>Head</dt>
-          <dd data-pull-ref="head"></dd>
-        </div>
-      </dl>
-      <p class="github-pull-task-source-help">
-        The Task starts from this exact head commit. Your current checkout stays in place.
-      </p>
-      <div class="github-pull-task-source-error" aria-live="assertive"></div>
-    `;
-  }
-
-  patch() {
-    const pull = this.source();
-    this.querySelector('[data-pull-ref="base"]').textContent = pullRefLabel(
-      pull?.baseRepository,
-      pull?.baseRefName,
-      pull?.baseRefOid,
-    );
-    this.querySelector('[data-pull-ref="head"]').textContent = pullRefLabel(
-      pull?.headRepository,
-      pull?.headRefName,
-      pull?.headRefOid,
-    );
-    const error = this.querySelector(".github-pull-task-source-error");
-    error.innerHTML = this.error
-      ? `<p role="alert">${escapeHtml(this.error.message)}</p>
-        <button type="button" data-github-pull-source-action="refresh" ${this.locked ? "disabled" : ""}>${this.pending ? "Refreshing..." : "Refresh PR"}</button>`
-      : "";
-    this.setAttribute("aria-busy", this.pending ? "true" : "false");
-  }
-
-  emitChange() {
+  private emitChange() {
     this.dispatchEvent(
       new CustomEvent("caffold:github-task-source-change", {
         bubbles: true,
@@ -281,14 +308,19 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
   }
 }
 
-function pullIsValid(pull) {
+customElements.define(
+  "caffold-github-pull-task-source",
+  CaffoldGithubPullTaskSource,
+);
+
+function pullIsValid(pull: GitHubPullDetail | null | undefined) {
   return Boolean(pull?.headRefOid && pull?.baseRepository?.nameWithOwner);
 }
 
 // The same ask reaches each agent through its provider-facing tool names. Codex
 // uses unqualified names; Claude's in-process MCP tools are qualified; Grok
 // reaches Caffold's HTTP MCP server under the server's prefix.
-function caffoldTaskTools(provider) {
+function caffoldTaskTools(provider: string) {
   if (provider === "claude") {
     return {
       rename: "mcp__caffold__rename_current_task",
@@ -304,10 +336,23 @@ function caffoldTaskTools(provider) {
   return { rename: "rename_current_task", isolate: "isolate_current_task" };
 }
 
-function pullSetupPrompt({ pull, github, repository, headRef, provider }) {
+function pullSetupPrompt({
+  pull,
+  nameWithOwner,
+  rootPath,
+  headRef,
+  provider,
+}: {
+  pull: GitHubPullDetail;
+  nameWithOwner: string;
+  rootPath: string;
+  headRef: string;
+  provider: string;
+}) {
   const tools = caffoldTaskTools(provider);
-  const repositoryIdentity = `${github?.nameWithOwner ?? ""}`.trim() || repository.rootPath;
-  const baseRepository = pull.baseRepository?.nameWithOwner ?? repositoryIdentity;
+  const repositoryIdentity = nameWithOwner.trim() || rootPath;
+  const baseRepository =
+    pull.baseRepository?.nameWithOwner ?? repositoryIdentity;
   const headRepository = pull.headRepository?.nameWithOwner ?? "Unavailable";
   return [
     "Prepare this Caffold Task for the GitHub pull request below. This turn is setup only: do not review, analyze, or implement the pull request.",
@@ -315,7 +360,7 @@ function pullSetupPrompt({ pull, github, repository, headRef, provider }) {
     "",
     "--- BEGIN UNTRUSTED PULL REQUEST DATA ---",
     `Repository: ${repositoryIdentity}`,
-    `Repository root: ${repository.rootPath}`,
+    `Repository root: ${rootPath}`,
     `Pull request: #${pull.number} ${pull.title}`,
     `Pull request URL: ${pull.url}`,
     `Base: ${baseRepository}:${pull.baseRefName} @ ${pull.baseRefOid}`,
@@ -338,13 +383,13 @@ function pullSetupPrompt({ pull, github, repository, headRef, provider }) {
   ].join("\n");
 }
 
-function pullRefLabel(repository, refName, oid) {
+function pullRefLabel(
+  repository: GitHubPullRepositoryInfo | null | undefined,
+  refName: string | undefined,
+  oid: string | undefined,
+) {
   const repositoryName = `${repository?.nameWithOwner ?? "Unavailable"}`.trim();
   const ref = `${refName ?? "Unavailable"}`.trim();
   const shortOid = `${oid ?? "Unavailable"}`.trim().slice(0, 12);
   return `${repositoryName}:${ref} @ ${shortOid}`;
-}
-
-if (!customElements.get("caffold-github-pull-task-source")) {
-  customElements.define("caffold-github-pull-task-source", CaffoldGithubPullTaskSource);
 }

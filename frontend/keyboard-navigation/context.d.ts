@@ -12,6 +12,11 @@ export interface KeyboardNavigationScroll {
   scope: ScrollSurfaceScope;
 }
 
+// Where Escape moves focus from a control that is being edited.
+export interface KeyboardNavigationEditing {
+  escapeTarget?: (editable: Element) => Element | null;
+}
+
 export interface KeyboardNavigationContext {
   id: string;
   kind: KeyboardNavigationContextKind;
@@ -22,6 +27,7 @@ export interface KeyboardNavigationContext {
     sessionBound: boolean;
   };
   scroll?: KeyboardNavigationScroll;
+  editing?: KeyboardNavigationEditing;
 }
 
 export function keyboardNavigationContext(options: {
@@ -34,7 +40,12 @@ export function keyboardNavigationContext(options: {
     sessionBound?: boolean;
   } | null;
   scroll?: KeyboardNavigationScroll | null;
+  editing?: KeyboardNavigationEditing | null;
 }): KeyboardNavigationContext;
+
+export function mergeKeyboardNavigationContexts(
+  ...collections: Array<KeyboardNavigationContext[] | null | undefined>
+): KeyboardNavigationContext[];
 
 export function popoverScrollSurfaceScope(options: {
   id: string;

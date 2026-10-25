@@ -4,10 +4,10 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../tests/support/custom-element-unit.js";
-import { ChangesReading } from "../changes-reading.js";
+import { ChangesReading } from "../changes-reading.ts";
 
 const registry = installCustomElementUnitRegistry();
-await import("./branch-changes.js");
+await import("./branch-changes.ts");
 const branchChanges = registry.element("caffold-review-branch-changes").prototype;
 after(() => registry.restore());
 
@@ -63,7 +63,7 @@ test("drops a Branch compare that returns after Review leaves Branch", async (t)
     showReadingState() {},
     headRef: branchChanges.headRef,
     announceRead() {},
-    tree: () => tree,
+    tree,
   };
 
   const current = branchChanges.read.call(owner);

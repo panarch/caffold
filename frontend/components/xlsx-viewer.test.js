@@ -19,7 +19,6 @@ function drawingViewer() {
       generation: 4,
       selectedSheetName: "Q3",
       renderState: "xlsx",
-      performUpdate() {},
       release() {
         xlsxViewer.release.call(this);
       },
@@ -82,7 +81,8 @@ test("lets go of the workbook shown and opens the file it is handed", () => {
   const { owner, opened } = drawingViewer();
   const file = Promise.resolve(new Blob(["bytes"]));
 
-  xlsxViewer.setFile.call(owner, file);
+  owner.file = { file, newerCopy: false };
+  xlsxViewer.willUpdate.call(owner, new Map([["file", null]]));
 
   assert.equal(owner.renderState, "loading", "it says the file is loading until it is drawn");
   assert.deepEqual(opened, [{ generation: 5, file }], "the workbook shown before is let go of first");
@@ -91,7 +91,8 @@ test("lets go of the workbook shown and opens the file it is handed", () => {
 test("keeps the sheet being read for a newer copy of the same file", () => {
   const { owner } = drawingViewer();
 
-  xlsxViewer.setFile.call(owner, Promise.resolve(new Blob(["bytes"])), { newerCopy: true });
+  owner.file = { file: Promise.resolve(new Blob(["bytes"])), newerCopy: true };
+  xlsxViewer.willUpdate.call(owner, new Map([["file", null]]));
 
   assert.equal(owner.selectedSheetName, "Q3");
 });
@@ -99,7 +100,8 @@ test("keeps the sheet being read for a newer copy of the same file", () => {
 test("starts another file at its first sheet", () => {
   const { owner } = drawingViewer();
 
-  xlsxViewer.setFile.call(owner, Promise.resolve(new Blob(["bytes"])));
+  owner.file = { file: Promise.resolve(new Blob(["bytes"])), newerCopy: false };
+  xlsxViewer.willUpdate.call(owner, new Map([["file", null]]));
 
   assert.equal(owner.selectedSheetName, null);
 });

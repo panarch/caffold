@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./controls.js");
+await import("./controls.ts");
 const controls = registry.element("caffold-git-review-controls").prototype;
 after(() => registry.restore());
 
@@ -20,7 +20,6 @@ test("provides only the retained Refresh Git button", () => {
   const owner = {
     hidden: false,
     isConnected: true,
-    ensureRendered() {},
     get refreshButton() {
       return button;
     },
@@ -52,7 +51,6 @@ test("provides visible Compare ref selects with Refresh in visual order", () => 
     baseRefSelect: base,
     headRefSelect: head,
     refreshButton: refresh,
-    ensureRendered() {},
   };
 
   const scope = controls.actionHintScope.call(owner, { scopeId: "git:/repo" });

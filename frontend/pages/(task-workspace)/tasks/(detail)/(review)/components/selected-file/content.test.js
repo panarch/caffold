@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { contentFor } from "./content.js";
+import { contentFor } from "./content.ts";
 
 const modified = {
   file: { path: "repo/src/a.js", status: "M" },

@@ -3,11 +3,16 @@ import {
   isPreviewableImagePath,
 } from "#components/dom.ts";
 
-export function isFileRepresentation(viewer) {
+export type ReviewViewer = "diff" | "source" | "preview";
+
+export function isFileRepresentation(viewer: ReviewViewer) {
   return viewer === "source" || viewer === "preview";
 }
 
-export function representationForFile(viewer, path) {
+export function representationForFile(
+  viewer: ReviewViewer,
+  path: string,
+): ReviewViewer {
   if (!path || viewer === "diff") {
     return viewer;
   }
@@ -21,10 +26,10 @@ export function representationForFile(viewer, path) {
   return representations.source ? "source" : "preview";
 }
 
-export function fileRepresentationCapabilities(path) {
+export function fileRepresentationCapabilities(path: string) {
   const documentKind = documentPreviewKind(path);
   if (documentKind) {
-    return { source: false, previewKind: "document", documentKind };
+    return { source: false, previewKind: "document", documentKind } as const;
   }
   const imagePreview = isPreviewableImagePath(path);
   return {
@@ -34,13 +39,13 @@ export function fileRepresentationCapabilities(path) {
       : isPreviewableMarkdownPath(path)
         ? "markdown"
         : null,
-  };
+  } as const;
 }
 
-function isPreviewableMarkdownPath(path) {
+function isPreviewableMarkdownPath(path: string) {
   return /\.(?:md|markdown)$/i.test(`${path ?? ""}`);
 }
 
-function isSvgPath(path) {
+function isSvgPath(path: string) {
   return /\.svg$/i.test(`${path ?? ""}`);
 }

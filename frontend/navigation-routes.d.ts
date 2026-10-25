@@ -2,3 +2,7 @@
 // JavaScript. It goes when that module moves to TypeScript.
 
 export function parseLinkRoute(href: string): { kind: string } | null;
+
+export function routeMode(
+  route: { kind?: string } | null | undefined,
+): string | null;

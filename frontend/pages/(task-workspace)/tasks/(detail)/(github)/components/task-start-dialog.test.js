@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./task-start-dialog.js");
+await import("./task-start-dialog.ts");
 const taskStart = registry.element("caffold-github-task-start-dialog").prototype;
 after(() => registry.restore());
 
@@ -38,9 +38,9 @@ test("merges own, turn-option, and current source targets", () => {
     isConnected: true,
     sourceKind: "issue",
     pending: false,
-    dialog: () => dialog,
-    sourceComponent: () => source,
-    turnOptions: () => turnOptions,
+    dialog,
+    sourceComponent: source,
+    turnOptions,
   };
   const scope = taskStart.actionHintScope.call(owner);
 
@@ -92,10 +92,10 @@ test("binds modal Editing escape and exact Task setup scrollport", () => {
   const owner = {
     isConnected: true,
     sourceKind: "issue",
-    dialog: () => dialog,
-    sourceComponent: () => source,
-    issueSource: () => ({ querySelector: () => select }),
-    turnOptions: () => turnOptions,
+    dialog,
+    sourceComponent: source,
+    issueSource: { querySelector: () => select },
+    turnOptions,
     actionHintScope: () => ({ targets: [] }),
   };
   owner.scrollSurfaceScope = () => taskStart.scrollSurfaceScope.call(owner);

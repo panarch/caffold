@@ -4,10 +4,10 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../tests/support/custom-element-unit.js";
-import { ChangesReading } from "../changes-reading.js";
+import { ChangesReading } from "../changes-reading.ts";
 
 const registry = installCustomElementUnitRegistry();
-await import("./working-tree-changes.js");
+await import("./working-tree-changes.ts");
 const workingTreeChanges = registry
   .element("caffold-review-working-tree-changes")
   .prototype;
@@ -56,11 +56,10 @@ test("drops a Working Tree status read sent before the page came back", async (t
     reading,
     generation: 0,
     selectedPath: "",
-    ensureRendered() {},
     acceptsRead: workingTreeChanges.acceptsRead,
     showReadingState() {},
     announceRead: (detail) => announced.push(detail),
-    tree: () => tree,
+    tree,
   };
 
   const sentBefore = workingTreeChanges.read.call(owner, { background: true });

@@ -8,7 +8,7 @@ import {
 } from "../action-hint-scope.js";
 import {
   type GitCompare,
-  type GitCompareDiff,
+  type GitDiff,
   type GitRef,
   type GitRefs,
   type GitRepository,
@@ -36,7 +36,7 @@ const LOADING_DELAY_MS = 180;
 
 type DetailView = "list" | "viewer";
 
-class CaffoldGitCompareBrowser extends LitElement {
+export class CaffoldGitCompareBrowser extends LitElement {
   // What the Compare page reads back.
   repository: GitRepository | null = null;
   refsPayload: GitRefs | null = null;
@@ -56,11 +56,6 @@ class CaffoldGitCompareBrowser extends LitElement {
 
   createRenderRoot() {
     return this;
-  }
-
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
   }
 
   disconnectedCallback() {
@@ -155,25 +150,6 @@ class CaffoldGitCompareBrowser extends LitElement {
 
     this.compareTree.setCompare(this.compare);
     return this.compare;
-  }
-
-  async changeRefs(baseRef: string | null, headRef: string | null) {
-    if (
-      !baseRef ||
-      !headRef ||
-      (baseRef === this.baseRef && headRef === this.headRef)
-    ) {
-      return this.compare;
-    }
-
-    this.baseRef = baseRef;
-    this.headRef = headRef;
-    this.compare = null;
-    this.setSelectedPath("");
-    this.showList();
-    this.setEmpty();
-    this.emitStateChange();
-    return await this.loadCompare(baseRef, headRef);
   }
 
   async openDiff(path: string, status = "") {
@@ -312,24 +288,6 @@ class CaffoldGitCompareBrowser extends LitElement {
     }
   }
 
-  setLoading(repository: GitRepository | null) {
-    this.setContext({ repository });
-    this.compareTree.setLoading(repository);
-  }
-
-  setCompare(comparePayload: GitCompare) {
-    this.compare = comparePayload;
-    this.baseRef = comparePayload.baseRef ?? this.baseRef;
-    this.headRef = comparePayload.headRef ?? this.headRef;
-    this.repository = comparePayload.repository ?? this.repository;
-    this.compareTree.setCompare(comparePayload);
-    this.emitStateChange();
-  }
-
-  setError(error: Error, repository: GitRepository | null = null) {
-    this.compareTree.setError(error, repository);
-  }
-
   setSelectedPath(path: string | null | undefined) {
     if (!path) {
       this.diffRequestId += 1;
@@ -347,20 +305,8 @@ class CaffoldGitCompareBrowser extends LitElement {
     this.restoreCompareScroll();
   }
 
-  hasCompare(baseRef: string | null, headRef: string | null) {
-    return (
-      this.compare !== null &&
-      this.compare.baseRef === (baseRef || null) &&
-      this.compare.headRef === (headRef || null)
-    );
-  }
-
   fileForPath(path: string) {
     return this.compare?.files?.find((entry) => entry.path === path) ?? null;
-  }
-
-  isFileViewer(target: EventTarget | null) {
-    return target === this.viewer;
   }
 
   actionHintScope({
@@ -462,20 +408,6 @@ class CaffoldGitCompareBrowser extends LitElement {
           scopeId: `${scopeId}:viewer`,
         })
       : [];
-  }
-
-  compareSubtitle(fallback = "Branches") {
-    if (!this.compare) {
-      return fallback;
-    }
-
-    const count = this.compare.files?.length ?? 0;
-    const countLabel = `${count} ${count === 1 ? "file" : "files"}`;
-    if ((this.refsPayload?.refs ?? []).length > 0) {
-      return countLabel;
-    }
-
-    return `${this.compare.baseRef}...${this.compare.headRef} · ${countLabel}`;
   }
 
   setView(view: string) {
@@ -693,11 +625,7 @@ class CaffoldGitCompareBrowser extends LitElement {
     return this.detailView === "viewer" && this.panelResizer.collapsed;
   }
 
-  private diffPresentation(
-    path: string,
-    status = "",
-    diff: GitCompareDiff = {},
-  ) {
+  private diffPresentation(path: string, status = "", diff: GitDiff = {}) {
     const file = this.fileForPath(path);
     return diffViewerPresentation({
       ...diff,

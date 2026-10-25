@@ -6,7 +6,7 @@ import {
 } from "../../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./page.js");
+await import("./page.ts");
 const page = registry.element("caffold-github-pull-detail-page").prototype;
 after(() => registry.restore());
 
@@ -91,6 +91,8 @@ test("provides current Pull actions and direct links through their native contro
       return null;
     },
     querySelectorAll: () => [],
+    markdownBlocks: page.markdownBlocks,
+    markdownBlock: page.markdownBlock,
   };
 
   const scope = page.actionHintScope.call(owner, {
@@ -175,6 +177,8 @@ test("merges current Pull Markdown child scopes through the retained scrollport"
       pull: {
         number: 7,
         url: "https://github.com/example/repo/pull/7",
+        conversationComments: [],
+        commitSummaries: [],
       },
     },
   };
@@ -202,6 +206,8 @@ test("merges current Pull Markdown child scopes through the retained scrollport"
       return null;
     },
     querySelectorAll: () => [markdown],
+    markdownBlocks: page.markdownBlocks,
+    markdownBlock: page.markdownBlock,
   };
   const scope = page.actionHintScope.call(owner, {
     scopeId: "github:pull:detail",
@@ -236,6 +242,8 @@ test("provides the retained Pull Request detail scrollport", () => {
     getClientRects: () => [{}],
     querySelector: () => scrollport,
     querySelectorAll: () => [],
+    markdownBlocks: page.markdownBlocks,
+    markdownBlock: page.markdownBlock,
   };
   const scope = page.scrollSurfaceScope.call(owner);
   assert.equal(scope.surfaces[0].scrollport, scrollport);
@@ -276,6 +284,8 @@ test("merges current Pull Markdown scroll scopes through the retained detail scr
         : null;
     },
     querySelectorAll: () => [markdown],
+    markdownBlocks: page.markdownBlocks,
+    markdownBlock: page.markdownBlock,
   };
 
   const scope = page.scrollSurfaceScope.call(owner, {

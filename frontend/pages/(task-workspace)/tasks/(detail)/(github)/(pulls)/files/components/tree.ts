@@ -1,0 +1,239 @@
+import { html, LitElement, nothing, type PropertyValues } from "lit";
+import {
+  type ActionHintScope,
+  type ActionHintScopeOptions,
+  emptyActionHintScope,
+} from "#app/action-hint-scope.js";
+import type { GitHubPullFile, GitHubPullFiles } from "#app/api.js";
+import {
+  emptyScrollSurfaceScope,
+  type ScrollSurfaceScope,
+  type ScrollSurfaceScopeOptions,
+} from "#app/scroll-scope.js";
+import {
+  buildFileTreeNodes,
+  type CaffoldFileTree,
+  type FileTreeNode,
+  type FileTreeSelectDetail,
+} from "#components/file-tree.ts";
+import "#components/loading-text.ts";
+
+const LOADING_FILES = "Loading pull request files...";
+
+type FilesState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; payload: GitHubPullFiles }
+  | { status: "error"; error: Error };
+
+export class CaffoldGithubPullFilesTree extends LitElement {
+  static properties = {
+    state: { state: true },
+  };
+
+  declare private state: FilesState;
+  private selectedPath = "";
+  private fileKeyByPath = new Map<string, string>();
+
+  constructor() {
+    super();
+    this.state = { status: "idle" };
+  }
+
+  createRenderRoot() {
+    return this;
+  }
+
+  render() {
+    const state = this.state;
+    const payload = state.status === "ready" ? state.payload : null;
+    const files = payload?.files ?? [];
+    const message =
+      state.status === "loading"
+        ? html`<caffold-loading-text>${LOADING_FILES}</caffold-loading-text>`
+        : state.status === "error"
+          ? state.error.message
+          : payload && files.length === 0
+            ? "No files changed."
+            : "";
+    const panelClass =
+      state.status === "error"
+        ? "github-pull-files-panel error-panel"
+        : "github-pull-files-panel";
+    const countLabel = payload ? `${files.length} files` : "";
+    return html`
+      <section
+        class=${panelClass}
+        data-content=${payload ? (files.length ? "tree" : "empty") : nothing}
+        aria-busy=${state.status === "loading" ? "true" : nothing}
+      >
+        <header>
+          <div class="github-pull-files-title-row">
+            <h2>Files</h2>
+            <span class="github-pull-files-count">${countLabel}</span>
+          </div>
+        </header>
+        ${
+          message
+            ? html`<p class="surface-message">${message}</p>`
+            : html`<caffold-file-tree
+                @caffold:file-tree-select=${this.openFile}
+              ></caffold-file-tree>`
+        }
+      </section>
+    `;
+  }
+
+  // The tree is handed the pull request's files once it is drawn.
+  updated(changed: PropertyValues) {
+    const state = this.state;
+    if (!changed.has("state") || state.status !== "ready") {
+      return;
+    }
+    const tree = this.fileTree();
+    if (!tree) {
+      return;
+    }
+    const { nodes, fileKeyByPath } = pullFileNodes(state.payload.files);
+    this.fileKeyByPath = fileKeyByPath;
+    tree.setModel({
+      entityKey: pullEntityKey(state.payload),
+      nodes,
+      selectedKey: this.selectedKey(),
+      statusColumn: true,
+    });
+  }
+
+  setLoading() {
+    this.state = { status: "loading" };
+  }
+
+  setFiles(payload: GitHubPullFiles) {
+    this.state = { status: "ready", payload };
+  }
+
+  setError(error: Error) {
+    this.state = { status: "error", error };
+  }
+
+  setSelectedPath(path: string | null | undefined) {
+    this.selectedPath = path ?? "";
+    this.fileTree()?.setSelectedKey(this.selectedKey());
+  }
+
+  reset() {
+    this.selectedPath = "";
+    this.state = { status: "idle" };
+  }
+
+  actionHintScope({
+    scopeId = "",
+    actionId = "",
+    disclosureActionId = "",
+    clipRoots = [],
+  }: ActionHintScopeOptions & {
+    disclosureActionId?: string;
+  } = {}): ActionHintScope {
+    const tree = this.fileTree();
+    if (
+      !scopeId ||
+      (!actionId && !disclosureActionId) ||
+      this.hidden ||
+      this.state.status !== "ready" ||
+      !tree
+    ) {
+      return emptyActionHintScope();
+    }
+    return tree.actionHintScope({
+      scopeId,
+      actionId,
+      disclosureActionId,
+      clipRoots: [this, ...clipRoots],
+      isCurrent: (node) => pullFile(node)?.path === this.selectedPath,
+      labelForNode: (node) => node.ariaLabel || `Open ${node.name}`,
+    });
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Pull request files",
+    clipRoots = [],
+  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
+    const tree = this.fileTree();
+    if (!scopeId || this.hidden || this.state.status !== "ready" || !tree) {
+      return emptyScrollSurfaceScope();
+    }
+    return tree.scrollSurfaceScope({
+      scopeId,
+      label,
+      clipRoots: [this, ...clipRoots],
+      isCurrent: () =>
+        this.state.status === "ready" && this.fileTree() === tree,
+    });
+  }
+
+  private openFile(event: CustomEvent<FileTreeSelectDetail>) {
+    const file = pullFile(event.detail.node);
+    if (!file) {
+      return;
+    }
+    this.selectedPath = file.path;
+    this.dispatchEvent(
+      new CustomEvent("caffold:open-github-pull-file", {
+        bubbles: true,
+        detail: { path: file.path, status: file.status },
+      }),
+    );
+  }
+
+  private fileTree() {
+    return this.querySelector<CaffoldFileTree>("caffold-file-tree");
+  }
+
+  private selectedKey() {
+    return this.fileKeyByPath.get(this.selectedPath) ?? "";
+  }
+}
+
+customElements.define(
+  "caffold-github-pull-files-tree",
+  CaffoldGithubPullFilesTree,
+);
+
+function pullFile(node: FileTreeNode) {
+  return node.source as GitHubPullFile | undefined;
+}
+
+function pullFileNodes(files: GitHubPullFile[]) {
+  const fileKeyByPath = new Map<string, string>();
+  const leaves = files.map((file) => {
+    const key = `pull:file:${file.repoRelativePath}`;
+    if (!fileKeyByPath.has(file.path)) {
+      fileKeyByPath.set(file.path, key);
+    }
+    return {
+      key,
+      kind: "file",
+      path: file.path,
+      treePath: file.repoRelativePath,
+      status: file.status,
+      title: file.repoRelativePath,
+      ariaLabel: `Show pull request diff for ${file.repoRelativePath}`,
+      source: file,
+    };
+  });
+  return {
+    nodes: buildFileTreeNodes(leaves, { namespace: "pull" }),
+    fileKeyByPath,
+  };
+}
+
+function pullEntityKey(payload: GitHubPullFiles) {
+  return [
+    payload.repository?.rootPath ??
+      payload.repository?.root ??
+      payload.repository?.path ??
+      "",
+    payload.number,
+  ].join("\u0000");
+}
