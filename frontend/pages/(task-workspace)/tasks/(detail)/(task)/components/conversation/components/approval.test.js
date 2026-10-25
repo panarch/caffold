@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { installCustomElementUnitRegistry } from "../../../../../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./approval.js");
+await import("./approval.ts");
 const Approval = registry.element("caffold-task-approval");
 after(() => registry.restore());
 
 test("tool details escape external text and preserve exact JSON argument values", () => {
-  const { owner, content, title, reason } = presentationOwner();
-  owner.setSnapshot({ threadId: "a", request: {
+  const html = cardHtml({
     approvalId: "mcp:42", title: "Read document", reason: "Allow this tool?",
     tool: {
       serverName: "docs<script>", appName: "Documents", description: "Reads <content>.",
@@ -19,86 +19,86 @@ test("tool details escape external text and preserve exact JSON argument values"
         { name: "values", label: "Values", value: [1, true] },
       ],
     },
-  } });
-  assert.equal(title.textContent, "Read document");
-  assert.equal(reason.textContent, "Allow this tool?");
-  assert.match(content.innerHTML, /docs&lt;script&gt;/);
-  assert.match(content.innerHTML, /Reads &lt;content&gt;/);
-  assert.match(content.innerHTML, /&quot;include&quot;: false/);
-  assert.match(content.innerHTML, /&quot;tag&quot;: null/);
-  assert.match(content.innerHTML, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
-  assert.match(content.innerHTML, /tabindex="0" aria-label="Document"/);
-  assert.doesNotMatch(content.innerHTML, /<script>/);
+  });
+  assert.match(html, /<h3>Read document<\/h3>/);
+  assert.match(html, />Allow this tool\?<\/p>/);
+  assert.match(html, /docs&lt;script&gt;/);
+  assert.match(html, /Reads &lt;content&gt;/);
+  assert.match(html, /&quot;include&quot;: false/);
+  assert.match(html, /&quot;tag&quot;: null/);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(html, /tabindex="0"\s+aria-label="Document"/);
+  assert.doesNotMatch(html, /<script>/);
 });
 
 test("a card names how sure the reviewer was, because only a short answer leaves one", () => {
-  const { owner, content } = presentationOwner();
-
-  owner.setSnapshot({ threadId: "a", request: {
+  const html = cardHtml({
     approvalId: "reviewed", command: "rm -f ./scratch.txt",
     reviewed: { model: "jev-1.13.0", concern: 0.62, allows: false },
-  } });
+  });
 
-  assert.match(content.innerHTML, /Reviewer answer/);
-  assert.match(content.innerHTML, /62% sure this needs you/);
-  assert.match(content.innerHTML, /jev-1\.13\.0/);
+  assert.match(html, /Reviewer answer/);
+  assert.match(html, /62% sure this needs you/);
+  assert.match(html, /jev-1\.13\.0/);
 });
 
 test("a card the reviewer never answered says nothing about a reviewer", () => {
-  const { owner, content } = presentationOwner();
-
-  owner.setSnapshot({ threadId: "a", request: {
+  const html = cardHtml({
     approvalId: "unreviewed", command: "rm -f ./scratch.txt",
-  } });
+  });
 
-  assert.doesNotMatch(content.innerHTML, /Reviewer answer/);
-  assert.doesNotMatch(content.innerHTML, /Jev/);
+  assert.doesNotMatch(html, /Reviewer answer/);
+  assert.doesNotMatch(html, /Jev/);
 });
 
 test("command, network, permissions, and context share the normalized card", () => {
-  const { owner, content } = presentationOwner();
-  owner.setSnapshot({ threadId: "a", request: {
+  const html = cardHtml({
     approvalId: "permission", command: "cat <secret>", cwd: "src/test", environment: "Local",
     networkEndpoint: "example.com:443", grantRoot: "/work/tree",
     permissions: [{ label: "Read", value: "/work/tree", verbatim: true }],
-  } });
+  });
   for (const pattern of [/cat &lt;secret&gt;/, /example.com:443/, /Requested permissions/, /Grant root/, /Working directory/, /Environment/]) {
-    assert.match(content.innerHTML, pattern);
+    assert.match(html, pattern);
   }
-  assert.match(content.innerHTML, /aria-label="Approval command"/);
+  assert.match(html, /aria-label="Approval command"/);
+  // A path breaks after each separator.
+  assert.match(html, /<code>\/<wbr>work\/<wbr>tree<\/code>/);
 });
 
 test("refresh, errors, and transport changes retain details; new identity clears local error", () => {
-  const { owner, content, error } = presentationOwner();
-  const snapshot = { threadId: "a", request: {
-    approvalId: "same", command: "cargo test", decisions: ["allow", "deny"],
-  } };
-  owner.setSnapshot(snapshot);
-  const writes = content.writes;
+  const request = { approvalId: "same", command: "cargo test", decisions: ["allow", "deny"] };
+  const owner = approvalHost({ request });
+  assert.match(templateHtml(owner.render()), /role="alert"\s+\?hidden="true"\s*><\/p>/);
   owner.setError(new Error("Try again"));
-  assert.equal(error.textContent, "Try again");
-  assert.equal(error.hidden, false);
-  owner.setSnapshot(structuredClone(snapshot));
-  owner.setSnapshot({ ...snapshot, disabled: true });
-  assert.equal(content.writes, writes);
+  assert.match(
+    templateHtml(owner.render()),
+    /role="alert"\s+\?hidden="false"\s*>Try again<\/p>/,
+  );
+  owner.request = structuredClone(request);
+  owner.willUpdate(new Map([["request", request]]));
+  owner.disabled = true;
+  owner.willUpdate(new Map([["disabled", false]]));
   assert.equal(owner.errorMessage, "Try again");
-  owner.setSnapshot({ ...snapshot, threadId: "b" });
-  assert.equal(error.hidden, true);
+  owner.threadId = "b";
+  owner.willUpdate(new Map([["threadId", "a"]]));
   assert.equal(owner.errorMessage, "");
-  owner.setError("Different request");
-  owner.setSnapshot({ threadId: "b", request: { approvalId: "new" } });
+  owner.setError(new Error("Different request"));
+  const previous = owner.request;
+  owner.request = { approvalId: "new" };
+  owner.willUpdate(new Map([["request", previous]]));
   assert.equal(owner.errorMessage, "");
 });
 
 test("offered decisions expose native activation with card-owned invalidation", () => {
-  const owner = scopeOwner();
   const choices = ["allow", "allowForSession", "allowAlways", "deny", "cancel"];
   let controls = choices.map((decision) => ({
     dataset: { decision }, textContent: decision, disabled: false,
     focus() {}, click() { this.clicks = (this.clicks ?? 0) + 1; },
   }));
-  owner.request.decisions = choices;
-  owner.actions = () => controls;
+  const owner = approvalHost({
+    request: { approvalId: "same", decisions: choices },
+    get actions() { return controls; },
+  });
   let current = true;
   const scope = owner.actionHintScope({ scopeId: "approval:a", isCurrent: () => current });
   assert.deepEqual(scope.targets.map((target) => target.id), choices.map((choice) => `approval:a:${choice}`));
@@ -133,12 +133,13 @@ test("offered decisions expose native activation with card-owned invalidation", 
 });
 
 test("command and argument scroll surfaces expire when their DOM or Task is replaced", () => {
-  const owner = scopeOwner();
   let outputs = ["Approval command", "Document"].map((label) => ({
     getClientRects: () => [{}], getAttribute: () => label,
   }));
-  owner.querySelectorAll = () => outputs;
-  owner.contains = (node) => outputs.includes(node);
+  const owner = approvalHost({
+    querySelectorAll: () => outputs,
+    contains: (node) => outputs.includes(node),
+  });
   let current = true;
   const scope = owner.scrollSurfaceScope({ scopeId: "approval:a", isCurrent: () => current });
   assert.deepEqual(scope.surfaces.map(({ label, axes }) => ({ label, axes })), [
@@ -160,38 +161,24 @@ test("command and argument scroll surfaces expire when their DOM or Task is repl
   assert.equal(surface.isEligible(), false);
 });
 
-function scopeOwner() {
-  const owner = new Approval();
-  owner.ensureState();
-  Object.assign(owner, {
-    threadId: "a", request: { approvalId: "same" },
-    isConnected: true, hidden: false, getClientRects: () => [{}],
+// A card's fields as its conversation sets them. Native DOM retention and
+// activation are exercised by the owning approval browser spec.
+function approvalHost(properties = {}) {
+  return Object.create(Approval.prototype, {
+    ...Object.getOwnPropertyDescriptors({
+      threadId: "a",
+      request: { approvalId: "same" },
+      disabled: false,
+      active: true,
+      errorMessage: "",
+      isConnected: true,
+      hidden: false,
+      getClientRects: () => [{}],
+    }),
+    ...Object.getOwnPropertyDescriptors(properties),
   });
-  return owner;
 }
 
-// These tests observe presentation writes. Native DOM retention and activation
-// are exercised by the owning approval browser spec.
-function presentationOwner() {
-  const owner = scopeOwner();
-  const title = { textContent: "" };
-  const reason = { textContent: "", hidden: true };
-  const error = { textContent: "", hidden: true };
-  const content = {
-    writes: 0,
-    set innerHTML(value) { this.html = value; this.writes += 1; },
-    get innerHTML() { return this.html; },
-  };
-  const card = {
-    dataset: {},
-    querySelector(selector) {
-      if (selector.endsWith("h3")) return title;
-      if (selector.endsWith(".task-approval-reason")) return reason;
-      if (selector.endsWith(".task-approval-content")) return content;
-      throw new Error(`Unexpected card selector: ${selector}`);
-    },
-  };
-  owner.querySelector = (selector) => selector === ":scope > article" ? card : error;
-  owner.updateActions = () => {};
-  return { owner, content, title, reason, error };
+function cardHtml(request, properties = {}) {
+  return templateHtml(approvalHost({ request, ...properties }).render());
 }

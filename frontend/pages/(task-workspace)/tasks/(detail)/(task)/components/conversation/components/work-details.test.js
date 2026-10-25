@@ -4,9 +4,10 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../../../tests/support/custom-element-unit.js";
+import { datasetAttribute } from "../../../../../../../../tests/support/dataset-attribute.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./work-details.js");
+await import("./work-details.ts");
 const workDetails = registry.element("caffold-task-work-details").prototype;
 after(() => registry.restore());
 
@@ -19,10 +20,12 @@ test("merges its root disclosure with only direct retained work items", () => {
     children: [
       {
         dataset: { commandWorkIdentity: "command-a" },
+        getAttribute: datasetAttribute,
         querySelector: () => command,
       },
       {
         dataset: { messageWorkIdentity: "message-a" },
+        getAttribute: datasetAttribute,
         querySelector: (selector) => selector.includes("assistant-message") ? message : null,
       },
     ],
@@ -45,9 +48,8 @@ test("merges its root disclosure with only direct retained work items", () => {
   const owner = {
     isConnected: true,
     identity: "work-a",
-    snapshot: { label: "Worked for 8m" },
+    label: "Worked for 8m",
     hidden: false,
-    ensureState() {},
     querySelector(selector) {
       return selector.includes("data-work-details-disclosure-key")
         ? disclosure
@@ -123,10 +125,12 @@ test("merges retained raw and direct child Scroll surfaces only while expanded",
   };
   const commandItem = {
     dataset: { commandWorkIdentity: "command-a" },
+    getAttribute: datasetAttribute,
     querySelector: () => command,
   };
   const messageItem = {
     dataset: { messageWorkIdentity: "message-a" },
+    getAttribute: datasetAttribute,
     querySelector: (selector) =>
       selector.includes("assistant-message") ? message : null,
   };
@@ -143,7 +147,6 @@ test("merges retained raw and direct child Scroll surfaces only while expanded",
     isConnected: true,
     identity: "work-a",
     hidden: false,
-    ensureState() {},
     scrollSurfaceRecords: [rawRecord],
     querySelector: () => disclosure,
   });

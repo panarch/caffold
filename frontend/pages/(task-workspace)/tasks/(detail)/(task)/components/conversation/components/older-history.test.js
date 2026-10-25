@@ -1,88 +1,86 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { installCustomElementUnitRegistry } from "../../../../../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./older-history.js");
+await import("./older-history.ts");
 const olderHistory = registry.element("caffold-task-older-history").prototype;
 after(() => registry.restore());
 
-function host() {
-  const owner = Object.assign(Object.create(olderHistory), {
-    isConnected: true,
-    hidden: false,
-    writes: 0,
-    events: [],
-    html: "",
-    control: null,
-    querySelector: () => owner.control,
-    dispatchEvent: (event) => owner.events.push(event.detail),
+// The row as its conversation sets it. `show` stands in for drawing: it
+// gives the row the control its template would draw.
+function host(properties = {}) {
+  const owner = Object.create(olderHistory, {
+    ...Object.getOwnPropertyDescriptors({
+      isConnected: true,
+      hidden: false,
+      threadId: "a",
+      hasOlder: true,
+      loading: false,
+      error: null,
+      active: true,
+      events: [],
+      button: null,
+      dispatchEvent(event) {
+        this.events.push(event.detail);
+        return true;
+      },
+    }),
+    ...Object.getOwnPropertyDescriptors(properties),
   });
-  Object.defineProperty(owner, "innerHTML", {
-    get: () => owner.html,
-    set(html) {
-      owner.writes += 1;
-      owner.html = html;
-      const label = html.match(/<button[^>]*>([^<]+)<\/button>/)?.[1];
-      owner.control = label ? {
-        textContent: label,
-        disabled: false,
-        getAttribute: () => null,
-        getClientRects: () => [{}],
-        focus() {},
-        click() {
-          owner.handleClick({
-            target: { closest: () => this },
-            stopPropagation() {},
-          });
-        },
-      } : null;
-    },
-  });
-  owner.ensureState();
+  owner.show = (state = {}) => {
+    Object.assign(owner, state);
+    owner.updated();
+    const label = templateHtml(owner.render()).match(
+      /<button[^>]*>([^<]+)<\/button>/,
+    )?.[1];
+    owner.button = label
+      ? {
+          textContent: label,
+          disabled: false,
+          getAttribute: () => null,
+          getClientRects: () => [{}],
+          focus() {},
+          click() {
+            owner.request({ stopPropagation() {} });
+          },
+        }
+      : null;
+  };
   return owner;
 }
 
-test("retains the same control or loading phrase for equivalent display snapshots", () => {
+test("says it is loading with the phrase alone, and offers loading or retrying", () => {
   const owner = host();
-  const ready = { threadId: "a", hasOlder: true };
-  assert.equal(owner.setSnapshot(ready), true);
-  const button = owner.button();
-  assert.equal(owner.setSnapshot({ ...ready }), false);
-  assert.equal(owner.button(), button);
-  assert.equal(owner.writes, 1);
-
-  assert.equal(owner.setSnapshot({ ...ready, loading: true }), true);
-  assert.equal(owner.setSnapshot({ ...ready, loading: true }), false);
-  assert.equal(owner.writes, 2);
-  assert.equal(owner.button(), null);
+  assert.match(templateHtml(owner.render()), />Load older messages<\/button>/);
+  const loading = templateHtml(host({ loading: true }).render());
   assert.match(
-    owner.html,
-    /<caffold-loading-text class="task-older-history-loading">Loading older messages\.\.\.<\/caffold-loading-text>/,
+    loading,
+    /<caffold-loading-text\s+class="task-older-history-loading"\s*>Loading older messages\.\.\.<\/caffold-loading-text>/,
   );
-  assert.doesNotMatch(owner.html, /spinner/, "a waiting row shows the phrase without a ring");
-
-  assert.equal(owner.setSnapshot({ ...ready, error: new Error("Unavailable") }), true);
-  assert.equal(owner.setSnapshot({ ...ready, error: new Error("Unavailable") }), false);
-  assert.equal(owner.writes, 3);
-  assert.equal(owner.setSnapshot({ ...ready, threadId: "b", error: new Error("Unavailable") }), true);
+  assert.doesNotMatch(loading, /spinner/, "a waiting row shows the phrase without a ring");
+  assert.doesNotMatch(loading, /<button/);
+  assert.match(
+    templateHtml(host({ error: "Unavailable" }).render()),
+    />Retry loading older messages<\/button>/,
+  );
 });
 
 test("owns load and retry actions and only emits the requested intent", () => {
   const owner = host();
-  const ready = { threadId: "a", hasOlder: true };
-  owner.setSnapshot(ready);
+  owner.show();
   const scope = owner.actionHintScope({ scopeId: "conversation:older-history" });
   assert.deepEqual(scope.mutationRoots, [owner]);
   assert.equal(scope.targets[0].invalidationOwner, owner);
   assert.equal(scope.targets[0].label, "Load older messages");
   scope.targets[0].activate();
   assert.deepEqual(owner.events, [{ threadId: "a", retry: false }]);
-  assert.equal(owner.snapshot.loading, false);
+  assert.equal(owner.loading, false);
 
-  owner.setSnapshot({ ...ready, error: new Error("<unsafe>") });
+  owner.show({ error: "<unsafe>" });
   assert.equal(scope.targets[0].isActionable(), false);
-  assert.match(owner.innerHTML, /&lt;unsafe&gt;/);
+  assert.match(templateHtml(owner.render()), /&lt;unsafe&gt;/);
   const retry = owner.actionHintScope({ scopeId: "conversation:older-history" }).targets[0];
   assert.equal(retry.label, "Retry loading older messages");
   retry.activate();
@@ -91,40 +89,39 @@ test("owns load and retry actions and only emits the requested intent", () => {
 
 test("rejects actions while waiting, exhausted, inactive, detached, or replaced", () => {
   const owner = host();
-  const ready = { threadId: "a", hasOlder: true };
   const scope = () => owner.actionHintScope({ scopeId: "conversation:older-history" });
-  owner.setSnapshot(ready);
+  owner.show();
   const target = scope().targets[0];
   assert.equal(target.isActionable(), true);
-  owner.setActive(false);
+  owner.active = false;
   assert.equal(target.isActionable(), false);
   assert.deepEqual(scope().targets, []);
-  owner.button().click();
+  owner.button.click();
   assert.deepEqual(owner.events, []);
-  owner.setActive(true);
+  owner.active = true;
   owner.isConnected = false;
   assert.equal(target.isActionable(), false);
   assert.deepEqual(scope().targets, []);
   owner.isConnected = true;
 
-  owner.setSnapshot({ ...ready, loading: true });
+  owner.show({ loading: true });
   assert.equal(target.isActionable(), false);
   assert.deepEqual(scope().targets, []);
-  owner.setSnapshot({ ...ready, threadId: "b" });
+  owner.show({ loading: false, threadId: "b" });
   assert.equal(target.isActionable(), false);
   assert.equal(scope().targets[0].isActionable(), true);
-  owner.setSnapshot({ threadId: "b" });
+  owner.show({ hasOlder: false });
   assert.equal(owner.hidden, true);
   assert.deepEqual(scope().targets, []);
 });
 
 test("a gap without a cursor exposes its error without offering an unusable retry", () => {
   const owner = host();
-  owner.setSnapshot({ threadId: "a", hasOlder: false, error: new Error("Reopen the Task to refresh its history.") });
+  owner.show({ hasOlder: false, error: "Reopen the Task to refresh its history." });
   assert.equal(owner.hidden, false);
-  assert.match(owner.innerHTML, /Reopen the Task/);
-  assert.equal(owner.button(), null);
+  assert.match(templateHtml(owner.render()), /Reopen the Task/);
+  assert.equal(owner.button, null);
   assert.deepEqual(owner.actionHintScope({ scopeId: "conversation:older-history" }).targets, []);
-  owner.setSnapshot({ threadId: "a", hasOlder: false });
+  owner.show({ error: null });
   assert.equal(owner.hidden, true);
 });

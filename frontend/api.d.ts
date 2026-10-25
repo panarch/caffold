@@ -380,6 +380,89 @@ export interface GitHubPullFileDiff {
 
 export function createTask(task: Record<string, unknown>): Promise<unknown>;
 
+// A Task as the Task API reports it, as far as TypeScript callers read it.
+export interface Task {
+  threadId: string;
+  activeTurn: { id: string; startedAtMs: number | null } | null;
+}
+
+// One conversation item as a Task's detail and its stream deliver it. The
+// backend gives its identity, its place in the conversation, and the time it
+// was observed; `payload` carries what each kind of item says. The Task screen
+// adds `fileLinks` to a message whose file references resolved.
+export interface TaskEvent {
+  id: string;
+  threadId: string;
+  type: string;
+  summary: string;
+  payload: TaskEventPayload | null;
+  position: { anchorMs: number; index: number };
+  observedMs: number | null;
+  fileLinks?: TaskFileLink[];
+}
+
+// A file reference in an agent's message and the file it resolved to in the
+// Task.
+export interface TaskFileLink {
+  target: string;
+  taskRelativePath: string;
+  line?: number;
+}
+
+export interface TaskEventPayload {
+  itemId?: string;
+  status?: string;
+  text?: string;
+  prompt?: string;
+  phase?: string;
+  summary?: string[];
+  content?: Array<string | TaskMessageContent>;
+  suggestedPrompts?: Array<{ label?: string; prompt?: string } | null>;
+  upload?: { lines?: TaskUploadLine[] } | null;
+  name?: string;
+  available?: boolean;
+  paths?: string[];
+  command?: string;
+  cwd?: string;
+  output?: string;
+  exitCode?: number | null;
+  durationMs?: number | null;
+  approvalId?: string;
+  title?: string;
+  reason?: string;
+  decisions?: string[];
+  networkEndpoint?: string;
+  grantRoot?: string;
+  environment?: string;
+  permissions?: Array<{
+    label?: string;
+    value?: string;
+    verbatim?: boolean;
+  } | null>;
+  tool?: ApprovalTool | null;
+  reviewed?: { concern?: number; model?: string } | null;
+}
+
+export interface TaskMessageContent {
+  type?: string;
+  text?: string;
+  url?: string;
+  path?: string;
+  name?: string;
+}
+
+export interface TaskUploadLine {
+  path: string;
+  done?: boolean;
+}
+
+export interface ApprovalTool {
+  serverName?: string;
+  appName?: string;
+  description?: string;
+  arguments?: Array<{ name: string; label: string; value: unknown }>;
+}
+
 export function getGitHubStatus(path?: string): Promise<GitHubStatus>;
 
 export function getGitHubIssues(

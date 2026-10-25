@@ -33,7 +33,7 @@ import {
 } from "#app/keyboard-navigation.js";
 import "../../components/composer.js";
 import { TASK_ABSENCE_INTENT_EVENT } from "../../components/task-absence.js";
-import "./components/conversation.js";
+import "./components/conversation.ts";
 import "./components/command-dialog.js";
 import "./components/markdown-preview-dialog.js";
 import "./components/permission-instructions-dialog.js";

@@ -4,9 +4,10 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./code-block.js");
+await import("./code-block.ts");
 const codeBlock = registry.element("caffold-task-markdown-code-block").prototype;
 after(() => registry.restore());
 
@@ -33,13 +34,11 @@ test("provides retained Preview, Wrap, and Copy code buttons", () => {
   const copy = button("copy", "Copy code");
   const controls = new Map([["preview", preview], ["wrap", wrap], ["copy", copy]]);
   const owner = {
-    connected: true,
     hidden: false,
     isConnected: true,
-    ensureDom() {},
     querySelector(selector) {
       for (const [action, control] of controls) {
-        if (selector.includes(`\"${action}\"`)) return control;
+        if (selector.includes(`"${action}"`)) return control;
       }
       return null;
     },
@@ -56,11 +55,11 @@ test("provides retained Preview, Wrap, and Copy code buttons", () => {
   assert.deepEqual([preview.clicks, wrap.clicks, copy.clicks], [1, 1, 1]);
   copy.attributes.set("aria-disabled", "true");
   assert.equal(scope.targets[2].isActionable(), false);
-  owner.connected = false;
+  owner.isConnected = false;
   assert.equal(scope.targets[0].isActionable(), false);
 
   controls.delete("preview");
-  owner.connected = true;
+  owner.isConnected = true;
   assert.deepEqual(
     codeBlock.actionHintScope.call(owner, {
       scopeId: "message:a:code-block:2",
@@ -78,52 +77,31 @@ test("offers Preview only for a Markdown fence and never as a toggle", () => {
     ["rust", false],
     ["Plain text", false],
   ]) {
-    const inserted = [];
-    const owner = {
+    const owner = Object.create(codeBlock, Object.getOwnPropertyDescriptors({
       label,
-      previewButton: () => null,
-      querySelector: () => ({
-        insertAdjacentHTML: (position, html) => inserted.push({ position, html }),
-      }),
-    };
-    codeBlock.syncPreviewButton.call(owner);
-    assert.equal(inserted.length, offered ? 1 : 0, label);
+      copyState: "idle",
+      wrapped: false,
+    }));
+    const html = templateHtml(owner.render());
+    const preview = html.match(/<button[^>]*data-code-action="preview"[^>]*>/)?.[0];
+    assert.equal(Boolean(preview), offered, label);
     if (offered) {
-      assert.equal(inserted[0].position, "afterbegin");
-      assert.match(inserted[0].html, /data-code-action="preview"/);
-      assert.match(inserted[0].html, /aria-label="Preview Markdown"/);
-      assert.doesNotMatch(inserted[0].html, /aria-pressed/);
+      assert.match(preview, /aria-label="Preview Markdown"/);
+      assert.doesNotMatch(preview, /aria-pressed/);
     }
   }
-
-  const retained = {
-    removed: false,
-    remove() {
-      this.removed = true;
-    },
-  };
-  const owner = {
-    label: "markdown",
-    previewButton: () => retained,
-    querySelector: () => assert.fail("a retained Preview is not inserted again"),
-  };
-  codeBlock.syncPreviewButton.call(owner);
-  assert.equal(retained.removed, false);
-  owner.label = "text";
-  codeBlock.syncPreviewButton.call(owner);
-  assert.equal(retained.removed, true);
 });
 
 test("requests a preview of the block text from its Preview button", () => {
   const events = [];
   const opener = {};
-  const owner = {
-    code: () => ({ textContent: "## Notes\n\n- first\n" }),
-    previewButton: () => opener,
+  const owner = Object.create(codeBlock, Object.getOwnPropertyDescriptors({
+    pre: { querySelector: () => ({ textContent: "## Notes\n\n- first\n" }) },
+    querySelector: () => opener,
     dispatchEvent: (event) => events.push(event),
-  };
+  }));
 
-  codeBlock.requestPreview.call(owner);
+  owner.requestPreview();
   assert.equal(events.length, 1);
   assert.equal(events[0].type, "caffold:task-markdown-preview-intent");
   assert.equal(events[0].bubbles, true);
@@ -132,20 +110,20 @@ test("requests a preview of the block text from its Preview button", () => {
     opener,
   });
 
-  owner.previewButton = () => null;
-  codeBlock.requestPreview.call(owner);
+  owner.querySelector = () => null;
+  owner.requestPreview();
   assert.equal(events.length, 1);
 });
 
 test("provides only its exact retained horizontal code scrollport", () => {
   const pre = layoutElement();
-  let currentPre = pre;
+  let placed = pre;
   let current = true;
   const owner = layoutElement({
-    connected: true,
     hidden: false,
     isConnected: true,
-    pre: () => currentPre,
+    pre,
+    contains: (node) => node === placed,
   });
 
   const scope = codeBlock.scrollSurfaceScope.call(owner, {
@@ -159,9 +137,9 @@ test("provides only its exact retained horizontal code scrollport", () => {
   assert.equal(surface.scrollport, pre);
   assert.deepEqual(surface.axes, ["horizontal"]);
   assert.equal(surface.isEligible(), true);
-  currentPre = layoutElement();
+  placed = null;
   assert.equal(surface.isEligible(), false);
-  currentPre = pre;
+  placed = pre;
   current = false;
   assert.equal(surface.isEligible(), false);
 });

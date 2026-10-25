@@ -1,9 +1,10 @@
-import { commandResult, isCommandEvent } from "../../command-runs.js";
+import type { TaskEvent } from "#app/api.js";
+import { commandResult, isCommandEvent } from "../../command-runs.ts";
 
 // The one line a folded group shows: how many commands ran, and how many of
 // them did not succeed, since those are what a reader opens the group for.
 // The thinking folded in with them is not counted.
-export function commandGroupPresentation(events = []) {
+export function commandGroupPresentation(events: TaskEvent[] = []) {
   const commands = events.filter(isCommandEvent);
   const results = commands.map(commandResult);
   const failed = results.filter((result) => result === "failed").length;

@@ -499,7 +499,10 @@ test("owns final Markdown links without guessing fragments or stale bindings", {
   await revealActionHintControl(external);
   hint = await enterActionHints(page);
   await expect(hint.getByLabel(/Open External docs in a new tab$/)).toBeVisible();
-  await markdown.evaluate((element, source) => element.setMarkdown(source), markdownSource);
+  // Markdown drawn again replaces its links, so the shown hint is withdrawn.
+  await markdown.evaluate((element, source) => {
+    element.markdown = `${source}\n`;
+  }, markdownSource);
   await expect(actionHintDialog(page)).toBeVisible();
   await expect(hint.getByLabel(/Open External docs in a new tab$/))
     .toHaveCount(0);
@@ -733,7 +736,7 @@ test("preserves ordered-list starts through Task Markdown sanitization", { tag: 
       const probe = document.createElement("caffold-task-markdown");
       probe.dataset.testProbe = id;
       probe.hidden = true;
-      probe.textContent = markdown;
+      probe.markdown = markdown;
       document.body.append(probe);
     }
   });
@@ -982,10 +985,11 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     .toBe(true);
   await expect
     .poll(() =>
-      tasksPage.evaluate(() => {
+      tasksPage.evaluate(async () => {
         const probe = document.createElement("caffold-task-markdown");
-        probe.textContent = "Fallback content";
+        probe.markdown = "Fallback content";
         document.body.append(probe);
+        await probe.updateComplete;
         const loading = probe.querySelector(":scope > .markdown-body > .markdown-loading");
         const style = getComputedStyle(loading);
         const result = {
@@ -1007,7 +1011,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   await tasksPage.evaluate(() => {
     const probe = document.createElement("caffold-task-markdown");
     probe.hidden = true;
-    probe.textContent = "[unsafe](javascript:alert(1))";
+    probe.markdown = "[unsafe](javascript:alert(1))";
     document.body.append(probe);
   });
   await expect(page.locator("caffold-task-markdown").last()).toHaveAttribute(

@@ -1371,7 +1371,9 @@ test("preserves stable detail children through another task load failure", { tag
     '[data-stable-child="conversation"]',
   );
   await conversation.evaluate((element) => {
-    window.__stableTaskActiveTurn = element.activeTurn();
+    window.__stableTaskActiveTurn = element.querySelector(
+      ".task-turn-active > caffold-task-active-turn",
+    );
   });
   await expect
     .poll(() =>

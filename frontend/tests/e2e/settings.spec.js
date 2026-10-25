@@ -3241,16 +3241,14 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
     document.body.append(host);
 
     const approval = document.createElement("caffold-task-approval");
-    approval.setSnapshot({
-      threadId: "appearance-preview",
-      request: {
-        approvalId: "appearance-approval",
-        title: "Approval",
-        reason: "Review the requested command before continuing.",
-        command: "cargo test --all-targets",
-        decisions: ["deny", "allow"],
-      },
-    });
+    approval.threadId = "appearance-preview";
+    approval.request = {
+      approvalId: "appearance-approval",
+      title: "Approval",
+      reason: "Review the requested command before continuing.",
+      command: "cargo test --all-targets",
+      decisions: ["deny", "allow"],
+    };
     host.append(approval);
 
     const composer = document.createElement("caffold-task-composer");

@@ -1,3 +1,4 @@
+import type { TaskEvent } from "#app/api.js";
 import { eventIdentityKey } from "#tasks/task-events.js";
 import {
   formatDate,
@@ -5,10 +6,12 @@ import {
   formatStatus,
   taskEventObservedMs,
 } from "#tasks/task-format.js";
-import { commandResult, isFinishedCommand } from "../../command-runs.js";
+import { commandResult, isFinishedCommand } from "../../command-runs.ts";
 
-export function commandPresentation(event = {}) {
-  const payload = event.payload ?? {};
+export type CommandPresentation = ReturnType<typeof commandPresentation>;
+
+export function commandPresentation(event: TaskEvent | null) {
+  const payload = event?.payload ?? {};
   const observedMs = taskEventObservedMs(event);
   const command = `${payload.command ?? ""}`.trim();
   const cwd = `${payload.cwd ?? ""}`.trim();
@@ -41,12 +44,14 @@ export function commandPresentation(event = {}) {
     cwd,
     defaultOpen: Boolean(rawStatus && !terminal),
     metadata: metadata.join(" · "),
-    mode: terminal ? "terminal" : "active",
+    mode: terminal ? ("terminal" as const) : ("active" as const),
     output,
     result,
     status: terminal ? result : rawStatus || "unknown",
     statusLabel: terminal
-      ? { failed: "Failed", declined: "Declined", completed: "Completed" }[result]
+      ? { failed: "Failed", declined: "Declined", completed: "Completed" }[
+          result
+        ]
       : rawStatus
         ? formatStatus(rawStatus)
         : "",
@@ -61,14 +66,6 @@ export function commandPresentation(event = {}) {
   };
 }
 
-export function sameCommandPresentation(left, right) {
-  return Boolean(
-    left &&
-      right &&
-      Object.keys(left).every((key) => left[key] === right[key]),
-  );
-}
-
-function finiteNumber(value) {
+function finiteNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

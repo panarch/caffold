@@ -6,7 +6,7 @@ import {
 } from "../../../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./markdown.js");
+await import("./markdown.ts");
 const markdown = registry.element("caffold-task-markdown").prototype;
 after(() => registry.restore());
 
@@ -19,14 +19,15 @@ test("merges only code-block providers mounted in the retained Markdown body", (
   const owner = {
     hidden: false,
     isConnected: true,
-    dataset: { renderState: "markdown" },
-    body: () => body,
+    renderState: "markdown",
+    actionHintLinks: [],
+    body,
   };
   assert.deepEqual(
     markdown.actionHintScope.call(owner, { scopeId: "message:a" }).targets,
     targets,
   );
-  owner.dataset.renderState = "plain";
+  owner.renderState = "plain";
   assert.deepEqual(markdown.actionHintScope.call(owner, { scopeId: "message:a" }).targets, []);
 });
 
@@ -63,8 +64,8 @@ test("provides only retained final links with table scroll dependencies", () => 
     actionHintLinks: [record],
     hidden: false,
     isConnected: true,
-    dataset: { renderState: "markdown" },
-    body: () => body,
+    renderState: "markdown",
+    body,
   };
   const scope = markdown.actionHintScope.call(owner, {
     scopeId: "message:a",
@@ -117,8 +118,8 @@ test("merges exact retained table and code-block Scroll providers", () => {
   const owner = layoutElement({
     hidden: false,
     isConnected: true,
-    dataset: { renderState: "markdown" },
-    body: () => body,
+    renderState: "markdown",
+    body,
     scrollSurfaceRecords: [tableRecord],
     scrollCodeBlocks: [code],
   });
@@ -158,8 +159,8 @@ test("provides a renderer-registered native progress code scrollport", () => {
   const owner = layoutElement({
     hidden: false,
     isConnected: true,
-    dataset: { renderState: "markdown" },
-    body: () => body,
+    renderState: "markdown",
+    body,
     scrollSurfaceRecords: [codeRecord],
     scrollCodeBlocks: [],
   });

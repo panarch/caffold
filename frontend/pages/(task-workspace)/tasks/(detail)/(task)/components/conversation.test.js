@@ -4,9 +4,10 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../tests/support/custom-element-unit.js";
+import { datasetAttribute } from "../../../../../../tests/support/dataset-attribute.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./conversation.js");
+await import("./conversation.ts");
 const conversation = registry.element("caffold-task-conversation").prototype;
 after(() => registry.restore());
 
@@ -58,6 +59,7 @@ test("composes direct tool and approval command scrollports with Conversation", 
   let currentToolOutput = toolOutput;
   const toolEntry = {
     dataset: { conversationEntryKey: "tool-a" },
+    getAttribute: datasetAttribute,
     matches: (selector) => selector === ".task-tool-card",
     querySelector(selector) {
       if (selector === ":scope > pre") return currentToolOutput;
@@ -83,6 +85,7 @@ test("composes direct tool and approval command scrollports with Conversation", 
   };
   const approvalEntry = {
     dataset: { conversationEntryKey: "approval-flow-a" },
+    getAttribute: datasetAttribute,
     matches: (selector) => selector === ".task-approval-flow",
     querySelector: () => null,
     querySelectorAll: () => [approvalCard],
@@ -208,6 +211,7 @@ test("merges owned Conversation actions with direct retained child providers", (
   const historyTarget = { id: "older-page", invalidationOwner: olderHistory };
   const entry = {
     dataset: { conversationEntryKey: "command-a" },
+    getAttribute: datasetAttribute,
     querySelector(selector) {
       return selector === ":scope > caffold-task-command" ? command : null;
     },
@@ -215,6 +219,7 @@ test("merges owned Conversation actions with direct retained child providers", (
   const commandGroup = childProvider("command-group-toggle");
   const commandGroupEntry = {
     dataset: { conversationEntryKey: "command-group:command-b" },
+    getAttribute: datasetAttribute,
     querySelector(selector) {
       return selector === ":scope > caffold-task-command-group"
         ? commandGroup
@@ -224,6 +229,7 @@ test("merges owned Conversation actions with direct retained child providers", (
   const prompt = childProvider("prompt-preview");
   const promptEntry = {
     dataset: { conversationEntryKey: "prompt-a" },
+    getAttribute: datasetAttribute,
     querySelector(selector) {
       return selector.includes("caffold-task-user-message") ? prompt : null;
     },
@@ -231,6 +237,7 @@ test("merges owned Conversation actions with direct retained child providers", (
   const picture = childProvider("generated-preview");
   const pictureEntry = {
     dataset: { conversationEntryKey: "picture-a" },
+    getAttribute: datasetAttribute,
     querySelector(selector) {
       return selector === ":scope > caffold-task-message-attachments"
         ? picture
@@ -306,7 +313,7 @@ test("forwards only the current direct history child's intent", () => {
     dispatchIntent: (...intent) => intents.push(intent),
   };
   const emit = (target, threadId, retry = false) =>
-    conversation.handleOlderHistoryIntent.call(owner, {
+    conversation.requestOlderHistory.call(owner, {
       target, detail: { threadId, retry }, stopPropagation() {},
     });
   emit({}, "a");
@@ -315,8 +322,8 @@ test("forwards only the current direct history child's intent", () => {
   emit(child, "a");
   emit(child, "a", true);
   assert.deepEqual(intents, [
-    ["older-history", { retry: false }],
-    ["older-history", { retry: true }],
+    [{ type: "older-history", retry: false }],
+    [{ type: "older-history", retry: true }],
   ]);
   owner.active = false;
   emit(child, "a");
@@ -345,6 +352,7 @@ test("provides only direct owner-known Thinking disclosures with inner Markdown"
   };
   const entry = {
     dataset: { conversationEntryKey: "event-a" },
+    getAttribute: datasetAttribute,
     querySelector(selector) {
       if (selector.includes('data-disclosure-key^="thinking:"')) {
         return disclosure;
@@ -357,6 +365,7 @@ test("provides only direct owner-known Thinking disclosures with inner Markdown"
   };
   const arbitraryEntry = {
     dataset: { conversationEntryKey: "event-b" },
+    getAttribute: datasetAttribute,
     querySelector: () => null,
   };
   const list = { children: [entry, arbitraryEntry] };
@@ -418,8 +427,8 @@ test("provides only direct owner-known Thinking disclosures with inner Markdown"
 });
 
 test("forwards a suggested prompt only from a message it shows, while it can be sent", () => {
-  const chips = { localName: "caffold-task-assistant-message-suggested-prompts" };
-  const stray = { localName: "caffold-task-assistant-message-suggested-prompts" };
+  const chips = new HTMLElement();
+  const stray = new HTMLElement();
   const intents = [];
   const owner = {
     active: true,
@@ -429,7 +438,7 @@ test("forwards a suggested prompt only from a message it shows, while it can be 
   };
   let stopped = 0;
   const emit = (target, threadId, prompt = "Do the next thing.") =>
-    conversation.handleSuggestedPromptIntent.call(owner, {
+    conversation.sendSuggestedPrompt.call(owner, {
       target,
       detail: { threadId, prompt },
       stopPropagation() {
@@ -438,13 +447,15 @@ test("forwards a suggested prompt only from a message it shows, while it can be 
     });
 
   emit(stray, "thread-a");
-  emit({ localName: "div" }, "thread-a");
+  emit({}, "thread-a");
   assert.equal(stopped, 0, "an intent from elsewhere passes through untouched");
   emit(chips, "old-thread");
   emit(chips, "thread-a", " ");
   assert.deepEqual(intents, []);
   emit(chips, "thread-a");
-  assert.deepEqual(intents, [["suggested-prompt", { prompt: "Do the next thing." }]]);
+  assert.deepEqual(intents, [
+    [{ type: "suggested-prompt", prompt: "Do the next thing." }],
+  ]);
   owner.snapshot.transportState = "reconnecting";
   emit(chips, "thread-a");
   owner.snapshot.transportState = "live";
@@ -462,7 +473,7 @@ test("forwards approval intent only from the current Task's mounted card", () =>
     approvalComponents: () => [card],
     dispatchIntent: (...intent) => intents.push(intent),
   };
-  const emit = (target, threadId) => conversation.handleApprovalIntent.call(owner, {
+  const emit = (target, threadId) => conversation.sendApproval.call(owner, {
     target, detail: { threadId, approvalId: card.approvalId, decision: "cancel" },
     stopPropagation() {},
   });
@@ -470,7 +481,9 @@ test("forwards approval intent only from the current Task's mounted card", () =>
   emit(card, "old-thread");
   assert.deepEqual(intents, []);
   emit(card, "thread-a");
-  assert.deepEqual(intents, [["approval", { approvalId: 'mcp:"42"', decision: "cancel" }]]);
+  assert.deepEqual(intents, [
+    [{ type: "approval", approvalId: 'mcp:"42"', decision: "cancel" }],
+  ]);
   owner.snapshot.transportState = "reconnecting";
   emit(card, "thread-a");
   owner.snapshot.transportState = "live";

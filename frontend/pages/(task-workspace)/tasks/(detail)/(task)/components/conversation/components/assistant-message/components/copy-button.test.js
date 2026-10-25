@@ -6,7 +6,7 @@ import {
 } from "../../../../../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./copy-button.js");
+await import("./copy-button.ts");
 const copyButton = registry
   .element("caffold-task-assistant-message-copy-button")
   .prototype;
@@ -30,27 +30,22 @@ function control(label = "Copy message") {
 }
 
 function copyButtonHost(properties = {}) {
-  return Object.assign(Object.create(copyButton), {
-    connected: true,
-    hidden: false,
-    initialized: true,
-    isConnected: true,
-    generation: 0,
-    copyState: "idle",
-    text: "",
-    patched: 0,
-    ensureDom() {},
-    clearFeedback() {},
-    patchPresentation() {
-      this.patched += 1;
-    },
-    ...properties,
+  return Object.create(copyButton, {
+    ...Object.getOwnPropertyDescriptors({
+      hidden: false,
+      isConnected: true,
+      generation: 0,
+      copyState: "idle",
+      text: "",
+      clearFeedback() {},
+    }),
+    ...Object.getOwnPropertyDescriptors(properties),
   });
 }
 
 test("provides its retained button as the message's one Copy action", () => {
   const button = control();
-  const host = copyButtonHost({ button: () => button });
+  const host = copyButtonHost({ button });
   const message = { id: "message" };
 
   const scope = host.actionHintScope({
@@ -69,8 +64,13 @@ test("provides its retained button as the message's one Copy action", () => {
 });
 
 test("withholds the action while copying, hidden, replaced, or disconnected", () => {
-  const button = control();
-  const host = copyButtonHost({ button: () => button });
+  let button = control();
+  const original = button;
+  const host = copyButtonHost({
+    get button() {
+      return button;
+    },
+  });
   const scopeOf = () => host.actionHintScope({ scopeId: "message:a:copy-button" });
   const [target] = scopeOf().targets;
 
@@ -80,42 +80,38 @@ test("withholds the action while copying, hidden, replaced, or disconnected", ()
   button.attributes.delete("aria-disabled");
   assert.equal(target.isActionable(), true);
 
-  host.button = () => control();
+  button = control();
   assert.equal(target.isActionable(), false);
-  host.button = () => button;
+  button = original;
 
   host.hidden = true;
   assert.equal(target.isActionable(), false);
   assert.deepEqual(scopeOf().targets, []);
   host.hidden = false;
 
-  host.connected = false;
+  host.isConnected = false;
   assert.equal(target.isActionable(), false);
   assert.deepEqual(scopeOf().targets, []);
 });
 
 test("retires a copy in flight when its message reports different text", () => {
-  const host = copyButtonHost({ copyState: "copying", text: "older text" });
+  const host = copyButtonHost({ copyState: "copying", text: "current text" });
   const inFlight = host.generation;
   assert.equal(host.acceptsCompletion(inFlight), true);
 
-  host.setText("current text");
+  host.willUpdate(new Map([["text", "older text"]]));
   assert.equal(host.acceptsCompletion(inFlight), false);
   assert.equal(host.copyState, "idle");
-  assert.equal(host.patched, 1);
 
-  // Redrawing a message that says the same thing leaves a copy alone.
-  host.setText("current text");
-  assert.equal(host.patched, 1);
-  assert.equal(host.acceptsCompletion(host.generation), true);
+  // Drawing a message that says the same thing leaves a copy alone.
+  const current = host.generation;
+  host.willUpdate(new Map([["hidden", true]]));
+  assert.equal(host.acceptsCompletion(current), true);
 });
 
 test("refuses a completion that outlived its element", () => {
   const host = copyButtonHost({ generation: 3 });
   assert.equal(host.acceptsCompletion(3), true);
   host.isConnected = false;
-  assert.equal(host.acceptsCompletion(3), false);
-  host.isConnected = true;
-  host.connected = false;
   assert.equal(host.acceptsCompletion(3), false);
 });

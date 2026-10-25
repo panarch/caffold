@@ -1,12 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  renderConversation,
-  renderConversationEvent,
-} from "./render.js";
+import { conversationEntries, conversationEventEntry } from "./entries.ts";
 
-test("delegates active-turn presentation to its component snapshot", () => {
+test("hands the turn in progress what it is doing and since when", () => {
   const task = activeTask();
   const turnStarted = turnEvent("turn-started", "turn_started", 1, {
     status: "inProgress",
@@ -29,29 +26,19 @@ test("delegates active-turn presentation to its component snapshot", () => {
       status: "completed",
     },
   };
+  const activeTurn = (events) =>
+    conversationEntries(events, task).find(
+      (entry) => entry.kind === "active-turn",
+    );
 
-  const active = renderConversation(
-    [turnStarted, compactionStarted],
-    task,
-  );
-  const completed = renderConversation(
-    [turnStarted, compactionCompleted],
-    task,
-  );
-  const identity = "active-turn:thread-1:turn-1";
-
-  assert.match(
-    active.html,
-    /<li[\s\S]*class="task-event task-turn-active"[\s\S]*<caffold-task-active-turn><\/caffold-task-active-turn>/,
-  );
-  assert.deepEqual(active.activeTurns.get(identity), {
+  assert.deepEqual(activeTurn([turnStarted, compactionStarted]), {
+    kind: "active-turn",
+    identity: "active-turn:thread-1:turn-1",
+    turnId: "turn-1",
     startedMs: 1,
     state: "Compacting context…",
   });
-  assert.deepEqual(completed.activeTurns.get(identity), {
-    startedMs: 1,
-    state: "Thinking",
-  });
+  assert.equal(activeTurn([turnStarted, compactionCompleted]).state, "Thinking");
 });
 
 test("hands a prompt to its component as the text it was typed as", () => {
@@ -59,46 +46,43 @@ test("hands a prompt to its component as the text it was typed as", () => {
     messageEvent("user_message"),
     messageEvent("user_message", { optimistic: true }),
   ]) {
-    const messages = new Map();
-    const html = renderConversationEvent(event, {}, { messages });
+    const entry = conversationEventEntry(event, {});
 
-    assert.doesNotMatch(html, /<caffold-task-markdown/);
-    assert.match(
-      html,
-      /<li class="task-event task-message"[^>]*data-message-role="user">\s*<caffold-task-user-message><\/caffold-task-user-message>/,
-    );
-    assert.equal(messages.get(event.id).text, "```example\nvalue\n```");
+    assert.equal(entry.kind, "user-message");
+    assert.equal(entry.identity, event.id);
+    assert.equal(entry.text, "```example\nvalue\n```");
   }
 });
 
 test("tells a prompt how far its delivery has got", () => {
   const lines = [{ path: ".caffold/uploads/a/server.log", done: false }];
-  const pending = messageEvent("user_message", {
-    optimistic: true,
-    submissionState: "uploading",
-    upload: { lines },
-  });
-  const messages = new Map();
-  renderConversationEvent(pending, {}, { messages });
-  assert.equal(messages.get(pending.id).deliveryState, "uploading");
-  assert.deepEqual(messages.get(pending.id).uploadLines, lines);
+  const pending = conversationEventEntry(
+    messageEvent("user_message", {
+      optimistic: true,
+      submissionState: "uploading",
+      upload: { lines },
+    }),
+    {},
+  );
+  assert.equal(pending.deliveryState, "uploading");
+  assert.deepEqual(pending.uploadLines, lines);
 
-  const sent = messageEvent("user_message");
-  renderConversationEvent(sent, {}, { messages });
-  assert.equal(messages.get(sent.id).deliveryState, null);
+  assert.equal(
+    conversationEventEntry(messageEvent("user_message"), {}).deliveryState,
+    null,
+  );
 });
 
 test("hands a prompt's pictures to its component", () => {
   const url = "data:image/png;base64,AAAA";
-  const event = messageEvent("user_message", {
-    content: [{ type: "image", url, name: "shot.png" }],
-  });
-  const messages = new Map();
-  renderConversationEvent(event, {}, { messages });
+  const entry = conversationEventEntry(
+    messageEvent("user_message", {
+      content: [{ type: "image", url, name: "shot.png" }],
+    }),
+    {},
+  );
 
-  assert.deepEqual(messages.get(event.id).attachments, [
-    { src: url, name: "shot.png" },
-  ]);
+  assert.deepEqual(entry.attachments, [{ src: url, name: "shot.png" }]);
 });
 
 test("shows a generated picture through the message attachment list", () => {
@@ -110,30 +94,24 @@ test("shows a generated picture through the message attachment list", () => {
     payload: { itemId: "image-item", available: true },
     position: { anchorMs: 1, index: 0 },
   };
-  const messages = new Map();
-  const html = renderConversationEvent(event, {}, { messages });
+  const entry = conversationEventEntry(event, {});
 
-  assert.match(
-    html,
-    /data-message-role="assistant">[\s\S]*<caffold-task-message-attachments><\/caffold-task-message-attachments>/,
-  );
-  const key = [...messages.keys()][0];
-  assert.match(html, new RegExp(`data-conversation-entry-key="${key}"`));
-  assert.deepEqual(messages.get(key).attachments, [{
+  assert.equal(entry.kind, "generated-image");
+  assert.deepEqual(entry.attachments, [{
     src: "/api/tasks/thread-1/generated-images/image-item",
     name: "Generated image.png",
   }]);
-  assert.doesNotMatch(
-    renderConversationEvent({
+  assert.equal(
+    conversationEventEntry({
       ...event,
       payload: { ...event.payload, available: false },
-    }, {}),
-    /caffold-task-message-attachments/,
+    }, {}).kind,
+    "status",
   );
 });
 
-test("renders Thinking with a retained aria-hidden disclosure marker", () => {
-  const html = renderConversationEvent(
+test("keeps a Thinking disclosure by the event it shows", () => {
+  const entry = conversationEventEntry(
     turnEvent("thread-1:turn-1:reasoning-1", "reasoning", 2, {
       itemId: "reasoning-1",
       content: ["Inspect the planner diff."],
@@ -141,29 +119,29 @@ test("renders Thinking with a retained aria-hidden disclosure marker", () => {
     activeTask(),
   );
 
-  assert.match(
-    html,
-    /<span class="task-thinking-label">\s*<span>Thinking<\/span>\s*<span class="task-thinking-disclosure-chevron" aria-hidden="true"><\/span>/,
-  );
-  assert.match(html, /data-disclosure-key="thinking:/);
+  assert.equal(entry.kind, "thinking");
+  assert.equal(entry.state, "active");
+  assert.equal(entry.disclosureKey, `thinking:${entry.identity}`);
+  assert.equal(entry.text, "Inspect the planner diff.");
 });
 
 test("hands the message component the phase its placement decided", () => {
-  const finalMessages = new Map();
-  renderConversationEvent(
-    messageEvent("assistant_message", { phase: "final" }),
-    {},
-    { messagePhase: "final", messages: finalMessages },
+  assert.equal(
+    conversationEventEntry(
+      messageEvent("assistant_message", { phase: "final" }),
+      {},
+      { messagePhase: "final" },
+    ).phase,
+    "final",
   );
-  const progressMessages = new Map();
-  renderConversationEvent(
-    messageEvent("assistant_message", { phase: "progress" }),
-    {},
-    { messagePhase: "progress", messages: progressMessages },
+  assert.equal(
+    conversationEventEntry(
+      messageEvent("assistant_message", { phase: "progress" }),
+      {},
+      { messagePhase: "progress" },
+    ).phase,
+    "progress",
   );
-
-  assert.equal([...finalMessages.values()][0].phase, "final");
-  assert.equal([...progressMessages.values()][0].phase, "progress");
 });
 
 test("does not present a history placement anchor as an item timestamp", () => {
@@ -176,28 +154,23 @@ test("does not present a history placement anchor as an item timestamp", () => {
     observedMs: 2,
   };
 
-  const timeOf = (event) => {
-    const messages = new Map();
-    renderConversationEvent(event, {}, { messages });
-    return messages.get(event.id).time;
-  };
-
-  assert.equal(timeOf(historyOnly), "");
-  assert.notEqual(timeOf(directlyObserved), "");
+  assert.equal(conversationEventEntry(historyOnly, {}).time, "");
+  assert.notEqual(conversationEventEntry(directlyObserved, {}).time, "");
 });
 
-test("conversation position alone does not replace an entry's content", () => {
+test("conversation position alone does not change which entry draws a message", () => {
   const message = messageEvent("assistant_message", { phase: "final" });
+  const entryAt = (position) => {
+    const { kind, identity, phase } = conversationEventEntry(
+      { ...message, position },
+      {},
+    );
+    return { kind, identity, phase };
+  };
 
-  assert.equal(
-    renderConversationEvent(
-      { ...message, position: { anchorMs: 20, index: 0 } },
-      {},
-    ),
-    renderConversationEvent(
-      { ...message, position: { anchorMs: 30, index: 1 } },
-      {},
-    ),
+  assert.deepEqual(
+    entryAt({ anchorMs: 20, index: 0 }),
+    entryAt({ anchorMs: 30, index: 1 }),
   );
 });
 
@@ -223,16 +196,16 @@ test("a pending approval stays visible beside the command it is asking about", (
   });
 
   for (const events of [[approval, command], [command, approval]]) {
-    const { html } = renderConversation(events, activeTask(), [approval]);
+    const entries = conversationEntries(events, activeTask(), [approval]);
+    const approvals = entries.find((entry) => entry.kind === "approvals");
 
-    assert.match(
-      html,
-      /<caffold-task-approval data-approval-id="401">/,
+    assert.deepEqual(
+      approvals?.requests.map((request) => request.approvalId),
+      ["401"],
       "a pending approval must mount its owner however its item was ordered",
     );
-    assert.match(
-      html,
-      /caffold-task-approval/,
+    assert.ok(
+      entries.some((entry) => entry.kind === "command"),
       "the approval card must survive beside its own command item",
     );
   }
@@ -249,16 +222,15 @@ test("a running tool call is a card, not a status chip", () => {
     status: "inProgress",
   });
 
-  const { html } = renderConversation([running], activeTask());
+  const [entry] = conversationEntries([running], activeTask());
 
-  assert.match(html, /class="task-event task-tool-card"/);
-  assert.doesNotMatch(
-    html,
-    /task-status-chip/,
+  assert.equal(
+    entry.kind,
+    "tool",
     "a tool call names itself rather than restating its own summary",
   );
-  assert.match(html, /<strong>Web search<\/strong>/);
-  assert.match(html, /Status: inProgress/);
+  assert.equal(entry.label, "Web search");
+  assert.equal(entry.text, "Status: inProgress");
 });
 
 test("a failed tool call reads as failed while the turn is still running", () => {
@@ -268,9 +240,9 @@ test("a failed tool call reads as failed while the turn is still running", () =>
     status: "failed",
   });
 
-  const { html } = renderConversation([failed], activeTask());
+  const [entry] = conversationEntries([failed], activeTask());
 
-  assert.match(html, /data-tool-tone="danger"/);
+  assert.equal(entry.tone, "danger");
 });
 
 test("an agent failure is an error card, not the agent talking", () => {
@@ -281,16 +253,12 @@ test("an agent failure is an error card, not the agent talking", () => {
     text: "API Error: Connection refused",
   });
 
-  const { html } = renderConversation([failure], activeTask());
+  const [entry] = conversationEntries([failure], activeTask());
 
-  assert.match(html, /data-tool-tone="danger"/);
-  assert.match(html, /<strong>Error<\/strong>/);
-  assert.match(html, /API Error: Connection refused/);
-  assert.doesNotMatch(
-    html,
-    /task-message-assistant/,
-    "a failure must not wear the agent's own bubble",
-  );
+  assert.equal(entry.kind, "tool", "a failure must not wear the agent's own bubble");
+  assert.equal(entry.tone, "danger");
+  assert.equal(entry.label, "Error");
+  assert.equal(entry.text, "API Error: Connection refused");
 });
 
 test("a completed turn shows its failure beside the messages, not folded away", () => {
@@ -314,13 +282,20 @@ test("a completed turn shows its failure beside the messages, not folded away", 
     status: "failed",
   });
 
-  const { html } = renderConversation([prompt, failure, ended], idleTask);
+  const entries = conversationEntries([prompt, failure, ended], idleTask);
 
-  assert.match(html, /data-tool-tone="danger"/);
-  assert.match(html, /API Error: Connection refused/);
-  assert.doesNotMatch(
-    html,
-    /task-work-details[\s\S]*API Error/,
+  assert.ok(
+    entries.some(
+      (entry) =>
+        entry.kind === "tool" &&
+        entry.tone === "danger" &&
+        entry.text === "API Error: Connection refused",
+    ),
+  );
+  assert.ok(
+    !entries.some(
+      (entry) => entry.kind === "turn-work" && entry.events.includes(failure),
+    ),
     "the failure must not need work details expanded to be seen",
   );
 });
@@ -331,9 +306,9 @@ test("a tool call the agent did not name is still an entry", () => {
     status: "completed",
   });
 
-  const { html } = renderConversation([unnamed], activeTask());
+  const [entry] = conversationEntries([unnamed], activeTask());
 
-  assert.match(html, /<strong>Tool call<\/strong>/);
+  assert.equal(entry.label, "Tool call");
 });
 
 test("a completed background turn renders its answer without a user message", () => {
@@ -364,14 +339,10 @@ test("a completed background turn renders its answer without a user message", ()
     },
   );
 
-  const { html, messages } = renderConversation([answer, ended], idleTask);
+  const entries = conversationEntries([answer, ended], idleTask);
 
-  assert.equal(
-    [...messages.values()][0].event.payload.text,
-    "The background build is done.",
-  );
-  assert.match(html, /<caffold-task-assistant-message>/);
-  assert.doesNotMatch(html, /data-message-role="user"/);
+  assert.deepEqual(entries.map(({ kind }) => kind), ["assistant-message"]);
+  assert.equal(entries[0].event.payload.text, "The background build is done.");
 });
 
 test("hands the final answer the turn's own completion time", () => {
@@ -394,15 +365,11 @@ test("hands the final answer the turn's own completion time", () => {
     observedMs: 1_800_000_000_000,
   };
 
-  const { messages } = renderConversation([answer, ended], idleTask);
-  const loose = new Map();
-  renderConversationEvent(messageEvent("assistant_message"), {}, {
-    messages: loose,
-  });
+  const [final] = conversationEntries([answer, ended], idleTask);
 
-  assert.equal([...messages.values()][0].turnCompletedMs, 1_800_000_000_000);
+  assert.equal(final.turnCompletedMs, 1_800_000_000_000);
   assert.equal(
-    [...loose.values()][0].turnCompletedMs,
+    conversationEventEntry(messageEvent("assistant_message"), {}).turnCompletedMs,
     null,
     "a message outside a completed turn is handed no turn time to stand in",
   );
@@ -422,38 +389,31 @@ test("a running turn folds finished commands in a row into one entry", () => {
   });
   const lone = commandEvent("d", 7, "completed");
 
-  const view = renderConversation(
+  const entries = conversationEntries(
     [first, hidden, second, running, message, lone],
     activeTask(),
   );
   const identity = "command-group:item:thread-1:turn-1:a";
 
-  assert.deepEqual(
-    [...view.html.matchAll(/class="task-event ([^"]+)"/g)].map(
-      ([, kind]) => kind,
-    ),
-    [
-      "task-command-group",
-      "task-command",
-      "task-assistant-message",
-      "task-command",
-      "task-turn-active",
-    ],
-  );
-  assert.match(
-    view.html,
-    new RegExp(
-      `<li class="task-event task-command-group" data-event-id="a" data-conversation-entry-key="${identity}"`,
-    ),
-  );
-  assert.deepEqual(view.commandGroups.get(identity), {
+  assert.deepEqual(entries.map(({ kind }) => kind), [
+    "command-group",
+    "command",
+    "assistant-message",
+    "command",
+    "active-turn",
+  ]);
+  assert.deepEqual(entries[0], {
+    kind: "command-group",
     identity,
+    eventId: "a",
     events: [first, second],
   });
-  assert.deepEqual([...view.commands.keys()], [
-    "item:thread-1:turn-1:c",
-    "item:thread-1:turn-1:d",
-  ]);
+  assert.deepEqual(
+    entries
+      .filter(({ kind }) => kind === "command")
+      .map(({ identity }) => identity),
+    ["item:thread-1:turn-1:c", "item:thread-1:turn-1:d"],
+  );
 });
 
 test("a pending approval keeps the commands on either side apart", () => {
@@ -468,14 +428,14 @@ test("a pending approval keeps the commands on either side apart", () => {
   });
   const after = commandEvent("c", 4, "completed");
 
-  const view = renderConversation(
+  const kinds = conversationEntries(
     [before, approval, after],
     activeTask(),
     [approval],
-  );
+  ).map(({ kind }) => kind);
 
-  assert.equal(view.commandGroups.size, 0);
-  assert.equal(view.commands.size, 2);
+  assert.ok(!kinds.includes("command-group"));
+  assert.equal(kinds.filter((kind) => kind === "command").length, 2);
 });
 
 test("a finished turn counts a folded group of commands as one update", () => {
@@ -507,12 +467,9 @@ test("a finished turn counts a folded group of commands as one update", () => {
     }),
   ];
 
-  const { workDetails } = renderConversation(events, idleTask);
-
-  assert.deepEqual(
-    [...workDetails.values()].map(({ updateText }) => updateText),
-    ["3 updates"],
-  );
+  assert.deepEqual(updateCounts(conversationEntries(events, idleTask)), [
+    "3 updates",
+  ]);
 });
 
 test("a running turn folds the empty thinking between its commands into the group", () => {
@@ -524,26 +481,20 @@ test("a running turn folds the empty thinking between its commands into the grou
   const closing = emptyThinking("t3", 6);
   const running = commandEvent("c", 7, "inProgress");
 
-  const view = renderConversation(
+  const entries = conversationEntries(
     [opening, first, between, second, closing, running],
     activeTask(),
   );
-  const identity = "command-group:item:thread-1:turn-1:a";
 
-  assert.deepEqual(
-    [...view.html.matchAll(/class="task-event ([^"]+)"/g)].map(
-      ([, kind]) => kind,
-    ),
-    ["task-command-group", "task-command", "task-turn-active"],
-  );
+  assert.deepEqual(entries.map(({ kind }) => kind), [
+    "command-group",
+    "command",
+    "active-turn",
+  ]);
   // The group stands where its first entry stood, under that entry's id.
-  assert.match(
-    view.html,
-    new RegExp(
-      `<li class="task-event task-command-group" data-event-id="t1" data-conversation-entry-key="${identity}"`,
-    ),
-  );
-  assert.deepEqual(view.commandGroups.get(identity).events, [
+  assert.equal(entries[0].eventId, "t1");
+  assert.equal(entries[0].identity, "command-group:item:thread-1:turn-1:a");
+  assert.deepEqual(entries[0].events, [
     opening,
     first,
     between,
@@ -578,13 +529,16 @@ test("a finished Claude turn of commands and empty thinking is one update", () =
     }),
   ];
 
-  const { workDetails } = renderConversation(events, idleTask);
-
-  assert.deepEqual(
-    [...workDetails.values()].map(({ updateText }) => updateText),
-    ["1 update"],
-  );
+  assert.deepEqual(updateCounts(conversationEntries(events, idleTask)), [
+    "1 update",
+  ]);
 });
+
+function updateCounts(entries) {
+  return entries
+    .filter(({ kind }) => kind === "turn-work")
+    .map(({ updateText }) => updateText);
+}
 
 function emptyThinking(itemId, anchorMs) {
   return turnEvent(itemId, "reasoning", anchorMs, {

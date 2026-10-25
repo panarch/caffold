@@ -1049,140 +1049,156 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.ts"
+            ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn/model.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn/model.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/active-turn.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/active-turn.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.ts"
+            ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.ts"
+            ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group/model.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group/model.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group/model.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group/model.ts"
+            ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/command-runs.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/command-runs.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/command-runs.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/command-runs.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.css" => {
             Some(css(include_str!(
@@ -1224,40 +1240,44 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.js"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/render.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/render.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/entries.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/entries.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js"
-            )))
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(review)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.css"
@@ -2455,11 +2475,12 @@ mod tests {
             "pages/(task-workspace)/tasks/task-format.js",
             "pages/(task-workspace)/tasks/task-list-model.js",
             "pages/(task-workspace)/tasks/components/task-status.js",
-            "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/render.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/entries.ts",
         ] {
             let asset = get(path).expect("tasks state module");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
-            assert!(asset.body.starts_with(b"export ") || asset.body.starts_with(b"import "));
+            let body = asset.body.trim_ascii_start();
+            assert!(body.starts_with(b"export ") || body.starts_with(b"import "));
         }
         let tasks_page_css =
             get("pages/(task-workspace)/tasks/layout.css").expect("tasks layout css");
@@ -2470,7 +2491,7 @@ mod tests {
         assert_eq!(tasks_controls_css.content_type, "text/css; charset=utf-8");
         assert!(tasks_controls_css.body.starts_with(b"caffold-tasks-page"));
         let tasks_markdown =
-            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js")
+            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.ts")
                 .expect("tasks markdown component js");
         assert_eq!(
             tasks_markdown.content_type,
@@ -2492,7 +2513,7 @@ mod tests {
                 .starts_with(b"caffold-task-markdown")
         );
         let code_block =
-            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js")
+            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.ts")
                 .expect("tasks Markdown code-block component js");
         assert_eq!(code_block.content_type, "text/javascript; charset=utf-8");
         assert!(
@@ -2657,39 +2678,39 @@ mod tests {
                 b"caffold-task-absence".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.ts",
                 b"caffold-task-conversation".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.ts",
                 b"caffold-task-older-history".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.ts",
                 b"caffold-task-active-turn".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.ts",
                 b"caffold-task-assistant-message".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.ts",
                 b"caffold-task-assistant-message-copy-button".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.ts",
                 b"caffold-task-assistant-message-suggested-prompts".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.ts",
                 b"caffold-task-message-attachments".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.ts",
                 b"caffold-task-user-message".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.ts",
                 b"caffold-task-changed-files".as_slice(),
             ),
             (
@@ -2705,19 +2726,19 @@ mod tests {
                 b"caffold-task-permission-instructions-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.ts",
                 b"caffold-task-approval".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.ts",
                 b"caffold-task-command".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.ts",
                 b"caffold-task-command-group".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.ts",
                 b"caffold-task-work-details".as_slice(),
             ),
             (

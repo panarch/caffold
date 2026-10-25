@@ -7,7 +7,7 @@ import {
 import { formatDate } from "../../../../../task-format.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./assistant-message.js");
+await import("./assistant-message.ts");
 const message = registry.element("caffold-task-assistant-message").prototype;
 after(() => registry.restore());
 
@@ -38,10 +38,12 @@ function childScope(target) {
   };
 }
 
-function presentationOf(snapshot) {
-  const owner = Object.create(message);
-  owner.setSnapshot(snapshot);
-  return owner.presentation;
+function presentationOf(properties) {
+  return Object.create(message, Object.getOwnPropertyDescriptors({
+    phase: null,
+    turnCompletedMs: null,
+    ...properties,
+  })).presentation;
 }
 
 test("merges only the Copy, Markdown, and suggested prompt children it mounts", () => {
@@ -132,33 +134,16 @@ test("shows the turn's time only on an answer the provider did not time", () => 
   );
 });
 
-test("hands its suggested prompts on and redraws when they or their lock change", () => {
+test("hands its suggested prompts on and Copy only the text", () => {
   const suggested = [{ label: "Next", prompt: "Do the next thing." }];
-  const answer = {
-    id: "message-1",
-    type: "assistant_message",
-    payload: { text: "Done.", suggestedPrompts: suggested },
-  };
-  const owner = Object.create(message);
+  const presentation = presentationOf({
+    event: {
+      id: "message-1",
+      type: "assistant_message",
+      payload: { text: "Done.", suggestedPrompts: suggested },
+    },
+  });
 
-  assert.equal(owner.setSnapshot({ event: answer }), true);
-  assert.deepEqual(owner.presentation.suggestedPrompts, suggested);
-  assert.equal(owner.presentation.controlsDisabled, false);
-  assert.equal(owner.presentation.text, "Done.", "Copy takes the text alone");
-  assert.equal(
-    owner.setSnapshot({
-      event: { ...answer, payload: { ...answer.payload, suggestedPrompts: [...suggested] } },
-    }),
-    false,
-  );
-  assert.equal(owner.setSnapshot({ event: answer, controlsDisabled: true }), true);
-  assert.equal(owner.presentation.controlsDisabled, true);
-  assert.equal(
-    owner.setSnapshot({
-      event: { ...answer, payload: { text: "Done.", suggestedPrompts: [] } },
-      controlsDisabled: true,
-    }),
-    true,
-  );
-  assert.deepEqual(owner.presentation.suggestedPrompts, []);
+  assert.deepEqual(presentation.suggestedPrompts, suggested);
+  assert.equal(presentation.text, "Done.", "Copy takes the text alone");
 });

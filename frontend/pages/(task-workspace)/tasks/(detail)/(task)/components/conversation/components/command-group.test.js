@@ -4,10 +4,13 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../../../tests/support/custom-element-unit.js";
+import { datasetAttribute } from "../../../../../../../../tests/support/dataset-attribute.js";
+import { templateHtml } from "../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./command-group.js");
-const commandGroup = registry.element("caffold-task-command-group").prototype;
+await import("./command-group.ts");
+const CommandGroup = registry.element("caffold-task-command-group");
+const commandGroup = CommandGroup.prototype;
 after(() => registry.restore());
 
 test("offers its disclosure, and its commands' actions only while open", () => {
@@ -24,10 +27,12 @@ test("offers its disclosure, and its commands' actions only while open", () => {
       // A thinking row has no control to offer.
       {
         dataset: { itemKey: "item:thread-1:turn-1:thinking" },
+        getAttribute: datasetAttribute,
         querySelector: () => null,
       },
       {
         dataset: { itemKey: "item:thread-1:turn-1:a" },
+        getAttribute: datasetAttribute,
         querySelector: () => command,
       },
     ],
@@ -49,9 +54,8 @@ test("offers its disclosure, and its commands' actions only while open", () => {
     isConnected: true,
     hidden: false,
     identity: "command-group:item:thread-1:turn-1:a",
-    presentation: { label: "Ran 3 commands" },
-    ensureState() {},
-    disclosure: () => disclosure,
+    events: ["a", "b", "c"].map((id) => ({ id, type: "command_execution" })),
+    disclosure,
   };
 
   const collapsed = commandGroup.actionHintScope.call(owner, {
@@ -99,8 +103,7 @@ test("offers its disclosure, and its commands' actions only while open", () => {
 
 test("knows which entries it folded in by their event ids", () => {
   const owner = {
-    ensureState() {},
-    snapshot: { events: [{ id: "thinking-a" }, { id: "event-a" }, { id: "event-b" }] },
+    events: [{ id: "thinking-a" }, { id: "event-a" }, { id: "event-b" }],
   };
 
   assert.equal(commandGroup.holdsEvent.call(owner, "event-b"), true);
@@ -109,35 +112,30 @@ test("knows which entries it folded in by their event ids", () => {
   assert.equal(commandGroup.holdsEvent.call(owner, ""), false);
 });
 
-test("an equal snapshot changes nothing", () => {
+test("the same events again change nothing", () => {
   const first = { id: "a", type: "command_execution" };
   const second = { id: "b", type: "command_execution" };
   const third = { id: "c", type: "command_execution" };
-  let updates = 0;
-  const owner = {
-    ensureState() {},
-    initialized: true,
-    snapshot: { identity: "command-group:a", events: [first, second] },
-    update() {
-      updates += 1;
-    },
-  };
+  const { hasChanged } = CommandGroup.properties.events;
 
-  assert.equal(
-    commandGroup.setSnapshot.call(owner, {
-      identity: "command-group:a",
-      events: [first, second],
-    }),
-    false,
+  assert.equal(hasChanged([first, second], [first, second]), false);
+  assert.equal(hasChanged([first, second, third], [first, second]), true);
+  assert.equal(hasChanged([first, { ...second }], [first, second]), true);
+});
+
+test("draws each command as a row of the group, so the group draws the frame", () => {
+  const owner = Object.create(commandGroup, Object.getOwnPropertyDescriptors({
+    identity: "command-group:a",
+    events: [
+      { id: "a", type: "command_execution", payload: { status: "completed" } },
+      { id: "b", type: "reasoning", payload: { summary: [] } },
+    ],
+  }));
+
+  const html = templateHtml(owner.render());
+  assert.match(
+    html,
+    /<li\s+class="task-command-group-item"\s+data-item-key="a"\s*>\s*<caffold-task-command\s+data-command-grouped\s/,
   );
-  assert.equal(updates, 0);
-  assert.equal(
-    commandGroup.setSnapshot.call(owner, {
-      identity: "command-group:a",
-      events: [first, second, third],
-    }),
-    true,
-  );
-  assert.equal(updates, 1);
-  assert.equal(owner.presentation.label, "Ran 3 commands");
+  assert.match(html, /class="task-command-group-item task-command-group-thinking"/);
 });

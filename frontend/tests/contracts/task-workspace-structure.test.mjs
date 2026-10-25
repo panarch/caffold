@@ -189,7 +189,7 @@ test("App Shell owns one global keyboard listener over explicit Scroll providers
     "pages/(task-workspace)/tasks/components/navigator.js",
   );
   const conversation = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.ts",
   );
   const currentPlanDialog = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js",
@@ -453,7 +453,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(tasksLayout, /reconcileSelectedSection/);
   assert.match(activeTaskList, /selectedSection: this\.sectionFor/);
 
-  assert.match(taskLayout, /import "\.\/components\/conversation\.js"/);
+  assert.match(taskLayout, /import "\.\/components\/conversation\.ts"/);
   assert.match(taskLayout, /import "\.\/components\/command-dialog\.js"/);
   assert.match(taskLayout, /import "\.\/components\/markdown-preview-dialog\.js"/);
   assert.match(taskLayout, /<caffold-task-conversation>/);

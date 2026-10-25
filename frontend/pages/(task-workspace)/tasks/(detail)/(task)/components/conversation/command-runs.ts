@@ -1,4 +1,11 @@
+import type { TaskEvent } from "#app/api.js";
 import { eventIdentityKey } from "#tasks/task-events.js";
+
+export type CommandRunSegment =
+  | { group: TaskEvent[]; event?: undefined }
+  | { event: TaskEvent; group?: undefined };
+
+export type CommandResult = "completed" | "failed" | "declined";
 
 // Finished commands that ran one after another fold into one group, so a long
 // stretch of shell work reads as one entry instead of a row per command. The
@@ -7,9 +14,12 @@ import { eventIdentityKey } from "#tasks/task-events.js";
 // own, where its live output shows, and joins the group once it ends. Anything
 // else the reader can see keeps two commands apart; an event that draws
 // nothing does not.
-export function groupFinishedCommands(events, isShown = () => true) {
-  const segments = [];
-  let run = [];
+export function groupFinishedCommands(
+  events: TaskEvent[],
+  isShown: (event: TaskEvent) => boolean = () => true,
+): CommandRunSegment[] {
+  const segments: CommandRunSegment[] = [];
+  let run: TaskEvent[] = [];
   const closeRun = () => {
     if (run.filter(isFinishedCommandEvent).length >= SMALLEST_COMMAND_GROUP) {
       segments.push({ group: run });
@@ -34,22 +44,24 @@ export function groupFinishedCommands(events, isShown = () => true) {
 
 // A group is known by its first command, which stays first however many
 // commands later join it.
-export function commandGroupIdentity(events) {
+export function commandGroupIdentity(events: TaskEvent[]) {
   const first = events.find(isCommandEvent) ?? events[0];
   return `command-group:${eventIdentityKey(first) || `${first?.id ?? ""}`}`;
 }
 
-export function isCommandEvent(event) {
+export function isCommandEvent(event: TaskEvent | null | undefined) {
   return event?.type === "command_execution";
 }
 
-export function isFinishedCommand(event) {
+export function isFinishedCommand(event: TaskEvent | null | undefined) {
   return FINISHED_STATUSES.includes(`${event?.payload?.status ?? ""}`.trim());
 }
 
 // A declined command did not fail; nobody let it run. An exit code decides
 // only for a command that actually ran.
-export function commandResult(event) {
+export function commandResult(
+  event: TaskEvent | null | undefined,
+): CommandResult {
   const payload = event?.payload ?? {};
   const status = `${payload.status ?? ""}`.trim();
   const exitCode = payload.exitCode;
@@ -58,19 +70,21 @@ export function commandResult(event) {
   }
   if (
     status === "failed" ||
-    (typeof exitCode === "number" && Number.isFinite(exitCode) && exitCode !== 0)
+    (typeof exitCode === "number" &&
+      Number.isFinite(exitCode) &&
+      exitCode !== 0)
   ) {
     return "failed";
   }
   return "completed";
 }
 
-function isFinishedCommandEvent(event) {
+function isFinishedCommandEvent(event: TaskEvent) {
   return isCommandEvent(event) && isFinishedCommand(event);
 }
 
-function isEmptyReasoning(event) {
-  if (event?.type !== "reasoning") {
+function isEmptyReasoning(event: TaskEvent) {
+  if (event.type !== "reasoning") {
     return false;
   }
   const payload = event.payload ?? {};

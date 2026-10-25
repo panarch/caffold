@@ -246,7 +246,7 @@ test("drops a copy of text the message no longer holds", { tag: "@desktop" }, as
     message.id = "standalone-message-probe";
     shell.append(message);
     document.body.append(shell);
-    message.setSnapshot({ event: { payload: { text: "older text" } } });
+    message.event = { payload: { text: "older text" } };
   });
   const probe = page.locator("#standalone-message-probe");
   const copy = probe.locator('button[data-message-action="copy"]');
@@ -279,7 +279,7 @@ test("drops a copy of text the message no longer holds", { tag: "@desktop" }, as
   await expect(copy).toHaveAttribute("aria-label", "Copying message");
   await expect(copy).toHaveAttribute("aria-disabled", "true");
   await probe.evaluate((message) => {
-    message.setSnapshot({ event: { payload: { text: "current text" } } });
+    message.event = { payload: { text: "current text" } };
   });
   await expect(copy).toHaveAttribute("aria-label", "Copy message");
   await expect(copy).toHaveAttribute("aria-disabled", "false");

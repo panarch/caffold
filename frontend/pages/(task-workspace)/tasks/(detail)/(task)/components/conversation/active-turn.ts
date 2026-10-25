@@ -1,21 +1,33 @@
+import type { Task, TaskEvent } from "#app/api.js";
 import { taskActiveFlagLabel } from "#tasks/runtime-state.js";
 import { formatDuration } from "#tasks/task-format.js";
 
-export function activeTurnPresentation(events = [], task = null) {
+export interface ActiveTurnPresentation {
+  startedMs: number | null;
+  state: string;
+}
+
+export function activeTurnPresentation(
+  events: TaskEvent[] = [],
+  task: Task | null = null,
+): ActiveTurnPresentation {
   return {
     startedMs: activeTurnStartMs(task),
     state: activeTurnStateLabel(events, task),
   };
 }
 
-export function activeTurnDuration(startedMs, nowMs = Date.now()) {
-  if (!Number.isFinite(startedMs) || startedMs <= 0) {
+export function activeTurnDuration(
+  startedMs: number | null,
+  nowMs = Date.now(),
+) {
+  if (startedMs === null || !Number.isFinite(startedMs) || startedMs <= 0) {
     return "Working";
   }
   return `Working for ${formatDuration(Math.max(0, nowMs - startedMs))}`;
 }
 
-function activeTurnStartMs(task) {
+function activeTurnStartMs(task: Task | null) {
   const taskStartedMs = Number(task?.activeTurn?.startedAtMs);
   if (Number.isFinite(taskStartedMs) && taskStartedMs > 0) {
     return taskStartedMs;
@@ -23,7 +35,7 @@ function activeTurnStartMs(task) {
   return null;
 }
 
-function activeTurnStateLabel(events, task) {
+function activeTurnStateLabel(events: TaskEvent[], task: Task | null) {
   const activeFlagLabel = taskActiveFlagLabel(task);
   if (activeFlagLabel) {
     return activeFlagLabel;
@@ -32,8 +44,12 @@ function activeTurnStateLabel(events, task) {
   // The newest thing still running says what is happening now. Nothing
   // running means the agent is between pieces of work.
   const event =
-    [...events].reverse().find((entry) => entry.payload?.status === "inProgress") ??
-    [...events].reverse().find((entry) => WORKING_EVENT_TYPES.includes(entry.type));
+    [...events]
+      .reverse()
+      .find((entry) => entry.payload?.status === "inProgress") ??
+    [...events]
+      .reverse()
+      .find((entry) => WORKING_EVENT_TYPES.includes(entry.type));
   return event ? workingLabel(event) : "Thinking";
 }
 
@@ -46,7 +62,7 @@ const WORKING_EVENT_TYPES = [
   "assistant_message",
 ];
 
-function workingLabel(event) {
+function workingLabel(event: TaskEvent) {
   if (event.type === "command_execution") {
     return "Running command";
   }

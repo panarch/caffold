@@ -107,6 +107,9 @@ child is there even before the component is in the document. While the owners
 that command a component are still JavaScript, the component also renders at
 once when it connects and when one of its public methods changes what it
 shows, so those owners can read its DOM right after mounting or calling it.
+The Task conversation renders the components its entries mount at once in the
+same way, because Task Detail and the keyboard modes read the whole transcript
+right after it changes.
 Event listeners bound in a template come and go with their nodes.
 
 Lit keeps the nodes of a rendered template across later renders and commits
@@ -1106,9 +1109,9 @@ projection order it received instead of manufacturing an anchor or update time.
 `observedMs` is the direct per-event time shown by Conversation and Work
 details, including a provider-history item time when one exists; `null`
 suppresses a timestamp when history supplied order but no individual time.
-Conversation keys entries by exact identity and versions them from rendered
-content, not projection revision or position. A canonical reorder therefore
-moves an existing entry instead of replacing its DOM and state.
+Conversation keys entries by exact identity, not projection revision or
+position. A canonical reorder therefore moves an existing entry instead of
+replacing its DOM and state.
 
 The adjacent task-scoped Detail session owns snapshot acquisition while Detail
 keeps the canonical Task metadata and rendering cache. Its private
@@ -1245,17 +1248,19 @@ therefore retire only the replaced
 entry, approval card, or child owner while unaffected sibling, App Shell, and
 Composer codes remain frozen, without introducing a descendant-DOM scan.
 
-Conversation mounts `conversation/components/approval.js` for each pending
+Conversation mounts `conversation/components/approval.ts` for each pending
 normalized approval. Approval owns its card DOM, request-error presentation,
 styles, decision intents, Action Hint scope, and command/argument scroll
-surfaces. Conversation retains cards by Task and approval identity, controls
-pending membership and placement, and composes their public scopes. Task Detail
+surfaces. Conversation keeps each card by approval identity within its entry of
+pending approvals, controls pending membership and placement, and composes
+their public scopes. A card that moves to another entry, as when a finished
+turn gathers its pending approvals into one, is a new card. Task Detail
 owns the approval API call and canonical response acceptance; its error reaches
 the current card through Conversation. Equivalent detail refreshes, request
 errors, and transport disabling preserve the card's native focus, selection,
 and detail scroll. A different Task or approval identity clears local errors.
 
-Conversation mounts `conversation/components/older-history.js` as a retained
+Conversation mounts `conversation/components/older-history.ts` as a retained
 child outside the timeline list. Older History owns its load button, loading
 status, error and retry presentation, styles, and Action Hint scope. It receives
 Task identity and request presentation from Conversation and emits load or
@@ -1994,7 +1999,7 @@ frontend/
 |               |   |-- session.js
 |               |   `-- components/
 |               |       |-- summary.js
-|               |       |-- conversation.js
+|               |       |-- conversation.ts
 |               |       |-- command-dialog.js
 |               |       |-- current-plan.js
 |               |       |-- current-plan/
