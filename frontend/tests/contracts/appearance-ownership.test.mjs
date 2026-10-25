@@ -220,8 +220,8 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
   );
   for (const [path, spinner] of [
     [
-      "pages/(task-workspace)/tasks/components/task-status.css",
-      "task-status-spinner",
+      "pages/(task-workspace)/tasks/components/task-status-chip.css",
+      '\\[data-status="running"\\]',
     ],
     [
       "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css",
@@ -387,7 +387,7 @@ test("unseen completion attention blinks the marker without hiding it", () => {
     "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
   );
   const activeTaskListView = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts",
   );
 
   cssBlockMatching(activeList, ".task-unseen-complete::before", [
@@ -420,11 +420,8 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
   const taskList = "> .task-repository-groups > .task-repository-group > .task-list > .task-archived-row";
   const consumers = [
     ["pages/layout", "caffold-app-shell", "> .app-foreground-recovery > .app-foreground-recovery-spinner"],
-    ["pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row", "caffold-active-task-row", "> .task-row > .task-row-indicators > .task-status-chip > .task-status-spinner"],
-    ["pages/(task-workspace)/tasks/components/archived-task-list", "caffold-archived-task-list", `${taskList} > .task-archived-copy > .task-row-indicators > .task-status-chip > .task-status-spinner`],
+    ["pages/(task-workspace)/tasks/components/task-status-chip", "caffold-task-status-chip", "> .task-status-spinner"],
     ["pages/(task-workspace)/tasks/components/archived-task-list", "caffold-archived-task-list", `${taskList} > .task-archived-actions > .task-archived-action-button.is-loading > .task-archived-action-icon`],
-    ["pages/(task-workspace)/tasks/components/task-switcher-dialog", "caffold-task-switcher-dialog", "> dialog > .task-switcher-card > .task-switcher-scroll > .task-switcher-list > .task-switcher-item > .task-switcher-row > .task-switcher-row-indicators > .task-status-chip > .task-status-spinner"],
-    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info", "caffold-task-detail-info", "> .task-detail-info-button > .task-status-chip > .task-status-spinner"],
     ["pages/(task-workspace)/tasks/components/task-turn-options", "caffold-task-turn-options", "> .task-turn-options > .task-model-picker > .task-model-button > .task-picker-spinner"],
     ["pages/(task-workspace)/tasks/components/task-turn-options", "caffold-task-turn-options", "> .task-turn-options > .task-permission-picker > .task-permission-button > .task-picker-spinner"],
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn", "caffold-task-active-turn", "> .task-active-turn-spinner"],
@@ -490,7 +487,7 @@ test("workspace header identity and titles share semantic ownership", () => {
     "pages/(task-workspace)/tasks/components/navigator.css",
   );
   const taskNavigatorView = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const detail = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/(task)/layout.css",

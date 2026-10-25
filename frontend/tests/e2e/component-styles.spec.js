@@ -32,8 +32,8 @@ test("components wait for shared CSS and share one request per stylesheet", { ta
     release.resolve();
     await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
     expect(requests.sort()).toEqual(["busy-spin.css", "compact-icon-button.css"]);
-    // 19 compact icon button scopes and 12 busy spin scopes.
-    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(31);
+    // 19 compact icon button scopes and 9 busy spin scopes.
+    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(28);
   } finally {
     release.resolve();
   }

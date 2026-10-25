@@ -424,8 +424,113 @@ export function createTask(task: Record<string, unknown>): Promise<unknown>;
 // A Task as the Task API reports it, as far as TypeScript callers read it.
 export interface Task {
   threadId: string;
+  conversationAvailable: boolean;
+  title: string;
+  threadStatus: TaskThreadStatus;
   activeTurn: { id: string; startedAtMs: number | null } | null;
+  cwd: string;
+  cwdPath: string | null;
+  relativeCwd: string;
+  worktree: TaskWorktree | null;
+  createdMs: number;
+  updatedMs: number;
+  recencyMs: number | null;
+  lastCompletedMs: number | null;
+  unseen: boolean;
 }
+
+// What the agent is doing for a Task. An active Task with no flags is working.
+export type TaskThreadStatus =
+  | { type: "notLoaded" | "idle" | "systemError" }
+  | {
+      type: "active";
+      activeFlags: Array<"waitingOnApproval" | "waitingOnUserInput">;
+    };
+
+// The worktree a Task runs in, when it runs in one.
+export interface TaskWorktree {
+  rootPath: string;
+  repositoryRootPath: string;
+  branch: string | null;
+  headSha: string;
+  relativeCwd: string;
+  linked: boolean;
+}
+
+// A Task as the Active list shows it. `worktree` says whether it runs in a
+// worktree Caffold made for it.
+export interface ActiveTask {
+  threadId: string;
+  title: string;
+  threadStatus: TaskThreadStatus;
+  unseen: boolean;
+  lastCompletedMs: number | null;
+  recencyMs: number | null;
+  updatedMs: number;
+  worktree: boolean;
+}
+
+// A listed Task that cannot sit in a Section until the person recovers it.
+export interface ActiveTaskRecovery extends ActiveTask {
+  recovery: {
+    reason:
+      | "sectionPlacementPending"
+      | "codexArchived"
+      | "threadMissing"
+      | "temporarilyUnavailable";
+    actions: Array<
+      "recheck" | "restoreToActive" | "moveToArchived" | "removeFromCaffold"
+    >;
+  };
+}
+
+// What a Section's Tasks last ran under.
+export interface ActiveTaskComposerSettings {
+  model: string | null;
+  effort: string | null;
+  fastMode: boolean;
+  permissionMode?: string;
+}
+
+export interface ActiveTaskSection {
+  id: string;
+  name: string;
+  repository: boolean;
+  composerSettings: ActiveTaskComposerSettings | null;
+  tasks: ActiveTask[];
+}
+
+// Where a Task newly at the top of the Active list goes.
+export interface ActiveTaskTopPlacement {
+  section: { id: string; name: string; repository: boolean };
+  beforeSectionId: string | null;
+  beforeThreadId?: string;
+}
+
+export function getTasks(): Promise<{
+  sections: ActiveTaskSection[];
+  unsectioned: ActiveTaskRecovery[];
+}>;
+
+export function getArchivedTasks(
+  cursor?: string | null,
+): Promise<{ tasks: Task[]; nextCursor: string | null }>;
+
+export function reorderTask(
+  threadId: string,
+  beforeThreadId: string | null,
+): Promise<unknown>;
+
+export function reorderSection(
+  sectionId: string,
+  beforeSectionId: string | null,
+): Promise<unknown>;
+
+export function restoreTask(
+  threadId: string,
+): Promise<{ task: ActiveTask; activeTopPlacement: ActiveTaskTopPlacement }>;
+
+export function deleteTask(threadId: string): Promise<unknown>;
 
 // One conversation item as a Task's detail and its stream deliver it. The
 // backend gives its identity, its place in the conversation, and the time it

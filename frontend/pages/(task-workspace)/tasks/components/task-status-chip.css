@@ -1,0 +1,39 @@
+caffold-task-status-chip {
+  /* An owner tints the chip for its own surface through the three
+     `--task-status-chip-*-background` properties. */
+  display: inline-grid;
+  place-items: center;
+  width: var(--interface-icon-slot-size);
+  height: var(--interface-icon-slot-size);
+  border-radius: 999px;
+
+  &[data-status="running"] {
+    background: var(--task-status-chip-running-background, transparent);
+    color: var(--control-fg);
+  }
+
+  &[data-status="waiting_for_approval"],
+  &[data-status="waiting_on_user_input"] {
+    background: var(--task-status-chip-warning-background, var(--warning-soft));
+    color: var(--warning-strong);
+  }
+
+  &[data-status="failed"] {
+    background: var(--task-status-chip-danger-background, var(--danger-subtle));
+    color: var(--danger-strong);
+  }
+
+  & > .task-status-icon {
+    display: block;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+  }
+
+  & > .task-status-spinner {
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 999px;
+  }
+}

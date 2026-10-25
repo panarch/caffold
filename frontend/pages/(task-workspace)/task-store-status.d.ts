@@ -14,3 +14,17 @@ export interface TaskStoreStatusSnapshot {
 export function taskStoreBlocksTaskOperations(
   snapshot: TaskStoreStatusSnapshot | null,
 ): boolean;
+
+// Whether Task operations can run now, and what a blocked control says. `key`
+// changes whenever anything else does.
+export interface TaskOperationsPresentation {
+  key: string;
+  phase: string;
+  blocked: boolean;
+  title: string;
+  message: string;
+}
+
+export function taskStoreOperationsPresentation(
+  snapshot: TaskStoreStatusSnapshot | null,
+): TaskOperationsPresentation;

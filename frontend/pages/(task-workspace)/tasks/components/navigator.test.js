@@ -4,14 +4,24 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./navigator.js");
-const navigator = registry.element("caffold-task-navigator").prototype;
+await import("./navigator.ts");
+const Navigator = registry.element("caffold-task-navigator");
 after(() => registry.restore());
 
-test("provides owned New Task and delegated row actions with navigator geometry", () => {
+const ready = {
+  key: "ready",
+  phase: "ready",
+  blocked: false,
+  title: "",
+  message: "",
+};
+
+test("offers its own New Task and its rows' actions with the navigator's geometry", () => {
   const scrollRoot = {};
+  const primaryHeader = {};
   let clicks = 0;
   const newTask = {
     disabled: false,
@@ -20,11 +30,6 @@ test("provides owned New Task and delegated row actions with navigator geometry"
     },
   };
   let currentNewTask = newTask;
-  const primaryHeader = {
-    querySelector() {
-      return currentNewTask;
-    },
-  };
   const taskTarget = { id: "task:thread-a" };
   const switcherTarget = { id: "task-list:switcher:open" };
   let delegatedOptions = null;
@@ -34,39 +39,26 @@ test("provides owned New Task and delegated row actions with navigator geometry"
       return [taskTarget];
     },
   };
-  const owner = {
+  const navigator = navigatorHost({
+    scrollRoot,
+    primaryHeader,
     activeTaskList,
-    reorderMode: "none",
-    taskOperations: { blocked: false },
-    ensureChildren() {},
-    actionHintSwitcherTarget() {
-      return switcherTarget;
+    archivedTaskList: { getClientRects: () => [] },
+    get newTaskButton() {
+      return currentNewTask;
     },
-    actionHintReorderTarget() {
-      return null;
-    },
-    querySelector(selector) {
-      if (selector === ":scope > .task-list-scroll") {
-        return scrollRoot;
-      }
-      if (selector === ":scope > .task-list-primary-header") {
-        return primaryHeader;
-      }
-      if (selector.includes(".task-list-new-task")) {
-        return currentNewTask;
-      }
-      throw new Error(`Unexpected selector: ${selector}`);
-    },
-  };
+    switcherTarget: () => switcherTarget,
+    reorderTarget: () => null,
+  });
 
-  const scope = navigator.actionHintScope.call(owner);
+  const scope = navigator.actionHintScope();
 
   assert.equal(scope.blocked, false);
   assert.equal(scope.targets[0], switcherTarget);
   assert.deepEqual(scope.targets.slice(2), [taskTarget]);
   assert.deepEqual(scope.mutationRoots, [primaryHeader, activeTaskList]);
   assert.deepEqual(scope.scrollRoots, [scrollRoot]);
-  assert.deepEqual(delegatedOptions, { clipRoots: [owner, scrollRoot] });
+  assert.deepEqual(delegatedOptions, { clipRoots: [navigator, scrollRoot] });
 
   const target = scope.targets[1];
   assert.deepEqual(
@@ -85,19 +77,19 @@ test("provides owned New Task and delegated row actions with navigator geometry"
   );
   assert.equal(target.control, newTask);
   assert.equal(target.anchor, newTask);
-  assert.deepEqual(target.clipRoots, [owner]);
+  assert.deepEqual(target.clipRoots, [navigator]);
   assert.equal(target.isActionable(), true);
   target.activate();
   assert.equal(clicks, 1);
 
-  owner.taskOperations.blocked = true;
+  navigator.taskOperations = { ...ready, key: "blocked", blocked: true };
   assert.equal(target.isActionable(), false);
-  owner.taskOperations.blocked = false;
+  navigator.taskOperations = ready;
   currentNewTask = { ...newTask };
   assert.equal(target.isActionable(), false);
 
-  owner.reorderMode = "tasks";
-  const reorderScope = navigator.actionHintScope.call(owner);
+  navigator.reorderMode = "tasks";
+  const reorderScope = navigator.actionHintScope();
   assert.equal(reorderScope.blocked, false);
   assert.deepEqual(reorderScope.targets, [taskTarget]);
 });
@@ -113,75 +105,55 @@ test("offers the Task switcher opener only outside reorder modes", () => {
     getAttribute: (name) => (name === "aria-label" ? "Switch task" : null),
   };
   let currentControl = control;
-  const owner = {
-    active: true,
-    hidden: false,
-    isConnected: true,
-    reorderMode: "none",
+  const navigator = navigatorHost({
     get switcherButton() {
       return currentControl;
     },
-  };
+  });
 
-  const target = navigator.actionHintSwitcherTarget.call(owner);
+  const target = navigator.switcherTarget();
 
   assert.equal(target.id, "task-list:switcher:open");
   assert.equal(target.actionId, "task.switcher.open");
   assert.equal(target.label, "Switch task");
-  assert.deepEqual(target.clipRoots, [owner]);
+  assert.deepEqual(target.clipRoots, [navigator]);
   assert.equal(target.isActionable(), true);
   target.activate();
   assert.equal(control.clicks, 1);
 
-  owner.reorderMode = "sections";
+  navigator.reorderMode = "sections";
   assert.equal(target.isActionable(), false);
-  owner.reorderMode = "none";
+  navigator.reorderMode = "none";
   currentControl = { ...control };
   assert.equal(target.isActionable(), false);
 });
 
-test("asks for the Task switcher without touching reorder mode or blocked Task operations", (t) => {
-  const previousElement = globalThis.Element;
-  class TestElement {}
-  globalThis.Element = TestElement;
-  t.after(() => {
-    if (previousElement === undefined) {
-      delete globalThis.Element;
-    } else {
-      globalThis.Element = previousElement;
-    }
-  });
-  const action = Object.assign(new TestElement(), {
-    dataset: { taskAction: "open-task-switcher" },
-  });
-  const target = Object.assign(new TestElement(), { closest: () => action });
+test("asks for the Task switcher without touching reorder mode or blocked Task operations", () => {
   const intents = [];
-  const owner = {
+  const navigator = navigatorHost({
     reorderMode: "tasks",
-    taskOperations: { blocked: true },
-    contains: (candidate) => candidate === action,
-    dispatchIntent: (type) => intents.push(type),
+    taskOperations: { ...ready, key: "blocked", blocked: true },
+    dispatchIntent: (detail) => intents.push(detail),
     setReorderMode() {
       throw new Error("Opening the switcher must not change reorder mode.");
     },
     exitReorderMode() {
       throw new Error("Opening the switcher must not end reorder mode.");
     },
-  };
+  });
   let stopped = false;
 
-  navigator.handleClick.call(owner, {
-    target,
+  navigator.openSwitcher({
     stopPropagation() {
       stopped = true;
     },
   });
 
-  assert.deepEqual(intents, ["open-task-switcher"]);
+  assert.deepEqual(intents, [{ type: "open-task-switcher" }]);
   assert.equal(stopped, true);
 });
 
-test("provides only its exact active Task list scrollport", () => {
+test("provides only its exact Task list scrollport", () => {
   const scrollport = {
     clientHeight: 100,
     scrollHeight: 300,
@@ -189,25 +161,21 @@ test("provides only its exact active Task list scrollport", () => {
   };
   const activeTaskList = {};
   const archivedTaskList = {};
-  const owner = {
-    active: true,
+  const navigator = navigatorHost({
+    scrollRoot: scrollport,
     activeTaskList,
     archivedTaskList,
-    hidden: false,
-    isConnected: true,
-    reorderMode: "none",
-    ensureChildren() {},
     getClientRects: () => [{}],
-    querySelector(selector) {
-      assert.equal(selector, ":scope > .task-list-scroll");
-      return scrollport;
-    },
-  };
+  });
 
-  const scope = navigator.scrollSurfaceScope.call(owner);
+  const scope = navigator.scrollSurfaceScope();
   assert.equal(scope.blocked, false);
-  assert.deepEqual(scope.mutationRoots, [owner, activeTaskList, archivedTaskList]);
-  assert.deepEqual(scope.resizeElements, [owner, scrollport]);
+  assert.deepEqual(scope.mutationRoots, [
+    navigator,
+    activeTaskList,
+    archivedTaskList,
+  ]);
+  assert.deepEqual(scope.resizeElements, [navigator, scrollport]);
   assert.deepEqual(scope.scrollRoots, [scrollport]);
   assert.deepEqual(
     {
@@ -220,19 +188,19 @@ test("provides only its exact active Task list scrollport", () => {
       id: "task-list",
       label: "Task list",
       scrollport,
-      clipRoots: [owner, scrollport],
+      clipRoots: [navigator, scrollport],
     },
   );
   assert.equal(scope.surfaces[0].isEligible(), true);
   scrollport.scrollHeight = 101;
   assert.equal(scope.surfaces[0].isEligible(), true);
   scrollport.scrollHeight = 300;
-  owner.reorderMode = "tasks";
+  navigator.reorderMode = "tasks";
   assert.equal(scope.surfaces[0].isEligible(), false);
-  assert.equal(navigator.scrollSurfaceScope.call(owner).blocked, true);
+  assert.equal(navigator.scrollSurfaceScope().blocked, true);
 });
 
-test("merges Archived actions only while that direct list has a layout box", () => {
+test("merges Archived actions only while that list has a layout box", () => {
   const activeTarget = { id: "active" };
   const archivedTarget = { id: "archived" };
   const archivedTaskList = {
@@ -245,30 +213,23 @@ test("merges Archived actions only while that direct list has a layout box", () 
       return { targets: [archivedTarget], mutationRoots: [this] };
     },
   };
-  const owner = {
-    reorderMode: "none",
-    activeTaskList: {
-      actionHintTargets: () => [activeTarget],
-    },
+  const navigator = navigatorHost({
+    activeTaskList: { actionHintTargets: () => [activeTarget] },
     archivedTaskList,
-    ensureChildren() {},
-    actionHintSwitcherTarget: () => null,
-    actionHintReorderTarget: () => null,
-    querySelector(selector) {
-      if (selector === ":scope > .task-list-scroll") return {};
-      if (selector === ":scope > .task-list-primary-header") return null;
-      throw new Error(`Unexpected selector: ${selector}`);
-    },
-  };
-  assert.deepEqual(
-    navigator.actionHintScope.call(owner).targets,
-    [activeTarget, archivedTarget],
-  );
+    newTaskButton: null,
+    switcherTarget: () => null,
+    reorderTarget: () => null,
+  });
+
+  assert.deepEqual(navigator.actionHintScope().targets, [
+    activeTarget,
+    archivedTarget,
+  ]);
   archivedTaskList.visible = false;
-  assert.deepEqual(navigator.actionHintScope.call(owner).targets, [activeTarget]);
+  assert.deepEqual(navigator.actionHintScope().targets, [activeTarget]);
 });
 
-test("provides Reorder opener and exact semantic popover options", () => {
+test("provides the Reorder opener and its exact popover options", () => {
   let label = "Choose what to reorder";
   const control = {
     disabled: false,
@@ -293,27 +254,21 @@ test("provides Reorder opener and exact semantic popover options", () => {
     contains: (candidate) => options.includes(candidate),
     querySelectorAll: () => options,
   };
-  const owner = {
-    active: true,
-    hidden: false,
-    isConnected: true,
-    reorderMode: "none",
-    get reorderButton() {
-      return control;
-    },
-    reorderPopover: () => popover,
-  };
+  const navigator = navigatorHost({
+    reorderButton: control,
+    reorderPopover: popover,
+  });
 
-  const opener = navigator.actionHintReorderTarget.call(owner);
+  const opener = navigator.reorderTarget();
   assert.equal(opener.actionId, "task.reorder.open");
   assert.equal(opener.isActionable(), true);
   opener.activate();
   assert.equal(control.clicks, 1);
 
-  owner.reorderMode = "tasks";
+  navigator.reorderMode = "tasks";
   label = "Finish reordering Tasks";
   assert.equal(opener.isActionable(), false);
-  const finish = navigator.actionHintReorderTarget.call(owner);
+  const finish = navigator.reorderTarget();
   assert.equal(finish.id, "task-list:reorder:finish:tasks");
   assert.equal(finish.actionId, "task.reorder.finish");
   assert.equal(finish.label, "Finish reordering Tasks");
@@ -321,13 +276,10 @@ test("provides Reorder opener and exact semantic popover options", () => {
   finish.activate();
   assert.equal(control.clicks, 2);
 
-  owner.reorderMode = "none";
+  navigator.reorderMode = "none";
   label = "Choose what to reorder";
   popover.open = true;
-  const scope = navigator.reorderActionHintScope.call(owner, {
-    contextId: "task-list:reorder",
-    popover,
-  });
+  const scope = navigator.reorderActionHintScope("task-list:reorder", popover);
   assert.deepEqual(
     scope.targets.map(({ id, actionId }) => ({ id, actionId })),
     [
@@ -347,13 +299,10 @@ test("closes the Reorder popover when its bound Action Hint session is dismissed
       hidden += 1;
     },
   };
-  const owner = {
-    reorderPopover: () => popover,
-    closeReorderPopover: navigator.closeReorderPopover,
-  };
-  navigator.handleDismiss.call(owner, { target: {} });
+  const navigator = navigatorHost({ reorderPopover: popover });
+  navigator.handleDismiss({ target: {} });
   assert.equal(hidden, 0);
-  navigator.handleDismiss.call(owner, { target: popover });
+  navigator.handleDismiss({ target: popover });
   assert.equal(hidden, 1);
 });
 
@@ -361,9 +310,8 @@ test("replaces normal navigator actions with current reorder handles and Finish"
   const finish = { id: "task-list:reorder:finish:tasks" };
   const handle = { id: "task:thread-a:reorder" };
   let archivedCalls = 0;
-  const owner = {
+  const navigator = navigatorHost({
     reorderMode: "tasks",
-    taskOperations: { blocked: false },
     activeTaskList: { actionHintTargets: () => [handle] },
     archivedTaskList: {
       getClientRects: () => [{}],
@@ -372,18 +320,11 @@ test("replaces normal navigator actions with current reorder handles and Finish"
         return { targets: [{ id: "archived" }] };
       },
     },
-    ensureChildren() {},
-    actionHintReorderTarget: () => finish,
-    querySelector(selector) {
-      if (selector === ":scope > .task-list-scroll") return {};
-      if (selector === ":scope > .task-list-primary-header") {
-        return { querySelector: () => ({ id: "new-task" }) };
-      }
-      throw new Error(`Unexpected selector: ${selector}`);
-    },
-  };
+    newTaskButton: { id: "new-task" },
+    reorderTarget: () => finish,
+  });
 
-  const scope = navigator.actionHintScope.call(owner);
+  const scope = navigator.actionHintScope();
   assert.equal(scope.blocked, false);
   assert.deepEqual(scope.targets, [finish, handle]);
   assert.equal(archivedCalls, 0);
@@ -391,16 +332,16 @@ test("replaces normal navigator actions with current reorder handles and Finish"
 
 test("exits active reorder only for an unclaimed Escape key", () => {
   let exits = 0;
-  const owner = {
+  const navigator = navigatorHost({
     reorderMode: "tasks",
     exitReorderMode() {
       exits += 1;
       this.reorderMode = "none";
     },
-  };
+  });
   const escape = keyboardEvent();
 
-  navigator.handleKeydown.call(owner, escape);
+  navigator.exitReorderOnEscape(escape);
 
   assert.equal(exits, 1);
   assert.equal(escape.prevented, true);
@@ -414,17 +355,17 @@ test("exits active reorder only for an unclaimed Escape key", () => {
     keyboardEvent({ altKey: true }),
     keyboardEvent({ metaKey: true }),
   ]) {
-    owner.reorderMode = "sections";
-    navigator.handleKeydown.call(owner, ignored);
+    navigator.reorderMode = "sections";
+    navigator.exitReorderOnEscape(ignored);
     assert.equal(ignored.prevented, false);
     assert.equal(ignored.stopped, false);
   }
-  owner.reorderMode = "none";
-  navigator.handleKeydown.call(owner, keyboardEvent());
+  navigator.reorderMode = "none";
+  navigator.exitReorderOnEscape(keyboardEvent());
   assert.equal(exits, 1);
 });
 
-test("declares a session-bound Action Hint context for the Reorder popover context", () => {
+test("declares a session-bound Action Hint context for the Reorder popover", () => {
   const popover = {
     id: "reorder-options",
     matches: () => false,
@@ -436,23 +377,106 @@ test("declares a session-bound Action Hint context for the Reorder popover conte
       scrollSurfaceSelector: () => ({}),
     }),
   };
-  const owner = {
-    active: true,
-    hidden: false,
-    isConnected: true,
-    reorderMode: "none",
-    ensureChildren() {},
-    reorderPopover: () => popover,
-    reorderActionHintScope: navigator.reorderActionHintScope,
-  };
+  const navigator = navigatorHost({ reorderPopover: popover });
 
-  const [context] = navigator.keyboardNavigationContexts.call(owner);
+  const [context] = navigator.keyboardNavigationContexts();
 
   assert.equal(context.id, "task-list:reorder");
   assert.equal(context.kind, "popover");
   assert.equal(context.root, popover);
   assert.equal(context.actionHints.sessionBound, true);
 });
+
+test("reveals the Archived list once both lists have first answered", () => {
+  const revealed = [];
+  const active = {
+    initialRequestSettled: false,
+    listState: () => ({
+      count: 2,
+      loaded: true,
+      loading: false,
+      error: "",
+      selectedSection: null,
+      selectedRecovery: null,
+    }),
+  };
+  const archived = {
+    initialRequestSettled: true,
+    setRevealed: (value) => revealed.push(value),
+    listState: () => ({ count: 1, loaded: true, loading: false, error: "" }),
+  };
+  const published = [];
+  const navigator = navigatorHost({
+    activeTaskList: active,
+    archivedTaskList: archived,
+    lastPublishedListState: "",
+    dispatchEvent: (event) => published.push(event.detail),
+  });
+  const settled = { stopPropagation() {} };
+
+  navigator.listSettled(settled);
+  active.initialRequestSettled = true;
+  navigator.listSettled(settled);
+
+  assert.deepEqual(revealed, [false, true]);
+  assert.deepEqual(published, [
+    {
+      count: 3,
+      activeCount: 2,
+      activeError: "",
+      archivedCount: 1,
+      loaded: true,
+      loading: false,
+      error: "",
+      selectedSection: null,
+      selectedRecovery: null,
+    },
+  ]);
+});
+
+test("draws the header's actions for the reorder mode and the Task store", () => {
+  const idle = html(navigatorHost({}));
+  assert.match(idle, /aria-label="Choose what to reorder" aria-pressed="false" title="Reorder" popovertarget="task-list-reorder-test"/);
+  assert.match(idle, /class="task-list-header-action task-list-new-task" data-task-action="open-new" aria-label="New Task" title="New Task" \?disabled="false"/);
+  assert.match(idle, /<div class="task-list-scroll"><caffold-active-task-list [^>]*><\/caffold-active-task-list><caffold-archived-task-list hidden [^>]*><\/caffold-archived-task-list><\/div>$/);
+
+  const reordering = html(navigatorHost({
+    reorderMode: "sections",
+    taskOperations: {
+      ...ready,
+      key: "blocked",
+      blocked: true,
+      title: "The Task store is unavailable",
+    },
+  }));
+  assert.match(reordering, /aria-label="Finish reordering Sections" aria-pressed="true" title="Finish reordering Sections"/);
+  assert.match(reordering, /title="The Task store is unavailable" \?disabled="true"/);
+});
+
+// A navigator whose children and controls are the given stand-ins.
+function navigatorHost(properties) {
+  return Object.create(Navigator.prototype, {
+    ...Object.getOwnPropertyDescriptors({
+      active: true,
+      hidden: false,
+      isConnected: true,
+      reorderMode: "none",
+      taskOperations: ready,
+      reorderPopoverId: "task-list-reorder-test",
+      scrollRoot: {},
+      primaryHeader: {},
+    }),
+    ...Object.getOwnPropertyDescriptors(properties),
+  });
+}
+
+function html(navigator) {
+  return templateHtml(navigator.render())
+    .replace(/\s+/g, " ")
+    .replaceAll(" >", ">")
+    .replaceAll("> <", "><")
+    .trim();
+}
 
 function reorderOption(mode) {
   return {

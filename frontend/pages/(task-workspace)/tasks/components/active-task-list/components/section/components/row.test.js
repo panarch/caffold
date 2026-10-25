@@ -4,13 +4,48 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./row.js");
-const row = registry.element("caffold-active-task-row").prototype;
+await import("./row.ts");
+const Row = registry.element("caffold-active-task-row");
 after(() => registry.restore());
 
-test("provides a frozen Task action through the owned row button", () => {
+const taskOperations = {
+  key: "ready",
+  phase: "ready",
+  blocked: false,
+  title: "",
+  message: "",
+};
+
+function listedTask(overrides = {}) {
+  return {
+    threadId: "thread-a",
+    title: "Alpha",
+    threadStatus: { type: "idle" },
+    unseen: false,
+    lastCompletedMs: Date.UTC(2026, 0, 1),
+    recencyMs: null,
+    updatedMs: Date.UTC(2026, 0, 1),
+    worktree: false,
+    ...overrides,
+  };
+}
+
+function snapshot(overrides = {}) {
+  return {
+    task: listedTask(),
+    selectedThreadId: "",
+    taskOperations,
+    reorderMode: false,
+    reorderable: true,
+    pending: false,
+    ...overrides,
+  };
+}
+
+test("offers its open button as the Task's Action Hint target", () => {
   const clipRoot = {};
   const clipRoots = [clipRoot];
   const focusOptions = [];
@@ -25,17 +60,12 @@ test("provides a frozen Task action through the owned row button", () => {
       clicks += 1;
     },
   };
-  const owner = {
-    snapshot: {
-      task: { threadId: "thread-a", title: "Alpha" },
-    },
-    ensureState() {},
-    querySelector() {
-      return currentControl;
-    },
-  };
+  const row = rowHost({
+    snapshot: snapshot(),
+    querySelector: () => currentControl,
+  });
 
-  const target = row.actionHintTarget.call(owner, { clipRoots });
+  const target = row.actionHintTarget({ clipRoots });
 
   assert.deepEqual(
     {
@@ -63,7 +93,7 @@ test("provides a frozen Task action through the owned row button", () => {
 
   currentControl.dataset.activeTaskRowAction = "open-task-recovery";
   assert.equal(target.isActionable(), false);
-  const recovery = row.actionHintTarget.call(owner);
+  const recovery = row.actionHintTarget();
   assert.equal(recovery.actionId, "task.open-recovery");
   assert.equal(recovery.label, "Open task recovery: Alpha");
 
@@ -71,7 +101,7 @@ test("provides a frozen Task action through the owned row button", () => {
   assert.equal(recovery.isActionable(), false);
 });
 
-test("provides the exact Task reorder handle as a focus-only target", () => {
+test("offers its reorder handle as a focus-only target while Tasks reorder", () => {
   let focused = 0;
   let clicks = 0;
   let control = {
@@ -84,19 +114,13 @@ test("provides the exact Task reorder handle as a focus-only target", () => {
       clicks += 1;
     },
   };
-  const owner = {
+  const row = rowHost({
     isConnected: true,
-    snapshot: {
-      task: { threadId: "thread-a", title: "Alpha" },
-      reorderMode: true,
-      reorderable: true,
-      pending: false,
-    },
-    ensureState() {},
+    snapshot: snapshot({ reorderMode: true }),
     querySelector: () => control,
-  };
+  });
 
-  const target = row.reorderActionHintTarget.call(owner, {
+  const target = row.reorderActionHintTarget({
     clipRoots: [{ id: "task-list" }],
   });
   assert.deepEqual(
@@ -117,12 +141,70 @@ test("provides the exact Task reorder handle as a focus-only target", () => {
   assert.equal(focused, 1);
   assert.equal(clicks, 0);
 
-  owner.snapshot.pending = true;
+  row.snapshot = snapshot({ reorderMode: true, pending: true });
   assert.equal(target.isActionable(), false);
-  assert.equal(row.reorderActionHintTarget.call(owner), null);
-  owner.snapshot.pending = false;
+  assert.equal(row.reorderActionHintTarget(), null);
+  row.snapshot = snapshot({ reorderMode: true });
   control = { ...control };
   assert.equal(target.isActionable(), false);
-  owner.snapshot.reorderMode = false;
-  assert.equal(row.reorderActionHintTarget.call(owner), null);
+  row.snapshot = snapshot();
+  assert.equal(row.reorderActionHintTarget(), null);
 });
+
+test("draws one thing beside the title: recovery, an unseen finish, the agent's status, or the time", () => {
+  const draw = (overrides) => html(rowHost({ snapshot: snapshot(overrides) }));
+
+  const idle = draw();
+  assert.match(idle, /^<button type="button" class="task-row" data-active-task-row-action="open-task" data-thread-id="thread-a" data-task-status="idle"/);
+  assert.match(idle, /<time class="task-row-meta task-row-time" datetime="2026-01-01T00:00:00.000Z"/);
+
+  const running = draw({
+    task: listedTask({ threadStatus: { type: "active", activeFlags: [] } }),
+  });
+  assert.match(running, /aria-busy="true"/);
+  assert.match(running, /<caffold-task-status-chip class="task-row-meta" \.task="" staggered><\/caffold-task-status-chip>/);
+
+  const unseen = draw({ task: listedTask({ unseen: true }) });
+  assert.match(unseen, /class="task-row-meta task-unseen-complete"[^>]*style="--task-unseen-attention-delay: -\d+ms"/);
+  assert.doesNotMatch(
+    draw({ task: listedTask({ unseen: true }), selectedThreadId: "thread-a" }),
+    /task-unseen-complete/,
+    "the open Task has been seen",
+  );
+
+  const recovery = draw({
+    task: listedTask({
+      recovery: { reason: "codexArchived", actions: ["restoreToActive"] },
+    }),
+  });
+  assert.match(recovery, /data-active-task-row-action="open-task-recovery"/);
+  assert.match(recovery, /data-task-recovery-reason="codexArchived"/);
+  assert.match(recovery, /title="Alpha — Archived in Codex"/);
+  assert.match(recovery, /<span class="task-row-recovery-status" title="Archived in Codex">/);
+});
+
+test("draws the title beside a handle while Tasks reorder", () => {
+  const reordering = html(rowHost({ snapshot: snapshot({ reorderMode: true }) }));
+  assert.match(reordering, /^<div class="task-row task-row-reorder-mode"/);
+  assert.match(reordering, /<button type="button" class="task-reorder-handle" aria-label="Reorder Alpha. Use Up and Down arrow keys to move."/);
+
+  const recovery = html(
+    rowHost({ snapshot: snapshot({ reorderMode: true, reorderable: false }) }),
+  );
+  assert.match(recovery, /^<button type="button" class="task-row"/);
+});
+
+function rowHost(properties) {
+  return Object.create(Row.prototype, Object.getOwnPropertyDescriptors({
+    isConnected: true,
+    querySelector: () => null,
+    ...properties,
+  }));
+}
+
+function html(row) {
+  return templateHtml(row.render())
+    .replace(/\s+/g, " ")
+    .replaceAll(" >", ">")
+    .trim();
+}

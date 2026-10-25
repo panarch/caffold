@@ -152,13 +152,10 @@ caffold-archived-task-list {
     justify-self: center;
   }
 
-  & .task-row-meta.task-status-chip {
-    width: var(--interface-icon-slot-size);
-    height: var(--interface-icon-slot-size);
-    justify-content: center;
-    padding: 0;
-    border: 0;
-    background: var(--surface-muted);
+  & caffold-task-status-chip {
+    --task-status-chip-running-background: var(--surface-muted);
+    --task-status-chip-warning-background: var(--surface-muted);
+    --task-status-chip-danger-background: var(--surface-muted);
   }
 
   & .task-row-time {

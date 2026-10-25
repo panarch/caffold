@@ -68,6 +68,12 @@ export function separatorActionHintTarget(
   options: ActionHintTargetOptions,
 ): ActionHintTarget;
 
+// A reorder handle the key focuses rather than presses, so arrow keys can
+// move its item from there.
+export function reorderHandleActionHintTarget(
+  options: ActionHintTargetOptions,
+): ActionHintTarget;
+
 export function linkActionHintLabel(control: Element): string;
 
 export function captureLinkActionHintBinding(

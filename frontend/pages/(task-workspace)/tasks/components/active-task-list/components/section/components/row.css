@@ -166,13 +166,9 @@ caffold-active-task-row {
     justify-self: center;
   }
 
-  & .task-row-meta.task-status-chip {
-    width: var(--interface-icon-slot-size);
-    height: var(--interface-icon-slot-size);
-    justify-content: center;
-    padding: 0;
-    border: 0;
-    background: var(--surface-muted);
+  & caffold-task-status-chip {
+    --task-status-chip-warning-background: var(--warning-chip-bg);
+    --task-status-chip-danger-background: var(--danger-chip-bg);
   }
 
   & .task-unseen-complete {
@@ -210,20 +206,6 @@ caffold-active-task-row {
     display: block;
     width: var(--task-list-icon-size);
     height: var(--task-list-icon-size);
-  }
-
-  & .task-row .task-status-chip[data-status="running"] {
-    background: transparent;
-  }
-
-  & .task-row .task-status-chip[data-status="waiting_for_approval"],
-  & .task-row .task-status-chip[data-status="waiting_on_user_input"] {
-    background: var(--warning-chip-bg);
-  }
-
-  & .task-row .task-status-chip[data-status="failed"],
-  & .task-row .task-status-chip[data-status="interrupted"] {
-    background: var(--danger-chip-bg);
   }
 }
 

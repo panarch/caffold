@@ -53,7 +53,7 @@
 @import "./pages/(task-workspace)/settings/grok/page.css";
 @import "./pages/(task-workspace)/settings/about/page.css";
 @import "./pages/(task-workspace)/tasks/controls.css";
-@import "./pages/(task-workspace)/tasks/components/task-status.css";
+@import "./pages/(task-workspace)/tasks/components/task-status-chip.css";
 @import "./pages/(task-workspace)/tasks/layout.css";
 @import "./pages/(task-workspace)/tasks/(detail)/layout.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(section)/layout.css";

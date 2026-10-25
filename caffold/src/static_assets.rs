@@ -882,10 +882,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/task-switcher-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/task-switcher-dialog.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/components/task-switcher-dialog.js"
-            )))
+        "pages/(task-workspace)/tasks/components/task-switcher-dialog.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/task-switcher-dialog.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/components/image-preview-dialog.css" => {
             Some(css(include_str!(
@@ -1386,37 +1387,51 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/active-task-list.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/active-task-list.css"
         ))),
-        "pages/(task-workspace)/tasks/components/active-task-list.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/components/active-task-list.js"
-        ))),
+        "pages/(task-workspace)/tasks/components/active-task-list.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/active-task-list.ts"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/components/active-task-list/move-list-item.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/active-task-list/move-list-item.ts"
+            ))))
+        }
         "pages/(task-workspace)/tasks/components/active-task-list/components/section.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/active-task-list/components/section.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section.js"
-            )))
+        "pages/(task-workspace)/tasks/components/active-task-list/components/section.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js"
-            )))
+        "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts"
+            ))))
         }
         "pages/(task-workspace)/tasks/components/archived-task-list.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/components/archived-task-list.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/archived-task-list.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/components/archived-task-list.js"
-        ))),
+        "pages/(task-workspace)/tasks/components/archived-task-list.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/archived-task-list.ts"
+            ))))
+        }
         "pages/(task-workspace)/tasks/recovery/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/recovery/page.css"
         ))),
@@ -1440,9 +1455,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/navigator.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/navigator.css"
         ))),
-        "pages/(task-workspace)/tasks/components/navigator.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/components/navigator.js"
-        ))),
+        "pages/(task-workspace)/tasks/components/navigator.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/tasks/components/navigator.ts"
+        )))),
         "pages/(task-workspace)/tasks/components/task-create.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/task-create.css"
         ))),
@@ -1458,12 +1474,15 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/new/page.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/new/page.js"
         ))),
-        "pages/(task-workspace)/tasks/components/task-status.css" => Some(css(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/components/task-status.css"
+        "pages/(task-workspace)/tasks/components/task-status-chip.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/tasks/components/task-status-chip.css"
         ))),
-        "pages/(task-workspace)/tasks/components/task-status.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/components/task-status.js"
-        ))),
+        "pages/(task-workspace)/tasks/components/task-status-chip.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/components/task-status-chip.ts"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/(git)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.css"
         ))),
@@ -2498,7 +2517,6 @@ mod tests {
             "pages/(task-workspace)/tasks/task-events.js",
             "pages/(task-workspace)/tasks/task-format.js",
             "pages/(task-workspace)/tasks/task-list-model.js",
-            "pages/(task-workspace)/tasks/components/task-status.js",
             "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/entries.ts",
         ] {
             let asset = get(path).expect("tasks state module");
@@ -2555,7 +2573,7 @@ mod tests {
                 .body
                 .starts_with(b"caffold-task-markdown-code-block")
         );
-        let tasks_navigator = get("pages/(task-workspace)/tasks/components/navigator.js")
+        let tasks_navigator = get("pages/(task-workspace)/tasks/components/navigator.ts")
             .expect("tasks navigator component js");
         assert_eq!(
             tasks_navigator.content_type,
@@ -2569,20 +2587,28 @@ mod tests {
         );
         for (path, marker) in [
             (
-                "pages/(task-workspace)/tasks/components/active-task-list.js",
+                "pages/(task-workspace)/tasks/components/active-task-list.ts",
                 b"caffold-active-task-list".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
+                "pages/(task-workspace)/tasks/components/active-task-list/move-list-item.ts",
+                b"moveBefore".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts",
                 b"caffold-active-task-row".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/active-task-list/components/section.js",
+                "pages/(task-workspace)/tasks/components/active-task-list/components/section.ts",
                 b"caffold-active-task-section".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/archived-task-list.js",
+                "pages/(task-workspace)/tasks/components/archived-task-list.ts",
                 b"caffold-archived-task-list".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/task-status-chip.ts",
+                b"caffold-task-status-chip".as_slice(),
             ),
         ] {
             let task_list_asset = get(path).expect("task list component asset");
@@ -2686,7 +2712,7 @@ mod tests {
                 b"caffold-task-archived-delete-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-switcher-dialog.js",
+                "pages/(task-workspace)/tasks/components/task-switcher-dialog.ts",
                 b"caffold-task-switcher-dialog".as_slice(),
             ),
             (
@@ -2879,13 +2905,16 @@ mod tests {
             "/assets/pages/(task-workspace)/tasks/stream.js",
             "/assets/pages/(task-workspace)/tasks/stream/machine.js",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.css",
-            "/assets/pages/(task-workspace)/tasks/components/active-task-list.js",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list.ts",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list/move-list-item.ts",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section.css",
-            "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section.js",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section.ts",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
-            "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts",
             "/assets/pages/(task-workspace)/tasks/components/archived-task-list.css",
-            "/assets/pages/(task-workspace)/tasks/components/archived-task-list.js",
+            "/assets/pages/(task-workspace)/tasks/components/archived-task-list.ts",
+            "/assets/pages/(task-workspace)/tasks/components/task-status-chip.css",
+            "/assets/pages/(task-workspace)/tasks/components/task-status-chip.ts",
             "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.css",
             "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.js",
             "/assets/pages/(task-workspace)/tasks/components/task-absence.css",
@@ -3077,8 +3106,8 @@ mod tests {
                 b"caffold-review-selected-file".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-status.css",
-                b"caffold-tasks-page".as_slice(),
+                "pages/(task-workspace)/tasks/components/task-status-chip.css",
+                b"caffold-task-status-chip".as_slice(),
             ),
         ] {
             let asset = get(path).expect("tasks component css");

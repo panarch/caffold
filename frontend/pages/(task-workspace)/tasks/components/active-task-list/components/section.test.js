@@ -4,13 +4,41 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./section.js");
-const section = registry.element("caffold-active-task-section").prototype;
+await import("./section.ts");
+const Section = registry.element("caffold-active-task-section");
 after(() => registry.restore());
 
-test("provides the managed Section header before delegated Task rows", () => {
+const taskOperations = {
+  key: "ready",
+  phase: "ready",
+  blocked: false,
+  title: "",
+  message: "",
+};
+
+function snapshot(overrides = {}) {
+  return {
+    section: {
+      id: "section-a",
+      name: "/repo/alpha",
+      label: "alpha",
+      repository: true,
+      recovery: false,
+      tasks: [{ threadId: "thread-a" }, { threadId: "thread-b" }],
+    },
+    selectedSectionId: "",
+    selectedThreadId: "",
+    taskOperations,
+    reorderMode: "none",
+    pending: false,
+    ...overrides,
+  };
+}
+
+test("offers the Section's header before its Task rows", () => {
   const clipRoot = {};
   let clicks = 0;
   const control = {
@@ -31,32 +59,15 @@ test("provides the managed Section header before delegated Task rows", () => {
     getAttribute: () => "Reorder alpha",
     focus() {},
   };
-  let currentControl = control;
   let currentHandle = sectionHandle;
-  const owner = {
-    isConnected: true,
-    snapshot: {
-      section: {
-        id: "section-a",
-        name: "/repo/alpha",
-        label: "alpha",
-        recovery: false,
-      },
-      reorderMode: "none",
-    },
-    querySelector(selector) {
-      return selector.includes("section-reorder-handle")
-        ? currentHandle
-        : currentControl;
-    },
-    querySelectorAll() {
-      return [row];
-    },
-  };
-
-  const targets = section.actionHintTargets.call(owner, {
-    clipRoots: [clipRoot],
+  const section = sectionHost({
+    snapshot: snapshot(),
+    querySelector: (selector) =>
+      selector.includes("section-reorder-handle") ? currentHandle : control,
+    querySelectorAll: () => [row],
   });
+
+  const targets = section.actionHintTargets({ clipRoots: [clipRoot] });
   assert.equal(targets.length, 2);
   assert.deepEqual(
     {
@@ -78,12 +89,12 @@ test("provides the managed Section header before delegated Task rows", () => {
   assert.equal(clicks, 1);
   assert.equal(targets[1], taskTarget);
 
-  owner.snapshot.reorderMode = "tasks";
-  assert.deepEqual(section.actionHintTargets.call(owner), [taskReorderTarget]);
+  section.snapshot = snapshot({ reorderMode: "tasks" });
+  assert.deepEqual(section.actionHintTargets(), [taskReorderTarget]);
 
-  owner.snapshot.reorderMode = "sections";
+  section.snapshot = snapshot({ reorderMode: "sections" });
   assert.equal(targets[0].isActionable(), false);
-  const reorderTargets = section.actionHintTargets.call(owner);
+  const reorderTargets = section.actionHintTargets();
   assert.equal(reorderTargets.length, 1);
   assert.deepEqual(
     {
@@ -102,9 +113,50 @@ test("provides the managed Section header before delegated Task rows", () => {
   assert.equal(reorderTargets[0].isActionable(), true);
   currentHandle = { ...sectionHandle };
   assert.equal(reorderTargets[0].isActionable(), false);
-  owner.snapshot.pending = true;
-  assert.deepEqual(section.actionHintTargets.call(owner), []);
-  owner.snapshot.pending = false;
-  owner.snapshot.section.recovery = true;
-  assert.deepEqual(section.actionHintTargets.call(owner), []);
+  section.snapshot = snapshot({ reorderMode: "sections", pending: true });
+  assert.deepEqual(section.actionHintTargets(), []);
+  section.snapshot = snapshot({
+    reorderMode: "sections",
+    section: { ...snapshot().section, recovery: true },
+  });
+  assert.deepEqual(section.actionHintTargets(), []);
 });
+
+test("draws a header that opens the Section, counts its Tasks, and holds its handle", () => {
+  const open = html(sectionHost({
+    snapshot: snapshot({ selectedSectionId: "section-a" }),
+  }));
+  assert.match(open, /^<div class="task-repository-header"><button type="button" class="task-repository-select" title="\/repo\/alpha" data-section-id="section-a" aria-current="page" data-active-task-section-action="open-section"/);
+  assert.match(open, /<span class="task-repository-label">alpha<\/span><\/button><span class="task-repository-count">2<\/span><button type="button" class="section-reorder-handle" data-section-id="section-a" aria-label="Reorder alpha"/);
+  assert.match(open, /<ol class="task-list" @caffold:active-task-row-intent=""><\/ol>$/);
+
+  const reordering = html(sectionHost({
+    snapshot: snapshot({ reorderMode: "sections" }),
+  }));
+  assert.match(reordering, /<div class="task-repository-select" title="\/repo\/alpha" data-section-id="section-a" aria-current="false">/);
+
+  const recovery = html(sectionHost({
+    snapshot: snapshot({
+      section: { ...snapshot().section, label: "Recovery", recovery: true },
+    }),
+  }));
+  assert.match(recovery, /<div class="task-repository-select" title="\/repo\/alpha" data-section-id="" aria-current="">/);
+  assert.doesNotMatch(recovery, /section-reorder-handle/);
+});
+
+function sectionHost(properties) {
+  return Object.create(Section.prototype, Object.getOwnPropertyDescriptors({
+    isConnected: true,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    ...properties,
+  }));
+}
+
+function html(section) {
+  return templateHtml(section.render())
+    .replace(/\s+/g, " ")
+    .replaceAll(" >", ">")
+    .replaceAll("> <", "><")
+    .trim();
+}

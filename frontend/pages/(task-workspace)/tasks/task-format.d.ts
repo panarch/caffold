@@ -32,3 +32,12 @@ export function taskEventObservedMs(
 ): number | null;
 
 export function formatDuration(ms: number): string;
+
+// The last segment of a Section's logical path, or "Directory".
+export function sectionLabel(path: string | null | undefined): string;
+
+// How long ago `ms` was: short text for a list cell and a spoken label.
+export function formatRelativeAgePresentation(
+  ms: number | null | undefined,
+  now?: number,
+): { text: string; label: string };

@@ -1,15 +1,12 @@
-import { busySpin, compactIconButton } from "#app/component-styles.js";
+import { compactIconButton } from "#app/component-styles.js";
 import {
   renderInlineIcon,
   warmIcons,
 } from "#components/icons.ts";
-import { formatTaskStatus } from "#tasks/runtime-state.js";
+import { formatTaskStatus, taskStatusView } from "#tasks/runtime-state.js";
 import { shortId } from "#tasks/task-format.js";
 import { taskThreadId } from "#tasks/task-list-model.js";
-import {
-  patchTaskStatusChip,
-  renderTaskStatusChip,
-} from "#tasks/components/task-status.js";
+import "#tasks/components/task-status-chip.ts";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
@@ -237,17 +234,27 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     const statusLabel = this.snapshot.canonicalTaskAvailable
       ? formatTaskStatus(task)
       : "unavailable";
-    const status = this.snapshot.canonicalTaskAvailable
-      ? renderTaskStatusChip(task, "task-detail-status", { label: false })
-      : "";
-    const content =
-      status || renderInlineIcon("Info", "Task details", "task-action-icon");
-    const renderKey = JSON.stringify([statusLabel, content]);
+    const showsStatus =
+      this.snapshot.canonicalTaskAvailable && taskStatusView(task) !== null;
+    const icon = showsStatus
+      ? ""
+      : renderInlineIcon("Info", "Task details", "task-action-icon");
+    const renderKey = JSON.stringify([statusLabel, showsStatus, icon]);
     if (renderKey === this.renderedStatusKey) {
       return;
     }
 
-    patchStatusContent(button, content);
+    if (showsStatus) {
+      let chip = button.querySelector(":scope > caffold-task-status-chip");
+      if (!chip) {
+        chip = document.createElement("caffold-task-status-chip");
+        chip.className = "task-detail-status";
+        button.replaceChildren(chip);
+      }
+      chip.task = task;
+    } else {
+      button.innerHTML = icon;
+    }
     setAttribute(button, "aria-label", `Task details, ${statusLabel}`);
     setAttribute(button, "title", `Status: ${statusLabel}`);
     setText(
@@ -349,11 +356,6 @@ class CaffoldTaskDetailInfo extends HTMLElement {
 
 await compactIconButton.register("caffold-task-detail-info", "> .task-detail-info-button");
 
-await busySpin.register(
-  "caffold-task-detail-info",
-  "> .task-detail-info-button > .task-status-chip > .task-status-spinner",
-);
-
 if (!customElements.get("caffold-task-detail-info")) {
   customElements.define("caffold-task-detail-info", CaffoldTaskDetailInfo);
 }
@@ -381,20 +383,6 @@ function normalizedSnapshot(snapshot = {}) {
 function taskWorktreeRef(task) {
   const branch = `${task?.worktree?.branch ?? ""}`.trim();
   return branch || shortId(task?.worktree?.headSha ?? "");
-}
-
-function patchStatusContent(button, content) {
-  const template = document.createElement("template");
-  template.innerHTML = content.trim();
-  const currentChip = button.querySelector(":scope > .task-status-chip");
-  const nextChip = template.content.firstElementChild;
-  if (currentChip && nextChip?.matches(".task-status-chip")) {
-    patchTaskStatusChip(currentChip, nextChip);
-    return;
-  }
-  if (button.innerHTML.trim() !== content.trim()) {
-    button.innerHTML = content;
-  }
 }
 
 function setAttribute(element, name, value) {

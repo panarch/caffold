@@ -186,7 +186,7 @@ test("App Shell owns one global keyboard listener over explicit Scroll providers
     "keyboard-navigation.js",
   );
   const taskNavigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const conversation = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.ts",
@@ -288,7 +288,7 @@ test("registered product dialogs retain one context-local keyboard presentation"
     "pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts",
     "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.ts",
     "pages/(task-workspace)/tasks/components/archived-delete-dialog.ts",
-    "pages/(task-workspace)/tasks/components/task-switcher-dialog.js",
+    "pages/(task-workspace)/tasks/components/task-switcher-dialog.ts",
     "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
     "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
     "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js",
@@ -435,7 +435,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
     "pages/(task-workspace)/tasks/layout.js",
   );
   const activeTaskList = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list.js",
+    "pages/(task-workspace)/tasks/components/active-task-list.ts",
   );
 
   for (const child of ["(review)", "(git)", "(github)"]) {
@@ -534,7 +534,7 @@ test("workspace brand owns the shared Tasks, Notes, and Settings navigator ident
     "pages/(task-workspace)/components/workspace-brand.ts",
   );
   const taskNavigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const settingsNavigator = readFrontend(
     "pages/(task-workspace)/settings/components/navigator.ts",
@@ -577,13 +577,13 @@ test("App Shell owns one foreground recovery UI and retry intent", () => {
   const appShell = readFrontend("pages/layout.js");
   const foreground = readFrontend("pages/foreground-recovery.js");
   const navigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const detail = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
   );
   const taskStatus = readFrontend(
-    "pages/(task-workspace)/tasks/components/task-status.css",
+    "pages/(task-workspace)/tasks/components/task-status-chip.css",
   );
   const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
 
@@ -691,7 +691,7 @@ test("App Shell solely coordinates foreground recovery through public owners", (
   const workspace = readFrontend("pages/(task-workspace)/layout.js");
   const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const navigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const detail = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
@@ -750,17 +750,19 @@ test("App Shell solely coordinates foreground recovery through public owners", (
 
 test("Task navigator keeps primary chrome outside its role-specific scrolling lists", () => {
   const navigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const renderMarkup = navigator.match(
-    /this\.innerHTML = `([\s\S]*?)`;\n\s*}/,
+    /\n  render\(\) \{[\s\S]*?return html`([\s\S]*?)`;\n {2}}/,
   )?.[1];
 
   assert.ok(renderMarkup, "navigator render markup must remain inspectable");
-  const header = renderMarkup.indexOf("${this.renderPrimaryHeader()}");
+  const header = renderMarkup.indexOf(
+    '<header class="task-list-section-header task-list-primary-header">',
+  );
   const scroller = renderMarkup.indexOf('<div class="task-list-scroll">');
-  const active = renderMarkup.indexOf("<caffold-active-task-list>");
-  const archived = renderMarkup.indexOf("<caffold-archived-task-list hidden>");
+  const active = renderMarkup.search(/<caffold-active-task-list\b/);
+  const archived = renderMarkup.search(/<caffold-archived-task-list\s+hidden\b/);
 
   assert.ok(header >= 0 && header < scroller);
   assert.ok(active > scroller);
@@ -774,25 +776,25 @@ test("Task navigator keeps primary chrome outside its role-specific scrolling li
 
 test("active and archived Task lists own distinct state and lifecycle boundaries", () => {
   const navigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const active = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list.js",
+    "pages/(task-workspace)/tasks/components/active-task-list.ts",
   );
   const activeStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list.css",
   );
   const archived = readFrontend(
-    "pages/(task-workspace)/tasks/components/archived-task-list.js",
+    "pages/(task-workspace)/tasks/components/archived-task-list.ts",
   );
   const activeRow = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts",
   );
   const activeRowStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
   );
   const section = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/section.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section.ts",
   );
   const sectionStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list/components/section.css",
@@ -812,24 +814,24 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
     active,
     /ACTIVE_TASK_ROW_INTENT_EVENT|caffold-active-task-row|li\[data-thread-id/,
   );
-  assert.match(section, /createElement\("caffold-active-task-row"\)/);
-  assert.match(section, /\.\/section\/components\/row\.js/);
-  assert.match(section, /ACTIVE_TASK_ROW_INTENT_EVENT/);
+  assert.match(section, /new CaffoldActiveTaskRow\(\)/);
+  assert.match(section, /\.\/section\/components\/row\.ts/);
+  assert.match(section, /@caffold:active-task-row-intent=/);
   assert.match(section, /detail: \{ subject: "task", \.\.\.event\.detail \}/);
   assert.doesNotMatch(activeRow, /ACTIVE_TASK_SECTION_INTENT_EVENT/);
   assert.match(
     section,
     /customElements\.define\(\s*"caffold-active-task-section"/,
   );
-  assert.match(active, /createElement\(\s*"caffold-active-task-section"/);
-  assert.match(section, /list\.className = "task-list"/);
+  assert.match(active, /new CaffoldActiveTaskSection\(\)/);
+  assert.match(section, /<ol\s+class="task-list"/);
   assert.match(
     section,
-    /reconcileRows\(\{ availableRows = new Map\(\), prune = true \} = \{\}\)/,
+    /reconcileRows\(availableRows: Map<string, HTMLLIElement>\)/,
   );
-  assert.match(section, /transferableRows\(localThreadIds, projectedThreadIds\)/);
-  assert.match(section, /updateTask\(task\)/);
-  assert.match(active, /section\?\.updateTask\(nextTask\)/);
+  assert.match(section, /transferableRows\(localThreadIds: Set<string>, listedThreadIds: Set<string>\)/);
+  assert.match(section, /updateTask\(task: ListedTask\)/);
+  assert.match(active, /sectionComponentFor\(listKey\)\?\.updateTask\(next\)/);
   assert.doesNotMatch(section, /closest\("caffold-active-task-list"\)/);
   assert.doesNotMatch(
     navigator,
@@ -854,8 +856,8 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
   assert.match(archivedStyles, /\.task-archived-action-button/);
   assert.doesNotMatch(archivedStyles, /task-unseen-complete|load-more-tasks/);
 
-  assert.match(navigator, /<caffold-active-task-list>/);
-  assert.match(navigator, /<caffold-archived-task-list hidden>/);
+  assert.match(navigator, /<caffold-active-task-list\b/);
+  assert.match(navigator, /<caffold-archived-task-list\s+hidden\b/);
   assert.doesNotMatch(
     navigator,
     /\bgetTasks\b|\bgetArchivedTasks\b|\brestoreTask\b|\bdeleteTask\b|TaskStreamLifecycle/,
@@ -866,22 +868,22 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
   const api = readFrontend("api.js");
   const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const navigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const active = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list.js",
+    "pages/(task-workspace)/tasks/components/active-task-list.ts",
   );
   const activeStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list.css",
   );
   const row = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts",
   );
   const rowStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
   );
   const section = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/section.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section.ts",
   );
   const sectionStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list/components/section.css",
@@ -901,36 +903,43 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
       switcherControl < reorderControl &&
       reorderControl < newControl,
   );
-  assert.match(navigator, /aria-pressed="\$\{this\.reorderMode !== "none"\}"/);
+  assert.match(navigator, /const reordering = this\.reorderMode !== "none"/);
+  assert.match(navigator, /aria-pressed=\$\{reordering\}/);
   assert.match(navigator, /popover="auto"/);
   assert.match(navigator, />Reorder Tasks<\/button>/);
   assert.match(navigator, />Reorder Sections<\/button>/);
-  assert.match(navigator, /renderInlineIcon\(\s*"ArrowDownUp"/);
-  assert.match(navigator, /this\.activeTaskList\.setReorderMode\(next, \{/);
+  assert.match(navigator, /inlineIcon\(\s*"ArrowDownUp"/);
+  assert.match(navigator, /activeList\.setReorderMode\(mode, \{/);
   assert.match(tasksPage, /exitReorderMode\(\{ restoreFocus: false \}\)/);
 
-  assert.match(active, /reorderTask\(threadId, move\.beforeThreadId\)/);
-  assert.match(active, /reorderSection\(sectionId, move\.beforeSectionId\)/);
+  assert.match(active, /reorderTask\(threadId, beforeThreadId\)/);
+  assert.match(active, /reorderSection\(sectionId, beforeSectionId\)/);
   assert.match(active, /this\.pendingMove/);
-  assert.match(active, /class="sr-only task-reorder-announcement" aria-live="polite"/);
+  assert.match(
+    active,
+    /class="sr-only task-reorder-announcement"\s+aria-live="polite"/,
+  );
   assert.doesNotMatch(
     active,
     /ACTIVE_TASK_ROW_INTENT_EVENT|caffold-active-task-row|li\[data-thread-id/,
   );
-  assert.match(active, /ACTIVE_TASK_SECTION_INTENT_EVENT/);
-  assert.match(active, /createElement\(\s*"caffold-active-task-section"/);
-  assert.match(section, /createElement\("caffold-active-task-row"\)/);
-  assert.match(section, /list\.className = "task-list"/);
-  assert.match(section, /updateTaskDropTarget\(threadId, clientY\)/);
+  assert.match(active, /@caffold:active-task-section-intent=/);
+  assert.match(active, /new CaffoldActiveTaskSection\(\)/);
+  assert.match(section, /new CaffoldActiveTaskRow\(\)/);
+  assert.match(section, /<ol\s+class="task-list"/);
+  assert.match(section, /updateTaskDropTarget\(threadId: string, clientY: number\)/);
   assert.match(section, /clearTaskDropTarget\(\)/);
-  assert.match(active, /sectionComponentFor\(drag\.sectionId\)[\s\S]*?updateTaskDropTarget/);
+  assert.match(
+    active,
+    /sectionComponentFor\(\s*drag\.sectionId,?\s*\)[\s\S]*?updateTaskDropTarget/,
+  );
   assert.match(active, /sectionComponentFor\(drag\.sectionId\)\?\.clearTaskDropTarget/);
   assert.doesNotMatch(active, /\.matches\("\.task-list"\)/);
-  assert.doesNotMatch(active, /renderInlineIcon\(\s*"Grip",\s*"Reorder Section"/);
+  assert.doesNotMatch(active, /inlineIcon\(\s*"Grip",\s*"Reorder Section"/);
   assert.doesNotMatch(active, /addEventListener\("pointer(?:down|move|up|cancel)"/);
   assert.doesNotMatch(active, /function renderTaskRowMeta|function patchTaskListRow/);
 
-  assert.match(row, /renderInlineIcon\("Grip"/);
+  assert.match(row, /inlineIcon\(\s*"Grip"/);
   assert.match(row, /event\.key === "ArrowUp"/);
   assert.match(row, /event\.key === "ArrowDown"/);
   assert.match(row, /class="task-row task-row-reorder-mode"/);
@@ -968,7 +977,7 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
     sectionStyles,
     /& \.task-repository-count \{[\s\S]*?@starting-style/,
   );
-  assert.match(section, /renderInlineIcon\(\s*"Grip",\s*"Reorder Section"/);
+  assert.match(section, /inlineIcon\(\s*"Grip",\s*"Reorder Section"/);
   assert.match(section, /const POINTER_DRAG_THRESHOLD_PX = 5/);
   assert.match(section, /event\.isPrimary === false/);
   assert.match(section, /handle\.focus\(\{ preventScroll: true \}\)/);
@@ -977,10 +986,7 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
   assert.match(section, /handle\.releasePointerCapture\(gesture\.pointerId\)/);
   assert.match(section, /event\.key === "ArrowUp"/);
   assert.match(section, /event\.key === "ArrowDown"/);
-  assert.match(
-    section,
-    /const selectable = !section\.recovery && this\.snapshot\.reorderMode === "none"/,
-  );
+  assert.match(section, /!section\.recovery && reorderMode === "none"/);
   assert.doesNotMatch(activeStyles, /section-reorder-handle|task-repository-count/);
   assert.match(rowStyles, /min-height: var\(--task-list-row-height\)/);
   assert.match(rowStyles, /@media \(prefers-reduced-motion: reduce\)/);

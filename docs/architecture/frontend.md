@@ -1972,12 +1972,12 @@ frontend/
 |           |-- new/page.js
 |           |-- recovery/page.js
 |           |-- components/
-|           |   |-- navigator.js
-|           |   |-- active-task-list.js
+|           |   |-- navigator.ts
+|           |   |-- active-task-list.ts
 |           |   |-- active-task-list/
 |           |   |   `-- components/
-|           |   |       |-- section.js
-|           |   |       `-- section/components/row.js
+|           |   |       |-- section.ts
+|           |   |       `-- section/components/row.ts
 |           |   |-- task-create.ts
 |           |   |-- task-create/components/directory-field.ts
 |           |   |-- task-turn-options.ts

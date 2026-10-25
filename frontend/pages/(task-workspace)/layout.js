@@ -59,14 +59,14 @@ import {
 import "./components/navigation.js";
 import {
   ACTIVE_TASK_LIST_STATE_EVENT,
-} from "./tasks/components/active-task-list.js";
+} from "./tasks/components/active-task-list.ts";
 import {
   TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
 } from "./tasks/components/archived-delete-dialog.ts";
 import {
   TASK_SWITCHER_SELECT_EVENT,
-} from "./tasks/components/task-switcher-dialog.js";
-import "./tasks/components/navigator.js";
+} from "./tasks/components/task-switcher-dialog.ts";
+import "./tasks/components/navigator.ts";
 import "./tasks/layout.js";
 import "./notes/components/navigator.ts";
 import "./notes/layout.ts";

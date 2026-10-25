@@ -482,11 +482,12 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
       offset: "-3px",
     },
   ]);
-  await expect(toggle.evaluate((button) => {
+  await expect(toggle.evaluate(async (button) => {
     const navigator = button.closest("caffold-task-navigator");
     const icon = button.querySelector(":scope > .task-action-icon");
     const animation = icon.firstElementChild.getAnimations()[0];
-    navigator.render();
+    navigator.requestUpdate();
+    await navigator.updateComplete;
     const renderedIcon = button.querySelector(":scope > .task-action-icon");
     return {
       sameAnimation:

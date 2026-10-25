@@ -316,13 +316,8 @@ const ownership = new Map([
   ],
   ["pages/(task-workspace)/tasks/new/page.css", ["caffold-task-new"]],
   [
-    "pages/(task-workspace)/tasks/components/task-status.css",
-    [
-      "caffold-tasks-page",
-      "caffold-active-task-row",
-      "caffold-archived-task-list",
-      "caffold-task-switcher-dialog",
-    ],
+    "pages/(task-workspace)/tasks/components/task-status-chip.css",
+    ["caffold-task-status-chip"],
   ],
   ["pages/(task-workspace)/tasks/controls.css", ["caffold-tasks-page"]],
   ["pages/(task-workspace)/tasks/layout.css", ["caffold-tasks-page"]],
@@ -611,6 +606,10 @@ const componentChildren = new Map([
     ["caffold-active-task-section"],
   ],
   ["caffold-active-task-section", ["caffold-active-task-row"]],
+  ["caffold-active-task-row", ["caffold-task-status-chip"]],
+  ["caffold-archived-task-list", ["caffold-task-status-chip"]],
+  ["caffold-task-switcher-dialog", ["caffold-task-status-chip"]],
+  ["caffold-task-detail-info", ["caffold-task-status-chip"]],
   ["caffold-task-directory-field", ["caffold-file-tree"]],
   [
     "caffold-task-detail",
@@ -745,8 +744,6 @@ const sharedDescendantClasses = new Map([
       "task-primary-button",
       "task-secondary-button",
       "task-action-icon",
-      "task-status-chip",
-      "task-status-spinner",
     ]),
   ],
 ]);
