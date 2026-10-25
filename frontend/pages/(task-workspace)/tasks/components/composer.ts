@@ -78,9 +78,10 @@ export interface ComposerIntentDetail {
   type: "cancel" | "interrupt";
 }
 
-// How the owner answered a submission.
+// How the owner answered a submission. Only a rejected one comes back to the
+// draft.
 export interface SubmissionResult {
-  status?: "rejected";
+  status?: "accepted" | "rejected" | "outcome-unknown";
   error?: Error | string | null;
   resetOverrides?: boolean;
   resetOptions?: boolean;

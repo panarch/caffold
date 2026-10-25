@@ -5,7 +5,7 @@ import {
   PROMPT_SUBMISSION_EVENT as EVENT,
   PROMPT_SUBMISSION_NODE as NODE,
   nextPromptSubmissionNode,
-} from "./prompt-submission.js";
+} from "./prompt-submission.ts";
 
 const ALLOWED = [
   [NODE.IDLE, EVENT.SUBMIT, NODE.SENDING],

@@ -6,7 +6,7 @@ import {
 } from "../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./layout.js");
+await import("./layout.ts");
 const sectionDetail = registry.element("caffold-section-detail").prototype;
 after(() => registry.restore());
 
@@ -34,7 +34,7 @@ test("combines New Task actions with direct Section shortcuts", () => {
   };
   const owner = {
     section: { id: "section-a" },
-    ensureRendered() {},
+    ensureDrawn() {},
     taskCreate: () => taskCreate,
     conversationShortcuts: () => conversations,
     githubShortcuts: () => github,
@@ -54,7 +54,7 @@ test("merges Task Create popovers and the Fork modal independently", () => {
   const owner = {
     hidden: false,
     section: { id: "section-a" },
-    ensureRendered() {},
+    ensureDrawn() {},
     taskCreate: () => ({
       keyboardNavigationContexts(options) {
         assert.equal(options.scopeId, "section:section-a");

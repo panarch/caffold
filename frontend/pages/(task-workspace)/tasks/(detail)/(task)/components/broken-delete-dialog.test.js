@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test, { after, afterEach } from "node:test";
 import { installCustomElementUnitRegistry } from "../../../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./broken-delete-dialog.js");
-const prototype = registry.element("caffold-broken-task-delete-dialog").prototype;
+await import("./broken-delete-dialog.ts");
+const Dialog = registry.element("caffold-broken-task-delete-dialog");
 const original = { window: globalThis.window, fetch: globalThis.fetch };
 after(() => registry.restore());
 afterEach(() => {
@@ -13,23 +14,21 @@ afterEach(() => {
   }
 });
 
-function ownerFixture() {
-  const nodes = new Map();
-  const dialog = { open: false, setAttribute() {}, showModal() { this.open = true; }, close() { this.open = false; } };
-  nodes.set(":scope > dialog", dialog);
-  const buttons = [{ value: "cancel" }, { value: "delete" }];
-  nodes.set('button[value="delete"]', buttons[1]);
-  const owner = Object.assign(Object.create(prototype), {
-    phase: "idle", generation: 0, isConnected: true, intents: [],
-    querySelector(selector) { if (!nodes.has(selector)) nodes.set(selector, {}); return nodes.get(selector); },
-    querySelectorAll: () => buttons,
+// A dialog whose drawing is kept as markup, with a native dialog stand-in.
+function dialogFixture() {
+  const dialog = { open: false, showModal() { this.open = true; }, close() { this.open = false; } };
+  const owner = Object.create(Dialog.prototype, Object.getOwnPropertyDescriptors({
+    phase: "idle", generation: 0, context: null, target: null, failure: null,
+    isConnected: true, intents: [], drawn: "",
+    dialog,
+    draw() { this.drawn = templateHtml(this.render()).replace(/\s+/g, " "); },
     intent(detail) { this.intents.push(detail); },
-  });
+  }));
   owner.setContext({ threadId: "broken", title: "Broken Task", error: {
     allowedActions: ["deleteTask"], worktreeId: "uuid", worktreePath: "/managed/uuid", worktreeMissing: false,
   } });
   globalThis.window = { location: { origin: "http://127.0.0.1" }, setTimeout, clearTimeout };
-  return { owner, dialog, buttons, nodes };
+  return { owner, dialog };
 }
 
 test("all declared deletion edges and rejected events use one phase authority", () => {
@@ -38,18 +37,25 @@ test("all declared deletion edges and rejected events use one phase authority", 
     deleting: { success: "idle", failure: "confirming", refused: "idle", reset: "idle" } };
   for (const [phase, allowed] of Object.entries(edges)) {
     for (const event of ["open", "cancel", "confirm", "success", "failure", "refused", "reset", "stale"]) {
-      const { owner, buttons } = ownerFixture();
+      const { owner } = dialogFixture();
       owner.phase = phase;
+      owner.drawn = "";
       assert.equal(owner.transition(event), event in allowed, `${phase}/${event}`);
       assert.equal(owner.phase, allowed[event] ?? phase);
-      if (event in allowed) assert.equal(buttons[0].disabled, owner.phase === "deleting");
+      if (event in allowed) {
+        const deleting = owner.phase === "deleting";
+        assert.match(owner.drawn, new RegExp(`closedby="${deleting ? "none" : "any"}"`));
+        assert.equal((owner.drawn.match(/\?disabled="true"/g) ?? []).length, deleting ? 2 : 0);
+      }
     }
   }
 });
 
 test("cancel and revoked confirmation have no mutation and invalidate the captured target", () => {
-  const { owner, dialog } = ownerFixture();
+  const { owner, dialog } = dialogFixture();
   assert.equal(owner.openTask(), true);
+  assert.match(owner.drawn, /Delete task and remaining worktree files\?/);
+  assert.match(owner.drawn, /data-broken-delete-path >\/managed\/uuid</);
   owner.cancel();
   assert.equal(owner.phase, "idle");
   assert.equal(dialog.open, false);
@@ -64,7 +70,7 @@ test("cancel and revoked confirmation have no mutation and invalidate the captur
 });
 
 test("duplicate confirm and cancel cannot interrupt deletion, and stale completion cannot publish", async () => {
-  const { owner, dialog, buttons } = ownerFixture();
+  const { owner, dialog } = dialogFixture();
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
   let requests = 0;
@@ -76,7 +82,7 @@ test("duplicate confirm and cancel cannot interrupt deletion, and stale completi
   assert.equal(requests, 1);
   assert.equal(owner.phase, "deleting");
   assert.equal(dialog.open, true);
-  assert.ok(buttons.every((button) => button.disabled));
+  assert.match(owner.drawn, />Deleting…<\/button>/);
   owner.setContext({ threadId: "other", error: { allowedActions: ["deleteTask"], worktreeId: "other-uuid" } });
   release();
   await request;
@@ -85,7 +91,7 @@ test("duplicate confirm and cancel cannot interrupt deletion, and stale completi
 });
 
 test("current success publishes deletion, while a partial failure requires a fresh eligible diagnosis", async () => {
-  const { owner, dialog } = ownerFixture();
+  const { owner, dialog } = dialogFixture();
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ threadId: "broken" }) });
   owner.openTask();
   await owner.confirm();
@@ -93,7 +99,7 @@ test("current success publishes deletion, while a partial failure requires a fre
   assert.deepEqual(owner.intents, [{ type: "task-deleted", threadId: "broken" }]);
 
   for (const eligible of [true, false]) {
-    const { owner, dialog, nodes } = ownerFixture();
+    const { owner, dialog } = dialogFixture();
     globalThis.fetch = async (_url, options) => {
       const error = options.method === "DELETE" ? { message: "native delete failed" }
         : { message: "latest diagnosis", allowedActions: eligible ? ["deleteTask"] : [], worktreeId: "uuid" };
@@ -104,6 +110,6 @@ test("current success publishes deletion, while a partial failure requires a fre
     assert.equal(owner.phase, eligible ? "confirming" : "idle");
     assert.equal(dialog.open, eligible);
     assert.equal(owner.intents.at(-1).type, "broken-delete-error");
-    if (eligible) assert.equal(nodes.get("[data-broken-delete-error]").textContent, "native delete failed");
+    if (eligible) assert.match(owner.drawn, /role="alert" \?hidden="false"\s*>native delete failed</);
   }
 });

@@ -13,6 +13,11 @@ export interface TaskFilePath {
 
 export function cleanLogicalPath(path: string | null | undefined): string;
 
+export function presentTaskFilePath(
+  path: string,
+  rootPath?: string,
+): TaskFilePath;
+
 export function effectiveTaskFileRoot(task: Task | null): string;
 
 export function toolCallPresentation(payload?: TaskEventPayload): {
@@ -41,3 +46,6 @@ export function formatRelativeAgePresentation(
   ms: number | null | undefined,
   now?: number,
 ): { text: string; label: string };
+
+// The first eight characters of an identifier, such as a commit.
+export function shortId(id: string | null | undefined): string;

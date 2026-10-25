@@ -78,7 +78,7 @@ interface SyncOptions {
   reactivated?: boolean;
 }
 
-class CaffoldTaskReview extends LitElement {
+export class CaffoldTaskReview extends LitElement {
   static properties = {
     route: { state: true },
     errorMessage: { state: true },

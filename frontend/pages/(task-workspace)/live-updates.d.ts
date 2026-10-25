@@ -21,5 +21,9 @@ export interface LiveSubscription {
 // The workspace's one live connection, shared by its channels.
 export class WorkspaceLiveUpdates {
   subscribeTaskList(listener: LiveSubscriptionListener): LiveSubscription;
+  subscribeTaskDetail(
+    threadId: string,
+    listener: LiveSubscriptionListener,
+  ): LiveSubscription;
   retry(): void;
 }

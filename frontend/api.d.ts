@@ -1,6 +1,8 @@
 // What TypeScript modules use from api.js while it is still JavaScript. It
 // goes when that module moves to TypeScript.
 
+import type { CodexReadiness } from "./pages/(task-workspace)/codex-status.js";
+
 // The server colors source text and sends each line's spans as
 // `[start, length, color]` in UTF-16 units. The color numbers follow
 // `SyntaxColor` in caffold/src/fs/syntax.rs.
@@ -530,7 +532,189 @@ export function restoreTask(
   threadId: string,
 ): Promise<{ task: ActiveTask; activeTopPlacement: ActiveTaskTopPlacement }>;
 
-export function deleteTask(threadId: string): Promise<unknown>;
+// A Task whose worktree is broken is deleted only with the worktree its
+// diagnosis named.
+export function deleteTask(
+  threadId: string,
+  confirmation?: {
+    confirmBrokenWorktreeDeletion: boolean;
+    expectedWorktreeId: string;
+  } | null,
+): Promise<unknown>;
+
+// Why a Task cannot be opened: archived, or unknown to Caffold.
+export const TASK_ABSENCE: Readonly<{
+  ARCHIVED: "archived";
+  NOT_FOUND: "not-found";
+}>;
+
+export type TaskAbsence = (typeof TASK_ABSENCE)[keyof typeof TASK_ABSENCE];
+
+// The absence a failed Task request or a refused Task channel reports, or null
+// for any other failure.
+export function taskAbsence(error: unknown): TaskAbsence | null;
+
+// A Task request's failure as the API reports it. A Task whose worktree is
+// broken also says what may still be done with it and which worktree that is.
+export interface TaskResponseError extends Error {
+  code?: string;
+  status?: number;
+  allowedActions?: string[];
+  worktreeId?: string;
+  worktreePath?: string;
+  worktreeMissing?: boolean;
+}
+
+// An error from a reported Task failure: an error as it is, or the API's error
+// body with what it says the Task still allows.
+export function taskResponseError(
+  value: unknown,
+  fallback?: string,
+): TaskResponseError;
+
+// A Task's current plan as the server reads it from the Task's folder; the
+// Current Plan checks its shape.
+export function getCurrentPlan(
+  path?: string,
+  signal?: AbortSignal,
+): Promise<unknown>;
+
+// What a Task's own prompts settled about what it may do, as one text.
+export function getTaskPermissionInstructions(
+  threadId: string,
+): Promise<{ instructions?: string | null }>;
+
+export function forgetTaskPermissionInstructions(
+  threadId: string,
+): Promise<{ instructions?: string | null }>;
+
+// Where an item sits in its conversation: its turn's anchor and its place in
+// that turn.
+export interface TaskEventPosition {
+  anchorMs: number;
+  index: number;
+}
+
+// The extent of a conversation a Task detail answers for. An open end reaches
+// that end of the conversation.
+export interface TaskEventsRange {
+  from?: TaskEventPosition | null;
+  to?: TaskEventPosition | null;
+}
+
+// A Task with its conversation, as the Task API and the Task's stream report
+// it: the Task, a page of its items and the extent they cover, the
+// publication revision they carry, and what its next turn runs under.
+export interface TaskDetail {
+  threadId?: string;
+  task: Task | null;
+  events?: TaskEvent[];
+  fileLinks?: TaskFileLink[];
+  revision?: number;
+  eventRevision?: number;
+  eventsRange?: TaskEventsRange | null;
+  eventsPage?: { nextCursor?: string | null } | null;
+  historyLoading?: boolean;
+  syncState?: string;
+  provider?: string;
+  model?: string;
+  reasoningEffort?: string;
+  fastMode?: boolean;
+  permissionMode?: string;
+  context?: TaskContextUsage | null;
+}
+
+// How much of the model's context the conversation takes up now, and how
+// much the model holds.
+export interface TaskContextUsage {
+  usedTokens: number;
+  windowTokens: number;
+}
+
+export function getTask(
+  threadId: string,
+  cursor?: string | null,
+  options?: { signal?: AbortSignal },
+): Promise<TaskDetail>;
+
+// A prompt for a Task's agent. The answer names the user message it became
+// and says whether it steered the running turn instead of starting one.
+export function sendTaskPrompt(
+  threadId: string,
+  prompt: string,
+  options?: Record<string, unknown>,
+  imagePaths?: string[],
+): Promise<{ threadId: string; userMessageId: string; steered: boolean }>;
+
+// One file a prompt carries, into that send's upload folder.
+export function uploadTaskFile(
+  threadId: string,
+  folder: string,
+  name: string,
+  file: Blob,
+  options?: { onProgress?: (loaded: number) => void; signal?: AbortSignal },
+): Promise<unknown>;
+
+export function discardTaskUploads(
+  threadId: string,
+  folder: string,
+): Promise<unknown>;
+
+// Stops the running turn. The prompts the stop cancelled before the agent
+// took them in come back to be sent again.
+export function interruptTask(
+  threadId: string,
+): Promise<TaskDetail & { cancelledPrompts: Array<{ prompt: string }> }>;
+
+export function resolveTaskApproval(
+  threadId: string,
+  approvalId: string,
+  decision: string,
+): Promise<TaskDetail>;
+
+export function markTaskSeen(threadId: string): Promise<Task>;
+
+export function archiveTask(threadId: string): Promise<Task>;
+
+// A Task just made: its detail, the Active list's listing of it, and where it
+// goes at the top of that list.
+export interface CreatedTask {
+  detail: TaskDetail;
+  activeTask: ActiveTask;
+  activeTopPlacement: ActiveTaskTopPlacement;
+}
+
+// A new Task that starts from this one's conversation.
+export function forkTask(threadId: string): Promise<CreatedTask>;
+
+// An agent's conversation a new Task can start from: its name and summary,
+// its status, the project it ran in, when it was last active, and its recent
+// messages.
+export interface TaskForkSourcePreview {
+  provider: string;
+  sourceId: string;
+  displayName: string;
+  summary: string | null;
+  status: TaskThreadStatus;
+  cwd: string | null;
+  lastActivityMs: number | null;
+  recentHistory: Array<{ role: string; text: string }>;
+}
+
+export function previewTaskForkSource(
+  source: { provider: string; sourceId: string },
+  signal?: AbortSignal,
+): Promise<TaskForkSourcePreview>;
+
+// A new Task in a Section that starts from another conversation of an agent.
+export function createTaskFork(fork: {
+  provider: string;
+  sourceId: string;
+  sectionId: string;
+}): Promise<CreatedTask>;
+
+// Whether a restore failed because the Task is already active.
+export function taskAlreadyActive(error: unknown): boolean;
 
 // One conversation item as a Task's detail and its stream deliver it. The
 // backend gives its identity, its place in the conversation, and the time it
@@ -553,10 +737,15 @@ export interface TaskFileLink {
   target: string;
   taskRelativePath: string;
   line?: number;
+  // The item it was found in, as a Task detail lists its links.
+  eventId?: string;
 }
 
 export interface TaskEventPayload {
   itemId?: string;
+  // A prompt this browser sent that the agent's history does not hold yet.
+  optimistic?: boolean;
+  submissionState?: string;
   status?: string;
   text?: string;
   prompt?: string;
@@ -610,6 +799,34 @@ export interface ApprovalTool {
 }
 
 export function getGitHubStatus(path?: string): Promise<GitHubStatus>;
+
+// A terminal belongs to one Task or one Section.
+export interface TerminalSubject {
+  kind: "task" | "section";
+  id: string;
+}
+
+// Starts the subject's shell at the given size.
+export function openTerminal(request: {
+  subject: TerminalSubject;
+  cwd: string;
+  cols: number;
+  rows: number;
+}): Promise<unknown>;
+
+export function killTerminal(subject: TerminalSubject): Promise<unknown>;
+
+// Where a screen attaches to the subject's terminal: `take` to be its one
+// screen, `resume` only if it already was; `tab` names the browser tab.
+export function terminalSocketUrl(
+  subject: TerminalSubject,
+  options: { mode: string; tab: string; cols: number; rows: number },
+): string;
+
+// What the server last found about Codex, without a check of its own.
+export function getCodexReadiness(): Promise<{
+  readiness?: CodexReadiness | null;
+}>;
 
 export function getGitHubIssues(
   path?: string,

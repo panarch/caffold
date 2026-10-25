@@ -4,13 +4,14 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../tests/support/custom-element-unit.js";
-import { TERMINAL_EFFECT, TERMINAL_EVENT, TERMINAL_NODE } from "./page/model.js";
+import { templateHtml } from "../../../../../tests/support/lit-template.js";
+import { TERMINAL_EFFECT, TERMINAL_EVENT, TERMINAL_NODE } from "./page/model.ts";
 
 const registry = installCustomElementUnitRegistry();
 const {
   TERMINAL_PAGE_HEADER_EVENT,
   TERMINAL_PAGE_LEAVE_EVENT,
-} = await import("./page.js");
+} = await import("./page.ts");
 const terminalPage = registry.element("caffold-terminal-page").prototype;
 after(() => registry.restore());
 
@@ -18,10 +19,10 @@ test("input reaches the shell only from the live screen", () => {
   const sent = [];
   const owner = pageOwner({ sent });
 
-  terminalPage.sendInput.call(owner, { data: "ls\r", binary: false });
+  terminalPage.sendInput.call(owner, { detail: { data: "ls\r", binary: false } });
   owner.state = { ...owner.state, node: TERMINAL_NODE.LIVE };
-  terminalPage.sendInput.call(owner, { data: "한\r", binary: false });
-  terminalPage.sendInput.call(owner, { data: "\x1b[M \xff!", binary: true });
+  terminalPage.sendInput.call(owner, { detail: { data: "한\r", binary: false } });
+  terminalPage.sendInput.call(owner, { detail: { data: "\x1b[M \xff!", binary: true } });
 
   assert.deepEqual(sent.map((bytes) => [...bytes]), [
     [0xed, 0x95, 0x9c, 0x0d],
@@ -42,8 +43,8 @@ test("a pending Ctrl turns the next typed key into its control character", () =>
     },
   });
 
-  terminalPage.sendInput.call(owner, { data: "c", binary: false });
-  terminalPage.sendInput.call(owner, { data: "c", binary: false });
+  terminalPage.sendInput.call(owner, { detail: { data: "c", binary: false } });
+  terminalPage.sendInput.call(owner, { detail: { data: "c", binary: false } });
 
   assert.deepEqual(sent.map((bytes) => [...bytes]), [[0x03], [0x63]]);
 });
@@ -52,11 +53,11 @@ test("special keys follow the program's cursor mode and wait for a live screen",
   const typed = [];
   const owner = pageOwner({ typed, applicationCursor: true });
 
-  terminalPage.sendSpecialKey.call(owner, { key: "up" });
+  terminalPage.sendSpecialKey.call(owner, keyEvent({ key: "up" }));
   owner.state = { ...owner.state, node: TERMINAL_NODE.LIVE };
-  terminalPage.sendSpecialKey.call(owner, { key: "up" });
-  terminalPage.sendSpecialKey.call(owner, { key: "left", control: true });
-  terminalPage.sendSpecialKey.call(owner, { key: "escape" });
+  terminalPage.sendSpecialKey.call(owner, keyEvent({ key: "up" }));
+  terminalPage.sendSpecialKey.call(owner, keyEvent({ key: "left", control: true }));
+  terminalPage.sendSpecialKey.call(owner, keyEvent({ key: "escape" }));
 
   assert.deepEqual(typed, ["\x1bOA", "\x1b[1;5D", "\x1b"]);
 });
@@ -172,64 +173,47 @@ test("the header toggle still works where the browser keeps no storage", () => {
 
 test("without the header the toggle offers it back and leaving joins the bar", () => {
   const attributes = new Set();
-  const toggle = barButton();
-  const leave = barButton({ hidden: true });
-  let icons = 0;
-  const owner = {
+  const owner = Object.create(terminalPage, Object.getOwnPropertyDescriptors({
+    state: { node: TERMINAL_NODE.LIVE, generation: 1, mode: null, error: "" },
+    headerChoice: true,
+    specialKeysShown: false,
+    dataset: {},
+    hasAttribute: (name) => attributes.has(name),
     toggleAttribute: (name, on) => (on ? attributes.add(name) : attributes.delete(name)),
-    querySelector: (selector) => ({
-      '[data-terminal-action="header"]': toggle,
-      '[data-terminal-action="leave"]': leave,
-    })[selector] ?? null,
-    renderIcons: () => {
-      icons += 1;
-    },
+  }));
+  const bar = () => {
+    terminalPage.updated.call(owner);
+    return templateHtml(owner.render()).replace(/\s+/g, " ");
   };
 
-  terminalPage.setHeaderHidden.call(owner, true);
-
+  const hidden = bar();
   assert.deepEqual([...attributes], ["data-header-hidden"]);
-  assert.deepEqual(toggle.attributes, { "aria-expanded": "false", "aria-label": "Show header" });
-  assert.equal(toggle.title, "Show header");
-  assert.equal(leave.hidden, false);
+  assert.match(hidden, /data-terminal-action="header" aria-expanded="false" aria-label="Show header" title="Show header"/);
+  assert.match(hidden, /data-terminal-action="leave" aria-label="Leave terminal" title="Leave terminal" \?hidden="false"/);
 
-  terminalPage.setHeaderHidden.call(owner, false);
-
+  owner.headerChoice = false;
+  const shown = bar();
   assert.deepEqual([...attributes], []);
-  assert.deepEqual(toggle.attributes, { "aria-expanded": "true", "aria-label": "Hide header" });
-  assert.equal(toggle.title, "Hide header");
-  assert.equal(leave.hidden, true);
-  assert.equal(icons, 2);
+  assert.match(shown, /data-terminal-action="header" aria-expanded="true" aria-label="Hide header" title="Hide header"/);
+  assert.match(shown, /data-terminal-action="leave" aria-label="Leave terminal" title="Leave terminal" \?hidden="true"/);
 });
 
 function headerOwner() {
   const owner = {
-    headerHidden: false,
+    headerChoice: false,
     shown: [],
     dispatched: [],
-    setHeaderHidden: (hidden) => {
-      owner.shown.push(hidden);
-      owner.headerHidden = hidden;
+    get headerHidden() {
+      return owner.headerChoice;
     },
+    draw: () => owner.shown.push(owner.headerChoice),
     dispatchEvent: (event) => owner.dispatched.push(event),
   };
   return owner;
 }
 
-function barButton({ hidden = false } = {}) {
-  return {
-    attributes: {},
-    title: "",
-    hidden,
-    setAttribute(name, value) {
-      this.attributes[name] = value;
-    },
-    toggleAttribute(name, on) {
-      if (name === "hidden") {
-        this.hidden = on;
-      }
-    },
-  };
+function keyEvent(detail) {
+  return { detail, stopPropagation() {} };
 }
 
 function withWindow(window, run) {
@@ -276,8 +260,8 @@ function pageOwner({
       send: (bytes) => sent.push(bytes),
       resize: (size) => resized.push(size),
     },
-    terminalView: () => view,
-    specialKeys: () => ({ consumeControl }),
+    terminalView: view,
+    specialKeys: { consumeControl },
     apply: (event) => {
       applied.push(event);
       return true;

@@ -6,7 +6,7 @@ import {
   uploadFileNames,
   uploadFolderName,
   uploadPath,
-} from "./prompt-attachments.js";
+} from "./prompt-attachments.ts";
 
 test("a send's folder is named by when it was sent and four characters", () => {
   const values = [0, 0.5, 0.999, 0.1];

@@ -8,7 +8,7 @@ import {
   TERMINAL_NODE,
   initialTerminalState,
   terminalTransition,
-} from "./model.js";
+} from "./model.ts";
 
 const { CONNECT, DISCONNECT, CLEAR, FOCUS, RELEASE_FOCUS, LEAVE } = TERMINAL_EFFECT;
 

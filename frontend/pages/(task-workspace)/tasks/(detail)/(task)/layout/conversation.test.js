@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConversationProjection } from "./conversation.js";
+import { ConversationProjection } from "./conversation.ts";
 
 const item = (id, time, text = id) => ({
   id, threadId: "t", type: "assistant_message",

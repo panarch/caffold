@@ -35,7 +35,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   );
   const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const taskSummary = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.ts",
   );
   const reviewBranchChanges = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.ts",
@@ -192,7 +192,7 @@ test("App Shell owns one global keyboard listener over explicit Scroll providers
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.ts",
   );
   const currentPlanDialog = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.ts",
   );
 
   assert.doesNotMatch(
@@ -201,8 +201,8 @@ test("App Shell owns one global keyboard listener over explicit Scroll providers
   );
   assert.match(taskNavigator, /:scope > \.task-list-scroll/);
   assert.match(conversation, /:scope > \.task-conversation-scroll/);
-  assert.match(currentPlanDialog, /this\.preview\(\)/);
-  assert.match(currentPlanDialog, /preview\.scrollSurfaceScope\?\.\(/);
+  assert.match(currentPlanDialog, /this\.preview\b/);
+  assert.match(currentPlanDialog, /preview\.scrollSurfaceScope\(/);
 });
 
 test("App Shell owns the normal context and route cleanup while Task Workspace provides product state", () => {
@@ -247,10 +247,10 @@ test("registered dialog contexts stay owned and compose through public providers
   const tasks = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const taskNew = readFrontend("pages/(task-workspace)/tasks/new/page.js");
   const section = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(section)/layout.ts",
   );
   const task = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.ts",
   );
   const github = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/(github)/layout.ts",
@@ -290,10 +290,10 @@ test("registered product dialogs retain one context-local keyboard presentation"
     "pages/(task-workspace)/tasks/components/archived-delete-dialog.ts",
     "pages/(task-workspace)/tasks/components/task-switcher-dialog.ts",
     "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
-    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js",
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js",
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js",
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.ts",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.ts",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.ts",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.ts",
     "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.ts",
   ];
 
@@ -337,27 +337,27 @@ test("product dialog CSS does not style nested keyboard presentation dialogs", (
 
 test("Git and GitHub detail components independently own their native auto popovers", () => {
   const detailLayout = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/layout.ts",
   );
   const taskSummary = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.ts",
   );
   const git = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/components/git-menu.js",
+    "pages/(task-workspace)/tasks/(detail)/components/git-menu.ts",
   );
   const github = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/components/github-menu.js",
+    "pages/(task-workspace)/tasks/(detail)/components/github-menu.ts",
   );
 
-  assert.match(detailLayout, /import "\.\/components\/git-menu\.js"/);
-  assert.match(detailLayout, /import "\.\/components\/github-menu\.js"/);
+  assert.match(detailLayout, /import "\.\/components\/git-menu\.ts"/);
+  assert.match(detailLayout, /import "\.\/components\/github-menu\.ts"/);
   assert.match(
     detailLayout,
-    /<caffold-task-detail-git><\/caffold-task-detail-git>/,
+    /<caffold-task-detail-git\b/,
   );
   assert.match(
     detailLayout,
-    /<caffold-task-detail-github><\/caffold-task-detail-github>/,
+    /<caffold-task-detail-github\b/,
   );
   assert.match(detailLayout, /caffold:task-detail-git-intent/);
   assert.match(detailLayout, /caffold:task-detail-github-intent/);
@@ -371,7 +371,7 @@ test("Git and GitHub detail components independently own their native auto popov
   assert.match(git, /class="task-git-button"/);
   assert.match(git, /class="task-git-popover"/);
   assert.match(git, /popover="auto"/);
-  assert.match(git, /popovertarget="\$\{this\.popoverId\}"/);
+  assert.match(git, /popovertarget=\$\{this\.popoverId\}/);
   assert.match(git, /popovertargetaction="hide"/);
   assert.match(git, /data-git-button-action/);
   assert.match(git, /type: "open-git-tool"/);
@@ -385,7 +385,7 @@ test("Git and GitHub detail components independently own their native auto popov
   assert.match(github, /class="task-github-button"/);
   assert.match(github, /class="task-github-popover"/);
   assert.match(github, /popover="auto"/);
-  assert.match(github, /popovertarget="\$\{this\.popoverId\}"/);
+  assert.match(github, /popovertarget=\$\{this\.popoverId\}/);
   assert.match(github, /popovertargetaction="hide"/);
   assert.match(github, /data-github-button-action/);
   assert.match(github, /type: "open-github-tool"/);
@@ -408,22 +408,22 @@ test("Git and GitHub detail components independently own their native auto popov
 
 test("common Detail owns shared surfaces while Task and Section keep subject work", () => {
   const detailLayout = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/layout.ts",
   );
   const taskLayout = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.ts",
   );
   const sectionLayout = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(section)/layout.ts",
   );
   const sectionGithubShortcuts = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js",
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.ts",
   );
   const sectionConversationShortcuts = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.js",
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.ts",
   );
   const conversationForkDialog = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.ts",
   );
   const taskCreate = readFrontend(
     "pages/(task-workspace)/tasks/components/task-create.ts",
@@ -441,8 +441,8 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   for (const child of ["(review)", "(git)", "(github)"]) {
     assert.ok(detailLayout.includes(`import "./${child}/layout.ts"`));
   }
-  assert.match(detailLayout, /<caffold-task-detail hidden>/);
-  assert.match(detailLayout, /<caffold-section-detail hidden>/);
+  assert.match(detailLayout, /<caffold-task-detail\s+hidden\b/);
+  assert.match(detailLayout, /<caffold-section-detail\s+hidden\b/);
   assert.match(detailLayout, /class="detail-review-slot"/);
   assert.match(detailLayout, /class="detail-git-slot"/);
   assert.match(detailLayout, /class="detail-github-slot"/);
@@ -454,11 +454,11 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(activeTaskList, /selectedSection: this\.sectionFor/);
 
   assert.match(taskLayout, /import "\.\/components\/conversation\.ts"/);
-  assert.match(taskLayout, /import "\.\/components\/command-dialog\.js"/);
-  assert.match(taskLayout, /import "\.\/components\/markdown-preview-dialog\.js"/);
-  assert.match(taskLayout, /<caffold-task-conversation>/);
+  assert.match(taskLayout, /import "\.\/components\/command-dialog\.ts"/);
+  assert.match(taskLayout, /import "\.\/components\/markdown-preview-dialog\.ts"/);
+  assert.match(taskLayout, /<caffold-task-conversation\b/);
   assert.match(taskLayout, /<caffold-task-command-dialog>/);
-  assert.match(taskLayout, /<caffold-task-markdown-preview-dialog>/);
+  assert.match(taskLayout, /<caffold-task-markdown-preview-dialog\b/);
   assert.doesNotMatch(taskLayout, /\(review\)|\(git\)|\(github\)/);
   assert.doesNotMatch(
     taskLayout,
@@ -466,11 +466,11 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   );
 
   assert.match(sectionLayout, /import "\.\.\/\.\.\/components\/task-create\.ts"/);
-  assert.match(sectionLayout, /import "\.\/components\/github-shortcuts\.js"/);
-  assert.match(sectionLayout, /import "\.\/components\/conversation-shortcuts\.js"/);
+  assert.match(sectionLayout, /import "\.\/components\/github-shortcuts\.ts"/);
+  assert.match(sectionLayout, /import "\.\/components\/conversation-shortcuts\.ts"/);
   assert.match(sectionLayout, /<caffold-task-create>/);
-  assert.match(sectionLayout, /<caffold-section-conversation-shortcuts hidden>/);
-  assert.match(sectionLayout, /<caffold-section-github-shortcuts hidden>/);
+  assert.match(sectionLayout, /<caffold-section-conversation-shortcuts hidden\s*>/);
+  assert.match(sectionLayout, /<caffold-section-github-shortcuts hidden\s*>/);
   assert.doesNotMatch(
     sectionLayout,
     /getGitHubStatus|statusRequestId|section-github-repository/,
@@ -511,14 +511,14 @@ test("custom elements use routed owners or the nearest components namespace", ()
 
 test("Task Info keeps action presentation in its private leaf", () => {
   const info = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.ts",
   );
   const actions = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.ts",
   );
 
-  assert.match(info, /import "\.\/info\/components\/actions\.js"/);
-  assert.match(info, /<caffold-task-detail-info-actions>/);
+  assert.match(info, /import "\.\/info\/components\/actions\.ts"/);
+  assert.match(info, /<caffold-task-detail-info-actions\b/);
   assert.match(info, /caffold:task-detail-info-action-intent/);
   assert.doesNotMatch(info, /data-task-info-action|forkDisabledReason/);
 
@@ -580,7 +580,7 @@ test("App Shell owns one foreground recovery UI and retry intent", () => {
     "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const detail = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.ts",
   );
   const taskStatus = readFrontend(
     "pages/(task-workspace)/tasks/components/task-status-chip.css",
@@ -694,7 +694,7 @@ test("App Shell solely coordinates foreground recovery through public owners", (
     "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const detail = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.ts",
   );
   const stream = readFrontend("pages/(task-workspace)/tasks/stream.js");
   const serviceWorker = readFrontend("service-worker.js");

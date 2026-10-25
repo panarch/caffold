@@ -6,7 +6,7 @@ import {
   UPLOAD_DISCARD_NODE as NODE,
   UploadDiscards,
   nextUploadDiscardNode,
-} from "./upload-discards.js";
+} from "./upload-discards.ts";
 
 const ALLOWED = [
   [NODE.SENDING, EVENT.ANSWERED, NODE.SETTLED],

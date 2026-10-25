@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./github-shortcuts.js");
+await import("./github-shortcuts.ts");
 const shortcuts = registry.element("caffold-section-github-shortcuts").prototype;
 after(() => registry.restore());
 
@@ -19,21 +19,21 @@ test("provides available direct Issues and Pull Requests native controls", () =>
       clicks += 1;
     },
   }]));
-  const owner = {
+  const owner = Object.create(shortcuts, Object.getOwnPropertyDescriptors({
     active: true,
     hidden: false,
     isConnected: true,
     githubStatus: { github: { nameWithOwner: "openai/caffold" } },
-    ensureRendered() {},
+    performUpdate() {},
     querySelector(selector) {
       const kind = selector.match(/data-section-github-kind="([^"]+)"/)?.[1];
       return controls.get(kind) ?? null;
     },
-  };
+  }));
 
   const scope = shortcuts.actionHintScope.call(owner, {
     scopeId: "section:section-a",
-    clipRoots: [owner],
+    clipRoots: [{}],
   });
   assert.deepEqual(
     scope.targets.map(({ id, actionId }) => ({ id, actionId })),

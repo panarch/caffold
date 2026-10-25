@@ -40,6 +40,12 @@ export interface ComposerSettings {
   permissionMode: string;
 }
 
+// Settings as an owner hands them in, where a choice not made yet may be
+// missing or null.
+type ComposerSettingsInput = {
+  [Key in keyof ComposerSettings]?: ComposerSettings[Key] | null;
+};
+
 // A request to start a Task. The owner that takes it sets `accepted` and the
 // `completion` that settles once the new Task holds the submission.
 export interface TaskStartIntent {
@@ -99,7 +105,7 @@ export class CaffoldTaskCreate extends LitElement {
   }: {
     cwd?: string;
     browseCwd?: boolean;
-    composerSettings?: Partial<ComposerSettings> | null;
+    composerSettings?: ComposerSettingsInput | null;
   } = {}) {
     const nextCwd = cleanLogicalPath(cwd || ".");
     const nextBrowseCwd = Boolean(browseCwd);
@@ -361,7 +367,7 @@ export class CaffoldTaskCreate extends LitElement {
 }
 
 function normalizeComposerSettings(
-  settings: Partial<ComposerSettings> | null,
+  settings: ComposerSettingsInput | null,
 ): ComposerSettings | null {
   if (!settings || typeof settings !== "object") {
     return null;

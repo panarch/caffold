@@ -12,6 +12,20 @@ export function taskThreadId(
   task: { threadId?: string | null; id?: string | null } | null | undefined,
 ): string;
 
+// The Task a Task detail answers for.
+export function taskDetailThreadId(
+  detail:
+    | {
+        threadId?: string | null;
+        task?: { threadId?: string | null } | null;
+      }
+    | null
+    | undefined,
+): string;
+
+// The repository a Task works in, or its directory outside one.
+export function taskRepositoryPath(task: Task | null | undefined): string;
+
 // The Tasks of one repository or directory, most recently active first.
 export interface TaskRepositoryGroup {
   key: string;

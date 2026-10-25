@@ -16,8 +16,8 @@ import {
   taskStoreBlocksTaskOperations,
 } from "../task-store-status.js";
 import "./components/task-store-recovery.js";
-import "./(detail)/layout.js";
-import { TERMINAL_PAGE_FOCUS_RELEASE_EVENT } from "./(detail)/terminal/page.js";
+import "./(detail)/layout.ts";
+import { TERMINAL_PAGE_FOCUS_RELEASE_EVENT } from "./(detail)/terminal/page.ts";
 import "./recovery/page.js";
 import {
   TASK_IMAGE_PREVIEW_EVENT,

@@ -129,7 +129,7 @@ export class CaffoldGithubIssuesLayout extends LitElement {
     this.emitStateChange();
   }
 
-  prepareRoute(route: { page?: number; number?: number } | null) {
+  prepareRoute(route: { page?: number; number?: number | null } | null) {
     this.page = normalizePage(route?.page ?? this.page);
     if (route?.number) {
       this.selectedIssueSummary = this.issueSummary(route.number);

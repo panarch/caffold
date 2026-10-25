@@ -38,6 +38,9 @@ export function taskStatusKey(task: StatusOf): string;
 
 export function taskStatusView(task: StatusOf): TaskStatusView | null;
 
+// How a Task's status reads in words, for one that shows no status chip too.
+export function formatTaskStatus(task: StatusOf): string;
+
 export const PROMPT_SUBMISSION_STATE: Readonly<{
   UPLOADING: "uploading";
   SENDING: "sending";
@@ -58,3 +61,18 @@ export function taskActiveFlagLabel(task: Task | null): string | null;
 export function promptSubmissionState(
   event: TaskEvent,
 ): PromptSubmissionState | null;
+
+// What a failed prompt request means: certainly refused, or perhaps heard by
+// the agent.
+export function classifyPromptFailure(
+  error: unknown,
+):
+  | typeof PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN
+  | typeof PROMPT_SUBMISSION_STATE.REJECTED;
+
+// A prompt this browser sent, in the given submission state. Any other event
+// is returned as it is.
+export function withPromptSubmissionState(
+  event: TaskEvent,
+  state: PromptSubmissionState,
+): TaskEvent;

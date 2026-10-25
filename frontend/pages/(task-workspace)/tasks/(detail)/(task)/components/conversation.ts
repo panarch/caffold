@@ -94,7 +94,7 @@ export interface ConversationSnapshot {
 }
 
 // What the conversation asks of the Task screen.
-type ConversationIntent =
+export type ConversationIntent =
   | { type: "retry-detail" }
   | { type: "approval"; approvalId: string; decision: string }
   | { type: "suggested-prompt"; prompt: string }

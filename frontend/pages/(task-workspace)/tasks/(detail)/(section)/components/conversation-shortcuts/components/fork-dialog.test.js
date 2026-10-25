@@ -6,7 +6,7 @@ import {
 } from "../../../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./fork-dialog.js");
+await import("./fork-dialog.ts");
 const forkDialog = registry.element("caffold-conversation-fork-dialog").prototype;
 after(() => registry.restore());
 
@@ -30,8 +30,8 @@ test("provides the Thread ID and every owned fork dialog button", () => {
   const owner = {
     isConnected: true,
     context: { sectionId: "section/1" },
-    dialog: () => dialog,
-    threadIdInput: () => input,
+    dialog,
+    threadIdInput: input,
   };
   const scope = forkDialog.actionHintScope.call(owner);
 
@@ -58,7 +58,7 @@ test("declares the exact retained fork body", () => {
   const owner = {
     isConnected: true,
     context: { sectionId: "section" },
-    dialog: () => dialog,
+    dialog,
   };
   const [surface] = forkDialog.scrollSurfaceScope.call(owner).surfaces;
   assert.equal(surface.scrollport, body);

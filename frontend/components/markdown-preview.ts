@@ -307,8 +307,9 @@ export class CaffoldMarkdownPreview extends LitElement {
   }
 
   // A released image loses its copy and goes back to loading, so the preview
-  // fetches it again if it is shown again.
-  private releaseImages() {
+  // fetches it again if it is shown again. An owner that hides the preview
+  // releases them too.
+  releaseImages() {
     this.imageObserver?.disconnect();
     for (const [slot, record] of this.fetchedImages ?? []) {
       record.fetching.abort();

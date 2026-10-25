@@ -4,14 +4,37 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./info.js");
+const { taskInfoSnapshot } = await import("./info.ts");
 const info = registry.element("caffold-task-detail-info").prototype;
 const actions = registry.element(
   "caffold-task-detail-info-actions",
 ).prototype;
 after(() => registry.restore());
+
+// One of the components with the state and stand-ins a test gives it, drawn
+// by nothing until the test asks.
+function owner(prototype, state) {
+  return Object.create(prototype, Object.getOwnPropertyDescriptors({
+    isConnected: true,
+    performUpdate() {},
+    ...state,
+  }));
+}
+
+function drawnActions(snapshot) {
+  const markup = templateHtml(
+    owner(actions, { snapshot: taskInfoSnapshot(snapshot) }).render(),
+  ).replace(/\s+/g, " ");
+  const button = (type) =>
+    markup.match(new RegExp(`data-task-info-action="${type}"[^>]*>`))?.[0] ?? "";
+  return {
+    markup,
+    disabled: (type) => button(type).includes('?disabled="true"'),
+  };
+}
 
 test("keeps Task details opener at the info owner", () => {
   const control = button("Task details, idle");
@@ -19,15 +42,14 @@ test("keeps Task details opener at the info owner", () => {
     id: "task-details",
     matches: () => false,
   };
-  const owner = {
-    isConnected: true,
-    snapshot: { task: { threadId: "thread-a" } },
-    infoButton: () => control,
-    infoPopover: () => popover,
-  };
   control.popoverId = popover.id;
+  const infoOwner = owner(info, {
+    snapshot: { task: { threadId: "thread-a" } },
+    infoButton: control,
+    infoPopover: popover,
+  });
 
-  const target = info.actionHintScope.call(owner, {
+  const target = info.actionHintScope.call(infoOwner, {
     scopeId: "detail:task:thread-a",
   }).targets[0];
   assert.deepEqual(
@@ -46,13 +68,12 @@ test("keeps enabled Fork and Archive actions at their direct owner", () => {
     fork: button("Fork task", "fork"),
     archive: button("Archive task", "archive"),
   };
-  const owner = {
-    isConnected: true,
+  const actionsOwner = owner(actions, {
     snapshot: { task: { threadId: "thread-a" } },
     actionButton: (type) => controls[type],
-  };
+  });
 
-  const scope = actions.actionHintScope.call(owner, {
+  const scope = actions.actionHintScope.call(actionsOwner, {
     scopeId: "detail:task:thread-a:details",
     clipRoots: [{}],
   });
@@ -73,7 +94,7 @@ test("keeps enabled Fork and Archive actions at their direct owner", () => {
   controls.archive.disabled = true;
   assert.equal(scope.targets[1].isActionable(), false);
   assert.equal(
-    actions.actionHintScope.call(owner, {
+    actions.actionHintScope.call(actionsOwner, {
       scopeId: "detail:task:thread-a:details",
     }).targets.length,
     1,
@@ -89,25 +110,23 @@ test("offers reading what a Task's prompts settled only under the reviewed mode"
       "permission-instructions",
     ),
   };
-  const owner = {
-    isConnected: true,
+  const actionsOwner = owner(actions, {
     snapshot: { task: { threadId: "thread-a" }, permissionMode: "approveForMe" },
     actionButton: (type) => controls[type],
-    keepsPermissionInstructions: actions.keepsPermissionInstructions,
-  };
+  });
 
   assert.deepEqual(
     actions.actionHintScope
-      .call(owner, { scopeId: "details" })
+      .call(actionsOwner, { scopeId: "details" })
       .targets.map(({ actionId }) => actionId),
     ["task.fork", "task.archive"],
   );
 
-  owner.snapshot = {
-    ...owner.snapshot,
+  actionsOwner.snapshot = {
+    ...actionsOwner.snapshot,
     permissionMode: "caffold:ask-jev-first",
   };
-  const offered = actions.actionHintScope.call(owner, { scopeId: "details" });
+  const offered = actions.actionHintScope.call(actionsOwner, { scopeId: "details" });
 
   assert.deepEqual(
     offered.targets.map(({ id, actionId }) => ({ id, actionId })),
@@ -121,98 +140,74 @@ test("offers reading what a Task's prompts settled only under the reviewed mode"
     ],
   );
   assert.equal(offered.targets[2].isActionable(), true);
-  owner.snapshot = { ...owner.snapshot, permissionMode: "approveForMe" };
+  actionsOwner.snapshot = { ...actionsOwner.snapshot, permissionMode: "approveForMe" };
   assert.equal(offered.targets[2].isActionable(), false);
 });
 
 test("hides what a Task's prompts settled outside the reviewed mode", () => {
-  const action = { hidden: false };
-  const owner = {
-    snapshot: { permissionMode: "approveForMe" },
-    querySelector: () => action,
-    keepsPermissionInstructions: actions.keepsPermissionInstructions,
-  };
+  const task = { threadId: "thread-a", threadStatus: { type: "idle" } };
+  const hidden = (permissionMode) =>
+    /data-task-info-permission-instructions \?hidden="true"/.test(
+      drawnActions({ task, permissionMode }).markup,
+    );
 
-  actions.patchPermissionInstructions.call(owner);
-  assert.equal(action.hidden, true);
-
-  owner.snapshot = { permissionMode: "caffold:ask-jev-first" };
-  actions.patchPermissionInstructions.call(owner);
-  assert.equal(action.hidden, false);
+  assert.equal(hidden("approveForMe"), true);
+  assert.equal(hidden("caffold:ask-jev-first"), false);
 });
 
 test("keeps Archive available through stale transport unless canonical status is active", () => {
-  const archive = button("Archive task", "archive");
-  const error = { textContent: "", hidden: true };
-  const owner = {
-    snapshot: {
-      task: {
-        threadId: "thread-a",
-        threadStatus: { type: "active", activeFlags: [] },
-      },
-      transportState: "unavailable",
-      archiveBlockedByActive: false,
-      archiveState: { loading: false, error: null },
-      forkState: { loading: false, error: null },
-    },
-    actionButton: () => archive,
-    querySelector: () => error,
+  const task = {
+    threadId: "thread-a",
+    threadStatus: { type: "active", activeFlags: [] },
   };
 
-  actions.patchArchive.call(owner);
-  assert.equal(archive.disabled, false);
-
-  owner.snapshot.archiveBlockedByActive = true;
-  actions.patchArchive.call(owner);
-  assert.equal(archive.disabled, true);
+  assert.equal(
+    drawnActions({ task, transportState: "unavailable" }).disabled("archive"),
+    false,
+  );
+  assert.equal(
+    drawnActions({
+      task,
+      transportState: "unavailable",
+      archiveBlockedByActive: true,
+    }).disabled("archive"),
+    true,
+  );
 });
 
 test("keeps Fork unavailable without canonical Detail", () => {
-  const fork = button("Fork task", "fork");
-  const availability = { textContent: "", hidden: true };
-  const error = { textContent: "", hidden: true };
-  const owner = {
-    snapshot: {
-      task: { threadId: "thread-a", threadStatus: { type: "idle" } },
-      canonicalTaskAvailable: false,
-      transportState: "ready",
-      provider: "codex",
-      archiveState: { loading: false, error: null },
-      forkState: { loading: false, error: null },
-    },
-    actionButton: () => fork,
-    querySelector(selector) {
-      return selector.includes("availability") ? availability : error;
-    },
-  };
+  const drawn = drawnActions({
+    task: { threadId: "thread-a", threadStatus: { type: "idle" } },
+    canonicalTaskAvailable: false,
+    transportState: "ready",
+    provider: "codex",
+  });
 
-  actions.patchFork.call(owner);
-
-  assert.equal(fork.disabled, true);
-  assert.equal(
-    availability.textContent,
-    "Fork is unavailable until Task details load.",
+  assert.equal(drawn.disabled("fork"), true);
+  assert.match(
+    drawn.markup,
+    /task-detail-fork-availability" \?hidden="false" >Fork is unavailable until Task details load\.</,
   );
 });
 
 test("declares a session-bound Action Hint context for the Task details popover context", () => {
+  const presentation = {
+    actionHintDialog: () => ({}),
+    scrollModeHud: () => ({}),
+    scrollSurfaceSelector: () => ({}),
+  };
   const popover = {
     id: "task-details",
     matches: () => false,
-    querySelector: () => ({
-      actionHintDialog: () => ({}),
-      scrollModeHud: () => ({}),
-      scrollSurfaceSelector: () => ({}),
-    }),
+    querySelector: (selector) =>
+      selector.includes("presentation") ? presentation : null,
   };
-  const owner = {
-    isConnected: true,
+  const infoOwner = owner(info, {
     snapshot: { task: { threadId: "thread-a" } },
-    infoPopover: () => popover,
-    actions: () => null,
-  };
+    infoPopover: popover,
+  });
 
-  const [context] = info.keyboardNavigationContexts.call(owner, {
+  const [context] = info.keyboardNavigationContexts.call(infoOwner, {
     scopeId: "detail:task:thread-a",
   });
 
@@ -230,10 +225,10 @@ test("closes the Task details popover when its bound Action Hint session is dism
       hidden += 1;
     },
   };
-  const owner = { infoPopover: () => popover, deactivate: info.deactivate };
-  info.handleDismiss.call(owner, { target: {} });
+  const infoOwner = owner(info, { infoPopover: popover });
+  info.handleDismiss.call(infoOwner, { target: {} });
   assert.equal(hidden, 0);
-  info.handleDismiss.call(owner, { target: popover });
+  info.handleDismiss.call(infoOwner, { target: popover });
   assert.equal(hidden, 1);
 });
 

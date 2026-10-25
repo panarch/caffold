@@ -34,7 +34,7 @@ type GithubMode = "issues" | "pulls";
 interface GithubRoute {
   kind: string;
   page?: number;
-  number?: number;
+  number?: number | null;
   files?: boolean;
   path?: string;
 }
@@ -54,7 +54,7 @@ interface Chrome {
   backShown: boolean;
 }
 
-class CaffoldTaskGithubLayout extends LitElement {
+export class CaffoldTaskGithubLayout extends LitElement {
   static properties = {
     chrome: { state: true },
   };

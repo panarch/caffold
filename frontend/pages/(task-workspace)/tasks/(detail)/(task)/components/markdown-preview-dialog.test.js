@@ -6,10 +6,8 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./markdown-preview-dialog.js");
-const previewDialog = registry.element(
-  "caffold-task-markdown-preview-dialog",
-).prototype;
+await import("./markdown-preview-dialog.ts");
+const PreviewDialog = registry.element("caffold-task-markdown-preview-dialog");
 after(() => registry.restore());
 
 test("renders each requested Markdown from the top of the retained preview", () => {
@@ -25,10 +23,10 @@ test("renders each requested Markdown from the top of the retained preview", () 
       this.open = true;
     },
   };
-  const owner = { dialog: () => dialog, preview: () => preview };
+  const owner = dialogHost({ dialog, preview });
 
-  previewDialog.openMarkdown.call(owner, { markdown: "# One" });
-  previewDialog.openMarkdown.call(owner, { markdown: "# Two" });
+  owner.openMarkdown({ markdown: "# One" });
+  owner.openMarkdown({ markdown: "# Two" });
 
   assert.deepEqual(rendered, [
     ["# One", { scroll: { top: 0, left: 0 } }],
@@ -58,9 +56,9 @@ test("provides Close and merges the current preview link scope", () => {
     querySelector: (selector) =>
       selector === ".task-markdown-preview-close" ? close : null,
   };
-  const owner = dialogOwner({ dialog, preview });
+  const owner = dialogHost({ dialog, preview });
 
-  const scope = previewDialog.actionHintScope.call(owner);
+  const scope = owner.actionHintScope();
 
   assert.deepEqual(scope.targets.map(({ id }) => id), [
     "task-markdown-preview:thread%2F1:close",
@@ -123,12 +121,13 @@ test("provides its exact modal context and preview scrollport", () => {
       return presentation;
     },
   };
-  const owner = {
-    ...dialogOwner({ dialog, preview }),
+  const owner = dialogHost({
+    dialog,
+    preview,
     actionHintScope: () => actionScope,
-  };
+  });
 
-  const [context] = previewDialog.keyboardNavigationContexts.call(owner);
+  const [context] = owner.keyboardNavigationContexts();
   const surface = context.scroll.scope.surfaces[0];
 
   assert.equal(context.id, "task-markdown-preview:thread%2F1");
@@ -156,14 +155,14 @@ test("returns focus to a connected opener only once the dialog has closed", () =
     },
   };
   const dialog = { open: true };
-  const owner = { opener, dialog: () => dialog };
+  const owner = dialogHost({ opener, dialog });
 
-  previewDialog.handleClose.call(owner);
+  owner.handleClose();
   assert.equal(focused, 0);
   assert.equal(owner.opener, opener);
 
   dialog.open = false;
-  previewDialog.handleClose.call(owner);
+  owner.handleClose();
   assert.equal(focused, 1);
   assert.equal(owner.opener, null);
 
@@ -173,7 +172,7 @@ test("returns focus to a connected opener only once the dialog has closed", () =
       focused += 1;
     },
   };
-  previewDialog.handleClose.call(owner);
+  owner.handleClose();
   assert.equal(focused, 1);
   assert.equal(owner.opener, null);
 });
@@ -188,32 +187,31 @@ test("closes without returning focus when its Task changes", () => {
     },
   };
   const opener = { isConnected: true, focus() {} };
-  const owner = {
-    threadId: "",
-    opener,
-    dialog: () => dialog,
-    dismiss: previewDialog.dismiss,
-  };
+  const owner = dialogHost({ threadId: "", opener, dialog });
 
-  previewDialog.setThreadId.call(owner, "thread/1");
-  previewDialog.setThreadId.call(owner, "thread/1");
+  owner.setThreadId("thread/1");
+  owner.setThreadId("thread/1");
   assert.equal(closed, 0);
   assert.equal(owner.opener, opener);
 
-  previewDialog.setThreadId.call(owner, "thread/2");
+  owner.setThreadId("thread/2");
   assert.equal(closed, 1);
   assert.equal(owner.opener, null);
   assert.equal(owner.threadId, "thread/2");
 });
 
-function dialogOwner({ dialog, preview }) {
-  return {
-    isConnected: true,
-    threadId: "thread/1",
-    dialog: () => dialog,
-    preview: () => preview,
-    isCurrentDialog: previewDialog.isCurrentDialog,
-  };
+// A dialog whose native dialog and preview are the given stand-ins.
+function dialogHost(properties) {
+  return Object.create(PreviewDialog.prototype, {
+    ...Object.getOwnPropertyDescriptors({
+      isConnected: true,
+      threadId: "thread/1",
+      opener: null,
+      dialog: null,
+      preview: null,
+    }),
+    ...Object.getOwnPropertyDescriptors(properties),
+  });
 }
 
 function actionControl(label) {

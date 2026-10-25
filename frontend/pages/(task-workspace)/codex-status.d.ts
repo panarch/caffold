@@ -53,6 +53,19 @@ export const CODEX_RUNTIME_UPDATE_REQUEST_EVENT: string;
 
 type Status = CodexStatus | null | undefined;
 
+// A snapshot with each field left out at its resting value.
+export function createCodexStatusSnapshot(
+  snapshot?: Partial<CodexStatusSnapshot>,
+): CodexStatusSnapshot;
+
+// What Codex's readiness means for the surfaces that use it: not known yet,
+// ready, needing the person, or out of reach.
+export function codexState(
+  snapshot: CodexStatusSnapshot | null | undefined,
+): "pending" | "available" | "attention" | "unavailable";
+
+export function codexBlocksTaskOperations(status: Status): boolean;
+
 export function codexRateWindows(status: Status): Array<{
   limitId?: string;
   limitName?: string;

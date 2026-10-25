@@ -55,7 +55,7 @@ interface Chrome {
   controls: GitControlsSnapshot;
 }
 
-class CaffoldTaskGitLayout extends LitElement {
+export class CaffoldTaskGitLayout extends LitElement {
   static properties = {
     chrome: { state: true },
   };

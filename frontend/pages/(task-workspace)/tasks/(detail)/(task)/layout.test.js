@@ -4,19 +4,96 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./layout.js");
-const taskDetail = registry.element("caffold-task-detail").prototype;
+await import("./layout.ts");
+const TaskDetail = registry.element("caffold-task-detail");
+const taskDetail = TaskDetail.prototype;
 after(() => registry.restore());
 
+// A Task screen with only the state its drawing reads, and no conversation.
+function screen(state = {}) {
+  return Object.create(TaskDetail.prototype, Object.getOwnPropertyDescriptors({
+    reviewView: "conversation",
+    selectedThreadId: "thread-a",
+    taskDetail: null,
+    detailLoadError: null,
+    loading: false,
+    events: [],
+    detailSession: { absence: null, state: "ready" },
+    pane: null,
+    notice: null,
+    ...state,
+  }));
+}
+
+function drawn(owner) {
+  owner.willUpdate();
+  return templateHtml(owner.render()).replace(/\s+/g, " ");
+}
+
 test("only the server's actions decide whether an unavailable worktree offers Delete or Retry", () => {
-  const action = (error) => taskDetail.renderLoadErrorAction.call({ detailLoadError: error });
+  const action = (error) =>
+    templateHtml(taskDetail.loadErrorAction.call(screen({ detailLoadError: error })));
   assert.match(action({ allowedActions: ["deleteTask"] }), /delete-broken-task/);
   assert.doesNotMatch(action({ allowedActions: ["deleteTask"] }), /Retry/);
   assert.equal(action({ allowedActions: [] }), "");
   assert.match(action({ allowedActions: ["retry"] }), /Retry/);
   assert.match(action(new Error("provider unavailable")), /Retry/);
+});
+
+test("the conversation pane stays once drawn, hidden under what shows in its place", () => {
+  const owner = screen({ loading: true });
+  assert.doesNotMatch(drawn(owner), /class="task-detail"/, "no pane before a Task is read");
+  assert.equal(owner.pane, null);
+
+  owner.loading = false;
+  owner.taskDetail = { task: { threadId: "thread-a" } };
+  const shown = drawn(owner);
+  assert.match(shown, /class="task-detail" data-thread-id="thread-a" data-task-detail-view="conversation" \?hidden="false"/);
+  assert.doesNotMatch(shown, /task-detail-placeholder/);
+  assert.match(shown, /<caffold-task-conversation /);
+  assert.match(shown, /class="task-follow-up-composer-slot"/);
+
+  owner.selectedThreadId = "thread-b";
+  owner.taskDetail = null;
+  owner.loading = true;
+  const waiting = drawn(owner);
+  assert.match(waiting, /data-thread-id="thread-a" data-task-detail-view="conversation" \?hidden="true"/,
+    "the pane keeps the Task it last showed");
+  assert.match(waiting, /<div class="task-detail-placeholder"><\/div>/);
+
+  owner.loading = false;
+  owner.detailLoadError = Object.assign(new Error("Worktree is gone"), {
+    allowedActions: ["deleteTask"],
+  });
+  const failed = drawn(owner);
+  assert.match(failed, /task-detail-placeholder"><section class="task-detail-load-error" role="alert">/);
+  assert.match(failed, /The task worktree is unavailable\./);
+  assert.match(failed, /Worktree is gone/);
+  assert.match(failed, /data-task-action="delete-broken-task"/);
+
+  owner.detailLoadError = null;
+  owner.detailSession = { absence: "archived", state: "ready" };
+  assert.match(drawn(owner), /task-detail-placeholder"><caffold-task-absence /);
+});
+
+test("Git and GitHub name a Task they are waiting for in their own panel", () => {
+  const owner = screen({ reviewView: "github", loading: true });
+  const pending = drawn(owner);
+  assert.match(pending, /<section class="task-domain-pending" data-task-domain="github" aria-label="GitHub"/);
+  assert.match(pending, /<caffold-loading-text>Loading Task context\.\.\.<\/caffold-loading-text>/);
+  assert.doesNotMatch(pending, /role="status"/, "the phrase announces itself");
+  assert.match(pending, /task-domain-pending-body" role=""/);
+
+  owner.loading = false;
+  owner.detailLoadError = new Error("Unavailable");
+  const failed = drawn(owner);
+  assert.match(failed, /task-domain-pending-body" role="alert"/);
+  assert.match(failed, /<p>Unavailable<\/p>/);
+  assert.match(failed, /data-task-action="retry-task-detail"/);
+  assert.doesNotMatch(failed, /<caffold-loading-text>Loading Task/);
 });
 
 test("merges Conversation, follow-up composer, and Current Plan direct-owner scopes", () => {
@@ -60,11 +137,9 @@ test("merges Conversation, follow-up composer, and Current Plan direct-owner sco
   };
   const owner = {
     hidden: false,
-    view: "detail",
     reviewView: "conversation",
     selectedThreadId: "thread-a",
-    ensureRendered() {},
-    brokenDeleteDialog: () => null,
+    performUpdate() {},
     absenceNotice: () => null,
     followUpComposer: () => composer,
     followUpComposerSlot: () => slot,
@@ -105,12 +180,10 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
   };
   const owner = {
     hidden: false,
-    view: "detail",
     reviewView: "conversation",
     selectedThreadId: "thread-a",
-    ensureRendered() {},
+    performUpdate() {},
     brokenDeleteDialog: () => null,
-    absenceNotice: () => null,
     followUpComposer: () => composer,
     followUpComposerSlot: () => slot,
     currentPlanComponent: () => ({
@@ -182,19 +255,7 @@ test("publishes the approval mode the follow-up Composer would send", () => {
 });
 
 test("one phrase covers an opening conversation until its Task details and history are read", () => {
-  const waiting = (state) => taskDetail.waitsForConversation.call({
-    view: "detail",
-    reviewView: "conversation",
-    selectedThreadId: "thread-a",
-    loading: false,
-    taskDetail: null,
-    detailLoadError: null,
-    events: [],
-    hasSelectedTaskDetail() {
-      return taskDetail.hasSelectedTaskDetail.call(this);
-    },
-    ...state,
-  });
+  const waiting = (state) => taskDetail.waitsForConversation.call(screen(state));
   const readTask = (historyLoading) => ({
     task: { threadId: "thread-a" },
     historyLoading,
@@ -235,15 +296,4 @@ test("one phrase covers an opening conversation until its Task details and histo
     true,
     "kept entries are not on screen until their Task is read",
   );
-});
-
-test("a Git or GitHub surface waiting for its Task names the wait with the shared phrase", () => {
-  const owner = { reviewView: "github", renderLoadErrorAction: () => "" };
-  const pending = taskDetail.renderPendingDomain.call(owner, "Loading Task context...");
-  assert.match(pending, /<caffold-loading-text>Loading Task context\.\.\.<\/caffold-loading-text>/);
-  assert.doesNotMatch(pending, /role="status"/, "the phrase announces itself");
-
-  const failed = taskDetail.renderPendingDomain.call(owner, "Unavailable", { error: true });
-  assert.match(failed, /role="alert"/);
-  assert.doesNotMatch(failed, /caffold-loading-text/);
 });

@@ -10,7 +10,7 @@ import {
 import { escapeHtml } from "#components/dom.ts";
 import { renderInlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/loading-text.ts";
-import { TASK_ABSENCE_INTENT_EVENT } from "../components/task-absence.js";
+import { TASK_ABSENCE_INTENT_EVENT } from "../components/task-absence.ts";
 import { taskThreadId } from "../task-list-model.js";
 import {
   ACTION_HINT_ACTION,

@@ -4,10 +4,11 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./current-plan.js");
-const currentPlan = registry.element("caffold-task-current-plan").prototype;
+await import("./current-plan.ts");
+const CurrentPlan = registry.element("caffold-task-current-plan");
 after(() => registry.restore());
 
 test("provides the exact ready Plan and Checklist opener buttons", () => {
@@ -26,7 +27,7 @@ test("provides the exact ready Plan and Checklist opener buttons", () => {
   const owner = currentPlanOwner({ strip, controls });
   const outerClip = {};
 
-  const scope = currentPlan.actionHintScope.call(owner, {
+  const scope = owner.actionHintScope({
     scopeId: "task:thread-a:current-plan",
     clipRoots: [outerClip],
   });
@@ -70,7 +71,7 @@ test("provides the exact ready Plan and Checklist opener buttons", () => {
   controls.checklist.label = "Open checklist: 5 of 9 complete";
   assert.equal(scope.targets[1].isActionable(), true);
   assert.equal(
-    currentPlan.actionHintScope.call(owner).targets[1].label,
+    owner.actionHintScope().targets[1].label,
     "Open checklist: 5 of 9 complete",
   );
   owner.projection.plan.checklistDocument.path = "task/OTHER.md";
@@ -94,7 +95,7 @@ test("provides the status popover opener while the strip needs attention", () =>
     problems: [{ document: "checklist", code: "missing", message: "Missing" }],
   };
 
-  const scope = currentPlan.actionHintScope.call(owner, {
+  const scope = owner.actionHintScope({
     scopeId: "task:thread-a:current-plan",
   });
   assert.deepEqual(
@@ -132,25 +133,25 @@ test("excludes stale, hidden, and non-ready Current Plan owners", () => {
   controls.status.hidden = true;
   const owner = currentPlanOwner({ strip, controls });
 
-  const ready = currentPlan.actionHintScope.call(owner);
+  const ready = owner.actionHintScope();
   assert.equal(ready.targets.length, 2);
   owner.contextGeneration += 1;
   assert.equal(ready.targets.every(({ isActionable }) => !isActionable()), true);
 
   owner.projection = { status: "absent", plan: null };
-  assert.deepEqual(currentPlan.actionHintScope.call(owner).targets, []);
+  assert.deepEqual(owner.actionHintScope().targets, []);
   owner.projection = readyProjection();
   strip.hidden = true;
-  assert.deepEqual(currentPlan.actionHintScope.call(owner).targets, []);
+  assert.deepEqual(owner.actionHintScope().targets, []);
   strip.hidden = false;
   owner.isConnected = false;
-  assert.deepEqual(currentPlan.actionHintScope.call(owner).targets, []);
+  assert.deepEqual(owner.actionHintScope().targets, []);
 });
 
 test("declares Refresh as the only status popover action while it is available", () => {
   const owner = statusPopoverOwner();
 
-  const [context] = currentPlan.statusKeyboardNavigationContexts.call(owner);
+  const [context] = owner.statusKeyboardNavigationContexts();
   assert.equal(context.id, "task:thread-a:current-plan:status");
   assert.equal(context.kind, "popover");
   assert.equal(context.root, owner.popover);
@@ -179,7 +180,7 @@ test("declares Refresh as the only status popover action while it is available",
   );
 
   owner.refresh.layoutBox = false;
-  const [withoutRefresh] = currentPlan.statusKeyboardNavigationContexts.call(owner);
+  const [withoutRefresh] = owner.statusKeyboardNavigationContexts();
   assert.equal(withoutRefresh.actionHints.sessionBound, false);
   assert.deepEqual(withoutRefresh.actionHints.scope.targets, []);
 });
@@ -187,16 +188,37 @@ test("declares Refresh as the only status popover action while it is available",
 test("passes through the status popover and document dialog keyboard contexts", () => {
   const popover = { id: "popover" };
   const modal = { id: "modal" };
-  const owner = {
+  const owner = planHost({
     statusKeyboardNavigationContexts: () => [popover],
-    documentDialog: () => ({
-      keyboardNavigationContexts: () => [modal],
-    }),
-  };
-  assert.deepEqual(
-    currentPlan.keyboardNavigationContexts.call(owner),
-    [popover, modal],
-  );
+    documentDialog: { keyboardNavigationContexts: () => [modal] },
+  });
+  assert.deepEqual(owner.keyboardNavigationContexts(), [popover, modal]);
+});
+
+test("draws a ready plan's title and progress, and a problem's status", () => {
+  const ready = html(planHost({ projection: readyProjection() }));
+  assert.match(ready, /<section class="task-current-plan-strip" aria-label="Current plan" data-presentation="ready" data-complete="false" \?hidden="false">/);
+  assert.match(ready, /aria-label="Open plan: Keyboard scrolling" \?hidden="false"/);
+  assert.match(ready, /title="Keyboard scrolling">Keyboard scrolling<\/strong>/);
+  assert.match(ready, /aria-label="Open checklist: 4 of 9 complete"/);
+  assert.match(ready, /data-current-plan-progress>4 \/ 9<\/span>/);
+  assert.match(ready, /data-current-plan-action="status" popovertarget="[^"]+" aria-label="" title="" \?hidden="true"/);
+
+  const problem = html(planHost({
+    projection: {
+      status: "problem",
+      plan: null,
+      problems: [{ document: "checklist", code: "missing", message: "Missing" }],
+    },
+    readError: new Error("Offline"),
+  }));
+  assert.match(problem, /data-presentation="problem" data-complete="" \?hidden="false"/);
+  assert.match(problem, /aria-label="Plan status: CHECKLIST.md missing" title="CHECKLIST.md missing" \?hidden="false"/);
+  assert.match(problem, /<div><dt>CHECKLIST.md missing<\/dt><dd>Missing<\/dd><\/div><div><dt>Couldn't load plan<\/dt><dd>Offline<\/dd><\/div>/);
+  assert.match(problem, /data-current-plan-refresh \?hidden="false"/);
+
+  const absent = html(planHost({ projection: { status: "absent", plan: null } }));
+  assert.match(absent, /class="task-current-plan-strip"[^>]*\?hidden="true"/);
 });
 
 function currentPlanOwner({ strip, controls }) {
@@ -208,17 +230,11 @@ function currentPlanOwner({ strip, controls }) {
     },
   };
   controls.status.popoverTarget = popover.id;
-  return {
-    context: { threadId: "thread-a" },
+  return planHost({
     contextGeneration: 3,
-    hidden: false,
-    isConnected: true,
     popover,
     projection: readyProjection(),
-    ensureState() {},
-    statusPopover() {
-      return popover;
-    },
+    statusPopover: popover,
     querySelector(selector) {
       for (const [action, control] of Object.entries(controls)) {
         if (selector.includes(`[data-current-plan-action="${action}"]`)) {
@@ -227,7 +243,7 @@ function currentPlanOwner({ strip, controls }) {
       }
       return selector === ":scope > .task-current-plan-strip" ? strip : null;
     },
-  };
+  });
 }
 
 function statusPopoverOwner() {
@@ -254,17 +270,39 @@ function statusPopoverOwner() {
       return selector === '[data-current-plan-action="refresh"]' ? refresh : null;
     },
   };
-  return {
-    context: { threadId: "thread-a" },
+  return planHost({
     contextGeneration: 2,
-    isConnected: true,
     popover,
     presentation,
     refresh,
-    statusPopover() {
-      return popover;
-    },
-  };
+    statusPopover: popover,
+  });
+}
+
+// A Current Plan whose controls and popover are the given stand-ins.
+function planHost(properties) {
+  return Object.create(CurrentPlan.prototype, {
+    ...Object.getOwnPropertyDescriptors({
+      context: { threadId: "thread-a", cwd: "task", rootPath: "task" },
+      contextGeneration: 1,
+      hidden: false,
+      isConnected: true,
+      node: "settled",
+      projection: null,
+      readError: null,
+      watchError: null,
+      statusPopoverId: "task-current-plan-status-test",
+    }),
+    ...Object.getOwnPropertyDescriptors(properties),
+  });
+}
+
+function html(plan) {
+  return templateHtml(plan.render())
+    .replace(/\s+/g, " ")
+    .replaceAll(" >", ">")
+    .replaceAll("> <", "><")
+    .trim();
 }
 
 function readyProjection() {

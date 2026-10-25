@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { watchKeyboardInset } from "./keyboard-inset.js";
+import { watchKeyboardInset } from "./keyboard-inset.ts";
 
 const originalGlobals = {
   window: globalThis.window,

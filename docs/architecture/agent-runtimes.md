@@ -711,7 +711,7 @@ caffold/src/app/tasks/detail.rs          canonical Detail and history membership
 caffold/src/app/tasks/events.rs          observation reconciliation and publication
 frontend/pages/(task-workspace)/tasks/task-events.js
                                         exact-identity projection operations
-frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.js
+frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.ts
                                         snapshot/delta application and rendering cache
 runners/claude/                         transport-only runner crate
 ```

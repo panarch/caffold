@@ -1029,7 +1029,7 @@ in-page handoff preserves the one-action experience and prevents a duplicate
 request between them.
 
 A pending prompt moves through one transition table in the Detail layout's
-private `layout/prompt-submission.js`: idle, uploading, sending, and accepted.
+private `layout/prompt-submission.ts`: idle, uploading, sending, and accepted.
 Every change of node goes through that table, so an upload finishing, a stop,
 the prompt response, and the canonical item each apply only from the node they
 belong to; a late arrival for a prompt that has moved on is dropped. A prompt
@@ -1041,7 +1041,7 @@ its header and file-list bars in place instead of rendering the list again. A
 stop while uploading aborts the upload,
 discards the send's folder, and returns the message to the Composer,
 separately from the interrupt request the same stop makes for a running turn.
-Discards belong to the private `layout/upload-discards.js`, where each folder
+Discards belong to the private `layout/upload-discards.ts`, where each folder
 is sending, waiting, or settled. Any answer from Caffold settles it; a discard
 that cannot reach Caffold waits and is sent again on
 `caffold:origin-reachable`, which any request that Caffold answers raises. A
@@ -1116,7 +1116,7 @@ replacing its DOM and state.
 
 The adjacent task-scoped Detail session owns snapshot acquisition while Detail
 keeps the canonical Task metadata and rendering cache. Its private
-`layout/conversation.js` applies publication revisions to exact identities and
+`layout/conversation.ts` applies publication revisions to exact identities and
 owned membership extents, including deletion evidence. A newer Task revision
 cannot reject an unrelated conversation page, and a newer bounded page cannot
 reject an older delta outside that page. Unscoped answers update exact
@@ -1267,7 +1267,7 @@ status, error and retry presentation, styles, and Action Hint scope. It receives
 Task identity and request presentation from Conversation and emits load or
 retry intent upward. Equivalent snapshots retain its button or loading phrase DOM.
 Conversation composes that child's scope, forwards its intent, and owns scroll
-triggering and anchoring. Task Detail's private `layout/history.js` owns pagination and automatic gap
+triggering and anchoring. Task Detail's private `layout/history.ts` owns pagination and automatic gap
 recovery through one request controller. It joins actual received page spans
 and responses to their continuations; open membership extents do not prove
 loaded history. An unscoped first response contributes one known position as a
@@ -1566,10 +1566,10 @@ as proof that remote data is current.
 `caffold-terminal-page` is a direct shared Detail child under
 `tasks/(detail)/terminal`, mounted once in its slot and shown for the Task or
 Section the Detail layout activates it for. It owns the terminal screen's
-control model and WebSocket (private `page/model.js`, `page/connection.js`, and
-`page/keys.js`), the empty and "open on another screen" states, the bar with
+control model and WebSocket (private `page/model.ts`, `page/connection.ts`, and
+`page/keys.ts`), the empty and "open on another screen" states, the bar with
 the special-key toggle, Kill terminal, and the header toggle, the special key
-row (`components/special-keys.js`), and the choice to give the Detail header's
+row (`components/special-keys.ts`), and the choice to give the Detail header's
 height to the terminal, which each browser keeps in `localStorage`.
 [Terminals](terminal.md#browser) owns the control model and the backend
 contract. The bar is as tall as the review file viewer's header. Detail passes
@@ -1596,7 +1596,7 @@ An on-screen keyboard is the one layout value the terminal screen sets from
 JavaScript. Browsers keep the page laid out at full height when a phone's or
 tablet's keyboard opens and shrink only the visual viewport, so CSS cannot see
 how much the keyboard covers. While active, the screen measures that height
-from `window.visualViewport` (`terminal/page/keyboard-inset.js`) and leaves it
+from `window.visualViewport` (`terminal/page/keyboard-inset.ts`) and leaves it
 as bottom padding, which puts the prompt and the special key row above the
 keyboard. The measurement counts nothing while the page is pinch-zoomed. Other
 screens keep the browser's default of panning to the focused input.
@@ -1986,34 +1986,34 @@ frontend/
 |           |   |-- composer/components/attachments.ts
 |           |   `-- composer/components/context-usage.ts
 |           `-- (detail)/
-|               |-- layout.js
+|               |-- layout.ts
 |               |-- components/
-|               |   |-- git-menu.js
-|               |   |-- github-menu.js
-|               |   `-- terminal-button.js
+|               |   |-- git-menu.ts
+|               |   |-- github-menu.ts
+|               |   `-- terminal-button.ts
 |               |-- terminal/
-|               |   |-- page.js
+|               |   |-- page.ts
 |               |   |-- page/...
-|               |   `-- components/special-keys.js
+|               |   `-- components/special-keys.ts
 |               |-- (task)/
-|               |   |-- layout.js
-|               |   |-- session.js
+|               |   |-- layout.ts
+|               |   |-- session.ts
 |               |   `-- components/
-|               |       |-- summary.js
+|               |       |-- summary.ts
 |               |       |-- conversation.ts
-|               |       |-- command-dialog.js
-|               |       |-- current-plan.js
+|               |       |-- command-dialog.ts
+|               |       |-- current-plan.ts
 |               |       |-- current-plan/
-|               |       |   |-- model.js
-|               |       |   `-- components/document-dialog.js
+|               |       |   |-- model.ts
+|               |       |   `-- components/document-dialog.ts
 |               |       `-- conversation/...
 |               |-- (section)/
-|               |   |-- layout.js
+|               |   |-- layout.ts
 |               |   `-- components/
-|               |       |-- conversation-shortcuts.js
-|               |       |-- conversation-shortcuts/components/fork-dialog.js
-|               |       |-- github-shortcuts.js
-|               |       `-- summary.js
+|               |       |-- conversation-shortcuts.ts
+|               |       |-- conversation-shortcuts/components/fork-dialog.ts
+|               |       |-- github-shortcuts.ts
+|               |       `-- summary.ts
 |               |-- (review)/
 |               |   |-- layout.ts
 |               |   |-- changes-reading.ts

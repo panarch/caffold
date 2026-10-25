@@ -248,7 +248,7 @@ export class CaffoldGithubPullsLayout extends LitElement {
   prepareRoute(
     route: {
       page?: number;
-      number?: number;
+      number?: number | null;
       files?: boolean;
       path?: string;
     } | null,

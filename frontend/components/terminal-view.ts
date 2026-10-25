@@ -73,7 +73,7 @@ let libraryPromise: Promise<TerminalLibrary> | null = null;
 // page, so each later attempt imports it under a new fragment.
 let libraryFailures = 0;
 
-class CaffoldTerminalView extends LitElement {
+export class CaffoldTerminalView extends LitElement {
   size: TerminalSize | null = null;
   private terminal: Terminal | null = null;
   private fitAddon: FitAddon | null = null;

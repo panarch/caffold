@@ -6,10 +6,8 @@ import {
 } from "../../../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./document-dialog.js");
-const documentDialog = registry.element(
-  "caffold-current-plan-document-dialog",
-).prototype;
+await import("./document-dialog.ts");
+const DocumentDialog = registry.element("caffold-current-plan-document-dialog");
 after(() => registry.restore());
 
 test("provides Close and only the currently visible Retry action", () => {
@@ -23,13 +21,13 @@ test("provides Close and only the currently visible Retry action", () => {
     open: true,
     querySelector: (selector) => controls.get(selector),
   };
-  const owner = {
+  const owner = dialogHost({
     isConnected: true,
     current: { path: "task/PLAN.md" },
-    dialog: () => dialog,
-    preview: () => null,
-  };
-  const scope = documentDialog.actionHintScope.call(owner);
+    dialog,
+    preview: null,
+  });
+  const scope = owner.actionHintScope();
 
   assert.deepEqual(scope.targets.map(({ id }) => id), [
     "current-plan-document:task%2FPLAN.md:close",
@@ -61,13 +59,13 @@ test("merges the current document preview scope with modal controls", () => {
     querySelector: (selector) =>
       selector === ".current-plan-document-close" ? close : null,
   };
-  const owner = {
+  const owner = dialogHost({
     isConnected: true,
     current: { path: "task/PLAN.md" },
-    dialog: () => dialog,
-    preview: () => preview,
-  };
-  const scope = documentDialog.actionHintScope.call(owner);
+    dialog,
+    preview,
+  });
+  const scope = owner.actionHintScope();
 
   assert.deepEqual(scope.targets.map(({ id }) => id), [
     "current-plan-document:task%2FPLAN.md:close",
@@ -128,15 +126,15 @@ test("provides its exact modal document context and preview scrollport", () => {
       return presentation;
     },
   };
-  const owner = {
+  const owner = dialogHost({
     current: { path: "task/PLAN.md", label: "Plan" },
     isConnected: true,
-    dialog: () => dialog,
-    preview: () => preview,
+    dialog,
+    preview,
     actionHintScope: () => actionScope,
-  };
+  });
 
-  const [context] = documentDialog.keyboardNavigationContexts.call(owner);
+  const [context] = owner.keyboardNavigationContexts();
   const surface = context.scroll.scope.surfaces[0];
   assert.equal(context.id, "current-plan-document:task/PLAN.md");
   assert.equal(context.kind, "modal");
@@ -166,15 +164,15 @@ test("ignores a stale native close event after the retained dialog reopens", () 
       aborted = true;
     },
   };
-  const owner = {
+  const owner = dialogHost({
     requestId: 4,
     requestController: controller,
     current,
     opener,
-    dialog: () => ({ open: true }),
-  };
+    dialog: { open: true },
+  });
 
-  documentDialog.handleClose.call(owner);
+  owner.handleClose();
 
   assert.equal(owner.requestId, 4);
   assert.equal(owner.requestController, controller);
@@ -192,20 +190,20 @@ test("restores the opener before native close handling returns", () => {
     },
   };
   let imagesReleased = false;
-  const owner = {
+  const owner = dialogHost({
     requestId: 4,
     requestController: null,
     current: { path: "task/PLAN.md" },
     opener,
-    dialog: () => ({ open: false }),
-    preview: () => ({
+    dialog: { open: false },
+    preview: {
       releaseImages() {
         imagesReleased = true;
       },
-    }),
-  };
+    },
+  });
 
-  documentDialog.handleClose.call(owner);
+  owner.handleClose();
 
   assert.equal(focused, true);
   assert.equal(imagesReleased, true);
@@ -213,6 +211,14 @@ test("restores the opener before native close handling returns", () => {
   assert.equal(owner.current, null);
   assert.equal(owner.opener, null);
 });
+
+// A document dialog whose native dialog and preview are the given stand-ins.
+function dialogHost(properties) {
+  return Object.create(DocumentDialog.prototype, {
+    ...Object.getOwnPropertyDescriptors({ isConnected: true, preview: null }),
+    ...Object.getOwnPropertyDescriptors(properties),
+  });
+}
 
 function actionControl(textContent, { visible = true } = {}) {
   return {

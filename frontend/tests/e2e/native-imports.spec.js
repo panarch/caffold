@@ -28,7 +28,7 @@ test("native import aliases share module identity with asset URLs and register t
     }));
     const consumers = [
       ["#tasks/components/task-create/components/directory-field.ts", "caffold-task-directory-field"],
-      ["#tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js", "caffold-conversation-fork-dialog"],
+      ["#tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.ts", "caffold-conversation-fork-dialog"],
       ["#tasks/(detail)/(github)/components/task-start-dialog.ts", "caffold-github-task-start-dialog"],
     ];
     const registrations = await Promise.all(consumers.map(async ([alias, tag]) => {

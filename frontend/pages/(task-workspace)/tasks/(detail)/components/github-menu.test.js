@@ -6,7 +6,7 @@ import {
 } from "../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./github-menu.js");
+await import("./github-menu.ts");
 const githubMenu = registry.element("caffold-task-detail-github").prototype;
 after(() => registry.restore());
 
@@ -24,10 +24,7 @@ test("provides the GitHub opener and exact retained popover actions", () => {
   assert.equal(control.clicks, 1);
 
   popover.open = true;
-  const scope = githubMenu.githubActionHintScope.call(owner, {
-    contextId: "detail:task:a:github",
-    popover,
-  });
+  const scope = githubMenu.githubActionHintScope.call(owner, "detail:task:a:github", popover);
   assert.deepEqual(
     scope.targets.map(({ id, actionId }) => ({ id, actionId })),
     [
@@ -48,7 +45,6 @@ test("provides the GitHub opener and exact retained popover actions", () => {
 
 test("closes its popover when the bound Action Hint session is dismissed", () => {
   const { owner, popover } = menuOwner([]);
-  owner.deactivate = githubMenu.deactivate;
   let hidden = 0;
   popover.open = true;
   popover.hidePopover = () => {
@@ -64,7 +60,6 @@ test("closes its popover when the bound Action Hint session is dismissed", () =>
 test("declares a session-bound Action Hint context for its retained popover context", () => {
   const { owner, popover } = menuOwner([option("pulls", "Pull requests")]);
   popover.querySelector = () => presentation();
-  owner.githubActionHintScope = githubMenu.githubActionHintScope;
 
   const [context] = githubMenu.keyboardNavigationContexts.call(owner, {
     scopeId: "detail:task:a",
@@ -107,13 +102,13 @@ function menuOwner(options) {
     contains: (candidate) => options.includes(candidate),
     querySelectorAll: () => options,
   };
-  const owner = {
+  const owner = Object.create(githubMenu, Object.getOwnPropertyDescriptors({
     isConnected: true,
-    snapshot: { available: true },
-    ensureState() {},
-    githubTrigger: () => control,
-    githubPopover: () => popover,
-  };
+    available: true,
+    performUpdate() {},
+    githubTrigger: control,
+    githubPopover: popover,
+  }));
   return { owner, control, popover };
 }
 
