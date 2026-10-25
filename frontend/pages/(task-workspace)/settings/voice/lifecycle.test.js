@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { VoiceSettingsLifecycle, voiceReadinessKey } from "./lifecycle.js";
+import { VoiceSettingsLifecycle, voiceReadinessKey } from "./lifecycle.ts";
 
 function settings({ selected = "whisper", whisper = {}, openai = {}, gemini = {}, grok = {} } = {}) {
   return {

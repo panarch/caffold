@@ -49,7 +49,8 @@ A module moves to TypeScript whole: `name.ts` is typed throughout under the
 strict check, and `name.js` has not moved yet. While a JavaScript module has
 TypeScript callers, a same-stem `name.d.ts` beside it declares the part they
 use, and it goes when the module becomes `name.ts`. The TypeScript-modules
-contract keeps each `.d.ts` beside its `.js` and no module in both languages.
+contract keeps each `.d.ts` beside its `.js` and no module in both languages;
+`build-info.d.ts` alone declares a module the server build writes instead.
 
 Shared imports can use three native aliases:
 
@@ -1722,7 +1723,7 @@ stylesheet gives the six classes their `--syntax-*` colors.
 
 ## Notes
 
-Notes lives inside Task Workspace. `notes/layout.js` defines
+Notes lives inside Task Workspace. `notes/layout.ts` defines
 `caffold-notes-workspace`, the owner of the primary and optional secondary
 route ids, independent document reads, and one retained navigator. Each
 folder level and each document has its own generation and abort controller;
@@ -1734,13 +1735,13 @@ Leaving Notes or disconnecting cancels all reads and deactivates both Info
 popovers. Reentry and foreground recovery reread the top, previously read
 levels, and both committed documents.
 
-`notes/layout/selection.js` owns the private transient selection graph: single,
+`notes/layout/selection.ts` owns the private transient selection graph: single,
 choose companion, paired, replace primary, and replace secondary. It accepts
 committed route changes, permits companion selection only from a readable
 primary, and cancels to the previous committed presentation. The route schema
 owns reloadable ids as described in [Notes routes](navigation.md#notes-routes).
 
-`notes/components/document.js` defines `caffold-note-document`. Each retained
+`notes/components/document.ts` defines `caffold-note-document`. Each retained
 instance owns its header, Markdown Preview, Info, focus, and public keyboard,
 Action Hint, and Scroll providers. The primary instance moves between its
 ordinary detail location and a left slot above the workspace tabs. The
@@ -1749,11 +1750,11 @@ uses the browser's state-preserving move when available and restores scroll
 through the child's public API otherwise. Replacing a document resets only
 its preview; refreshing the same document preserves its reading position.
 
-`notes/components/navigator.js` defines `caffold-notes-navigator`. It renders
+`notes/components/navigator.ts` defines `caffold-notes-navigator`. It renders
 the brand or selection header and the shared File Tree from workspace
 snapshots. Directory disclosure and tree scroll remain with that instance.
 It emits open-Note, load-directory, Retry, cancel, and close intents. The
-other pane's committed Note is disabled in a selector. `notes/tree.js` maps
+other pane's committed Note is disabled in a selector. `notes/tree.ts` maps
 independently read folder levels to directories-first File Tree nodes and
 reveals the selected Note's containing directories once their rows exist.
 
@@ -1766,7 +1767,7 @@ resizer and collapse toggle without writing their saved preferences. The left
 bottom tabs occur once, and each visible document or selector publishes its
 own clipped input and scroll scope. Hidden panes supply no active targets.
 
-`notes/components/info.js` defines `caffold-notes-info`, the Info button at the
+`notes/components/info.ts` defines `caffold-notes-info`, the Info button at the
 end of the Note header. Its popover lists when the open Note changed and was
 created and the Tasks that wrote it, and below that offers Copy path and Copy
 Markdown. The button provides its own Action Hint, and the popover is a
@@ -1778,10 +1779,10 @@ same Note is read again.
 
 The two copy actions are separate components in
 `notes/components/info/components/`, and the popover hands each the Note it
-shows. `copy-path.js` defines
+shows. `copy-path.ts` defines
 `caffold-notes-info-copy-path`, which copies the names in the Note's `location`
 and the Note's own name, joined by ` / `, followed by `(note id: <id>)` with the
-id the Notes tools read the Note by. `copy-markdown.js` defines
+id the Notes tools read the Note by. `copy-markdown.ts` defines
 `caffold-notes-info-copy-markdown`, which copies the Note's Markdown content and
 is disabled for an empty Note. Each writes to the clipboard, reports Copied or
 a failure for a moment, drops a copy still in flight when what it copies
@@ -1950,13 +1951,13 @@ frontend/
 |       |-- task-store-status.js
 |       |-- task-store-status/...
 |       |-- notes/
-|       |   |-- layout.js
-|       |   |-- layout/selection.js
-|       |   |-- tree.js
-|       |   |-- components/document.js
-|       |   `-- components/navigator.js
+|       |   |-- layout.ts
+|       |   |-- layout/selection.ts
+|       |   |-- tree.ts
+|       |   |-- components/document.ts
+|       |   `-- components/navigator.ts
 |       |-- settings/
-|       |   |-- keyboard/page.js
+|       |   |-- keyboard/page.ts
 |       |   `-- ...
 |       `-- tasks/
 |           |-- layout.js

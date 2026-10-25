@@ -5,7 +5,7 @@ import {
   canonicalTailnetUrl,
   normalizeTailscaleStatus,
   tailscaleQrCodeUrl,
-} from "./tailscale.js";
+} from "./tailscale.ts";
 
 function status(state, overrides = {}) {
   return {

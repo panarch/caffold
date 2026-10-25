@@ -65,7 +65,7 @@ test("serves one Task workspace shell and only active static assets", { tag: "@a
     "/assets/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts",
     "/assets/pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts",
     "/assets/pages/(task-workspace)/settings/components/detail-list.css",
-    "/assets/pages/(task-workspace)/settings/components/detail-list.js",
+    "/assets/pages/(task-workspace)/settings/components/detail-list.ts",
     "/assets/components/file-navigator/components/list.ts",
   ]) {
     expect(serviceWorker).toContain(asset);

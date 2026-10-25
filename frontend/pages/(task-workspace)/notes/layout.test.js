@@ -8,7 +8,7 @@ import {
 
 const apiHook = registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier === "#app/api.js" && context.parentURL === new URL("./layout.js", import.meta.url).href) {
+    if (specifier === "#app/api.js" && context.parentURL === new URL("./layout.ts", import.meta.url).href) {
       return {
         shortCircuit: true,
         url: "data:text/javascript,export const getNotes=(...a)=>globalThis.notesApi.getNotes(...a);export const getNote=(...a)=>globalThis.notesApi.getNote(...a);",
@@ -18,8 +18,8 @@ const apiHook = registerHooks({
   },
 });
 const registry = installCustomElementUnitRegistry();
-const { NotesSelection } = await import("./layout/selection.js");
-await import("./layout.js");
+const { NotesSelection } = await import("./layout/selection.ts");
+await import("./layout.ts");
 const workspace = registry.element("caffold-notes-workspace").prototype;
 const timers = new Map();
 let nextTimerId = 0;
@@ -69,21 +69,14 @@ function readingOwner() {
     levelReads: new Map(),
     noteRead: { generation: 0, controller: null },
     noteState: { state: "idle", note: null, message: "" },
-    renders: 0,
-    navigatorSyncs: 0,
-    renderDetail() {
-      this.renders += 1;
-    },
-    syncNavigator() {
-      this.navigatorSyncs += 1;
-    },
-    syncPresentation() {},
-    ensureRendered() {},
-    info: () => null,
+    documents: null,
+    requestUpdate() {},
+    performUpdate() {},
   };
   for (const method of [
     "loadLevel",
     "loadNote",
+    "setLevel",
     "cancelNoteRead",
     "cancelLevelReads",
     "reload",
@@ -346,12 +339,11 @@ test("the navigator is told to open the directories that hold the open Note", ()
       },
       message: "",
     },
-    connectedNotesNavigator: { setSnapshot: (snapshot) => snapshots.push(snapshot) },
   };
 
-  workspace.syncNavigator.call(owner);
+  snapshots.push(workspace.navigatorSnapshot.call(owner));
   owner.noteId = "inbox";
-  workspace.syncNavigator.call(owner);
+  snapshots.push(workspace.navigatorSnapshot.call(owner));
 
   assert.deepEqual(snapshots.map(({ selectedNoteId, reveal }) => ({ selectedNoteId, reveal })), [
     {
@@ -390,14 +382,15 @@ test("the details owner in the Note header provides the Notes keyboard contexts 
   const scopeIds = [];
   const owner = {
     hidden: false,
-    ensureRendered() {},
-    primaryDocument: {
-      keyboardNavigationContexts({ scopeId }) {
-        scopeIds.push(scopeId);
-        return [context];
+    documents: {
+      primary: {
+        keyboardNavigationContexts({ scopeId }) {
+          scopeIds.push(scopeId);
+          return [context];
+        },
       },
+      secondary: { keyboardNavigationContexts: () => [] },
     },
-    secondaryDocument: { keyboardNavigationContexts: () => [] },
   };
 
   assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), [context]);

@@ -423,3 +423,200 @@ export function getGitHubPullFile(
   number: number,
   file: string,
 ): Promise<GitHubPullFileDiff>;
+
+export interface NoteDirectorySummary {
+  id: string;
+  name: string;
+  updatedAtMs: number;
+  directoryCount: number;
+  noteCount: number;
+}
+
+export interface NoteSummary {
+  id: string;
+  name: string;
+  updatedAtMs: number;
+}
+
+// What one directory, or the top of the Notes tree, directly holds.
+export interface NotesLevel {
+  directories: NoteDirectorySummary[];
+  notes: NoteSummary[];
+}
+
+// The Task that wrote a Note. A Task deleted since then keeps only its id.
+export type NoteTask =
+  | { threadId: string; state: "active" | "archived"; displayName: string }
+  | { threadId: string; state: "deleted" };
+
+export interface Note {
+  id: string;
+  name: string;
+  content: string;
+  // The directories that hold the Note, from the top of the tree.
+  location: Array<{ id: string; name: string }>;
+  createdAtMs: number;
+  updatedAtMs: number;
+  createdBy: NoteTask;
+  updatedBy: NoteTask;
+}
+
+export function getNotes(
+  directoryId: string,
+  signal?: AbortSignal,
+): Promise<NotesLevel>;
+
+export function getNote(noteId: string, signal?: AbortSignal): Promise<Note>;
+
+export interface CodexMcpDiagnostics {
+  available: boolean;
+  processGeneration: number | null;
+  appServerVersion: string | null;
+  threads: Array<{
+    threadId: string;
+    available: boolean;
+    servers?: Array<{
+      name?: string;
+      runtimeStatus?: string;
+      authStatus?: string;
+    }>;
+    error?: string | null;
+  }>;
+  error: string | null;
+}
+
+export interface CodexUpdates {
+  update: "available" | "upToDate" | "unknown";
+  installedVersion?: string | null;
+  runningVersion?: string | null;
+  latestVersion?: string | null;
+  automaticUpdates?: string | null;
+  problems?: { latestVersion?: string; installation?: string } | null;
+}
+
+export function getCodexMcpDiagnostics(): Promise<CodexMcpDiagnostics>;
+
+export function getCodexUpdates(): Promise<CodexUpdates>;
+
+// Each source answers for itself; one that could not answer names its problem
+// under `problems` instead.
+export interface ClaudeStatus {
+  executable?: { path?: string; version: string };
+  auth?: {
+    loggedIn: boolean;
+    method?: string;
+    email?: string;
+    subscription?: string;
+  };
+  usage?: {
+    subscriptionType?: string;
+    windows: Array<{
+      kind: string;
+      percent: number;
+      resetsAt?: string;
+      model?: string;
+    }>;
+  };
+  runner?: {
+    running: boolean;
+    pid?: number;
+    version?: string;
+    sessions?: number;
+    idleTimeoutSecs?: number;
+  };
+  problems?: Partial<
+    Record<"executable" | "auth" | "usage" | "runner", string>
+  >;
+}
+
+export interface GrokStatus {
+  executable?: { path: string; version: string };
+  leader?: {
+    socketPath: string;
+    running: boolean;
+    socketStale: boolean;
+    pid?: number;
+    version?: string;
+  };
+  connection: {
+    state: string;
+    agentVersion?: string;
+    authMethods: string[];
+    defaultAuthMethod?: string;
+  };
+  auth: {
+    cachedSignIn: boolean;
+    verified?: {
+      authenticated: boolean;
+      mode?: string;
+      subscriptionTier?: string;
+      email?: string;
+    };
+  };
+  usage?: {
+    percent?: number;
+    period?: { type?: string; start?: string; end?: string };
+    onDemand?: { used?: number; cap?: number };
+    prepaid?: { balance: number };
+  };
+  problems?: Partial<
+    Record<"executable" | "auth" | "usage" | "leader" | "connection", string>
+  >;
+}
+
+export function getClaudeStatus(): Promise<ClaudeStatus>;
+
+export function getGrokStatus(): Promise<GrokStatus>;
+
+export interface PushInstallation {
+  clientId: string;
+  installationLabel: string;
+  updatedAtMs?: number;
+}
+
+export interface PushSubscriptionPayload {
+  installationLabel: string;
+  endpoint: string;
+  expirationTime: number | null;
+  keys: { p256dh: string; auth: string };
+}
+
+export function getPushConfig(): Promise<{ publicKey: string }>;
+
+export function getPushInstallations(clientId: string): Promise<{
+  currentState: string;
+  installations?: PushInstallation[];
+}>;
+
+export function upsertPushInstallation(
+  clientId: string,
+  subscription: PushSubscriptionPayload,
+): Promise<PushInstallation>;
+
+export function removePushInstallation(clientId: string): Promise<unknown>;
+
+// The Tailscale, Voice, and Jev answers are checked by the lifecycle that
+// asked for them.
+export function getTailscaleStatus(): Promise<unknown>;
+
+export function setTailscaleServe(enabled: boolean): Promise<unknown>;
+
+export function getVoiceSettings(): Promise<unknown>;
+
+export function selectVoiceProvider(provider: string): Promise<unknown>;
+
+export function startVoiceModelDownload(): Promise<unknown>;
+
+export function removeVoiceModel(): Promise<unknown>;
+
+export function storeVoiceKey(provider: string, key: string): Promise<unknown>;
+
+export function removeVoiceKey(provider: string): Promise<unknown>;
+
+export function getJevSettings(): Promise<unknown>;
+
+export function saveJevCriteria(criteria: string): Promise<unknown>;
+
+export function storeJevKey(key: string): Promise<unknown>;
+
+export function removeJevKey(): Promise<unknown>;

@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./copy-markdown.js");
+await import("./copy-markdown.ts");
 const copyMarkdown = registry.element("caffold-notes-info-copy-markdown").prototype;
 after(() => registry.restore());
 
@@ -34,40 +34,49 @@ function control() {
   };
 }
 
+const NOTE_CHANGED = new Map([["note", undefined]]);
+
 function copyMarkdownHost(properties = {}) {
-  return Object.assign(Object.create(copyMarkdown), {
-    connected: true,
-    initialized: true,
+  const host = {
     isConnected: true,
     generation: 0,
     copyState: "idle",
     markdown: "",
-    patched: 0,
-    ensureDom() {},
+    note: null,
+    button: null,
     clearFeedback() {},
-    patchPresentation() {
-      this.patched += 1;
-    },
     ...properties,
-  });
+  };
+  for (const method of [
+    "willUpdate",
+    "copy",
+    "actionHintScope",
+    "acceptsCompletion",
+    "invalidatePendingCopy",
+  ]) {
+    host[method] = copyMarkdown[method];
+  }
+  return host;
+}
+
+function setNote(host, note) {
+  host.note = note;
+  host.willUpdate(NOTE_CHANGED);
 }
 
 test("retires a copy in flight when the Note's content changes, and only then", () => {
   const host = copyMarkdownHost();
-  host.setNote(STORAGE);
+  setNote(host, STORAGE);
   assert.equal(host.markdown, STORAGE.content);
   host.copyState = "copying";
   const inFlight = host.generation;
-  const patched = host.patched;
 
-  host.setNote({ ...STORAGE, name: "Storage decision, renamed" });
+  setNote(host, { ...STORAGE, name: "Storage decision, renamed" });
   assert.equal(host.acceptsCompletion(inFlight), true);
-  assert.equal(host.patched, patched);
 
-  host.setNote({ ...STORAGE, content: "# Storage, rewritten\n" });
+  setNote(host, { ...STORAGE, content: "# Storage, rewritten\n" });
   assert.equal(host.acceptsCompletion(inFlight), false);
   assert.equal(host.copyState, "idle");
-  assert.equal(host.patched, patched + 1);
 });
 
 test("copies the Note's Markdown, reports the outcome until it clears, and copies nothing for an empty Note", async (t) => {
@@ -83,7 +92,7 @@ test("copies the Note's Markdown, reports the outcome until it clears, and copie
     delete globalThis.navigator.clipboard;
   });
   const host = copyMarkdownHost();
-  host.setNote(STORAGE);
+  setNote(host, STORAGE);
   const written = [];
   clipboard.writeText = async (text) => {
     written.push(text);
@@ -107,12 +116,12 @@ test("copies the Note's Markdown, reports the outcome until it clears, and copie
   });
   const pending = host.copy();
   assert.equal(host.copyState, "copying");
-  host.setNote({ ...STORAGE, content: "# Storage, rewritten\n" });
+  setNote(host, { ...STORAGE, content: "# Storage, rewritten\n" });
   release();
   await pending;
   assert.equal(host.copyState, "idle");
 
-  host.setNote({ ...STORAGE, content: "" });
+  setNote(host, { ...STORAGE, content: "" });
   written.length = 0;
   clipboard.writeText = async (text) => {
     written.push(text);
@@ -123,8 +132,8 @@ test("copies the Note's Markdown, reports the outcome until it clears, and copie
 
 test("offers Copy Markdown to the popover's Action Hints while there is Markdown to copy", () => {
   const button = control();
-  const host = copyMarkdownHost({ button: () => button });
-  host.setNote(STORAGE);
+  const host = copyMarkdownHost({ button });
+  setNote(host, STORAGE);
   const popover = { id: "popover" };
   let current = true;
   const scopeOf = () => host.actionHintScope({
@@ -163,8 +172,5 @@ test("refuses a completion that outlived its element", () => {
   const host = copyMarkdownHost({ generation: 3 });
   assert.equal(host.acceptsCompletion(3), true);
   host.isConnected = false;
-  assert.equal(host.acceptsCompletion(3), false);
-  host.isConnected = true;
-  host.connected = false;
   assert.equal(host.acceptsCompletion(3), false);
 });

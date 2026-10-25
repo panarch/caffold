@@ -18,7 +18,7 @@ const buildInfoHook = registerHooks({
   },
 });
 const registry = installCustomElementUnitRegistry();
-await import("./page.js");
+await import("./page.ts");
 const about = registry.element("caffold-settings-about-page").prototype;
 after(() => {
   registry.restore();
@@ -145,7 +145,7 @@ test("offers the latest release link while it is the one on show", () => {
   assert.deepEqual(about.actionHintScope.call(owner).targets, []);
 });
 
-const { caffoldUpdatesView, lastUpdateValue } = await import("./page.js");
+const { caffoldUpdatesView, lastUpdateValue } = await import("./page.ts");
 
 function answered(status) {
   return { checking: false, status, error: null };

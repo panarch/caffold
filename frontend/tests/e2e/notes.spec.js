@@ -492,6 +492,51 @@ test("a directory that fails to load says so and loads again when it is opened a
   await expect(notesNavigator(page).locator("li.file-tree-status")).toHaveCount(0);
 });
 
+test("the top of the tree says it is loading or could not load, and a failed reread keeps the tree", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  let failTop = true;
+  await stubNotes(page, { failLevel: (directoryId) => directoryId === "" && failTop });
+  let releaseTop;
+  const topHeld = new Promise((resolve) => {
+    releaseTop = resolve;
+  });
+  let holdTop = true;
+  await page.route(/\/api\/notes(?:\?|$)/, async (route) => {
+    const directoryId = new URL(route.request().url()).searchParams.get("directoryId") ?? "";
+    if (directoryId === "" && holdTop) {
+      holdTop = false;
+      await topHeld;
+    }
+    await route.fallback();
+  });
+  await page.goto("/notes");
+
+  const status = notesNavigator(page).locator(".notes-navigator-status");
+  const message = status.locator(".notes-navigator-message");
+  const retry = status.getByRole("button", { name: "Retry", exact: true });
+  const tree = notesNavigator(page).locator("caffold-file-tree");
+  await expect(message.locator("caffold-loading-text")).toHaveText("Loading notes…");
+  await expect(retry).toBeHidden();
+  await expect(tree).toBeHidden();
+
+  releaseTop();
+  await expect(message).toHaveText("Notes are unavailable.");
+  await expect(status).toHaveAttribute("data-state", "failed");
+  await expect(tree).toBeHidden();
+
+  failTop = false;
+  await retry.click();
+  await expect(treeNames(page)).toHaveText(["Projects", "Inbox"]);
+  await expect(status).toBeHidden();
+
+  failTop = true;
+  await page.evaluate(() => document.querySelector("caffold-notes-workspace").reload());
+  await expect(message).toHaveText("Notes are unavailable.");
+  await expect(retry).toBeVisible();
+  await expect(treeNames(page)).toHaveText(["Projects", "Inbox"]);
+});
+
 test("the Note header measures the same as the Settings header it follows", { tag: "@all-viewports" }, async ({
   page,
 }) => {

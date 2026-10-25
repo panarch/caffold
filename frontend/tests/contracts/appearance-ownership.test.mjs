@@ -484,7 +484,7 @@ test("workspace header identity and titles share semantic ownership", () => {
     "pages/(task-workspace)/components/workspace-brand.css",
   );
   const brandView = readFrontend(
-    "pages/(task-workspace)/components/workspace-brand.js",
+    "pages/(task-workspace)/components/workspace-brand.ts",
   );
   const taskNavigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.css",
@@ -499,13 +499,13 @@ test("workspace header identity and titles share semantic ownership", () => {
     "pages/(task-workspace)/settings/components/navigator.css",
   );
   const settingsNavigatorView = readFrontend(
-    "pages/(task-workspace)/settings/components/navigator.js",
+    "pages/(task-workspace)/settings/components/navigator.ts",
   );
   const settingsLayout = readFrontend(
     "pages/(task-workspace)/settings/layout.css",
   );
   const appearanceView = readFrontend(
-    "pages/(task-workspace)/settings/appearance/page.js",
+    "pages/(task-workspace)/settings/appearance/page.ts",
   );
 
   assert.match(tokens, /--workspace-header-title-size: 0\.8125rem/);
@@ -660,7 +660,7 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
   const taskWorkspace = readFrontend("pages/(task-workspace)/layout.js");
   const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const settingsWorkspace = readFrontend(
-    "pages/(task-workspace)/settings/layout.js",
+    "pages/(task-workspace)/settings/layout.ts",
   );
   assert.match(appLayout, /<main class="app-main"/);
   for (const source of [taskWorkspace, tasksPage, settingsWorkspace]) {
@@ -670,13 +670,13 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
     settingsWorkspace,
     /role="region"[\s\S]*aria-labelledby="settings-workspace-title"/,
   );
-  assert.match(settingsWorkspace, /<h1 id="settings-workspace-title"><\/h1>/);
+  assert.match(settingsWorkspace, /<h1 id="settings-workspace-title">\$\{/);
 
   for (const path of [
-    "pages/(task-workspace)/settings/appearance/page.js",
-    "pages/(task-workspace)/settings/files/page.js",
-    "pages/(task-workspace)/settings/codex/page.js",
-    "pages/(task-workspace)/settings/about/page.js",
+    "pages/(task-workspace)/settings/appearance/page.ts",
+    "pages/(task-workspace)/settings/files/page.ts",
+    "pages/(task-workspace)/settings/codex/page.ts",
+    "pages/(task-workspace)/settings/about/page.ts",
   ]) {
     assert.doesNotMatch(
       readFrontend(path),
@@ -684,22 +684,22 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
     );
   }
   assert.match(
-    readFrontend("pages/(task-workspace)/settings/components/navigator.js"),
+    readFrontend("pages/(task-workspace)/settings/components/navigator.ts"),
     /aria-label="Settings sections"/,
   );
   assert.doesNotMatch(
-    readFrontend("pages/(task-workspace)/settings/components/navigator.js"),
+    readFrontend("pages/(task-workspace)/settings/components/navigator.ts"),
     /Local to this browser/,
   );
 
   const appearancePage = readFrontend(
-    "pages/(task-workspace)/settings/appearance/page.js",
+    "pages/(task-workspace)/settings/appearance/page.ts",
   );
   assert.match(appearancePage, /settings-typeface-preview/);
   assert.match(appearancePage, /settings-text-preview/);
   assert.match(appearancePage, /uiTypefacePreset:/);
   assert.match(appearancePage, /codeTypefacePreset:/);
-  assert.match(appearancePage, /renderInlineIcon\("RotateCcw"/);
+  assert.match(appearancePage, /inlineIcon\("RotateCcw"/);
   assert.match(appearancePage, /data-reset-label=/);
   assert.doesNotMatch(appearancePage, /data-typeface-description/);
   assert.doesNotMatch(appearancePage, /settings-interface-preview/);

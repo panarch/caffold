@@ -553,6 +553,10 @@ test("shows Codex versions and explicitly restarts an outdated runtime", { tag: 
   await settings.getByRole("button", { name: "Restart runtime…" }).click();
   await dialog.getByRole("button", { name: "Restart Codex" }).click();
   await expect(settings.getByRole("button", { name: "Restarting…" })).toBeDisabled();
+  // A restart holds Refresh back without turning its icon.
+  await expect(refresh).toBeDisabled();
+  await expect(refresh.locator(".settings-refresh-icon"))
+    .toHaveCSS("animation-name", "none");
 
   releaseRestart();
   await expect(settings).toContainText("Codex runtime restarted.");
@@ -2622,6 +2626,13 @@ test("turns keyboard navigation off through its declared switch", { tag: "@all-v
   await expect(shortcutList.getByRole("heading", { name: "Key combinations" })).toBeVisible();
   await expect(page.locator("caffold-settings-keyboard-page")).toContainText(
     "Single keys need Keyboard navigation on; key combinations always work.",
+  );
+  // The page says what the switch is for and leaves the keys to the list.
+  await expect(page.locator("caffold-settings-keyboard-page")).toContainText(
+    "Navigate Caffold with single keys when you are not typing.",
+  );
+  await expect(page.locator("caffold-settings-keyboard-page")).not.toContainText(
+    "H/L to move horizontally",
   );
   await captureReviewScreenshot(
     page,

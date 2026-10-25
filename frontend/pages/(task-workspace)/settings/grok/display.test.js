@@ -6,7 +6,7 @@ import {
   prepaidValue,
   usagePeriodLabel,
   usagePeriodValue,
-} from "./display.js";
+} from "./display.ts";
 
 test("usage periods read in this page's words, and unknown types in their own", () => {
   assert.equal(usagePeriodLabel({ type: "USAGE_PERIOD_TYPE_WEEKLY" }), "Weekly");

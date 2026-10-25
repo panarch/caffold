@@ -11,10 +11,13 @@ test("a module is JavaScript or TypeScript, never both", () => {
   }
 });
 
+// Rust generates build-info.js; it is served and cached with source modules.
+const GENERATED_MODULES = new Set(["build-info"]);
+
 test("a type declaration file stands beside the JavaScript module it describes", () => {
   for (const stem of stems(".d.ts")) {
     assert.ok(
-      sources.has(`${stem}.js`),
+      sources.has(`${stem}.js`) || GENERATED_MODULES.has(stem),
       `${stem}.d.ts describes a module that is no longer JavaScript; remove it once ${stem} moves to TypeScript`,
     );
   }

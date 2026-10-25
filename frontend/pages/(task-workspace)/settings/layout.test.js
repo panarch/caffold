@@ -18,7 +18,7 @@ const buildInfoHook = registerHooks({
   },
 });
 const registry = installCustomElementUnitRegistry();
-await import("./layout.js");
+await import("./layout.ts");
 const workspace = registry.element("caffold-settings-workspace").prototype;
 after(() => {
   registry.restore();
@@ -49,24 +49,21 @@ test("merges responsive Back with only the presented direct page", () => {
     focus() {},
     click() {},
   };
-  const header = { hidden: false };
-  const detail = {};
+  const header = { hidden: false, querySelector: () => control };
+  const detail = {
+    querySelector: (selector) =>
+      selector.endsWith(".settings-workspace-detail-header") ? header : null,
+  };
   const owner = {
     hidden: false,
     isConnected: true,
     section: "appearance",
-    masterDetailMedia: { matches: true },
-    ensureRendered() {},
-    presentedSection() {
-      return workspace.presentedSection.call(this);
-    },
-    settingsPages: () => ({ appearance: page }),
-    querySelector(selector) {
-      if (selector.includes("button[data-action=")) return control;
-      if (selector.endsWith(".settings-workspace-detail-header")) return header;
-      if (selector.endsWith(".settings-workspace-detail-pane")) return detail;
-      return null;
-    },
+    wide: true,
+    performUpdate() {},
+    presentedSection: workspace.presentedSection,
+    page: (section) => (section === "appearance" ? page : null),
+    querySelector: (selector) =>
+      selector.endsWith(".settings-workspace-detail-pane") ? detail : null,
   };
 
   assert.deepEqual(
@@ -83,44 +80,41 @@ test("merges responsive Back with only the presented direct page", () => {
     workspace.actionHintScope.call(owner).targets,
     [childTarget],
   );
-  owner.masterDetailMedia.matches = false;
+  owner.wide = false;
   assert.deepEqual(workspace.actionHintScope.call(owner).targets, []);
   assert.deepEqual(workspace.scrollSurfaceScope.call(owner).surfaces, []);
 });
 
 test("hands a navigator that connects later the update states it missed", () => {
-  const received = [];
-  const about = {
-    setUpdateStatus: (status) => received.push(["about", status]),
-  };
   const owner = {
     section: "about",
-    caffoldUpdateValue: { checking: false, status: { updateAvailable: false } },
-    updateStatusValue: null,
+    wide: false,
+    caffoldUpdate: { checking: false, status: { updateAvailable: true } },
+    updateStatus: null,
     connectedSettingsNavigator: null,
-    boundSettingsNavigatorIntent: () => {},
-    ensureRendered() {},
-    querySelector: () => about,
+    navigatorIntent: () => {},
+    performUpdate() {},
+    presentedSection: workspace.presentedSection,
+    updateAvailable: workspace.updateAvailable,
+    reloadReady: workspace.reloadReady,
   };
   const status = { state: "ready", preparedUpdate: { ready: true, buildId: "next" } };
 
   workspace.setUpdateStatus.call(owner, status);
-  assert.deepEqual(received, [["about", status]]);
+  assert.equal(owner.updateStatus, status, "About takes the status it is bound to");
 
-  const navigator = {
-    addEventListener() {},
-    removeEventListener() {},
-    setSelectedSection() {},
-    setCaffoldUpdate: (snapshot) => received.push(["navigator release", snapshot]),
-    setUpdateStatus: (value) => received.push(["navigator reload", value]),
-  };
+  const navigator = { addEventListener() {}, removeEventListener() {} };
   workspace.connectSettingsNavigator.call(owner, navigator);
-  assert.deepEqual(received.slice(1), [
-    ["navigator release", owner.caffoldUpdateValue],
-    ["navigator reload", status],
-  ]);
+  assert.deepEqual(
+    {
+      selectedSection: navigator.selectedSection,
+      updateAvailable: navigator.updateAvailable,
+      reloadReady: navigator.reloadReady,
+    },
+    { selectedSection: "about", updateAvailable: true, reloadReady: true },
+  );
 
   const settled = { state: "settled", preparedUpdate: { ready: false, buildId: null } };
   workspace.setUpdateStatus.call(owner, settled);
-  assert.deepEqual(received.slice(3), [["about", settled], ["navigator reload", settled]]);
+  assert.equal(navigator.reloadReady, false);
 });

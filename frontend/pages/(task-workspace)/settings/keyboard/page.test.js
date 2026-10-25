@@ -6,27 +6,9 @@ import {
 } from "../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./page.js");
+await import("./page.ts");
 const keyboard = registry.element("caffold-settings-keyboard-page").prototype;
 after(() => registry.restore());
-
-test("keeps the switch copy concise beside the shared shortcut reference", () => {
-  const owner = {};
-  keyboard.render.call(owner);
-  assert.match(
-    owner.innerHTML,
-    /Navigate Caffold with single keys when you are not typing\./,
-  );
-  assert.match(
-    owner.innerHTML,
-    /Enable keyboard shortcuts outside editing fields\./,
-  );
-  assert.match(
-    owner.innerHTML,
-    /<caffold-keyboard-shortcut-list><\/caffold-keyboard-shortcut-list>/,
-  );
-  assert.doesNotMatch(owner.innerHTML, /H\/L to move horizontally/);
-});
 
 test("provides only the exact retained keyboard settings scrollport", () => {
   const scrollport = {

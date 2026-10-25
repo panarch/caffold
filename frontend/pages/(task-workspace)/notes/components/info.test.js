@@ -6,7 +6,7 @@ import {
 } from "../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./info.js");
+await import("./info.ts");
 const info = registry.element("caffold-notes-info").prototype;
 after(() => registry.restore());
 
@@ -17,9 +17,8 @@ test("offers Note details from the header only while its popover is closed", () 
     isConnected: true,
     hidden: false,
     note: { id: "note-a" },
-    ensureRendered() {},
-    infoButton: () => control("Note details"),
-    infoPopover: () => popover,
+    infoButton: control("Note details"),
+    infoPopover: popover,
   };
 
   const [target] = info.actionHintScope.call(owner, { scopeId: "notes" }).targets;
@@ -45,13 +44,20 @@ test("offers Note details from the header only while its popover is closed", () 
 
 test("declares a session-bound popover context whose Action Hints are its Task links and copy actions", () => {
   const link = control("Write storage notes", { href: "/tasks/task-writer" });
+  const actions = {
+    querySelector: (selector) => copyAction(
+      selector.endsWith("copy-path") ? "copy-path" : "copy-markdown",
+    ),
+  };
   const popover = {
     matches: () => true,
-    querySelector: () => ({
-      actionHintDialog: () => ({}),
-      scrollModeHud: () => ({}),
-      scrollSurfaceSelector: () => ({}),
-    }),
+    querySelector: (selector) => selector.endsWith(".notes-info-actions")
+      ? actions
+      : {
+          actionHintDialog: () => ({}),
+          scrollModeHud: () => ({}),
+          scrollSurfaceSelector: () => ({}),
+        },
     querySelectorAll: () => [link],
   };
   const copyScopes = [];
@@ -59,10 +65,7 @@ test("declares a session-bound popover context whose Action Hints are its Task l
     isConnected: true,
     hidden: false,
     note: { id: "note-a" },
-    ensureRendered() {},
-    infoPopover: () => popover,
-    copyPath: () => copyAction("copy-path"),
-    copyMarkdown: () => copyAction("copy-markdown"),
+    infoPopover: popover,
   };
   function copyAction(name) {
     return {
@@ -118,7 +121,7 @@ test("closes the popover when its bound Action Hint session is dismissed", () =>
       hidden += 1;
     },
   };
-  const owner = { infoPopover: () => popover, deactivate: info.deactivate };
+  const owner = { infoPopover: popover, deactivate: info.deactivate };
 
   info.handleDismiss.call(owner, { target: {} });
   assert.equal(hidden, 0);
@@ -126,53 +129,31 @@ test("closes the popover when its bound Action Hint session is dismissed", () =>
   assert.equal(hidden, 1);
 });
 
-test("closes the popover for a different Note and keeps it open for the same Note", () => {
+test("closes the popover for a different Note, keeps it open for the same Note, and keeps describing the last Note while hidden", () => {
   const calls = [];
   const owner = {
-    note: { id: "note-a" },
+    note: null,
+    shownNote: null,
     hidden: false,
-    ensureRendered() {},
     deactivate() {
       calls.push("close");
     },
-    renderFields() {
-      calls.push(`fields:${this.note.id}`);
-    },
-    copyPath: () => ({ setNote() {} }),
-    copyMarkdown: () => ({ setNote() {} }),
+  };
+  const show = (note) => {
+    const previous = owner.note;
+    owner.note = note;
+    info.willUpdate.call(owner, new Map([["note", previous]]));
   };
 
-  info.setNote.call(owner, { id: "note-a" });
-  info.setNote.call(owner, { id: "note-b" });
-  info.setNote.call(owner, null);
-
-  assert.deepEqual(calls, ["fields:note-a", "close", "fields:note-b", "close"]);
-  assert.equal(owner.note, null);
+  show({ id: "note-a" });
+  show({ id: "note-a" });
+  assert.deepEqual(calls, ["close"], "only a different Note closes the popover");
+  show({ id: "note-b" });
+  assert.equal(owner.shownNote.id, "note-b");
+  show(null);
+  assert.deepEqual(calls, ["close", "close", "close"]);
+  assert.equal(owner.shownNote.id, "note-b", "the hidden popover keeps the last Note");
   assert.equal(owner.hidden, true);
-});
-
-test("hands the Note it shows to each copy action", () => {
-  const handed = [];
-  const owner = {
-    note: null,
-    ensureRendered() {},
-    deactivate() {},
-    renderFields() {},
-    copyPath: () => ({
-      setNote(note) {
-        handed.push(["path", note.id]);
-      },
-    }),
-    copyMarkdown: () => ({
-      setNote(note) {
-        handed.push(["markdown", note.id]);
-      },
-    }),
-  };
-
-  info.setNote.call(owner, { id: "storage" });
-  info.setNote.call(owner, null);
-  assert.deepEqual(handed, [["path", "storage"], ["markdown", "storage"]]);
 });
 
 function control(label, attributes = {}) {

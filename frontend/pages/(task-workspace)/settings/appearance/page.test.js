@@ -6,7 +6,7 @@ import {
 } from "../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./page.js");
+await import("./page.ts");
 const appearance = registry.element("caffold-settings-appearance-page").prototype;
 after(() => registry.restore());
 

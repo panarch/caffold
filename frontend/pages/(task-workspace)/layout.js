@@ -32,10 +32,10 @@ import {
 } from "./live-updates.js";
 import {
   CLAUDE_RUNTIME_RESTART_REQUEST_EVENT,
-} from "./settings/claude/page.js";
+} from "./settings/claude/page.ts";
 import {
   CAFFOLD_UPDATE_TASK_REQUEST_EVENT,
-} from "./settings/about/page.js";
+} from "./settings/about/page.ts";
 import "./components/update-task-dialog.js";
 import {
   CLAUDE_RUNTIME_RESTART_CONFIRMED_EVENT,
@@ -68,10 +68,10 @@ import {
 } from "./tasks/components/task-switcher-dialog.js";
 import "./tasks/components/navigator.js";
 import "./tasks/layout.js";
-import "./notes/components/navigator.js";
-import "./notes/layout.js";
-import "./settings/components/navigator.js";
-import "./settings/layout.js";
+import "./notes/components/navigator.ts";
+import "./notes/layout.ts";
+import "./settings/components/navigator.ts";
+import "./settings/layout.ts";
 
 const NAVIGATION_PANE_DEFAULT_WIDTH = 380;
 const NAVIGATION_PANE_MIN_WIDTH = 280;
@@ -236,8 +236,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
       ":scope > caffold-update-task-dialog",
     );
     this.tasksPage.ensureRendered();
-    this.notesWorkspace.ensureRendered();
-    this.settingsWorkspace.ensureRendered();
     this.taskNavigator.setLiveUpdates(this.liveUpdates);
     this.tasksPage.setLiveUpdates(this.liveUpdates);
     this.tasksPage.connectTaskNavigator(this.taskNavigator);

@@ -6,7 +6,7 @@ import {
 } from "../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./page.js");
+await import("./page.ts");
 const grok = registry.element("caffold-settings-grok-page").prototype;
 after(() => registry.restore());
 

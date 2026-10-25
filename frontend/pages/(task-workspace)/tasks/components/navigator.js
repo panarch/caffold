@@ -1,7 +1,7 @@
 import { compactIconButton } from "#app/component-styles.js";
 import { escapeHtml } from "#components/dom.ts";
 import { renderInlineIcon, warmIcons } from "#components/icons.ts";
-import "../../components/workspace-brand.js";
+import "../../components/workspace-brand.ts";
 import {
   taskStoreOperationsPresentation,
 } from "../../task-store-status.js";

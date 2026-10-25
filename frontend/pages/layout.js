@@ -41,7 +41,7 @@ import {
   CAFFOLD_UPDATE_RELOAD_EVENT,
 } from "./components/update-dialog.ts";
 import "./components/update-result-dialog.ts";
-import { CAFFOLD_UPDATE_CHECK_REQUEST_EVENT } from "./(task-workspace)/settings/about/page.js";
+import { CAFFOLD_UPDATE_CHECK_REQUEST_EVENT } from "./(task-workspace)/settings/about/page.ts";
 import "../keyboard-navigation/components/presentation.js";
 import "../keyboard-navigation/components/shortcut-dialog.js";
 import "./(task-workspace)/layout.js";

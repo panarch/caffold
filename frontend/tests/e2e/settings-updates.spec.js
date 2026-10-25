@@ -178,7 +178,9 @@ test("an Action Hint opens the latest release, and only while About links to one
   await expect(badge).toBeVisible();
   // About draws itself again for every status answer; the same release keeps
   // its link, so the code on show still opens it.
-  await about.evaluate((element) => element.setBuildStatus(element.healthValue));
+  await about.evaluate((element) => {
+    element.health = { ...element.health };
+  });
   await expect(badge).toBeVisible();
   const code = await badge.getAttribute("data-action-hint-code");
   const opened = context.waitForEvent("page");
@@ -277,6 +279,9 @@ test("marks Settings and About with the green dot while a newer Caffold exists",
     "aria-label",
     "About Caffold — update available",
   );
+  await expect(
+    page.locator("caffold-settings-navigator-item button[data-update-available]"),
+  ).toHaveCount(1);
 
   const expected = await page.evaluate(() => {
     const probe = document.createElement("span");

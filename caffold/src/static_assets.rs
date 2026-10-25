@@ -18,6 +18,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "styles.css" => Some(css(include_str!("../../frontend/styles.css"))),
         "app.js" => Some(js(include_str!("../../frontend/app.js"))),
         "lit/index.js" => Some(js(include_str!("../../frontend/node_modules/lit/index.js"))),
+        "lit/directives/keyed.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit/directives/keyed.js"
+        ))),
+        "lit/directives/live.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit/directives/live.js"
+        ))),
         "lit/directives/repeat.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit/directives/repeat.js"
         ))),
@@ -32,6 +38,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "lit-html/directive-helpers.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit-html/directive-helpers.js"
+        ))),
+        "lit-html/directives/keyed.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit-html/directives/keyed.js"
+        ))),
+        "lit-html/directives/live.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit-html/directives/live.js"
         ))),
         "lit-html/directives/repeat.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit-html/directives/repeat.js"
@@ -341,168 +353,208 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/appearance/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/appearance/page.css"
         ))),
-        "pages/(task-workspace)/settings/appearance/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/appearance/page.js"
-        ))),
+        "pages/(task-workspace)/settings/appearance/page.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/appearance/page.ts"
+        )))),
         "pages/(task-workspace)/settings/keyboard/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/keyboard/page.css"
         ))),
-        "pages/(task-workspace)/settings/keyboard/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/keyboard/page.js"
-        ))),
+        "pages/(task-workspace)/settings/keyboard/page.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/keyboard/page.ts"
+        )))),
         "pages/(task-workspace)/settings/files/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/files/page.css"
         ))),
-        "pages/(task-workspace)/settings/files/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/files/page.js"
-        ))),
+        "pages/(task-workspace)/settings/files/page.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/files/page.ts"
+        )))),
         "pages/(task-workspace)/settings/notifications/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/notifications/page.css"
         ))),
-        "pages/(task-workspace)/settings/notifications/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/notifications/page.js"
-        ))),
-        "pages/(task-workspace)/settings/notifications/lifecycle.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/notifications/lifecycle.js"
-        ))),
+        "pages/(task-workspace)/settings/notifications/page.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/notifications/page.ts"
+        )))),
+        "pages/(task-workspace)/settings/notifications/lifecycle.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/notifications/lifecycle.ts"
+            ))))
+        }
         "pages/(task-workspace)/settings/remote-access/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/remote-access/page.css"
         ))),
-        "pages/(task-workspace)/settings/remote-access/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/remote-access/page.js"
-        ))),
-        "pages/(task-workspace)/settings/remote-access/tailscale.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/remote-access/tailscale.js"
-        ))),
+        "pages/(task-workspace)/settings/remote-access/page.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/remote-access/page.ts"
+        )))),
+        "pages/(task-workspace)/settings/remote-access/tailscale.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/remote-access/tailscale.ts"
+            ))))
+        }
         "pages/(task-workspace)/notes/components/document.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/notes/components/document.css"
         ))),
-        "pages/(task-workspace)/notes/components/document.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/notes/components/document.js"
-        ))),
-        "pages/(task-workspace)/notes/layout/selection.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/notes/layout/selection.js"
-        ))),
+        "pages/(task-workspace)/notes/components/document.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/notes/components/document.ts"
+        )))),
+        "pages/(task-workspace)/notes/layout/selection.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/notes/layout/selection.ts"
+        )))),
         "pages/(task-workspace)/notes/components/info.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/notes/components/info.css"
         ))),
-        "pages/(task-workspace)/notes/components/info.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/notes/components/info.js"
-        ))),
+        "pages/(task-workspace)/notes/components/info.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/notes/components/info.ts"
+        )))),
         "pages/(task-workspace)/notes/components/info/components/copy-markdown.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/notes/components/info/components/copy-markdown.css"
             )))
         }
-        "pages/(task-workspace)/notes/components/info/components/copy-markdown.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/notes/components/info/components/copy-markdown.js"
-            )))
+        "pages/(task-workspace)/notes/components/info/components/copy-markdown.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/notes/components/info/components/copy-markdown.ts"
+            ))))
         }
         "pages/(task-workspace)/notes/components/info/components/copy-path.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/notes/components/info/components/copy-path.css"
             )))
         }
-        "pages/(task-workspace)/notes/components/info/components/copy-path.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/notes/components/info/components/copy-path.js"
-            )))
+        "pages/(task-workspace)/notes/components/info/components/copy-path.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/notes/components/info/components/copy-path.ts"
+            ))))
         }
         "pages/(task-workspace)/notes/components/navigator.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/notes/components/navigator.css"
         ))),
-        "pages/(task-workspace)/notes/components/navigator.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/notes/components/navigator.js"
-        ))),
+        "pages/(task-workspace)/notes/components/navigator.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/notes/components/navigator.ts"
+        )))),
         "pages/(task-workspace)/notes/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/notes/layout.css"
         ))),
-        "pages/(task-workspace)/notes/layout.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/notes/layout.js"
-        ))),
-        "pages/(task-workspace)/notes/tree.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/notes/tree.js"
-        ))),
+        "pages/(task-workspace)/notes/layout.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/notes/layout.ts"
+        )))),
+        "pages/(task-workspace)/notes/tree.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/notes/tree.ts"
+        )))),
         "pages/(task-workspace)/settings/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/layout.css"
         ))),
-        "pages/(task-workspace)/settings/layout.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/layout.js"
-        ))),
+        "pages/(task-workspace)/settings/layout.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/layout.ts"
+        )))),
         "pages/(task-workspace)/settings/components/navigator.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/components/navigator.css"
         ))),
-        "pages/(task-workspace)/settings/components/navigator.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/components/navigator.js"
-        ))),
+        "pages/(task-workspace)/settings/components/navigator.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/components/navigator.ts"
+            ))))
+        }
         "pages/(task-workspace)/settings/components/navigator/components/item.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/settings/components/navigator/components/item.css"
             )))
         }
-        "pages/(task-workspace)/settings/components/navigator/components/item.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/settings/components/navigator/components/item.js"
-            )))
+        "pages/(task-workspace)/settings/components/navigator/components/item.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/components/navigator/components/item.ts"
+            ))))
         }
-        "pages/(task-workspace)/settings/service-status.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/service-status.js"
-        ))),
+        "pages/(task-workspace)/settings/service-status.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/service-status.ts"
+        )))),
         "pages/(task-workspace)/settings/components/detail-list.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/components/detail-list.css"
         ))),
-        "pages/(task-workspace)/settings/components/detail-list.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/components/detail-list.js"
-        ))),
+        "pages/(task-workspace)/settings/components/detail-list.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/components/detail-list.ts"
+            ))))
+        }
         "pages/(task-workspace)/settings/components/refresh-button.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/components/refresh-button.css"
         ))),
-        "pages/(task-workspace)/settings/components/refresh-button.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/components/refresh-button.js"
-        ))),
+        "pages/(task-workspace)/settings/components/refresh-button.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/settings/components/refresh-button.ts"
+            ))))
+        }
         "pages/(task-workspace)/settings/codex/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/codex/page.css"
         ))),
-        "pages/(task-workspace)/settings/codex/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/codex/page.js"
-        ))),
+        "pages/(task-workspace)/settings/codex/page.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/codex/page.ts"
+        )))),
         "pages/(task-workspace)/settings/claude/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/claude/page.css"
         ))),
-        "pages/(task-workspace)/settings/claude/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/claude/page.js"
-        ))),
-        "pages/(task-workspace)/settings/claude/display.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/claude/display.js"
-        ))),
+        "pages/(task-workspace)/settings/claude/page.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/claude/page.ts"
+        )))),
+        "pages/(task-workspace)/settings/claude/display.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/claude/display.ts"
+        )))),
         "pages/(task-workspace)/settings/voice/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/voice/page.css"
         ))),
-        "pages/(task-workspace)/settings/voice/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/voice/page.js"
-        ))),
-        "pages/(task-workspace)/settings/voice/lifecycle.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/voice/lifecycle.js"
-        ))),
+        "pages/(task-workspace)/settings/voice/page.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/voice/page.ts"
+        )))),
+        "pages/(task-workspace)/settings/voice/lifecycle.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/voice/lifecycle.ts"
+        )))),
         "pages/(task-workspace)/settings/jev/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/jev/page.css"
         ))),
-        "pages/(task-workspace)/settings/jev/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/jev/page.js"
-        ))),
-        "pages/(task-workspace)/settings/jev/lifecycle.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/jev/lifecycle.js"
-        ))),
+        "pages/(task-workspace)/settings/jev/page.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/jev/page.ts"
+        )))),
+        "pages/(task-workspace)/settings/jev/lifecycle.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/jev/lifecycle.ts"
+        )))),
         "pages/(task-workspace)/settings/grok/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/grok/page.css"
         ))),
-        "pages/(task-workspace)/settings/grok/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/grok/page.js"
-        ))),
-        "pages/(task-workspace)/settings/grok/display.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/grok/display.js"
-        ))),
+        "pages/(task-workspace)/settings/grok/page.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/grok/page.ts"
+        )))),
+        "pages/(task-workspace)/settings/grok/display.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/grok/display.ts"
+        )))),
         "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css"
@@ -517,9 +569,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/about/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/about/page.css"
         ))),
-        "pages/(task-workspace)/settings/about/page.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/settings/about/page.js"
-        ))),
+        "pages/(task-workspace)/settings/about/page.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/settings/about/page.ts"
+        )))),
         "pages/(task-workspace)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/layout.css"
         ))),
@@ -602,9 +655,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/components/workspace-brand.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/components/workspace-brand.css"
         ))),
-        "pages/(task-workspace)/components/workspace-brand.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/components/workspace-brand.js"
-        ))),
+        "pages/(task-workspace)/components/workspace-brand.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/components/workspace-brand.ts"
+        )))),
         "pages/(task-workspace)/codex-status.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/codex-status.js"
         ))),
@@ -1785,11 +1839,15 @@ mod tests {
     fn serves_lit_from_the_installed_packages() {
         for path in [
             "lit/index.js",
+            "lit/directives/keyed.js",
+            "lit/directives/live.js",
             "lit/directives/repeat.js",
             "lit/directives/unsafe-html.js",
             "lit-html/lit-html.js",
             "lit-html/directive.js",
             "lit-html/directive-helpers.js",
+            "lit-html/directives/keyed.js",
+            "lit-html/directives/live.js",
             "lit-html/directives/repeat.js",
             "lit-html/directives/unsafe-html.js",
             "lit-html/is-server.js",
@@ -2066,7 +2124,7 @@ mod tests {
             );
         }
 
-        let settings_page = get("pages/(task-workspace)/settings/appearance/page.js")
+        let settings_page = get("pages/(task-workspace)/settings/appearance/page.ts")
             .expect("settings appearance page js asset");
         assert_eq!(settings_page.content_type, "text/javascript; charset=utf-8");
         assert!(settings_page.body.starts_with(b"import "));
@@ -2091,35 +2149,35 @@ mod tests {
             "action-hints/control.js",
             "action-hints/model.js",
             "action-hints/components/dialog.js",
-            "pages/(task-workspace)/notes/layout.js",
-            "pages/(task-workspace)/notes/layout/selection.js",
-            "pages/(task-workspace)/notes/components/document.js",
-            "pages/(task-workspace)/notes/components/info.js",
-            "pages/(task-workspace)/notes/components/info/components/copy-markdown.js",
-            "pages/(task-workspace)/notes/components/info/components/copy-path.js",
-            "pages/(task-workspace)/notes/components/navigator.js",
-            "pages/(task-workspace)/notes/tree.js",
-            "pages/(task-workspace)/settings/layout.js",
-            "pages/(task-workspace)/settings/components/navigator.js",
-            "pages/(task-workspace)/settings/components/navigator/components/item.js",
-            "pages/(task-workspace)/settings/service-status.js",
-            "pages/(task-workspace)/settings/keyboard/page.js",
-            "pages/(task-workspace)/settings/files/page.js",
-            "pages/(task-workspace)/settings/notifications/page.js",
-            "pages/(task-workspace)/settings/remote-access/page.js",
-            "pages/(task-workspace)/settings/remote-access/tailscale.js",
-            "pages/(task-workspace)/settings/voice/page.js",
-            "pages/(task-workspace)/settings/voice/lifecycle.js",
-            "pages/(task-workspace)/settings/jev/page.js",
-            "pages/(task-workspace)/settings/jev/lifecycle.js",
-            "pages/(task-workspace)/settings/codex/page.js",
+            "pages/(task-workspace)/notes/layout.ts",
+            "pages/(task-workspace)/notes/layout/selection.ts",
+            "pages/(task-workspace)/notes/components/document.ts",
+            "pages/(task-workspace)/notes/components/info.ts",
+            "pages/(task-workspace)/notes/components/info/components/copy-markdown.ts",
+            "pages/(task-workspace)/notes/components/info/components/copy-path.ts",
+            "pages/(task-workspace)/notes/components/navigator.ts",
+            "pages/(task-workspace)/notes/tree.ts",
+            "pages/(task-workspace)/settings/layout.ts",
+            "pages/(task-workspace)/settings/components/navigator.ts",
+            "pages/(task-workspace)/settings/components/navigator/components/item.ts",
+            "pages/(task-workspace)/settings/service-status.ts",
+            "pages/(task-workspace)/settings/keyboard/page.ts",
+            "pages/(task-workspace)/settings/files/page.ts",
+            "pages/(task-workspace)/settings/notifications/page.ts",
+            "pages/(task-workspace)/settings/remote-access/page.ts",
+            "pages/(task-workspace)/settings/remote-access/tailscale.ts",
+            "pages/(task-workspace)/settings/voice/page.ts",
+            "pages/(task-workspace)/settings/voice/lifecycle.ts",
+            "pages/(task-workspace)/settings/jev/page.ts",
+            "pages/(task-workspace)/settings/jev/lifecycle.ts",
+            "pages/(task-workspace)/settings/codex/page.ts",
             "pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts",
-            "pages/(task-workspace)/settings/claude/page.js",
-            "pages/(task-workspace)/settings/claude/display.js",
+            "pages/(task-workspace)/settings/claude/page.ts",
+            "pages/(task-workspace)/settings/claude/display.ts",
             "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.ts",
-            "pages/(task-workspace)/settings/grok/page.js",
-            "pages/(task-workspace)/settings/grok/display.js",
-            "pages/(task-workspace)/settings/about/page.js",
+            "pages/(task-workspace)/settings/grok/page.ts",
+            "pages/(task-workspace)/settings/grok/display.ts",
+            "pages/(task-workspace)/settings/about/page.ts",
             "pages/(task-workspace)/tasks/components/composer/action-hints.js",
             "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js",
             "pages/(task-workspace)/tasks/components/task-create/directory-path.js",
@@ -2127,8 +2185,10 @@ mod tests {
             let asset = get(path).unwrap_or_else(|| panic!("missing frontend asset {path}"));
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
             // The body is the module itself, not an HTML error page. A module
-            // with no imports of its own opens with what it exports.
-            assert!(asset.body.starts_with(b"import ") || asset.body.starts_with(b"export "));
+            // with no imports of its own opens with what it exports, and a
+            // TypeScript module may open with type syntax stripped to spaces.
+            let body = asset.body.trim_ascii_start();
+            assert!(body.starts_with(b"import ") || body.starts_with(b"export "));
         }
 
         let scroll_scope = get("scroll-scope.js").expect("Scroll scope module asset");
@@ -2163,13 +2223,18 @@ mod tests {
         }
 
         let notification_lifecycle =
-            get("pages/(task-workspace)/settings/notifications/lifecycle.js")
+            get("pages/(task-workspace)/settings/notifications/lifecycle.ts")
                 .expect("settings notification lifecycle asset");
         assert_eq!(
             notification_lifecycle.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(notification_lifecycle.body.starts_with(b"export const"));
+        assert!(
+            notification_lifecycle
+                .body
+                .trim_ascii_start()
+                .starts_with(b"export const")
+        );
 
         let runtime_restart_dialog =
             get("pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts")
@@ -2348,7 +2413,7 @@ mod tests {
                 .body
                 .starts_with(b"caffold-task-workspace-navigation")
         );
-        let workspace_brand = get("pages/(task-workspace)/components/workspace-brand.js")
+        let workspace_brand = get("pages/(task-workspace)/components/workspace-brand.ts")
             .expect("workspace brand js");
         assert_eq!(
             workspace_brand.content_type,

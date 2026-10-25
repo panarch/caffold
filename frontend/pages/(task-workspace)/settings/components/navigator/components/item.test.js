@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./item.js");
+await import("./item.ts");
 const item = registry.element("caffold-settings-navigator-item").prototype;
 after(() => registry.restore());
 
@@ -23,11 +23,12 @@ function control() {
 }
 
 function itemHost(entry, button = control()) {
-  return Object.assign(Object.create(item), {
+  return Object.assign(Object.create(item, { button: { value: button } }), {
     entry,
     selected: false,
+    updateAvailable: false,
+    reloadReady: false,
     isConnected: true,
-    button: () => button,
   });
 }
 
@@ -54,7 +55,7 @@ test("offers its Settings section as an Action Hint while it is not the current 
   current = false;
   assert.equal(target.isActionable(), false);
   current = true;
-  host.setSelected(true);
+  host.selected = true;
   assert.equal(target.isActionable(), false);
   assert.deepEqual(host.actionHintScope().targets, []);
 });
@@ -74,8 +75,7 @@ test("asks to open its section when its own button is clicked", () => {
   const events = [];
   host.dispatchEvent = (event) => events.push(event);
 
-  host.handleClick({ target: { closest: () => host.button() } });
-  host.handleClick({ target: { closest: () => null } });
+  host.open();
 
   assert.equal(events.length, 1);
   assert.equal(events[0].type, "caffold:settings-navigator-intent");
@@ -83,40 +83,20 @@ test("asks to open its section when its own button is clicked", () => {
   assert.deepEqual(events[0].detail, { section: "keyboard" });
 });
 
-test("marks the About entry and its name while Caffold has an update", () => {
-  const attributes = new Map();
-  const button = {
-    ...control(),
-    getAttribute: (name) => attributes.get(name) ?? null,
-    setAttribute: (name, value) => attributes.set(name, value),
-    removeAttribute: (name) => attributes.delete(name),
-    toggleAttribute: (name, force) =>
-      force ? attributes.set(name, "") : attributes.delete(name),
+test("names the About entry with every update notice it shows", () => {
+  const host = itemHost({ section: "about", label: "About Caffold", icon: "Info" });
+  const label = (notices) => {
+    Object.assign(host, { updateAvailable: false, reloadReady: false }, notices);
+    return item.render
+      .call(host)
+      .values.find((value) => typeof value === "string" && value.includes(" — "));
   };
-  const host = itemHost(
-    { section: "about", label: "About Caffold", icon: "Info" },
-    button,
-  );
 
-  host.setUpdateNotice({ updateAvailable: true });
-  assert.equal(attributes.has("data-update-available"), true);
-  assert.equal(attributes.get("aria-label"), "About Caffold — update available");
+  assert.equal(label({ updateAvailable: true }), "About Caffold — update available");
+  assert.equal(label({ reloadReady: true }), "About Caffold — reload to update");
   assert.equal(
-    host.actionHintScope().targets[0].label,
-    "About Caffold — update available",
-  );
-
-  host.setUpdateNotice({ reloadReady: true });
-  assert.equal(attributes.has("data-update-available"), true);
-  assert.equal(attributes.get("aria-label"), "About Caffold — reload to update");
-
-  host.setUpdateNotice({ updateAvailable: true, reloadReady: true });
-  assert.equal(
-    attributes.get("aria-label"),
+    label({ updateAvailable: true, reloadReady: true }),
     "About Caffold — update available, reload to update",
   );
-
-  host.setUpdateNotice({});
-  assert.equal(attributes.has("data-update-available"), false);
-  assert.equal(attributes.has("aria-label"), false);
+  assert.equal(label({}), undefined);
 });

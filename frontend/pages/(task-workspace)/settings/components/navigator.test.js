@@ -6,7 +6,7 @@ import {
 } from "../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./navigator.js");
+await import("./navigator.ts");
 const navigator = registry.element("caffold-settings-navigator").prototype;
 after(() => registry.restore());
 
@@ -24,12 +24,11 @@ test("combines its Settings entries' Action Hints inside the section list", () =
       };
     },
   }));
+  scroller.querySelectorAll = () => items;
   const owner = {
-    initialized: true,
     hidden: false,
     isConnected: true,
-    querySelector: () => scroller,
-    items: () => items,
+    list: scroller,
   };
 
   const scope = navigator.actionHintScope.call(owner, {
@@ -61,11 +60,10 @@ test("provides only its exact retained section list as a Scroll surface", () => 
     getClientRects: () => [{}],
   };
   const owner = {
-    initialized: true,
     hidden: false,
     isConnected: true,
     getClientRects: () => [{}],
-    querySelector: () => scroller,
+    list: scroller,
   };
   const scope = navigator.scrollSurfaceScope.call(owner);
   assert.equal(scope.surfaces[0].scrollport, scroller);
@@ -74,29 +72,4 @@ test("provides only its exact retained section list as a Scroll surface", () => 
   assert.equal(scope.surfaces[0].isEligible(), true);
   owner.hidden = true;
   assert.deepEqual(navigator.scrollSurfaceScope.call(owner).surfaces, []);
-});
-
-test("hands both update marks to the About entry only", () => {
-  const marks = new Map();
-  const items = ["codex", "about"].map((section) => ({
-    section,
-    setUpdateNotice(notice) {
-      marks.set(section, notice);
-    },
-  }));
-  const owner = { items: () => items, updateAvailable: false, reloadReady: false };
-  owner.syncUpdateNotice = () => navigator.syncUpdateNotice.call(owner);
-
-  navigator.setCaffoldUpdate.call(owner, {
-    checking: false,
-    status: { updateAvailable: true },
-  });
-  assert.deepEqual([...marks], [["about", { updateAvailable: true, reloadReady: false }]]);
-
-  navigator.setUpdateStatus.call(owner, { state: "ready", preparedUpdate: { ready: true } });
-  assert.deepEqual([...marks], [["about", { updateAvailable: true, reloadReady: true }]]);
-
-  navigator.setCaffoldUpdate.call(owner, { checking: true, status: null });
-  navigator.setUpdateStatus.call(owner, null);
-  assert.deepEqual([...marks], [["about", { updateAvailable: false, reloadReady: false }]]);
 });

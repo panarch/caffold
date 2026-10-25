@@ -41,10 +41,10 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.ts",
   );
   const settingsWorkspace = readFrontend(
-    "pages/(task-workspace)/settings/layout.js",
+    "pages/(task-workspace)/settings/layout.ts",
   );
   const notesWorkspace = readFrontend(
-    "pages/(task-workspace)/notes/layout.js",
+    "pages/(task-workspace)/notes/layout.ts",
   );
   const actionHints = readFrontend(
     "action-hints.js",
@@ -59,7 +59,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     "keyboard-navigation/components/shortcut-dialog.js",
   );
   const keyboardSettings = readFrontend(
-    "pages/(task-workspace)/settings/keyboard/page.js",
+    "pages/(task-workspace)/settings/keyboard/page.ts",
   );
 
   const masterPane = workspace.match(
@@ -161,7 +161,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     shortcutDialog,
     /customElements\.define\(\s*"caffold-keyboard-shortcut-dialog"/,
   );
-  assert.match(settingsWorkspace, /import "\.\/keyboard\/page\.js"/);
+  assert.match(settingsWorkspace, /import "\.\/keyboard\/page\.ts"/);
   assert.equal(
     [...settingsWorkspace.matchAll(/<caffold-settings-keyboard-page/g)].length,
     1,
@@ -531,22 +531,22 @@ test("Task Info keeps action presentation in its private leaf", () => {
 
 test("workspace brand owns the shared Tasks, Notes, and Settings navigator identity", () => {
   const brand = readFrontend(
-    "pages/(task-workspace)/components/workspace-brand.js",
+    "pages/(task-workspace)/components/workspace-brand.ts",
   );
   const taskNavigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.js",
   );
   const settingsNavigator = readFrontend(
-    "pages/(task-workspace)/settings/components/navigator.js",
+    "pages/(task-workspace)/settings/components/navigator.ts",
   );
   const notesNavigator = readFrontend(
-    "pages/(task-workspace)/notes/components/navigator.js",
+    "pages/(task-workspace)/notes/components/navigator.ts",
   );
   const appearance = readFrontend(
-    "pages/(task-workspace)/settings/appearance/page.js",
+    "pages/(task-workspace)/settings/appearance/page.ts",
   );
   const files = readFrontend(
-    "pages/(task-workspace)/settings/files/page.js",
+    "pages/(task-workspace)/settings/files/page.ts",
   );
 
   assert.match(
@@ -556,7 +556,10 @@ test("workspace brand owns the shared Tasks, Notes, and Settings navigator ident
   assert.match(brand, /class="workspace-brand-icon"/);
   assert.match(brand, /class="workspace-brand-title">Caffold/);
   for (const owner of [taskNavigator, notesNavigator, settingsNavigator]) {
-    assert.match(owner, /<caffold-workspace-brand><\/caffold-workspace-brand>/);
+    assert.match(
+      owner,
+      /<caffold-workspace-brand\b[^>]*><\/caffold-workspace-brand>/,
+    );
   }
   assert.doesNotMatch(
     appearance,
@@ -1031,7 +1034,7 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   );
   const tasks = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const settings = readFrontend(
-    "pages/(task-workspace)/settings/codex/page.js",
+    "pages/(task-workspace)/settings/codex/page.ts",
   );
 
   assert.match(workspace, /from "\.\/codex-status\.js"/);
