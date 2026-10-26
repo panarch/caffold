@@ -1,15 +1,12 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScopeOptions,
-  type ActionHintTarget,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-  selectActionHintTarget,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import type { GitRef } from "#app/api.ts";
 import { busySpin, compactIconButton } from "#app/component-styles.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import type { FetchState } from "../(log)/layout.ts";
 
@@ -41,6 +38,11 @@ export class CaffoldGitReviewControls extends LitElement {
 
   declare snapshot: GitControlsSnapshot;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
+  private readonly baseRefSelect = new DrawnRef<HTMLSelectElement>(this);
+  private readonly headRefSelect = new DrawnRef<HTMLSelectElement>(this);
 
   constructor() {
     super();
@@ -99,6 +101,12 @@ export class CaffoldGitReviewControls extends LitElement {
         >
           <label for="caffold-compare-base-ref">Base</label>
           <select
+            ${drawn(this.baseRefSelect)}
+            ${this.hints.select({
+              id: "compare-ref:base",
+              label: refLabel("Base", snapshot.baseRef),
+              action: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
+            })}
             id="caffold-compare-base-ref"
             data-compare-ref="base"
             aria-label="Base ref"
@@ -111,6 +119,12 @@ export class CaffoldGitReviewControls extends LitElement {
           >...</span>
           <label for="caffold-compare-head-ref">Head</label>
           <select
+            ${drawn(this.headRefSelect)}
+            ${this.hints.select({
+              id: "compare-ref:head",
+              label: refLabel("Head", snapshot.headRef),
+              action: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
+            })}
             id="caffold-compare-head-ref"
             data-compare-ref="head"
             aria-label="Head ref"
@@ -119,6 +133,11 @@ export class CaffoldGitReviewControls extends LitElement {
           >${options}</select>
         </div>
         <button
+          ${this.hints.button({
+            id: "refresh",
+            label: title,
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           class=${buttonClass}
           aria-label=${title}
@@ -134,8 +153,8 @@ export class CaffoldGitReviewControls extends LitElement {
   updated() {
     const { baseRef, headRef } = this.snapshot;
     for (const [select, value] of [
-      [this.baseRefSelect, baseRef],
-      [this.headRefSelect, headRef],
+      [this.baseRefSelect.value, baseRef],
+      [this.headRefSelect.value, headRef],
     ] as const) {
       if (select && select.value !== value) {
         select.value = value;
@@ -143,74 +162,8 @@ export class CaffoldGitReviewControls extends LitElement {
     }
   }
 
-  actionHintScope({
-    scopeId = "git",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
-    if (this.hidden) {
-      return emptyActionHintScope();
-    }
-    const targetClipRoots = [this, ...clipRoots];
-    const compareRefsShown = () =>
-      this.compareRefs?.hidden === false &&
-      this.snapshot.mode === "compare" &&
-      this.snapshot.refs.length > 0;
-    const targets: ActionHintTarget[] = !compareRefsShown()
-      ? []
-      : (
-          [
-            ["base", this.baseRefSelect, "Base"],
-            ["head", this.headRefSelect, "Head"],
-          ] as const
-        ).flatMap(([kind, control, label]) => {
-          if (!control || !gitRefSelectAvailable(control)) {
-            return [];
-          }
-          const value = control.value;
-          return [
-            selectActionHintTarget({
-              invalidationOwner: this,
-              id: `${scopeId}:compare-ref:${kind}`,
-              actionId: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
-              label: value
-                ? `Choose ${label} ref (current ${value})`
-                : `Choose ${label} ref`,
-              control,
-              clipRoots: targetClipRoots,
-              isActionable: () =>
-                this.isConnected &&
-                !this.hidden &&
-                compareRefsShown() &&
-                (kind === "base" ? this.baseRefSelect : this.headRefSelect) ===
-                  control &&
-                gitRefSelectAvailable(control),
-            }),
-          ];
-        });
-    const control = this.refreshButton;
-    if (control && !control.disabled) {
-      targets.push(
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:refresh`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label: control.getAttribute("aria-label") || "Refresh Git",
-          control,
-          clipRoots: targetClipRoots,
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.refreshButton === control &&
-            !control.disabled,
-        }),
-      );
-    }
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope({ scopeId = "git", ...pull }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   private changeRefs() {
@@ -218,8 +171,8 @@ export class CaffoldGitReviewControls extends LitElement {
       new CustomEvent("caffold:change-compare-refs", {
         bubbles: true,
         detail: {
-          baseRef: this.baseRefSelect?.value ?? "",
-          headRef: this.headRefSelect?.value ?? "",
+          baseRef: this.baseRefSelect.value?.value ?? "",
+          headRef: this.headRefSelect.value?.value ?? "",
         },
       }),
     );
@@ -235,26 +188,6 @@ export class CaffoldGitReviewControls extends LitElement {
       ),
     );
   }
-
-  private get compareRefs() {
-    return this.querySelector<HTMLElement>(".review-compare-ref-controls");
-  }
-
-  private get baseRefSelect() {
-    return this.querySelector<HTMLSelectElement>(
-      'select[data-compare-ref="base"]',
-    );
-  }
-
-  private get headRefSelect() {
-    return this.querySelector<HTMLSelectElement>(
-      'select[data-compare-ref="head"]',
-    );
-  }
-
-  private get refreshButton() {
-    return this.querySelector<HTMLButtonElement>(".git-review-refresh");
-  }
 }
 
 await compactIconButton.register(
@@ -269,10 +202,8 @@ await busySpin.register(
 
 customElements.define("caffold-git-review-controls", CaffoldGitReviewControls);
 
-function gitRefSelectAvailable(control: HTMLSelectElement) {
-  return (
-    !control.disabled && !control.hidden && hasActionHintLayoutBox(control)
-  );
+function refLabel(name: string, ref: string) {
+  return ref ? `Choose ${name} ref (current ${ref})` : `Choose ${name} ref`;
 }
 
 function actionTitle(snapshot: GitControlsSnapshot, unavailable: boolean) {

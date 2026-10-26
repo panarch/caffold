@@ -1,5 +1,5 @@
 import { html, LitElement } from "lit";
-import type { ActionHintScopeOptions } from "#app/action-hint-scope.js";
+import type { ActionHintPull } from "#app/action-hints.ts";
 import {
   type GitCompare,
   type GitRefs,
@@ -7,7 +7,8 @@ import {
   getGitCompareDiff,
   getGitRefs,
 } from "#app/api.ts";
-import type { ScrollSurfaceScopeOptions } from "#app/scroll-scope.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "#components/git-compare-tree.ts";
 import type { CaffoldGitCompareTree } from "#components/git-compare-tree.ts";
 import { ChangesReading } from "../changes-reading.ts";
@@ -22,6 +23,7 @@ export class CaffoldReviewBranchChanges extends LitElement {
   private compare: GitCompare | null = null;
   private error: Error | null = null;
   private readonly reading = new ChangesReading();
+  private readonly treeElement = new DrawnRef<CaffoldGitCompareTree>(this);
   private listShows = "";
   private generation = 0;
   private selectedPath = "";
@@ -37,6 +39,7 @@ export class CaffoldReviewBranchChanges extends LitElement {
 
   render() {
     return html`<caffold-git-compare-tree
+      ${drawn(this.treeElement)}
       @caffold:select-compare-base=${this.chooseBase}
     ></caffold-git-compare-tree>`;
   }
@@ -205,17 +208,12 @@ export class CaffoldReviewBranchChanges extends LitElement {
     this.tree.restoreListScroll(scroll);
   }
 
-  actionHintScope(
-    options: ActionHintScopeOptions & {
-      disclosureActionId?: string;
-      selectActionId?: string;
-    } = {},
-  ) {
-    return this.tree.actionHintScope(options);
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.tree.actionHintScope(pull);
   }
 
-  scrollSurfaceScope(options: ScrollSurfaceScopeOptions = {}) {
-    return this.tree.scrollSurfaceScope(options);
+  scrollSurfaceScope(pull: ScrollSurfacePull = {}) {
+    return this.tree.scrollSurfaceScope(pull);
   }
 
   private chooseBase(event: CustomEvent<{ baseRef?: string }>) {
@@ -299,9 +297,7 @@ export class CaffoldReviewBranchChanges extends LitElement {
   // changes are in the document.
   private get tree() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-git-compare-tree",
-    ) as CaffoldGitCompareTree;
+    return this.treeElement.value as CaffoldGitCompareTree;
   }
 }
 

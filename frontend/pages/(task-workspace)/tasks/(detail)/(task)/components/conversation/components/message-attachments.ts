@@ -1,14 +1,12 @@
 import { html, LitElement, type PropertyValues } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import { fetchInChunks } from "#app/chunked-fetch.ts";
+import { type DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/loading-text.ts";
 import { requestTaskImagePreview } from "#tasks/components/image-preview-dialog.ts";
@@ -68,7 +66,13 @@ export class CaffoldTaskMessageAttachments extends LitElement {
   declare attachments: MessageAttachment[];
   private fetchedPictures = new Map<HTMLImageElement, FetchedPicture>();
   private pictureObserver: IntersectionObserver | null = null;
+  // The box each watched picture is observed through.
+  private readonly watchedBoxes = new Map<Element, HTMLImageElement>();
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
+  private readonly pictures = new DrawnRefs<HTMLImageElement>(this);
 
   constructor() {
     super();
@@ -112,6 +116,11 @@ export class CaffoldTaskMessageAttachments extends LitElement {
             ${
               attachment.src
                 ? html`<button
+                    ${this.hints.button({
+                      id: `preview:${index + 1}`,
+                      label: `Preview ${attachment.name}`,
+                      action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                    })}
                     type="button"
                     class="task-message-attachment-preview"
                     data-attachment-action="preview"
@@ -119,7 +128,10 @@ export class CaffoldTaskMessageAttachments extends LitElement {
                     aria-label=${`Preview ${attachment.name}`}
                     title="Preview image"
                     @click=${() => this.preview(index)}
-                  >${picture(attachment.src)}</button>`
+                  >${picture(
+                    attachment.src,
+                    this.pictures.of(`${index}`),
+                  )}</button>`
                 : html`<div
                     class="task-message-attachment-preview
                       task-message-attachment-unavailable"
@@ -159,44 +171,15 @@ export class CaffoldTaskMessageAttachments extends LitElement {
     }
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    if (!scopeId || !this.isConnected || this.hidden) {
-      return emptyActionHintScope();
-    }
-    const targetClipRoots = [this, ...clipRoots].filter(Boolean);
-    return {
-      blocked: false,
-      targets: this.previewButtons.flatMap((control, index) =>
-        hasActionHintLayoutBox(control)
-          ? [
-              buttonActionHintTarget({
-                invalidationOwner: this,
-                id: `${scopeId}:preview:${index + 1}`,
-                actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-                label: control.getAttribute("aria-label") || "Preview image",
-                control,
-                clipRoots: targetClipRoots,
-                isActionable: () =>
-                  this.isConnected &&
-                  !this.hidden &&
-                  this.previewButtons[index] === control &&
-                  hasActionHintLayoutBox(control),
-              }),
-            ]
-          : [],
-      ),
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   watchPictures() {
-    const pictures = this.querySelectorAll<HTMLImageElement>(
-      ":scope > figure img[data-attachment-source]:not([src])",
-    );
+    const pictures = this.attachments.flatMap((_, index) => {
+      const fetched = this.pictures.get(`${index}`);
+      return fetched && !fetched.hasAttribute("src") ? [fetched] : [];
+    });
     if (!pictures.length) {
       return;
     }
@@ -208,6 +191,7 @@ export class CaffoldTaskMessageAttachments extends LitElement {
     // it is drawn, and a hidden element never comes near the viewport.
     for (const picture of pictures) {
       if (picture.parentElement) {
+        this.watchedBoxes.set(picture.parentElement, picture);
         this.pictureObserver.observe(picture.parentElement);
       }
     }
@@ -217,6 +201,7 @@ export class CaffoldTaskMessageAttachments extends LitElement {
   // fetches it again if it is shown again.
   releasePictures() {
     this.pictureObserver?.disconnect();
+    this.watchedBoxes.clear();
     for (const [picture, record] of this.fetchedPictures) {
       record.fetching.abort();
       if (record.objectUrl) {
@@ -234,9 +219,7 @@ export class CaffoldTaskMessageAttachments extends LitElement {
 
   private fetchNearbyPictures(entries: IntersectionObserverEntry[]) {
     for (const { target: box, isIntersecting } of entries) {
-      const picture = box.querySelector<HTMLImageElement>(
-        ":scope > img[data-attachment-source]",
-      );
+      const picture = this.watchedBoxes.get(box);
       if (!isIntersecting || !picture || this.fetchedPictures.has(picture)) {
         continue;
       }
@@ -278,34 +261,28 @@ export class CaffoldTaskMessageAttachments extends LitElement {
       );
     }
   }
-
-  private get previewButtons() {
-    return Array.from(
-      this.querySelectorAll<HTMLButtonElement>(
-        ':scope > figure > button[data-attachment-action="preview"]',
-      ),
-    );
-  }
 }
 
 // Until a fetched picture is drawn, its place says it is loading rather than
 // standing empty. The template leaves the picture's `src` and `hidden` to
 // the fetch.
-function picture(src: string) {
+function picture(src: string, fetched: DrawnRef<HTMLImageElement>) {
   return src.startsWith("data:")
     ? html`<img src=${src} alt="">`
     : html`
-        <img data-attachment-source=${src} alt="" hidden>
+        <img
+          ${drawn(fetched)}
+          data-attachment-source=${src}
+          alt=""
+          hidden
+        >
         <caffold-loading-text>Loading image...</caffold-loading-text>
       `;
 }
 
+// The loading text drawn right after a fetched picture.
 function pictureLoading(picture: HTMLImageElement) {
-  return (
-    picture.parentElement?.querySelector<HTMLElement>(
-      ":scope > caffold-loading-text",
-    ) ?? null
-  );
+  return picture.nextElementSibling as HTMLElement | null;
 }
 
 function attachmentIcon(kind: keyof typeof ATTACHMENT_ICONS) {

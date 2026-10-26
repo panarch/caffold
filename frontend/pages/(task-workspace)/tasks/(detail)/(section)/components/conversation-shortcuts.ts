@@ -1,13 +1,9 @@
 import { html, LitElement } from "lit";
-import type {
-  ActionHintScope,
-  ActionHintScopeOptions,
-} from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hints.js";
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import { getCodexReadiness } from "#app/api.ts";
 import {
   type CodexStatusSnapshot,
@@ -20,6 +16,7 @@ import {
   taskStoreBlocksTaskOperations,
 } from "#app/pages/(task-workspace)/task-store-status.ts";
 import "./conversation-shortcuts/components/fork-dialog.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import type { CaffoldConversationForkDialog } from "./conversation-shortcuts/components/fork-dialog.ts";
 
 // The Section the shortcuts start a Task in: its identity, and the path a
@@ -29,8 +26,6 @@ export interface ConversationShortcutsContext {
   sectionId: string;
   path: string;
 }
-
-const FORK_BUTTON = 'button[data-section-conversation-action="fork-codex"]';
 
 /**
  * The row beside a Section's New Task that starts a Task from a conversation
@@ -52,6 +47,10 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
   // it is blocked. The previous answer stays on show while the next is asked.
   private codexReadiness: CodexStatusSnapshot = createCodexStatusSnapshot();
   private codexReadinessRequest = 0;
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
+  private readonly dialog = new DrawnRef<CaffoldConversationForkDialog>(this);
   private taskStoreStatusSnapshot: TaskStoreStatusSnapshot | null = null;
 
   createRenderRoot() {
@@ -122,47 +121,8 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
     this.draw();
   }
 
-  actionHintScope({
-    scopeId = "section",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    this.performUpdate();
-    const control = this.querySelector<HTMLButtonElement>(FORK_BUTTON);
-    const contextKey = this.context.key;
-    if (
-      !this.active ||
-      this.hidden ||
-      !contextKey ||
-      !control ||
-      control.disabled
-    ) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:fork-conversation`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label:
-            control.getAttribute("aria-label") ||
-            control.textContent?.trim() ||
-            "Fork from Codex thread ID",
-          control,
-          clipRoots: [this, ...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            this.active &&
-            !this.hidden &&
-            this.context.key === contextKey &&
-            this.querySelector(FORK_BUTTON) === control &&
-            !control.disabled,
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope({ scopeId = "section", ...pull }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   keyboardNavigationContexts() {
@@ -190,6 +150,11 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
         <p>Create a Task here with an existing conversation's history.</p>
       </header>
       <button
+        ${this.hints.button({
+          id: "fork-conversation",
+          label: "Fork from Codex thread ID",
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        })}
         type="button"
         class="section-conversations-action"
         data-section-conversation-action="fork-codex"
@@ -207,7 +172,9 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
           ?hidden=${!reason}
         >${reason}</span>
       </button>
-      <caffold-conversation-fork-dialog></caffold-conversation-fork-dialog>
+      <caffold-conversation-fork-dialog
+        ${drawn(this.dialog)}
+      ></caffold-conversation-fork-dialog>
     `;
   }
 
@@ -271,9 +238,7 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
   }
 
   private forkDialog() {
-    return this.querySelector<CaffoldConversationForkDialog>(
-      ":scope > caffold-conversation-fork-dialog",
-    );
+    return this.dialog.value;
   }
 
   private draw() {

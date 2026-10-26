@@ -1,5 +1,10 @@
 import { html, LitElement, nothing, type TemplateResult } from "lit";
 import {
+  type ActionHintPull,
+  ActionHints,
+  mergeActionHintScopes,
+} from "#app/action-hints.ts";
+import {
   type ActiveTask,
   type ActiveTaskComposerSettings,
   type ActiveTaskRecovery,
@@ -9,6 +14,7 @@ import {
   reorderSection,
   reorderTask,
 } from "#app/api.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "#components/loading-text.ts";
 import type { WorkspaceLiveUpdates } from "../../live-updates.ts";
 import {
@@ -33,6 +39,9 @@ import {
 import { moveListItemBefore } from "./active-task-list/move-list-item.ts";
 
 export type { ReorderMode } from "./active-task-list/components/section.ts";
+
+// The Section component in each group the list made.
+const groupSections = new WeakMap<HTMLLIElement, CaffoldActiveTaskSection>();
 
 export const ACTIVE_TASK_LIST_INITIAL_SETTLED_EVENT =
   "caffold:active-task-list-initial-settled";
@@ -173,6 +182,9 @@ export class CaffoldActiveTaskList extends LitElement {
   private selectedThreadId = "";
   private selectedSectionId = "";
   private readonly revisionByThread = new Map<string, number>();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly groups = new DrawnRef<HTMLOListElement>(this);
+  private readonly announcement = new DrawnRef<HTMLParagraphElement>(this);
   private active = false;
   private taskOperations = taskStoreOperationsPresentation(null);
   private reorderMode: ReorderMode = "none";
@@ -513,9 +525,12 @@ export class CaffoldActiveTaskList extends LitElement {
     ];
   }
 
-  actionHintTargets(options: { clipRoots?: Element[] } = {}) {
-    return this.sectionComponents().flatMap((section) =>
-      section.actionHintTargets(options),
+  actionHintScope(pull: ActionHintPull = {}) {
+    return mergeActionHintScopes(
+      this.hints.scope(pull),
+      ...this.sectionComponents().map((section) =>
+        section.actionHintScope(pull),
+      ),
     );
   }
 
@@ -605,6 +620,7 @@ export class CaffoldActiveTaskList extends LitElement {
       >`;
     } else {
       content = html`<ol
+        ${drawn(this.groups)}
         class="task-repository-groups"
         data-task-section="managed"
         @caffold:active-task-section-intent=${this.handleSectionIntent}
@@ -626,6 +642,7 @@ export class CaffoldActiveTaskList extends LitElement {
       <div class="task-list-alerts">${alert}</div>
       <div class="task-list-content">${content}</div>
       <p
+        ${drawn(this.announcement)}
         class="sr-only task-reorder-announcement"
         aria-live="polite"
         aria-atomic="true"
@@ -719,6 +736,7 @@ export class CaffoldActiveTaskList extends LitElement {
     let component = this.sectionIn(group);
     if (!component) {
       component = new CaffoldActiveTaskSection();
+      groupSections.set(group, component);
       group.replaceChildren(component);
     }
     component.setSnapshot(this.sectionSnapshot(section), options);
@@ -1232,7 +1250,7 @@ export class CaffoldActiveTaskList extends LitElement {
 
   // Cleared first, so the same words said twice are spoken twice.
   private announce(message: string) {
-    const region = this.querySelector(":scope > .task-reorder-announcement");
+    const region = this.announcement.value;
     if (!region) {
       return;
     }
@@ -1615,23 +1633,20 @@ export class CaffoldActiveTaskList extends LitElement {
     if (!sectionId) {
       return null;
     }
-    return this.querySelector<HTMLLIElement>(
-      `.task-repository-group[data-task-repository-key="${CSS.escape(sectionId)}"]`,
+    return (
+      this.groupItems().find(
+        (group) => group.dataset.taskRepositoryKey === sectionId,
+      ) ?? null
     );
   }
 
+  // The Section groups this list holds, in their order.
   private groupItems() {
-    return [
-      ...(this.groupList?.querySelectorAll<HTMLLIElement>(
-        ":scope > .task-repository-group",
-      ) ?? []),
-    ];
+    return [...(this.groupList?.children ?? [])] as HTMLLIElement[];
   }
 
-  private sectionIn(group: Element) {
-    return group.querySelector<CaffoldActiveTaskSection>(
-      ":scope > caffold-active-task-section",
-    );
+  private sectionIn(group: HTMLLIElement) {
+    return groupSections.get(group) ?? null;
   }
 
   private sectionComponentFor(sectionId: string) {
@@ -1647,9 +1662,7 @@ export class CaffoldActiveTaskList extends LitElement {
   }
 
   private get groupList() {
-    return this.querySelector<HTMLOListElement>(
-      ":scope > .task-list-content > .task-repository-groups",
-    );
+    return this.groups.value;
   }
 }
 

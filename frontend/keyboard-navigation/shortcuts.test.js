@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { SCROLL_COMMAND } from "./model.js";
+import { SCROLL_COMMAND } from "./model.ts";
 import {
   KEYBOARD_NAVIGATION_KEY,
   KEYBOARD_SHORTCUT_HELP_SECTIONS,
   KEY_COMBINATION_ACTION,
   keyCombinationAction,
   matchesKeyboardNavigationKey,
-} from "./shortcuts.js";
+} from "./shortcuts.ts";
 
 test("keeps the displayed Scroll keys aligned with executable commands", () => {
   assert.deepEqual(Object.keys(SCROLL_COMMAND), ["J", "K", "D", "U", "H", "L"]);

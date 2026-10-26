@@ -1,28 +1,18 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import {
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  disclosureActionHintTarget,
-  emptyActionHintScope,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { GitLog } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/loading-text.ts";
 import "#components/pagination.ts";
 import type { CaffoldPagination } from "#components/pagination.ts";
-
-const LOG_LIST = ":scope > .log-list-panel > .log-list";
-const OPEN_COMMIT = `${LOG_LIST} > .log-entry > button[data-action="open-commit"]`;
-const TOGGLE_COMMIT_BODY = `${LOG_LIST} > .log-entry > button[data-action="toggle-commit-body"]`;
 
 type LogState =
   | { status: "idle" }
@@ -41,6 +31,16 @@ export class CaffoldGitLogListPage extends LitElement {
   // A new log starts at its top; a refreshed one keeps its place.
   private scrollToTop = false;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly list = new DrawnRef<HTMLOListElement>(this);
+  private readonly pagination = new DrawnRef<CaffoldPagination>(this);
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.list.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
 
   constructor() {
     super();
@@ -110,6 +110,11 @@ export class CaffoldGitLogListPage extends LitElement {
           ${
             body
               ? html`<button
+                  ${this.hints.disclosure({
+                    id: `commit-body:${encodeURIComponent(commit.sha)}`,
+                    label: `${verb} commit body for ${commit.shortSha}`,
+                    action: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+                  })}
                   type="button"
                   class="log-summary log-summary-toggle"
                   data-action="toggle-commit-body"
@@ -124,6 +129,11 @@ export class CaffoldGitLogListPage extends LitElement {
                 </div>`
           }
           <button
+            ${this.hints.button({
+              id: `commit:${encodeURIComponent(commit.sha)}`,
+              label: `${openLabel} ${commit.subject}`,
+              action: ACTION_HINT_ACTION.COMMIT_OPEN,
+            })}
             type="button"
             class="log-review-button"
             data-action="open-commit"
@@ -144,12 +154,20 @@ export class CaffoldGitLogListPage extends LitElement {
       <section class="log-list-panel">
         ${
           log.commits.length
-            ? html`<ol class="log-list">${entries}</ol>`
+            ? html`<ol
+                ${drawn(this.list)}
+                ${this.surfaces.surface({
+                  id: "scroll",
+                  clipRoots: () => [this, this.list.value],
+                })}
+                class="log-list"
+              >${entries}</ol>`
             : html`<p class="surface-message">No commits.</p>`
         }
         ${
           log.totalPages > 1
             ? html`<caffold-pagination
+                ${drawn(this.pagination)}
                 aria-label="Log pagination"
                 page=${log.page}
                 total-pages=${log.totalPages}
@@ -172,7 +190,7 @@ export class CaffoldGitLogListPage extends LitElement {
       return;
     }
     this.scrollToTop = false;
-    const scroller = this.querySelector(LOG_LIST);
+    const scroller = this.list.value;
     if (scroller) {
       scroller.scrollTop = 0;
       scroller.scrollLeft = 0;
@@ -209,79 +227,12 @@ export class CaffoldGitLogListPage extends LitElement {
   actionHintScope({
     scopeId = "git:log",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
-    if (this.hidden || this.state.status !== "ready") {
-      return emptyActionHintScope();
-    }
-    const scroller = this.querySelector(LOG_LIST);
-    const listClipRoots = [this, scroller, ...clipRoots].filter(
-      (root): root is Element => root !== null,
-    );
-    const isCurrent = (
-      selector: string,
-      sha: string,
-      control: HTMLButtonElement,
-    ) =>
-      this.isConnected &&
-      !this.hidden &&
-      this.state.status === "ready" &&
-      this.querySelector(
-        `${selector}[data-commit-sha="${CSS.escape(sha)}"]`,
-      ) === control &&
-      !control.disabled;
-    const targets = [
-      ...this.querySelectorAll<HTMLButtonElement>(
-        `${OPEN_COMMIT}[data-commit-sha]`,
-      ),
-    ].flatMap((control) => {
-      const sha = `${control.dataset.commitSha ?? ""}`;
-      if (!sha || control.disabled) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:commit:${encodeURIComponent(sha)}`,
-          actionId: ACTION_HINT_ACTION.COMMIT_OPEN,
-          label:
-            control.getAttribute("aria-label") ||
-            `Open commit ${sha.slice(0, 7)}`,
-          control,
-          clipRoots: listClipRoots,
-          isActionable: () => isCurrent(OPEN_COMMIT, sha, control),
-        }),
-      ];
-    });
-    for (const control of this.querySelectorAll<HTMLButtonElement>(
-      `${TOGGLE_COMMIT_BODY}[data-commit-sha]`,
-    )) {
-      const sha = `${control.dataset.commitSha ?? ""}`;
-      if (!sha || control.disabled) {
-        continue;
-      }
-      targets.push(
-        disclosureActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:commit-body:${encodeURIComponent(sha)}`,
-          actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-          label: control.getAttribute("aria-label") || "Expand commit body",
-          control,
-          clipRoots: listClipRoots,
-          isActionable: () => isCurrent(TOGGLE_COMMIT_BODY, sha, control),
-        }),
-      );
-    }
-    const pagination = this.querySelector<CaffoldPagination>(
-      ":scope > .log-list-panel > caffold-pagination",
-    );
+    ...pull
+  }: ActionHintPull = {}) {
+    const own = this.hints.scope({ ...pull, scopeId, clipRoots });
     return mergeActionHintScopes(
-      {
-        blocked: false,
-        targets,
-        mutationRoots: [this],
-        scrollRoots: scroller ? [scroller] : [],
-      },
-      pagination?.actionHintScope({
+      own,
+      this.pagination.value?.actionHintScope({
         scopeId: `${scopeId}:pagination`,
         actionId: ACTION_HINT_ACTION.PAGE,
         clipRoots: [this, ...clipRoots],
@@ -291,36 +242,10 @@ export class CaffoldGitLogListPage extends LitElement {
 
   scrollSurfaceScope({
     scopeId = "git:log",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    if (this.hidden || this.state.status !== "ready") {
-      return emptyScrollSurfaceScope();
-    }
-    const scrollport = this.querySelector(LOG_LIST);
-    if (!scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label: "Git log",
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots],
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.state.status === "ready" &&
-            this.querySelector(LOG_LIST) === scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    label = "Git log",
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   private changePage(event: CustomEvent<{ page?: number | string }>) {

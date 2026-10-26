@@ -1,12 +1,9 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
@@ -32,6 +29,9 @@ export class CaffoldTaskAssistantMessageCopyButton extends LitElement {
   private generation = 0;
   private feedbackTimer: number | undefined;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
 
   constructor() {
     super();
@@ -66,6 +66,12 @@ export class CaffoldTaskAssistantMessageCopyButton extends LitElement {
     const presentation = copyPresentation(this.copyState);
     return html`
       <button
+        ${this.hints.button({
+          id: "copy",
+          label: presentation.actionLabel,
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          when: this.copyState !== "copying",
+        })}
         type="button"
         class="task-assistant-message-copy"
         data-message-action="copy"
@@ -120,43 +126,8 @@ export class CaffoldTaskAssistantMessageCopyButton extends LitElement {
     }, COPY_FEEDBACK_DURATION_MS);
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    const control = this.button;
-    if (
-      !scopeId ||
-      !control ||
-      !this.isConnected ||
-      this.hidden ||
-      !isCopyActionable(control)
-    ) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:copy`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label:
-            control.getAttribute("aria-label") ||
-            control.title ||
-            "Copy message",
-          control,
-          clipRoots: [this, ...clipRoots].filter(Boolean),
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.button === control &&
-            isCopyActionable(control),
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   private acceptsCompletion(generation: number) {
@@ -173,20 +144,6 @@ export class CaffoldTaskAssistantMessageCopyButton extends LitElement {
     window.clearTimeout(this.feedbackTimer);
     this.feedbackTimer = undefined;
   }
-
-  private get button() {
-    return this.querySelector<HTMLButtonElement>(
-      ':scope > button[data-message-action="copy"]',
-    );
-  }
-}
-
-function isCopyActionable(control: HTMLButtonElement) {
-  return (
-    !control.disabled &&
-    control.getAttribute("aria-disabled") !== "true" &&
-    hasActionHintLayoutBox(control)
-  );
 }
 
 function copyPresentation(state: CopyState) {

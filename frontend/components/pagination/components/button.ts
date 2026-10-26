@@ -1,10 +1,5 @@
 import { html, LitElement } from "lit";
-import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hint-scope.js";
+import { type ActionHintPull, ActionHints } from "#app/action-hints.ts";
 import { compactIconButton } from "#app/component-styles.ts";
 import { inlineIcon } from "../../icons.ts";
 
@@ -25,6 +20,8 @@ export class CaffoldPaginationButton extends LitElement {
   declare icon: string;
   declare disabled: boolean;
 
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+
   constructor() {
     super();
     this.page = 0;
@@ -40,6 +37,10 @@ export class CaffoldPaginationButton extends LitElement {
   render() {
     return html`
       <button
+        ${this.hints.button({
+          id: `page:${this.kind}:${encodeURIComponent(this.page)}`,
+          label: this.label || `Open page ${this.page}`,
+        })}
         type="button"
         class="pagination-button"
         data-page-kind=${this.kind}
@@ -54,43 +55,8 @@ export class CaffoldPaginationButton extends LitElement {
     `;
   }
 
-  actionHintScope({
-    scopeId = "",
-    actionId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    const control = this.querySelector<HTMLButtonElement>(
-      ":scope > .pagination-button",
-    );
-    if (!scopeId || !actionId || this.hidden || !control || control.disabled) {
-      return emptyActionHintScope();
-    }
-    const kind = `${control.dataset.pageKind ?? ""}`;
-    const page = `${control.dataset.page ?? ""}`;
-    if (!kind || !page) {
-      return emptyActionHintScope();
-    }
-    return {
-      ...emptyActionHintScope(),
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:page:${kind}:${encodeURIComponent(page)}`,
-          actionId,
-          label: control.getAttribute("aria-label") || `Open page ${page}`,
-          control,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.querySelector(":scope > .pagination-button") === control &&
-            control.dataset.pageKind === kind &&
-            control.dataset.page === page &&
-            !control.disabled,
-        }),
-      ],
-      mutationRoots: [this],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   choosePage() {

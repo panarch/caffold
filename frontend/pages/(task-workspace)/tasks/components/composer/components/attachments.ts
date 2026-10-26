@@ -1,11 +1,10 @@
 import { html, LitElement, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import {
-  type ActionHintTarget,
-  buttonActionHintTarget,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import { inlineIcon } from "#components/icons.ts";
 import { requestTaskImagePreview } from "../../image-preview-dialog.ts";
 
@@ -25,7 +24,6 @@ export interface AttachmentRemoveDetail {
   attachmentId: string;
 }
 
-const ATTACHMENT_ACTIONS = ["preview-image", "remove-image", "remove-file"];
 // Three device pixels for each of the 72px a thumbnail takes, so it stays
 // sharp on a phone.
 const THUMBNAIL_SHORT_SIDE = 216;
@@ -47,6 +45,7 @@ export class CaffoldTaskComposerAttachments extends LitElement {
   private attachments: ComposerAttachment[] = [];
   private thumbnailQueue = Promise.resolve();
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
 
   constructor() {
     super();
@@ -114,53 +113,8 @@ export class CaffoldTaskComposerAttachments extends LitElement {
     `;
   }
 
-  // Preview and Remove for each attachment, in Action Hints beside the
-  // Composer's own buttons.
-  actionHintTargets({
-    scopeId = "",
-    clipRoots = [],
-  }: {
-    scopeId?: string;
-    clipRoots?: Element[];
-  } = {}) {
-    if (!scopeId) {
-      return [];
-    }
-    return ATTACHMENT_ACTIONS.flatMap((action) =>
-      Array.from(
-        this.querySelectorAll<HTMLButtonElement>(
-          `button[data-attachment-action="${action}"]`,
-        ),
-        (control) => this.actionHintTarget(control, { scopeId, clipRoots }),
-      ).filter((target): target is ActionHintTarget => Boolean(target)),
-    );
-  }
-
-  private actionHintTarget(
-    control: HTMLButtonElement,
-    { scopeId, clipRoots }: { scopeId: string; clipRoots: Element[] },
-  ) {
-    const { attachmentAction: action, attachmentId: id } = control.dataset;
-    if (!id || control.disabled || !hasActionHintLayoutBox(control)) {
-      return null;
-    }
-    return buttonActionHintTarget({
-      invalidationOwner: this,
-      id: `task-composer:${scopeId}:${action}:${id}`,
-      actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-      label:
-        control.getAttribute("aria-label") ||
-        control.title ||
-        `${action}:${id}`,
-      control,
-      clipRoots: [...clipRoots],
-      isActionable: () =>
-        this.isConnected &&
-        this.holds(id) &&
-        this.contains(control) &&
-        !control.disabled &&
-        hasActionHintLayoutBox(control),
-    });
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   private pictureTemplate(image: ComposerAttachment) {
@@ -168,6 +122,11 @@ export class CaffoldTaskComposerAttachments extends LitElement {
       class="task-composer-attachment"
       title=${image.name}
     ><button
+        ${this.hints.button({
+          id: `preview-image:${image.id}`,
+          label: `Preview ${image.name}`,
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        })}
         type="button"
         class="task-composer-attachment-preview"
         data-attachment-action="preview-image"
@@ -179,6 +138,11 @@ export class CaffoldTaskComposerAttachments extends LitElement {
           alt=""
           src=${this.thumbnails.get(image.id) ?? nothing}
         ></button><button
+        ${this.hints.button({
+          id: `remove-image:${image.id}`,
+          label: `Remove ${image.name}`,
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        })}
         type="button"
         class="task-composer-attachment-remove"
         data-attachment-action="remove-image"
@@ -209,6 +173,11 @@ export class CaffoldTaskComposerAttachments extends LitElement {
         >${stem}</span><span
           class="task-composer-file-extension"
         >${extension}</span></span><button
+        ${this.hints.button({
+          id: `remove-file:${file.id}`,
+          label: `Remove ${file.name}`,
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        })}
         type="button"
         class="task-composer-file-remove"
         data-attachment-action="remove-file"

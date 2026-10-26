@@ -1,13 +1,18 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "../action-hint-scope.js";
+} from "../action-hints.ts";
 import { warmIcons } from "./icons.ts";
 import "./pagination/components/button.ts";
-import type { CaffoldPaginationButton } from "./pagination/components/button.ts";
+import { DrawnRefs, drawn } from "./drawn-refs.ts";
+import type {
+  CaffoldPaginationButton,
+  PageKind,
+} from "./pagination/components/button.ts";
+
+const PAGE_KINDS: readonly PageKind[] = ["first", "previous", "next", "last"];
 
 export class CaffoldPagination extends LitElement {
   static properties = {
@@ -31,6 +36,8 @@ export class CaffoldPagination extends LitElement {
   declare lastLabel: string | null | undefined;
 
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly pageButtons = new DrawnRefs<CaffoldPaginationButton>(this);
 
   constructor() {
     super();
@@ -68,6 +75,7 @@ export class CaffoldPagination extends LitElement {
         aria-label=${this.getAttribute("aria-label") ?? "Pagination"}
       >
         <caffold-pagination-button
+          ${drawn(this.pageButtons.of("first"))}
           kind="first"
           icon="ChevronFirst"
           page="1"
@@ -75,6 +83,7 @@ export class CaffoldPagination extends LitElement {
           .disabled=${page <= 1}
         ></caffold-pagination-button>
         <caffold-pagination-button
+          ${drawn(this.pageButtons.of("previous"))}
           kind="previous"
           icon="ChevronLeft"
           .label=${this.previousLabel ?? "Previous page"}
@@ -88,6 +97,7 @@ export class CaffoldPagination extends LitElement {
           ${`${page} / ${totalPages}`}
         </span>
         <caffold-pagination-button
+          ${drawn(this.pageButtons.of("next"))}
           kind="next"
           icon="ChevronRight"
           .label=${this.nextLabel ?? "Next page"}
@@ -95,6 +105,7 @@ export class CaffoldPagination extends LitElement {
           .disabled=${!this.hasNext}
         ></caffold-pagination-button>
         <caffold-pagination-button
+          ${drawn(this.pageButtons.of("last"))}
           kind="last"
           icon="ChevronLast"
           .label=${this.lastLabel ?? "Last page"}
@@ -105,18 +116,12 @@ export class CaffoldPagination extends LitElement {
     `;
   }
 
-  // The page buttons provide their own targets; this adds itself so that a
-  // rendered or removed button set revalidates the session.
-  actionHintScope(options: ActionHintScopeOptions = {}): ActionHintScope {
-    if (!options.scopeId || !options.actionId || this.hidden) {
-      return emptyActionHintScope();
-    }
-    const pageButtons = this.querySelectorAll<CaffoldPaginationButton>(
-      ":scope > .pagination-panel > caffold-pagination-button",
-    );
+  actionHintScope(pull: ActionHintPull = {}) {
     return mergeActionHintScopes(
-      { ...emptyActionHintScope(), mutationRoots: [this] },
-      ...[...pageButtons].map((button) => button.actionHintScope(options)),
+      this.hints.scope(pull),
+      ...PAGE_KINDS.map((kind) =>
+        this.pageButtons.get(kind)?.actionHintScope(pull),
+      ),
     );
   }
 }

@@ -1,18 +1,13 @@
 import { html, LitElement } from "lit";
-import type { ActionHintScope } from "#app/action-hint-scope.js";
-import {
-  ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hints.js";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
 import {
   forgetTaskPermissionInstructions,
   getTaskPermissionInstructions,
 } from "#app/api.ts";
-import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import { formatDate } from "#tasks/task-format.ts";
 
@@ -42,7 +37,11 @@ interface RecordState {
  * beside it, and this is a page of the person's own sentences.
  */
 export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
-  private threadId = "";
+  static properties = {
+    threadId: { state: true },
+  };
+
+  declare private threadId: string;
   private opener: HTMLElement | null = null;
   private request = 0;
   private state: RecordState = {
@@ -51,6 +50,16 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
     error: "",
   };
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
+
+  constructor() {
+    super();
+    this.threadId = "";
+  }
 
   createRenderRoot() {
     return this;
@@ -72,8 +81,8 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
   open({ threadId, opener }: { threadId: string; opener?: Element | null }) {
     this.opener = opener instanceof HTMLElement ? opener : null;
     this.threadId = threadId;
-    const dialog = this.dialog;
-    if (!dialog.open) {
+    const dialog = this.dialog.value;
+    if (dialog && !dialog.open) {
       dialog.showModal();
     }
     void this.load();
@@ -91,72 +100,19 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
   dismiss() {
     this.opener = null;
     this.request += 1;
-    const dialog = this.dialog;
+    const dialog = this.dialog.value;
     if (dialog?.open) {
       dialog.close();
     }
   }
 
+  // The record scrolls with nothing of its own, so Scroll mode here moves
+  // nothing behind the dialog.
   keyboardNavigationContexts() {
-    const dialog = this.dialog;
-    const presentation =
-      dialog?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const hintDialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (!dialog || !hintDialog || !hud || !selector) {
-      return [];
-    }
-    return [
-      keyboardNavigationContext({
-        id: scopeId(this.threadId),
-        kind: "modal",
-        root: dialog,
-        actionHints: { dialog: hintDialog, scope: this.actionHintScope() },
-        scroll: { hud, selector, scope: emptyScrollSurfaceScope() },
-      }),
-    ];
-  }
-
-  actionHintScope(): ActionHintScope {
-    const dialog = this.dialog;
-    if (!dialog?.open) {
-      return emptyActionHintScope();
-    }
-    const threadId = this.threadId;
-    const targets = [
-      [".task-permission-instructions-close", CLOSE_LABEL],
-      [
-        'button[data-permission-instructions-action="forget"]',
-        "Forget what this Task settled",
-      ],
-    ].flatMap(([selector, label]) => {
-      const control = dialog.querySelector<HTMLButtonElement>(selector);
-      if (!control || control.disabled || control.hidden) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId(threadId)}:${selector}`,
-          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-          label: control.getAttribute("aria-label") || label,
-          control,
-          clipRoots: [dialog],
-          isActionable: () =>
-            this.isConnected &&
-            this.dialog === dialog &&
-            dialog.open &&
-            this.threadId === threadId &&
-            dialog.querySelector(selector) === control &&
-            !control.disabled &&
-            !control.hidden,
-        }),
-      ];
+    return this.keyboard.contexts({
+      actionHints: (pull) => this.hints.scope(pull),
+      scroll: () => emptyScrollSurfaceScope(),
     });
-    return { blocked: false, targets, mutationRoots: [this], scrollRoots: [] };
   }
 
   render() {
@@ -175,6 +131,12 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
       "task-permission-instructions-close-icon",
     );
     return html`<dialog
+      ${drawn(this.dialog)}
+      ${this.keyboard.modal({
+        id: this.threadId
+          ? `task-permission-instructions:${encodeURIComponent(this.threadId)}`
+          : "task-permission-instructions",
+      })}
       closedby="any"
       aria-labelledby="task-permission-instructions-title"
       @close=${this.handleClose}
@@ -190,6 +152,11 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
             class="task-permission-instructions-close-form"
           >
             <button
+              ${this.hints.button({
+                id: "close",
+                label: CLOSE_LABEL,
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
               type="submit"
               class="task-permission-instructions-close"
               aria-label=${CLOSE_LABEL}
@@ -216,6 +183,11 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
         >${error}</p>
         <footer class="task-permission-instructions-footer">
           <button
+            ${this.hints.button({
+              id: "forget",
+              label: "Forget what this Task settled",
+              action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+            })}
             type="button"
             class="task-secondary-button"
             data-permission-instructions-action="forget"
@@ -225,6 +197,7 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
         </footer>
       </article>
       <caffold-keyboard-navigation-presentation
+        ${this.keyboard.presentation()}
       ></caffold-keyboard-navigation-presentation>
     </dialog>`;
   }
@@ -312,12 +285,12 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
       this.isConnected &&
       request === this.request &&
       this.threadId === threadId &&
-      Boolean(this.dialog?.open)
+      Boolean(this.dialog.value?.open)
     );
   }
 
   private handleClose() {
-    if (this.dialog.open) {
+    if (this.dialog.value?.open) {
       return;
     }
     this.request += 1;
@@ -326,10 +299,6 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
     if (opener?.isConnected) {
       opener.focus();
     }
-  }
-
-  private get dialog() {
-    return this.querySelector(":scope > dialog") as HTMLDialogElement;
   }
 }
 
@@ -362,12 +331,6 @@ function instructionsOf(payload: { instructions?: string | null } | null) {
 
 function messageOf(error: unknown, fallback: string) {
   return (error as { message?: string } | null)?.message ?? fallback;
-}
-
-function scopeId(threadId: string) {
-  return threadId
-    ? `task-permission-instructions:${encodeURIComponent(threadId)}`
-    : "task-permission-instructions";
 }
 
 customElements.define(

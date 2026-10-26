@@ -1,11 +1,7 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import type { SyntaxSpan } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "../../drawn-refs.ts";
 import { syntaxLine } from "../syntax-spans.ts";
 
 export interface CodeFile {
@@ -41,6 +37,12 @@ export class CaffoldCodeViewer extends LitElement {
   declare file: CodeFile | null;
   declare position: ViewerPosition | null;
 
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly table = new DrawnRef<HTMLDivElement>(this);
+
   constructor() {
     super();
     this.file = null;
@@ -60,6 +62,12 @@ export class CaffoldCodeViewer extends LitElement {
     return html`
       <section class="code-viewer">
         <div
+          ${drawn(this.scrollport)}
+          ${this.surfaces.surface({
+            id: "scroll",
+            axes: ["vertical", "horizontal"],
+            clipRoots: () => [this, this.scrollport.value],
+          })}
           class="code-lines"
           role="region"
           aria-label="File content"
@@ -67,6 +75,7 @@ export class CaffoldCodeViewer extends LitElement {
         >
           <div class="code-gutter-backdrop" aria-hidden="true"></div>
           <div
+            ${drawn(this.table)}
             class="code-table"
             style="--code-content-width: ${codeColumns(lines)}ch;"
           >
@@ -101,40 +110,10 @@ export class CaffoldCodeViewer extends LitElement {
   }
 
   scrollSurfaceScope({
-    scopeId = "",
     label = "File content",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.querySelector(
-      ":scope > .code-viewer > .code-lines",
-    );
-    if (!scopeId || !label || !scrollport || this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          axes: ["vertical", "horizontal"],
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.querySelector(":scope > .code-viewer > .code-lines") ===
-              scrollport &&
-            isCurrent() &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, label });
   }
 
   visibleLine() {
@@ -143,9 +122,7 @@ export class CaffoldCodeViewer extends LitElement {
       return null;
     }
     const scrollerTop = scroller.getBoundingClientRect().top;
-    const row = Array.from(
-      this.querySelectorAll<HTMLElement>(".code-row[data-line-number]"),
-    ).find(
+    const row = this.rows().find(
       (candidate) => candidate.getBoundingClientRect().bottom > scrollerTop,
     );
     return normalizeLine(row?.dataset.lineNumber);
@@ -157,21 +134,22 @@ export class CaffoldCodeViewer extends LitElement {
     if (!targetLine || !scroller) {
       return false;
     }
-    const row = this.querySelector<HTMLElement>(
-      `.code-row[data-line-number="${targetLine}"]`,
-    );
+    const rows = this.rows();
+    const row = rows[targetLine - 1];
     if (!row) {
       return false;
     }
-    const firstRow = this.querySelector<HTMLElement>(
-      ".code-row[data-line-number]",
-    );
-    scroller.scrollTop = row.offsetTop - (firstRow?.offsetTop ?? 0) + 1;
+    scroller.scrollTop = row.offsetTop - rows[0].offsetTop + 1;
     return true;
   }
 
   private get scroller() {
-    return this.querySelector<HTMLElement>(".code-lines");
+    return this.scrollport.value;
+  }
+
+  // One row for each line, in order.
+  private rows() {
+    return [...(this.table.value?.children ?? [])] as HTMLElement[];
   }
 
   private captureScroll() {

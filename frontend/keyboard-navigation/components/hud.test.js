@@ -4,55 +4,53 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./hud.js");
+await import("./hud.ts");
 const hud = registry.element("caffold-scroll-mode-hud").prototype;
 after(() => registry.restore());
 
-test("renders only a compact label and keyboard shortcut affordance", () => {
-  const owner = {};
-  hud.ensureRendered.call(owner);
-  assert.match(owner.innerHTML, /data-scroll-mode-label/);
-  assert.match(owner.innerHTML, /data-scroll-mode-shortcut-help/);
-  assert.match(owner.innerHTML, /Press question mark for keyboard shortcuts/);
-  assert.doesNotMatch(owner.innerHTML, /<button/);
-  assert.doesNotMatch(owner.innerHTML, /data-scroll-mode-instructions/);
-  assert.equal(owner.hidden, true);
+test("draws only a compact label and the keyboard shortcut affordance", () => {
+  const drawn = templateHtml(
+    hud.render.call({ label: "Conversation", outline: {}, status: {} }),
+  );
+  assert.match(drawn, /data-scroll-mode-label>Scroll: Conversation</);
+  assert.match(drawn, /data-scroll-mode-shortcut-help/);
+  assert.match(drawn, /Press question mark for keyboard shortcuts/);
+  assert.doesNotMatch(drawn, /<button/);
 });
 
 test("shows, relabels, and closes at the surface's top-right corner", () => {
-  const label = { textContent: "" };
   const outline = { style: {} };
   const status = {
     style: {},
     getBoundingClientRect() {
       const left = Number.parseFloat(this.style.left) || 0;
       const top = Number.parseFloat(this.style.top) || 0;
-      const width = label.textContent.includes("Longer") ? 180 : 120;
+      const width = owner.label.includes("Longer") ? 180 : 120;
       return rect(left, top, left + width, top + 32);
     },
   };
   const owner = {
     hidden: true,
-    ensureRendered() {},
+    label: "",
+    outline: { value: outline },
+    status: { value: status },
+    draw() {},
     positionStatus: hud.positionStatus,
-    querySelector(selector) {
-      return new Map([
-        ["[data-scroll-mode-label]", label],
-        [":scope > .scroll-mode-outline", outline],
-        [":scope > .scroll-mode-status", status],
-      ]).get(selector);
-    },
   };
 
-  assert.equal(hud.show.call(owner, {
-    label: "Conversation",
-    visibleRect: rect(25, 40, 225, 340),
-    contextRect: rect(10, 20, 310, 220),
-  }), true);
+  assert.equal(
+    hud.show.call(owner, {
+      label: "Conversation",
+      visibleRect: rect(25, 40, 225, 340),
+      contextRect: rect(10, 20, 310, 220),
+    }),
+    true,
+  );
   assert.equal(owner.hidden, false);
-  assert.equal(label.textContent, "Scroll: Conversation");
+  assert.equal(owner.label, "Conversation");
   assert.deepEqual(outline.style, {
     left: "25px",
     top: "40px",
@@ -64,28 +62,30 @@ test("shows, relabels, and closes at the surface's top-right corner", () => {
   assert.equal(status.style.maxWidth, "184px");
 
   hud.updateLabel.call(owner, "Longer task list label");
-  assert.equal(label.textContent, "Scroll: Longer task list label");
+  assert.equal(owner.label, "Longer task list label");
   assert.equal(status.style.left, "37px");
   hud.close.call(owner);
   assert.equal(owner.hidden, true);
   assert.equal(owner.contextRect, null);
   assert.equal(owner.surfaceRect, null);
-  assert.equal(label.textContent, "");
+  assert.equal(owner.label, "");
 });
 
 test("rejects missing label or geometry without leaving a stale HUD", () => {
   let closes = 0;
   const owner = {
-    ensureRendered() {},
     close: () => {
       closes += 1;
     },
   };
-  assert.equal(hud.show.call(owner, {
-    label: "",
-    visibleRect: rect(0, 0, 100, 100),
-    contextRect: rect(0, 0, 100, 100),
-  }), false);
+  assert.equal(
+    hud.show.call(owner, {
+      label: "",
+      visibleRect: rect(0, 0, 100, 100),
+      contextRect: rect(0, 0, 100, 100),
+    }),
+    false,
+  );
   assert.equal(closes, 1);
 });
 

@@ -9,58 +9,10 @@ import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 const registry = installCustomElementUnitRegistry();
 await import("./command-dialog.ts");
 const CommandDialog = registry.element("caffold-task-command-dialog");
+const { ActionHints } = await import("#app/action-hints.ts");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
+const { ScrollSurfaces } = await import("#app/scroll-scope.ts");
 after(() => registry.restore());
-
-test("binds Close and parent plus output Scroll to the controls it drew", () => {
-  const close = {
-    disabled: false,
-    getAttribute: () => "Close command output",
-    focus() {},
-    click() {},
-  };
-  const output = layoutElement();
-  const body = layoutElement({ clientHeight: 100, scrollHeight: 260 });
-  const dialog = layoutElement({ open: true });
-  let currentOutput = output;
-  const commandDialog = dialogHost({
-    threadId: "thread/1",
-    dialog,
-    closeButton: close,
-    body,
-    get outputScrollport() {
-      return currentOutput;
-    },
-  });
-  const action = commandDialog.actionHintScope().targets[0];
-  const surfaces = commandDialog.scrollSurfaceScope().surfaces;
-
-  assert.equal(action.id, "task-command:thread%2F1:close");
-  assert.equal(action.isActionable(), true);
-  assert.deepEqual(
-    surfaces.map(({ id, axes, scrollport }) => ({ id, axes, scrollport })),
-    [
-      {
-        id: "task-command:thread%2F1:body",
-        axes: undefined,
-        scrollport: body,
-      },
-      {
-        id: "task-command:thread%2F1:output",
-        axes: ["horizontal"],
-        scrollport: output,
-      },
-    ],
-  );
-  assert.equal(surfaces[0].isEligible(), true);
-  assert.equal(surfaces[1].isEligible(), true);
-  currentOutput = layoutElement();
-  assert.equal(surfaces[1].isEligible(), false);
-  currentOutput = output;
-  commandDialog.threadId = "thread/2";
-  assert.equal(action.isActionable(), false);
-  assert.equal(surfaces[0].isEligible(), false);
-  assert.equal(surfaces[1].isEligible(), false);
-});
 
 test("draws a failed command's details and output, and only the details it has", () => {
   const commandDialog = dialogHost({
@@ -89,7 +41,7 @@ test("draws a failed command's details and output, and only the details it has",
 });
 
 function dialogHost(properties) {
-  return Object.create(CommandDialog.prototype, {
+  const host = Object.create(CommandDialog.prototype, {
     ...Object.getOwnPropertyDescriptors({
       isConnected: true,
       threadId: "thread-1",
@@ -97,6 +49,10 @@ function dialogHost(properties) {
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
+  host.hints = new ActionHints(host, () => {});
+  host.surfaces = new ScrollSurfaces(host, () => {});
+  host.keyboard = new KeyboardContexts(host, () => {});
+  return host;
 }
 
 function html(commandDialog) {
@@ -105,8 +61,4 @@ function html(commandDialog) {
     .replaceAll(" >", ">")
     .replaceAll("> <", "><")
     .trim();
-}
-
-function layoutElement(properties = {}) {
-  return { getClientRects: () => [{}], ...properties };
 }

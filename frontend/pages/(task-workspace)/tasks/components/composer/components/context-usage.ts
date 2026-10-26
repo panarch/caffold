@@ -1,9 +1,9 @@
 import { html, LitElement } from "lit";
 import {
-  buttonActionHintTarget,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 
 // How full a Task's context is, as its agent last said.
 export interface ContextUsage {
@@ -26,6 +26,7 @@ export class CaffoldTaskContextUsage extends LitElement {
 
   declare private usage: ContextUsage | null;
   private readonly popoverId = `task-context-usage-${++contextUsageInstanceId}`;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
 
   constructor() {
     super();
@@ -53,6 +54,11 @@ export class CaffoldTaskContextUsage extends LitElement {
     const view = contextView(this.usage);
     return html`
       <button
+        ${this.hints.button({
+          id: "context-usage",
+          label: view.label,
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        })}
         type="button"
         class="task-context-usage-button"
         popovertarget=${this.popoverId}
@@ -98,42 +104,8 @@ export class CaffoldTaskContextUsage extends LitElement {
     `;
   }
 
-  // The pie's place in Action Hints, beside the Composer's other buttons.
-  actionHintTarget({
-    scopeId = "",
-    clipRoots = [],
-  }: {
-    scopeId?: string;
-    clipRoots?: Element[];
-  } = {}) {
-    const control = this.button;
-    if (
-      !control ||
-      !scopeId ||
-      this.hidden ||
-      !hasActionHintLayoutBox(control)
-    ) {
-      return null;
-    }
-    return buttonActionHintTarget({
-      invalidationOwner: this,
-      id: `task-composer:${scopeId}:context-usage`,
-      actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-      label: control.getAttribute("aria-label") ?? "",
-      control,
-      clipRoots: [...clipRoots],
-      isActionable: () =>
-        this.isConnected &&
-        !this.hidden &&
-        this.button === control &&
-        hasActionHintLayoutBox(control),
-    });
-  }
-
-  private get button() {
-    return this.querySelector<HTMLButtonElement>(
-      ":scope > .task-context-usage-button",
-    );
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 }
 

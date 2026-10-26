@@ -11,14 +11,17 @@ const { TASK_STORE_RETRY_REQUEST_EVENT } = await import(
   "../../task-store-status.ts"
 );
 await import("./task-store-recovery.ts");
+const { ActionHints } = await import("#app/action-hints.ts");
+const { ScrollSurfaces } = await import("#app/scroll-scope.ts");
 const Recovery = registry.element("caffold-task-store-recovery");
-const recovery = Recovery.prototype;
 after(() => registry.restore());
 
 function draw({ readiness = null, retryAvailable = false }) {
   const owner = Object.create(Recovery.prototype, {
     snapshot: { value: { readiness, retryAvailable } },
   });
+  owner.hints = new ActionHints(owner, () => {});
+  owner.surfaces = new ScrollSurfaces(owner, () => {});
   return templateHtml(owner.render())
     .replace(/\s+/g, " ")
     .replaceAll(" >", ">")
@@ -79,56 +82,11 @@ test("offers Retry Task setup only while the store failed and no retry runs", ()
 
 test("Retry asks the store owner through one intent event", () => {
   const events = [];
-  recovery.requestRetry.call({
+  Recovery.prototype.requestRetry.call({
     dispatchEvent: (event) => events.push(event),
   });
 
   assert.deepEqual(events.map(({ type, bubbles }) => ({ type, bubbles })), [
     { type: TASK_STORE_RETRY_REQUEST_EVENT, bubbles: true },
   ]);
-});
-
-test("exposes its retry action and scroll surface only while shown", () => {
-  const retry = {
-    disabled: false,
-    hidden: false,
-    textContent: "Retry Task setup",
-    clicks: 0,
-    getAttribute: () => null,
-    getClientRects() {
-      return this.hidden ? [] : [{}];
-    },
-    focus() {},
-    click() {
-      this.clicks += 1;
-    },
-  };
-  const scrollport = { getClientRects: () => [{}] };
-  const owner = {
-    hidden: false,
-    isConnected: true,
-    performUpdate() {},
-    getClientRects: () => [{}],
-    querySelector(selector) {
-      if (selector.includes("task-store-recovery-surface")) return scrollport;
-      if (selector.includes('data-task-store-recovery-action="retry"')) return retry;
-      return null;
-    },
-  };
-
-  const scope = recovery.actionHintScope.call(owner);
-  assert.deepEqual(scope.targets.map(({ id }) => id), ["task-store-recovery:retry"]);
-  scope.targets[0].activate();
-  assert.equal(retry.clicks, 1);
-  retry.disabled = true;
-  assert.equal(scope.targets[0].isActionable(), false);
-  assert.deepEqual(recovery.actionHintScope.call(owner).targets, []);
-
-  const scrollScope = recovery.scrollSurfaceScope.call(owner);
-  assert.equal(scrollScope.surfaces[0].scrollport, scrollport);
-  assert.equal(scrollScope.surfaces[0].isEligible(), true);
-
-  owner.hidden = true;
-  assert.deepEqual(recovery.actionHintScope.call(owner).targets, []);
-  assert.deepEqual(recovery.scrollSurfaceScope.call(owner).surfaces, []);
 });

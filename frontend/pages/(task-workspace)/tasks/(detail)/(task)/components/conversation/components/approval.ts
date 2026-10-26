@@ -1,19 +1,16 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import type { ApprovalTool, TaskEventPayload } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ScrollSurfacePull,
+  ScrollSurfaces,
+} from "#app/scroll-scope.ts";
 import { formatDecision } from "#tasks/task-format.ts";
 
 export interface ApprovalIntentDetail {
@@ -46,6 +43,12 @@ export class CaffoldTaskApproval extends LitElement {
   declare disabled: boolean;
   declare active: boolean;
   declare errorMessage: string;
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
 
   constructor() {
     super();
@@ -92,7 +95,10 @@ export class CaffoldTaskApproval extends LitElement {
             ?hidden=${!request.reason}
           >${request.reason ?? ""}</p>
         </header>
-        <div class="task-approval-content">${approvalDetails(request)}</div>
+        <div class="task-approval-content">${approvalDetails(
+          request,
+          this.surfaces,
+        )}</div>
         <p
           class="task-approval-error"
           role="alert"
@@ -102,6 +108,11 @@ export class CaffoldTaskApproval extends LitElement {
           offered,
           (decision) => decision,
           (decision) => html`<button
+            ${this.hints.button({
+              id: decision,
+              label: formatDecision(decision),
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            })}
             type="button"
             class="task-secondary-button"
             data-task-action="approval"
@@ -115,92 +126,12 @@ export class CaffoldTaskApproval extends LitElement {
     `;
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    if (
-      !scopeId ||
-      !this.approvalId ||
-      !this.active ||
-      this.hidden ||
-      this.disabled
-    ) {
-      return emptyActionHintScope();
-    }
-    const { approvalId, threadId } = this;
-    return {
-      blocked: false,
-      targets: this.actions
-        .filter((control) => !control.disabled)
-        .map((control) => {
-          const decision = control.dataset.decision ?? "";
-          return buttonActionHintTarget({
-            invalidationOwner: this,
-            id: `${scopeId}:${decision}`,
-            actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-            label: control.textContent ?? "",
-            control,
-            clipRoots: [this, ...clipRoots].filter(Boolean),
-            isActionable: () =>
-              this.isConnected &&
-              this.active &&
-              !this.hidden &&
-              !this.disabled &&
-              isCurrent() &&
-              this.threadId === threadId &&
-              this.approvalId === approvalId &&
-              this.actions.includes(control) &&
-              control.dataset.decision === decision &&
-              Boolean(this.request.decisions?.includes(decision)) &&
-              !control.disabled,
-          });
-        }),
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
-  scrollSurfaceScope({
-    scopeId = "",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    if (!scopeId || !this.approvalId || !this.active || this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    const { approvalId, threadId } = this;
-    const outputs = Array.from(
-      this.querySelectorAll<HTMLElement>(
-        ":scope > article > .task-approval-content pre",
-      ),
-    );
-    return {
-      blocked: false,
-      surfaces: outputs.map((scrollport, index) => ({
-        id: `${scopeId}:output:${index}`,
-        label: scrollport.getAttribute("aria-label") || "Approval details",
-        scrollport,
-        axes: ["horizontal"],
-        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-        isEligible: () =>
-          this.isConnected &&
-          this.active &&
-          !this.hidden &&
-          isCurrent() &&
-          this.threadId === threadId &&
-          this.approvalId === approvalId &&
-          this.contains(scrollport) &&
-          hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport),
-      })),
-      mutationRoots: [this],
-      resizeElements: [this, ...outputs],
-      scrollRoots: outputs,
-    };
+  scrollSurfaceScope(pull: ScrollSurfacePull = {}) {
+    return this.active ? this.surfaces.scope(pull) : emptyScrollSurfaceScope();
   }
 
   private decide(event: Event, decision: string) {
@@ -225,14 +156,6 @@ export class CaffoldTaskApproval extends LitElement {
       }),
     );
   }
-
-  private get actions() {
-    return Array.from(
-      this.querySelectorAll<HTMLButtonElement>(
-        ":scope > article > .task-approval-actions > button",
-      ),
-    );
-  }
 }
 
 /**
@@ -240,12 +163,17 @@ export class CaffoldTaskApproval extends LitElement {
  * run, what it would reach, and where. Every part is optional because requests
  * differ, so this draws what is present rather than switching on a kind.
  */
-function approvalDetails(payload: TaskEventPayload) {
+function approvalDetails(payload: TaskEventPayload, surfaces: ScrollSurfaces) {
   const command = `${payload.command ?? ""}`.trim();
   return [
-    toolDetails(payload.tool),
+    toolDetails(payload.tool, surfaces),
     command
       ? html`<pre
+          ${surfaces.surface({
+            id: "command",
+            label: () => "Approval command",
+            axes: ["horizontal"],
+          })}
           class="task-approval-command"
           tabindex="0"
           aria-label="Approval command"
@@ -269,7 +197,10 @@ function approvalDetails(payload: TaskEventPayload) {
   ];
 }
 
-function toolDetails(tool: ApprovalTool | null | undefined) {
+function toolDetails(
+  tool: ApprovalTool | null | undefined,
+  surfaces: ScrollSurfaces,
+) {
   if (!tool) {
     return nothing;
   }
@@ -298,6 +229,11 @@ function toolDetails(tool: ApprovalTool | null | undefined) {
                       : nothing
                   }</dt>
                   <dd><pre
+                    ${surfaces.surface({
+                      id: `argument:${encodeURIComponent(argument.name)}`,
+                      label: () => argument.label,
+                      axes: ["horizontal"],
+                    })}
                     tabindex="0"
                     aria-label=${argument.label}
                   ><code>${value}</code></pre></dd>

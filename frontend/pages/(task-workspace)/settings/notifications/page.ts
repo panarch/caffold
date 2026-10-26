@@ -1,13 +1,10 @@
 import { html, LitElement, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import {
   getPushConfig,
   getPushInstallations,
@@ -15,12 +12,8 @@ import {
   removePushInstallation,
   upsertPushInstallation,
 } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import {
   applicationServerKey,
   getOrCreatePushClientId,
@@ -85,6 +78,15 @@ export class CaffoldSettingsNotificationsPage extends LitElement {
   private readonly clientId = safeClientId();
   private browserSubscription: PushSubscription | null = null;
   private serverState = "unknown";
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.scrollport.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
 
   constructor() {
     super();
@@ -188,7 +190,14 @@ export class CaffoldSettingsNotificationsPage extends LitElement {
           No browsers are currently subscribed.
         </p>`;
     return html`
-      <div class="settings-content-scroll">
+      <div
+        ${drawn(this.scrollport)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.scrollport.value],
+        })}
+        class="settings-content-scroll"
+      >
         <div class="settings-content-section">
           <header>
             <div>
@@ -205,6 +214,11 @@ export class CaffoldSettingsNotificationsPage extends LitElement {
               </p>
             </div>
             <button
+              ${this.hints.button({
+                id: "refresh",
+                label: "Refresh",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               data-action="refresh"
               ?disabled=${busy}
@@ -224,6 +238,11 @@ export class CaffoldSettingsNotificationsPage extends LitElement {
               ${
                 canEnable
                   ? html`<button
+                      ${this.hints.button({
+                        id: "enable",
+                        label: "Enable",
+                        action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                      })}
                       type="button"
                       data-action="enable"
                       @click=${this.enable}
@@ -233,6 +252,11 @@ export class CaffoldSettingsNotificationsPage extends LitElement {
               ${
                 canDisable
                   ? html`<button
+                      ${this.hints.button({
+                        id: "disable",
+                        label: "Disable",
+                        action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                      })}
                       type="button"
                       data-action="disable"
                       @click=${this.disableCurrent}
@@ -270,123 +294,17 @@ export class CaffoldSettingsNotificationsPage extends LitElement {
 
   actionHintScope({
     scopeId = "settings:notifications",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyActionHintScope();
-    }
-    const fixedDefinitions = [
-      { id: "refresh", selector: 'button[data-action="refresh"]' },
-      { id: "enable", selector: 'button[data-action="enable"]' },
-      { id: "disable", selector: 'button[data-action="disable"]' },
-    ];
-    const definitions: Array<{
-      id: string;
-      selector: string;
-      control: HTMLButtonElement;
-      identity?: (candidate: HTMLButtonElement) => boolean;
-      label?: string;
-    }> = fixedDefinitions.flatMap(({ id, selector }) => {
-      const control = this.querySelector<HTMLButtonElement>(selector);
-      return control ? [{ id, selector, control }] : [];
-    });
-    for (const control of this.querySelectorAll<HTMLButtonElement>(
-      'button[data-action="remove-installation"][data-client-id]',
-    )) {
-      const clientId = control.dataset.clientId;
-      definitions.push({
-        id: `remove-installation:${clientId}`,
-        selector: 'button[data-action="remove-installation"][data-client-id]',
-        control,
-        identity: (candidate) => candidate.dataset.clientId === clientId,
-        label: `Remove ${
-          this.installations.find((item) => item.clientId === clientId)
-            ?.installationLabel ?? "browser installation"
-        }`,
-      });
-    }
-    const targets = definitions.flatMap((definition) => {
-      const { control } = definition;
-      if (
-        control.disabled ||
-        control.hidden ||
-        !hasActionHintLayoutBox(control)
-      ) {
-        return [];
-      }
-      const currentControl = () =>
-        Array.from(
-          this.querySelectorAll<HTMLButtonElement>(definition.selector),
-        ).find((candidate) =>
-          definition.identity ? definition.identity(candidate) : true,
-        );
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:${definition.id}`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label:
-            control.getAttribute("aria-label") ||
-            definition.label ||
-            control.textContent?.trim() ||
-            definition.id,
-          control,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            currentControl() === control &&
-            !control.disabled &&
-            !control.hidden &&
-            hasActionHintLayoutBox(control),
-        }),
-      ];
-    });
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   scrollSurfaceScope({
     scopeId = "settings:notifications",
     label = "Notification settings",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(":scope > .settings-content-scroll") ===
-              scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   private installation(installation: PushInstallation, busy: boolean) {
@@ -403,6 +321,11 @@ export class CaffoldSettingsNotificationsPage extends LitElement {
           </p>
         </div>
         <button
+          ${this.hints.button({
+            id: `remove-installation:${installation.clientId}`,
+            label: `Remove ${installation.installationLabel}`,
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           data-action="remove-installation"
           data-client-id=${installation.clientId}

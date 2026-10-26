@@ -1,12 +1,9 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import "#components/loading-text.ts";
 
 // `retry` says the request follows a failed one.
@@ -33,6 +30,9 @@ export class CaffoldTaskOlderHistory extends LitElement {
   // Why older messages could not be read, or `null` when nothing failed.
   declare error: string | null;
   declare active: boolean;
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
 
   constructor() {
     super();
@@ -59,6 +59,12 @@ export class CaffoldTaskOlderHistory extends LitElement {
             ${
               this.hasOlder
                 ? html`<button
+                    ${this.hints.button({
+                      id: "retry",
+                      label: "Retry loading older messages",
+                      action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                      when: this.active && !this.loading,
+                    })}
                     type="button"
                     @click=${this.request}
                   >Retry loading older messages</button>`
@@ -70,6 +76,12 @@ export class CaffoldTaskOlderHistory extends LitElement {
               class="task-older-history-loading"
             >Loading older messages...</caffold-loading-text>`
           : html`<button
+              ${this.hints.button({
+                id: "load",
+                label: "Load older messages",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                when: this.active && this.hasOlder,
+              })}
               type="button"
               @click=${this.request}
             >Load older messages</button>`
@@ -83,45 +95,11 @@ export class CaffoldTaskOlderHistory extends LitElement {
     }
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    const control = this.button;
-    if (
-      !scopeId ||
-      !control ||
-      !this.isActionable() ||
-      !hasActionHintLayoutBox(control)
-    ) {
-      return emptyActionHintScope();
-    }
-    const { threadId } = this;
-    const retry = this.error !== null;
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:${retry ? "retry" : "load"}`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label: (control.textContent ?? "").trim(),
-          control,
-          clipRoots: [this, ...clipRoots].filter(Boolean),
-          isActionable: () =>
-            this.threadId === threadId &&
-            (this.error !== null) === retry &&
-            this.button === control &&
-            this.isActionable() &&
-            hasActionHintLayoutBox(control),
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
-  isActionable() {
+  private canRequest() {
     return (
       this.isConnected &&
       this.active &&
@@ -133,7 +111,7 @@ export class CaffoldTaskOlderHistory extends LitElement {
   }
 
   private request(event: Event) {
-    if (!this.isActionable()) {
+    if (!this.canRequest()) {
       return;
     }
     event.stopPropagation();
@@ -153,10 +131,6 @@ export class CaffoldTaskOlderHistory extends LitElement {
     return (
       !this.threadId || (!this.hasOlder && !this.loading && this.error === null)
     );
-  }
-
-  private get button() {
-    return this.querySelector<HTMLButtonElement>(".task-load-older button");
   }
 }
 

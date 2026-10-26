@@ -110,40 +110,27 @@ test("opens each directory that holds the open Note once its row exists, and onl
   );
 });
 
-test("offers the tree's Notes and folders, and Retry only while it is shown", () => {
-  let treeOptions = null;
-  const retry = { hidden: false, disabled: false, focus() {}, click() {} };
+test("adds the tree's Notes and folders to its own controls", () => {
+  let treePull = null;
   const fileTree = {
-    hidden: false,
-    actionHintScope(options) {
-      treeOptions = options;
-      return { blocked: false, targets: [{ id: "tree-target" }], mutationRoots: [], scrollRoots: [] };
+    actionHintScope(pull) {
+      treePull = pull;
+      return { targets: [{ id: "notes:tree:file:storage" }] };
     },
   };
-  const owner = {
-    hasUpdated: true,
-    hidden: false,
-    isConnected: true,
-    snapshot: { selectedNoteId: "storage" },
-    querySelectorAll: () => [],
-    fileTree,
-    retryButton: retry,
-  };
+  const owner = Object.assign(Object.create(navigator), {
+    hints: { scope: (pull) => ({ targets: [{ id: `${pull.scopeId}:retry` }] }) },
+    tree: { value: fileTree },
+  });
 
-  const scope = navigator.actionHintScope.call(owner, { scopeId: "notes", clipRoots: ["pane"] });
-  assert.deepEqual(scope.targets.map(({ id }) => id), ["notes:retry", "tree-target"]);
-  assert.equal(scope.targets[0].actionId, "button.activate");
-  assert.equal(treeOptions.scopeId, "notes:tree");
-  assert.equal(treeOptions.actionId, "navigation.note.open");
-  assert.equal(treeOptions.disclosureActionId, "disclosure.toggle");
-  assert.deepEqual(treeOptions.clipRoots, [owner, "pane"]);
-  assert.equal(treeOptions.isCurrent({ source: "storage" }), true);
-  assert.equal(treeOptions.isCurrent({ source: "other" }), false);
-  assert.equal(treeOptions.labelForNode({ name: "Storage" }), "Open Storage");
-
-  retry.hidden = true;
-  fileTree.hidden = true;
-  assert.deepEqual(navigator.actionHintScope.call(owner).targets, []);
-  owner.hidden = true;
-  assert.deepEqual(navigator.scrollSurfaceScope.call(owner).surfaces, []);
+  const scope = owner.actionHintScope({ clipRoots: ["pane"] });
+  assert.deepEqual(scope.targets.map(({ id }) => id), [
+    "notes:retry",
+    "notes:tree:file:storage",
+  ]);
+  assert.deepEqual(treePull, {
+    scopeId: "notes:tree",
+    actions: { file: "navigation.note.open", disclosure: "disclosure.toggle" },
+    clipRoots: [owner, "pane"],
+  });
 });

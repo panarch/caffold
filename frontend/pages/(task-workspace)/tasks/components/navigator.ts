@@ -1,26 +1,18 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintTarget,
-  buttonActionHintTarget,
-  hasActionHintLayoutBox,
+  ACTION_HINT_ACTION,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { ActiveTask, ActiveTaskTopPlacement, Task } from "#app/api.ts";
 import { compactIconButton } from "#app/component-styles.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
-  keyboardNavigationContext,
-  popoverScrollSurfaceScope,
-} from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
-import {
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  scrollBackToTop,
-} from "#app/scroll-scope.js";
+  KeyboardContexts,
+} from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { ScrollSurfaces, scrollBackToTop } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "../../components/workspace-brand.ts";
 import type { WorkspaceLiveUpdates } from "../../live-updates.ts";
@@ -82,6 +74,18 @@ export class CaffoldTaskNavigator extends LitElement {
   private readonly reorderPopoverId =
     `task-list-reorder-${++taskNavigatorInstanceId}`;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly listScroll = new DrawnRef<HTMLDivElement>(this);
+  private readonly activeList = new DrawnRef<CaffoldActiveTaskList>(this);
+  private readonly archivedList = new DrawnRef<CaffoldArchivedTaskList>(this);
+  private readonly reorderToggle = new DrawnRef<HTMLButtonElement>(this);
+  private readonly reorderMenu = new DrawnRef<HTMLDivElement>(this);
 
   constructor() {
     super();
@@ -285,119 +289,34 @@ export class CaffoldTaskNavigator extends LitElement {
     };
   }
 
-  actionHintScope(): ActionHintScope {
-    const scrollRoot = this.scrollRoot;
-    const activeList = this.activeTaskList;
-    const archived = this.archivedTaskList;
+  // The header's actions and the lists'; while the list reorders, only the
+  // toggle that finishes and the handles.
+  actionHintScope() {
+    const own = this.hints.scope({ clipRoots: [this] });
     const reordering = this.reorderMode !== "none";
-    const targets: ActionHintTarget[] = [];
-    const switcher = reordering ? null : this.switcherTarget();
-    if (switcher) {
-      targets.push(switcher);
-    }
-    const reorder = this.reorderTarget();
-    if (reorder) {
-      targets.push(reorder);
-    }
-    const newTask = this.newTaskButton;
-    if (!reordering && newTask) {
-      targets.push({
-        id: "task-create:global",
-        actionId: "task.create",
-        label: "Create a new task",
-        invalidationOwner: this,
-        controlKind: "button",
-        control: newTask,
-        anchor: newTask,
-        clipRoots: [this],
-        badgeAtEnd: false,
-        isActionable: () =>
-          this.newTaskButton === newTask &&
-          !this.taskOperations.blocked &&
-          !newTask.disabled,
-        activate: () => newTask.click(),
-      });
-    }
-    targets.push(
-      ...activeList.actionHintTargets({ clipRoots: [this, scrollRoot] }),
-    );
+    const clipRoots = [this, this.scrollRoot];
     return mergeActionHintScopes(
-      {
-        blocked: false,
-        targets,
-        mutationRoots: [this.primaryHeader, activeList],
-        scrollRoots: [scrollRoot],
-      },
-      !reordering && hasActionHintLayoutBox(archived)
-        ? archived.actionHintScope({
+      own,
+      this.activeTaskList.actionHintScope({ clipRoots }),
+      reordering
+        ? null
+        : this.archivedTaskList.actionHintScope({
             scopeId: "task-list:archived",
-            clipRoots: [this, scrollRoot],
-          })
-        : null,
+            clipRoots,
+          }),
     );
   }
 
   keyboardNavigationContexts() {
-    const popover = this.reorderPopover;
-    const presentation =
-      popover.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const dialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (!dialog || !hud || !selector) {
-      return [];
-    }
-    const contextId = "task-list:reorder";
-    return [
-      keyboardNavigationContext({
-        id: contextId,
-        kind: "popover",
-        root: popover,
-        actionHints: {
-          dialog,
-          scope: this.reorderActionHintScope(contextId, popover),
-          sessionBound: true,
-        },
-        scroll: {
-          hud,
-          selector,
-          scope: popoverScrollSurfaceScope({
-            id: contextId,
-            label: "Reorder options",
-            popover,
-            isCurrent: () =>
-              this.isCurrent() &&
-              this.reorderMode === "none" &&
-              this.reorderPopover === popover,
-          }),
-        },
-      }),
-    ];
+    return this.keyboard.contexts({
+      actionHints: (pull) => this.hints.scope(pull),
+    });
   }
 
-  scrollSurfaceScope(): ScrollSurfaceScope {
-    const scrollport = this.scrollRoot;
+  scrollSurfaceScope() {
     return {
+      ...this.surfaces.scope({ label: "Task list" }),
       blocked: this.reorderMode !== "none",
-      surfaces: [
-        {
-          id: "task-list",
-          label: "Task list",
-          scrollport,
-          clipRoots: [this, scrollport],
-          isEligible: () =>
-            this.isCurrent() &&
-            this.reorderMode === "none" &&
-            this.scrollRoot === scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this, this.activeTaskList, this.archivedTaskList],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
     };
   }
 
@@ -416,6 +335,12 @@ export class CaffoldTaskNavigator extends LitElement {
         <caffold-workspace-brand></caffold-workspace-brand>
         <span class="task-list-primary-actions">
           <button
+            ${this.hints.button({
+              id: "task-list:switcher:open",
+              label: "Switch task",
+              action: ACTION_HINT_ACTION.TASK_SWITCHER_OPEN,
+              when: !reordering,
+            })}
             type="button"
             class="task-list-header-action task-list-switcher"
             data-task-action="open-task-switcher"
@@ -424,6 +349,16 @@ export class CaffoldTaskNavigator extends LitElement {
             @click=${this.openSwitcher}
           >${switchIcon}</button>
           <button
+            ${drawn(this.reorderToggle)}
+            ${this.hints.button({
+              id: reordering
+                ? `task-list:reorder:finish:${this.reorderMode}`
+                : "task-list:reorder:open",
+              label: reordering ? finish : "Choose what to reorder",
+              action: reordering
+                ? ACTION_HINT_ACTION.REORDER_FINISH
+                : ACTION_HINT_ACTION.REORDER_OPEN,
+            })}
             type="button"
             class="task-list-header-action task-list-reorder"
             data-task-action="toggle-reorder"
@@ -434,6 +369,13 @@ export class CaffoldTaskNavigator extends LitElement {
             @click=${this.toggleReorder}
           >${reorderIcon}</button>
           <div
+            ${drawn(this.reorderMenu)}
+            ${this.keyboard.popover({
+              id: "task-list:reorder",
+              label: "Reorder options",
+              sessionBound: true,
+              when: !reordering,
+            })}
             id=${popoverId}
             class="task-list-reorder-popover"
             popover="auto"
@@ -441,6 +383,12 @@ export class CaffoldTaskNavigator extends LitElement {
             aria-label="Reorder options"
           >
             <button
+              ${this.hints.button({
+                id: "tasks",
+                label: "Reorder Tasks",
+                action: ACTION_HINT_ACTION.REORDER_SELECT,
+                badgeAtEnd: true,
+              })}
               type="button"
               data-task-action="select-reorder-mode"
               data-reorder-mode="tasks"
@@ -449,6 +397,12 @@ export class CaffoldTaskNavigator extends LitElement {
               @click=${() => this.setReorderMode("tasks")}
             >Reorder Tasks</button>
             <button
+              ${this.hints.button({
+                id: "sections",
+                label: "Reorder Sections",
+                action: ACTION_HINT_ACTION.REORDER_SELECT,
+                badgeAtEnd: true,
+              })}
               type="button"
               data-task-action="select-reorder-mode"
               data-reorder-mode="sections"
@@ -457,9 +411,16 @@ export class CaffoldTaskNavigator extends LitElement {
               @click=${() => this.setReorderMode("sections")}
             >Reorder Sections</button>
             <caffold-keyboard-navigation-presentation
+              ${this.keyboard.presentation()}
             ></caffold-keyboard-navigation-presentation>
           </div>
           <button
+            ${this.hints.button({
+              id: "task-create:global",
+              label: "Create a new task",
+              action: ACTION_HINT_ACTION.TASK_CREATE,
+              when: !reordering,
+            })}
             type="button"
             class="task-list-header-action task-list-new-task"
             data-task-action="open-new"
@@ -470,8 +431,17 @@ export class CaffoldTaskNavigator extends LitElement {
           >${newTaskIcon}</button>
         </span>
       </header>
-      <div class="task-list-scroll">
+      <div
+        ${drawn(this.listScroll)}
+        ${this.surfaces.surface({
+          id: "task-list",
+          when: !reordering,
+          clipRoots: () => [this, this.listScroll.value],
+        })}
+        class="task-list-scroll"
+      >
         <caffold-active-task-list
+          ${drawn(this.activeList)}
           @caffold:active-task-list-state=${this.activeListChanged}
           @caffold:active-task-list-initial-settled=${this.listSettled}
           @caffold:active-task-list-archive-sync=${this.syncArchived}
@@ -479,6 +449,7 @@ export class CaffoldTaskNavigator extends LitElement {
           @caffold:active-task-list-focus-reorder-toggle=${this.focusReorder}
         ></caffold-active-task-list>
         <caffold-archived-task-list
+          ${drawn(this.archivedList)}
           hidden
           @caffold:archived-task-list-state=${this.archivedListChanged}
           @caffold:archived-task-list-initial-settled=${this.listSettled}
@@ -497,97 +468,6 @@ export class CaffoldTaskNavigator extends LitElement {
   private draw() {
     this.requestUpdate();
     this.performUpdate();
-  }
-
-  private switcherTarget() {
-    const control = this.switcherButton;
-    return buttonActionHintTarget({
-      invalidationOwner: this,
-      id: "task-list:switcher:open",
-      actionId: ACTION_HINT_ACTION.TASK_SWITCHER_OPEN,
-      label: control.getAttribute("aria-label") || "Switch task",
-      control,
-      clipRoots: [this],
-      isActionable: () =>
-        this.isCurrent() &&
-        this.reorderMode === "none" &&
-        this.switcherButton === control &&
-        !control.disabled,
-    });
-  }
-
-  private reorderTarget() {
-    const control = this.reorderButton;
-    const popover = this.reorderPopover;
-    const mode = this.reorderMode;
-    const reordering = mode !== "none";
-    return buttonActionHintTarget({
-      invalidationOwner: this,
-      id: reordering
-        ? `task-list:reorder:finish:${mode}`
-        : "task-list:reorder:open",
-      actionId: reordering
-        ? ACTION_HINT_ACTION.REORDER_FINISH
-        : ACTION_HINT_ACTION.REORDER_OPEN,
-      label:
-        control.getAttribute("aria-label") ||
-        (reordering ? `Finish reordering ${mode}` : "Choose what to reorder"),
-      control,
-      clipRoots: [this],
-      isActionable: () =>
-        this.isCurrent() &&
-        this.reorderMode === mode &&
-        this.reorderButton === control &&
-        this.reorderPopover === popover &&
-        control.getAttribute("popovertarget") === popover.id &&
-        !control.disabled &&
-        (reordering || !popover.matches(":popover-open")),
-    });
-  }
-
-  private reorderActionHintScope(
-    contextId: string,
-    popover: HTMLElement,
-  ): ActionHintScope {
-    const targets = [
-      ...popover.querySelectorAll<HTMLButtonElement>(
-        ":scope > button[data-task-action='select-reorder-mode']",
-      ),
-    ].flatMap((control) => {
-      const mode = control.dataset.reorderMode ?? "";
-      if (control.disabled) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${contextId}:${mode}`,
-          actionId: ACTION_HINT_ACTION.REORDER_SELECT,
-          label: control.textContent?.trim() || `Reorder ${mode}`,
-          control,
-          clipRoots: [popover],
-          badgeAtEnd: true,
-          isActionable: () =>
-            this.isCurrent() &&
-            this.reorderMode === "none" &&
-            this.reorderPopover === popover &&
-            popover.matches(":popover-open") &&
-            popover.contains(control) &&
-            control.dataset.reorderMode === mode &&
-            !control.disabled,
-        }),
-      ];
-    });
-    return {
-      blocked: this.reorderMode !== "none",
-      targets,
-      mutationRoots: [popover],
-      scrollRoots: [popover],
-    };
-  }
-
-  private isCurrent() {
-    return this.isConnected && this.active && !this.hidden;
   }
 
   // While reordering, the toggle finishes it instead of opening its choices.
@@ -725,52 +605,25 @@ export class CaffoldTaskNavigator extends LitElement {
   // navigator is in the document.
   private get activeTaskList() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > .task-list-scroll > caffold-active-task-list",
-    ) as CaffoldActiveTaskList;
+    return this.activeList.value as CaffoldActiveTaskList;
   }
 
   private get archivedTaskList() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > .task-list-scroll > caffold-archived-task-list",
-    ) as CaffoldArchivedTaskList;
+    return this.archivedList.value as CaffoldArchivedTaskList;
   }
 
   private get scrollRoot() {
     this.performUpdate();
-    return this.querySelector(":scope > .task-list-scroll") as HTMLElement;
-  }
-
-  private get primaryHeader() {
-    this.performUpdate();
-    return this.querySelector(
-      ":scope > .task-list-primary-header",
-    ) as HTMLElement;
-  }
-
-  private get switcherButton() {
-    return this.primaryHeader.querySelector(
-      ":scope > .task-list-primary-actions > .task-list-switcher",
-    ) as HTMLButtonElement;
+    return this.listScroll.value as HTMLDivElement;
   }
 
   private get reorderButton() {
-    return this.primaryHeader.querySelector(
-      ":scope > .task-list-primary-actions > .task-list-reorder",
-    ) as HTMLButtonElement;
+    return this.reorderToggle.value as HTMLButtonElement;
   }
 
   private get reorderPopover() {
-    return this.primaryHeader.querySelector(
-      ":scope > .task-list-primary-actions > .task-list-reorder-popover",
-    ) as HTMLElement;
-  }
-
-  private get newTaskButton() {
-    return this.primaryHeader.querySelector(
-      ":scope > .task-list-primary-actions > .task-list-new-task",
-    ) as HTMLButtonElement;
+    return this.reorderMenu.value as HTMLDivElement;
   }
 }
 

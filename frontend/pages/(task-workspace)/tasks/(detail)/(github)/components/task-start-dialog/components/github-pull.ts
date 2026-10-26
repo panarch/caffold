@@ -1,10 +1,9 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import {
   type GitHubPull,
   type GitHubPullDetail,
@@ -13,11 +12,8 @@ import {
   getGitHubPull,
   prepareGitHubPullHead,
 } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 
 export class CaffoldGithubPullTaskSource extends LitElement {
   static properties = {
@@ -43,6 +39,12 @@ export class CaffoldGithubPullTaskSource extends LitElement {
     this.locked = false;
   }
 
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly relationship = new DrawnRef<HTMLDListElement>(this);
+
   createRenderRoot() {
     return this;
   }
@@ -51,7 +53,18 @@ export class CaffoldGithubPullTaskSource extends LitElement {
     const pull = this.payload?.pull;
     return html`
       <span>Pull request head</span>
-      <dl tabindex="0" aria-label="Pull request base and head relationship">
+      <dl
+        ${drawn(this.relationship)}
+        ${this.surfaces.surface({
+          id: "relationship",
+          label: () => "Pull request base and head relationship",
+          axes: ["horizontal"],
+          when: Boolean(this.payload),
+          clipRoots: () => [this, this.relationship.value],
+        })}
+        tabindex="0"
+        aria-label="Pull request base and head relationship"
+      >
         <div>
           <dt>Base</dt>
           <dd data-pull-ref="base">${pullRefLabel(
@@ -77,6 +90,12 @@ export class CaffoldGithubPullTaskSource extends LitElement {
         this.error
           ? html`<p role="alert">${this.error.message}</p>
               <button
+                ${this.hints.button({
+                  id: "refresh",
+                  label: this.pending ? "Refreshing..." : "Refresh PR",
+                  action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+                  when: !this.pending,
+                })}
                 type="button"
                 data-github-pull-source-action="refresh"
                 ?disabled=${this.locked}
@@ -141,78 +160,12 @@ export class CaffoldGithubPullTaskSource extends LitElement {
     );
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
-    const control = this.querySelector<HTMLButtonElement>(
-      '[data-github-pull-source-action="refresh"]',
-    );
-    if (!scopeId || !control || this.hidden) {
-      return emptyActionHintScope();
-    }
-    const rootPath = `${this.repository?.rootPath ?? ""}`;
-    const sourceNumber = `${this.source()?.number ?? ""}`;
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:refresh`,
-          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-          label: control.textContent?.trim() || "Refresh PR",
-          control,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.repository?.rootPath === rootPath &&
-            `${this.source()?.number ?? ""}` === sourceNumber &&
-            this.querySelector('[data-github-pull-source-action="refresh"]') ===
-              control &&
-            !this.pending &&
-            !this.locked &&
-            !control.disabled,
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
-  scrollSurfaceScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}) {
-    const scrollport = this.querySelector(":scope > dl");
-    const rootPath = `${this.repository?.rootPath ?? ""}`;
-    const sourceNumber = `${this.source()?.number ?? ""}`;
-    if (!scopeId || !scrollport || !rootPath || !sourceNumber || this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:relationship`,
-          label: "Pull request base and head relationship",
-          scrollport,
-          axes: ["horizontal" as const],
-          clipRoots: [this, scrollport, ...clipRoots],
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            `${this.repository?.rootPath ?? ""}` === rootPath &&
-            `${this.source()?.number ?? ""}` === sourceNumber &&
-            this.querySelector(":scope > dl") === scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+  scrollSurfaceScope(pull: ScrollSurfacePull = {}) {
+    return this.surfaces.scope(pull);
   }
 
   async prepareSetup(provider: string) {

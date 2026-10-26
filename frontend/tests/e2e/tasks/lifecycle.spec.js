@@ -1489,7 +1489,7 @@ test("reopened Task detail waits for a readable stream bootstrap", { tag: "@view
     );
   }, threadId);
   await expect.poll(() => tasksPage.evaluate((element) => {
-    const session = element.taskDetail().taskDetail().detailSession;
+    const session = element.taskDetail().taskDetail.value.detailSession;
     return { phase: session.phase, state: session.state };
   })).toEqual({ phase: "waiting-bootstrap", state: "reconnecting" });
   await expect(notice).toHaveAttribute("data-recovery-state", "reconnecting");

@@ -1,19 +1,16 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import { listDirectory } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ScrollSurfacePull,
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import type {
   CaffoldFileTree,
   FileTreeModel,
@@ -82,6 +79,11 @@ export class CaffoldTaskDirectoryField extends LitElement {
   private listeningOutside = false;
   private readonly fieldId = `task-directory-field-${++nextFieldId}`;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly toggle = new DrawnRef<HTMLButtonElement>(this);
+  private readonly input = new DrawnRef<HTMLInputElement>(this);
+  private readonly panel = new DrawnRef<HTMLDivElement>(this);
+  private readonly tree = new DrawnRef<CaffoldFileTree>(this);
   private readonly outsidePointerDown = (event: PointerEvent) =>
     this.handleOutsidePointerDown(event);
   // The click a press makes comes after the press ends, so its focus move is
@@ -133,77 +135,34 @@ export class CaffoldTaskDirectoryField extends LitElement {
   // Escape while typing returns to the list, so the field and not the
   // keyboard mode answers it.
   ownsEditingEscape(element: Element | null) {
-    return Boolean(element) && element === this.input;
+    return Boolean(element) && element === this.input.value;
   }
 
   actionHintScope({
     scopeId = "",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    if (!scopeId) {
-      return emptyActionHintScope();
-    }
-    const node = this.state.node;
-    const buttons = (
-      [
-        ["toggle", this.toggle],
-        ["edit", this.editButton],
-      ] as const
-    ).flatMap(([identity, control]) =>
-      control &&
-      !control.hidden &&
-      !control.disabled &&
-      hasActionHintLayoutBox(control)
-        ? [
-            buttonActionHintTarget({
-              invalidationOwner: this,
-              id: `${scopeId}:directory:${identity}`,
-              actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-              label: control.getAttribute("aria-label") ?? identity,
-              control,
-              clipRoots: [...clipRoots],
-              isActionable: () =>
-                this.isConnected &&
-                this.state.node === node &&
-                !control.hidden &&
-                !control.disabled &&
-                hasActionHintLayoutBox(control),
-            }),
-          ]
-        : [],
-    );
-    const panel = this.panel;
+    ...pull
+  }: ActionHintPull = {}) {
+    const panel = this.panel.value;
     return mergeActionHintScopes(
-      {
-        blocked: false,
-        targets: buttons,
-        mutationRoots: [this],
-        scrollRoots: [],
-      },
-      node === CLOSED
+      this.hints.scope({ ...pull, scopeId, clipRoots }),
+      this.state.node === CLOSED
         ? null
-        : this.tree?.actionHintScope({
+        : this.tree.value?.actionHintScope({
             scopeId: `${scopeId}:directory`,
-            actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            actions: { file: ACTION_HINT_ACTION.BUTTON_ACTIVATE },
             clipRoots: panel ? [...clipRoots, panel] : [...clipRoots],
-            includeDirectories: true,
           }),
     );
   }
 
-  scrollSurfaceScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    if (!scopeId || this.state.node === CLOSED) {
-      return emptyScrollSurfaceScope();
-    }
+  scrollSurfaceScope({ scopeId = "", ...pull }: ScrollSurfacePull = {}) {
+    const tree = this.state.node === CLOSED ? null : this.tree.value;
     return (
-      this.tree?.scrollSurfaceScope({
+      tree?.scrollSurfaceScope({
+        ...pull,
         scopeId: `${scopeId}:directory`,
         label: "Folders",
-        clipRoots,
-        isCurrent: () => this.state.node !== CLOSED,
       }) ?? emptyScrollSurfaceScope()
     );
   }
@@ -233,6 +192,12 @@ export class CaffoldTaskDirectoryField extends LitElement {
           "task-directory-field-glyph",
         )}</span>
         <button
+          ${drawn(this.toggle)}
+          ${this.hints.button({
+            id: "directory:toggle",
+            label: open ? "Hide folders" : "Show folders",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           class="task-directory-field-toggle"
           aria-expanded=${open ? "true" : "false"}
@@ -247,6 +212,7 @@ export class CaffoldTaskDirectoryField extends LitElement {
           id=${`${this.fieldId}-path`}
         ><span dir="ltr">${shown}</span></span></button>
         <input
+          ${drawn(this.input)}
           class="task-directory-field-input"
           type="text"
           role="combobox"
@@ -263,6 +229,11 @@ export class CaffoldTaskDirectoryField extends LitElement {
           @input=${this.handleInput}
         >
         <button
+          ${this.hints.button({
+            id: "directory:edit",
+            label: editLabel,
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           class="task-directory-field-edit"
           aria-pressed=${editing ? "true" : "false"}
@@ -284,6 +255,7 @@ export class CaffoldTaskDirectoryField extends LitElement {
         )}</span>
       </div>
       <div
+        ${drawn(this.panel)}
         class="task-directory-field-panel"
         ?hidden=${!error && this.folderList.hidden}
         @pointerdown=${this.handlePointerDown}
@@ -296,6 +268,7 @@ export class CaffoldTaskDirectoryField extends LitElement {
           ?hidden=${!error}
         >${error}</p>
         <caffold-file-tree
+          ${drawn(this.tree)}
           id=${folders}
           file-sort-mode="folders-first"
           ?hidden=${this.folderList.hidden}
@@ -314,11 +287,11 @@ export class CaffoldTaskDirectoryField extends LitElement {
       this.dataset.node = node;
     }
     this.listenOutside(node !== CLOSED);
-    const input = this.input;
+    const input = this.input.value;
     if (input && editing && input.value !== text) {
       input.value = text;
     }
-    const tree = this.tree;
+    const tree = this.tree.value;
     if (tree && this.folderList.model) {
       tree.setModel(this.folderList.model);
       if (this.folderList.reveal) {
@@ -360,11 +333,11 @@ export class CaffoldTaskDirectoryField extends LitElement {
         }),
       );
     } else if (effect.target === "input") {
-      const input = this.input;
+      const input = this.input.value;
       input?.focus({ preventScroll: true });
       input?.setSelectionRange(input.value.length, input.value.length);
     } else {
-      this.toggle?.focus({ preventScroll: true });
+      this.toggle.value?.focus({ preventScroll: true });
     }
   }
 
@@ -444,7 +417,7 @@ export class CaffoldTaskDirectoryField extends LitElement {
   }
 
   private handleInput() {
-    this.dispatch({ type: "type", text: this.input?.value ?? "" });
+    this.dispatch({ type: "type", text: this.input.value?.value ?? "" });
   }
 
   private chooseFolder(event: CustomEvent<FileTreeSelectDetail>) {
@@ -483,7 +456,7 @@ export class CaffoldTaskDirectoryField extends LitElement {
     }
     if (event.target.closest(".task-directory-field-edit")) {
       this.dispatch({ type: "toggle-edit" });
-    } else if (event.target !== this.input) {
+    } else if (event.target !== this.input.value) {
       this.dispatch({ type: "toggle-list" });
     }
   }
@@ -492,7 +465,7 @@ export class CaffoldTaskDirectoryField extends LitElement {
     if (event.isComposing || event.keyCode === 229) {
       return;
     }
-    if (event.target === this.input) {
+    if (event.target === this.input.value) {
       this.handleInputKeydown(event);
       return;
     }
@@ -578,36 +551,6 @@ export class CaffoldTaskDirectoryField extends LitElement {
         true,
       );
     }
-  }
-
-  private get toggle() {
-    return this.querySelector<HTMLButtonElement>(
-      ":scope > .task-directory-field-box > .task-directory-field-toggle",
-    );
-  }
-
-  private get input() {
-    return this.querySelector<HTMLInputElement>(
-      ":scope > .task-directory-field-box > .task-directory-field-input",
-    );
-  }
-
-  private get editButton() {
-    return this.querySelector<HTMLButtonElement>(
-      ":scope > .task-directory-field-box > .task-directory-field-edit",
-    );
-  }
-
-  private get panel() {
-    return this.querySelector<HTMLElement>(
-      ":scope > .task-directory-field-panel",
-    );
-  }
-
-  private get tree() {
-    return this.querySelector<CaffoldFileTree>(
-      ":scope > .task-directory-field-panel > caffold-file-tree",
-    );
   }
 }
 

@@ -19,7 +19,7 @@ import {
   switchActionHintTarget,
   textboxActionHintTarget,
   withActionHintOcclusionRoots,
-} from "./action-hint-scope.js";
+} from "./action-hint-scope.ts";
 
 test("button Action Hint targets preserve owner state and native activation", () => {
   const calls = [];
@@ -29,7 +29,6 @@ test("button Action Hint targets preserve owner state and native activation", ()
   };
   const clipRoots = [{ id: "clip" }];
   const invalidationOwner = { id: "workspace" };
-  const isActionable = () => true;
   const input = {
     id: "workspace:mode:settings",
     actionId: "navigation.workspace.select",
@@ -37,7 +36,6 @@ test("button Action Hint targets preserve owner state and native activation", ()
     invalidationOwner,
     control,
     clipRoots,
-    isActionable,
   };
   const { activate, ...target } = buttonActionHintTarget(input);
 
@@ -71,7 +69,6 @@ test("link Action Hint targets freeze native navigation and click the exact anch
     focus: (options) => calls.push(["focus", options]),
     click: () => calls.push(["click"]),
   };
-  const ownerIsActionable = () => true;
   const invalidationOwner = { id: "remote-access" };
   const target = linkActionHintTarget({
     id: "settings:remote-access:open",
@@ -80,7 +77,6 @@ test("link Action Hint targets freeze native navigation and click the exact anch
     invalidationOwner,
     control,
     clipRoots: [],
-    isActionable: ownerIsActionable,
   });
 
   assert.equal(target.controlKind, "link");
@@ -92,26 +88,21 @@ test("link Action Hint targets freeze native navigation and click the exact anch
       rel: "noopener noreferrer",
     }),
   );
-  assert.equal(target.isActionable(), true);
   target.activate();
   assert.deepEqual(calls, [
     ["focus", { preventScroll: true }],
     ["click"],
   ]);
 
-  for (
-    const [name, value] of [
-      ["href", "https://example.com/second"],
-      ["target", "_self"],
-      ["rel", "noreferrer"],
-    ]
-  ) {
-    const original = attributes.get(name);
-    attributes.set(name, value);
-    assert.equal(target.isActionable(), false, name);
-    attributes.set(name, original);
-    assert.equal(target.isActionable(), true, name);
-  }
+  // The key keeps the link as captured, so a later pull of a changed link
+  // differs from it.
+  const captured = target.activationKey;
+  attributes.set("href", "https://example.com/second");
+  assert.equal(target.activationKey, captured);
+  assert.notEqual(
+    linkActionHintTarget({ ...target, clipRoots: [] }).activationKey,
+    captured,
+  );
 });
 
 test("link presentation derives an accessible name and native outcome", () => {
@@ -178,7 +169,6 @@ test("disclosure Action Hint targets preserve owner semantics and native activat
   };
   const clipRoots = [{ id: "clip" }];
   const invalidationOwner = { id: "work-details" };
-  const isActionable = () => !control.open;
   const input = {
     id: "work:a:disclosure:root",
     actionId: "disclosure.toggle",
@@ -186,7 +176,6 @@ test("disclosure Action Hint targets preserve owner semantics and native activat
     invalidationOwner,
     control,
     clipRoots,
-    isActionable,
   };
   const { activate, ...target } = disclosureActionHintTarget(input);
 
@@ -203,9 +192,6 @@ test("disclosure Action Hint targets preserve owner semantics and native activat
     ["focus", { preventScroll: true }],
     ["click"],
   ]);
-  assert.equal(target.isActionable(), true);
-  control.open = true;
-  assert.equal(target.isActionable(), false);
 
   const anchor = { id: "visible-marker" };
   assert.equal(disclosureActionHintTarget({ ...input, anchor }).anchor, anchor);
@@ -232,7 +218,6 @@ test("radio and switch Action Hint targets preserve native focus and click", () 
       control,
       anchor,
       clipRoots: [],
-      isActionable: () => true,
     });
 
     assert.equal(target.controlKind, controlKind);
@@ -309,7 +294,6 @@ test("editable Action Hint targets focus synchronously and select uses native pi
     label: "Edit value",
     invalidationOwner: { id: "dialog" },
     clipRoots: [],
-    isActionable: () => true,
   };
 
   const textboxTarget = textboxActionHintTarget({ ...common, control: textbox });
@@ -351,7 +335,6 @@ test("native select activation keeps focus when showPicker is absent or throws",
       invalidationOwner: { id: "dialog" },
       control,
       clipRoots: [],
-      isActionable: () => true,
     });
     assert.equal(target.anchor, control);
     target.activate();
@@ -383,7 +366,6 @@ test("range, separator, and reorder targets transfer focus without activation", 
       invalidationOwner: { id: `control-owner-${controlKind}` },
       control,
       clipRoots: [],
-      isActionable: () => true,
     });
 
     assert.equal(target.controlKind, controlKind);
@@ -414,7 +396,6 @@ test("Action Hint scope helpers return complete shapes and reject malformed list
       label: "Ownerless",
       control: {},
       clipRoots: [],
-      isActionable: () => true,
     }),
     /require an invalidation owner/,
   );

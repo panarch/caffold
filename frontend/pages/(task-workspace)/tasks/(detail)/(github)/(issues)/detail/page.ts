@@ -1,31 +1,21 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScopeOptions,
-  type ActionHintTarget,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-  linkActionHintTarget,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { GitHubIssue } from "#app/api.ts";
 import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  mergeScrollSurfaceScopes,
+  type ScrollSurfacePull,
+  ScrollSurfaces,
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/loading-text.ts";
 import "../../components/markdown.ts";
 import type { CaffoldGithubMarkdown } from "../../components/markdown.ts";
-
-const ACTIONS =
-  ":scope > .github-issue-viewer-panel > header > .github-issue-viewer-title-row > .github-issue-actions";
-const START_BUTTON = `${ACTIONS} > button.github-issue-start-button[data-action="start-github-task"]`;
-const GITHUB_LINK = `${ACTIONS} > a.github-issue-link[href]`;
-const BODY = ":scope > .github-issue-viewer-panel > .github-issue-body";
 
 type IssueState =
   | { status: "empty" }
@@ -40,6 +30,14 @@ export class CaffoldGithubIssueDetailPage extends LitElement {
 
   declare private state: IssueState;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly markdown = new DrawnRef<CaffoldGithubMarkdown>(this);
+  private readonly rawBody = new DrawnRef<HTMLElement>(this);
 
   constructor() {
     super();
@@ -107,6 +105,11 @@ export class CaffoldGithubIssueDetailPage extends LitElement {
             <h2>${issue.title}</h2>
             <div class="github-issue-actions">
               <button
+                ${this.hints.button({
+                  id: `${encodeURIComponent(issue.number)}:start-task`,
+                  label: `Start Task for issue #${issue.number}`,
+                  action: ACTION_HINT_ACTION.GITHUB_TASK_START,
+                })}
                 type="button"
                 class="github-issue-start-button"
                 data-action="start-github-task"
@@ -118,6 +121,11 @@ export class CaffoldGithubIssueDetailPage extends LitElement {
                 <span class="github-issue-start-label">Start Task</span>
               </button>
               <a
+                ${this.hints.link({
+                  id: `${encodeURIComponent(issue.number)}:github`,
+                  label: `Open issue #${issue.number} on GitHub in a new tab`,
+                  action: ACTION_HINT_ACTION.LINK_OPEN,
+                })}
                 class="github-issue-link"
                 href=${issue.url}
                 target="_blank"
@@ -142,10 +150,16 @@ export class CaffoldGithubIssueDetailPage extends LitElement {
         ${
           bodyHtml
             ? html`<caffold-github-markdown
+                ${drawn(this.markdown)}
                 class="github-issue-body"
                 .html=${bodyHtml}
               ></caffold-github-markdown>`
             : html`<article
+                ${drawn(this.rawBody)}
+                ${this.surfaces.surface({
+                  id: "body:scroll",
+                  clipRoots: () => [this, this.rawBody.value],
+                })}
                 class="github-issue-body github-issue-raw-body"
               >${issue.body?.trim() || "No description."}</article>`
         }
@@ -172,76 +186,16 @@ export class CaffoldGithubIssueDetailPage extends LitElement {
   actionHintScope({
     scopeId = "github:issue",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
-    const state = this.state;
-    if (this.hidden || state.status !== "ready") {
-      return emptyActionHintScope();
-    }
-    const issue = state.payload.issue;
-    const number = `${issue.number}`;
-    const isCurrentIssue = () =>
-      this.isConnected &&
-      !this.hidden &&
-      this.state.status === "ready" &&
-      `${this.state.payload.issue.number}` === number;
-    const targets: ActionHintTarget[] = [];
-    const start = this.querySelector<HTMLButtonElement>(START_BUTTON);
-    if (start && !start.disabled && hasActionHintLayoutBox(start)) {
-      targets.push(
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:${encodeURIComponent(number)}:start-task`,
-          actionId: ACTION_HINT_ACTION.GITHUB_TASK_START,
-          label:
-            start.getAttribute("aria-label") ||
-            `Start Task for issue #${number}`,
-          control: start,
-          clipRoots: [this, ...clipRoots],
-          isActionable: () =>
-            isCurrentIssue() &&
-            this.querySelector(START_BUTTON) === start &&
-            !start.disabled &&
-            hasActionHintLayoutBox(start),
-        }),
-      );
-    }
-    const link = this.querySelector<HTMLAnchorElement>(GITHUB_LINK);
-    if (
-      link &&
-      link.getAttribute("href") === issue.url &&
-      hasActionHintLayoutBox(link)
-    ) {
-      targets.push(
-        linkActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:${encodeURIComponent(number)}:github`,
-          actionId: ACTION_HINT_ACTION.LINK_OPEN,
-          label: `Open issue #${number} on GitHub in a new tab`,
-          control: link,
-          clipRoots: [this, ...clipRoots],
-          isActionable: () =>
-            isCurrentIssue() &&
-            this.state.status === "ready" &&
-            this.state.payload.issue.url === issue.url &&
-            this.querySelector(GITHUB_LINK) === link &&
-            link.getAttribute("href") === issue.url &&
-            hasActionHintLayoutBox(link),
-        }),
-      );
-    }
-    const body = this.querySelector(
-      BODY,
-    ) as Partial<CaffoldGithubMarkdown> | null;
+    ...pull
+  }: ActionHintPull = {}) {
+    const own = this.hints.scope({ ...pull, scopeId, clipRoots });
+    const number =
+      this.state.status === "ready" ? `${this.state.payload.issue.number}` : "";
     return mergeActionHintScopes(
-      { blocked: false, targets, mutationRoots: [this], scrollRoots: [] },
-      body?.actionHintScope?.({
+      own,
+      this.markdown.value?.actionHintScope({
         scopeId: `${scopeId}:${encodeURIComponent(number)}:body`,
         clipRoots: [this, ...clipRoots],
-        isCurrent: () =>
-          this.isConnected &&
-          !this.hidden &&
-          this.state === state &&
-          this.querySelector(BODY) === body,
       }),
     );
   }
@@ -249,45 +203,18 @@ export class CaffoldGithubIssueDetailPage extends LitElement {
   scrollSurfaceScope({
     scopeId = "github:issue",
     clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const state = this.state;
-    if (this.hidden || state.status !== "ready") {
-      return emptyScrollSurfaceScope();
-    }
-    const body = this.querySelector<HTMLElement>(BODY);
-    if (!body) {
-      return emptyScrollSurfaceScope();
-    }
-    const isCurrent = () =>
-      this.isConnected &&
-      !this.hidden &&
-      this.state === state &&
-      this.querySelector(BODY) === body;
-    const markdown = body as Partial<CaffoldGithubMarkdown>;
-    if (typeof markdown.scrollSurfaceScope === "function") {
-      return markdown.scrollSurfaceScope({
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    const label = "Issue description";
+    const own = this.surfaces.scope({ ...pull, scopeId, label, clipRoots });
+    return mergeScrollSurfaceScopes(
+      own,
+      this.markdown.value?.scrollSurfaceScope({
         scopeId: `${scopeId}:body`,
-        label: "Issue description",
+        label,
         clipRoots: [this, ...clipRoots],
-        isCurrent,
-      });
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:body:scroll`,
-          label: "Issue description",
-          scrollport: body,
-          clipRoots: [this, body, ...clipRoots],
-          isEligible: () =>
-            isCurrent() && hasScrollLayoutBox(this) && hasScrollLayoutBox(body),
-        },
-      ],
-      mutationRoots: [this, body],
-      resizeElements: [this, body],
-      scrollRoots: [body],
-    };
+      }),
+    );
   }
 
   private startTask(event: Event) {

@@ -1,18 +1,19 @@
 import { html, LitElement } from "lit";
-import type { ActionHintScope } from "#app/action-hint-scope.js";
-import {
-  ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hints.js";
-import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
+import { KeyboardContexts } from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 
 export const CLAUDE_RUNTIME_RESTART_CONFIRMED_EVENT =
   "caffold:claude-runtime-restart-confirmed";
 
 export class CaffoldClaudeRuntimeRestartDialog extends LitElement {
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
+
   createRenderRoot() {
     return this;
   }
@@ -25,6 +26,8 @@ export class CaffoldClaudeRuntimeRestartDialog extends LitElement {
   render() {
     return html`
       <dialog
+        ${drawn(this.dialog)}
+        ${this.keyboard.modal({ id: "claude-runtime-restart" })}
         closedby="any"
         aria-labelledby="claude-runtime-dialog-title"
         aria-describedby="claude-runtime-dialog-description"
@@ -37,18 +40,36 @@ export class CaffoldClaudeRuntimeRestartDialog extends LitElement {
             Conversations resume from their files as their Tasks are opened.
           </p>
           <footer>
-            <button type="submit" value="cancel" autofocus>Cancel</button>
-            <button type="submit" value="restart">Restart Claude</button>
+            <button
+              ${this.hints.button({
+                id: "cancel",
+                label: "Cancel",
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
+              type="submit"
+              value="cancel"
+              autofocus
+            >Cancel</button>
+            <button
+              ${this.hints.button({
+                id: "restart",
+                label: "Restart Claude",
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
+              type="submit"
+              value="restart"
+            >Restart Claude</button>
           </footer>
         </form>
         <caffold-keyboard-navigation-presentation
+          ${this.keyboard.presentation()}
         ></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
   }
 
   open() {
-    const dialog = this.dialog;
+    const dialog = this.dialog.value;
     if (!dialog || dialog.open) {
       return;
     }
@@ -57,75 +78,17 @@ export class CaffoldClaudeRuntimeRestartDialog extends LitElement {
   }
 
   close() {
-    this.dialog?.close();
+    this.dialog.value?.close();
   }
 
   keyboardNavigationContexts() {
-    const dialog = this.dialog;
-    const hintDialog = dialog
-      ?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      )
-      ?.actionHintDialog();
-    if (!dialog || !hintDialog) {
-      return [];
-    }
-    return [
-      keyboardNavigationContext({
-        id: "claude-runtime-restart",
-        kind: "modal",
-        root: dialog,
-        actionHints: {
-          dialog: hintDialog,
-          scope: this.actionHintScope(),
-        },
-      }),
-    ];
-  }
-
-  actionHintScope(): ActionHintScope {
-    const dialog = this.dialog;
-    if (!dialog) {
-      return emptyActionHintScope();
-    }
-    const targets = ["cancel", "restart"].flatMap((value) => {
-      const control = dialog.querySelector<HTMLButtonElement>(
-        `button[value="${value}"]`,
-      );
-      if (!control) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `claude-runtime-restart:${value}`,
-          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-          label: control.textContent?.trim() || value,
-          control,
-          clipRoots: [dialog],
-          isActionable: () =>
-            this.isConnected &&
-            this.dialog === dialog &&
-            dialog.open &&
-            dialog.querySelector(`button[value="${value}"]`) === control &&
-            !control.disabled,
-        }),
-      ];
+    return this.keyboard.contexts({
+      actionHints: (pull) => this.hints.scope(pull),
     });
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
-  }
-
-  private get dialog() {
-    return this.querySelector<HTMLDialogElement>(":scope > dialog");
   }
 
   private handleClose() {
-    if (this.dialog?.returnValue !== "restart") {
+    if (this.dialog.value?.returnValue !== "restart") {
       return;
     }
     this.dispatchEvent(

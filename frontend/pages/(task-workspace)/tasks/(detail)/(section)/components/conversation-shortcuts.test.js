@@ -11,36 +11,9 @@ import {
 
 const registry = installCustomElementUnitRegistry();
 await import("./conversation-shortcuts.ts");
+const { ActionHints } = await import("#app/action-hints.ts");
 const shortcuts = registry.element("caffold-section-conversation-shortcuts").prototype;
 after(() => registry.restore());
-
-test("provides the retained Fork opener only for the active Section context", () => {
-  let control = {
-    disabled: false,
-    textContent: "Fork from Codex thread ID",
-    getAttribute: () => null,
-    focus() {},
-    click() {},
-  };
-  const owner = {
-    active: true,
-    hidden: false,
-    isConnected: true,
-    context: { key: "section-a\0/repo" },
-    performUpdate() {},
-    querySelector: () => control,
-  };
-
-  const target = shortcuts.actionHintScope.call(owner, {
-    scopeId: "section:section-a",
-  }).targets[0];
-  assert.equal(target.id, "section:section-a:fork-conversation");
-  assert.equal(target.actionId, "button.activate");
-  assert.equal(target.isActionable(), true);
-  owner.context = { key: "section-b\0/repo" };
-  assert.equal(target.isActionable(), false);
-  control = null;
-});
 
 test("shows the Fork opener only once Codex is known to be installed", () => {
   const owner = Object.create(shortcuts, Object.getOwnPropertyDescriptors({
@@ -51,6 +24,7 @@ test("shows the Fork opener only once Codex is known to be installed", () => {
     taskStoreStatusSnapshot: null,
     codexReadiness: createCodexStatusSnapshot(),
   }));
+  owner.hints = new ActionHints(owner, () => {});
   const drawn = () => {
     shortcuts.updated.call(owner);
     const markup = templateHtml(owner.render()).replace(/\s+/g, " ");

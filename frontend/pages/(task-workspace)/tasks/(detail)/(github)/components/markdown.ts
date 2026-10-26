@@ -1,6 +1,5 @@
 import { css, html, LitElement, type PropertyValues } from "lit";
 import {
-  type ActionHintScopeOptions,
   type ActionHintTarget,
   captureLinkActionHintBinding,
   disclosureActionHintTarget,
@@ -10,15 +9,16 @@ import {
   linkActionHintLabel,
   linkActionHintTarget,
   matchesLinkActionHintBinding,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hint-scope.ts";
+import { ACTION_HINT_ACTION, type ActionHintPull } from "#app/action-hints.ts";
 import {
-  emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
+  type ScrollSurfacePull,
   type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  ScrollSurfaces,
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 
 const FORBIDDEN_ELEMENTS = new Set([
   "base",
@@ -236,6 +236,10 @@ export class CaffoldGithubMarkdown extends LitElement {
   private actionHintLinks: LinkRecord[] = [];
   private actionHintDisclosures: DisclosureRecord[] = [];
   private scrollSurfaceRecords: ScrollRecord[] = [];
+  private readonly body = new DrawnRef<HTMLElement>(this);
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
 
   constructor() {
     super();
@@ -256,11 +260,20 @@ export class CaffoldGithubMarkdown extends LitElement {
   }
 
   render() {
-    return html`<article class="markdown-body">${this.content}</article>`;
+    return html`<article
+      ${drawn(this.body)}
+      ${this.surfaces.surface({
+        id: "scroll",
+        axes: ["vertical", "horizontal"],
+        scrollport: () => this,
+        clipRoots: () => [this],
+      })}
+      class="markdown-body"
+    >${this.content}</article>`;
   }
 
   updated(changed: PropertyValues) {
-    const body = this.renderRoot.querySelector(".markdown-body");
+    const body = this.body.value;
     if (!changed.has("html") || !body) {
       return;
     }
@@ -269,19 +282,15 @@ export class CaffoldGithubMarkdown extends LitElement {
     this.scrollSurfaceRecords = collectScrollSurfaceRecords(body);
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & { isCurrent?: () => boolean } = {}) {
-    const body = this.renderRoot.querySelector(".markdown-body");
-    if (!scopeId || !body || !this.isConnected || this.hidden) {
+  actionHintScope({ scopeId = "", clipRoots = [] }: ActionHintPull = {}) {
+    this.performUpdate();
+    const body = this.body.value;
+    if (!body) {
       return emptyActionHintScope();
     }
     const tableScrollRoots: Element[] = [];
     const targets: ActionHintTarget[] = this.actionHintLinks.flatMap(
-      (record) => {
-        const { binding, control, ordinal } = record;
+      ({ binding, control, ordinal }) => {
         const label = linkActionHintLabel(control);
         if (
           !label ||
@@ -306,17 +315,6 @@ export class CaffoldGithubMarkdown extends LitElement {
             clipRoots: [this, body, tableScrollRoot, ...clipRoots].filter(
               (root): root is Element => Boolean(root),
             ),
-            isActionable: () =>
-              this.isConnected &&
-              !this.hidden &&
-              isCurrent() &&
-              this.renderRoot.querySelector(".markdown-body") === body &&
-              this.actionHintLinks.includes(record) &&
-              body.contains(control) &&
-              matchesLinkActionHintBinding(control, binding) &&
-              Boolean(linkActionHintLabel(control)) &&
-              !isFoldedAway(control) &&
-              hasActionHintLayoutBox(control),
           }),
         ];
       },
@@ -340,15 +338,6 @@ export class CaffoldGithubMarkdown extends LitElement {
           label: `${details.open ? "Collapse" : "Expand"} ${disclosureName(summary)}`,
           control: summary,
           clipRoots: [this, body, ...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.renderRoot.querySelector(".markdown-body") === body &&
-            this.actionHintDisclosures.includes(record) &&
-            isDisclosureCurrent(body, record) &&
-            !isFoldedAway(summary) &&
-            hasActionHintLayoutBox(summary),
         }),
       );
     }
@@ -361,64 +350,41 @@ export class CaffoldGithubMarkdown extends LitElement {
   }
 
   scrollSurfaceScope({
-    scopeId = "",
     label = "Issue description",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}) {
-    if (!scopeId || !label || this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    const ownScope: ScrollSurfaceScope = {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport: this,
-          axes: ["vertical", "horizontal"],
-          clipRoots: [this, ...clipRoots],
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            hasScrollLayoutBox(this),
-        },
-      ],
-      mutationRoots: [this, this.renderRoot],
-      resizeElements: [this],
-      scrollRoots: [this],
-    };
-    const body = this.renderRoot.querySelector(".markdown-body");
-    const nestedScopes = this.scrollSurfaceRecords.map(
-      (record): ScrollSurfaceScope => ({
-        blocked: false,
-        surfaces: [
-          {
-            id: `${scopeId}:${record.kind}:${record.ordinal}`,
-            label: `${label} ${record.label}`,
-            scrollport: record.scrollport,
-            axes: ["horizontal"],
-            clipRoots: [this, body, record.scrollport, ...clipRoots].filter(
-              (root): root is Element => Boolean(root),
-            ),
-            isEligible: () =>
-              this.isConnected &&
-              !this.hidden &&
-              isCurrent() &&
-              this.renderRoot.querySelector(".markdown-body") === body &&
-              this.scrollSurfaceRecords.includes(record) &&
-              Boolean(body?.contains(record.scrollport)) &&
-              hasScrollLayoutBox(this) &&
-              hasScrollLayoutBox(record.scrollport),
-          },
-        ],
-        mutationRoots: [this, this.renderRoot],
-        resizeElements: [this, record.scrollport],
-        scrollRoots: [this, record.scrollport],
-      }),
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    const own = this.surfaces.scope({ ...pull, label });
+    const body = this.body.value;
+    const nestedScopes = (body ? this.scrollSurfaceRecords : []).flatMap(
+      (record): ScrollSurfaceScope[] =>
+        body?.contains(record.scrollport) &&
+        hasScrollLayoutBox(this) &&
+        hasScrollLayoutBox(record.scrollport)
+          ? [
+              {
+                blocked: false,
+                surfaces: [
+                  {
+                    id: `${pull.scopeId}:${record.kind}:${record.ordinal}`,
+                    label: `${label} ${record.label}`,
+                    scrollport: record.scrollport,
+                    axes: ["horizontal"],
+                    clipRoots: [
+                      this,
+                      body,
+                      record.scrollport,
+                      ...(pull.clipRoots ?? []),
+                    ],
+                  },
+                ],
+                mutationRoots: [this, this.renderRoot],
+                resizeElements: [this, record.scrollport],
+                scrollRoots: [this, record.scrollport],
+              },
+            ]
+          : [],
     );
-    return mergeScrollSurfaceScopes(ownScope, ...nestedScopes);
+    return mergeScrollSurfaceScopes(own, ...nestedScopes);
   }
 }
 

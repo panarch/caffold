@@ -10,489 +10,123 @@ await import("./file-viewer.ts");
 const fileViewer = registry.element("caffold-review-file-viewer").prototype;
 after(() => registry.restore());
 
-test("provides only the visible owned Back or close button", () => {
-  const clipRoot = {};
-  const focusOptions = [];
-  let clicks = 0;
-  let control = {
-    disabled: false,
-    getAttribute(name) {
-      return name === "aria-label" ? "Back to changed files" : null;
-    },
-    focus(options) {
-      focusOptions.push(options);
-    },
-    click() {
-      clicks += 1;
-    },
-  };
-  const owner = {
-    state: { status: "file" },
-    hidden: false,
-    isConnected: true,
-    closeLabel: "Close file",
-    querySelector() {
-      return control;
-    },
-  };
-
-  const scope = fileViewer.actionHintScope.call(owner, {
-    scopeId: "review:viewer",
-    actionId: "navigation.parent",
-    clipRoots: [clipRoot],
-  });
-  const target = scope.targets[0];
-  assert.deepEqual(
-    {
-      id: target.id,
-      actionId: target.actionId,
-      label: target.label,
-      controlKind: target.controlKind,
-    },
-    {
-      id: "review:viewer:close",
-      actionId: "navigation.parent",
-      label: "Back to changed files",
-      controlKind: "button",
-    },
-  );
-  assert.deepEqual(scope.mutationRoots, [owner]);
-  assert.deepEqual(target.clipRoots, [clipRoot]);
-  assert.equal(target.isActionable(), true);
-  target.activate();
-  assert.deepEqual(focusOptions, [{ preventScroll: true }]);
-  assert.equal(clicks, 1);
-
-  control = null;
-  assert.equal(target.isActionable(), false);
-  assert.deepEqual(fileViewer.actionHintScope.call(owner, {
-    scopeId: "review:viewer",
-    actionId: "navigation.parent",
-  }).targets, []);
-});
-
-test("provides a direct notice representation action through its owned button", () => {
-  const clipRoot = {};
-  const focusOptions = [];
-  let clicks = 0;
-  let noticeControl = {
-    dataset: { action: "view-preview" },
-    disabled: false,
-    textContent: "View rendered preview",
-    getAttribute() {
-      return null;
-    },
-    focus(options) {
-      focusOptions.push(options);
-    },
-    click() {
-      clicks += 1;
-    },
-  };
-  const owner = {
-    state: { status: "notice" },
-    hidden: false,
-    isConnected: true,
-    querySelector(selector) {
-      if (selector.includes('data-action="close-browser-viewer"')) {
-        return null;
-      }
-      return noticeControl;
-    },
-  };
-
-  const scope = fileViewer.actionHintScope.call(owner, {
-    scopeId: "review:viewer",
-    noticeActionId: "navigation.review.axis",
-    clipRoots: [clipRoot],
-  });
-  const target = scope.targets[0];
-  assert.deepEqual(
-    {
-      id: target.id,
-      actionId: target.actionId,
-      label: target.label,
-      controlKind: target.controlKind,
-    },
-    {
-      id: "review:viewer:notice:view-preview",
-      actionId: "navigation.review.axis",
-      label: "View rendered preview",
-      controlKind: "button",
-    },
-  );
-  assert.deepEqual(target.clipRoots, [clipRoot]);
-  assert.equal(target.isActionable(), true);
-  target.activate();
-  assert.deepEqual(focusOptions, [{ preventScroll: true }]);
-  assert.equal(clicks, 1);
-
-  noticeControl = null;
-  assert.equal(target.isActionable(), false);
-});
-
-test("provides file details opener and no action inside a diff's popover", () => {
-  const control = {
-    disabled: false,
-    focus() {},
-    click() {},
-    getAttribute(name) {
-      return name === "aria-label"
-        ? "Show details for PLAN.md"
-        : name === "popovertarget"
-          ? "file-details"
-          : null;
-    },
-  };
-  const dialog = {};
-  const hud = {};
-  const selector = {};
-  const presentation = {
-    actionHintDialog: () => dialog,
-    scrollModeHud: () => hud,
-    scrollSurfaceSelector: () => selector,
-  };
-  const popover = {
-    id: "file-details",
-    matches: () => false,
-    querySelector(selector) {
-      return selector.includes("keyboard-navigation-presentation")
-        ? presentation
-        : {};
-    },
-  };
-  const owner = {
-    state: { status: "file" },
-    hidden: false,
-    isConnected: true,
-    detailsPopover: () => popover,
-    hasDetailsMetadata: () => true,
-    downloadLink: () => null,
-    querySelector(selector) {
-      if (selector.includes("viewer-info-button")) {
-        return control;
-      }
-      return null;
-    },
-  };
-
-  const scope = fileViewer.actionHintScope.call(owner, {
-    scopeId: "review:viewer",
-    detailsActionId: "navigation.file-details.open",
-  });
-  assert.equal(scope.targets[0].actionId, "navigation.file-details.open");
-  assert.equal(scope.targets[0].label, "Show details for PLAN.md");
-  assert.equal(scope.targets[0].isActionable(), true);
-
-  const [context] = fileViewer.keyboardNavigationContexts.call(owner, {
-    scopeId: "review:viewer",
-  });
-  assert.equal(context.root, popover);
-  assert.equal(context.actionHints.dialog, dialog);
-  assert.deepEqual(context.actionHints.scope.targets, []);
-  assert.equal(context.actionHints.sessionBound, false);
-  assert.equal(context.scroll.hud, hud);
-  assert.equal(context.scroll.selector, selector);
-  assert.equal(context.scroll.scope.surfaces[0].scrollport, popover);
-});
-
-test("provides Download inside a source file's details popover", () => {
-  const presentation = {
-    actionHintDialog: () => ({}),
-    scrollModeHud: () => ({}),
-    scrollSurfaceSelector: () => ({}),
-  };
-  const popover = {
-    querySelector(selector) {
-      return selector.includes("keyboard-navigation-presentation")
-        ? presentation
-        : null;
-    },
-  };
-  let clicks = 0;
-  const link = {
-    textContent: "\n  Download\n",
-    focus() {},
-    click() {
-      clicks += 1;
-    },
-    getAttribute(name) {
-      return name === "href" ? "/api/download?path=dist%2Fbuild.zip" : null;
-    },
-  };
-  let currentLink = link;
-  const owner = {
-    hidden: false,
-    isConnected: true,
-    detailsPopover: () => popover,
-    hasDetailsMetadata: () => true,
-    downloadLink: () => currentLink,
-  };
-
-  const [context] = fileViewer.keyboardNavigationContexts.call(owner, {
-    scopeId: "review:viewer",
-  });
-  const [target] = context.actionHints.scope.targets;
-  assert.equal(context.actionHints.sessionBound, true);
-  assert.equal(context.actionHints.scope.targets.length, 1);
-  assert.equal(target.actionId, "link.open");
-  assert.equal(target.label, "Download");
-  assert.equal(target.isActionable(), true);
-  target.activate();
-  assert.equal(clicks, 1);
-
-  currentLink = { ...link };
-  assert.equal(target.isActionable(), false);
-});
-
-test("provides its owned refresh button beside existing viewer actions", () => {
-  let current;
-  let clicks = 0;
-  const refresh = {
-    disabled: false,
-    getAttribute: () => "Refresh file",
-    focus() {},
-    click() {
-      clicks += 1;
-    },
-  };
-  current = refresh;
-  const owner = {
-    state: { status: "file" },
-    hidden: false,
-    isConnected: true,
-    querySelector(selector) {
-      return selector.includes("viewer-refresh-button") ? current : null;
-    },
-  };
-
-  const scope = fileViewer.actionHintScope.call(owner, {
-    scopeId: "review:viewer",
-    refreshActionId: "button.activate",
-  });
-  assert.equal(scope.targets.length, 1);
-  assert.equal(scope.targets[0].id, "review:viewer:refresh");
-  assert.equal(scope.targets[0].label, "Refresh file");
-  scope.targets[0].activate();
-  assert.equal(clicks, 1);
-
-  current = null;
-  assert.equal(scope.targets[0].isActionable(), false);
-});
-
-test("merges only the current Markdown preview Action Hint scope", () => {
-  const state = { status: "markdown" };
-  const previewTarget = { id: "preview-link" };
-  let received;
-  let preview = {
-    actionHintScope(options) {
-      received = options;
-      return {
-        blocked: false,
-        targets: [previewTarget],
-        mutationRoots: [this],
-        scrollRoots: [this],
-      };
-    },
-  };
-  const owner = {
+// A viewer whose own declarations make `ownTarget` and `ownSurface`, and
+// whose drawn children are the given refs.
+function viewerWith(state, children = {}) {
+  const owner = Object.create(fileViewer);
+  return Object.assign(owner, {
     state,
-    hidden: false,
-    isConnected: true,
-    querySelector(selector) {
-      return selector.includes("caffold-markdown-preview") ? preview : null;
+    hints: {
+      scope: () => ({ blocked: false, targets: [{ id: "own" }], mutationRoots: [owner], scrollRoots: [] }),
+    },
+    surfaces: {
+      scope: () => ({ blocked: false, surfaces: [{ id: "own" }], mutationRoots: [owner], resizeElements: [], scrollRoots: [] }),
+    },
+    codeViewer: { value: children.codeViewer },
+    diffViewer: { value: children.diffViewer },
+    preview: { value: children.preview },
+    documentViewer: { value: children.documentViewer },
+  });
+}
+
+test("merges the Action Hints of the Markdown preview it draws", () => {
+  let received;
+  const preview = {
+    actionHintScope(pull) {
+      received = pull;
+      return { targets: [{ id: "preview-link" }] };
     },
   };
-  const scope = fileViewer.actionHintScope.call(owner, {
+  const layout = { id: "layout" };
+  const actions = { link: "link.open" };
+  const owner = viewerWith({ status: "markdown" }, { preview });
+
+  const scope = owner.actionHintScope({
     scopeId: "review:viewer",
-    linkActionId: "link.open",
-    clipRoots: [{ id: "layout" }],
+    actions,
+    clipRoots: [layout],
   });
 
-  assert.deepEqual(scope.targets, [previewTarget]);
-  assert.equal(received.scopeId, "review:viewer:preview");
-  assert.equal(received.linkActionId, "link.open");
-  assert.deepEqual(received.clipRoots, [owner, { id: "layout" }]);
-  assert.equal(received.isCurrent(), true);
-  preview = null;
-  assert.equal(received.isCurrent(), false);
-  owner.state = { status: "file" };
-  assert.deepEqual(fileViewer.actionHintScope.call(owner, {
-    scopeId: "review:viewer",
-  }).targets, []);
+  assert.deepEqual(scope.targets.map(({ id }) => id), ["own", "preview-link"]);
+  assert.deepEqual(received, {
+    scopeId: "review:viewer:preview",
+    actions,
+    clipRoots: [owner, layout],
+  });
+  assert.deepEqual(
+    viewerWith({ status: "file" }).actionHintScope({ scopeId: "review:viewer" })
+      .targets.map(({ id }) => id),
+    ["own"],
+  );
 });
 
-test("delegates source scrolling and invalidates it when viewer state changes", () => {
-  const state = {
-    status: "file",
-    presentation: { title: "PLAN.md" },
-  };
+test("names the source surface after the file it shows", () => {
   let received;
-  const childScope = { surfaces: [{ id: "source" }] };
   const codeViewer = {
-    scrollSurfaceScope(options) {
-      received = options;
-      return childScope;
+    scrollSurfaceScope(pull) {
+      received = pull;
+      return { surfaces: [{ id: "source" }] };
     },
   };
-  const owner = {
-    state,
-    hidden: false,
-    isConnected: true,
-    querySelector: () => codeViewer,
-  };
+  const owner = viewerWith(
+    { status: "file", presentation: { title: "PLAN.md" } },
+    { codeViewer },
+  );
 
-  assert.equal(fileViewer.scrollSurfaceScope.call(owner, {
-    scopeId: "review:viewer",
-  }), childScope);
-  assert.equal(received.scopeId, "review:viewer:source");
-  assert.equal(received.label, "PLAN.md source");
-  assert.equal(received.isCurrent(), true);
-
-  owner.state = { ...state };
-  assert.equal(received.isCurrent(), false);
-});
-
-test("delegates document scrolling to the retained viewer of its kind", () => {
-  for (const { kind, tagName, title } of [
-    { kind: "pdf", tagName: "caffold-pdf-viewer", title: "manual.pdf" },
-    { kind: "docx", tagName: "caffold-docx-viewer", title: "report.docx" },
-    { kind: "pptx", tagName: "caffold-pptx-viewer", title: "deck.pptx" },
-    { kind: "xlsx", tagName: "caffold-xlsx-viewer", title: "budget.xlsm" },
-  ]) {
-    const state = {
-      status: "document",
-      document: { kind },
-      presentation: { title },
-    };
-    let received;
-    let selector;
-    const childScope = { surfaces: [{ id: kind }] };
-    let preview = {
-      scrollSurfaceScope(options) {
-        received = options;
-        return childScope;
-      },
-    };
-    const owner = {
-      state,
-      hidden: false,
-      isConnected: true,
-      querySelector: (query) => {
-        selector = query;
-        return preview;
-      },
-    };
-
-    assert.equal(fileViewer.scrollSurfaceScope.call(owner, {
-      scopeId: "review:viewer",
-    }), childScope);
-    assert.equal(selector, `:scope > .document-panel > ${tagName}`);
-    assert.equal(received.scopeId, `review:viewer:${kind}`);
-    assert.equal(received.label, `${title} preview`);
-    assert.equal(received.isCurrent(), true);
-
-    owner.state = { ...state };
-    assert.equal(received.isCurrent(), false);
-    owner.state = state;
-    preview = null;
-    assert.deepEqual(fileViewer.scrollSurfaceScope.call(owner, {
-      scopeId: "review:viewer",
-    }).surfaces, []);
-  }
-});
-
-test("merges the Action Hint scope of the retained viewer of the document's kind", () => {
-  for (const { kind, tagName } of [
-    { kind: "pdf", tagName: "caffold-pdf-viewer" },
-    { kind: "docx", tagName: "caffold-docx-viewer" },
-    { kind: "pptx", tagName: "caffold-pptx-viewer" },
-    { kind: "xlsx", tagName: "caffold-xlsx-viewer" },
-  ]) {
-    const state = { status: "document", document: { kind } };
-    const documentTarget = { id: `${kind}-link` };
-    let received;
-    let selector;
-    let preview = {
-      actionHintScope(options) {
-        received = options;
-        return {
-          blocked: false,
-          targets: [documentTarget],
-          mutationRoots: [this],
-          scrollRoots: [],
-        };
-      },
-    };
-    const owner = {
-      state,
-      hidden: false,
-      isConnected: true,
-      querySelector(query) {
-        if (query.includes(".document-panel")) {
-          selector = query;
-          return preview;
-        }
-        return null;
-      },
-      documentActionHintScope(...args) {
-        return fileViewer.documentActionHintScope.call(this, ...args);
-      },
-    };
-
-    const scope = fileViewer.actionHintScope.call(owner, {
-      scopeId: "review:viewer",
-      linkActionId: "link.open",
-      buttonActionId: "button.activate",
-      clipRoots: [{ id: "layout" }],
-    });
-
-    assert.deepEqual(scope.targets, [documentTarget]);
-    assert.equal(selector, `:scope > .document-panel > ${tagName}`);
-    assert.equal(received.scopeId, "review:viewer:document");
-    assert.equal(received.linkActionId, "link.open");
-    assert.equal(received.buttonActionId, "button.activate");
-    assert.deepEqual(received.clipRoots, [owner, { id: "layout" }]);
-    assert.equal(received.isCurrent(), true);
-    owner.state = { ...state };
-    assert.equal(received.isCurrent(), false);
-    owner.state = state;
-    preview = null;
-    assert.equal(received.isCurrent(), false);
-    assert.deepEqual(fileViewer.actionHintScope.call(owner, {
-      scopeId: "review:viewer",
-    }).targets, []);
-  }
-});
-
-test("keeps an owned image surface bound to its exact retained scrollport", () => {
-  const state = { status: "image", image: { name: "shot.png" } };
-  const scrollport = {
-    isConnected: true,
-    clientHeight: 100,
-    scrollHeight: 260,
-    getClientRects: () => [{}],
-  };
-  let current = scrollport;
-  const owner = {
-    state,
-    hidden: false,
-    isConnected: true,
-    getClientRects: () => [{}],
-    querySelector: () => current,
-    ownScrollSurfaceScope(options) {
-      return fileViewer.ownScrollSurfaceScope.call(this, options);
-    },
-  };
-
-  const scope = fileViewer.scrollSurfaceScope.call(owner, {
-    scopeId: "review:viewer",
+  assert.deepEqual(
+    owner.scrollSurfaceScope({ scopeId: "review:viewer" }).surfaces.map(({ id }) => id),
+    ["own", "source"],
+  );
+  assert.deepEqual(received, {
+    scopeId: "review:viewer:source",
+    label: "PLAN.md source",
+    clipRoots: [owner],
   });
-  assert.equal(scope.surfaces[0].scrollport, scrollport);
-  assert.deepEqual(scope.surfaces[0].axes, ["vertical", "horizontal"]);
-  assert.equal(scope.surfaces[0].isEligible(), true);
-  current = { ...scrollport };
-  assert.equal(scope.surfaces[0].isEligible(), false);
+});
+
+test("passes scrolling and Action Hints to the document viewer of its kind", () => {
+  for (const { kind, title } of [
+    { kind: "pdf", title: "manual.pdf" },
+    { kind: "docx", title: "report.docx" },
+    { kind: "pptx", title: "deck.pptx" },
+    { kind: "xlsx", title: "budget.xlsm" },
+  ]) {
+    const received = {};
+    const documentViewer = {
+      scrollSurfaceScope(pull) {
+        received.scroll = pull;
+        return { surfaces: [{ id: kind }] };
+      },
+      actionHintScope(pull) {
+        received.actions = pull;
+        return { targets: [{ id: `${kind}-link` }] };
+      },
+    };
+    const owner = viewerWith(
+      { status: "document", document: { kind }, presentation: { title } },
+      { documentViewer },
+    );
+    const actions = { link: "link.open", button: "button.activate" };
+
+    assert.deepEqual(
+      owner.scrollSurfaceScope({ scopeId: "review:viewer" }).surfaces.map(({ id }) => id),
+      ["own", kind],
+    );
+    assert.deepEqual(received.scroll, {
+      scopeId: `review:viewer:${kind}`,
+      label: `${title} preview`,
+      clipRoots: [owner],
+    });
+    assert.deepEqual(
+      owner.actionHintScope({ scopeId: "review:viewer", actions }).targets.map(({ id }) => id),
+      ["own", `${kind}-link`],
+    );
+    assert.deepEqual(received.actions, {
+      scopeId: "review:viewer:document",
+      actions,
+      clipRoots: [owner],
+    });
+  }
 });
 
 // Load requests, the retained-content timer, and arriving states reach the
@@ -514,7 +148,7 @@ function retainingViewer(state) {
     state,
     retainedContent: null,
     renders: [],
-    detailsPopover: () => null,
+    detailsPopover: { value: null },
   };
   // Each state the viewer shows is one it draws.
   owner.show = () => {
@@ -691,7 +325,7 @@ function previewHost(status = "document") {
       : { status, document: { kind: "pdf", path: "document.pdf" } },
     previewFile: null,
     imageSource: "",
-    querySelector: () => null,
+    detailsPopover: { value: null },
     setError: (presentation, error) => errors.push(error.message),
   });
   // The document viewer is handed what the template binds; it waits for the

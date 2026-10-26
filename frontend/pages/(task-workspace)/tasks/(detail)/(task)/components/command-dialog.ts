@@ -1,20 +1,10 @@
 import { html, LitElement, nothing } from "lit";
-import type { ActionHintScope } from "#app/action-hint-scope.js";
-import {
-  ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hints.js";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
 import type { TaskEvent } from "#app/api.ts";
-import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  mergeScrollSurfaceScopes,
-  type ScrollSurfaceScope,
-} from "#app/scroll-scope.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import {
   formatDate,
@@ -38,9 +28,28 @@ interface CommandView {
  * The dialog belongs to one Task and closes when another Task opens.
  */
 export class CaffoldTaskCommandDialog extends LitElement {
-  private threadId = "";
+  static properties = {
+    threadId: { state: true },
+  };
+
+  declare private threadId: string;
   private command: CommandView | null = null;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
+  private readonly body = new DrawnRef<HTMLDivElement>(this);
+  private readonly output = new DrawnRef<HTMLPreElement>(this);
+
+  constructor() {
+    super();
+    this.threadId = "";
+  }
 
   createRenderRoot() {
     return this;
@@ -80,12 +89,12 @@ export class CaffoldTaskCommandDialog extends LitElement {
     };
     this.requestUpdate();
     this.performUpdate();
-    const dialog = this.dialog;
-    if (!dialog.open) {
+    const dialog = this.dialog.value;
+    if (dialog && !dialog.open) {
       dialog.showModal();
     }
     // A new command starts at its top and its first column.
-    for (const scrollport of [this.body, this.outputScrollport]) {
+    for (const scrollport of [this.body.value, this.output.value]) {
       if (scrollport) {
         scrollport.scrollTop = 0;
         scrollport.scrollLeft = 0;
@@ -94,126 +103,17 @@ export class CaffoldTaskCommandDialog extends LitElement {
   }
 
   dismiss() {
-    const dialog = this.dialog;
+    const dialog = this.dialog.value;
     if (dialog?.open) {
       dialog.close();
     }
   }
 
   keyboardNavigationContexts() {
-    const dialog = this.dialog;
-    const presentation =
-      dialog?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const hintDialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (!dialog || !hintDialog || !hud || !selector) {
-      return [];
-    }
-    const threadId = this.threadId;
-    return [
-      keyboardNavigationContext({
-        id: threadId
-          ? `task-command:${encodeURIComponent(threadId)}`
-          : "task-command",
-        kind: "modal",
-        root: dialog,
-        actionHints: { dialog: hintDialog, scope: this.actionHintScope() },
-        scroll: { hud, selector, scope: this.scrollSurfaceScope() },
-      }),
-    ];
-  }
-
-  actionHintScope(): ActionHintScope {
-    const dialog = this.dialog;
-    const control = this.closeButton;
-    const threadId = this.threadId;
-    if (!dialog || !control) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `task-command:${encodeURIComponent(threadId)}:close`,
-          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-          label: control.getAttribute("aria-label") || "Close command output",
-          control,
-          clipRoots: [dialog],
-          isActionable: () =>
-            this.isConnected &&
-            this.dialog === dialog &&
-            dialog.open &&
-            this.threadId === threadId &&
-            Boolean(threadId) &&
-            this.closeButton === control &&
-            !control.disabled,
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
-  }
-
-  scrollSurfaceScope(): ScrollSurfaceScope {
-    const dialog = this.dialog;
-    const scrollport = this.body;
-    const threadId = this.threadId;
-    if (!dialog || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    const current = () =>
-      this.isConnected &&
-      this.dialog === dialog &&
-      dialog.open &&
-      this.threadId === threadId &&
-      Boolean(threadId) &&
-      this.body === scrollport;
-    const bodyScope: ScrollSurfaceScope = {
-      blocked: false,
-      surfaces: [
-        {
-          id: `task-command:${encodeURIComponent(threadId)}:body`,
-          label: "Command dialog",
-          scrollport,
-          clipRoots: [dialog, scrollport],
-          isEligible: () =>
-            current() &&
-            hasScrollLayoutBox(dialog) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this, scrollport],
-      resizeElements: [dialog, scrollport],
-      scrollRoots: [scrollport],
-    };
-    const output = this.outputScrollport;
-    const outputScope: ScrollSurfaceScope | null = output
-      ? {
-          blocked: false,
-          surfaces: [
-            {
-              id: `task-command:${encodeURIComponent(threadId)}:output`,
-              label: "Command output",
-              scrollport: output,
-              axes: ["horizontal"],
-              clipRoots: [dialog, scrollport, output],
-              isEligible: () =>
-                current() &&
-                this.outputScrollport === output &&
-                hasScrollLayoutBox(dialog) &&
-                hasScrollLayoutBox(output),
-            },
-          ],
-          mutationRoots: [this, scrollport],
-          resizeElements: [dialog, scrollport, output],
-          scrollRoots: [scrollport, output],
-        }
-      : null;
-    return mergeScrollSurfaceScopes(bodyScope, outputScope);
+    return this.keyboard.contexts({
+      actionHints: (pull) => this.hints.scope(pull),
+      scroll: (pull) => this.surfaces.scope(pull),
+    });
   }
 
   render() {
@@ -225,7 +125,14 @@ export class CaffoldTaskCommandDialog extends LitElement {
       closeLabel,
       "task-command-dialog-close-icon",
     );
+    const threadId = this.threadId;
     return html`<dialog
+      ${drawn(this.dialog)}
+      ${this.keyboard.modal({
+        id: threadId
+          ? `task-command:${encodeURIComponent(threadId)}`
+          : "task-command",
+      })}
       aria-labelledby="task-command-dialog-title"
       data-command-status=${
         command ? (command.failed ? "failed" : "completed") : nothing
@@ -239,6 +146,11 @@ export class CaffoldTaskCommandDialog extends LitElement {
             <p data-command-dialog-status>${command ? statusLabel : ""}</p>
           </div>
           <button
+            ${this.hints.button({
+              id: "close",
+              label: closeLabel,
+              action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+            })}
             type="button"
             class="task-command-dialog-close"
             data-command-dialog-action="close"
@@ -247,43 +159,51 @@ export class CaffoldTaskCommandDialog extends LitElement {
             @click=${this.dismiss}
           >${closeIcon}</button>
         </header>
-        <div class="task-command-dialog-body" data-command-dialog-body>${
-          command ? commandTemplate(command, statusLabel) : nothing
+        <div
+          ${drawn(this.body)}
+          ${this.surfaces.surface({
+            id: "body",
+            label: () => "Command dialog",
+            clipRoots: () => [this.body.value],
+          })}
+          class="task-command-dialog-body"
+          data-command-dialog-body
+        >${
+          command
+            ? commandTemplate(command, statusLabel, {
+                surfaces: this.surfaces,
+                output: this.output,
+                clipRoots: () => [this.body.value, this.output.value],
+              })
+            : nothing
         }</div>
       </article>
       <caffold-keyboard-navigation-presentation
+        ${this.keyboard.presentation()}
       ></caffold-keyboard-navigation-presentation>
     </dialog>`;
   }
 
   private closeFromBackdrop(event: Event) {
-    if (event.target === this.dialog) {
+    if (event.target === this.dialog.value) {
       this.dismiss();
     }
   }
-
-  private get dialog() {
-    return this.querySelector(":scope > dialog") as HTMLDialogElement;
-  }
-
-  private get closeButton() {
-    return this.dialog?.querySelector<HTMLButtonElement>(
-      '[data-command-dialog-action="close"]',
-    );
-  }
-
-  private get body() {
-    return this.dialog?.querySelector<HTMLElement>(".task-command-dialog-body");
-  }
-
-  private get outputScrollport() {
-    return this.body?.querySelector<HTMLElement>(
-      ":scope > .task-command-dialog-output > pre",
-    );
-  }
 }
 
-function commandTemplate(command: CommandView, statusLabel: string) {
+// What the command's output is drawn with: its Scroll surface, and the ref
+// the dialog scrolls back to the start.
+interface CommandOutputParts {
+  surfaces: ScrollSurfaces;
+  output: DrawnRef<HTMLPreElement>;
+  clipRoots: () => Array<Element | undefined>;
+}
+
+function commandTemplate(
+  command: CommandView,
+  statusLabel: string,
+  { surfaces, output, clipRoots }: CommandOutputParts,
+) {
   return html`<dl class="task-command-dialog-details">
       <div>
         <dt>Command</dt>
@@ -328,7 +248,15 @@ function commandTemplate(command: CommandView, statusLabel: string) {
       aria-labelledby="task-command-output-title"
     >
       <h3 id="task-command-output-title">Output</h3>
-      <pre>${command.output || "(No output)"}</pre>
+      <pre
+        ${drawn(output)}
+        ${surfaces.surface({
+          id: "output",
+          label: () => "Command output",
+          axes: ["horizontal"],
+          clipRoots,
+        })}
+      >${command.output || "(No output)"}</pre>
     </section>`;
 }
 

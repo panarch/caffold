@@ -1,18 +1,17 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
+} from "#app/action-hints.ts";
 import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
+  type ScrollSurfacePull,
+  ScrollSurfaces,
   scrollBackToTop,
-} from "#app/scroll-scope.js";
+} from "#app/scroll-scope.ts";
 import "../../components/workspace-brand.ts";
 import "./navigator/components/item.ts";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
 import type {
   CaffoldSettingsNavigatorItem,
   SettingsNavigatorEntry,
@@ -46,6 +45,12 @@ export class CaffoldSettingsNavigator extends LitElement {
   // ready to load. Only the About entry shows either.
   declare updateAvailable: boolean;
   declare reloadReady: boolean;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly list = new DrawnRef<HTMLElement>(this);
+  private readonly items = new DrawnRefs<CaffoldSettingsNavigatorItem>(this);
 
   constructor() {
     super();
@@ -67,6 +72,7 @@ export class CaffoldSettingsNavigator extends LitElement {
     const items = ITEMS.map((entry) => {
       const about = entry.section === "about";
       return html`<caffold-settings-navigator-item
+        ${drawn(this.items.of(entry.section))}
         .entry=${entry}
         .selected=${entry.section === this.selectedSection}
         .updateAvailable=${about && this.updateAvailable}
@@ -78,36 +84,27 @@ export class CaffoldSettingsNavigator extends LitElement {
         <caffold-workspace-brand></caffold-workspace-brand>
       </header>
       <nav
+        ${drawn(this.list)}
+        ${this.surfaces.surface({
+          id: "sections:scroll",
+          clipRoots: () => [this, this.list.value],
+        })}
         class="settings-navigator-list"
         aria-label="Settings sections"
       >${items}</nav>
     `;
   }
 
-  actionHintScope({
-    scopeId = "settings",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
-    const scroller = this.list;
-    if (this.hidden || !scroller) {
-      return emptyActionHintScope();
-    }
-    const isCurrent = () => this.isConnected && !this.hidden;
-    const items = scroller.querySelectorAll<CaffoldSettingsNavigatorItem>(
-      ":scope > caffold-settings-navigator-item",
-    );
+  actionHintScope({ scopeId = "settings", ...pull }: ActionHintPull = {}) {
+    const own = this.hints.scope({ ...pull, scopeId });
+    const list = this.list.value;
     return mergeActionHintScopes(
-      {
-        blocked: false,
-        targets: [],
-        mutationRoots: [this],
-        scrollRoots: [scroller],
-      },
-      ...[...items].map((item) =>
-        item.actionHintScope({
+      own,
+      ...ITEMS.map(({ section }) =>
+        this.items.get(section)?.actionHintScope({
+          ...pull,
           scopeId,
-          clipRoots: [...clipRoots, scroller],
-          isCurrent,
+          clipRoots: [...(pull.clipRoots ?? []), ...(list ? [list] : [])],
         }),
       ),
     );
@@ -116,45 +113,16 @@ export class CaffoldSettingsNavigator extends LitElement {
   scrollSurfaceScope({
     scopeId = "settings",
     label = "Settings sections",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.list;
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:sections:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.list === scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   scrollToTop() {
-    const list = this.list;
+    const list = this.list.value;
     if (list) {
       scrollBackToTop(list);
     }
-  }
-
-  private get list() {
-    return this.querySelector<HTMLElement>(":scope > .settings-navigator-list");
   }
 }
 

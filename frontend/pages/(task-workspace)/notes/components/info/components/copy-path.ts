@@ -1,11 +1,9 @@
 import { html, LitElement, type PropertyValues } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import type { Note } from "#app/api.ts";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
@@ -26,6 +24,7 @@ export class CaffoldNotesInfoCopyPath extends LitElement {
   private path = "";
   private generation = 0;
   private feedbackTimer: number | undefined;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
 
   constructor() {
     super();
@@ -58,6 +57,13 @@ export class CaffoldNotesInfoCopyPath extends LitElement {
     const feedback = copyFeedback(this.copyState);
     return html`
       <button
+        ${this.hints.button({
+          id: "copy-path",
+          label: feedback || "Copy path",
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          badgeAtEnd: true,
+          when: Boolean(this.path) && this.copyState !== "copying",
+        })}
         type="button"
         class="notes-info-copy-path-button"
         aria-disabled=${this.copyState === "copying"}
@@ -102,46 +108,8 @@ export class CaffoldNotesInfoCopyPath extends LitElement {
     }, COPY_FEEDBACK_DURATION_MS);
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const control = this.button;
-    const path = this.path;
-    if (
-      !scopeId ||
-      !this.isConnected ||
-      !path ||
-      !control ||
-      !isCopyActionable(control)
-    ) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:copy-path`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label: (control.textContent ?? "").trim(),
-          control,
-          clipRoots: [...clipRoots],
-          badgeAtEnd: true,
-          isActionable: () =>
-            this.isConnected &&
-            isCurrent() &&
-            this.path === path &&
-            this.button === control &&
-            isCopyActionable(control),
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   private acceptsCompletion(generation: number) {
@@ -158,12 +126,6 @@ export class CaffoldNotesInfoCopyPath extends LitElement {
     window.clearTimeout(this.feedbackTimer);
     this.feedbackTimer = undefined;
   }
-
-  private get button() {
-    return this.querySelector<HTMLButtonElement>(
-      ":scope > .notes-info-copy-path-button",
-    );
-  }
 }
 
 // The names are joined the way the line under the Note header joins the
@@ -175,10 +137,6 @@ function copiedPath(note: Note) {
     note.name,
   ];
   return `${names.join(" / ")} (note id: ${note.id})`;
-}
-
-function isCopyActionable(control: Element) {
-  return control.getAttribute("aria-disabled") !== "true";
 }
 
 function copyFeedback(state: CopyState) {

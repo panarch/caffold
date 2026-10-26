@@ -1,20 +1,13 @@
 import { html, LitElement } from "lit";
 import { repeat } from "lit/directives/repeat.js";
-import {
-  type ActionHintScope,
-  buttonActionHintTarget,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
-  keyboardNavigationContext,
-} from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
-import {
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-} from "#app/scroll-scope.js";
+  KeyboardContexts,
+} from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import { taskStatusKey, taskStatusView } from "../runtime-state.ts";
 import { formatRelativeAgePresentation } from "../task-format.ts";
@@ -53,6 +46,16 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
   private order: string[] = [];
   private entries = new Map<string, TaskWithSection>();
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly modal = new DrawnRef<HTMLDialogElement>(this);
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly items = new DrawnRefs<HTMLLIElement>(this);
 
   constructor() {
     super();
@@ -88,7 +91,7 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
     dialog.showModal();
     // A closed dialog keeps its scroll offset, and the Task that just finished
     // is the reason to open this one.
-    this.scrollport.scrollTop = 0;
+    (this.scrollport.value as HTMLDivElement).scrollTop = 0;
     return true;
   }
 
@@ -126,110 +129,10 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
   }
 
   keyboardNavigationContexts() {
-    const dialog = this.dialog;
-    const presentation =
-      dialog.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const hintDialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (!hintDialog || !hud || !selector) {
-      return [];
-    }
-    return [
-      keyboardNavigationContext({
-        id: "task-switcher",
-        kind: "modal",
-        root: dialog,
-        actionHints: {
-          dialog: hintDialog,
-          scope: this.actionHintScope(),
-          sessionBound: true,
-        },
-        scroll: { hud, selector, scope: this.scrollSurfaceScope() },
-      }),
-    ];
-  }
-
-  actionHintScope(): ActionHintScope {
-    const dialog = this.dialog;
-    const scrollport = this.scrollport;
-    const close = this.closeControl;
-    const rows = [
-      ...this.list.querySelectorAll<HTMLElement>(
-        ":scope > .task-switcher-item",
-      ),
-    ];
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: "task-switcher-dialog:close",
-          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-          label: close.getAttribute("aria-label") || "Close task switcher",
-          control: close,
-          clipRoots: [dialog],
-          isActionable: () =>
-            this.isConnected &&
-            dialog.open &&
-            this.closeControl === close &&
-            !close.disabled,
-        }),
-        ...rows.flatMap((row) => {
-          const threadId = row.dataset.threadId ?? "";
-          const control = rowControl(row);
-          if (!threadId || !control) {
-            return [];
-          }
-          return [
-            buttonActionHintTarget({
-              invalidationOwner: row,
-              id: `task-switcher:${encodeURIComponent(threadId)}`,
-              actionId: ACTION_HINT_ACTION.TASK_SWITCH,
-              label:
-                control.getAttribute("aria-label") || `Open task: ${threadId}`,
-              control,
-              clipRoots: [dialog, scrollport],
-              isActionable: () =>
-                this.isConnected &&
-                dialog.open &&
-                row.isConnected &&
-                rowControl(row) === control &&
-                !control.disabled,
-            }),
-          ];
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
-  }
-
-  scrollSurfaceScope(): ScrollSurfaceScope {
-    const dialog = this.dialog;
-    const scrollport = this.scrollport;
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: "task-switcher:tasks",
-          label: "Recent tasks",
-          scrollport,
-          clipRoots: [dialog, scrollport],
-          isEligible: () =>
-            this.isConnected &&
-            dialog.open &&
-            this.scrollport === scrollport &&
-            hasScrollLayoutBox(dialog) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [dialog, scrollport],
-      scrollRoots: [scrollport],
-    };
+    return this.keyboard.contexts({
+      actionHints: (pull) => this.hints.scope(pull),
+      scroll: (pull) => this.surfaces.scope(pull),
+    });
   }
 
   render() {
@@ -240,7 +143,12 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
     const closeLabel = "Close task switcher";
     const closeIcon = inlineIcon("X", closeLabel, "task-switcher-close-icon");
     return html`
-      <dialog closedby="any" aria-labelledby="task-switcher-dialog-title">
+      <dialog
+        ${drawn(this.modal)}
+        ${this.keyboard.modal({ id: "task-switcher", sessionBound: true })}
+        closedby="any"
+        aria-labelledby="task-switcher-dialog-title"
+      >
         <article class="task-switcher-card">
           <header class="task-switcher-header">
             <h2 id="task-switcher-dialog-title" class="task-switcher-title"
@@ -248,6 +156,11 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
             >
             <form method="dialog" class="task-switcher-close-form">
               <button
+                ${this.hints.button({
+                  id: "close",
+                  label: closeLabel,
+                  action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+                })}
                 type="submit"
                 class="task-switcher-close"
                 aria-label=${closeLabel}
@@ -255,7 +168,15 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
               >${closeIcon}</button>
             </form>
           </header>
-          <div class="task-switcher-scroll">
+          <div
+            ${drawn(this.scrollport)}
+            ${this.surfaces.surface({
+              id: "tasks",
+              label: () => "Recent tasks",
+              clipRoots: () => [this.scrollport.value],
+            })}
+            class="task-switcher-scroll"
+          >
             <ul class="task-switcher-list">${repeat(
               rows,
               ({ task }) => taskThreadId(task),
@@ -269,6 +190,7 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
           </div>
         </article>
         <caffold-keyboard-navigation-presentation
+          ${this.keyboard.presentation()}
         ></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
@@ -285,11 +207,19 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
     const threadId = taskThreadId(task);
     const recovery = "recovery" in task;
     return html`<li
+      ${drawn(this.items.of(threadId))}
       class="task-switcher-item"
       data-thread-id=${threadId}
       data-task-recovery=${recovery}
     >
       <button
+        ${this.hints.button({
+          id: encodeURIComponent(threadId),
+          label: rowLabel(task.title, sectionName),
+          action: ACTION_HINT_ACTION.TASK_SWITCH,
+          owner: () => this.items.get(threadId),
+          clipRoots: () => [this.scrollport.value],
+        })}
         type="button"
         class="task-switcher-row"
         data-task-status=${taskStatusKey(task)}
@@ -338,25 +268,7 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
   // workspace first opens it or asks for its keyboard contexts.
   private get dialog() {
     this.performUpdate();
-    return this.querySelector(":scope > dialog") as HTMLDialogElement;
-  }
-
-  private get list() {
-    return this.dialog.querySelector(
-      ":scope .task-switcher-list",
-    ) as HTMLElement;
-  }
-
-  private get scrollport() {
-    return this.dialog.querySelector(
-      ":scope .task-switcher-scroll",
-    ) as HTMLElement;
-  }
-
-  private get closeControl() {
-    return this.dialog.querySelector(
-      ":scope .task-switcher-close",
-    ) as HTMLButtonElement;
+    return this.modal.value as HTMLDialogElement;
   }
 }
 
@@ -416,10 +328,6 @@ function rowMeta(task: ListedTask) {
     datetime=${Number.isNaN(date.getTime()) ? "" : date.toISOString()}
     aria-label=${age.label}
   >${age.text}</time>`;
-}
-
-function rowControl(row: Element) {
-  return row.querySelector<HTMLButtonElement>(":scope > .task-switcher-row");
 }
 
 customElements.define(

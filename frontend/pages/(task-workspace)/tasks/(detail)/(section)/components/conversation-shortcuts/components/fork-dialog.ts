@@ -1,12 +1,6 @@
 import { html, LitElement, nothing } from "lit";
 import { live } from "lit/directives/live.js";
-import type { ActionHintScope } from "#app/action-hint-scope.js";
-import {
-  ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  textboxActionHintTarget,
-} from "#app/action-hints.js";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
 import {
   createTaskFork,
   previewTaskForkSource,
@@ -14,14 +8,10 @@ import {
   type TaskResponseError,
   type TaskThreadStatus,
 } from "#app/api.ts";
-import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-} from "#app/scroll-scope.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "#components/loading-text.ts";
 import { formatDate } from "#tasks/task-format.ts";
 
@@ -62,6 +52,17 @@ export class CaffoldConversationForkDialog extends LitElement {
   private forkRequestId = 0;
   private previewController: AbortController | null = null;
   private restoreFocus = true;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly modal = new DrawnRef<HTMLDialogElement>(this);
+  private readonly body = new DrawnRef<HTMLDivElement>(this);
+  private readonly threadIdInput = new DrawnRef<HTMLInputElement>(this);
+  private readonly cancelButton = new DrawnRef<HTMLButtonElement>(this);
 
   createRenderRoot() {
     return this;
@@ -73,132 +74,17 @@ export class CaffoldConversationForkDialog extends LitElement {
   }
 
   keyboardNavigationContexts() {
-    this.performUpdate();
-    const dialog = this.dialog;
-    const presentation =
-      dialog?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const hintDialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (!dialog || !hintDialog || !hud || !selector) {
-      return [];
-    }
-    const sectionId = this.context.sectionId;
-    return [
-      keyboardNavigationContext({
-        id: sectionId
-          ? `conversation-fork:${encodeURIComponent(sectionId)}`
-          : "conversation-fork",
-        kind: "modal",
-        root: dialog,
-        actionHints: {
-          dialog: hintDialog,
-          scope: this.actionHintScope(),
-        },
-        scroll: {
-          hud,
-          selector,
-          scope: this.scrollSurfaceScope(),
-        },
-        editing: {
-          escapeTarget: (editable: Element) =>
-            editable === this.threadIdInput
-              ? dialog.querySelector<HTMLElement>(
-                  "[data-fork-dialog-action='cancel']",
-                )
-              : null,
-        },
-      }),
-    ];
-  }
-
-  private actionHintScope(): ActionHintScope {
-    const dialog = this.dialog;
-    const body = dialog?.querySelector(".conversation-fork-body") ?? null;
-    const input = this.threadIdInput;
-    const sectionId = this.context.sectionId;
-    if (!dialog || !input) {
-      return emptyActionHintScope();
-    }
-    const current = () =>
-      this.isConnected &&
-      this.dialog === dialog &&
-      dialog.open &&
-      this.context.sectionId === sectionId &&
-      Boolean(sectionId);
-    const inputTarget = textboxActionHintTarget({
-      invalidationOwner: this,
-      id: `conversation-fork:${encodeURIComponent(sectionId)}:thread-id`,
-      actionId: ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS,
-      label: "Focus Thread ID",
-      control: input,
-      clipRoots: body ? [dialog, body] : [dialog],
-      isActionable: () =>
-        current() && this.threadIdInput === input && !input.disabled,
+    return this.keyboard.contexts({
+      actionHints: (pull) => this.hints.scope(pull),
+      scroll: (pull) => this.surfaces.scope(pull),
+      editing: {
+        // Escape in the Thread ID cancels rather than closing the dialog.
+        escapeTarget: (editable: Element) =>
+          editable === this.threadIdInput.value
+            ? (this.cancelButton.value ?? null)
+            : null,
+      },
     });
-    const buttons = ["preview", "cancel", "fork"].flatMap((action) => {
-      const control = dialog.querySelector<HTMLButtonElement>(
-        `[data-fork-dialog-action="${action}"]`,
-      );
-      if (!control) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `conversation-fork:${encodeURIComponent(sectionId)}:${action}`,
-          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-          label: control.textContent?.trim() || action,
-          control,
-          clipRoots: action === "preview" && body ? [dialog, body] : [dialog],
-          isActionable: () =>
-            current() &&
-            dialog.querySelector(`[data-fork-dialog-action="${action}"]`) ===
-              control &&
-            !control.disabled,
-        }),
-      ];
-    });
-    return {
-      blocked: false,
-      targets: [inputTarget, ...buttons],
-      mutationRoots: [this],
-      scrollRoots: body ? [body] : [],
-    };
-  }
-
-  private scrollSurfaceScope(): ScrollSurfaceScope {
-    const dialog = this.dialog;
-    const scrollport = dialog?.querySelector(".conversation-fork-body");
-    const sectionId = this.context.sectionId;
-    if (!dialog || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `conversation-fork:${encodeURIComponent(sectionId)}:preview`,
-          label: "Fork preview",
-          scrollport,
-          clipRoots: [dialog, scrollport],
-          isEligible: () =>
-            this.isConnected &&
-            this.dialog === dialog &&
-            dialog.open &&
-            this.context.sectionId === sectionId &&
-            Boolean(sectionId) &&
-            dialog.querySelector(".conversation-fork-body") === scrollport &&
-            hasScrollLayoutBox(dialog) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this, scrollport],
-      resizeElements: [dialog, scrollport],
-      scrollRoots: [scrollport],
-    };
   }
 
   open({
@@ -261,6 +147,11 @@ export class CaffoldConversationForkDialog extends LitElement {
     const unavailable = preview ? forkUnavailableReason(preview.status) : "";
     return html`
       <dialog
+        ${drawn(this.modal)}
+        ${this.keyboard.modal({
+          id: `conversation-fork:${encodeURIComponent(this.context.sectionId)}`,
+          when: Boolean(this.context.sectionId),
+        })}
         closedby=${this.forkPending ? "none" : "any"}
         aria-busy=${busy ? "true" : "false"}
         aria-labelledby="conversation-fork-title"
@@ -273,7 +164,15 @@ export class CaffoldConversationForkDialog extends LitElement {
             <h2 id="conversation-fork-title">Fork a Codex thread</h2>
             <p id="conversation-fork-description">${DESCRIPTION}</p>
           </header>
-          <div class="conversation-fork-body">
+          <div
+            ${drawn(this.body)}
+            ${this.surfaces.surface({
+              id: "preview",
+              label: () => "Fork preview",
+              clipRoots: () => [this.body.value],
+            })}
+            class="conversation-fork-body"
+          >
             <dl class="conversation-fork-target">
               <div>
                 <dt>Target Section</dt>
@@ -284,6 +183,13 @@ export class CaffoldConversationForkDialog extends LitElement {
               <label for="conversation-fork-thread-id">Thread ID</label>
               <div>
                 <input
+                  ${drawn(this.threadIdInput)}
+                  ${this.hints.textbox({
+                    id: "thread-id",
+                    label: "Focus Thread ID",
+                    action: ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS,
+                    clipRoots: () => [this.body.value],
+                  })}
                   id="conversation-fork-thread-id"
                   name="threadId"
                   type="text"
@@ -295,6 +201,12 @@ export class CaffoldConversationForkDialog extends LitElement {
                   @input=${this.threadIdChanged}
                 >
                 <button
+                  ${this.hints.button({
+                    id: "preview",
+                    label: this.previewPending ? "Loading…" : "Preview thread",
+                    action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+                    clipRoots: () => [this.body.value],
+                  })}
                   type="submit"
                   class="conversation-fork-button"
                   data-fork-dialog-action="preview"
@@ -374,6 +286,12 @@ export class CaffoldConversationForkDialog extends LitElement {
           </div>
           <footer>
             <button
+              ${drawn(this.cancelButton)}
+              ${this.hints.button({
+                id: "cancel",
+                label: "Cancel",
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
               type="button"
               class="conversation-fork-button"
               data-fork-dialog-action="cancel"
@@ -381,6 +299,11 @@ export class CaffoldConversationForkDialog extends LitElement {
               @click=${this.cancel}
             >Cancel</button>
             <button
+              ${this.hints.button({
+                id: "fork",
+                label: this.forkPending ? "Forking…" : "Fork task",
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
               type="button"
               class="conversation-fork-button is-primary"
               data-fork-dialog-action="fork"
@@ -390,6 +313,7 @@ export class CaffoldConversationForkDialog extends LitElement {
           </footer>
         </form>
         <caffold-keyboard-navigation-presentation
+          ${this.keyboard.presentation()}
         ></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
@@ -404,7 +328,7 @@ export class CaffoldConversationForkDialog extends LitElement {
       this.preview = null;
       this.error = new Error("Enter a Codex Thread ID.");
       this.draw();
-      this.threadIdInput?.focus();
+      this.threadIdInput.value?.focus();
       return;
     }
 
@@ -566,11 +490,7 @@ export class CaffoldConversationForkDialog extends LitElement {
   }
 
   private get dialog() {
-    return this.querySelector<HTMLDialogElement>(":scope > dialog");
-  }
-
-  private get threadIdInput() {
-    return this.querySelector<HTMLInputElement>("#conversation-fork-thread-id");
+    return this.modal.value;
   }
 }
 

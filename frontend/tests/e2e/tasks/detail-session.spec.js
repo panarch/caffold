@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
-import { activateActionHint } from "../support/action-hints.js";
+import {
+  activateActionHint,
+  workspaceTargets,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   installTaskApiFixture,
@@ -1261,6 +1264,8 @@ test("keeps task context and retries after an initial detail timeout", { tag: "@
     "Codex app-server request timed out.",
   );
   await expect(taskNavigator).toContainText("Recover delayed task detail");
+  await expect.poll(() => workspaceTargets(page, `task:${threadId}:`))
+    .toContainEqual(["load-error", "Retry"]);
 
   await tasksPage.locator('[data-task-action="retry-task-detail"]').click();
   await expect.poll(() => detailRequests).toBe(2);

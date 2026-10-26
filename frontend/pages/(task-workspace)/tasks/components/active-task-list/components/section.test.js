@@ -8,6 +8,7 @@ import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./section.ts");
+const { ActionHints } = await import("#app/action-hints.ts");
 const Section = registry.element("caffold-active-task-section");
 after(() => registry.restore());
 
@@ -38,88 +39,37 @@ function snapshot(overrides = {}) {
   };
 }
 
-test("offers the Section's header before its Task rows", () => {
-  const clipRoot = {};
-  let clicks = 0;
-  const control = {
-    disabled: false,
-    focus() {},
-    click() {
-      clicks += 1;
-    },
+test("merges its header's actions with its rows' unless Sections reorder", () => {
+  const pulls = [];
+  const scope = (name) => (pull) => {
+    pulls.push([name, pull]);
+    return { targets: [{ id: name }] };
   };
-  const taskTarget = { id: "task:thread-a" };
-  const taskReorderTarget = { id: "task:thread-a:reorder" };
-  const row = {
-    actionHintTarget: () => taskTarget,
-    reorderActionHintTarget: () => taskReorderTarget,
-  };
-  const sectionHandle = {
-    disabled: false,
-    getAttribute: () => "Reorder alpha",
-    focus() {},
-  };
-  let currentHandle = sectionHandle;
   const section = sectionHost({
     snapshot: snapshot(),
-    querySelector: (selector) =>
-      selector.includes("section-reorder-handle") ? currentHandle : control,
-    querySelectorAll: () => [row],
+    hints: { scope: scope("header") },
+    rowComponents: () => [
+      { actionHintScope: scope("thread-a") },
+      { actionHintScope: scope("thread-b") },
+    ],
   });
+  const pull = { clipRoots: [{}] };
 
-  const targets = section.actionHintTargets({ clipRoots: [clipRoot] });
-  assert.equal(targets.length, 2);
   assert.deepEqual(
-    {
-      id: targets[0].id,
-      actionId: targets[0].actionId,
-      label: targets[0].label,
-      controlKind: targets[0].controlKind,
-    },
-    {
-      id: "section:section-a",
-      actionId: "navigation.section.open",
-      label: "Open section: alpha",
-      controlKind: "button",
-    },
+    section.actionHintScope(pull).targets.map(({ id }) => id),
+    ["header", "thread-a", "thread-b"],
   );
-  assert.deepEqual(targets[0].clipRoots, [clipRoot]);
-  assert.equal(targets[0].isActionable(), true);
-  targets[0].activate();
-  assert.equal(clicks, 1);
-  assert.equal(targets[1], taskTarget);
-
-  section.snapshot = snapshot({ reorderMode: "tasks" });
-  assert.deepEqual(section.actionHintTargets(), [taskReorderTarget]);
+  assert.deepEqual(pulls, [
+    ["header", pull],
+    ["thread-a", pull],
+    ["thread-b", pull],
+  ]);
 
   section.snapshot = snapshot({ reorderMode: "sections" });
-  assert.equal(targets[0].isActionable(), false);
-  const reorderTargets = section.actionHintTargets();
-  assert.equal(reorderTargets.length, 1);
   assert.deepEqual(
-    {
-      id: reorderTargets[0].id,
-      actionId: reorderTargets[0].actionId,
-      controlKind: reorderTargets[0].controlKind,
-      label: reorderTargets[0].label,
-    },
-    {
-      id: "section:section-a:reorder",
-      actionId: "task.reorder.handle.focus",
-      controlKind: "reorder-handle",
-      label: "Reorder alpha",
-    },
+    section.actionHintScope(pull).targets.map(({ id }) => id),
+    ["header"],
   );
-  assert.equal(reorderTargets[0].isActionable(), true);
-  currentHandle = { ...sectionHandle };
-  assert.equal(reorderTargets[0].isActionable(), false);
-  section.snapshot = snapshot({ reorderMode: "sections", pending: true });
-  assert.deepEqual(section.actionHintTargets(), []);
-  section.snapshot = snapshot({
-    reorderMode: "sections",
-    section: { ...snapshot().section, recovery: true },
-  });
-  assert.deepEqual(section.actionHintTargets(), []);
 });
 
 test("draws a header that opens the Section, counts its Tasks, and holds its handle", () => {
@@ -145,12 +95,12 @@ test("draws a header that opens the Section, counts its Tasks, and holds its han
 });
 
 function sectionHost(properties) {
-  return Object.create(Section.prototype, Object.getOwnPropertyDescriptors({
-    isConnected: true,
-    querySelector: () => null,
-    querySelectorAll: () => [],
-    ...properties,
-  }));
+  const section = Object.create(
+    Section.prototype,
+    Object.getOwnPropertyDescriptors({ isConnected: true, ...properties }),
+  );
+  section.hints ??= new ActionHints(section, () => {});
+  return section;
 }
 
 function html(section) {

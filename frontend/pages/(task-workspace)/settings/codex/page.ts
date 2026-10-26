@@ -1,16 +1,11 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  type ActionHintTarget,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-  linkActionHintTarget,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import {
   type CodexRateWindow,
   type CodexReadiness,
@@ -19,12 +14,8 @@ import {
   type CodexUpdates,
   getCodexUpdates,
 } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "#components/loading-text.ts";
 import {
   CODEX_RESET_CREDIT_REQUEST_EVENT,
@@ -49,7 +40,6 @@ import "../components/detail-list.ts";
 import type { SettingsDetailRow } from "../components/detail-list.ts";
 import "../components/refresh-button.ts";
 import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.ts";
-import { serviceStatusTargets } from "../service-status.ts";
 
 const CODEX_INSTALL_COMMAND =
   "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
@@ -87,8 +77,6 @@ const IDLE_RESET_CREDIT: ResetCreditState = {
   retryPending: false,
 };
 
-type ScopeOptions = ActionHintScopeOptions & { isCurrent?: () => boolean };
-
 export class CaffoldSettingsCodexPage extends LitElement {
   static properties = {
     snapshot: { attribute: false },
@@ -117,6 +105,18 @@ export class CaffoldSettingsCodexPage extends LitElement {
   declare private copyState: "idle" | "copied" | "failed";
   private active = false;
   private updatesOperation = 0;
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.scrollport.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly refreshButton = new DrawnRef<CaffoldSettingsRefreshButton>(
+    this,
+  );
 
   constructor() {
     super();
@@ -232,12 +232,23 @@ export class CaffoldSettingsCodexPage extends LitElement {
     const diagnostic = readiness?.diagnosticMessage ?? "";
     const loadError = snapshot?.phase === "failed" ? snapshot.error : "";
     return html`
-      <div class="settings-content-scroll">
+      <div
+        ${drawn(this.scrollport)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.scrollport.value],
+        })}
+        class="settings-content-scroll"
+      >
         <div class="settings-content-section">
           <header>
             <div>
               <p>Connection, account, plan, and local app-server usage.</p>
               <a
+                ${this.hints.link({
+                  id: "service-status",
+                  action: ACTION_HINT_ACTION.LINK_OPEN,
+                })}
                 class="settings-service-status"
                 href=${CODEX_SERVICE_STATUS_URL}
                 target="_blank"
@@ -245,6 +256,7 @@ export class CaffoldSettingsCodexPage extends LitElement {
               >Service status</a>
             </div>
             <caffold-settings-refresh-button
+              ${drawn(this.refreshButton)}
               .refreshing=${snapshot?.phase === "checking"}
               .disabled=${runtimeBusy}
               @caffold:settings-refresh-intent=${this.refresh}
@@ -276,6 +288,11 @@ export class CaffoldSettingsCodexPage extends LitElement {
               <p data-runtime-summary>${runtimeSummary}</p>
             </div>
             <button
+              ${this.hints.button({
+                id: "restart-runtime",
+                label: restartLabel,
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               data-action="open-codex-restart"
               ?disabled=${restartDisabled}
@@ -326,173 +343,28 @@ export class CaffoldSettingsCodexPage extends LitElement {
 
   actionHintScope({
     scopeId = "settings:codex",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScopeOptions = {}): ActionHintScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyActionHintScope();
-    }
-    const definitions = [
-      {
-        id: "copy-install-command",
-        selector: 'button[data-action="copy-codex-install"]',
-      },
-      {
-        id: "restart-runtime",
-        selector: 'button[data-action="open-codex-restart"]',
-      },
-      {
-        id: "update-runtime",
-        selector: 'button[data-action="open-codex-update"]',
-      },
-    ];
-    const targetClipRoots = [this, scrollport, ...clipRoots].filter(Boolean);
-    const targets: ActionHintTarget[] = [
-      ...serviceStatusTargets(this, {
-        scopeId,
-        clipRoots: targetClipRoots,
-        isCurrent,
-      }),
-      ...definitions.flatMap(({ id, selector }) => {
-        const control = this.querySelector<HTMLButtonElement>(selector);
-        if (
-          !control ||
-          control.disabled ||
-          control.hidden ||
-          !hasActionHintLayoutBox(control)
-        ) {
-          return [];
-        }
-        return [
-          buttonActionHintTarget({
-            invalidationOwner: this,
-            id: `${scopeId}:${id}`,
-            actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-            label:
-              control.getAttribute("aria-label") ||
-              control.textContent?.trim() ||
-              id,
-            control,
-            clipRoots: targetClipRoots,
-            isActionable: () =>
-              this.isConnected &&
-              !this.hidden &&
-              isCurrent() &&
-              this.querySelector(selector) === control &&
-              !control.disabled &&
-              !control.hidden &&
-              hasActionHintLayoutBox(control),
-          }),
-        ];
-      }),
-      ...[
-        ...this.querySelectorAll<HTMLButtonElement>(
-          'button[data-action="use-reset-credit"]',
-        ),
-      ].flatMap((control) => {
-        if (
-          control.disabled ||
-          control.hidden ||
-          !hasActionHintLayoutBox(control)
-        ) {
-          return [];
-        }
-        const targetKey =
-          control.dataset.retry === "true"
-            ? "retry"
-            : control.dataset.creditId
-              ? `credit:${control.dataset.creditId}`
-              : "auto";
-        return [
-          buttonActionHintTarget({
-            invalidationOwner: this,
-            id: `${scopeId}:reset-credit:${targetKey}`,
-            actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-            label: control.textContent?.trim() || "Use reset",
-            control,
-            clipRoots: targetClipRoots,
-            isActionable: () =>
-              this.isConnected &&
-              !this.hidden &&
-              isCurrent() &&
-              control.isConnected &&
-              !control.disabled &&
-              !control.hidden &&
-              hasActionHintLayoutBox(control),
-          }),
-        ];
-      }),
-    ];
-    const guide = this.querySelector<HTMLAnchorElement>(
-      ".settings-codex-repair a[href]",
-    );
-    if (guide && !guide.hidden && hasActionHintLayoutBox(guide)) {
-      targets.push(
-        linkActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:official-guide`,
-          actionId: ACTION_HINT_ACTION.LINK_OPEN,
-          label: "Open Official Codex CLI guide in a new tab",
-          control: guide,
-          clipRoots: targetClipRoots,
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(".settings-codex-repair a[href]") === guide &&
-            !guide.hidden &&
-            hasActionHintLayoutBox(guide),
-        }),
-      );
-    }
+    ...pull
+  }: ActionHintPull = {}) {
+    const own = this.hints.scope({ ...pull, scopeId });
     return mergeActionHintScopes(
-      this.refreshButton?.actionHintScope({
+      own,
+      this.refreshButton.value?.actionHintScope({
         scopeId,
-        clipRoots: targetClipRoots,
-        isCurrent: () => this.isConnected && !this.hidden && isCurrent(),
+        clipRoots: [
+          this,
+          this.scrollport.value as HTMLDivElement,
+          ...(pull.clipRoots ?? []),
+        ],
       }),
-      {
-        blocked: false,
-        targets,
-        mutationRoots: [this],
-        scrollRoots: [scrollport],
-      },
     );
   }
 
   scrollSurfaceScope({
     scopeId = "settings:codex",
     label = "Codex settings",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(":scope > .settings-content-scroll") ===
-              scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   private repairSurface(
@@ -527,6 +399,11 @@ export class CaffoldSettingsCodexPage extends LitElement {
           <strong>Required official install or update command</strong>
           <code>${CODEX_INSTALL_COMMAND}</code>
           <button
+            ${this.hints.button({
+              id: "copy-install-command",
+              label: copyLabel,
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            })}
             type="button"
             data-action="copy-codex-install"
             @click=${this.copyInstallCommand}
@@ -536,6 +413,10 @@ export class CaffoldSettingsCodexPage extends LitElement {
           <code>codex</code>
         </p>
         <a
+          ${this.hints.link({
+            id: "official-guide",
+            action: ACTION_HINT_ACTION.LINK_OPEN,
+          })}
           href=${CODEX_SETUP_GUIDE}
           target="_blank"
           rel="noreferrer"
@@ -605,6 +486,11 @@ export class CaffoldSettingsCodexPage extends LitElement {
         )}</div>
         <p data-reset-credit-note ?hidden=${!note}>${note}</p>
         <button
+          ${this.hints.button({
+            id: "reset-credit:auto",
+            label: "Let Codex choose a reset",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           data-action="use-reset-credit"
           data-reset-credit-generic
@@ -613,6 +499,11 @@ export class CaffoldSettingsCodexPage extends LitElement {
           @click=${this.useResetCredit}
         >Let Codex choose a reset</button>
         <button
+          ${this.hints.button({
+            id: "reset-credit:retry",
+            label: "Retry previous reset request",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           data-action="use-reset-credit"
           data-reset-credit-retry
@@ -642,6 +533,11 @@ export class CaffoldSettingsCodexPage extends LitElement {
     return html`<article class="settings-codex-reset-credit"><div><h5>${
       credit.title || "Rate-limit reset"
     }</h5><p>Expires ${expiry}</p></div><button
+      ${this.hints.button({
+        id: `reset-credit:credit:${creditId}`,
+        label: "Use this reset",
+        action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+      })}
       type="button"
       data-action="use-reset-credit"
       data-credit-id=${creditId || nothing}
@@ -706,6 +602,11 @@ export class CaffoldSettingsCodexPage extends LitElement {
           </dl>
         </div>
         <button
+          ${this.hints.button({
+            id: "update-runtime",
+            label,
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           data-action="open-codex-update"
           ?disabled=${updateDisabled}
@@ -789,12 +690,6 @@ export class CaffoldSettingsCodexPage extends LitElement {
     } catch {
       this.copyState = "failed";
     }
-  }
-
-  private get refreshButton() {
-    return this.querySelector<CaffoldSettingsRefreshButton>(
-      "caffold-settings-refresh-button",
-    );
   }
 }
 

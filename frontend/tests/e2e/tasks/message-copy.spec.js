@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { activateActionHint } from "../support/action-hints.js";
+import { activateActionHint, workspaceTargets } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import {
@@ -124,6 +124,31 @@ test("offers Copy beside every agent message time without growing the meta line"
 
   await finalMessage.scrollIntoViewIfNeeded();
   await captureReviewScreenshot(page, testInfo, "task-message-copy-header");
+  expect(scenario.pageErrors).toEqual([]);
+});
+
+test("offers each message's Copy, the Thinking disclosure, and the conversation's scrolling to the keyboard", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const scenario = await seedMessageCopyTask(page, "thread_message_copy_hints", {
+    activeTurn: true,
+  });
+  const conversation = page.locator("caffold-task-conversation");
+  await expect(conversation.locator(".task-thinking")).toHaveCount(1);
+
+  await expect.poll(async () =>
+    (await workspaceTargets(page, "task:thread_message_copy_hints:conversation:"))
+      .map(([, label]) => label),
+  ).toEqual(expect.arrayContaining([
+    "Copy message",
+    expect.stringMatching(/^(?:Expand|Collapse) Thinking$/),
+  ]));
+  await expect.poll(() => conversation.evaluate((element) =>
+    element.scrollSurfaceScope().surfaces.map(({ label }) => label)
+  )).toEqual(expect.arrayContaining([
+    "Conversation",
+    expect.stringMatching(/ code block 1$/),
+  ]));
   expect(scenario.pageErrors).toEqual([]);
 });
 

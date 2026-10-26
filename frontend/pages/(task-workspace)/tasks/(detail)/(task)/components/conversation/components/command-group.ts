@@ -1,14 +1,13 @@
 import { html, LitElement } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  disclosureActionHintTarget,
-  emptyActionHintScope,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { TaskEvent } from "#app/api.ts";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import { eventIdentityKey } from "#tasks/task-events.ts";
 import { formatDate, taskEventObservedMs } from "#tasks/task-format.ts";
@@ -41,6 +40,14 @@ export class CaffoldTaskCommandGroup extends LitElement {
   declare identity: string;
   declare events: TaskEvent[];
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
+  private readonly details = new DrawnRef<HTMLDetailsElement>(this);
+  private readonly summary = new DrawnRef<HTMLElement>(this);
+  private readonly chevron = new DrawnRef<HTMLElement>(this);
+  private readonly list = new DrawnRef<HTMLOListElement>(this);
+  private readonly commands = new DrawnRefs<CaffoldTaskCommand>(this);
 
   constructor() {
     super();
@@ -67,12 +74,23 @@ export class CaffoldTaskCommandGroup extends LitElement {
   // person chose.
   render() {
     const presentation = commandGroupPresentation(this.events);
+    const open = this.rememberedOpen();
     return html`
       <details
+        ${drawn(this.details)}
         class="task-command-group-disclosure"
-        ?open=${this.rememberedOpen()}
+        ?open=${open}
+        @toggle=${this.followDisclosure}
       >
         <summary
+          ${drawn(this.summary)}
+          ${this.hints.disclosure({
+            id: `disclosure:${encodeURIComponent(this.identity)}`,
+            label: `${open ? "Collapse" : "Expand"} ${presentation.label}`,
+            action: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+            anchor: () => this.chevron.value,
+            when: Boolean(this.identity),
+          })}
           class="task-command-group-summary"
           @click=${this.toggleDisclosure}
         >
@@ -80,7 +98,11 @@ export class CaffoldTaskCommandGroup extends LitElement {
             <span
               class="task-command-group-label-text"
             >${presentation.label}</span>
-            <span class="task-command-group-chevron" aria-hidden="true">
+            <span
+              ${drawn(this.chevron)}
+              class="task-command-group-chevron"
+              aria-hidden="true"
+            >
               ${inlineIcon(
                 "ChevronRight",
                 "Collapsed",
@@ -104,7 +126,7 @@ export class CaffoldTaskCommandGroup extends LitElement {
             >${presentation.declined}</span>
           </span>
         </summary>
-        <ol class="task-command-group-list">${repeat(
+        <ol ${drawn(this.list)} class="task-command-group-list">${repeat(
           this.events,
           itemKey,
           (event) => {
@@ -115,6 +137,7 @@ export class CaffoldTaskCommandGroup extends LitElement {
                 data-item-key=${key}
               >
                 <caffold-task-command
+                  ${drawn(this.commands.of(key))}
                   data-command-grouped
                   .event=${event}
                 ></caffold-task-command>
@@ -145,11 +168,7 @@ export class CaffoldTaskCommandGroup extends LitElement {
   }
 
   disclosureAnchorTop() {
-    return (
-      this.disclosure
-        ?.querySelector(":scope > summary")
-        ?.getBoundingClientRect().top ?? null
-    );
+    return this.summary.value?.getBoundingClientRect().top ?? null;
   }
 
   // Whether one of the entries folded into this group was drawn on its own
@@ -160,70 +179,25 @@ export class CaffoldTaskCommandGroup extends LitElement {
     );
   }
 
+  // A folded group's rows are not on screen.
   actionHintScope({
     scopeId = "",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    const disclosure = this.disclosure;
-    const control = disclosure?.querySelector<HTMLElement>(":scope > summary");
-    const anchor = control?.querySelector(
-      ":scope > .task-command-group-label > .task-command-group-chevron",
-    );
-    const list = disclosure?.querySelector<HTMLElement>(
-      ":scope > .task-command-group-list",
-    );
-    const identity = this.identity;
-    if (
-      !scopeId ||
-      !disclosure ||
-      !control ||
-      !anchor ||
-      !list ||
-      !identity ||
-      this.hidden
-    ) {
-      return emptyActionHintScope();
-    }
-    const ownScope: ActionHintScope = {
-      blocked: false,
-      targets: [
-        disclosureActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:disclosure:${encodeURIComponent(identity)}`,
-          actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-          label: `${disclosure.open ? "Collapse" : "Expand"} ${
-            commandGroupPresentation(this.events).label
-          }`,
-          control,
-          anchor,
-          clipRoots: [this, ...clipRoots].filter(Boolean),
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.identity === identity &&
-            this.disclosure === disclosure &&
-            disclosure.querySelector(":scope > summary") === control &&
-            control.querySelector(
-              ":scope > .task-command-group-label > .task-command-group-chevron",
-            ) === anchor,
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
-    // Rows of a folded group are not on screen, so only an open group offers
-    // its commands' actions.
-    const commandScopes = disclosure.open
-      ? Array.from(list.children, (item) =>
-          item
-            .querySelector<CaffoldTaskCommand>(":scope > caffold-task-command")
-            ?.actionHintScope({
-              scopeId: `${scopeId}:command:${item.getAttribute("data-item-key")}`,
-              clipRoots: [this, list, ...clipRoots].filter(Boolean),
-            }),
-        )
-      : [];
-    return mergeActionHintScopes(ownScope, ...commandScopes);
+    ...pull
+  }: ActionHintPull = {}) {
+    const own = this.hints.scope({ ...pull, scopeId, clipRoots });
+    const list = this.list.value;
+    const commandScopes =
+      this.disclosure?.open && list
+        ? this.events.map((event) => {
+            const key = itemKey(event);
+            return this.commands.get(key)?.actionHintScope({
+              scopeId: `${scopeId}:command:${key}`,
+              clipRoots: [this, list, ...clipRoots],
+            });
+          })
+        : [];
+    return mergeActionHintScopes(own, ...commandScopes);
   }
 
   private toggleDisclosure() {
@@ -245,6 +219,11 @@ export class CaffoldTaskCommandGroup extends LitElement {
     );
   }
 
+  // The disclosure has opened or closed, so its Action Hint says the other.
+  private followDisclosure() {
+    this.requestUpdate();
+  }
+
   // A group that took in another keeps that group's state when it has none of
   // its own: the earlier commands of a long run can load after the run was
   // opened, which gives the run a new first command.
@@ -262,9 +241,7 @@ export class CaffoldTaskCommandGroup extends LitElement {
   }
 
   private get disclosure() {
-    return this.querySelector<HTMLDetailsElement>(
-      ":scope > details.task-command-group-disclosure",
-    );
+    return this.details.value;
   }
 }
 

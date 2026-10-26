@@ -472,9 +472,9 @@ document listener or global presentation.
 
 Workspace, registered modal, and registered popover owners publish one thin
 keyboard-navigation context identified by stable ID, ownership kind, and exact
-retained root. Action Hint and Scroll remain separate optional capabilities on
-that context, and the Action Hint capability may declare the context
-session-bound. The same fresh context resolution serves both `F` and `S`: one
+retained root, with the presentation host it shows its modes in. Action Hint
+and Scroll remain separate optional scopes on that context, and the context may
+declare itself session-bound. The same fresh context resolution serves both `F` and `S`: one
 open registered popover wins over the workspace, including when it is an exact
 descendant of the currently open product modal; otherwise an unknown or
 unrelated open overlay, duplicate root, or ambiguous popover rejects entry. The
@@ -496,7 +496,7 @@ compact Back belongs to Task Workspace, which shows it exactly when it shows
 that Back.
 
 Key combinations are a second set of keys the coordinator handles in editing
-and with keyboard navigation turned off. `keyboard-navigation/shortcuts.js`
+and with keyboard navigation turned off. `keyboard-navigation/shortcuts.ts`
 lists them, each action with one combination for Apple keyboards, listed
 first, and one without ⌘:
 
@@ -538,6 +538,22 @@ and file-viewer actions. Git
 declares Refresh, while GitHub detail declares Start Task and Pull Files.
 Activation reuses each owner's existing native button click, form, or
 product-intent path.
+
+Each owner declares these targets in its template, on the control they act on,
+with the `ActionHints` it keeps (`action-hints/declarations.ts`), for example
+`${this.hints.button({ id, label, action, when })}`. A declaration stays while
+its element is drawn and leaves with it. The owner's public
+`actionHintScope(pull)` returns `this.hints.scope(pull)`, which finishes any
+draw still waiting, puts the parent's scope ID in front of each declared ID,
+and leaves out a declaration whose `when` is false, whose control is disabled,
+or whose anchor has no layout box. A container adds only which direct children
+it merges, and reaches them through the `DrawnRef` it drew them with rather
+than by selector. Scroll surfaces are declared the same way with
+`ScrollSurfaces` (`scroll-scope.ts`), and modals and popovers with
+`KeyboardContexts` (`keyboard-navigation/context.ts`) together with the
+presentation host inside each. Content no template draws, such as the links,
+disclosures, code blocks, and tables Markdown renders, keeps a list its owner
+builds after drawing and checks when pulled.
 
 Product-owned native controls use distinct closed action kinds rather than
 pretending to be buttons. Appearance declares non-current Theme radios, its
@@ -673,7 +689,7 @@ declares itself session-bound, only when it offers Download for Source and
 Preview; a diff's File details declares no internal Action Hint target.
 
 Provider collection is hierarchical: each layout merges its own actions with
-only its active direct child scopes through `action-hint-scope.js`. Ancestors
+only its active direct child scopes through `action-hint-scope.ts`. Ancestors
 do not enumerate or reach through descendant DOM. A retained pane with no
 layout box is omitted before merge, so its hidden mutation and scroll
 dependencies cannot invalidate the visible pane's session.
@@ -724,7 +740,9 @@ retired or initially offscreen target can participate only after a fresh `F`.
 
 Mutation, resize (including declared occlusion roots), and declared owner-scroll
 observations request one coalesced scope revalidation; their roots are signals,
-not evidence from which the controller infers ownership. If a frozen target
+not evidence from which the controller infers ownership. A declared scope
+watches the owners its declarations name: the component, or a narrower element
+a declaration names as its owner. If a frozen target
 disappears, becomes
 non-actionable or invisible, changes owner, or changes any native binding, the
 controller retires every frozen target with that same frozen owner. Exact
@@ -796,7 +814,7 @@ unregistered destinations do not cause the coordinator to infer a fallback or
 consume the key.
 
 Scroll mode enters from a non-editing `S` key and uses only surfaces
-explicitly published through `scroll-scope.js`; it does not discover generic
+explicitly published through `scroll-scope.ts`; it does not discover generic
 scrollable DOM. Each owner declares a closed list of `vertical` and
 `horizontal` axes for its exact retained scrollport. An omitted declaration
 keeps the migration default of `vertical`, while empty, duplicate, or unknown
@@ -850,7 +868,7 @@ contexts, so overlay scrolling never shares a selection set with background
 workspace surfaces.
 
 Eligibility directly checks the bound element, current declared-axis overflow,
-layout box, visual viewport, clip roots, and owner revalidation. One eligible
+layout box, visual viewport, and clip roots. One eligible
 surface enters active mode directly. Multiple workspace or modal surfaces
 receive temporary same-width `ASDFGHJKLQWERTYUIOPZXCVBNM` codes in visual
 order and appear in their context-local native modal selector; a popover with
@@ -1922,22 +1940,27 @@ Relevant source ownership follows the routed hierarchy:
 
 ```text
 frontend/
-|-- action-hint-scope.js
-|-- action-hints.js
+|-- action-hint-scope.ts
+|-- action-hints.ts
 |-- action-hints/
-|   |-- control.js
-|   |-- model.js
-|   `-- components/dialog.js
-|-- scroll-scope.js
-|-- keyboard-navigation.js
+|   |-- control.ts
+|   |-- declarations.ts
+|   |-- model.ts
+|   `-- components/dialog.ts
+|-- element-declarations.ts
+|-- scroll-scope.ts
+|-- keyboard-navigation.ts
 |-- keyboard-navigation/
-|   |-- context.js
-|   |-- control.js
-|   |-- model.js
+|   |-- context.ts
+|   |-- control.ts
+|   |-- model.ts
+|   |-- shortcuts.ts
 |   `-- components/
-|       |-- presentation.js
-|       |-- hud.js
-|       `-- selector.js
+|       |-- presentation.ts
+|       |-- hud.ts
+|       |-- selector.ts
+|       |-- shortcut-dialog.ts
+|       `-- shortcut-list.ts
 |-- navigation-routes.ts
 |-- pages/
 |   |-- layout.ts
@@ -1982,7 +2005,6 @@ frontend/
 |           |   |-- task-create/components/directory-field.ts
 |           |   |-- task-turn-options.ts
 |           |   |-- composer.ts
-|           |   |-- composer/action-hints.ts
 |           |   |-- composer/components/attachments.ts
 |           |   `-- composer/components/context-usage.ts
 |           `-- (detail)/

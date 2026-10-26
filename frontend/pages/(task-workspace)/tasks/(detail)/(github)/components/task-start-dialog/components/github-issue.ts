@@ -1,18 +1,16 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  mergeActionHintScopes,
-  selectActionHintTarget,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import {
   type GitHubIssue,
   type GitRef,
   type GitRepository,
   getGitRefs,
 } from "#app/api.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 
 interface TaskRef {
   name: string;
@@ -37,6 +35,8 @@ export class CaffoldGithubIssueTaskSource extends LitElement {
   declare private locked: boolean;
   private repository: GitRepository | null = null;
   private refsRequestId = 0;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly baseRefSelect = new DrawnRef<HTMLSelectElement>(this);
 
   constructor() {
     super();
@@ -71,6 +71,13 @@ export class CaffoldGithubIssueTaskSource extends LitElement {
       <label class="github-issue-task-source-base">
         <span>Base branch</span>
         <select
+          ${drawn(this.baseRefSelect)}
+          ${this.hints.select({
+            id: "base-ref",
+            label: "Choose Base branch",
+            action: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
+            when: Boolean(this.baseRef),
+          })}
           name="baseRef"
           aria-describedby="github-issue-task-source-base-help"
           aria-busy=${this.refsLoading ? "true" : "false"}
@@ -98,6 +105,11 @@ export class CaffoldGithubIssueTaskSource extends LitElement {
           : this.refsError
             ? html`<p role="alert">${this.refsError.message}</p>
                 <button
+                  ${this.hints.button({
+                    id: "retry-refs",
+                    label: "Retry",
+                    action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+                  })}
                   type="button"
                   data-github-issue-source-action="retry-refs"
                   ?disabled=${this.locked}
@@ -110,9 +122,7 @@ export class CaffoldGithubIssueTaskSource extends LitElement {
 
   // A `.value` binding would land before the options it names.
   updated() {
-    const select = this.querySelector<HTMLSelectElement>(
-      "select[name='baseRef']",
-    );
+    const select = this.baseRefSelect.value;
     if (select && this.baseRef && select.value !== this.baseRef) {
       select.value = this.baseRef;
     }
@@ -171,75 +181,13 @@ export class CaffoldGithubIssueTaskSource extends LitElement {
     );
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
-    const select = this.querySelector<HTMLSelectElement>(
-      "select[name='baseRef']",
-    );
-    if (!scopeId || !select || this.hidden) {
-      return emptyActionHintScope();
-    }
-    const rootPath = `${this.repository?.rootPath ?? ""}`;
-    const sourceNumber = `${this.source()?.number ?? ""}`;
-    const isCurrentSource = () =>
-      this.isConnected &&
-      !this.hidden &&
-      this.repository?.rootPath === rootPath &&
-      `${this.source()?.number ?? ""}` === sourceNumber;
-    const selectScope = {
-      blocked: false,
-      targets: [
-        selectActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:base-ref`,
-          actionId: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
-          label: "Choose Base branch",
-          control: select,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            isCurrentSource() &&
-            Boolean(rootPath && sourceNumber && this.baseRef) &&
-            !this.refsLoading &&
-            !this.refsError &&
-            !this.locked &&
-            this.querySelector("select[name='baseRef']") === select &&
-            !select.disabled,
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
-    const retry = this.querySelector<HTMLButtonElement>(
-      '[data-github-issue-source-action="retry-refs"]',
-    );
-    const retryScope = retry
-      ? {
-          blocked: false,
-          targets: [
-            buttonActionHintTarget({
-              invalidationOwner: this,
-              id: `${scopeId}:retry-refs`,
-              actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-              label: retry.textContent?.trim() || "Retry branches",
-              control: retry,
-              clipRoots: [...clipRoots],
-              isActionable: () =>
-                isCurrentSource() &&
-                this.querySelector(
-                  '[data-github-issue-source-action="retry-refs"]',
-                ) === retry &&
-                !this.refsLoading &&
-                !this.locked &&
-                !retry.disabled,
-            }),
-          ],
-          mutationRoots: [this],
-          scrollRoots: [],
-        }
-      : null;
-    return mergeActionHintScopes(selectScope, retryScope);
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
+  }
+
+  // Escape in the branch list belongs to the dialog's Cancel.
+  isBaseRefSelect(element: Element | null) {
+    return Boolean(element) && element === this.baseRefSelect.value;
   }
 
   async prepareSetup(provider: string) {

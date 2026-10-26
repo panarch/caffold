@@ -20,7 +20,8 @@ function messageOwner(properties = {}) {
     time: "",
     uploadLines: [],
     uploadProgress: null,
-    querySelector: () => null,
+    attachmentList: { value: undefined },
+    performUpdate() {},
     ...properties,
   }));
 }
@@ -81,10 +82,7 @@ test("offers only its attachment list's actions", () => {
       return { targets: [target], mutationRoots: [this] };
     },
   };
-  const owner = messageOwner({
-    querySelector: (selector) =>
-      selector.includes("caffold-task-message-attachments") ? attachments : null,
-  });
+  const owner = messageOwner({ attachmentList: { value: attachments } });
   const conversation = { id: "conversation" };
 
   const scope = owner.actionHintScope({
@@ -95,7 +93,4 @@ test("offers only its attachment list's actions", () => {
   assert.deepEqual(scope.mutationRoots, [attachments]);
   assert.equal(attachments.options.scopeId, "message:a:attachments");
   assert.deepEqual(attachments.options.clipRoots, [owner, conversation]);
-
-  owner.hidden = true;
-  assert.deepEqual(owner.actionHintScope({ scopeId: "message:a" }).targets, []);
 });

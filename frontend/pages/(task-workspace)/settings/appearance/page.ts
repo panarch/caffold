@@ -1,24 +1,10 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  type ActionHintTarget,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-  selectActionHintTarget,
-} from "#app/action-hint-scope.js";
-import {
   ACTION_HINT_ACTION,
-  radioActionHintTarget,
-  rangeActionHintTarget,
-} from "#app/action-hints.js";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
 import {
   APPEARANCE_RANGE_SETTINGS,
   type AppearanceRangeName,
@@ -37,6 +23,7 @@ import {
   type TypefacePreset,
   UI_TYPEFACE_PRESETS,
 } from "#app/settings.ts";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 
 type TypefaceSetting = "uiTypefacePreset" | "codeTypefacePreset";
@@ -78,14 +65,6 @@ const INTERFACE_GROUP =
 const TYPEFACES = Object.keys(TYPEFACE_SETTINGS) as TypefaceSetting[];
 const RANGES = Object.keys(APPEARANCE_RANGE_SETTINGS) as AppearanceRangeName[];
 
-type ScopeOptions = ActionHintScopeOptions & { isCurrent?: () => boolean };
-
-interface ScopeContext {
-  scopeId: string;
-  clipRoots: Element[];
-  isCurrent: () => boolean;
-}
-
 // The controls stay in place while settings change, so a range being dragged
 // keeps its element and focus while its value and preview follow it.
 export class CaffoldSettingsAppearancePage extends LitElement {
@@ -100,6 +79,17 @@ export class CaffoldSettingsAppearancePage extends LitElement {
       getSettings();
   };
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.scrollport.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly themeLabels = new DrawnRefs<HTMLLabelElement>(this);
+  private readonly typefaceSelects = new DrawnRefs<HTMLSelectElement>(this);
 
   constructor() {
     super();
@@ -137,7 +127,14 @@ export class CaffoldSettingsAppearancePage extends LitElement {
       );
     const resetAllIcon = inlineIcon("RotateCcw", "", "settings-reset-all-icon");
     return html`
-      <div class="settings-scroll">
+      <div
+        ${drawn(this.scrollport)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.scrollport.value],
+        })}
+        class="settings-scroll"
+      >
         <div class="settings-section">
           <header>
             <p>
@@ -145,6 +142,11 @@ export class CaffoldSettingsAppearancePage extends LitElement {
               size.
             </p>
             <button
+              ${this.hints.button({
+                id: "reset-all",
+                label: "Reset all",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               class="settings-reset-all"
               data-action="reset-appearance"
@@ -169,9 +171,7 @@ export class CaffoldSettingsAppearancePage extends LitElement {
   // A `.value` binding would land before the options it names.
   updated() {
     for (const setting of TYPEFACES) {
-      const select = this.querySelector<HTMLSelectElement>(
-        `select[data-typeface-setting="${setting}"]`,
-      );
+      const select = this.typefaceSelects.get(setting);
       if (select && select.value !== this.settings[setting]) {
         select.value = this.settings[setting];
       }
@@ -180,65 +180,32 @@ export class CaffoldSettingsAppearancePage extends LitElement {
 
   actionHintScope({
     scopeId = "settings:appearance",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScopeOptions = {}): ActionHintScope {
-    const scrollport = this.querySelector(":scope > .settings-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyActionHintScope();
-    }
-    const context = {
-      scopeId,
-      clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-      isCurrent,
-    };
-    return {
-      blocked: false,
-      targets: appearanceActionHintTargets(this, context),
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   scrollSurfaceScope({
     scopeId = "settings:appearance",
     label = "Appearance settings",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.querySelector(":scope > .settings-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(":scope > .settings-scroll") === scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   private themeSetting() {
     const themeMode = this.settings.themeMode;
     const options = Object.values(THEME_MODES).map(
       (theme) => html`
-        <label>
+        <label ${drawn(this.themeLabels.of(theme.id))}>
           <input
+            ${this.hints.radio({
+              id: `theme:${theme.id}`,
+              label: `Use ${theme.label} theme`,
+              action: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
+              when: theme.id !== themeMode,
+              anchor: () => this.themeLabels.get(theme.id),
+            })}
             type="radio"
             name="settings-theme"
             value=${theme.id}
@@ -270,7 +237,8 @@ export class CaffoldSettingsAppearancePage extends LitElement {
               <legend class="sr-only">Theme</legend>
               ${options}
             </fieldset>
-            ${resetAction({
+            ${resetAction(this.hints, {
+              id: "reset-theme",
               action: "reset-theme",
               label: "Reset theme",
               isDefault: themeMode === DEFAULT_APPEARANCE_SETTINGS.themeMode,
@@ -302,6 +270,8 @@ export class CaffoldSettingsAppearancePage extends LitElement {
     const presets = Object.values(definition.presets);
     const nerdFonts = presets.filter((preset) => preset.nerdFont);
     const label = definition.label.toLowerCase();
+    const selected = this.settings[setting];
+    const shown = definition.presets[selected]?.label || selected;
     return html`
       <div class="settings-field">
         <div class="settings-field-copy">
@@ -309,6 +279,14 @@ export class CaffoldSettingsAppearancePage extends LitElement {
         </div>
         <div class="settings-typeface-control">
           <select
+            ${drawn(this.typefaceSelects.of(setting))}
+            ${this.hints.select({
+              id: `typeface:${setting}`,
+              label: shown
+                ? `Choose ${label} (current ${shown})`
+                : `Choose ${label}`,
+              action: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
+            })}
             id=${id}
             data-typeface-setting=${setting}
             @change=${(event: Event) =>
@@ -325,7 +303,8 @@ export class CaffoldSettingsAppearancePage extends LitElement {
                 : ""
             }
           </select>
-          ${resetAction({
+          ${resetAction(this.hints, {
+            id: `reset-typeface:${setting}`,
             action: "reset-typeface",
             label: `Reset ${label}`,
             typefaceSetting: setting,
@@ -391,6 +370,11 @@ export class CaffoldSettingsAppearancePage extends LitElement {
         </div>
         <div class="settings-range-control">
           <input
+            ${this.hints.range({
+              id: `range:${name}`,
+              label: `Adjust ${definition.label} (${valueText})`,
+              action: ACTION_HINT_ACTION.CONTROL_RANGE_FOCUS,
+            })}
             id=${id}
             type="range"
             min=${definition.min}
@@ -411,7 +395,8 @@ export class CaffoldSettingsAppearancePage extends LitElement {
             data-setting-value=${name}
             .value=${valueText}
           ></output>
-          ${resetAction({
+          ${resetAction(this.hints, {
+            id: `reset-setting:${name}`,
             action: "reset-setting",
             label: `Reset ${definition.label.toLowerCase()}`,
             setting: name,
@@ -434,24 +419,34 @@ function typefaceOptions(presets: TypefacePreset[]) {
   );
 }
 
-function resetAction({
-  action,
-  label,
-  setting,
-  typefaceSetting,
-  isDefault,
-  reset,
-}: {
-  action: string;
-  label: string;
-  setting?: string;
-  typefaceSetting?: string;
-  isDefault: boolean;
-  reset: () => unknown;
-}) {
+function resetAction(
+  hints: ActionHints,
+  {
+    id,
+    action,
+    label,
+    setting,
+    typefaceSetting,
+    isDefault,
+    reset,
+  }: {
+    id: string;
+    action: string;
+    label: string;
+    setting?: string;
+    typefaceSetting?: string;
+    isDefault: boolean;
+    reset: () => unknown;
+  },
+) {
   return html`
     <span class="settings-reset-slot">
       <button
+        ${hints.button({
+          id,
+          label,
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        })}
         type="button"
         class="settings-inline-reset"
         data-action=${action}
@@ -467,189 +462,6 @@ function resetAction({
       </button>
     </span>
   `;
-}
-
-function appearanceActionHintTargets(
-  owner: HTMLElement,
-  context: ScopeContext,
-): ActionHintTarget[] {
-  return [
-    ...resetActionHintTargets(owner, context, [
-      {
-        id: "reset-all",
-        selector: 'button[data-action="reset-appearance"]',
-        label: "Reset all appearance settings",
-      },
-    ]),
-    ...themeActionHintTargets(owner, context),
-    ...resetActionHintTargets(owner, context, [
-      {
-        id: "reset-theme",
-        selector: 'button[data-action="reset-theme"]',
-        label: "Reset theme",
-      },
-    ]),
-    ...TYPEFACES.flatMap((setting) => {
-      const definition = TYPEFACE_SETTINGS[setting];
-      return [
-        ...typefaceActionHintTargets(owner, context, setting, definition),
-        ...resetActionHintTargets(owner, context, [
-          {
-            id: `reset-typeface:${setting}`,
-            selector: `button[data-action="reset-typeface"][data-typeface-setting="${setting}"]`,
-            label: `Reset ${definition.label.toLowerCase()}`,
-          },
-        ]),
-      ];
-    }),
-    ...RANGES.flatMap((setting) => {
-      const definition = APPEARANCE_RANGE_SETTINGS[setting];
-      return [
-        ...rangeActionHintTargets(owner, context, setting, definition),
-        ...resetActionHintTargets(owner, context, [
-          {
-            id: `reset-setting:${setting}`,
-            selector: `button[data-action="reset-setting"][data-setting="${setting}"]`,
-            label: `Reset ${definition.label.toLowerCase()}`,
-          },
-        ]),
-      ];
-    }),
-  ];
-}
-
-function themeActionHintTargets(owner: HTMLElement, context: ScopeContext) {
-  return Object.values(THEME_MODES).flatMap((theme) => {
-    const selector = `input[type="radio"][data-theme-setting][value="${theme.id}"]`;
-    const control = owner.querySelector<HTMLInputElement>(selector);
-    if (!control || !actionHintControlAvailable(control) || control.checked) {
-      return [];
-    }
-    return [
-      radioActionHintTarget({
-        invalidationOwner: owner,
-        id: `${context.scopeId}:theme:${theme.id}`,
-        actionId: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
-        label: `Use ${theme.label} theme`,
-        control,
-        anchor: control.closest("label") ?? control,
-        clipRoots: context.clipRoots,
-        isActionable: () =>
-          actionHintOwnerIsCurrent(owner, context) &&
-          owner.querySelector(selector) === control &&
-          actionHintControlAvailable(control) &&
-          !control.checked,
-      }),
-    ];
-  });
-}
-
-function typefaceActionHintTargets(
-  owner: HTMLElement,
-  context: ScopeContext,
-  setting: TypefaceSetting,
-  definition: (typeof TYPEFACE_SETTINGS)[TypefaceSetting],
-) {
-  const selector = `select[data-typeface-setting="${setting}"]`;
-  const control = owner.querySelector<HTMLSelectElement>(selector);
-  if (!control || !actionHintControlAvailable(control)) {
-    return [];
-  }
-  const action = `Choose ${definition.label.toLowerCase()}`;
-  const selectedLabel =
-    control.selectedOptions?.[0]?.textContent?.trim() ||
-    definition.presets[control.value]?.label ||
-    control.value;
-  return [
-    selectActionHintTarget({
-      invalidationOwner: owner,
-      id: `${context.scopeId}:typeface:${setting}`,
-      actionId: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
-      label: selectedLabel ? `${action} (current ${selectedLabel})` : action,
-      control,
-      clipRoots: context.clipRoots,
-      isActionable: () =>
-        actionHintOwnerIsCurrent(owner, context) &&
-        owner.querySelector(selector) === control &&
-        actionHintControlAvailable(control),
-    }),
-  ];
-}
-
-function rangeActionHintTargets(
-  owner: HTMLElement,
-  context: ScopeContext,
-  setting: AppearanceRangeName,
-  definition: AppearanceRangeSetting,
-) {
-  const selector = `input[type="range"][data-setting="${setting}"]`;
-  const control = owner.querySelector<HTMLInputElement>(selector);
-  if (!control || !actionHintControlAvailable(control)) {
-    return [];
-  }
-  const currentValue =
-    control.getAttribute("aria-valuetext") ||
-    `${control.value}${definition.suffix}`;
-  return [
-    rangeActionHintTarget({
-      invalidationOwner: owner,
-      id: `${context.scopeId}:range:${setting}`,
-      actionId: ACTION_HINT_ACTION.CONTROL_RANGE_FOCUS,
-      label: `Adjust ${definition.label} (${currentValue})`,
-      control,
-      clipRoots: context.clipRoots,
-      isActionable: () =>
-        actionHintOwnerIsCurrent(owner, context) &&
-        owner.querySelector(selector) === control &&
-        actionHintControlAvailable(control),
-    }),
-  ];
-}
-
-function resetActionHintTargets(
-  owner: HTMLElement,
-  context: ScopeContext,
-  definitions: Array<{ id: string; selector: string; label: string }>,
-) {
-  return definitions.flatMap(({ id, selector, label }) => {
-    const control = owner.querySelector<HTMLButtonElement>(selector);
-    if (!control || !actionHintControlAvailable(control)) {
-      return [];
-    }
-    return [
-      buttonActionHintTarget({
-        invalidationOwner: owner,
-        id: `${context.scopeId}:${id}`,
-        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-        label:
-          control.getAttribute("aria-label") ||
-          control.title ||
-          control.textContent?.trim() ||
-          label,
-        control,
-        clipRoots: context.clipRoots,
-        isActionable: () =>
-          actionHintOwnerIsCurrent(owner, context) &&
-          owner.querySelector(selector) === control &&
-          actionHintControlAvailable(control),
-      }),
-    ];
-  });
-}
-
-function actionHintOwnerIsCurrent(
-  owner: HTMLElement,
-  { isCurrent }: ScopeContext,
-) {
-  return owner.isConnected && !owner.hidden && isCurrent();
-}
-
-function actionHintControlAvailable(
-  control: HTMLInputElement | HTMLSelectElement | HTMLButtonElement,
-) {
-  return (
-    !control.disabled && !control.hidden && hasActionHintLayoutBox(control)
-  );
 }
 
 function toKebabCase(value: string) {

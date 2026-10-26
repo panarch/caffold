@@ -1,17 +1,11 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
@@ -19,7 +13,6 @@ const MARKDOWN_FENCE_LABELS = new Set(["markdown", "md"]);
 const PREVIEW_LABEL = "Preview Markdown";
 
 type CopyState = "idle" | "copying" | "copied" | "failed";
-type CodeAction = "preview" | "wrap" | "copy";
 
 // A fenced code block of an agent's Markdown, with its name and the actions on
 // it. The Markdown places the block where the `<pre>` it parsed stood and hands
@@ -42,6 +35,14 @@ export class CaffoldTaskMarkdownCodeBlock extends LitElement {
   private generation = 0;
   private feedbackTimer: number | undefined;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly content = new DrawnRef<HTMLDivElement>(this);
+  private readonly previewButton = new DrawnRef<HTMLButtonElement>(this);
 
   constructor() {
     super();
@@ -89,6 +90,12 @@ export class CaffoldTaskMarkdownCodeBlock extends LitElement {
           ${
             MARKDOWN_FENCE_LABELS.has(this.label.toLowerCase())
               ? html`<button
+                  ${drawn(this.previewButton)}
+                  ${this.hints.button({
+                    id: "preview",
+                    label: PREVIEW_LABEL,
+                    action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                  })}
                   type="button"
                   data-code-action="preview"
                   aria-label=${PREVIEW_LABEL}
@@ -98,6 +105,11 @@ export class CaffoldTaskMarkdownCodeBlock extends LitElement {
               : nothing
           }
           <button
+            ${this.hints.button({
+              id: "wrap",
+              label: wrapLabel,
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            })}
             type="button"
             data-code-action="wrap"
             aria-label=${wrapLabel}
@@ -106,6 +118,12 @@ export class CaffoldTaskMarkdownCodeBlock extends LitElement {
             @click=${this.toggleWrap}
           >${actionIcon("WrapText")}</button>
           <button
+            ${this.hints.button({
+              id: "copy",
+              label: copy.actionLabel,
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              when: this.copyState !== "copying",
+            })}
             type="button"
             data-code-action="copy"
             aria-label=${copy.actionLabel}
@@ -116,7 +134,16 @@ export class CaffoldTaskMarkdownCodeBlock extends LitElement {
           >${actionIcon(copyIcon(this.copyState))}</button>
         </div>
       </header>
-      <div class="code-block-content"></div>
+      <div
+        ${drawn(this.content)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          axes: ["horizontal"],
+          scrollport: () => this.pre,
+          clipRoots: () => [this, this.pre],
+        })}
+        class="code-block-content"
+      ></div>
     `;
   }
 
@@ -138,106 +165,24 @@ export class CaffoldTaskMarkdownCodeBlock extends LitElement {
   firstUpdated() {
     this.dataset.codeWrap = "off";
     if (this.pre) {
-      this.querySelector(":scope > .code-block-content")?.append(this.pre);
+      this.content.value?.append(this.pre);
     }
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    if (!scopeId || !this.isConnected || this.hidden) {
-      return emptyActionHintScope();
-    }
-    const fallbackLabels: Record<CodeAction, string> = {
-      preview: PREVIEW_LABEL,
-      wrap: "Wrap code lines",
-      copy: "Copy code",
-    };
-    const actions: CodeAction[] = ["preview", "wrap", "copy"];
-    const targets = actions.flatMap((action) => {
-      const selector = `button[data-code-action="${action}"]`;
-      const control = this.querySelector<HTMLButtonElement>(selector);
-      if (
-        !control ||
-        control.disabled ||
-        control.getAttribute("aria-disabled") === "true"
-      ) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:${action}`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label:
-            control.getAttribute("aria-label") ||
-            control.title ||
-            fallbackLabels[action],
-          control,
-          clipRoots: [this, ...clipRoots].filter(Boolean),
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.querySelector(selector) === control &&
-            !control.disabled &&
-            control.getAttribute("aria-disabled") !== "true",
-        }),
-      ];
-    });
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   scrollSurfaceScope({
-    scopeId = "",
     label = "Code block",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.pre;
-    if (
-      !scopeId ||
-      !label ||
-      !scrollport ||
-      !this.contains(scrollport) ||
-      this.hidden
-    ) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          axes: ["horizontal"],
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.contains(scrollport) &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, label });
   }
 
   private requestPreview() {
     const code = this.code;
-    const opener = this.querySelector<HTMLButtonElement>(
-      'button[data-code-action="preview"]',
-    );
+    const opener = this.previewButton.value;
     if (!code || !opener) {
       return;
     }

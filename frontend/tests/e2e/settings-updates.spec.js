@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { enterActionHints } from "./support/action-hints.js";
+import { enterActionHints, workspaceTargets } from "./support/action-hints.js";
 import {
   installBrowserDefaults,
   mockCaffoldUpdate,
@@ -199,6 +199,36 @@ test("an Action Hint opens the latest release, and only while About links to one
   const withoutRelease = await enterActionHints(page);
   await expect(withoutRelease.getByLabel(/Copy diagnostics$/)).toBeVisible();
   await expect(withoutRelease.getByLabel(/release in a new tab$/)).toHaveCount(0);
+});
+
+test("About offers its update action and the Settings list names the entry with its notice", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await answerUpdates(page, AVAILABLE);
+  await page.goto("/settings/about");
+  await expect(updatesSection(page).locator("[data-updates-latest] a")).toHaveText("0.18.3");
+
+  await expect.poll(() => workspaceTargets(page, "settings:about:")).toEqual([
+    ["latest-release", "Open the 0.18.3 release in a new tab"],
+    ["update-caffold", "Update Caffold"],
+    ["copy-diagnostics", "Copy diagnostics"],
+  ]);
+  await expect.poll(() => workspaceTargets(page, "settings:section:")).toEqual([
+    ["appearance", "Open Appearance settings"],
+    ["keyboard", "Open Keyboard settings"],
+    ["files", "Open Files settings"],
+    ["notifications", "Open Notifications settings"],
+    ["remote-access", "Open Remote Access settings"],
+    ["voice", "Open Voice Input settings"],
+    ["jev", "Open Jev Permissions settings"],
+    ["codex", "Open Codex settings"],
+    ["claude", "Open Claude settings"],
+    ["grok", "Open Grok settings"],
+  ]);
+  await page.goto("/settings/keyboard");
+  await expect.poll(async () =>
+    (await workspaceTargets(page, "settings:section:")).find(([id]) => id === "about"),
+  ).toEqual(["about", "About Caffold — update available"]);
 });
 
 test("Check for Updates asks GitHub now and offers the update it finds", { tag: "@desktop" }, async ({ page }) => {

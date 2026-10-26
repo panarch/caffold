@@ -8,6 +8,7 @@ import { templateHtml } from "../../../../../../../../tests/support/lit-template
 
 const registry = installCustomElementUnitRegistry();
 await import("./row.ts");
+const { ActionHints } = await import("#app/action-hints.ts");
 const Row = registry.element("caffold-active-task-row");
 after(() => registry.restore());
 
@@ -44,112 +45,6 @@ function snapshot(overrides = {}) {
     ...overrides,
   };
 }
-
-test("offers its open button as the Task's Action Hint target", () => {
-  const clipRoot = {};
-  const clipRoots = [clipRoot];
-  const focusOptions = [];
-  let clicks = 0;
-  let currentControl = {
-    dataset: { activeTaskRowAction: "open-task" },
-    disabled: false,
-    focus(options) {
-      focusOptions.push(options);
-    },
-    click() {
-      clicks += 1;
-    },
-  };
-  const row = rowHost({
-    snapshot: snapshot(),
-    querySelector: () => currentControl,
-  });
-
-  const target = row.actionHintTarget({ clipRoots });
-
-  assert.deepEqual(
-    {
-      id: target.id,
-      actionId: target.actionId,
-      label: target.label,
-      controlKind: target.controlKind,
-    },
-    {
-      id: "task:thread-a",
-      actionId: "task.open",
-      label: "Open task: Alpha",
-      controlKind: "button",
-    },
-  );
-  assert.equal(target.control, currentControl);
-  assert.equal(target.anchor, currentControl);
-  assert.deepEqual(target.clipRoots, [clipRoot]);
-  assert.notEqual(target.clipRoots, clipRoots);
-  assert.equal(target.isActionable(), true);
-
-  target.activate();
-  assert.deepEqual(focusOptions, [{ preventScroll: true }]);
-  assert.equal(clicks, 1);
-
-  currentControl.dataset.activeTaskRowAction = "open-task-recovery";
-  assert.equal(target.isActionable(), false);
-  const recovery = row.actionHintTarget();
-  assert.equal(recovery.actionId, "task.open-recovery");
-  assert.equal(recovery.label, "Open task recovery: Alpha");
-
-  currentControl = { ...currentControl };
-  assert.equal(recovery.isActionable(), false);
-});
-
-test("offers its reorder handle as a focus-only target while Tasks reorder", () => {
-  let focused = 0;
-  let clicks = 0;
-  let control = {
-    disabled: false,
-    getAttribute: () => "Reorder Alpha. Use Up and Down arrow keys to move.",
-    focus() {
-      focused += 1;
-    },
-    click() {
-      clicks += 1;
-    },
-  };
-  const row = rowHost({
-    isConnected: true,
-    snapshot: snapshot({ reorderMode: true }),
-    querySelector: () => control,
-  });
-
-  const target = row.reorderActionHintTarget({
-    clipRoots: [{ id: "task-list" }],
-  });
-  assert.deepEqual(
-    {
-      id: target.id,
-      actionId: target.actionId,
-      controlKind: target.controlKind,
-      label: target.label,
-    },
-    {
-      id: "task:thread-a:reorder",
-      actionId: "task.reorder.handle.focus",
-      controlKind: "reorder-handle",
-      label: "Reorder Alpha. Use Up and Down arrow keys to move.",
-    },
-  );
-  target.activate();
-  assert.equal(focused, 1);
-  assert.equal(clicks, 0);
-
-  row.snapshot = snapshot({ reorderMode: true, pending: true });
-  assert.equal(target.isActionable(), false);
-  assert.equal(row.reorderActionHintTarget(), null);
-  row.snapshot = snapshot({ reorderMode: true });
-  control = { ...control };
-  assert.equal(target.isActionable(), false);
-  row.snapshot = snapshot();
-  assert.equal(row.reorderActionHintTarget(), null);
-});
 
 test("draws one thing beside the title: recovery, an unseen finish, the agent's status, or the time", () => {
   const draw = (overrides) => html(rowHost({ snapshot: snapshot(overrides) }));
@@ -195,11 +90,12 @@ test("draws the title beside a handle while Tasks reorder", () => {
 });
 
 function rowHost(properties) {
-  return Object.create(Row.prototype, Object.getOwnPropertyDescriptors({
+  const row = Object.create(Row.prototype, Object.getOwnPropertyDescriptors({
     isConnected: true,
-    querySelector: () => null,
     ...properties,
   }));
+  row.hints = new ActionHints(row, () => {});
+  return row;
 }
 
 function html(row) {

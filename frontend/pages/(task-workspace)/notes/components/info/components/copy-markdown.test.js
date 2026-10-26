@@ -17,23 +17,6 @@ const STORAGE = {
   location: [{ id: "projects", name: "Projects" }],
 };
 
-function control() {
-  return {
-    attributes: new Map(),
-    clicks: 0,
-    disabled: false,
-    textContent: "Copy Markdown",
-    getAttribute(name) {
-      return this.attributes.get(name) ?? null;
-    },
-    getClientRects: () => [{}],
-    focus() {},
-    click() {
-      this.clicks += 1;
-    },
-  };
-}
-
 const NOTE_CHANGED = new Map([["note", undefined]]);
 
 function copyMarkdownHost(properties = {}) {
@@ -128,44 +111,6 @@ test("copies the Note's Markdown, reports the outcome until it clears, and copie
   };
   await host.copy();
   assert.deepEqual(written, []);
-});
-
-test("offers Copy Markdown to the popover's Action Hints while there is Markdown to copy", () => {
-  const button = control();
-  const host = copyMarkdownHost({ button });
-  setNote(host, STORAGE);
-  const popover = { id: "popover" };
-  let current = true;
-  const scopeOf = () => host.actionHintScope({
-    scopeId: "notes:storage:details",
-    clipRoots: [popover],
-    isCurrent: () => current,
-  });
-
-  const [target] = scopeOf().targets;
-  assert.deepEqual(
-    { id: target.id, actionId: target.actionId, label: target.label },
-    {
-      id: "notes:storage:details:copy-markdown",
-      actionId: "button.activate",
-      label: "Copy Markdown",
-    },
-  );
-  assert.equal(target.isActionable(), true);
-  target.activate();
-  assert.equal(button.clicks, 1);
-
-  current = false;
-  assert.equal(target.isActionable(), false);
-  current = true;
-
-  host.markdown = "# Storage, rewritten\n";
-  assert.equal(target.isActionable(), false, "a target belongs to the content it was offered for");
-  host.markdown = STORAGE.content;
-
-  button.disabled = true;
-  assert.equal(target.isActionable(), false);
-  assert.deepEqual(scopeOf().targets, [], "an empty Note offers nothing to copy");
 });
 
 test("refuses a completion that outlived its element", () => {

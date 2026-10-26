@@ -1,12 +1,10 @@
 import { html, LitElement, nothing, type TemplateResult } from "lit";
-import type { ActionHintScope } from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
+  ActionHints,
   emptyActionHintScope,
-  hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import {
   archiveTask,
   discardTaskUploads,
@@ -27,14 +25,15 @@ import {
   taskResponseError,
   uploadTaskFile,
 } from "#app/api.ts";
-import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.ts";
 import { routeDomain } from "#app/navigation-routes.ts";
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.ts";
 import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "#app/scroll-scope.js";
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "#components/loading-text.ts";
 import "../../components/composer.ts";
 import type {
@@ -291,6 +290,22 @@ export class CaffoldTaskDetail extends LitElement {
   private pane: { threadId: string; view: TaskDetailView } | null = null;
   // What shows in the pane's place, or null where the pane shows.
   private notice: TemplateResult | typeof nothing | null = nothing;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly conversationPane = new DrawnRef<HTMLElement>(this);
+  private readonly conversationComponent =
+    new DrawnRef<CaffoldTaskConversation>(this);
+  private readonly commandDialog = new DrawnRef<CaffoldTaskCommandDialog>(this);
+  private readonly markdownPreviewDialog =
+    new DrawnRef<CaffoldTaskMarkdownPreviewDialog>(this);
+  private readonly permissionInstructionsDialog =
+    new DrawnRef<CaffoldTaskPermissionInstructionsDialog>(this);
+  private readonly currentPlanComponent = new DrawnRef<CaffoldTaskCurrentPlan>(
+    this,
+  );
+  private readonly followUpComposerSlot = new DrawnRef<HTMLDivElement>(this);
+  private readonly brokenDeleteDialog =
+    new DrawnRef<CaffoldBrokenTaskDeleteDialog>(this);
+  private readonly absenceNotice = new DrawnRef<CaffoldTaskAbsence>(this);
 
   createRenderRoot() {
     return this;
@@ -318,7 +333,7 @@ export class CaffoldTaskDetail extends LitElement {
   setLiveUpdates(liveUpdates: WorkspaceLiveUpdates | null | undefined) {
     this.performUpdate();
     this.liveUpdates = liveUpdates ?? null;
-    this.currentPlanComponent()?.setLiveUpdates(this.liveUpdates);
+    this.currentPlanComponent.value?.setLiveUpdates(this.liveUpdates);
   }
 
   prepare(
@@ -342,7 +357,7 @@ export class CaffoldTaskDetail extends LitElement {
         this.reviewView === "conversation" &&
         nextReviewView !== "conversation"
       ) {
-        this.conversationComponent()?.setActive(false);
+        this.conversationComponent.value?.setActive(false);
       }
       this.reviewView = nextReviewView;
       this.detailLoadError = null;
@@ -352,7 +367,7 @@ export class CaffoldTaskDetail extends LitElement {
     }
 
     if (this.selectedThreadId !== targetThreadId) {
-      this.brokenDeleteDialog()?.reset();
+      this.brokenDeleteDialog.value?.reset();
       this.deactivateFollowUpComposer();
       this.history.deactivate();
       this.interruptActionToken += 1;
@@ -473,14 +488,14 @@ export class CaffoldTaskDetail extends LitElement {
     } else {
       this.deactivateFollowUpComposer();
     }
-    this.currentPlanComponent()?.deactivate();
+    this.currentPlanComponent.value?.deactivate();
     this.hidden = true;
   }
 
   // Ends what the open Task's surfaces have in flight: its requests, older
   // history, and the dialogs opened over its conversation.
   private endTaskRequests() {
-    this.brokenDeleteDialog()?.reset();
+    this.brokenDeleteDialog.value?.reset();
     this.history.deactivate();
     this.interruptActionToken += 1;
     this.interruptStateValue = { loading: false, error: null };
@@ -490,9 +505,9 @@ export class CaffoldTaskDetail extends LitElement {
     this.archiveStateValue = { loading: false, error: null };
     this.forkStateValue = { loading: false, error: null };
     this.initialConversationLoad = null;
-    this.commandDialog()?.dismiss();
-    this.markdownPreviewDialog()?.dismiss();
-    this.permissionInstructionsDialog()?.dismiss();
+    this.commandDialog.value?.dismiss();
+    this.markdownPreviewDialog.value?.dismiss();
+    this.permissionInstructionsDialog.value?.dismiss();
   }
 
   currentDetail() {
@@ -513,111 +528,41 @@ export class CaffoldTaskDetail extends LitElement {
     };
   }
 
-  actionHintScope(): ActionHintScope {
-    this.performUpdate();
+  actionHintScope() {
+    const scopeId = `task:${this.selectedThreadId}`;
+    const own = this.hints.scope({ scopeId, clipRoots: [this] });
     if (this.hidden || !this.selectedThreadId) {
       return emptyActionHintScope();
     }
-    const notice = this.absenceNotice();
+    const notice = this.absenceNotice.value;
     if (notice) {
       return notice.actionHintScope({
-        scopeId: `task:${this.selectedThreadId}:absence`,
+        scopeId: `${scopeId}:absence`,
         clipRoots: [this],
       });
     }
-    const errorControl = this.querySelector<HTMLButtonElement>(
-      ".task-detail-load-error button[data-task-action], .task-domain-pending button[data-task-action]",
-    );
-    if (errorControl) {
-      return {
-        blocked: false,
-        targets: [
-          buttonActionHintTarget({
-            invalidationOwner: this,
-            id: `task:${this.selectedThreadId}:load-error`,
-            actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-            label: (errorControl.textContent ?? "").trim(),
-            control: errorControl,
-            clipRoots: [this],
-            isActionable: () =>
-              this.isConnected &&
-              !this.hidden &&
-              this.contains(errorControl) &&
-              !errorControl.disabled &&
-              hasActionHintLayoutBox(errorControl),
-          }),
-        ],
-        mutationRoots: [this],
-        scrollRoots: [],
-      };
+    const pane = this.conversationPane.value;
+    if (this.notice !== null || this.reviewView !== "conversation" || !pane) {
+      return own;
     }
-    if (this.reviewView !== "conversation") return emptyActionHintScope();
     const composer = this.followUpComposer();
-    const slot = this.followUpComposerSlot();
-    const conversation = this.querySelector(":scope .task-conversation-pane");
-    if (!conversation) {
-      return emptyActionHintScope();
-    }
-    const scopeId = `task:${this.selectedThreadId}`;
-    const clipRoots = [this, conversation];
-    const retrySelector =
-      'button[data-task-action="retry-task-detail"]:not([data-conversation-action])';
-    const retryControl = this.querySelector<HTMLButtonElement>(retrySelector);
-    const retryScope =
-      retryControl &&
-      !retryControl.disabled &&
-      hasActionHintLayoutBox(retryControl)
-        ? {
-            blocked: false,
-            targets: [
-              buttonActionHintTarget({
-                invalidationOwner: this,
-                id: `${scopeId}:retry-detail`,
-                actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-                label:
-                  retryControl.getAttribute("aria-label") ||
-                  retryControl.textContent?.trim() ||
-                  "Retry Task detail",
-                control: retryControl,
-                clipRoots,
-                isActionable: () =>
-                  this.isConnected &&
-                  !this.hidden &&
-                  this.reviewView === "conversation" &&
-                  this.querySelector(retrySelector) === retryControl &&
-                  !retryControl.disabled &&
-                  hasActionHintLayoutBox(retryControl),
-              }),
-            ],
-            mutationRoots: [this],
-            scrollRoots: [],
-          }
-        : null;
-    const composerScope =
-      composer && slot && composer.parentElement === slot
-        ? {
-            blocked: false,
-            targets: composer.actionHintTargets({
-              scopeId,
-              clipRoots,
-            }),
-            mutationRoots: [slot],
-            scrollRoots: [],
-          }
-        : null;
-    const currentPlanScope = this.currentPlanComponent()?.actionHintScope({
-      scopeId: `${scopeId}:current-plan`,
-      clipRoots,
-    });
-    const conversationScope = this.conversationComponent()?.actionHintScope({
-      scopeId: `${scopeId}:conversation`,
-      clipRoots,
-    });
+    const slot = this.followUpComposerSlot.value;
+    const clipRoots = [this, pane];
     return mergeActionHintScopes(
-      retryScope,
-      composerScope,
-      conversationScope,
-      currentPlanScope,
+      composer && slot && composer.parentElement === slot
+        ? mergeActionHintScopes(
+            composer.actionHintScope({ scopeId, clipRoots }),
+            { mutationRoots: [slot] },
+          )
+        : null,
+      this.conversationComponent.value?.actionHintScope({
+        scopeId: `${scopeId}:conversation`,
+        clipRoots,
+      }),
+      this.currentPlanComponent.value?.actionHintScope({
+        scopeId: `${scopeId}:current-plan`,
+        clipRoots,
+      }),
     );
   }
 
@@ -631,7 +576,7 @@ export class CaffoldTaskDetail extends LitElement {
     ) {
       return emptyScrollSurfaceScope();
     }
-    const conversation = this.conversationComponent();
+    const conversation = this.conversationComponent.value;
     return conversation && hasScrollLayoutBox(conversation)
       ? conversation.scrollSurfaceScope()
       : emptyScrollSurfaceScope();
@@ -640,7 +585,7 @@ export class CaffoldTaskDetail extends LitElement {
   keyboardNavigationContexts() {
     this.performUpdate();
     const deletionContexts =
-      this.brokenDeleteDialog()?.keyboardNavigationContexts() ?? [];
+      this.brokenDeleteDialog.value?.keyboardNavigationContexts() ?? [];
     if (
       this.hidden ||
       this.reviewView !== "conversation" ||
@@ -649,7 +594,7 @@ export class CaffoldTaskDetail extends LitElement {
       return deletionContexts;
     }
     const composer = this.followUpComposer();
-    const slot = this.followUpComposerSlot();
+    const slot = this.followUpComposerSlot.value;
     return mergeKeyboardNavigationContexts(
       deletionContexts,
       composer && slot && composer.parentElement === slot
@@ -657,10 +602,11 @@ export class CaffoldTaskDetail extends LitElement {
             scopeId: `task:${this.selectedThreadId}`,
           })
         : [],
-      this.currentPlanComponent()?.keyboardNavigationContexts() ?? [],
-      this.commandDialog()?.keyboardNavigationContexts() ?? [],
-      this.markdownPreviewDialog()?.keyboardNavigationContexts() ?? [],
-      this.permissionInstructionsDialog()?.keyboardNavigationContexts() ?? [],
+      this.currentPlanComponent.value?.keyboardNavigationContexts() ?? [],
+      this.commandDialog.value?.keyboardNavigationContexts() ?? [],
+      this.markdownPreviewDialog.value?.keyboardNavigationContexts() ?? [],
+      this.permissionInstructionsDialog.value?.keyboardNavigationContexts() ??
+        [],
     );
   }
 
@@ -670,7 +616,7 @@ export class CaffoldTaskDetail extends LitElement {
     }
 
     this.initialConversationLoad =
-      this.conversationComponent()?.hasScrollSnapshot(threadId)
+      this.conversationComponent.value?.hasScrollSnapshot(threadId)
         ? null
         : { threadId };
     this.selectedThreadId = threadId;
@@ -1141,7 +1087,7 @@ export class CaffoldTaskDetail extends LitElement {
 
   reconcileVisibleSurface() {
     if (this.reviewView === "conversation") {
-      this.conversationComponent()?.reconcileViewportResize();
+      this.conversationComponent.value?.reconcileViewportResize();
     }
   }
 
@@ -1515,7 +1461,7 @@ export class CaffoldTaskDetail extends LitElement {
         ),
       );
       if (last) {
-        this.conversationComponent()?.setPromptUploadProgress(
+        this.conversationComponent.value?.setPromptUploadProgress(
           request.optimisticEventId,
           null,
         );
@@ -1537,7 +1483,7 @@ export class CaffoldTaskDetail extends LitElement {
       : Math.floor(
           (files.filter((file) => file.done).length / files.length) * 100,
         );
-    this.conversationComponent()?.setPromptUploadProgress(
+    this.conversationComponent.value?.setPromptUploadProgress(
       request.optimisticEventId,
       {
         percent,
@@ -1575,7 +1521,7 @@ export class CaffoldTaskDetail extends LitElement {
   ) {
     const { threadId } = request;
     if (request.upload) {
-      this.conversationComponent()?.setPromptUploadProgress(
+      this.conversationComponent.value?.setPromptUploadProgress(
         request.optimisticEventId,
         null,
       );
@@ -1763,7 +1709,7 @@ export class CaffoldTaskDetail extends LitElement {
 
     const actionToken = ++this.approvalActionToken;
     const threadId = this.selectedThreadId;
-    this.conversationComponent()?.setApprovalError(approvalId, null);
+    this.conversationComponent.value?.setApprovalError(approvalId, null);
     try {
       const detail = await resolveTaskApproval(threadId, approvalId, decision);
       if (
@@ -1789,7 +1735,7 @@ export class CaffoldTaskDetail extends LitElement {
       if (this.reportTaskAbsence(threadId, error)) {
         return;
       }
-      this.conversationComponent()?.setApprovalError(
+      this.conversationComponent.value?.setApprovalError(
         approvalId,
         error as Error,
       );
@@ -1817,7 +1763,7 @@ export class CaffoldTaskDetail extends LitElement {
   private draw() {
     this.requestUpdate();
     this.performUpdate();
-    this.brokenDeleteDialog()?.setContext({
+    this.brokenDeleteDialog.value?.setContext({
       threadId: this.selectedThreadId,
       title:
         taskThreadId(this.managedTask) === this.selectedThreadId
@@ -1825,12 +1771,12 @@ export class CaffoldTaskDetail extends LitElement {
           : this.taskDetail?.task?.title,
       error: this.detailLoadError,
     });
-    this.commandDialog()?.setThreadId(this.selectedThreadId);
-    this.markdownPreviewDialog()?.setThreadId(this.selectedThreadId);
-    this.permissionInstructionsDialog()?.setThreadId(this.selectedThreadId);
+    this.commandDialog.value?.setThreadId(this.selectedThreadId);
+    this.markdownPreviewDialog.value?.setThreadId(this.selectedThreadId);
+    this.permissionInstructionsDialog.value?.setThreadId(this.selectedThreadId);
     const absence = this.detailSession.absence;
     if (absence) {
-      this.absenceNotice()?.setSnapshot({
+      this.absenceNotice.value?.setSnapshot({
         absence,
         title: this.absentTaskTitle,
         restoring: this.restoreStateValue.loading,
@@ -1839,7 +1785,9 @@ export class CaffoldTaskDetail extends LitElement {
     }
     this.syncCurrentPlan();
     this.syncFollowUpComposer();
-    this.conversationComponent()?.setActive(this.reviewView === "conversation");
+    this.conversationComponent.value?.setActive(
+      this.reviewView === "conversation",
+    );
     if (this.reviewView === "conversation") {
       this.syncConversationSnapshot();
     }
@@ -1875,61 +1823,19 @@ export class CaffoldTaskDetail extends LitElement {
 
   setManagedTask(task: { threadId: string; title?: string } | null) {
     this.managedTask = task;
-    this.brokenDeleteDialog()?.setContext({
+    this.brokenDeleteDialog.value?.setContext({
       threadId: this.selectedThreadId,
       title: task?.title,
       error: this.detailLoadError,
     });
   }
 
-  private brokenDeleteDialog() {
-    return this.querySelector<CaffoldBrokenTaskDeleteDialog>(
-      ":scope > caffold-broken-task-delete-dialog",
-    );
-  }
-
-  private absenceNotice() {
-    return this.querySelector<CaffoldTaskAbsence>(
-      ".tasks-detail-region caffold-task-absence",
-    );
-  }
-
-  private conversationComponent() {
-    return this.querySelector<CaffoldTaskConversation>(
-      ".task-conversation-pane caffold-task-conversation",
-    );
-  }
-
-  private commandDialog() {
-    return this.querySelector<CaffoldTaskCommandDialog>(
-      ".task-conversation-pane caffold-task-command-dialog",
-    );
-  }
-
-  private markdownPreviewDialog() {
-    return this.querySelector<CaffoldTaskMarkdownPreviewDialog>(
-      ".task-conversation-pane caffold-task-markdown-preview-dialog",
-    );
-  }
-
-  private permissionInstructionsDialog() {
-    return this.querySelector<CaffoldTaskPermissionInstructionsDialog>(
-      ".task-conversation-pane caffold-task-permission-instructions-dialog",
-    );
-  }
-
   /** Show what this Task's own prompts settled. */
   openPermissionInstructions(opener?: Element | null) {
-    this.permissionInstructionsDialog()?.open({
+    this.permissionInstructionsDialog.value?.open({
       threadId: this.selectedThreadId,
       opener,
     });
-  }
-
-  private currentPlanComponent() {
-    return this.querySelector<CaffoldTaskCurrentPlan>(
-      ".task-conversation-pane caffold-task-current-plan",
-    );
   }
 
   private followUpComposer() {
@@ -1937,12 +1843,6 @@ export class CaffoldTaskDetail extends LitElement {
       ? (this.followUpComposers.get(this.activeFollowUpComposerThreadId) ??
           null)
       : null;
-  }
-
-  private followUpComposerSlot() {
-    return this.querySelector<HTMLElement>(
-      ".task-conversation-pane .task-follow-up-composer-slot",
-    );
   }
 
   private ensureFollowUpComposer(threadId: string) {
@@ -1964,7 +1864,7 @@ export class CaffoldTaskDetail extends LitElement {
 
   private activateFollowUpComposer(threadId: string) {
     const composer = this.followUpComposers.get(threadId);
-    const slot = this.followUpComposerSlot();
+    const slot = this.followUpComposerSlot.value;
     if (!composer || !slot) {
       return null;
     }
@@ -2068,7 +1968,7 @@ export class CaffoldTaskDetail extends LitElement {
     if (
       !task ||
       threadId !== this.selectedThreadId ||
-      !this.followUpComposerSlot()
+      !this.followUpComposerSlot.value
     ) {
       this.deactivateFollowUpComposer();
       return;
@@ -2105,7 +2005,7 @@ export class CaffoldTaskDetail extends LitElement {
   }
 
   private syncCurrentPlan() {
-    const currentPlan = this.currentPlanComponent();
+    const currentPlan = this.currentPlanComponent.value;
     const task = this.taskDetail?.task ?? null;
     const threadId = taskThreadId(task);
     if (!currentPlan) {
@@ -2150,7 +2050,7 @@ export class CaffoldTaskDetail extends LitElement {
   }
 
   private syncConversationSnapshot() {
-    const conversation = this.conversationComponent();
+    const conversation = this.conversationComponent.value;
     const task = this.taskDetail?.task ?? null;
     if (!conversation) {
       this.conversationUpdateKind = null;
@@ -2240,22 +2140,31 @@ export class CaffoldTaskDetail extends LitElement {
         ?hidden=${notice !== null}
       >
         <section
+          ${drawn(this.conversationPane)}
           class="task-conversation-pane"
           aria-label="Task conversation"
         >
           <caffold-task-conversation
+            ${drawn(this.conversationComponent)}
             @caffold:task-conversation-intent=${this.conversationIntent}
             @caffold:task-markdown-preview-intent=${this.previewMarkdown}
           ></caffold-task-conversation>
-          <caffold-task-command-dialog></caffold-task-command-dialog>
+          <caffold-task-command-dialog
+            ${drawn(this.commandDialog)}
+          ></caffold-task-command-dialog>
           <caffold-task-markdown-preview-dialog
+            ${drawn(this.markdownPreviewDialog)}
           ></caffold-task-markdown-preview-dialog>
           <caffold-task-permission-instructions-dialog
+            ${drawn(this.permissionInstructionsDialog)}
             @caffold:task-detail-intent=${this.permissionIntent}
           ></caffold-task-permission-instructions-dialog>
           <div class="task-follow-up-composer-dock">
-            <caffold-task-current-plan></caffold-task-current-plan>
+            <caffold-task-current-plan
+              ${drawn(this.currentPlanComponent)}
+            ></caffold-task-current-plan>
             <div
+              ${drawn(this.followUpComposerSlot)}
               class="task-follow-up-composer-slot"
               @caffold:task-composer-submit=${this.composerSubmit}
               @caffold:task-composer-intent=${this.composerIntent}
@@ -2279,6 +2188,7 @@ export class CaffoldTaskDetail extends LitElement {
         >Loading conversation…</caffold-loading-text
       >
       <caffold-broken-task-delete-dialog
+        ${drawn(this.brokenDeleteDialog)}
         @caffold:task-detail-intent=${this.brokenDeleteIntent}
       ></caffold-broken-task-delete-dialog>
     `;
@@ -2290,6 +2200,7 @@ export class CaffoldTaskDetail extends LitElement {
   private regionNotice() {
     if (this.detailSession.absence) {
       return html`<caffold-task-absence
+        ${drawn(this.absenceNotice)}
         @caffold:task-absence-intent=${this.absenceIntent}
       ></caffold-task-absence>`;
     }
@@ -2332,6 +2243,11 @@ export class CaffoldTaskDetail extends LitElement {
     const actions = this.detailLoadError?.allowedActions;
     if (actions?.includes("deleteTask")) {
       return html`<button
+        ${this.hints.button({
+          id: "load-error",
+          label: "Delete task",
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        })}
         type="button"
         class="task-secondary-button"
         data-task-action="delete-broken-task"
@@ -2340,6 +2256,11 @@ export class CaffoldTaskDetail extends LitElement {
     }
     if (!actions || actions.includes("retry")) {
       return html`<button
+        ${this.hints.button({
+          id: "load-error",
+          label: "Retry",
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        })}
         type="button"
         class="task-secondary-button"
         data-task-action="retry-task-detail"
@@ -2370,7 +2291,7 @@ export class CaffoldTaskDetail extends LitElement {
   }
 
   private deleteBrokenTask() {
-    this.brokenDeleteDialog()?.openTask();
+    this.brokenDeleteDialog.value?.openTask();
   }
 
   private retryTaskDetail() {
@@ -2393,7 +2314,7 @@ export class CaffoldTaskDetail extends LitElement {
         void this.resolveApproval(intent.approvalId, intent.decision);
         break;
       case "command-output":
-        this.commandDialog()?.openCommand(intent.command);
+        this.commandDialog.value?.openCommand(intent.command);
         break;
       case "suggested-prompt":
         this.followUpComposer()?.appendSuggestedPrompt(intent.prompt);
@@ -2403,7 +2324,7 @@ export class CaffoldTaskDetail extends LitElement {
 
   private previewMarkdown(event: CustomEvent<MarkdownPreviewRequest>) {
     event.stopPropagation();
-    this.markdownPreviewDialog()?.openMarkdown(event.detail);
+    this.markdownPreviewDialog.value?.openMarkdown(event.detail);
   }
 
   private permissionIntent(event: CustomEvent<TaskRequestFailedIntent>) {
@@ -2469,7 +2390,7 @@ export class CaffoldTaskDetail extends LitElement {
       return;
     }
     event.stopPropagation();
-    this.conversationComponent()?.reconcileViewportResize();
+    this.conversationComponent.value?.reconcileViewportResize();
   }
 
   // Task actions show what the next turn's approval mode settles, so the

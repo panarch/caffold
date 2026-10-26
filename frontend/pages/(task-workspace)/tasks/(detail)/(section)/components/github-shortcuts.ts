@@ -1,13 +1,10 @@
 import { html, LitElement } from "lit";
-import type {
-  ActionHintScope,
-  ActionHintScopeOptions,
-} from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
+  type ActionHintPull,
+  ActionHints,
   emptyActionHintScope,
-} from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import { type GitHubStatus, getGitHubStatus } from "#app/api.ts";
 
 // The Section's directory, and whether it is a Git repository. `key` names
@@ -25,8 +22,6 @@ export interface GitHubShortcutIntent {
 }
 
 type GitHubKind = "issues" | "pulls";
-
-const GITHUB_KINDS: GitHubKind[] = ["issues", "pulls"];
 
 /**
  * A Section's way into its repository's GitHub Issues and Pull Requests,
@@ -46,6 +41,7 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
   private githubStatus: GitHubStatus | null = null;
   private statusContextKey = "";
   private statusRequestId = 0;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
 
   createRenderRoot() {
     return this;
@@ -91,46 +87,8 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
     this.active = false;
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    this.performUpdate();
-    if (!scopeId || !this.active || !this.githubStatus?.github || this.hidden) {
-      return emptyActionHintScope();
-    }
-    const targets = GITHUB_KINDS.flatMap((kind) => {
-      const control = this.kindButton(kind);
-      if (!control || control.disabled) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:github:${kind}`,
-          actionId: ACTION_HINT_ACTION.GITHUB_MODE,
-          label:
-            kind === "issues"
-              ? "Open GitHub Issues"
-              : "Open GitHub Pull Requests",
-          control,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.active &&
-            Boolean(this.githubStatus?.github) &&
-            this.kindButton(kind) === control &&
-            !control.disabled,
-        }),
-      ];
-    });
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.active ? this.hints.scope(pull) : emptyActionHintScope();
   }
 
   protected updated() {
@@ -150,11 +108,21 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
       </header>
       <nav aria-label="Open GitHub work">
         <button
+          ${this.hints.button({
+            id: "github:issues",
+            label: "Open GitHub Issues",
+            action: ACTION_HINT_ACTION.GITHUB_MODE,
+          })}
           type="button"
           data-section-github-kind="issues"
           @click=${this.openGitHub}
         >Issues</button>
         <button
+          ${this.hints.button({
+            id: "github:pulls",
+            label: "Open GitHub Pull Requests",
+            action: ACTION_HINT_ACTION.GITHUB_MODE,
+          })}
           type="button"
           data-section-github-kind="pulls"
           @click=${this.openGitHub}
@@ -236,12 +204,6 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
         composed: true,
         detail: { type: "open-github", kind },
       }),
-    );
-  }
-
-  private kindButton(kind: GitHubKind) {
-    return this.querySelector<HTMLButtonElement>(
-      `:scope > nav > button[data-section-github-kind="${kind}"]`,
     );
   }
 

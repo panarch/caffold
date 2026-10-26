@@ -66,9 +66,9 @@ test("composes active PR tree/viewer actions and Scroll leaves", () => {
     { id: "separator" },
     viewerTarget,
   ]);
-  assert.equal(treeActionOptions.disclosureActionId, "disclosure.toggle");
-  assert.equal(viewerActionOptions.refreshActionId, "button.activate");
-  assert.equal(viewerActionOptions.linkActionId, "link.open");
+  assert.equal(treeActionOptions.actions.disclosure, "disclosure.toggle");
+  assert.equal(viewerActionOptions.actions.refresh, "button.activate");
+  assert.equal(viewerActionOptions.actions.link, "link.open");
   assert.equal(resizerOptions.actionId, "control.separator.focus");
   assert.deepEqual(
     page.scrollSurfaceScope.call(owner).surfaces,

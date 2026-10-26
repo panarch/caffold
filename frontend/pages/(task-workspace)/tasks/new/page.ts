@@ -1,14 +1,11 @@
 import { html, LitElement } from "lit";
+import { mergeActionHintScopes } from "#app/action-hints.ts";
 import {
-  type ActionHintScope,
-  mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-  type ScrollSurfaceScope,
-} from "#app/scroll-scope.js";
+  type ScrollSurfacePull,
+  ScrollSurfaces,
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import type { TaskStoreStatusSnapshot } from "../../task-store-status.ts";
 import "../components/task-create.ts";
 import type { ServerPaths } from "../components/task-create/directory-path.ts";
@@ -24,7 +21,6 @@ const PREPARE_REQUEST =
   "Prepare this task in an isolated worktree. Leave my current checkout changes in place. Stop when the worktree is ready.";
 const MOVE_CHANGES_NOTE =
   "Need the current changes too? Say “Move this task and my current changes into an isolated worktree.”";
-const WORKSPACE = ":scope > .task-new-workspace";
 
 /**
  * The New Task screen: where the Task works and what it is asked first, with
@@ -39,6 +35,11 @@ export class CaffoldTaskNew extends LitElement {
   private server: ServerPaths = {};
   private transportAvailable = true;
   private taskStoreStatusSnapshot: TaskStoreStatusSnapshot | null = null;
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly workspace = new DrawnRef<HTMLElement>(this);
+  private readonly create = new DrawnRef<CaffoldTaskCreate>(this);
 
   createRenderRoot() {
     return this;
@@ -46,7 +47,7 @@ export class CaffoldTaskNew extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    this.taskCreate()?.deactivate();
+    this.create.value?.deactivate();
   }
 
   prepare({
@@ -63,83 +64,55 @@ export class CaffoldTaskNew extends LitElement {
   open() {
     this.hidden = false;
     this.syncTaskCreate();
-    this.taskCreate()?.activate();
+    this.create.value?.activate();
   }
 
   deactivate() {
-    this.taskCreate()?.deactivate();
+    this.create.value?.deactivate();
     this.hidden = true;
   }
 
   setServerPaths(server: ServerPaths) {
     this.server = { ...server };
-    this.taskCreate()?.setServerPaths(this.server);
+    this.create.value?.setServerPaths(this.server);
   }
 
   setTransportAvailable(available: boolean) {
     this.transportAvailable = Boolean(available);
-    this.taskCreate()?.setTransportAvailable(this.transportAvailable);
+    this.create.value?.setTransportAvailable(this.transportAvailable);
   }
 
   setTaskStoreStatusSnapshot(snapshot: TaskStoreStatusSnapshot | null) {
     this.taskStoreStatusSnapshot = snapshot ?? null;
-    this.taskCreate()?.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
+    this.create.value?.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
   }
 
   selectedContextPath() {
     return cleanLogicalPath(this.cwd);
   }
 
-  actionHintScope(): ActionHintScope {
+  actionHintScope() {
     this.performUpdate();
-    const scrollRoot = this.querySelector(WORKSPACE);
+    const workspace = this.workspace.value;
     return mergeActionHintScopes(
-      this.taskCreate()?.actionHintScope({
+      this.create.value?.actionHintScope({
         scopeId: "new",
-        clipRoots: scrollRoot ? [this, scrollRoot] : [this],
+        clipRoots: workspace ? [this, workspace] : [this],
       }),
-      {
-        blocked: false,
-        targets: [],
-        mutationRoots: [],
-        scrollRoots: scrollRoot ? [scrollRoot] : [],
-      },
+      { scrollRoots: workspace ? [workspace] : [] },
     );
   }
 
-  scrollSurfaceScope(): ScrollSurfaceScope {
-    this.performUpdate();
-    const scrollport = this.querySelector(WORKSPACE);
-    const cwd = this.selectedContextPath();
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
+  scrollSurfaceScope({ label = "New Task", ...pull }: ScrollSurfacePull = {}) {
+    const own = this.surfaces.scope({ ...pull, label });
+    const workspace = this.workspace.value;
     return mergeScrollSurfaceScopes(
-      {
-        blocked: false,
-        surfaces: [
-          {
-            id: `new:${cwd}:scroll`,
-            label: "New Task",
-            scrollport,
-            clipRoots: [this, scrollport],
-            isEligible: () =>
-              this.isConnected &&
-              !this.hidden &&
-              this.selectedContextPath() === cwd &&
-              this.querySelector(WORKSPACE) === scrollport &&
-              hasScrollLayoutBox(this) &&
-              hasScrollLayoutBox(scrollport),
-          },
-        ],
-        mutationRoots: [this],
-        resizeElements: [this, scrollport],
-        scrollRoots: [scrollport],
-      },
-      this.taskCreate()?.scrollSurfaceScope({
-        scopeId: "new",
-        clipRoots: [this, scrollport],
-      }),
+      own,
+      workspace &&
+        this.create.value?.scrollSurfaceScope({
+          scopeId: "new",
+          clipRoots: [this, workspace],
+        }),
     );
   }
 
@@ -149,13 +122,13 @@ export class CaffoldTaskNew extends LitElement {
       return [];
     }
     return (
-      this.taskCreate()?.keyboardNavigationContexts({ scopeId: "new" }) ?? []
+      this.create.value?.keyboardNavigationContexts({ scopeId: "new" }) ?? []
     );
   }
 
   ownsEditingEscape(element: Element | null) {
     return (
-      !this.hidden && Boolean(this.taskCreate()?.ownsEditingEscape(element))
+      !this.hidden && Boolean(this.create.value?.ownsEditingEscape(element))
     );
   }
 
@@ -164,8 +137,17 @@ export class CaffoldTaskNew extends LitElement {
       <header class="task-new-header">
         <h2>New Task</h2>
       </header>
-      <section class="task-new-workspace">
+      <section
+        ${drawn(this.workspace)}
+        ${this.surfaces.surface({
+          // A Surface for one directory does not carry over to the next.
+          id: `new:${this.selectedContextPath()}:scroll`,
+          clipRoots: () => [this, this.workspace.value],
+        })}
+        class="task-new-workspace"
+      >
         <caffold-task-create
+          ${drawn(this.create)}
           @caffold:task-create-intent=${this.chooseCwd}
         ></caffold-task-create>
         <section
@@ -217,8 +199,9 @@ export class CaffoldTaskNew extends LitElement {
   }
 
   private syncTaskCreate() {
+    this.requestUpdate();
     this.performUpdate();
-    const taskCreate = this.taskCreate();
+    const taskCreate = this.create.value;
     if (!taskCreate) {
       return;
     }
@@ -226,12 +209,6 @@ export class CaffoldTaskNew extends LitElement {
     taskCreate.setServerPaths(this.server);
     taskCreate.setTransportAvailable(this.transportAvailable);
     taskCreate.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
-  }
-
-  private taskCreate() {
-    return this.querySelector<CaffoldTaskCreate>(
-      ":scope > .task-new-workspace > caffold-task-create",
-    );
   }
 }
 

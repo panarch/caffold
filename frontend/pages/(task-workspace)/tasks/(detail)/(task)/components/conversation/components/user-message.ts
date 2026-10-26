@@ -1,11 +1,7 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
-import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
-  mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
+import type { ActionHintPull } from "#app/action-hints.ts";
 import type { TaskUploadLine } from "#app/api.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import {
   PROMPT_SUBMISSION_STATE,
   type PromptSubmissionState,
@@ -52,6 +48,9 @@ export class CaffoldTaskUserMessage extends LitElement {
   declare time: string;
   declare uploadLines: TaskUploadLine[];
   declare uploadProgress: UploadProgress | null;
+  private readonly attachmentList = new DrawnRef<CaffoldTaskMessageAttachments>(
+    this,
+  );
 
   constructor() {
     super();
@@ -78,6 +77,7 @@ export class CaffoldTaskUserMessage extends LitElement {
         <time>${this.time}</time>
       </div>
       <caffold-task-message-attachments
+        ${drawn(this.attachmentList)}
         align-end
         ?hidden=${!this.attachments.length}
         .attachments=${this.attachments}
@@ -102,25 +102,12 @@ export class CaffoldTaskUserMessage extends LitElement {
     }
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    if (!scopeId || this.hidden) {
-      return emptyActionHintScope();
-    }
-    return mergeActionHintScopes(
-      this.attachmentList?.actionHintScope({
-        scopeId: `${scopeId}:attachments`,
-        clipRoots: [this, ...clipRoots].filter(Boolean),
-      }),
-    );
-  }
-
-  private get attachmentList() {
-    return this.querySelector<CaffoldTaskMessageAttachments>(
-      ":scope > caffold-task-message-attachments",
-    );
+  actionHintScope({ scopeId = "", clipRoots = [] }: ActionHintPull = {}) {
+    this.performUpdate();
+    return this.attachmentList.value?.actionHintScope({
+      scopeId: `${scopeId}:attachments`,
+      clipRoots: [this, ...clipRoots],
+    });
   }
 }
 

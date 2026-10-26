@@ -8,102 +8,15 @@ import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 const { TASK_SWITCHER_SELECT_EVENT } = await import("./task-switcher-dialog.ts");
+const { ActionHints } = await import("#app/action-hints.ts");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
+const { ScrollSurfaces } = await import("#app/scroll-scope.ts");
+const { DrawnRefs } = await import("#components/drawn-refs.ts");
 const Switcher = registry.element("caffold-task-switcher-dialog");
 after(() => registry.restore());
 
-test("offers Close and one Action Hint target per listed Task", () => {
-  const rows = [row("thread/1"), row("thread-2")];
-  const switcher = openedSwitcher(rows);
-
-  const scope = switcher.actionHintScope();
-
-  assert.deepEqual(scope.targets.map(({ id }) => id), [
-    "task-switcher-dialog:close",
-    "task-switcher:thread%2F1",
-    "task-switcher:thread-2",
-  ]);
-  assert.deepEqual(scope.targets.map(({ actionId }) => actionId), [
-    "dialog.button",
-    "task.switch",
-    "task.switch",
-  ]);
-  const [close, ...rowTargets] = scope.targets;
-  assert.equal(close.control, switcher.closeControl);
-  assert.equal(close.label, "Close task switcher");
-  assert.equal(close.invalidationOwner, switcher);
-  // The badge sits beside the title it names, not across the row from it.
-  assert.ok(rowTargets.every(({ badgeAtEnd }) => !badgeAtEnd));
-  assert.deepEqual(
-    rowTargets.map(({ invalidationOwner }) => invalidationOwner),
-    rows,
-  );
-  assert.ok(scope.targets.every((target) => target.isActionable()));
-});
-
-test("retires Close once the dialog closes or its control is replaced", () => {
-  const switcher = openedSwitcher([row("thread-1")]);
-  const [close] = switcher.actionHintScope().targets;
-  const closeControl = switcher.closeControl;
-
-  assert.ok(close.isActionable());
-  switcher.closeControl = button("Close task switcher");
-  assert.ok(!close.isActionable());
-  switcher.closeControl = closeControl;
-  switcher.dialog.open = false;
-  assert.ok(!close.isActionable());
-});
-
-test("retires a row target once the dialog closes", () => {
-  const switcher = openedSwitcher([row("thread-1")]);
-  const [target] = rowTargets(switcher);
-
-  assert.ok(target.isActionable());
-  switcher.dialog.open = false;
-  assert.ok(!target.isActionable());
-});
-
-test("retires a row target whose control was replaced", () => {
-  const listed = row("thread-1");
-  const switcher = openedSwitcher([listed]);
-  const [target] = rowTargets(switcher);
-
-  assert.ok(target.isActionable());
-  listed.control = button("Open task: listed");
-  assert.ok(!target.isActionable());
-});
-
-test("retires a row target that left the list", () => {
-  const listed = row("thread-1");
-  const switcher = openedSwitcher([listed]);
-  const [target] = rowTargets(switcher);
-
-  assert.ok(target.isActionable());
-  listed.isConnected = false;
-  assert.ok(!target.isActionable());
-});
-
-test("publishes one session-bound modal context for the open dialog", () => {
-  const switcher = openedSwitcher([row("thread-1")]);
-
-  const [context] = switcher.keyboardNavigationContexts();
-
-  assert.equal(context.id, "task-switcher");
-  assert.equal(context.kind, "modal");
-  assert.equal(context.root, switcher.dialog);
-  assert.equal(context.actionHints.sessionBound, true);
-  assert.equal(context.actionHints.scope.targets.length, 2);
-  assert.equal(context.scroll.scope.surfaces.length, 1);
-});
-
-test("publishes no context while its keyboard presentation is missing", () => {
-  const switcher = openedSwitcher([row("thread-1")]);
-  switcher.dialog.querySelector = () => null;
-
-  assert.deepEqual(switcher.keyboardNavigationContexts(), []);
-});
-
 test("closes and reports the chosen Task", () => {
-  const switcher = openedSwitcher([]);
+  const switcher = openedSwitcher();
   const dispatched = [];
   switcher.dispatchEvent = (event) => dispatched.push(event);
 
@@ -120,7 +33,7 @@ test("closes and reports the chosen Task", () => {
 });
 
 test("closes when its own Action Hint session is dismissed", () => {
-  const switcher = openedSwitcher([]);
+  const switcher = openedSwitcher();
 
   switcher.handleDismiss({ target: {} });
   assert.equal(switcher.dialog.open, true);
@@ -130,7 +43,7 @@ test("closes when its own Action Hint session is dismissed", () => {
 });
 
 test("orders by when a Task last finished, not by when it was last looked at", () => {
-  const switcher = openedSwitcher([]);
+  const switcher = openedSwitcher();
   switcher.dialog.open = false;
 
   assert.equal(
@@ -147,7 +60,7 @@ test("orders by when a Task last finished, not by when it was last looked at", (
   );
 
   assert.equal(switcher.dialog.open, true);
-  assert.equal(switcher.scrollport.scrollTop, 0);
+  assert.equal(switcher.scrollport.value.scrollTop, 0);
   assert.deepEqual(threadIds(switcher), [
     "finished-last",
     "never-finished",
@@ -162,7 +75,7 @@ test("orders by when a Task last finished, not by when it was last looked at", (
 });
 
 test("takes its order from the first loaded list when it opened without one", () => {
-  const switcher = openedSwitcher([]);
+  const switcher = openedSwitcher();
   switcher.dialog.open = false;
   switcher.open({ rows: [], loaded: false });
 
@@ -183,7 +96,7 @@ test("takes its order from the first loaded list when it opened without one", ()
 });
 
 test("drops the Tasks a newer snapshot no longer has and says why the list is empty", () => {
-  const switcher = openedSwitcher([]);
+  const switcher = openedSwitcher();
   switcher.dialog.open = false;
   switcher.open({ rows: [entry("thread-1"), entry("thread-2")] });
 
@@ -198,7 +111,7 @@ test("drops the Tasks a newer snapshot no longer has and says why the list is em
 });
 
 test("draws each row's title, Section, and the one thing it says about the Task", () => {
-  const switcher = openedSwitcher([]);
+  const switcher = openedSwitcher();
   switcher.dialog.open = false;
   switcher.open({
     rows: [
@@ -228,20 +141,15 @@ test("draws each row's title, Section, and the one thing it says about the Task"
 });
 
 test("takes no snapshot while it is closed", () => {
-  const switcher = openedSwitcher([]);
+  const switcher = openedSwitcher();
   switcher.dialog.open = false;
 
   assert.equal(switcher.updateTasks({ rows: [entry("thread-1")] }), false);
   assert.deepEqual(threadIds(switcher), []);
 });
 
-// A switcher whose dialog is open and whose drawn rows are `rows`.
-function openedSwitcher(rows) {
-  const presentation = {
-    actionHintDialog: () => ({ id: "hints" }),
-    scrollModeHud: () => ({ id: "hud" }),
-    scrollSurfaceSelector: () => ({ id: "selector" }),
-  };
+// A switcher whose dialog is open.
+function openedSwitcher() {
   const dialog = {
     open: true,
     close() {
@@ -250,47 +158,24 @@ function openedSwitcher(rows) {
     showModal() {
       this.open = true;
     },
-    querySelector: () => presentation,
-    getClientRects: () => [{}],
   };
-  return Object.create(Switcher.prototype, Object.getOwnPropertyDescriptors({
-    isConnected: true,
-    tasksLoaded: true,
-    order: [],
-    entries: new Map(),
-    dialog,
-    list: { querySelectorAll: () => rows },
-    scrollport: { scrollTop: 120, getClientRects: () => [{}] },
-    closeControl: button("Close task switcher"),
-    draw() {},
-    dispatchEvent() {},
-  }));
-}
-
-function rowTargets(switcher) {
-  return switcher.actionHintScope().targets.filter(
-    ({ actionId }) => actionId === "task.switch",
+  const switcher = Object.create(
+    Switcher.prototype,
+    Object.getOwnPropertyDescriptors({
+      tasksLoaded: true,
+      order: [],
+      entries: new Map(),
+      dialog,
+      scrollport: { value: { scrollTop: 120 } },
+      draw() {},
+      dispatchEvent() {},
+    }),
   );
-}
-
-function row(threadId) {
-  const listed = {
-    dataset: { threadId },
-    isConnected: true,
-    control: button("Open task: listed"),
-    querySelector: (selector) =>
-      selector === ":scope > .task-switcher-row" ? listed.control : null,
-  };
-  return listed;
-}
-
-function button(label) {
-  return {
-    disabled: false,
-    getAttribute: (name) => (name === "aria-label" ? label : null),
-    focus() {},
-    click() {},
-  };
+  switcher.hints = new ActionHints(switcher, () => {});
+  switcher.surfaces = new ScrollSurfaces(switcher, () => {});
+  switcher.keyboard = new KeyboardContexts(switcher, () => {});
+  switcher.items = new DrawnRefs(switcher);
+  return switcher;
 }
 
 function entry(threadId, task = {}) {

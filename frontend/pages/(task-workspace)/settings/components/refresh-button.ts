@@ -1,12 +1,9 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import { busySpin } from "#app/component-styles.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 
@@ -28,6 +25,7 @@ export class CaffoldSettingsRefreshButton extends LitElement {
   declare refreshing: boolean;
   declare disabled: boolean;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
 
   constructor() {
     super();
@@ -53,6 +51,11 @@ export class CaffoldSettingsRefreshButton extends LitElement {
   render() {
     return html`
       <button
+        ${this.hints.button({
+          id: "refresh",
+          label: LABEL,
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        })}
         type="button"
         class=${this.refreshing ? "is-refreshing" : nothing}
         ?disabled=${this.refreshing || this.disabled}
@@ -68,48 +71,14 @@ export class CaffoldSettingsRefreshButton extends LitElement {
     `;
   }
 
-  actionHintScope({
-    scopeId,
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const control = this.button;
-    if (!control || control.disabled || !hasActionHintLayoutBox(control)) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:refresh`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label: LABEL,
-          control,
-          clipRoots,
-          isActionable: () =>
-            this.isConnected &&
-            isCurrent() &&
-            this.button === control &&
-            !control.disabled &&
-            hasActionHintLayoutBox(control),
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   private requestRefresh() {
     this.dispatchEvent(
       new CustomEvent(SETTINGS_REFRESH_INTENT_EVENT, { bubbles: true }),
     );
-  }
-
-  private get button() {
-    return this.querySelector<HTMLButtonElement>(":scope > button");
   }
 }
 

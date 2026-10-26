@@ -5,6 +5,7 @@ import {
   popoverActionHintDialog,
   enterActionHints,
   workspaceOcclusionTargets,
+  workspaceTargets,
 } from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import { captureReviewScreenshot, mockAgentModels } from "./support/task-fixtures.js";
@@ -524,6 +525,8 @@ test("the top of the tree says it is loading or could not load, and a failed rer
   await expect(message).toHaveText("Notes are unavailable.");
   await expect(status).toHaveAttribute("data-state", "failed");
   await expect(tree).toBeHidden();
+  await expect.poll(() => workspaceTargets(page, "notes:navigator:"))
+    .toContainEqual(["retry", "Retry loading notes"]);
 
   failTop = false;
   await retry.click();
@@ -1017,6 +1020,32 @@ test("a missing secondary leaves the primary readable and each pane owns its Inf
   expect(scope.surfaces).toHaveLength(2);
 });
 
+test("each pane offers the header actions it shows as Action Hints", { tag: "@desktop" }, async ({ page }) => {
+  await stubNotes(page);
+  await page.goto("/notes/storage?beside=inbox");
+  await expect(documentPane(page, "primary").locator("caffold-markdown-preview h1")).toHaveText("Storage");
+  await expect(documentPane(page, "secondary").locator("caffold-markdown-preview h1")).toHaveText("Inbox");
+
+  const headerTargets = async () =>
+    (await workspaceTargets(page, "notes:"))
+      .filter(([id]) => !id.includes(":tree:") && !id.includes(":content:"));
+  await expect.poll(headerTargets).toEqual([
+    ["primary:choose", "Storage decision, choose another note"],
+    ["primary:storage:details:open", "Note details"],
+    ["secondary:choose", "Inbox, choose another note"],
+    ["secondary:close", "Close side by side"],
+    ["secondary:inbox:details:open", "Note details"],
+  ]);
+
+  await documentPane(page, "secondary").getByRole("button", { name: /choose another note/ }).click();
+  await expect.poll(async () =>
+    (await headerTargets()).filter(([id]) => id.startsWith("navigator:")),
+  ).toEqual([
+    ["navigator:cancel", "Cancel note selection"],
+    ["navigator:close", "Close side by side"],
+  ]);
+});
+
 test("a paired URL on phone retains the pair while showing only the primary and semantic Back", { tag: "@phone" }, async ({ page }) => {
   await stubNotes(page);
   await page.goto("/notes/storage?beside=inbox");
@@ -1103,6 +1132,8 @@ test("a failed companion retries independently and foreground recovery refreshes
   const secondary = documentPane(page, "secondary");
   await expect(primary.locator("caffold-markdown-preview h1")).toHaveText("Storage");
   await expect(secondary.locator(".notes-workspace-message")).toHaveText("Companion unavailable");
+  await expect.poll(() => workspaceTargets(page, "notes:secondary:"))
+    .toContainEqual(["retry", "Retry"]);
   const primaryReads = counts.storage;
   failCompanion = false;
   await secondary.getByRole("button", { name: "Retry", exact: true }).click();

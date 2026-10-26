@@ -1,15 +1,7 @@
 import { html, LitElement } from "lit";
-import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
-} from "../action-hint-scope.js";
+import type { ActionHintPull } from "../action-hints.ts";
 import { type DirectoryListing, listDirectory } from "../api.ts";
-import {
-  emptyScrollSurfaceScope,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "../scroll-scope.js";
+import type { ScrollSurfacePull } from "../scroll-scope.ts";
 import {
   createRefreshCoordinator,
   type RefreshCoordinator,
@@ -18,6 +10,7 @@ import {
   type WatchChange,
 } from "../watch.ts";
 import "./file-navigator/components/list.ts";
+import { DrawnRef, drawn } from "./drawn-refs.ts";
 import type {
   CaffoldFileList,
   RefreshButtonState,
@@ -39,6 +32,7 @@ export type ResolvedPath =
   | { kind: "error"; directory: DirectoryListing | false | null };
 
 export class CaffoldFileNavigator extends LitElement {
+  private readonly list = new DrawnRef<CaffoldFileList>(this);
   private currentPath = "";
   private directoryRequestId = 0;
   private refreshGeneration = 0;
@@ -78,6 +72,7 @@ export class CaffoldFileNavigator extends LitElement {
 
   render() {
     return html`<caffold-file-list
+      ${drawn(this.list)}
       @caffold:open-directory=${this.openDirectory}
       @caffold:open-file=${this.openFile}
       @caffold:refresh-file-list=${this.refreshFileList}
@@ -175,59 +170,25 @@ export class CaffoldFileNavigator extends LitElement {
   }
 
   captureScroll() {
-    const scroller = this.querySelector<HTMLElement>(".file-tree-scroll");
-    return scroller
-      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
-      : null;
-  }
-
-  actionHintScope({
-    scopeId = "",
-    actionId = "",
-    disclosureActionId = "",
-    refreshActionId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions & {
-    disclosureActionId?: string;
-    refreshActionId?: string;
-  } = {}): ActionHintScope {
-    if (!scopeId || this.hidden) {
-      return emptyActionHintScope();
-    }
-    return this.fileList.actionHintScope({
-      scopeId,
-      actionId,
-      disclosureActionId,
-      refreshActionId,
-      clipRoots: [this, ...clipRoots],
-    });
-  }
-
-  scrollSurfaceScope({
-    scopeId = "",
-    label = "Files",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    if (!scopeId || this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    return this.fileList.scrollSurfaceScope({
-      scopeId,
-      label,
-      clipRoots: [this, ...clipRoots],
-    });
+    return this.fileList.captureScroll();
   }
 
   restoreScroll(scroll: { top: number; left: number } | null | undefined) {
-    if (!scroll) {
-      return;
-    }
-    window.requestAnimationFrame(() => {
-      const scroller = this.querySelector<HTMLElement>(".file-tree-scroll");
-      if (scroller) {
-        scroller.scrollTop = scroll.top;
-        scroller.scrollLeft = scroll.left;
-      }
+    this.fileList.restoreScroll(scroll);
+  }
+
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.fileList.actionHintScope({
+      ...pull,
+      clipRoots: [this, ...(pull.clipRoots ?? [])],
+    });
+  }
+
+  scrollSurfaceScope({ label = "Files", ...pull }: ScrollSurfacePull = {}) {
+    return this.fileList.scrollSurfaceScope({
+      ...pull,
+      label,
+      clipRoots: [this, ...(pull.clipRoots ?? [])],
     });
   }
 
@@ -308,7 +269,7 @@ export class CaffoldFileNavigator extends LitElement {
   // navigator is in the document.
   private get fileList() {
     this.performUpdate();
-    return this.querySelector(":scope > caffold-file-list") as CaffoldFileList;
+    return this.list.value as CaffoldFileList;
   }
 
   private usesExternalNavigation() {

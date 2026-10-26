@@ -55,6 +55,17 @@ export async function waitForActionHintTarget(page, accessibleName) {
   }).toBe(true);
 }
 
+// The workspace's Action Hint targets whose id starts with `prefix`, by the
+// rest of the id and their label.
+export function workspaceTargets(page, prefix) {
+  return page.locator("caffold-app-shell").evaluate(
+    (shell, scopePrefix) => shell.actionHintScope().targets
+      .filter((target) => target.id.startsWith(scopePrefix))
+      .map((target) => [target.id.slice(scopePrefix.length), target.label]),
+    prefix,
+  );
+}
+
 // Independently classify the owner-declared controls from their actual painted
 // rectangles, so browser expectations do not call the production visibility model.
 export async function workspaceOcclusionTargets(page, ownerSelector) {
@@ -67,7 +78,7 @@ export async function workspaceOcclusionTargets(page, ownerSelector) {
       bottom: (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight) };
     const result = { covered: [], clear: [] };
     for (const target of document.querySelector("caffold-app-shell").actionHintScope().targets) {
-      if (!owner.contains(target.anchor) || !target.isActionable()) continue;
+      if (!owner.contains(target.anchor)) continue;
       const anchor = target.anchor.getBoundingClientRect();
       const clips = [bounds, anchor, ...target.clipRoots.map((root) => root.getBoundingClientRect())];
       const left = Math.max(...clips.map((rect) => rect.left));

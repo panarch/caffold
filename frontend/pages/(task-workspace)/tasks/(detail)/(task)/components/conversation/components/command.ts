@@ -1,19 +1,12 @@
 import { html, LitElement, type PropertyValues } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  disclosureActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import type { TaskEvent } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import {
   type CommandPresentation,
@@ -47,6 +40,15 @@ export class CaffoldTaskCommand extends LitElement {
   // toggles the native disclosure; drawing again keeps what they chose.
   private open = false;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly details = new DrawnRef<HTMLDetailsElement>(this);
+  private readonly summary = new DrawnRef<HTMLElement>(this);
+  private readonly chevron = new DrawnRef<HTMLElement>(this);
 
   constructor() {
     super();
@@ -100,6 +102,11 @@ export class CaffoldTaskCommand extends LitElement {
             ?hidden=${!presentation.metadata}
           >${presentation.metadata}</span>
           <button
+            ${this.hints.button({
+              id: "view-output",
+              label: "View output",
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            })}
             type="button"
             class="task-command-summary-action"
             data-command-action="command-output"
@@ -111,14 +118,30 @@ export class CaffoldTaskCommand extends LitElement {
       `;
     }
     return html`
-      <details class="task-command-active" ?open=${this.open}>
+      <details
+        ${drawn(this.details)}
+        class="task-command-active"
+        ?open=${this.open}
+        @toggle=${this.followDisclosure}
+      >
         <summary
+          ${drawn(this.summary)}
+          ${this.hints.disclosure({
+            id: `disclosure:${encodeURIComponent(presentation.commandKey)}`,
+            label: `${this.open ? "Collapse" : "Expand"} Command`,
+            action: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+            anchor: () => this.chevron.value,
+          })}
           class="task-command-active-summary"
           @click=${this.toggleDisclosure}
         >
           <span class="task-command-active-label">
             <span>Command</span>
-            <span class="task-command-disclosure-chevron" aria-hidden="true">
+            <span
+              ${drawn(this.chevron)}
+              class="task-command-disclosure-chevron"
+              aria-hidden="true"
+            >
               ${inlineIcon(
                 "ChevronRight",
                 "Collapsed",
@@ -136,9 +159,14 @@ export class CaffoldTaskCommand extends LitElement {
           >${presentation.statusLabel}</span>
           <time class="task-command-active-time">${presentation.time}</time>
         </summary>
-        <pre class="task-command-active-output">${activeCommandText(
-          presentation,
-        )}</pre>
+        <pre
+          ${this.surfaces.surface({
+            id: "output",
+            axes: ["horizontal"],
+            clipRoots: () => [this, this.details.value],
+          })}
+          class="task-command-active-output"
+        >${activeCommandText(presentation)}</pre>
       </details>
     `;
   }
@@ -166,142 +194,18 @@ export class CaffoldTaskCommand extends LitElement {
   }
 
   disclosureAnchorTop() {
-    return (
-      this.disclosure
-        ?.querySelector(":scope > summary")
-        ?.getBoundingClientRect().top ?? null
-    );
+    return this.summary.value?.getBoundingClientRect().top ?? null;
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    const commandKey = this.commandKey;
-    if (!scopeId || !commandKey || this.hidden) {
-      return emptyActionHintScope();
-    }
-    if (this.presentation.mode === "active") {
-      const disclosure = this.disclosure;
-      const control = disclosure?.querySelector<HTMLElement>(
-        ":scope > summary.task-command-active-summary",
-      );
-      const anchor = control?.querySelector(
-        ":scope > .task-command-active-label > .task-command-disclosure-chevron",
-      );
-      if (!disclosure || !control || !anchor) {
-        return emptyActionHintScope();
-      }
-      return {
-        blocked: false,
-        targets: [
-          disclosureActionHintTarget({
-            invalidationOwner: this,
-            id: `${scopeId}:disclosure:${encodeURIComponent(commandKey)}`,
-            actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-            label: `${disclosure.open ? "Collapse" : "Expand"} Command`,
-            control,
-            anchor,
-            clipRoots: [this, ...clipRoots].filter(Boolean),
-            isActionable: () =>
-              this.isConnected &&
-              !this.hidden &&
-              this.commandKey === commandKey &&
-              this.presentation.mode === "active" &&
-              this.disclosure === disclosure &&
-              disclosure.querySelector(
-                ":scope > summary.task-command-active-summary",
-              ) === control &&
-              control.querySelector(
-                ":scope > .task-command-active-label > .task-command-disclosure-chevron",
-              ) === anchor,
-          }),
-        ],
-        mutationRoots: [this],
-        scrollRoots: [],
-      };
-    }
-    const control = this.action;
-    if (!control || control.disabled) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:view-output`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label:
-            control.getAttribute("aria-label") ||
-            control.textContent?.trim() ||
-            "View output",
-          control,
-          clipRoots: [this, ...clipRoots].filter(Boolean),
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.commandKey === commandKey &&
-            this.presentation.mode === "terminal" &&
-            this.action === control &&
-            !control.disabled,
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   scrollSurfaceScope({
-    scopeId = "",
     label = "Command output",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const commandKey = this.commandKey;
-    const disclosure = this.disclosure;
-    const scrollport = disclosure?.querySelector<HTMLElement>(
-      ":scope > .task-command-active-output",
-    );
-    if (
-      !scopeId ||
-      !commandKey ||
-      this.presentation.mode !== "active" ||
-      !disclosure ||
-      !scrollport ||
-      this.hidden
-    ) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:output`,
-          label,
-          scrollport,
-          axes: ["horizontal"],
-          clipRoots: [this, disclosure, scrollport, ...clipRoots].filter(
-            Boolean,
-          ),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.commandKey === commandKey &&
-            this.presentation.mode === "active" &&
-            this.disclosure === disclosure &&
-            disclosure.open &&
-            disclosure.querySelector(":scope > .task-command-active-output") ===
-              scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, label });
   }
 
   private toggleDisclosure() {
@@ -322,6 +226,11 @@ export class CaffoldTaskCommand extends LitElement {
     );
   }
 
+  // The disclosure has opened or closed, so its Action Hint says the other.
+  private followDisclosure() {
+    this.requestUpdate();
+  }
+
   private requestOutput(event: Event) {
     event.stopPropagation();
     if (!this.commandKey) {
@@ -337,15 +246,7 @@ export class CaffoldTaskCommand extends LitElement {
   }
 
   private get disclosure() {
-    return this.querySelector<HTMLDetailsElement>(
-      ":scope > details.task-command-active",
-    );
-  }
-
-  private get action() {
-    return this.querySelector<HTMLButtonElement>(
-      ":scope > .task-command-summary .task-command-summary-action",
-    );
+    return this.details.value;
   }
 }
 

@@ -1,17 +1,14 @@
 import { html, LitElement, nothing } from "lit";
-import type { ActionHintScope } from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import { readFile } from "#app/api.ts";
-import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/loading-text.ts";
 import "#components/markdown-preview.ts";
@@ -52,6 +49,12 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
   private previewShown = false;
   private failure = "";
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
+  private readonly preview = new DrawnRef<CaffoldMarkdownPreview>(this);
 
   createRenderRoot() {
     return this;
@@ -89,8 +92,8 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
     };
     this.opener = opener instanceof HTMLElement ? opener : null;
     this.show("loading");
-    const dialog = this.dialog;
-    if (!dialog.open) {
+    const dialog = this.dialog.value;
+    if (dialog && !dialog.open) {
       dialog.showModal();
     }
     void this.loadCurrent();
@@ -98,7 +101,7 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
   }
 
   refreshOpenDocument() {
-    if (!this.dialog?.open || !this.current) {
+    if (!this.dialog.value?.open || !this.current) {
       return;
     }
     void this.loadCurrent({ preserveScroll: true });
@@ -108,108 +111,34 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
     this.requestId += 1;
     this.requestController?.abort();
     this.requestController = null;
-    this.preview?.releaseImages();
+    this.preview.value?.releaseImages();
     this.opener = null;
     this.current = null;
-    if (this.dialog?.open) {
-      this.dialog.close("deactivate");
+    const dialog = this.dialog.value;
+    if (dialog?.open) {
+      dialog.close("deactivate");
     }
-  }
-
-  actionHintScope(): ActionHintScope {
-    const dialog = this.dialog;
-    const path = this.current?.path ?? "";
-    if (!dialog) {
-      return emptyActionHintScope();
-    }
-    const controls = [
-      ["close", ".current-plan-document-close"],
-      ["retry", '[data-current-plan-dialog-action="retry"]'],
-    ];
-    const isCurrent = () =>
-      this.isConnected &&
-      this.dialog === dialog &&
-      dialog.open &&
-      this.current?.path === path &&
-      Boolean(path);
-    const preview = this.preview;
-    return mergeActionHintScopes(
-      {
-        blocked: false,
-        targets: controls.flatMap(([identity, selector]) => {
-          const control = dialog.querySelector<HTMLButtonElement>(selector);
-          if (!control) {
-            return [];
-          }
-          return [
-            buttonActionHintTarget({
-              invalidationOwner: this,
-              id: `current-plan-document:${encodeURIComponent(path)}:${identity}`,
-              actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-              label:
-                control.getAttribute("aria-label") ||
-                control.textContent?.trim() ||
-                identity,
-              control,
-              clipRoots: [dialog],
-              isActionable: () =>
-                isCurrent() &&
-                dialog.querySelector(selector) === control &&
-                hasActionHintLayoutBox(control) &&
-                !control.disabled,
-            }),
-          ];
-        }),
-        mutationRoots: [this],
-        scrollRoots: [],
-      },
-      preview?.actionHintScope({
-        scopeId: `current-plan-document:${encodeURIComponent(path)}:preview`,
-        linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
-        clipRoots: [dialog],
-        isCurrent: () => isCurrent() && this.preview === preview,
-      }),
-    );
   }
 
   keyboardNavigationContexts() {
-    const dialog = this.dialog;
-    const preview = this.preview;
-    const presentation =
-      dialog?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const hintDialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (!dialog || !preview || !hintDialog || !hud || !selector) {
-      return [];
-    }
-    const path = this.current?.path ?? "";
     const label = this.current?.label ?? "Document";
-    const scope = !path
-      ? emptyScrollSurfaceScope()
-      : preview.scrollSurfaceScope({
-          scopeId: `current-plan:${path}:preview`,
+    return this.keyboard.contexts({
+      actionHints: (pull) =>
+        mergeActionHintScopes(
+          this.hints.scope(pull),
+          this.preview.value?.actionHintScope({
+            ...pull,
+            scopeId: `${pull.scopeId}:preview`,
+            actions: { link: ACTION_HINT_ACTION.LINK_OPEN },
+          }),
+        ),
+      scroll: (pull) =>
+        this.preview.value?.scrollSurfaceScope({
+          ...pull,
+          scopeId: `${pull.scopeId}:preview`,
           label: `${label} document`,
-          clipRoots: [dialog],
-          isCurrent: () =>
-            this.isConnected &&
-            this.dialog === dialog &&
-            dialog.open &&
-            this.current?.path === path &&
-            this.preview === preview &&
-            !preview.hidden,
-        });
-    return [
-      keyboardNavigationContext({
-        id: path ? `current-plan-document:${path}` : "current-plan-document",
-        kind: "modal",
-        root: dialog,
-        actionHints: { dialog: hintDialog, scope: this.actionHintScope() },
-        scroll: { hud, selector, scope },
-      }),
-    ];
+        }) ?? emptyScrollSurfaceScope(),
+    });
   }
 
   render() {
@@ -221,6 +150,12 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
       "current-plan-document-close-icon",
     );
     return html`<dialog
+      ${drawn(this.dialog)}
+      ${this.keyboard.modal({
+        id: current
+          ? `current-plan-document:${current.path}`
+          : "current-plan-document",
+      })}
       closedby="any"
       aria-labelledby="current-plan-document-title"
       @close=${this.handleClose}
@@ -237,6 +172,11 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
           </div>
           <form method="dialog">
             <button
+              ${this.hints.button({
+                id: "close",
+                label: "Close document",
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
               type="submit"
               class="current-plan-document-close"
               aria-label="Close document"
@@ -266,17 +206,24 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
           >
             <p data-current-plan-dialog-error-message>${this.failure}</p>
             <button
+              ${this.hints.button({
+                id: "retry",
+                label: "Retry",
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
               type="button"
               data-current-plan-dialog-action="retry"
               @click=${this.retry}
             >Retry</button>
           </div>
           <caffold-markdown-preview
+            ${drawn(this.preview)}
             ?hidden=${!this.previewShown}
           ></caffold-markdown-preview>
         </div>
       </article>
       <caffold-keyboard-navigation-presentation
+        ${this.keyboard.presentation()}
       ></caffold-keyboard-navigation-presentation>
     </dialog>`;
   }
@@ -290,7 +237,9 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
     this.requestController?.abort();
     const controller = new AbortController();
     this.requestController = controller;
-    const scroll = preserveScroll ? this.preview.getScrollState() : null;
+    const scroll = preserveScroll
+      ? (this.preview.value?.getScrollState() ?? null)
+      : null;
     this.show(preserveScroll ? "refreshing" : "loading");
     try {
       const file = await readFile(current.path, controller.signal);
@@ -299,7 +248,7 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
       }
       this.requestController = null;
       this.show("shown");
-      this.preview.setMarkdown(file.content, {
+      this.preview.value?.setMarkdown(file.content, {
         scroll,
         images: {
           folder: current.path.split("/").slice(0, -1).join("/"),
@@ -339,7 +288,7 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
     return (
       requestId === this.requestId &&
       this.current?.path === path &&
-      Boolean(this.dialog?.open)
+      Boolean(this.dialog.value?.open)
     );
   }
 
@@ -348,29 +297,19 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
   }
 
   private handleClose() {
-    if (this.dialog.open) {
+    if (this.dialog.value?.open) {
       return;
     }
     this.requestId += 1;
     this.requestController?.abort();
     this.requestController = null;
-    this.preview?.releaseImages();
+    this.preview.value?.releaseImages();
     const opener = this.opener;
     this.opener = null;
     this.current = null;
     if (opener?.isConnected) {
       opener.focus();
     }
-  }
-
-  private get dialog() {
-    return this.querySelector(":scope > dialog") as HTMLDialogElement;
-  }
-
-  private get preview() {
-    return this.querySelector(
-      ":scope > dialog caffold-markdown-preview",
-    ) as CaffoldMarkdownPreview;
   }
 }
 

@@ -8,6 +8,7 @@ import { templateHtml } from "../../../../../../../../../../tests/support/lit-te
 
 const registry = installCustomElementUnitRegistry();
 await import("./suggested-prompts.ts");
+const { ActionHints } = await import("#app/action-hints.ts");
 const suggestedPrompts = registry
   .element("caffold-task-assistant-message-suggested-prompts")
   .prototype;
@@ -16,23 +17,8 @@ after(() => registry.restore());
 const COMPARE = { label: "Compare vendors", prompt: "Compare the two vendors." };
 const TRACE = { label: "Trace a payment", prompt: "Explain the card approval flow." };
 
-function control(index, label, { disabled = false } = {}) {
-  return {
-    dataset: { suggestedPrompt: `${index}` },
-    textContent: label,
-    disabled,
-    clicks: 0,
-    getAttribute: () => null,
-    getClientRects: () => [{}],
-    focus() {},
-    click() {
-      this.clicks += 1;
-    },
-  };
-}
-
 function host(properties = {}) {
-  return Object.create(suggestedPrompts, {
+  const owner = Object.create(suggestedPrompts, {
     ...Object.getOwnPropertyDescriptors({
       isConnected: true,
       hidden: false,
@@ -49,6 +35,8 @@ function host(properties = {}) {
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
+  owner.hints = new ActionHints(owner, () => {});
+  return owner;
 }
 
 function offer(owner, prompts) {
@@ -126,34 +114,4 @@ test("asks for the chosen request to be sent to the Composer", () => {
     threadId: "thread-a",
     prompt: TRACE.prompt,
   });
-});
-
-test("offers each choosable request as a keyboard action", () => {
-  const first = control(0, COMPARE.label);
-  const second = control(1, TRACE.label, { disabled: true });
-  const owner = host({ buttons: [first, second] });
-  const message = { id: "message" };
-
-  const scope = owner.actionHintScope({
-    scopeId: "message:a:suggested-prompts",
-    clipRoots: [message],
-  });
-
-  assert.deepEqual(scope.targets.map(({ id, label }) => [id, label]), [
-    ["message:a:suggested-prompts:prompt:1", "Compare vendors"],
-  ]);
-  assert.deepEqual(scope.mutationRoots, [owner]);
-  const [target] = scope.targets;
-  assert.deepEqual(target.clipRoots, [owner, message]);
-  assert.equal(target.isActionable(), true);
-  target.activate();
-  assert.equal(first.clicks, 1);
-
-  first.disabled = true;
-  assert.equal(target.isActionable(), false);
-  owner.hidden = true;
-  assert.deepEqual(
-    owner.actionHintScope({ scopeId: "message:a:suggested-prompts" }).targets,
-    [],
-  );
 });

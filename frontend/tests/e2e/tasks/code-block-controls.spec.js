@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   actionHintDialog,
   activateActionHint,
+  workspaceTargets,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
@@ -68,6 +69,9 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   await expect(finalMarkdown.getByRole("button", { name: "Copy code" })).toHaveCount(3);
   const previewButton = finalMarkdown.getByRole("button", { name: "Preview Markdown" });
   await expect(previewButton).toHaveCount(1);
+  await expect.poll(async () =>
+    (await workspaceTargets(page, "task:")).map(([, label]) => label),
+  ).toContain("Preview Markdown");
   await expect(blocks.nth(2).getByRole("button", { name: "Preview Markdown" })).toHaveCount(1);
   await expect(previewButton).not.toHaveAttribute("aria-pressed", /.*/);
   await expect(finalMarkdown.locator(".code-block-action-icon-svg")).toHaveCount(7);

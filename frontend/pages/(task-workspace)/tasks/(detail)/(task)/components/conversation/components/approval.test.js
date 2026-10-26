@@ -5,6 +5,8 @@ import { templateHtml } from "../../../../../../../../tests/support/lit-template
 
 const registry = installCustomElementUnitRegistry();
 await import("./approval.ts");
+const { ActionHints } = await import("#app/action-hints.ts");
+const { ScrollSurfaces } = await import("#app/scroll-scope.ts");
 const Approval = registry.element("caffold-task-approval");
 after(() => registry.restore());
 
@@ -89,82 +91,10 @@ test("refresh, errors, and transport changes retain details; new identity clears
   assert.equal(owner.errorMessage, "");
 });
 
-test("offered decisions expose native activation with card-owned invalidation", () => {
-  const choices = ["allow", "allowForSession", "allowAlways", "deny", "cancel"];
-  let controls = choices.map((decision) => ({
-    dataset: { decision }, textContent: decision, disabled: false,
-    focus() {}, click() { this.clicks = (this.clicks ?? 0) + 1; },
-  }));
-  const owner = approvalHost({
-    request: { approvalId: "same", decisions: choices },
-    get actions() { return controls; },
-  });
-  let current = true;
-  const scope = owner.actionHintScope({ scopeId: "approval:a", isCurrent: () => current });
-  assert.deepEqual(scope.targets.map((target) => target.id), choices.map((choice) => `approval:a:${choice}`));
-  assert.ok(scope.targets.every((target) => target.invalidationOwner === owner));
-  const target = scope.targets[1];
-  assert.equal(target.isActionable(), true);
-  target.activate();
-  assert.equal(controls[1].clicks, 1);
-  for (const field of ["disabled", "hidden"]) {
-    owner[field] = true;
-    assert.equal(target.isActionable(), false);
-    assert.deepEqual(owner.actionHintScope({ scopeId: "approval:a" }).targets, []);
-    owner[field] = false;
-  }
-  owner.active = false;
-  assert.equal(target.isActionable(), false);
-  owner.active = true;
-  owner.isConnected = false;
-  assert.equal(target.isActionable(), false);
-  owner.isConnected = true;
-  current = false;
-  assert.equal(target.isActionable(), false);
-  current = true;
-  owner.threadId = "other";
-  assert.equal(target.isActionable(), false);
-  owner.threadId = "a";
-  owner.request.decisions = ["allow"];
-  assert.equal(target.isActionable(), false);
-  owner.request.decisions = choices;
-  controls = [];
-  assert.equal(target.isActionable(), false);
-});
-
-test("command and argument scroll surfaces expire when their DOM or Task is replaced", () => {
-  let outputs = ["Approval command", "Document"].map((label) => ({
-    getClientRects: () => [{}], getAttribute: () => label,
-  }));
-  const owner = approvalHost({
-    querySelectorAll: () => outputs,
-    contains: (node) => outputs.includes(node),
-  });
-  let current = true;
-  const scope = owner.scrollSurfaceScope({ scopeId: "approval:a", isCurrent: () => current });
-  assert.deepEqual(scope.surfaces.map(({ label, axes }) => ({ label, axes })), [
-    { label: "Approval command", axes: ["horizontal"] },
-    { label: "Document", axes: ["horizontal"] },
-  ]);
-  const surface = scope.surfaces[1];
-  assert.equal(surface.isEligible(), true);
-  owner.active = false;
-  assert.equal(surface.isEligible(), false);
-  owner.active = true;
-  current = false;
-  assert.equal(surface.isEligible(), false);
-  current = true;
-  owner.threadId = "b";
-  assert.equal(surface.isEligible(), false);
-  owner.threadId = "a";
-  outputs = [];
-  assert.equal(surface.isEligible(), false);
-});
-
 // A card's fields as its conversation sets them. Native DOM retention and
 // activation are exercised by the owning approval browser spec.
 function approvalHost(properties = {}) {
-  return Object.create(Approval.prototype, {
+  const host = Object.create(Approval.prototype, {
     ...Object.getOwnPropertyDescriptors({
       threadId: "a",
       request: { approvalId: "same" },
@@ -177,6 +107,9 @@ function approvalHost(properties = {}) {
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
+  host.hints = new ActionHints(host, () => {});
+  host.surfaces = new ScrollSurfaces(host, () => {});
+  return host;
 }
 
 function cardHtml(request, properties = {}) {

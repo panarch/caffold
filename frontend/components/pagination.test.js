@@ -10,7 +10,7 @@ await import("./pagination.ts");
 const pagination = registry.element("caffold-pagination").prototype;
 after(() => registry.restore());
 
-test("combines the scopes its page buttons provide and watches its own button set", () => {
+test("combines the scopes its page buttons declare and watches its own button set", () => {
   const received = [];
   const button = (id) => ({
     actionHintScope(options) {
@@ -25,7 +25,7 @@ test("combines the scopes its page buttons provide and watches its own button se
   });
   const previous = button("issues:page:page:previous:1");
   const next = button("issues:page:page:next:3");
-  const owner = paginationWith([previous, next]);
+  const owner = paginationWith({ previous, next });
   const options = { scopeId: "issues:page", actionId: "navigation.page", clipRoots: [] };
 
   const scope = owner.actionHintScope(options);
@@ -38,26 +38,19 @@ test("combines the scopes its page buttons provide and watches its own button se
   assert.deepEqual(scope.mutationRoots, [owner, previous, next]);
 });
 
-test("provides nothing while hidden or outside an Action Hint scope", () => {
-  const button = {
-    actionHintScope() {
-      throw new Error("a hidden pagination does not ask its buttons");
+// A drawn pagination whose own declarations are none and whose page buttons
+// are the given ones, by kind.
+function paginationWith(buttons) {
+  const owner = Object.create(pagination);
+  return Object.assign(owner, {
+    hints: {
+      scope: () => ({
+        blocked: false,
+        targets: [],
+        mutationRoots: [owner],
+        scrollRoots: [],
+      }),
     },
-  };
-
-  assert.deepEqual(
-    paginationWith([button], { hidden: true }).actionHintScope({ scopeId: "issues:page", actionId: "navigation.page" }).targets,
-    [],
-  );
-  assert.deepEqual(paginationWith([button]).actionHintScope({}).targets, []);
-});
-
-function paginationWith(buttons, { hidden = false } = {}) {
-  return Object.assign(Object.create(pagination), {
-    hidden,
-    querySelectorAll(selector) {
-      assert.equal(selector, ":scope > .pagination-panel > caffold-pagination-button");
-      return buttons;
-    },
+    pageButtons: { get: (kind) => buttons[kind] },
   });
 }

@@ -1,23 +1,18 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
-import type {
-  ActionHintScope,
-  ActionHintScopeOptions,
-} from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { Task, TaskWorktree } from "#app/api.ts";
 import { compactIconButton } from "#app/component-styles.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
-  keyboardNavigationContext,
-  popoverScrollSurfaceScope,
-} from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
+  KeyboardContexts,
+} from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#tasks/components/task-status-chip.ts";
 import { formatTaskStatus, taskStatusView } from "#tasks/runtime-state.ts";
@@ -69,9 +64,7 @@ export function taskInfoSnapshot(
  * The Task's details button in the summary: its status, and a popover with
  * the Task's thread, directory, and worktree above its actions.
  *
- * The summary hands it the snapshot it draws, and reads its Action Hints and
- * keyboard context right after, so those first finish any drawing that is
- * due. The popover closes when another Task takes this one's place.
+ * The popover closes when another Task takes this one's place.
  */
 export class CaffoldTaskDetailInfo extends LitElement {
   static properties = {
@@ -81,6 +74,13 @@ export class CaffoldTaskDetailInfo extends LitElement {
   declare snapshot: TaskInfoSnapshot;
   private readonly popoverId = `task-detail-info-${++taskInfoInstanceId}`;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly infoButton = new DrawnRef<HTMLButtonElement>(this);
+  private readonly infoPopover = new DrawnRef<HTMLDivElement>(this);
+  private readonly actions = new DrawnRef<CaffoldTaskDetailInfoActions>(this);
 
   constructor() {
     super();
@@ -131,12 +131,20 @@ export class CaffoldTaskDetailInfo extends LitElement {
     const directory = canonical
       ? canonical.cwdPath || canonical.cwd || this.snapshot.contextPath
       : "";
+    const threadId = taskThreadId(task);
+    const label = `Task details, ${statusLabel}`;
     return html`
       <button
+        ${drawn(this.infoButton)}
+        ${this.hints.button({
+          id: `${threadId}:details:open`,
+          label,
+          action: ACTION_HINT_ACTION.TASK_DETAILS_OPEN,
+        })}
         type="button"
         class="task-detail-info-button"
         popovertarget=${this.popoverId}
-        aria-label=${`Task details, ${statusLabel}`}
+        aria-label=${label}
         title=${`Status: ${statusLabel}`}
       >${
         showsStatus
@@ -147,6 +155,12 @@ export class CaffoldTaskDetailInfo extends LitElement {
           : inlineIcon("Info", "Task details", "task-action-icon")
       }</button>
       <div
+        ${drawn(this.infoPopover)}
+        ${this.keyboard.popover({
+          id: `${threadId}:details`,
+          label: "Task details",
+          sessionBound: true,
+        })}
         id=${this.popoverId}
         class="task-detail-popover"
         popover="auto"
@@ -163,7 +177,7 @@ export class CaffoldTaskDetailInfo extends LitElement {
           </div>
           <div>
             <dt>Thread</dt>
-            <dd data-task-info-field="thread">${taskThreadId(task)}</dd>
+            <dd data-task-info-field="thread">${threadId}</dd>
           </div>
           <div data-task-info-provider-context ?hidden=${!canonical}>
             <dt>Working directory</dt>
@@ -181,17 +195,19 @@ export class CaffoldTaskDetailInfo extends LitElement {
           </div>
         </dl>
         <caffold-task-detail-info-actions
+          ${drawn(this.actions)}
           .snapshot=${this.snapshot}
           @caffold:task-detail-info-action-intent=${this.actionIntent}
         ></caffold-task-detail-info-actions>
         <caffold-keyboard-navigation-presentation
+          ${this.keyboard.presentation()}
         ></caffold-keyboard-navigation-presentation>
       </div>
     `;
   }
 
   deactivate() {
-    const popover = this.infoPopover;
+    const popover = this.infoPopover.value;
     if (!popover?.matches(":popover-open")) {
       return;
     }
@@ -202,40 +218,13 @@ export class CaffoldTaskDetailInfo extends LitElement {
     }
   }
 
-  actionHintScope({
-    scopeId = "task-detail",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    this.performUpdate();
-    const threadId = taskThreadId(this.snapshot.task);
-    const control = this.infoButton;
-    const popover = this.infoPopover;
-    if (!threadId || !scopeId || !control || !popover) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:${threadId}:details:open`,
-          actionId: ACTION_HINT_ACTION.TASK_DETAILS_OPEN,
-          label: control.getAttribute("aria-label") || "Task details",
-          control,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            taskThreadId(this.snapshot.task) === threadId &&
-            this.infoButton === control &&
-            this.infoPopover === popover &&
-            control.getAttribute("popovertarget") === popover.id &&
-            !control.disabled &&
-            !popover.matches(":popover-open"),
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  // Where focus returns once what the popover opened closes.
+  detailsButton() {
+    return this.infoButton.value ?? null;
+  }
+
+  actionHintScope({ scopeId = "task-detail", ...pull }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   keyboardNavigationContexts({
@@ -243,63 +232,15 @@ export class CaffoldTaskDetailInfo extends LitElement {
   }: {
     scopeId?: string;
   } = {}) {
-    this.performUpdate();
-    const threadId = taskThreadId(this.snapshot.task);
-    const popover = this.infoPopover;
-    const presentation =
-      popover?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const dialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (!threadId || !scopeId || !popover || !dialog || !hud || !selector) {
-      return [];
-    }
-    const contextId = `${scopeId}:${threadId}:details`;
-    const actions = popover.querySelector<CaffoldTaskDetailInfoActions>(
-      ":scope > caffold-task-detail-info-actions",
-    );
-    return [
-      keyboardNavigationContext({
-        id: contextId,
-        kind: "popover",
-        root: popover,
-        actionHints: {
-          dialog,
-          scope: mergeActionHintScopes(
-            actions?.actionHintScope({
-              scopeId: contextId,
-              clipRoots: [popover],
-            }),
-            {
-              blocked: false,
-              targets: [],
-              mutationRoots: [popover],
-              scrollRoots: [popover],
-            },
-          ),
-          sessionBound: true,
-        },
-        scroll: {
-          hud,
-          selector,
-          scope: popoverScrollSurfaceScope({
-            id: contextId,
-            label: "Task details",
-            popover,
-            isCurrent: () =>
-              this.isConnected &&
-              taskThreadId(this.snapshot.task) === threadId &&
-              this.infoPopover === popover,
-          }),
-        },
-      }),
-    ];
+    return this.keyboard.contexts({
+      scopeId,
+      actionHints: (pull) =>
+        mergeActionHintScopes(this.actions.value?.actionHintScope(pull)),
+    });
   }
 
   private handleDismiss(event: Event) {
-    if (event.target === this.infoPopover) {
+    if (event.target === this.infoPopover.value) {
       this.deactivate();
     }
   }
@@ -313,16 +254,6 @@ export class CaffoldTaskDetailInfo extends LitElement {
         detail: { type: event.detail.type },
       }),
     );
-  }
-
-  private get infoButton() {
-    return this.querySelector<HTMLButtonElement>(
-      ":scope > .task-detail-info-button",
-    );
-  }
-
-  private get infoPopover() {
-    return this.querySelector<HTMLElement>(":scope > .task-detail-popover");
   }
 }
 

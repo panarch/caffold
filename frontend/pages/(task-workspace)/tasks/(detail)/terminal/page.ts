@@ -1,15 +1,10 @@
 import { html, LitElement } from "lit";
-import type {
-  ActionHintScope,
-  ActionHintScopeOptions,
-  ActionHintTarget,
-} from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
+  type ActionHintPull,
+  ActionHints,
   emptyActionHintScope,
-  textboxActionHintTarget,
-} from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import {
   killTerminal,
   openTerminal,
@@ -17,6 +12,7 @@ import {
   type TerminalSubject,
 } from "#app/api.ts";
 import { compactIconButton } from "#app/component-styles.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon } from "#components/icons.ts";
 import {
   type CaffoldTerminalView,
@@ -64,8 +60,7 @@ const FALLBACK_SIZE: TerminalSize = Object.freeze({ cols: 80, rows: 24 });
  *
  * The Detail layout activates it for a subject; everything after that follows
  * the control model in `page/model.ts`, whose single transition authority is
- * `apply`. The backend owns whether a terminal exists and who sees it. The
- * Detail layout reads the screen right after each change, so it draws at once.
+ * `apply`. The backend owns whether a terminal exists and who sees it.
  */
 export class CaffoldTerminalPage extends LitElement {
   private state: TerminalState = initialTerminalState();
@@ -82,6 +77,9 @@ export class CaffoldTerminalPage extends LitElement {
   private headerChoice = false;
   private stopKeyboardWatch: (() => void) | null = null;
   private readonly iconsReady = () => this.draw();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly terminalView = new DrawnRef<CaffoldTerminalView>(this);
+  private readonly specialKeys = new DrawnRef<CaffoldTerminalSpecialKeys>(this);
 
   createRenderRoot() {
     return this;
@@ -160,63 +158,14 @@ export class CaffoldTerminalPage extends LitElement {
   }
 
   ownsInput(element: Element | null | undefined) {
-    return Boolean(this.terminalView?.ownsInput(element));
+    return Boolean(this.terminalView.value?.ownsInput(element));
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    this.performUpdate();
-    if (!scopeId || this.hidden || this.state.node === TERMINAL_NODE.INACTIVE) {
-      return emptyActionHintScope();
-    }
-    const targets: ActionHintTarget[] = [];
-    const view = this.terminalView;
-    const input = view?.inputControl();
-    if (view && input && this.state.node === TERMINAL_NODE.LIVE) {
-      targets.push(
-        textboxActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:terminal:input`,
-          actionId: ACTION_HINT_ACTION.TERMINAL_FOCUS,
-          label: "Focus terminal",
-          control: input,
-          anchor: view,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            this.state.node === TERMINAL_NODE.LIVE &&
-            this.terminalView?.inputControl() === input,
-        }),
-      );
-    }
-    for (const control of this.actionButtons()) {
-      const action = control.dataset.terminalAction;
-      targets.push(
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:terminal:${action}`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label:
-            control.getAttribute("aria-label") ||
-            (control.textContent ?? "").trim(),
-          control,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !control.disabled &&
-            control.getClientRects().length > 0 &&
-            this.actionButtons().includes(control),
-        }),
-      );
-    }
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    const scope = this.hints.scope(pull);
+    return this.state.node === TERMINAL_NODE.INACTIVE
+      ? emptyActionHintScope()
+      : scope;
   }
 
   protected updated() {
@@ -238,6 +187,11 @@ export class CaffoldTerminalPage extends LitElement {
     return html`
       <div class="terminal-page-bar">
         <button
+          ${this.hints.button({
+            id: "terminal:special-keys",
+            label: "Special keys",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           class="terminal-page-button"
           data-terminal-action="special-keys"
@@ -251,6 +205,11 @@ export class CaffoldTerminalPage extends LitElement {
           "terminal-page-icon",
         )}</button>
         <button
+          ${this.hints.button({
+            id: "terminal:kill",
+            label: "Kill terminal",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           class="terminal-page-button"
           data-terminal-action="kill"
@@ -260,6 +219,11 @@ export class CaffoldTerminalPage extends LitElement {
           @click=${this.killTerminal}
         >${inlineIcon("Trash2", "Kill terminal", "terminal-page-icon")}</button>
         <button
+          ${this.hints.button({
+            id: "terminal:header",
+            label: headerLabel,
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           class="terminal-page-button"
           data-terminal-action="header"
@@ -273,6 +237,11 @@ export class CaffoldTerminalPage extends LitElement {
           "terminal-page-icon",
         )}</button>
         <button
+          ${this.hints.button({
+            id: "terminal:leave",
+            label: "Leave terminal",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           class="terminal-page-button"
           data-terminal-action="leave"
@@ -288,6 +257,14 @@ export class CaffoldTerminalPage extends LitElement {
       </div>
       <div class="terminal-page-body">
         <caffold-terminal-view
+          ${drawn(this.terminalView)}
+          ${this.hints.textbox({
+            id: "terminal:input",
+            label: "Focus terminal",
+            action: ACTION_HINT_ACTION.TERMINAL_FOCUS,
+            when: node === TERMINAL_NODE.LIVE,
+            control: () => this.terminalView.value?.inputControl(),
+          })}
           ?hidden=${!showsTerminal}
           @caffold:terminal-view-input=${this.sendInput}
           @caffold:terminal-view-resize=${this.resizeTerminal}
@@ -300,6 +277,11 @@ export class CaffoldTerminalPage extends LitElement {
             ?hidden=${!error}
           >${error}</p>
           <button
+            ${this.hints.button({
+              id: "terminal:open",
+              label: notice?.action ?? "",
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            })}
             type="button"
             class="task-secondary-button"
             data-terminal-action="open"
@@ -309,6 +291,7 @@ export class CaffoldTerminalPage extends LitElement {
         </div>
       </div>
       <caffold-terminal-special-keys
+        ${drawn(this.specialKeys)}
         ?hidden=${!this.specialKeysShown}
         @caffold:terminal-special-key=${this.sendSpecialKey}
       ></caffold-terminal-special-keys>
@@ -360,10 +343,10 @@ export class CaffoldTerminalPage extends LitElement {
         this.closeConnection();
         break;
       case TERMINAL_EFFECT.CLEAR:
-        this.terminalView?.close();
+        this.terminalView.value?.close();
         break;
       case TERMINAL_EFFECT.FOCUS:
-        this.terminalView?.focus();
+        this.terminalView.value?.focus();
         break;
       case TERMINAL_EFFECT.RELEASE_FOCUS:
         if (this.contains(document.activeElement)) {
@@ -385,7 +368,7 @@ export class CaffoldTerminalPage extends LitElement {
   }
 
   private async connect(generation: number, mode: TerminalMode | null) {
-    const view = this.terminalView;
+    const view = this.terminalView.value;
     const subject = this.subject;
     if (!view || !subject) {
       return;
@@ -429,7 +412,7 @@ export class CaffoldTerminalPage extends LitElement {
       onMessage: (type) => this.receiveMessage(generation, type),
       onOutput: (bytes) => {
         if (generation === this.state.generation) {
-          this.terminalView?.write(bytes);
+          this.terminalView.value?.write(bytes);
         }
       },
       onFailure: () =>
@@ -443,11 +426,11 @@ export class CaffoldTerminalPage extends LitElement {
     }
     // `attached` and `resync` each precede the screen the terminal starts over from.
     if (type === "attached" || type === "resync") {
-      this.terminalView?.reset();
+      this.terminalView.value?.reset();
     }
     if (type === "attached") {
       this.apply({ type: TERMINAL_EVENT.ATTACHED, generation });
-      const size = this.terminalView?.size;
+      const size = this.terminalView.value?.size;
       if (size) {
         this.connection?.resize(size);
       }
@@ -477,7 +460,7 @@ export class CaffoldTerminalPage extends LitElement {
       return;
     }
     const text =
-      !binary && this.specialKeys?.consumeControl()
+      !binary && this.specialKeys.value?.consumeControl()
         ? controlCharacter(data)
         : data;
     this.connection?.send(
@@ -495,11 +478,11 @@ export class CaffoldTerminalPage extends LitElement {
     event.stopPropagation();
     const { key, control } = event.detail;
     const sequence = specialKeySequence(key, {
-      applicationCursor: this.terminalView?.applicationCursorKeys(),
+      applicationCursor: this.terminalView.value?.applicationCursorKeys(),
       control: Boolean(control),
     });
     if (sequence && this.state.node === TERMINAL_NODE.LIVE) {
-      this.terminalView?.sendInput(sequence);
+      this.terminalView.value?.sendInput(sequence);
     }
   }
 
@@ -576,24 +559,8 @@ export class CaffoldTerminalPage extends LitElement {
   private draw() {
     this.requestUpdate();
     this.performUpdate();
-    this.terminalView?.setInputEnabled(this.state.node === TERMINAL_NODE.LIVE);
-  }
-
-  private actionButtons() {
-    return [
-      ...this.querySelectorAll<HTMLButtonElement>("[data-terminal-action]"),
-    ].filter((button) => !button.hidden && !button.closest("[hidden]"));
-  }
-
-  private get terminalView() {
-    return this.querySelector<CaffoldTerminalView>(
-      ":scope > .terminal-page-body > caffold-terminal-view",
-    );
-  }
-
-  private get specialKeys() {
-    return this.querySelector<CaffoldTerminalSpecialKeys>(
-      ":scope > caffold-terminal-special-keys",
+    this.terminalView.value?.setInputEnabled(
+      this.state.node === TERMINAL_NODE.LIVE,
     );
   }
 }

@@ -1,11 +1,9 @@
 import { html, LitElement, type PropertyValues } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import type { Note } from "#app/api.ts";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
@@ -25,6 +23,7 @@ export class CaffoldNotesInfoCopyMarkdown extends LitElement {
   private markdown = "";
   private generation = 0;
   private feedbackTimer: number | undefined;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
 
   constructor() {
     super();
@@ -58,6 +57,13 @@ export class CaffoldNotesInfoCopyMarkdown extends LitElement {
     const feedback = copyFeedback(this.copyState);
     return html`
       <button
+        ${this.hints.button({
+          id: "copy-markdown",
+          label: feedback || "Copy Markdown",
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          badgeAtEnd: true,
+          when: this.copyState !== "copying",
+        })}
         type="button"
         class="notes-info-copy-markdown-button"
         ?disabled=${!this.note?.content}
@@ -103,45 +109,8 @@ export class CaffoldNotesInfoCopyMarkdown extends LitElement {
     }, COPY_FEEDBACK_DURATION_MS);
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const control = this.button;
-    const markdown = this.markdown;
-    if (
-      !scopeId ||
-      !this.isConnected ||
-      !control ||
-      !isCopyActionable(control)
-    ) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:copy-markdown`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label: (control.textContent ?? "").trim(),
-          control,
-          clipRoots: [...clipRoots],
-          badgeAtEnd: true,
-          isActionable: () =>
-            this.isConnected &&
-            isCurrent() &&
-            this.markdown === markdown &&
-            this.button === control &&
-            isCopyActionable(control),
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   private acceptsCompletion(generation: number) {
@@ -158,16 +127,6 @@ export class CaffoldNotesInfoCopyMarkdown extends LitElement {
     window.clearTimeout(this.feedbackTimer);
     this.feedbackTimer = undefined;
   }
-
-  private get button() {
-    return this.querySelector<HTMLButtonElement>(
-      ":scope > .notes-info-copy-markdown-button",
-    );
-  }
-}
-
-function isCopyActionable(control: HTMLButtonElement) {
-  return !control.disabled && control.getAttribute("aria-disabled") !== "true";
 }
 
 function copyFeedback(state: CopyState) {

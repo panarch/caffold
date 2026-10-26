@@ -1,17 +1,15 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-  selectActionHintTarget,
-} from "../action-hint-scope.js";
+} from "../action-hints.ts";
 import type { GitCompare, GitCompareFile, GitRepository } from "../api.ts";
 import {
-  emptyScrollSurfaceScope,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "../scroll-scope.js";
+  mergeScrollSurfaceScopes,
+  type ScrollSurfacePull,
+  ScrollSurfaces,
+} from "../scroll-scope.ts";
 import { formatLineStats } from "./dom.ts";
 import {
   buildFileTreeNodes,
@@ -20,6 +18,7 @@ import {
   type FileTreeSelectDetail,
 } from "./file-tree.ts";
 import "./loading-text.ts";
+import { DrawnRef, drawn } from "./drawn-refs.ts";
 
 type CompareState =
   | { status: "idle" }
@@ -55,6 +54,13 @@ export class CaffoldGitCompareTree extends LitElement {
   declare private emptyMessage: string;
   selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly compareBase = new DrawnRef<HTMLSpanElement>(this);
+  private readonly baseRefSelect = new DrawnRef<HTMLSelectElement>(this);
+  private readonly tree = new DrawnRef<CaffoldFileTree>(this);
 
   constructor() {
     super();
@@ -109,6 +115,7 @@ export class CaffoldGitCompareTree extends LitElement {
           <div class="compare-tree-primary">
             <h2>Files</h2>
             <span
+              ${drawn(this.compareBase)}
               class="compare-base"
               title=${baseRef ? `Compare with ${baseRef}` : nothing}
             >
@@ -119,6 +126,17 @@ export class CaffoldGitCompareTree extends LitElement {
                 ?hidden=${!selection.enabled}
               ></span>
               <select
+                ${drawn(this.baseRefSelect)}
+                ${this.hints.select({
+                  id: "base-ref",
+                  label: selection.value
+                    ? `Choose comparison base (current ${selection.value})`
+                    : "Choose comparison base",
+                  role: "select",
+                  when: selection.enabled,
+                  anchor: () => this.compareBase.value,
+                  clipRoots: () => [this],
+                })}
                 data-compare-base-ref
                 aria-label="Branch comparison base"
                 ?hidden=${!selection.enabled}
@@ -147,6 +165,7 @@ export class CaffoldGitCompareTree extends LitElement {
                 class="surface-message compare-tree-content"
               >${message}</p>`
             : html`<caffold-file-tree
+                ${drawn(this.tree)}
                 class="compare-tree-content"
                 @caffold:file-tree-select=${this.openFile}
               ></caffold-file-tree>`
@@ -158,7 +177,7 @@ export class CaffoldGitCompareTree extends LitElement {
   // A `.value` binding would land before the options it names, and the tree
   // is handed the compared files once it is drawn.
   updated(changed: PropertyValues) {
-    const select = this.baseRefSelect();
+    const select = this.baseRefSelect.value;
     const { enabled, value } = this.baseSelection;
     if (enabled && select && select.value !== value) {
       select.value = value;
@@ -233,6 +252,10 @@ export class CaffoldGitCompareTree extends LitElement {
     this.state = { status: "idle" };
   }
 
+  listScroller() {
+    return this.fileTree()?.scroller() ?? null;
+  }
+
   captureListScroll() {
     return this.fileTree()?.captureScroll() ?? null;
   }
@@ -242,121 +265,37 @@ export class CaffoldGitCompareTree extends LitElement {
   }
 
   fileTree() {
-    return this.querySelector<CaffoldFileTree>("caffold-file-tree");
+    return this.tree.value ?? null;
   }
 
-  actionHintScope({
-    scopeId = "",
-    actionId = "",
-    disclosureActionId = "",
-    selectActionId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions & {
-    disclosureActionId?: string;
-    selectActionId?: string;
-  } = {}): ActionHintScope {
-    if (!scopeId || this.hidden) {
-      return emptyActionHintScope();
-    }
-    const tree = this.fileTree();
+  // `actions` names what choosing the base (`select`) does and, for the
+  // tree, what opening a `file` and toggling a `disclosure` do.
+  actionHintScope(pull: ActionHintPull = {}) {
     return mergeActionHintScopes(
-      selectActionId
-        ? this.baseSelectActionHintScope({
-            scopeId,
-            actionId: selectActionId,
-            clipRoots,
-          })
-        : null,
-      (actionId || disclosureActionId) && this.state.status === "ready" && tree
-        ? tree.actionHintScope({
-            scopeId,
-            actionId,
-            disclosureActionId,
-            clipRoots: [this, ...clipRoots],
-            isCurrent: (node) => comparedFile(node)?.path === this.selectedPath,
-            labelForNode: (node) =>
-              node.ariaLabel ||
-              `Open ${comparedFile(node)?.repoRelativePath ?? node.name}`,
+      this.hints.scope(pull),
+      this.state.status === "ready"
+        ? this.fileTree()?.actionHintScope({
+            ...pull,
+            clipRoots: [this, ...(pull.clipRoots ?? [])],
           })
         : null,
     );
   }
 
   scrollSurfaceScope({
-    scopeId = "",
     label = "Compared files",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const tree = this.fileTree();
-    if (!scopeId || this.hidden || this.state.status !== "ready" || !tree) {
-      return emptyScrollSurfaceScope();
-    }
-    return tree.scrollSurfaceScope({
-      scopeId,
-      label,
-      clipRoots: [this, ...clipRoots],
-      isCurrent: () =>
-        this.state.status === "ready" && this.fileTree() === tree,
-    });
-  }
-
-  private baseSelectActionHintScope({
-    scopeId,
-    actionId,
-    clipRoots,
-  }: {
-    scopeId: string;
-    actionId: string;
-    clipRoots: Element[];
-  }): ActionHintScope {
-    if (!actionId) {
-      return emptyActionHintScope();
-    }
-    const control = this.baseRefSelect();
-    const anchor = this.querySelector(".compare-base");
-    const selection = this.baseSelection;
-    if (
-      !this.isConnected ||
-      !selection.enabled ||
-      !selection.refs.length ||
-      !control ||
-      !anchor ||
-      control.hidden ||
-      control.disabled
-    ) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        selectActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:base-ref`,
-          actionId,
-          label: selection.value
-            ? `Choose comparison base (current ${selection.value})`
-            : "Choose comparison base",
-          control,
-          anchor,
-          clipRoots: [this, ...clipRoots],
-          isActionable: () => {
-            const currentSelection = this.baseSelection;
-            return Boolean(
-              this.isConnected &&
-                !this.hidden &&
-                currentSelection.enabled &&
-                currentSelection.refs.length &&
-                this.baseRefSelect() === control &&
-                this.querySelector(".compare-base") === anchor &&
-                !control.hidden &&
-                !control.disabled,
-            );
-          },
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return mergeScrollSurfaceScopes(
+      this.surfaces.scope(pull),
+      this.state.status === "ready"
+        ? this.fileTree()?.scrollSurfaceScope({
+            ...pull,
+            label,
+            clipRoots: [this, ...(pull.clipRoots ?? [])],
+          })
+        : null,
+    );
   }
 
   private chooseBase(event: Event) {
@@ -390,12 +329,6 @@ export class CaffoldGitCompareTree extends LitElement {
 
   private selectedKey() {
     return this.fileKeyByPath.get(this.selectedPath) ?? "";
-  }
-
-  private baseRefSelect() {
-    return this.querySelector<HTMLSelectElement>(
-      "select[data-compare-base-ref]",
-    );
   }
 }
 

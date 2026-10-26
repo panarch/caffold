@@ -1,60 +1,17 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import {
   ACTION_HINT_ACTION,
-  textboxActionHintTarget,
-} from "#app/action-hints.js";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "../components/detail-list.ts";
 import {
   type JevSettings,
   JevSettingsLifecycle,
   type JevSettingsSnapshot,
 } from "./lifecycle.ts";
-
-const ACTION_BUTTONS = Object.freeze([
-  {
-    id: "refresh",
-    selector: 'button[data-action="refresh"]',
-    label: "Retry loading Jev settings",
-  },
-  {
-    id: "save-criteria",
-    selector: 'form[data-jev-form="criteria"] button[type="submit"]',
-    label: "Save the extra rules",
-  },
-  {
-    id: "save-key",
-    selector: 'form[data-jev-form="key"] button[type="submit"]',
-    label: "Save the Jev API key",
-  },
-  {
-    id: "remove-key",
-    selector: 'button[data-action="remove-key"]',
-    label: "Remove the Jev API key",
-  },
-]);
-const TEXTBOXES = Object.freeze([
-  { id: "criteria", selector: 'textarea[name="criteria"]' },
-  { id: "key", selector: 'input[name="key"]' },
-]);
-
-interface ScopeContext {
-  scopeId: string;
-  clipRoots: Element[];
-  isCurrent: () => boolean;
-}
 
 export class CaffoldSettingsJevPage extends LitElement {
   static properties = {
@@ -73,6 +30,17 @@ export class CaffoldSettingsJevPage extends LitElement {
       this.announceAvailability(snapshot.settings);
     },
   });
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.scrollport.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly criteria = new DrawnRef<HTMLTextAreaElement>(this);
+  private readonly key = new DrawnRef<HTMLInputElement>(this);
 
   constructor() {
     super();
@@ -120,7 +88,14 @@ export class CaffoldSettingsJevPage extends LitElement {
     ] as const;
     const placeholder = saved ? "Enter a new key to replace the saved one" : "";
     return html`
-      <div class="settings-content-scroll">
+      <div
+        ${drawn(this.scrollport)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.scrollport.value],
+        })}
+        class="settings-content-scroll"
+      >
         <div class="settings-content-section">
           <header>
             <div>
@@ -135,6 +110,11 @@ export class CaffoldSettingsJevPage extends LitElement {
               </p>
             </div>
             <button
+              ${this.hints.button({
+                id: "refresh",
+                label: "Retry loading Jev settings",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               data-action="refresh"
               ?hidden=${!retry}
@@ -161,6 +141,12 @@ export class CaffoldSettingsJevPage extends LitElement {
               that, or take away from it.
             </p>
             <textarea
+              ${drawn(this.criteria)}
+              ${this.hints.textbox({
+                id: "criteria",
+                label: "Focus Extra rules",
+                action: ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS,
+              })}
               id="settings-jev-criteria"
               name="criteria"
               rows="8"
@@ -171,6 +157,11 @@ export class CaffoldSettingsJevPage extends LitElement {
             ></textarea>
             <div class="settings-jev-actions">
               <button
+                ${this.hints.button({
+                  id: "save-criteria",
+                  label: "Save the extra rules",
+                  action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                })}
                 type="submit"
                 ?disabled=${locked}
               >Save extra rules</button>
@@ -186,6 +177,12 @@ export class CaffoldSettingsJevPage extends LitElement {
             }</label>
             <div class="settings-jev-key-row">
               <input
+                ${drawn(this.key)}
+                ${this.hints.textbox({
+                  id: "key",
+                  label: `Focus ${saved ? "Replace API key" : "API key"}`,
+                  action: ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS,
+                })}
                 id="settings-jev-key"
                 name="key"
                 type="password"
@@ -195,8 +192,21 @@ export class CaffoldSettingsJevPage extends LitElement {
                 placeholder=${placeholder}
                 ?disabled=${locked}
               >
-              <button type="submit" ?disabled=${locked}>Save key</button>
               <button
+                ${this.hints.button({
+                  id: "save-key",
+                  label: "Save the Jev API key",
+                  action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                })}
+                type="submit"
+                ?disabled=${locked}
+              >Save key</button>
+              <button
+                ${this.hints.button({
+                  id: "remove-key",
+                  label: "Remove the Jev API key",
+                  action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                })}
                 type="button"
                 data-action="remove-key"
                 ?hidden=${!saved}
@@ -212,77 +222,22 @@ export class CaffoldSettingsJevPage extends LitElement {
 
   updated() {
     const settings = this.snapshot.settings;
-    const textarea = this.querySelector<HTMLTextAreaElement>(
-      'textarea[name="criteria"]',
-    );
+    const textarea = this.criteria.value;
     if (!this.editing && settings && textarea) {
       textarea.value = settings.criteria;
     }
   }
 
-  actionHintScope({
-    scopeId = "settings:jev",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyActionHintScope();
-    }
-    const context = {
-      scopeId,
-      isCurrent,
-      clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-    };
-    return {
-      blocked: false,
-      targets: [
-        ...ACTION_BUTTONS.flatMap((definition) =>
-          actionButtonTarget(this, context, definition),
-        ),
-        ...TEXTBOXES.flatMap((definition) =>
-          textboxTarget(this, context, definition),
-        ),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
+  actionHintScope({ scopeId = "settings:jev", ...pull }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   scrollSurfaceScope({
     scopeId = "settings:jev",
     label = "Jev Permissions settings",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(":scope > .settings-content-scroll") ===
-              scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   /**
@@ -313,10 +268,7 @@ export class CaffoldSettingsJevPage extends LitElement {
 
   private async saveCriteria(event: Event) {
     event.preventDefault();
-    const form = event.currentTarget as HTMLFormElement;
-    const textarea = form.querySelector<HTMLTextAreaElement>(
-      'textarea[name="criteria"]',
-    );
+    const textarea = this.criteria.value;
     if (!textarea) return;
     if (await this.lifecycle.saveCriteria(textarea.value)) {
       this.editing = false;
@@ -326,8 +278,7 @@ export class CaffoldSettingsJevPage extends LitElement {
 
   private async saveKey(event: Event) {
     event.preventDefault();
-    const form = event.currentTarget as HTMLFormElement;
-    const input = form.querySelector<HTMLInputElement>('input[name="key"]');
+    const input = this.key.value;
     if (!input) return;
     if (await this.lifecycle.storeKey(input.value)) {
       input.value = "";
@@ -343,70 +294,6 @@ function lastCheckSummary(settings: JevSettings | null) {
   return check.ok
     ? `Answered by ${check.model ?? settings.model}`
     : (check.message ?? "The key did not work.");
-}
-
-function actionButtonTarget(
-  owner: HTMLElement,
-  context: ScopeContext,
-  { id, selector, label }: { id: string; selector: string; label: string },
-) {
-  const control = owner.querySelector<HTMLButtonElement>(selector);
-  if (!control || !controlAvailable(control)) {
-    return [];
-  }
-  return [
-    buttonActionHintTarget({
-      invalidationOwner: owner,
-      id: `${context.scopeId}:${id}`,
-      actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-      label,
-      control,
-      clipRoots: context.clipRoots,
-      isActionable: () =>
-        owner.isConnected &&
-        !owner.hidden &&
-        context.isCurrent() &&
-        owner.querySelector(selector) === control &&
-        controlAvailable(control),
-    }),
-  ];
-}
-
-function textboxTarget(
-  owner: HTMLElement,
-  context: ScopeContext,
-  { id, selector }: { id: string; selector: string },
-) {
-  const control = owner.querySelector<HTMLInputElement | HTMLTextAreaElement>(
-    selector,
-  );
-  if (!control || !controlAvailable(control)) {
-    return [];
-  }
-  return [
-    textboxActionHintTarget({
-      invalidationOwner: owner,
-      id: `${context.scopeId}:${id}`,
-      actionId: ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS,
-      label: `Focus ${control.labels?.[0]?.textContent}`,
-      control,
-      clipRoots: context.clipRoots,
-      isActionable: () =>
-        owner.isConnected &&
-        !owner.hidden &&
-        context.isCurrent() &&
-        owner.querySelector(selector) === control &&
-        controlAvailable(control),
-    }),
-  ];
-}
-
-function controlAvailable(
-  control: HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement,
-) {
-  return (
-    !control.disabled && !control.hidden && hasActionHintLayoutBox(control)
-  );
 }
 
 customElements.define("caffold-settings-jev-page", CaffoldSettingsJevPage);

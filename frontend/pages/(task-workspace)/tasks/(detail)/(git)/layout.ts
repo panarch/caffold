@@ -1,15 +1,16 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  buttonActionHintTarget,
+  ACTION_HINT_ACTION,
+  ActionHints,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { GitRepository } from "#app/api.ts";
 import { compactIconButton } from "#app/component-styles.ts";
 import { routeMode } from "#app/navigation-routes.ts";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.ts";
 import { createRefreshCoordinator, subscribeToWatch } from "#app/watch.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "./(log)/layout.ts";
 import type { CaffoldGitLogLayout } from "./(log)/layout.ts";
@@ -21,10 +22,6 @@ import {
   type GitControlsSnapshot,
   IDLE_CONTROLS,
 } from "./components/controls.ts";
-
-const BACK_BUTTON =
-  ':scope > .task-git-surface > .task-domain-header > .task-domain-back[data-action="domain-back"]';
-const BODY = ":scope > .task-git-surface > .task-domain-body";
 
 type GitMode = "compare" | "log";
 
@@ -78,6 +75,13 @@ export class CaffoldTaskGitLayout extends LitElement {
     (state) => this.setRefreshState(state),
   );
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly body = new DrawnRef<HTMLDivElement>(this);
+  private readonly headerControls = new DrawnRef<CaffoldGitReviewControls>(
+    this,
+  );
+  private readonly compare = new DrawnRef<CaffoldGitComparePage>(this);
+  private readonly log = new DrawnRef<CaffoldGitLogLayout>(this);
 
   constructor() {
     super();
@@ -123,6 +127,11 @@ export class CaffoldTaskGitLayout extends LitElement {
       <section class="task-git-surface" aria-label="Git">
         <header class="task-domain-header">
           <button
+            ${this.hints.button({
+              id: "parent:log",
+              label: "Back to log",
+              action: ACTION_HINT_ACTION.PARENT,
+            })}
             type="button"
             class="task-domain-back"
             data-action="domain-back"
@@ -157,16 +166,18 @@ export class CaffoldTaskGitLayout extends LitElement {
             </div>
           </div>
           <caffold-git-review-controls
+            ${drawn(this.headerControls)}
             .snapshot=${chrome.controls}
             @caffold:fetch-git-remote=${this.fetchFromControls}
           ></caffold-git-review-controls>
         </header>
-        <div class="task-domain-body">
+        <div ${drawn(this.body)} class="task-domain-body">
           <div
             class="git-review-view git-mode-compare"
             ?hidden=${chrome.mode !== "compare"}
           >
             <caffold-git-compare-page
+              ${drawn(this.compare)}
               @caffold:git-compare-state-change=${this.followCompare}
               @caffold:open-compare-diff=${this.openCompareDiff}
               @caffold:close-file-viewer=${this.closeCompareFile}
@@ -177,6 +188,7 @@ export class CaffoldTaskGitLayout extends LitElement {
             ?hidden=${chrome.mode !== "log"}
           >
             <caffold-git-log-layout
+              ${drawn(this.log)}
               @caffold:git-log-state-change=${this.followLog}
               @caffold:open-git-commit=${this.openCommit}
               @caffold:change-log-page=${this.changeLogPage}
@@ -297,36 +309,11 @@ export class CaffoldTaskGitLayout extends LitElement {
       return emptyActionHintScope();
     }
     const scopeId = this.scopeId();
-    const body = this.querySelector(BODY);
+    const own = this.hints.scope({ scopeId, clipRoots: [this] });
+    const body = this.body.value;
     const clipRoots = body ? [this, body] : [this];
-    const back = this.querySelector<HTMLButtonElement>(BACK_BUTTON);
-    const backScope =
-      back && !back.hidden && !back.disabled
-        ? {
-            blocked: false,
-            targets: [
-              buttonActionHintTarget({
-                invalidationOwner: this,
-                id: `${scopeId}:parent:log`,
-                actionId: ACTION_HINT_ACTION.PARENT,
-                label: back.getAttribute("aria-label") || "Back to log",
-                control: back,
-                clipRoots: [this],
-                isActionable: () =>
-                  this.isConnected &&
-                  this.active &&
-                  !this.hidden &&
-                  this.querySelector(BACK_BUTTON) === back &&
-                  !back.hidden &&
-                  !back.disabled,
-              }),
-            ],
-            mutationRoots: [back],
-            scrollRoots: [],
-          }
-        : null;
     return mergeActionHintScopes(
-      backScope,
+      own,
       this.controls.actionHintScope({ scopeId, clipRoots: [this] }),
       this.mode === "compare"
         ? this.comparePage.actionHintScope({
@@ -344,8 +331,9 @@ export class CaffoldTaskGitLayout extends LitElement {
     if (!this.active || this.hidden || !this.mode) {
       return emptyScrollSurfaceScope();
     }
+    this.performUpdate();
     const scopeId = this.scopeId();
-    const body = this.querySelector(BODY);
+    const body = this.body.value;
     const clipRoots = body ? [this, body] : [this];
     return this.mode === "compare"
       ? this.comparePage.scrollSurfaceScope({
@@ -729,21 +717,17 @@ export class CaffoldTaskGitLayout extends LitElement {
   // the layout is in the document.
   private get controls() {
     this.performUpdate();
-    return this.querySelector(
-      "caffold-git-review-controls",
-    ) as CaffoldGitReviewControls;
+    return this.headerControls.value as CaffoldGitReviewControls;
   }
 
   private get comparePage() {
     this.performUpdate();
-    return this.querySelector(
-      "caffold-git-compare-page",
-    ) as CaffoldGitComparePage;
+    return this.compare.value as CaffoldGitComparePage;
   }
 
   private get logLayout() {
     this.performUpdate();
-    return this.querySelector("caffold-git-log-layout") as CaffoldGitLogLayout;
+    return this.log.value as CaffoldGitLogLayout;
   }
 }
 

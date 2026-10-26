@@ -1,11 +1,7 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import type { SyntaxSpan } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "../../drawn-refs.ts";
 import { syntaxLine } from "../syntax-spans.ts";
 import type { ScrollPosition, ViewerPosition } from "./code-viewer.ts";
 
@@ -45,6 +41,12 @@ export class CaffoldDiffViewer extends LitElement {
 
   declare diff: FileDiff | null;
   declare position: ViewerPosition | null;
+
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly table = new DrawnRef<HTMLDivElement>(this);
 
   constructor() {
     super();
@@ -98,6 +100,12 @@ export class CaffoldDiffViewer extends LitElement {
     return html`
       <section class="diff-viewer" aria-label="Git diff">
         <div
+          ${drawn(this.scrollport)}
+          ${this.surfaces.surface({
+            id: "scroll",
+            axes: ["vertical", "horizontal"],
+            clipRoots: () => [this, this.scrollport.value],
+          })}
           class="diff-lines"
           style="
             --diff-old-number-columns: ${oldDigits}ch;
@@ -106,6 +114,7 @@ export class CaffoldDiffViewer extends LitElement {
         >
           <div class="diff-gutter-backdrop" aria-hidden="true"></div>
           <div
+            ${drawn(this.table)}
             class="diff-table"
             style="--diff-code-width: ${diffCodeColumns(rows)}ch;"
           >
@@ -128,41 +137,8 @@ export class CaffoldDiffViewer extends LitElement {
     return this.captureScroll();
   }
 
-  scrollSurfaceScope({
-    scopeId = "",
-    label = "File diff",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.querySelector(
-      ":scope > .diff-viewer > .diff-lines",
-    );
-    if (!scopeId || !label || !scrollport || this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          axes: ["vertical", "horizontal"],
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.querySelector(":scope > .diff-viewer > .diff-lines") ===
-              scrollport &&
-            isCurrent() &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+  scrollSurfaceScope({ label = "File diff", ...pull }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, label });
   }
 
   visibleLine() {
@@ -171,7 +147,7 @@ export class CaffoldDiffViewer extends LitElement {
       return null;
     }
     const scrollerTop = scroller.getBoundingClientRect().top;
-    const rows = Array.from(this.querySelectorAll<HTMLElement>(".diff-row"));
+    const rows = this.rows();
     const firstVisibleIndex = rows.findIndex(
       (row) => row.getBoundingClientRect().bottom > scrollerTop,
     );
@@ -193,31 +169,35 @@ export class CaffoldDiffViewer extends LitElement {
     if (!targetLine || !scroller) {
       return false;
     }
-    const rows = Array.from(
-      this.querySelectorAll<HTMLElement>(".diff-row[data-source-line]"),
-    );
-    const row = rows.reduce<HTMLElement | null>((nearest, candidate) => {
-      if (!nearest) {
-        return candidate;
-      }
-      const candidateDistance = Math.abs(
-        Number(candidate.dataset.sourceLine) - targetLine,
-      );
-      const nearestDistance = Math.abs(
-        Number(nearest.dataset.sourceLine) - targetLine,
-      );
-      return candidateDistance < nearestDistance ? candidate : nearest;
-    }, null);
+    const rows = this.rows();
+    const row = rows
+      .filter((candidate) => candidate.dataset.sourceLine)
+      .reduce<HTMLElement | null>((nearest, candidate) => {
+        if (!nearest) {
+          return candidate;
+        }
+        const candidateDistance = Math.abs(
+          Number(candidate.dataset.sourceLine) - targetLine,
+        );
+        const nearestDistance = Math.abs(
+          Number(nearest.dataset.sourceLine) - targetLine,
+        );
+        return candidateDistance < nearestDistance ? candidate : nearest;
+      }, null);
     if (!row) {
       return false;
     }
-    const firstRow = this.querySelector<HTMLElement>(".diff-row");
-    scroller.scrollTop = row.offsetTop - (firstRow?.offsetTop ?? 0) + 1;
+    scroller.scrollTop = row.offsetTop - rows[0].offsetTop + 1;
     return true;
   }
 
   private get scroller() {
-    return this.querySelector<HTMLElement>(".diff-lines");
+    return this.scrollport.value;
+  }
+
+  // The drawn rows in order, the empty diff's one row included.
+  private rows() {
+    return [...(this.table.value?.children ?? [])] as HTMLElement[];
   }
 
   private captureScroll() {

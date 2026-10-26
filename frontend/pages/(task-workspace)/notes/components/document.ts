@@ -1,18 +1,19 @@
 import { html, LitElement, type PropertyValues } from "lit";
+import { hasActionHintLayoutBox } from "#app/action-hint-scope.ts";
 import {
-  type ActionHintScope,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { Note } from "#app/api.ts";
 import { compactIconButton } from "#app/component-styles.ts";
 import {
-  emptyScrollSurfaceScope,
-  type ScrollSurfaceScope,
-} from "#app/scroll-scope.js";
+  mergeScrollSurfaceScopes,
+  type ScrollSurfacePull,
+  ScrollSurfaces,
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/loading-text.ts";
 import "#components/markdown-preview.ts";
@@ -71,6 +72,17 @@ export class CaffoldNoteDocument extends LitElement {
   // The Markdown the preview was last given.
   private renderedMarkdown: { noteId: string; content: string } | null = null;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly pane = new DrawnRef<HTMLDivElement>(this);
+  private readonly choose = new DrawnRef<HTMLButtonElement>(this);
+  private readonly split = new DrawnRef<HTMLButtonElement>(this);
+  private readonly info = new DrawnRef<CaffoldNotesInfo>(this);
+  private readonly preview = new DrawnRef<CaffoldMarkdownPreview>(this);
 
   constructor() {
     super();
@@ -125,6 +137,7 @@ export class CaffoldNoteDocument extends LitElement {
     const closeIcon = inlineIcon("X", "Close side by side", ICON);
     return html`
       <div
+        ${drawn(this.pane)}
         class="notes-workspace-detail-pane"
         role="region"
         aria-labelledby=${this.titleId}
@@ -132,6 +145,11 @@ export class CaffoldNoteDocument extends LitElement {
       >
         <header class="notes-workspace-detail-header" ?hidden=${!noteId}>
           <button
+            ${this.hints.button({
+              id: "back",
+              label: "Back to notes",
+              action: ACTION_HINT_ACTION.PARENT,
+            })}
             type="button"
             class="note-document-back"
             data-action="back"
@@ -142,6 +160,12 @@ export class CaffoldNoteDocument extends LitElement {
           <h1 id=${this.titleId} title=${title}><span
             class="note-document-title-text"
           >${title}</span><button
+            ${drawn(this.choose)}
+            ${this.hints.button({
+              id: "choose",
+              label: `${title || "Note"}, choose another note`,
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            })}
             type="button"
             class="note-document-title-picker"
             data-action="choose"
@@ -152,6 +176,12 @@ export class CaffoldNoteDocument extends LitElement {
           >${chevron}</span></button></h1>
           <div class="note-document-actions">
             <button
+              ${drawn(this.split)}
+              ${this.hints.button({
+                id: "split",
+                label: "View side by side",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               class="note-document-split"
               data-action="split"
@@ -161,6 +191,11 @@ export class CaffoldNoteDocument extends LitElement {
               @click=${this.intent}
             >${splitIcon}</button>
             <button
+              ${this.hints.button({
+                id: "close",
+                label: "Close side by side",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               class="note-document-close"
               data-action="close"
@@ -170,6 +205,7 @@ export class CaffoldNoteDocument extends LitElement {
               @click=${this.intent}
             >${closeIcon}</button>
             <caffold-notes-info
+              ${drawn(this.info)}
               .note=${noteId ? note : null}
             ></caffold-notes-info>
           </div>
@@ -180,12 +216,18 @@ export class CaffoldNoteDocument extends LitElement {
           data-state=${statusState}
           ?hidden=${!statusMessage}
         ><p class="notes-workspace-message">${statusText}</p><button
+          ${this.hints.button({
+            id: "retry",
+            label: "Retry",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           data-action="retry"
           ?hidden=${state !== "failed"}
           @click=${this.intent}
         >Retry</button></div>
         <caffold-markdown-preview
+          ${drawn(this.preview)}
           ?hidden=${!noteId || !note || note.content === ""}
         ></caffold-markdown-preview>
       </div>
@@ -209,7 +251,7 @@ export class CaffoldNoteDocument extends LitElement {
       this.renderedMarkdown = null;
     }
     const note = result.note;
-    const preview = this.preview;
+    const preview = this.preview.value;
     if (!note || !preview || preview.hidden) {
       return;
     }
@@ -228,16 +270,16 @@ export class CaffoldNoteDocument extends LitElement {
 
   async focusTitle({ preferSplit = false } = {}) {
     await this.updateComplete;
-    const split = this.querySelector<HTMLElement>('[data-action="split"]');
+    const split = this.split.value;
     if (preferSplit && hasActionHintLayoutBox(split)) {
       split?.focus();
       return;
     }
-    const choose = this.querySelector<HTMLElement>('[data-action="choose"]');
+    const choose = this.choose.value;
     if (hasActionHintLayoutBox(choose)) {
       choose?.focus();
     } else {
-      this.querySelector<HTMLElement>(".notes-workspace-detail-pane")?.focus();
+      this.pane.value?.focus();
     }
   }
 
@@ -247,7 +289,7 @@ export class CaffoldNoteDocument extends LitElement {
     if (this.parentElement === parent) {
       return;
     }
-    const preview = this.preview;
+    const preview = this.preview.value;
     const scroll = preview?.getScrollState();
     const movable = parent as Element & {
       moveBefore?: (node: Node, child: Node | null) => void;
@@ -265,79 +307,37 @@ export class CaffoldNoteDocument extends LitElement {
 
   // Closes the details popover, as leaving Notes does.
   deactivate() {
-    this.info?.deactivate();
+    this.info.value?.deactivate();
   }
 
-  actionHintScope({
-    scopeId,
-    clipRoots = [],
-  }: {
-    scopeId: string;
-    clipRoots?: Element[];
-  }): ActionHintScope {
-    if (this.hidden || !hasActionHintLayoutBox(this)) {
-      return emptyActionHintScope();
-    }
-    const controls = [
-      ...this.querySelectorAll<HTMLButtonElement>("button[data-action]"),
-    ].filter(hasActionHintLayoutBox);
-    const buttons: ActionHintScope = {
-      blocked: false,
-      targets: controls.map((control) =>
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:${control.dataset.action}`,
-          actionId:
-            control.dataset.action === "back"
-              ? ACTION_HINT_ACTION.PARENT
-              : ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label:
-            control.getAttribute("aria-label") || control.textContent || "",
-          control,
-          clipRoots: [this, ...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            !control.hidden &&
-            hasActionHintLayoutBox(control),
-        }),
-      ),
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull) {
+    const own = this.hints.scope(pull);
+    const clipRoots = [this, ...(pull.clipRoots ?? [])];
     return mergeActionHintScopes(
-      buttons,
-      this.info?.actionHintScope({ scopeId, clipRoots: [this, ...clipRoots] }),
-      this.preview?.actionHintScope({
-        scopeId: `${scopeId}:content`,
-        linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
-        clipRoots: [this, ...clipRoots],
+      own,
+      this.info.value?.actionHintScope({ ...pull, clipRoots }),
+      this.preview.value?.actionHintScope({
+        scopeId: `${pull.scopeId}:content`,
+        actions: { link: ACTION_HINT_ACTION.LINK_OPEN },
+        clipRoots,
       }),
     );
   }
 
   keyboardNavigationContexts({ scopeId }: { scopeId: string }) {
-    return this.hidden || !hasActionHintLayoutBox(this)
-      ? []
-      : (this.info?.keyboardNavigationContexts({ scopeId }) ?? []);
+    return this.info.value?.keyboardNavigationContexts({ scopeId }) ?? [];
   }
 
-  scrollSurfaceScope({
-    scopeId,
-    clipRoots = [],
-  }: {
-    scopeId: string;
-    clipRoots?: Element[];
-  }): ScrollSurfaceScope {
-    const preview = this.preview;
-    if (this.hidden || !hasActionHintLayoutBox(this) || !preview) {
-      return emptyScrollSurfaceScope();
-    }
-    return preview.scrollSurfaceScope({
-      scopeId: `${scopeId}:content`,
-      label: this.snapshot.result.note?.name || "Note",
-      clipRoots: [this, ...clipRoots],
-    });
+  scrollSurfaceScope(pull: ScrollSurfacePull) {
+    const own = this.surfaces.scope(pull);
+    return mergeScrollSurfaceScopes(
+      own,
+      this.preview.value?.scrollSurfaceScope({
+        scopeId: `${pull.scopeId}:content`,
+        label: this.snapshot.result.note?.name || "Note",
+        clipRoots: [this, ...(pull.clipRoots ?? [])],
+      }),
+    );
   }
 
   private intent(event: Event) {
@@ -350,16 +350,6 @@ export class CaffoldNoteDocument extends LitElement {
           side: this.snapshot.side,
         },
       }),
-    );
-  }
-
-  private get info() {
-    return this.querySelector<CaffoldNotesInfo>("caffold-notes-info");
-  }
-
-  private get preview() {
-    return this.querySelector<CaffoldMarkdownPreview>(
-      "caffold-markdown-preview",
     );
   }
 }

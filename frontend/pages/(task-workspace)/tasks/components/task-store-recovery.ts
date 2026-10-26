@@ -1,25 +1,16 @@
 import { html, LitElement } from "lit";
-import type {
-  ActionHintScope,
-  ActionHintScopeOptions,
-} from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hints.js";
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import {
   INITIAL_TASK_STORE_STATUS_SNAPSHOT,
   TASK_STORE_RETRY_REQUEST_EVENT,
   type TaskStoreStatusSnapshot,
 } from "#app/pages/(task-workspace)/task-store-status.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 
 const PREPARING_MESSAGE =
   "Caffold is preparing the local Task navigator before Tasks start.";
@@ -29,8 +20,6 @@ const PREPARING_INSTRUCTION =
   "This finishes automatically when the local upgrade succeeds.";
 const FAILED_INSTRUCTION =
   "Retry the upgrade. The existing Task database remains unchanged until it succeeds.";
-const RETRY_BUTTON = 'button[data-task-store-recovery-action="retry"]';
-const SURFACE = ":scope > .task-store-recovery-surface";
 
 /**
  * What the Tasks screen shows instead of Tasks while the Task store is being
@@ -42,6 +31,15 @@ const SURFACE = ":scope > .task-store-recovery-surface";
 export class CaffoldTaskStoreRecovery extends LitElement {
   private snapshot: TaskStoreStatusSnapshot =
     INITIAL_TASK_STORE_STATUS_SNAPSHOT;
+  private readonly surface = new DrawnRef<HTMLElement>(this);
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.surface.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
 
   createRenderRoot() {
     return this;
@@ -59,83 +57,31 @@ export class CaffoldTaskStoreRecovery extends LitElement {
 
   actionHintScope({
     scopeId = "task-store-recovery",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    this.performUpdate();
-    const scrollport = this.querySelector(SURFACE);
-    if (this.hidden || !scrollport) {
-      return emptyActionHintScope();
-    }
-    const control = this.querySelector<HTMLButtonElement>(RETRY_BUTTON);
-    const targets =
-      control &&
-      !control.disabled &&
-      !control.hidden &&
-      hasActionHintLayoutBox(control)
-        ? [
-            buttonActionHintTarget({
-              invalidationOwner: this,
-              id: `${scopeId}:retry`,
-              actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-              label: control.textContent?.trim() || "Retry Task setup",
-              control,
-              clipRoots: [this, scrollport, ...clipRoots],
-              isActionable: () =>
-                this.isConnected &&
-                !this.hidden &&
-                this.querySelector(RETRY_BUTTON) === control &&
-                !control.disabled &&
-                !control.hidden &&
-                hasActionHintLayoutBox(control),
-            }),
-          ]
-        : [];
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   scrollSurfaceScope({
     scopeId = "task-store-recovery",
     label = "Task setup",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    this.performUpdate();
-    const scrollport = this.querySelector(SURFACE);
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots],
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.querySelector(SURFACE) === scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   render() {
     const readiness = this.snapshot.readiness;
     const failed = readiness?.state === "failed";
     const diagnostic = readiness?.diagnosticMessage ?? "";
+    const retry = failed ? "Retry Task setup" : "Preparing…";
     return html`
       <section
+        ${drawn(this.surface)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.surface.value],
+        })}
         class="task-store-recovery-surface"
         aria-labelledby="task-store-recovery-title"
       >
@@ -155,11 +101,16 @@ export class CaffoldTaskStoreRecovery extends LitElement {
           }</p>
           <div class="task-store-recovery-actions">
             <button
+              ${this.hints.button({
+                id: "retry",
+                label: retry,
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               data-task-store-recovery-action="retry"
               ?disabled=${!this.snapshot.retryAvailable}
               @click=${this.requestRetry}
-            >${failed ? "Retry Task setup" : "Preparing…"}</button>
+            >${retry}</button>
           </div>
           <p class="task-store-recovery-diagnostic" ?hidden=${!diagnostic}>${
             diagnostic

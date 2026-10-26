@@ -5,6 +5,7 @@
 // the first time a terminal opens.
 
 import { html, LitElement } from "lit";
+import { DrawnRef, drawn } from "./drawn-refs.ts";
 
 const XTERM_VERSION = "6.0.0";
 const FIT_ADDON_VERSION = "0.11.0";
@@ -83,6 +84,8 @@ export class CaffoldTerminalView extends LitElement {
     this.scheduleFit(),
   );
 
+  private readonly screen = new DrawnRef<HTMLDivElement>(this);
+
   createRenderRoot() {
     return this;
   }
@@ -111,7 +114,7 @@ export class CaffoldTerminalView extends LitElement {
 
   // xterm.js draws everything inside the screen.
   render() {
-    return html`<div class="terminal-view-screen"></div>`;
+    return html`<div ${drawn(this.screen)} class="terminal-view-screen"></div>`;
   }
 
   /** Opens a terminal unless one is open. Resolves with its size once it has a box. */
@@ -194,9 +197,7 @@ export class CaffoldTerminalView extends LitElement {
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
-    terminal.open(
-      this.querySelector(":scope > .terminal-view-screen") as HTMLElement,
-    );
+    terminal.open(this.screen.value as HTMLDivElement);
     terminal.onData((data) => this.emitInput(data, false));
     terminal.onBinary((data) => this.emitInput(data, true));
     scrollOnTouch(terminal);

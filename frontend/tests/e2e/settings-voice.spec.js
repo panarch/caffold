@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { activateActionHint } from "./support/action-hints.js";
+import { activateActionHint, workspaceTargets } from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import { mockAgentModels } from "./support/task-fixtures.js";
 
@@ -339,4 +339,28 @@ test("wraps a long download failure inside the page on narrow screens", { tag: [
     }));
   expect(layout.overflow).toBeLessThanOrEqual(0);
   expect(layout.failureRight).toBeLessThanOrEqual(layout.scrollportRight);
+});
+
+test("offers each voice control it shows as an Action Hint", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await installVoiceSettings(page, { installed: true, openai: true });
+
+  await page.goto("/settings/voice");
+  const voicePage = page.locator("caffold-settings-voice-page");
+  await expect(voicePage.getByRole("radio", { name: /^Whisper/ })).toBeChecked();
+
+  await expect.poll(() => workspaceTargets(page, "settings:voice:")).toEqual([
+    ["provider:openai", "Use OpenAI for voice input"],
+    ["provider:gemini", "Use Gemini for voice input"],
+    ["provider:grok", "Use Grok for voice input"],
+    ["remove-model", "Delete the Whisper model"],
+    ["key:openai", "Focus OpenAI API key"],
+    ["save-key:openai", "Save the OpenAI API key"],
+    ["remove-key:openai", "Remove the OpenAI API key"],
+    ["key:gemini", "Focus Gemini API key"],
+    ["save-key:gemini", "Save the Gemini API key"],
+    ["key:grok", "Focus Grok API key"],
+    ["save-key:grok", "Save the Grok API key"],
+  ]);
 });

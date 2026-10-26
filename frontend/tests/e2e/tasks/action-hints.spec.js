@@ -1562,41 +1562,6 @@ test("reconciles local owners and cancels on interaction, viewport, and route ch
   await expect(dialog.locator('[data-action-hint-code="N"]')).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  const firstRow = page.locator(
-    'button.task-row[data-thread-id="action_hint_01"]',
-  );
-  await enterActionHints(page);
-  const firstRowBadge = dialog.getByLabel(
-    / — Open task: Action Hint Task 01$/,
-  );
-  const firstRowCode = await firstRowBadge.getAttribute("data-action-hint-code");
-  expect(firstRowCode).toBeTruthy();
-  await firstRow.evaluate((button) => {
-    button.dataset.activeTaskRowAction = "unknown-action";
-  });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.locator(
-    `[data-action-hint-code="${firstRowCode}"]`,
-  )).toHaveCount(0);
-  await firstRow.evaluate((button) => {
-    button.dataset.activeTaskRowAction = "open-task";
-  });
-  await page.keyboard.press("Escape");
-
-  const modelButton = page.locator("caffold-task-new .task-model-button");
-  const modelPopoverTarget = await modelButton.getAttribute("popovertarget");
-  await enterActionHints(page);
-  await expect(dialog.locator('[data-action-hint-code="M"]')).toBeVisible();
-  await modelButton.evaluate((button) => {
-    button.setAttribute("popovertarget", "missing-model-popover");
-  });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.locator('[data-action-hint-code="M"]')).toHaveCount(0);
-  await modelButton.evaluate((button, target) => {
-    button.setAttribute("popovertarget", target);
-  }, modelPopoverTarget);
-  await page.keyboard.press("Escape");
-
   await enterActionHints(page);
   await page.locator("caffold-task-navigator").evaluate((navigator) => {
     navigator.setReorderMode("tasks");

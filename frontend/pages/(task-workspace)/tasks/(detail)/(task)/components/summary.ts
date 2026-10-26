@@ -1,9 +1,9 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
+  type ActionHintPull,
   emptyActionHintScope,
-} from "#app/action-hint-scope.js";
+} from "#app/action-hints.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "./summary/components/info.ts";
 import {
   type CaffoldTaskDetailInfo,
@@ -25,6 +25,7 @@ export type TaskSummaryIntent = TaskInfoIntent;
  */
 export class CaffoldTaskDetailSummary extends LitElement {
   private snapshot: TaskInfoSnapshot = taskInfoSnapshot();
+  private readonly info = new DrawnRef<CaffoldTaskDetailInfo>(this);
 
   createRenderRoot() {
     return this;
@@ -42,17 +43,21 @@ export class CaffoldTaskDetailSummary extends LitElement {
   }
 
   deactivate() {
-    this.taskInfo()?.deactivate();
+    this.info.value?.deactivate();
   }
 
-  actionHintScope(options: ActionHintScopeOptions = {}): ActionHintScope {
+  detailsButton() {
+    return this.info.value?.detailsButton() ?? null;
+  }
+
+  actionHintScope(pull: ActionHintPull = {}) {
     this.performUpdate();
-    return this.taskInfo()?.actionHintScope(options) ?? emptyActionHintScope();
+    return this.info.value?.actionHintScope(pull) ?? emptyActionHintScope();
   }
 
   keyboardNavigationContexts(options: { scopeId?: string } = {}) {
     this.performUpdate();
-    return this.taskInfo()?.keyboardNavigationContexts(options) ?? [];
+    return this.info.value?.keyboardNavigationContexts(options) ?? [];
   }
 
   render() {
@@ -66,6 +71,7 @@ export class CaffoldTaskDetailSummary extends LitElement {
       </div>
       <div class="task-detail-right">
         <caffold-task-detail-info
+          ${drawn(this.info)}
           .snapshot=${this.snapshot}
           @caffold:task-detail-info-intent=${this.infoIntent}
         ></caffold-task-detail-info>
@@ -81,12 +87,6 @@ export class CaffoldTaskDetailSummary extends LitElement {
         composed: true,
         detail: { type: event.detail.type },
       }),
-    );
-  }
-
-  private taskInfo() {
-    return this.querySelector<CaffoldTaskDetailInfo>(
-      "caffold-task-detail-info",
     );
   }
 }

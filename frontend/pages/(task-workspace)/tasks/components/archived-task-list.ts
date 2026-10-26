@@ -1,13 +1,10 @@
 import { html, LitElement, nothing, type TemplateResult } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import {
-  type ActionHintScope,
-  type ActionHintTarget,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import {
   type ActiveTask,
   type ActiveTaskTopPlacement,
@@ -77,6 +74,9 @@ export interface ArchivedTaskListIntent {
  */
 export class CaffoldArchivedTaskList extends LitElement {
   private archivedTasks: Task[] = [];
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
   private loading = false;
   private loadingMore = false;
   private loaded = false;
@@ -282,77 +282,9 @@ export class CaffoldArchivedTaskList extends LitElement {
 
   actionHintScope({
     scopeId = "task-list:archived",
-    clipRoots = [],
-  }: {
-    scopeId?: string;
-    clipRoots?: Element[];
-  } = {}): ActionHintScope {
-    if (!this.revealed || this.hidden) {
-      return emptyActionHintScope();
-    }
-    const definitions: Array<{
-      id: string;
-      selector: string;
-      control: HTMLButtonElement;
-      threadId?: string;
-    }> = [];
-    for (const [id, selector] of [
-      ["retry", 'button[data-task-action="retry-archived-task-list"]'],
-      ["load-more", 'button[data-task-action="load-more-archived-tasks"]'],
-    ]) {
-      const control = this.querySelector<HTMLButtonElement>(selector);
-      if (control) {
-        definitions.push({ id, selector, control });
-      }
-    }
-    for (const control of this.querySelectorAll<HTMLButtonElement>(
-      'button[data-task-action="restore-archived-task"][data-thread-id], button[data-task-action="delete-archived-task"][data-thread-id]',
-    )) {
-      const action = control.dataset.taskAction ?? "";
-      const threadId = control.dataset.threadId ?? "";
-      if (threadId) {
-        definitions.push({
-          id: `${action}:${threadId}`,
-          selector: `button[data-task-action="${action}"][data-thread-id]`,
-          control,
-          threadId,
-        });
-      }
-    }
-    const targets = definitions.flatMap(
-      ({ id, selector, control, threadId }): ActionHintTarget[] => {
-        if (control.disabled || !hasActionHintLayoutBox(control)) {
-          return [];
-        }
-        const current = () =>
-          [...this.querySelectorAll<HTMLButtonElement>(selector)].find(
-            (candidate) =>
-              threadId === undefined || candidate.dataset.threadId === threadId,
-          );
-        return [
-          buttonActionHintTarget({
-            invalidationOwner: this,
-            id: `${scopeId}:${id}`,
-            actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-            label:
-              control.getAttribute("aria-label") ||
-              control.textContent?.trim() ||
-              id,
-            control,
-            clipRoots: [this, ...clipRoots],
-            isActionable: () =>
-              this.isConnected &&
-              this.revealed &&
-              !this.hidden &&
-              !this.taskOperations.blocked &&
-              current() === control &&
-              !control.disabled &&
-              hasActionHintLayoutBox(control),
-          }),
-        ];
-      },
-    );
-    return { blocked: false, targets, mutationRoots: [this], scrollRoots: [] };
+    ...pull
+  }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   render() {
@@ -374,6 +306,11 @@ export class CaffoldArchivedTaskList extends LitElement {
       content = html`<div class="task-section-message" role="alert">
         <p>${this.error.message}</p>
         <button
+          ${this.hints.button({
+            id: "retry",
+            label: "Retry",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           class="task-secondary-button"
           data-task-action="retry-archived-task-list"
@@ -481,6 +418,11 @@ export class CaffoldArchivedTaskList extends LitElement {
     const restore =
       task.conversationAvailable !== false
         ? html`<button
+            ${this.hints.button({
+              id: `restore-archived-task:${threadId}`,
+              label: restoreLabel,
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            })}
             type="button"
             class="task-archived-action-button${restoring ? " is-loading" : ""}"
             data-task-action="restore-archived-task"
@@ -532,6 +474,11 @@ export class CaffoldArchivedTaskList extends LitElement {
       <div class="task-archived-actions">
         ${restore}
         <button
+          ${this.hints.button({
+            id: `delete-archived-task:${threadId}`,
+            label: deleteLabel,
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           class="task-archived-action-button task-delete-button${
             deleting ? " is-loading" : ""
@@ -580,6 +527,11 @@ export class CaffoldArchivedTaskList extends LitElement {
           : nothing
       }
       <button
+        ${this.hints.button({
+          id: "load-more",
+          label,
+          action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        })}
         type="button"
         class="task-secondary-button"
         data-task-action="load-more-archived-tasks"

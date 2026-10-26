@@ -1,18 +1,13 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
   type ActionHintScope,
-  type ActionHintScopeOptions,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   linkActionHintLabel,
   linkActionHintTarget,
-} from "../action-hint-scope.js";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "../scroll-scope.js";
+} from "../action-hint-scope.ts";
+import type { ActionHintPull } from "../action-hints.ts";
+import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.ts";
 import type { DocumentPreviewFile } from "./dom.ts";
 import "./loading-text.ts";
 
@@ -115,6 +110,10 @@ class CaffoldPptxViewer extends LitElement {
     this.mount = null;
   }
 
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+
   createRenderRoot() {
     return this;
   }
@@ -143,7 +142,15 @@ class CaffoldPptxViewer extends LitElement {
       : message
         ? html`<p class="pptx-viewer-message">${message}</p>`
         : nothing;
-    return html`<div class="pptx-viewer-body">${content}</div>`;
+    return html`<div
+      ${this.surfaces.surface({
+        id: "scroll",
+        axes: ["vertical"],
+        scrollport: () => this,
+        clipRoots: () => [this],
+      })}
+      class="pptx-viewer-body"
+    >${content}</div>`;
   }
 
   // A file handed over again before it is drawn replaces the one before it.
@@ -162,56 +169,19 @@ class CaffoldPptxViewer extends LitElement {
   }
 
   scrollSurfaceScope({
-    scopeId = "",
     label = "PowerPoint preview",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    if (!scopeId || !label || this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport: this,
-          axes: ["vertical"],
-          clipRoots: [this, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            hasScrollLayoutBox(this),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this],
-      scrollRoots: [this],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, label });
   }
 
   // The links of the slides drawn now: anchors out of the deck, and the links
   // the renderer draws without an href, to another slide or on a whole shape.
-  actionHintScope({
-    scopeId = "",
-    linkActionId = "",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    linkActionId?: string;
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
+  // They do what the owner's `link` action names.
+  actionHintScope(pull: ActionHintPull = {}): ActionHintScope {
     const root = this.mount?.shadowRoot;
-    if (
-      !scopeId ||
-      !linkActionId ||
-      !root ||
-      !this.isConnected ||
-      this.hidden ||
-      this.renderState !== "pptx"
-    ) {
+    const actionId = pull.actions?.link;
+    if (!actionId || !root || this.renderState !== "pptx") {
       return emptyActionHintScope();
     }
     const targets = [];
@@ -232,18 +202,11 @@ class CaffoldPptxViewer extends LitElement {
         targets.push(
           linkActionHintTarget({
             invalidationOwner: this,
-            id: `${scopeId}:slide:${slide.dataset.slideIndex}:link:${ordinal}`,
-            actionId: linkActionId,
+            id: `${pull.scopeId}:slide:${slide.dataset.slideIndex}:link:${ordinal}`,
+            actionId,
             label,
             control,
-            clipRoots: [this, ...clipRoots].filter(Boolean),
-            isActionable: () =>
-              this.isConnected &&
-              !this.hidden &&
-              isCurrent() &&
-              this.renderState === "pptx" &&
-              root.contains(control) &&
-              hasActionHintLayoutBox(control),
+            clipRoots: [this, ...(pull.clipRoots ?? [])],
           }),
         );
       }

@@ -1,23 +1,15 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import { repeat } from "lit/directives/repeat.js";
-import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  disclosureActionHintTarget,
-  emptyActionHintScope,
-} from "../action-hint-scope.js";
+import { type ActionHintPull, ActionHints } from "../action-hints.ts";
 import {
   type FileStatusContext,
   fileStatusPresentation,
 } from "../file-status.ts";
 import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
+  type ScrollSurfacePull,
+  ScrollSurfaces,
   scrollBackToTop,
-} from "../scroll-scope.js";
+} from "../scroll-scope.ts";
 import {
   FILE_SORT_MODES,
   type FileSortMode,
@@ -26,6 +18,7 @@ import {
 } from "../settings.ts";
 import { entryIcon, warmIcons } from "./icons.ts";
 import "./loading-text.ts";
+import { DrawnRef, DrawnRefs, drawn } from "./drawn-refs.ts";
 
 export const FILE_TREE_SELECT_EVENT = "caffold:file-tree-select";
 export const FILE_TREE_LOAD_EVENT = "caffold:file-tree-load-children";
@@ -117,6 +110,14 @@ export class CaffoldFileTree extends LitElement {
   private nodeByKey = new Map<string, FileTreeNode>();
   private knownDirectoryKeys = new Set<string>();
   private pendingRevealKey: string | null = null;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly rowsByKey = new DrawnRefs<HTMLLIElement>(this);
+  private readonly entriesByKey = new DrawnRefs<HTMLButtonElement>(this);
+  private readonly iconsByKey = new DrawnRefs<HTMLSpanElement>(this);
   private readonly iconsReady = () => this.requestUpdate();
   private readonly settingsChanged = (event: Event) => {
     this.globalFileSortMode = normalizeFileSortMode(
@@ -154,27 +155,33 @@ export class CaffoldFileTree extends LitElement {
     window.removeEventListener("caffold:settings-change", this.settingsChanged);
   }
 
+  // Rows declare their Action Hints: an expandable directory toggles, any
+  // other entry opens, except the one already open (an owner's actions for
+  // `disclosure` and `file`).
   render() {
     const listbox = Boolean(this.listboxLabel);
-    const rows = visibleRows(
-      this.nodes,
-      this.expandedKeys,
-      this.fileSortMode(),
-      this.hiddenEntriesLast,
-    );
     return html`
-      <div class="file-tree-scroll">
+      <div
+        ${drawn(this.scrollport)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          axes: ["vertical", "horizontal"],
+          clipRoots: () => [this, this.scrollport.value],
+        })}
+        class="file-tree-scroll"
+      >
         <ol
           class="file-tree-rows"
           role=${listbox ? "listbox" : nothing}
           aria-label=${this.listboxLabel || nothing}
         >${repeat(
-          rows,
+          this.visibleRows(),
           (row) => row.key,
           (row) => {
             const { node, depth, parentKey } = row;
             if (node.kind === "group") {
               return html`<li
+                ${drawn(this.rowsByKey.of(row.key))}
                 class="file-tree-group"
                 data-file-tree-row-key=${row.key}
                 role=${listbox ? "none" : nothing}
@@ -204,6 +211,7 @@ export class CaffoldFileTree extends LitElement {
                   ? "file-tree-status is-error"
                   : "file-tree-status";
               return html`<li
+                ${drawn(this.rowsByKey.of(row.key))}
                 class=${statusClass}
                 data-file-tree-row-key=${row.key}
                 data-file-tree-parent-key=${parentKey || nothing}
@@ -223,7 +231,13 @@ export class CaffoldFileTree extends LitElement {
             );
             const ariaLabel =
               node.ariaLabel ?? defaultAriaLabel(node, expanded);
+            const hint = {
+              anchor: () => this.iconsByKey.get(node.key),
+              clipRoots: () => [this.scrollport.value],
+            };
+            const key = encodeURIComponent(node.key);
             return html`<li
+              ${drawn(this.rowsByKey.of(row.key))}
               class="file-tree-row"
               data-file-tree-row-key=${row.key}
               data-file-tree-parent-key=${parentKey || nothing}
@@ -231,6 +245,23 @@ export class CaffoldFileTree extends LitElement {
               ?data-file-tree-first-sibling=${row.firstSibling}
               ?data-file-tree-last-sibling=${row.lastSibling}
             ><button
+              ${drawn(this.entriesByKey.of(node.key))}
+              ${
+                expandable
+                  ? this.hints.disclosure({
+                      ...hint,
+                      id: `disclosure:${key}`,
+                      label: defaultAriaLabel(node, expanded),
+                      role: "disclosure",
+                    })
+                  : this.hints.button({
+                      ...hint,
+                      id: `file:${key}`,
+                      label: node.ariaLabel ?? `Open ${node.name ?? node.key}`,
+                      role: "file",
+                      when: node.selectable !== false && (listbox || !selected),
+                    })
+              }
               type="button"
               class="file-tree-entry file-tree-${node.kind}"
               style="--tree-depth: ${depth}"
@@ -274,7 +305,10 @@ export class CaffoldFileTree extends LitElement {
                 aria-hidden="true"
               >${status.code}</span>
               <span class="file-tree-node-label">
-                <span class="file-tree-icon">${entryIcon({
+                <span
+                  ${drawn(this.iconsByKey.of(node.key))}
+                  class="file-tree-icon"
+                >${entryIcon({
                   name: node.name ?? "",
                   path: node.path ?? node.key,
                   kind: node.kind,
@@ -348,9 +382,11 @@ export class CaffoldFileTree extends LitElement {
   }
 
   focusFirstEntry() {
-    this.querySelector<HTMLButtonElement>(
-      "button.file-tree-entry:not(:disabled)",
-    )?.focus({ preventScroll: true });
+    const first = this.visibleRows().find(
+      ({ node }) =>
+        node.kind !== "group" && node.kind !== "status" && !node.disabled,
+    );
+    this.entriesByKey.get(first?.key ?? "")?.focus({ preventScroll: true });
   }
 
   expandKeys(keys: Iterable<string> | null | undefined) {
@@ -422,172 +458,24 @@ export class CaffoldFileTree extends LitElement {
   }
 
   scroller() {
-    return this.querySelector<HTMLElement>(":scope > .file-tree-scroll");
+    return this.scrollport.value ?? null;
   }
 
-  actionHintScope({
-    scopeId = "",
-    actionId = "",
-    disclosureActionId = "",
-    clipRoots = [],
-    isCurrent = () => false,
-    includeDirectories = false,
-    labelForNode = (node) =>
-      node.ariaLabel ?? node.title ?? node.name ?? "Open file",
-  }: ActionHintScopeOptions & {
-    disclosureActionId?: string;
-    isCurrent?: (node: FileTreeNode) => boolean;
-    includeDirectories?: boolean;
-    labelForNode?: (node: FileTreeNode) => string;
-  } = {}): ActionHintScope {
-    const scroller = this.scroller();
-    if (
-      !scopeId ||
-      (!actionId && !disclosureActionId) ||
-      !scroller ||
-      this.hidden
-    ) {
-      return emptyActionHintScope();
-    }
-    const entityKey = this.entityKey;
-    const targets = [
-      ...this.querySelectorAll<HTMLButtonElement>(
-        ":scope > .file-tree-scroll > .file-tree-rows > .file-tree-row > button[data-file-tree-key]",
-      ),
-    ].flatMap((control) => {
-      const key = `${control.dataset.fileTreeKey ?? ""}`;
-      const node = this.nodeByKey.get(key);
-      if (!key || !node || control.disabled) {
-        return [];
-      }
-      if (isExpandable(node)) {
-        if (!disclosureActionId) {
-          return [];
-        }
-        const anchor = control.querySelector<HTMLElement>(
-          ":scope > .file-tree-node-label > .file-tree-icon",
-        );
-        if (!anchor) {
-          return [];
-        }
-        const expanded =
-          this.expandedKeys?.has(key) ??
-          control.getAttribute("aria-expanded") === "true";
-        return [
-          disclosureActionHintTarget({
-            invalidationOwner: this,
-            id: `${scopeId}:disclosure:${encodeURIComponent(key)}`,
-            actionId: disclosureActionId,
-            label: defaultAriaLabel(node, expanded),
-            control,
-            anchor,
-            clipRoots: uniqueElements([...clipRoots, scroller]),
-            isActionable: () => {
-              const current = this.nodeByKey.get(key);
-              return Boolean(
-                this.isConnected &&
-                  !this.hidden &&
-                  this.entityKey === entityKey &&
-                  current &&
-                  isExpandable(current) &&
-                  this.rowForKey(key)?.querySelector(
-                    ":scope > button[data-file-tree-key]",
-                  ) === control &&
-                  control.querySelector(
-                    ":scope > .file-tree-node-label > .file-tree-icon",
-                  ) === anchor &&
-                  !control.disabled,
-              );
-            },
-          }),
-        ];
-      }
-      if (
-        !actionId ||
-        (node.kind === "directory" && !includeDirectories) ||
-        node.selectable === false ||
-        isCurrent(node)
-      ) {
-        return [];
-      }
-      const anchor = control.querySelector<HTMLElement>(
-        ":scope > .file-tree-node-label > .file-tree-icon",
-      );
-      if (!anchor) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:file:${encodeURIComponent(key)}`,
-          actionId,
-          label: `${labelForNode(node) ?? ""}` || `${node.name ?? key}`,
-          control,
-          anchor,
-          clipRoots: uniqueElements([...clipRoots, scroller]),
-          isActionable: () => {
-            const current = this.nodeByKey.get(key);
-            return Boolean(
-              this.isConnected &&
-                !this.hidden &&
-                this.entityKey === entityKey &&
-                current &&
-                (current.kind !== "directory" ||
-                  (includeDirectories && !isExpandable(current))) &&
-                current.selectable !== false &&
-                !isCurrent(current) &&
-                this.rowForKey(key)?.querySelector(
-                  ":scope > button[data-file-tree-key]",
-                ) === control &&
-                control.querySelector(
-                  ":scope > .file-tree-node-label > .file-tree-icon",
-                ) === anchor &&
-                !control.disabled,
-            );
-          },
-        }),
-      ];
-    });
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [scroller],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
-  scrollSurfaceScope({
-    scopeId = "",
-    label = "Files",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.scroller();
-    if (!scopeId || !label || !scrollport || this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          axes: ["vertical", "horizontal"],
-          clipRoots: uniqueElements([this, scrollport, ...clipRoots]),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.scroller() === scrollport &&
-            isCurrent() &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+  scrollSurfaceScope({ label = "Files", ...pull }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, label });
+  }
+
+  private visibleRows() {
+    return visibleRows(
+      this.nodes,
+      this.expandedKeys,
+      this.fileSortMode(),
+      this.hiddenEntriesLast,
+    );
   }
 
   private fileSortMode() {
@@ -668,9 +556,10 @@ export class CaffoldFileTree extends LitElement {
 
   private revealFirstChildIfHidden(parentKey: string) {
     const scroller = this.scroller();
-    const child = this.rows()?.querySelector(
-      `:scope > li[data-file-tree-parent-key="${CSS.escape(parentKey)}"]`,
+    const firstChild = this.visibleRows().find(
+      (row) => row.parentKey === parentKey,
     );
+    const child = this.rowsByKey.get(firstChild?.key ?? "");
     if (!scroller || !child) {
       return;
     }
@@ -689,14 +578,8 @@ export class CaffoldFileTree extends LitElement {
     }
   }
 
-  private rows() {
-    return this.querySelector(":scope > .file-tree-scroll > .file-tree-rows");
-  }
-
   private rowForKey(key: string | null | undefined) {
-    return this.rows()?.querySelector<HTMLElement>(
-      `:scope > li[data-file-tree-row-key="${CSS.escape(`${key ?? ""}`)}"]`,
-    );
+    return this.rowsByKey.get(`${key ?? ""}`);
   }
 }
 
@@ -986,12 +869,4 @@ function optionId(tree: Element, key: string) {
 
 function nextAnimationFrame() {
   return new Promise((resolve) => requestAnimationFrame(resolve));
-}
-
-function uniqueElements(elements: Array<Element | null | undefined>) {
-  return [
-    ...new Set(
-      elements.filter((element): element is Element => Boolean(element)),
-    ),
-  ];
 }

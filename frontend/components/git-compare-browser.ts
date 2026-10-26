@@ -1,11 +1,5 @@
 import { html, LitElement } from "lit";
-import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-  mergeActionHintScopes,
-} from "../action-hint-scope.js";
+import { type ActionHintPull, mergeActionHintScopes } from "../action-hints.ts";
 import {
   type GitCompare,
   type GitDiff,
@@ -17,18 +11,16 @@ import {
   getGitRefs,
 } from "../api.ts";
 import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "../scroll-scope.js";
+  type ScrollSurfacePull,
+} from "../scroll-scope.ts";
 import "./file-viewer.ts";
 import type { CaffoldReviewFileViewer } from "./file-viewer.ts";
 import { diffViewerPresentation } from "./file-viewer-presentation.ts";
 import "./git-compare-tree.ts";
 import type { CaffoldGitCompareTree } from "./git-compare-tree.ts";
 import "./pane-resizer.ts";
+import { DrawnRef, drawn } from "./drawn-refs.ts";
 import type { CaffoldPaneResizer } from "./pane-resizer.ts";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.ts";
 
@@ -53,6 +45,9 @@ export class CaffoldGitCompareBrowser extends LitElement {
   private compareRequestId = 0;
   private diffRequestId = 0;
   private compareScrollTop = 0;
+  private readonly tree = new DrawnRef<CaffoldGitCompareTree>(this);
+  private readonly resizer = new DrawnRef<CaffoldPaneResizer>(this);
+  private readonly fileViewer = new DrawnRef<CaffoldReviewFileViewer>(this);
 
   createRenderRoot() {
     return this;
@@ -65,14 +60,16 @@ export class CaffoldGitCompareBrowser extends LitElement {
 
   render() {
     return html`
-      <caffold-git-compare-tree></caffold-git-compare-tree>
+      <caffold-git-compare-tree ${drawn(this.tree)}></caffold-git-compare-tree>
       <caffold-pane-resizer
+        ${drawn(this.resizer)}
         storage-key="caffold:pane-width:git-compare"
         collapsed-storage-key="caffold:pane-collapsed:git-compare"
         aria-label="Resize review side panel"
         @caffold:pane-resize=${this.handlePanelResize}
       ></caffold-pane-resizer>
       <caffold-review-file-viewer
+        ${drawn(this.fileViewer)}
         refresh-action="refresh-git-review"
       ></caffold-review-file-viewer>
     `;
@@ -309,94 +306,59 @@ export class CaffoldGitCompareBrowser extends LitElement {
     return this.compare?.files?.find((entry) => entry.path === path) ?? null;
   }
 
-  actionHintScope({
-    scopeId = "",
-    fileActionId = "",
-    disclosureActionId = "",
-    selectActionId = "",
-    parentActionId = "",
-    detailsActionId = "",
-    refreshActionId = "",
-    linkActionId = "",
-    separatorActionId = "",
-    clipRoots = [],
-  }: Omit<ActionHintScopeOptions, "actionId"> & {
-    fileActionId?: string;
-    disclosureActionId?: string;
-    selectActionId?: string;
-    parentActionId?: string;
-    detailsActionId?: string;
-    refreshActionId?: string;
-    linkActionId?: string;
-    separatorActionId?: string;
-  } = {}): ActionHintScope {
-    if (!scopeId || this.hidden) {
-      return emptyActionHintScope();
-    }
+  // `actions` names what each kind of control does: `file`, `disclosure`,
+  // and `select` in the compared files, `separator` on the resizer, and
+  // `parent`, `details`, `refresh`, and `link` in the viewer.
+  actionHintScope(pull: ActionHintPull = {}) {
     const listActive =
       !this.sidePaneCollapsed() &&
       (this.detailView === "list" ||
         !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches);
-    const viewerActive = this.detailView === "viewer";
-    const resizer = this.panelResizer;
-    const separatorScope = hasActionHintLayoutBox(resizer)
-      ? resizer.actionHintScope({
-          scopeId,
-          actionId: separatorActionId,
-          clipRoots: [this, ...clipRoots],
-          isCurrent: () =>
-            this.isConnected && !this.hidden && this.panelResizer === resizer,
-        })
-      : null;
+    const clipRoots = [this, ...(pull.clipRoots ?? [])];
     return mergeActionHintScopes(
       listActive
         ? this.compareTree.actionHintScope({
-            scopeId: `${scopeId}:compare`,
-            actionId: fileActionId,
-            disclosureActionId,
-            selectActionId,
-            clipRoots: [this, ...clipRoots],
+            ...pull,
+            scopeId: `${pull.scopeId}:compare`,
+            clipRoots,
           })
         : null,
-      separatorScope,
-      viewerActive
+      this.panelResizer.actionHintScope({
+        scopeId: pull.scopeId,
+        actionId: pull.actions?.separator,
+        clipRoots,
+      }),
+      this.detailView === "viewer"
         ? this.viewer.actionHintScope({
-            scopeId: `${scopeId}:viewer`,
-            actionId: parentActionId,
-            detailsActionId,
-            refreshActionId,
-            linkActionId,
-            clipRoots: [this, ...clipRoots],
+            ...pull,
+            scopeId: `${pull.scopeId}:viewer`,
+            clipRoots,
           })
         : null,
     );
   }
 
-  scrollSurfaceScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    if (!scopeId || this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
+  scrollSurfaceScope(pull: ScrollSurfacePull = {}) {
     const singlePane = window.matchMedia(
       REVIEW_SINGLE_PANE_MEDIA_QUERY,
     ).matches;
     const listActive =
       !this.sidePaneCollapsed() && (this.detailView === "list" || !singlePane);
-    const viewerActive = this.detailView === "viewer";
+    const clipRoots = [this, ...(pull.clipRoots ?? [])];
     return mergeScrollSurfaceScopes(
-      listActive && hasScrollLayoutBox(this.compareTree)
+      listActive
         ? this.compareTree.scrollSurfaceScope({
-            scopeId: `${scopeId}:compare`,
+            ...pull,
+            scopeId: `${pull.scopeId}:compare`,
             label: "Compared files",
-            clipRoots: [this, ...clipRoots],
+            clipRoots,
           })
         : null,
-      viewerActive && hasScrollLayoutBox(this.viewer)
+      this.detailView === "viewer"
         ? this.viewer.scrollSurfaceScope({
-            scopeId: `${scopeId}:viewer`,
-            clipRoots: [this, ...clipRoots],
+            ...pull,
+            scopeId: `${pull.scopeId}:viewer`,
+            clipRoots,
           })
         : null,
     );
@@ -448,23 +410,17 @@ export class CaffoldGitCompareBrowser extends LitElement {
   // the browser is in the document.
   private get compareTree() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-git-compare-tree",
-    ) as CaffoldGitCompareTree;
+    return this.tree.value as CaffoldGitCompareTree;
   }
 
   private get panelResizer() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-pane-resizer",
-    ) as CaffoldPaneResizer;
+    return this.resizer.value as CaffoldPaneResizer;
   }
 
   private get viewer() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-review-file-viewer",
-    ) as CaffoldReviewFileViewer;
+    return this.fileViewer.value as CaffoldReviewFileViewer;
   }
 
   private async loadRefsAndCompare() {
@@ -642,7 +598,7 @@ export class CaffoldGitCompareBrowser extends LitElement {
   }
 
   private rememberCompareScroll() {
-    const scroller = this.querySelector(".file-tree-scroll");
+    const scroller = this.compareTree.listScroller();
     if (!scroller) {
       return;
     }
@@ -657,7 +613,7 @@ export class CaffoldGitCompareBrowser extends LitElement {
     }
 
     window.requestAnimationFrame(() => {
-      const scroller = this.querySelector(".file-tree-scroll");
+      const scroller = this.compareTree.listScroller();
       if (!scroller) {
         return;
       }

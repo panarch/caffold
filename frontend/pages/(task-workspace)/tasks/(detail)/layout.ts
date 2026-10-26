@@ -1,12 +1,12 @@
 import { html, LitElement } from "lit";
-import type { ActionHintScope } from "#app/action-hint-scope.js";
+import type { ActionHintScope } from "#app/action-hint-scope.ts";
 import {
   ACTION_HINT_ACTION,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { TaskDetail } from "#app/api.ts";
-import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.ts";
 import {
   routeDomain,
   routeMode,
@@ -15,8 +15,9 @@ import {
 } from "#app/navigation-routes.ts";
 import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.ts";
 import type { TaskStoreStatusSnapshot } from "#app/pages/(task-workspace)/task-store-status.ts";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.ts";
 import "#components/segmented-control.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import type { CaffoldSegmentedControl } from "#components/segmented-control.ts";
 import type { ComposerSubmission } from "../components/composer.ts";
 import {
@@ -133,6 +134,23 @@ export class CaffoldDetailLayout extends LitElement {
     TaskRoute | SectionRouteRequest
   >();
   private pendingTerminalTake = "";
+  private readonly summaryHeader = new DrawnRef<HTMLElement>(this);
+  private readonly taskSummary = new DrawnRef<CaffoldTaskDetailSummary>(this);
+  private readonly sectionSummary = new DrawnRef<CaffoldSectionDetailSummary>(
+    this,
+  );
+  private readonly viewSwitch = new DrawnRef<CaffoldSegmentedControl>(this);
+  private readonly gitMenu = new DrawnRef<CaffoldTaskDetailGit>(this);
+  private readonly githubMenu = new DrawnRef<CaffoldTaskDetailGithub>(this);
+  private readonly terminalButton = new DrawnRef<CaffoldTaskDetailTerminal>(
+    this,
+  );
+  private readonly taskDetail = new DrawnRef<CaffoldTaskDetail>(this);
+  private readonly sectionDetail = new DrawnRef<CaffoldSectionDetail>(this);
+  private readonly reviewSlot = new DrawnRef<HTMLDivElement>(this);
+  private readonly gitSlot = new DrawnRef<HTMLDivElement>(this);
+  private readonly githubSlot = new DrawnRef<HTMLDivElement>(this);
+  private readonly terminalPage = new DrawnRef<CaffoldTerminalPage>(this);
 
   createRenderRoot() {
     return this;
@@ -154,7 +172,7 @@ export class CaffoldDetailLayout extends LitElement {
   setLiveUpdates(liveUpdates: WorkspaceLiveUpdates | null | undefined) {
     this.performUpdate();
     this.liveUpdates = liveUpdates ?? null;
-    this.taskDetail()?.setLiveUpdates(this.liveUpdates);
+    this.taskDetail.value?.setLiveUpdates(this.liveUpdates);
     this.gitLayout()?.setLiveUpdates(this.liveUpdates);
     for (const review of this.reviewComponents.values()) {
       review.setLiveUpdates(this.liveUpdates);
@@ -173,7 +191,7 @@ export class CaffoldDetailLayout extends LitElement {
     this.taskRoute = { ...(options.route ?? { kind: "tasks", threadId }) };
     this.keepTerminalTakeFor(this.taskRoute.terminal ? `task:${threadId}` : "");
     this.activateSubject("task");
-    const prepared = this.taskDetail()?.prepare(threadId, options);
+    const prepared = this.taskDetail.value?.prepare(threadId, options);
     this.captureTaskSnapshot();
     this.syncTaskPresentation();
     return prepared;
@@ -186,7 +204,7 @@ export class CaffoldDetailLayout extends LitElement {
     this.performUpdate();
     this.taskRoute = { ...(options.route ?? { kind: "tasks", threadId }) };
     this.activateSubject("task");
-    const result = await this.taskDetail()?.open(threadId, options);
+    const result = await this.taskDetail.value?.open(threadId, options);
     this.captureTaskSnapshot();
     this.syncTaskPresentation();
     await this.activateSharedSurface();
@@ -199,7 +217,10 @@ export class CaffoldDetailLayout extends LitElement {
   ) {
     this.performUpdate();
     this.activateSubject("task");
-    const adopted = this.taskDetail()?.adoptCreatedDetail(detail, submission);
+    const adopted = this.taskDetail.value?.adoptCreatedDetail(
+      detail,
+      submission,
+    );
     if (!adopted) {
       return false;
     }
@@ -235,9 +256,9 @@ export class CaffoldDetailLayout extends LitElement {
         : "",
     );
     this.activateSubject("section");
-    this.sectionDetail()?.setSection(this.section);
-    this.sectionDetail()?.setTransportAvailable(this.transportAvailable);
-    this.sectionDetail()?.setTaskStoreStatusSnapshot(
+    this.sectionDetail.value?.setSection(this.section);
+    this.sectionDetail.value?.setTransportAvailable(this.transportAvailable);
+    this.sectionDetail.value?.setTaskStoreStatusSnapshot(
       this.taskStoreStatusSnapshot,
     );
     this.syncSectionPresentation();
@@ -280,7 +301,7 @@ export class CaffoldDetailLayout extends LitElement {
     if (previousSettings === nextSettings) {
       return false;
     }
-    this.sectionDetail()?.setSection(this.section);
+    this.sectionDetail.value?.setSection(this.section);
     this.githubLayout()?.setContext({
       composerSettings: this.section.composerSettings ?? null,
     });
@@ -306,7 +327,7 @@ export class CaffoldDetailLayout extends LitElement {
     }
     this.managedTask = nextTask;
     this.managedTaskRepository = nextRepository;
-    this.taskDetail()?.setManagedTask(nextTask);
+    this.taskDetail.value?.setManagedTask(nextTask);
     if (this.subjectKind === "task") {
       this.syncTaskPresentation();
     }
@@ -316,13 +337,13 @@ export class CaffoldDetailLayout extends LitElement {
     if (!this.hasUpdated) {
       return;
     }
-    this.terminalPage()?.deactivate();
+    this.terminalPage.value?.deactivate();
     if (this.subjectKind === "task") {
-      this.taskDetail()?.deactivate(options);
+      this.taskDetail.value?.deactivate(options);
       this.deactivateSharedChildren();
     } else {
       this.deactivateSectionSurfaces();
-      this.sectionDetail()?.clear();
+      this.sectionDetail.value?.clear();
       this.section = null;
     }
     this.managedTask = null;
@@ -331,19 +352,19 @@ export class CaffoldDetailLayout extends LitElement {
 
   suspendForeground() {
     if (this.subjectKind === "task") {
-      this.taskDetail()?.suspendForeground();
+      this.taskDetail.value?.suspendForeground();
     }
-    this.terminalPage()?.suspendForeground();
+    this.terminalPage.value?.suspendForeground();
   }
 
   recoverForeground() {
     const task =
       this.subjectKind === "task"
-        ? this.taskDetail()?.recoverForeground()
+        ? this.taskDetail.value?.recoverForeground()
         : null;
     const terminal =
       this.presentedSurface() === "terminal"
-        ? this.terminalPage()?.recoverForeground()
+        ? this.terminalPage.value?.recoverForeground()
         : null;
     if (!terminal) {
       return task;
@@ -354,13 +375,13 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   currentDetail() {
-    return this.taskDetail()?.currentDetail() ?? null;
+    return this.taskDetail.value?.currentDetail() ?? null;
   }
 
   hasSelectedTaskDetail() {
     return (
       this.subjectKind === "task" &&
-      Boolean(this.taskDetail()?.hasSelectedTaskDetail())
+      Boolean(this.taskDetail.value?.hasSelectedTaskDetail())
     );
   }
 
@@ -372,39 +393,39 @@ export class CaffoldDetailLayout extends LitElement {
 
   newTaskContextPath() {
     return this.subjectKind === "task"
-      ? (this.taskDetail()?.newTaskContextPath() ?? "")
-      : (this.sectionDetail()?.selectedContextPath() ?? "");
+      ? (this.taskDetail.value?.newTaskContextPath() ?? "")
+      : (this.sectionDetail.value?.selectedContextPath() ?? "");
   }
 
   get taskDetailView() {
     return this.subjectKind === "task"
-      ? (this.taskDetail()?.taskDetailView ?? "conversation")
+      ? (this.taskDetail.value?.taskDetailView ?? "conversation")
       : (this.sectionRoute?.sectionSurface ?? "new");
   }
 
   get streamState(): TaskTransportState | "inactive" | undefined {
     const terminal =
       this.presentedSurface() === "terminal"
-        ? this.terminalPage()?.transportState
+        ? this.terminalPage.value?.transportState
         : null;
     if (terminal === "unavailable" || this.subjectKind !== "task") {
       return terminal ?? "inactive";
     }
-    return this.taskDetail()?.streamState;
+    return this.taskDetail.value?.streamState;
   }
 
   setServerPaths(server: { root?: string; homePath?: string | null }) {
-    this.sectionDetail()?.setServerPaths(server);
+    this.sectionDetail.value?.setServerPaths(server);
   }
 
   setTransportAvailable(available: boolean) {
     this.transportAvailable = Boolean(available);
-    this.sectionDetail()?.setTransportAvailable(this.transportAvailable);
+    this.sectionDetail.value?.setTransportAvailable(this.transportAvailable);
   }
 
   setTaskStoreStatusSnapshot(snapshot: TaskStoreStatusSnapshot | null) {
     this.taskStoreStatusSnapshot = snapshot ?? null;
-    this.sectionDetail()?.setTaskStoreStatusSnapshot(
+    this.sectionDetail.value?.setTaskStoreStatusSnapshot(
       this.taskStoreStatusSnapshot,
     );
   }
@@ -446,24 +467,23 @@ export class CaffoldDetailLayout extends LitElement {
       return emptyActionHintScope();
     }
     const surface = this.presentedSurface();
-    const header = this.summaryHeader();
+    const header = this.summaryHeader.value;
     const headerClipRoots = header ? [this, header] : [this];
-    const viewSwitchScope = this.viewSwitch()?.actionHintScope({
+    const viewSwitchScope = this.viewSwitch.value?.actionHintScope({
       scopeId: `detail:${identityKey}:view`,
       actionId: ACTION_HINT_ACTION.DETAIL_VIEW,
       clipRoots: headerClipRoots,
-      labelForChoice: (choice) => `Open ${choice.label}`,
     });
     let activeChildScope: ActionHintScope | null | undefined = null;
     let blocked = false;
     if (this.subjectKind === "task" && surface === "conversation") {
-      const taskDetail = this.taskDetail();
+      const taskDetail = this.taskDetail.value;
       if (taskDetail && !taskDetail.hidden) {
         blocked = Boolean(taskDetail.loading);
         activeChildScope = taskDetail.actionHintScope();
       }
     } else if (this.subjectKind === "section" && surface === "new") {
-      const sectionDetail = this.sectionDetail();
+      const sectionDetail = this.sectionDetail.value;
       if (sectionDetail && !sectionDetail.hidden) {
         activeChildScope = sectionDetail.actionHintScope();
       }
@@ -474,7 +494,7 @@ export class CaffoldDetailLayout extends LitElement {
     } else if (surface === "github") {
       activeChildScope = this.githubLayout()?.actionHintScope();
     } else if (surface === "terminal") {
-      activeChildScope = this.terminalPage()?.actionHintScope({
+      activeChildScope = this.terminalPage.value?.actionHintScope({
         scopeId: `detail:${identityKey}`,
         clipRoots: [this],
       });
@@ -486,11 +506,11 @@ export class CaffoldDetailLayout extends LitElement {
     return mergeActionHintScopes(
       { blocked, targets: [], mutationRoots: [], scrollRoots: [] },
       viewSwitchScope,
-      this.gitMenu()?.actionHintScope(headerScope),
-      this.githubMenu()?.actionHintScope(headerScope),
-      this.terminalButton()?.actionHintScope(headerScope),
+      this.gitMenu.value?.actionHintScope(headerScope),
+      this.githubMenu.value?.actionHintScope(headerScope),
+      this.terminalButton.value?.actionHintScope(headerScope),
       this.subjectKind === "task"
-        ? this.taskSummary()?.actionHintScope(headerScope)
+        ? this.taskSummary.value?.actionHintScope(headerScope)
         : null,
       activeChildScope,
     );
@@ -506,13 +526,13 @@ export class CaffoldDetailLayout extends LitElement {
     const surface = this.presentedSurface();
     let activeChild: ReturnType<typeof mergeKeyboardNavigationContexts> = [];
     if (this.subjectKind === "task" && surface === "conversation") {
-      const taskDetail = this.taskDetail();
+      const taskDetail = this.taskDetail.value;
       activeChild =
         taskDetail && !taskDetail.hidden && !taskDetail.loading
           ? taskDetail.keyboardNavigationContexts()
           : [];
     } else if (this.subjectKind === "section" && surface === "new") {
-      const sectionDetail = this.sectionDetail();
+      const sectionDetail = this.sectionDetail.value;
       activeChild =
         sectionDetail && !sectionDetail.hidden
           ? sectionDetail.keyboardNavigationContexts()
@@ -525,10 +545,11 @@ export class CaffoldDetailLayout extends LitElement {
       activeChild = this.githubLayout()?.keyboardNavigationContexts() ?? [];
     }
     return mergeKeyboardNavigationContexts(
-      this.gitMenu()?.keyboardNavigationContexts({ scopeId }) ?? [],
-      this.githubMenu()?.keyboardNavigationContexts({ scopeId }) ?? [],
+      this.gitMenu.value?.keyboardNavigationContexts({ scopeId }) ?? [],
+      this.githubMenu.value?.keyboardNavigationContexts({ scopeId }) ?? [],
       this.subjectKind === "task"
-        ? (this.taskSummary()?.keyboardNavigationContexts({ scopeId }) ?? [])
+        ? (this.taskSummary.value?.keyboardNavigationContexts({ scopeId }) ??
+            [])
         : [],
       activeChild,
     );
@@ -541,13 +562,13 @@ export class CaffoldDetailLayout extends LitElement {
     }
     const surface = this.presentedSurface();
     if (this.subjectKind === "task" && surface === "conversation") {
-      const taskDetail = this.taskDetail();
+      const taskDetail = this.taskDetail.value;
       return taskDetail && !taskDetail.hidden && !taskDetail.loading
         ? taskDetail.scrollSurfaceScope()
         : emptyScrollSurfaceScope();
     }
     if (this.subjectKind === "section" && surface === "new") {
-      const sectionDetail = this.sectionDetail();
+      const sectionDetail = this.sectionDetail.value;
       return sectionDetail && !sectionDetail.hidden
         ? sectionDetail.scrollSurfaceScope()
         : emptyScrollSurfaceScope();
@@ -603,7 +624,7 @@ export class CaffoldDetailLayout extends LitElement {
   ownsTerminalInput(element: Element | null | undefined) {
     return (
       this.activeSurface() === "terminal" &&
-      Boolean(this.terminalPage()?.ownsInput(element))
+      Boolean(this.terminalPage.value?.ownsInput(element))
     );
   }
 
@@ -612,7 +633,7 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   protected firstUpdated() {
-    this.taskDetail()?.setLiveUpdates(this.liveUpdates);
+    this.taskDetail.value?.setLiveUpdates(this.liveUpdates);
   }
 
   protected updated() {
@@ -643,32 +664,39 @@ export class CaffoldDetailLayout extends LitElement {
     return html`
       <div class="common-detail-shell">
         <header
+          ${drawn(this.summaryHeader)}
           class="detail-layout-summary task-detail-summary"
           ?hidden=${headerHidden}
         >
           <caffold-task-detail-summary
+            ${drawn(this.taskSummary)}
             ?hidden=${kind !== "task"}
             @caffold:task-detail-summary-intent=${this.summaryIntent}
           ></caffold-task-detail-summary>
           <caffold-section-detail-summary
+            ${drawn(this.sectionSummary)}
             ?hidden=${kind !== "section"}
           ></caffold-section-detail-summary>
           <div class="detail-layout-actions">
             <caffold-segmented-control
+              ${drawn(this.viewSwitch)}
               data-detail-view-switch
               ?hidden=${kind === "task" ? !canonicalTask : !repository}
               @caffold:segmented-control-intent=${this.handleViewIntent}
             ></caffold-segmented-control>
             <caffold-task-detail-git
+              ${drawn(this.gitMenu)}
               ?hidden=${!inRepository}
               @caffold:task-detail-git-intent=${this.handleGitMenuIntent}
             ></caffold-task-detail-git>
             <caffold-task-detail-github
+              ${drawn(this.githubMenu)}
               ?hidden=${!inRepository}
               @caffold:task-detail-github-intent=${this.handleGithubMenuIntent}
             ></caffold-task-detail-github>
           </div>
           <caffold-task-detail-terminal
+            ${drawn(this.terminalButton)}
             @caffold:task-detail-terminal-intent=${this.terminalButtonIntent}
           ></caffold-task-detail-terminal>
         </header>
@@ -678,21 +706,25 @@ export class CaffoldDetailLayout extends LitElement {
             ?hidden=${surface !== subjectSurface}
           >
             <caffold-task-detail
+              ${drawn(this.taskDetail)}
               hidden
               @caffold:task-subject-snapshot=${this.taskSubjectSnapshot}
               @caffold:task-detail-transport-change=${this.taskTransportChange}
             ></caffold-task-detail>
             <caffold-section-detail
+              ${drawn(this.sectionDetail)}
               hidden
               @caffold:section-detail-intent=${this.handleSectionDetailIntent}
             ></caffold-section-detail>
           </div>
           <div
+            ${drawn(this.reviewSlot)}
             class="detail-review-slot"
             ?hidden=${surface !== "review"}
             @caffold:task-review-route-intent=${this.handleReviewRouteIntent}
           ></div>
           <div
+            ${drawn(this.gitSlot)}
             class="detail-git-slot"
             ?hidden=${surface !== "git"}
             @caffold:change-compare-refs=${this.changeCompareRefs}
@@ -700,12 +732,14 @@ export class CaffoldDetailLayout extends LitElement {
             @caffold:request-git-route=${this.handleGitRouteIntent}
           ></div>
           <div
+            ${drawn(this.githubSlot)}
             class="detail-github-slot"
             ?hidden=${surface !== "github"}
             @caffold:request-github-route=${this.handleGithubRouteIntent}
           ></div>
           <div class="detail-terminal-slot" ?hidden=${surface !== "terminal"}>
             <caffold-terminal-page
+              ${drawn(this.terminalPage)}
               @caffold:terminal-page-leave=${this.terminalLeave}
               @caffold:terminal-page-header=${this.terminalHeaderChange}
               @caffold:terminal-page-state=${this.terminalStateChange}
@@ -722,11 +756,11 @@ export class CaffoldDetailLayout extends LitElement {
       return;
     }
     if (this.subjectKind === "task") {
-      this.taskDetail()?.deactivate();
+      this.taskDetail.value?.deactivate();
       this.deactivateSharedChildren();
     } else if (this.subjectKind === "section") {
       this.deactivateSectionSurfaces();
-      this.sectionDetail()?.clear();
+      this.sectionDetail.value?.clear();
       this.section = null;
     }
     this.subjectKind = kind;
@@ -737,13 +771,13 @@ export class CaffoldDetailLayout extends LitElement {
 
   private selectedTaskContextPath() {
     return this.subjectKind === "task"
-      ? (this.taskDetail()?.selectedTaskContextPath() ?? "")
-      : (this.sectionDetail()?.selectedContextPath() ?? "");
+      ? (this.taskDetail.value?.selectedTaskContextPath() ?? "")
+      : (this.sectionDetail.value?.selectedContextPath() ?? "");
   }
 
   private captureTaskSnapshot() {
     this.taskSnapshot =
-      this.taskDetail()?.detailSnapshot() ?? this.taskSnapshot;
+      this.taskDetail.value?.detailSnapshot() ?? this.taskSnapshot;
   }
 
   private syncActivePresentation() {
@@ -766,7 +800,7 @@ export class CaffoldDetailLayout extends LitElement {
     this.rebindSharedDomainContext();
     const surface = this.presentedSurface();
     this.draw();
-    this.taskSummary()?.setSnapshot({
+    this.taskSummary.value?.setSnapshot({
       task,
       canonicalTaskAvailable: Boolean(canonicalTask),
       archiveBlockedByActive: taskThreadStatusType(canonicalTask) === "active",
@@ -785,8 +819,9 @@ export class CaffoldDetailLayout extends LitElement {
       : this.taskRoute?.reviewScope === "branch"
         ? "branch"
         : "working";
-    this.viewSwitch()?.setSnapshot({
+    this.viewSwitch.value?.setSnapshot({
       label: "Task view",
+      actionVerb: "Open",
       selected: surface === "review" ? reviewChoice : surface,
       choices: repository
         ? [
@@ -803,14 +838,14 @@ export class CaffoldDetailLayout extends LitElement {
             { value: "review", label: "Review" },
           ],
     });
-    this.gitMenu()?.setSnapshot({ available: repository });
-    this.githubMenu()?.setSnapshot({ available: repository });
-    this.terminalButton()?.setSnapshot({
+    this.gitMenu.value?.setSnapshot({ available: repository });
+    this.githubMenu.value?.setSnapshot({ available: repository });
+    this.terminalButton.value?.setSnapshot({
       available: Boolean(canonicalTask?.cwdPath),
       pressed: surface === "terminal",
     });
     this.applySurfaceVisibility(surface);
-    this.taskDetail()?.reconcileVisibleSurface();
+    this.taskDetail.value?.reconcileVisibleSurface();
   }
 
   private syncSectionPresentation() {
@@ -822,9 +857,10 @@ export class CaffoldDetailLayout extends LitElement {
     this.rebindSharedDomainContext();
     const surface = this.sectionRoute?.sectionSurface ?? "new";
     this.draw();
-    this.sectionSummary()?.setSnapshot({ section });
-    this.viewSwitch()?.setSnapshot({
+    this.sectionSummary.value?.setSnapshot({ section });
+    this.viewSwitch.value?.setSnapshot({
       label: "Section view",
+      actionVerb: "Open",
       selected:
         surface === "review"
           ? this.sectionRoute?.reviewScope === "branch"
@@ -843,17 +879,17 @@ export class CaffoldDetailLayout extends LitElement {
           ]
         : [{ value: "new", label: "New Task" }],
     });
-    this.gitMenu()?.setSnapshot({ available: repository });
-    this.githubMenu()?.setSnapshot({ available: repository });
-    this.terminalButton()?.setSnapshot({
+    this.gitMenu.value?.setSnapshot({ available: repository });
+    this.githubMenu.value?.setSnapshot({ available: repository });
+    this.terminalButton.value?.setSnapshot({
       available: true,
       pressed: surface === "terminal",
     });
     this.applySurfaceVisibility(surface);
     if (surface === "new") {
-      this.sectionDetail()?.activate();
+      this.sectionDetail.value?.activate();
     } else {
-      this.sectionDetail()?.deactivate();
+      this.sectionDetail.value?.deactivate();
     }
   }
 
@@ -870,7 +906,7 @@ export class CaffoldDetailLayout extends LitElement {
       this.githubLayout()?.deactivate();
     }
     if (surface !== "terminal") {
-      this.terminalPage()?.deactivate();
+      this.terminalPage.value?.deactivate();
     }
     if (this.subjectKind === "task" && !this.taskSnapshot?.task) {
       return null;
@@ -950,11 +986,11 @@ export class CaffoldDetailLayout extends LitElement {
   private applySurfaceVisibility(surface: string) {
     const subjectActive =
       surface === (this.subjectKind === "task" ? "conversation" : "new");
-    this.taskDetail()?.toggleAttribute(
+    this.taskDetail.value?.toggleAttribute(
       "hidden",
       !subjectActive || this.subjectKind !== "task",
     );
-    this.sectionDetail()?.toggleAttribute(
+    this.sectionDetail.value?.toggleAttribute(
       "hidden",
       !subjectActive || this.subjectKind !== "section",
     );
@@ -965,7 +1001,7 @@ export class CaffoldDetailLayout extends LitElement {
   // hears of each change, because the corner controls stand on this header.
   private syncHeaderVisibility(surface: string) {
     const hidden =
-      surface === "terminal" && Boolean(this.terminalPage()?.headerHidden);
+      surface === "terminal" && Boolean(this.terminalPage.value?.headerHidden);
     if (hidden === this.headerHidden) {
       return;
     }
@@ -1042,8 +1078,8 @@ export class CaffoldDetailLayout extends LitElement {
     this.githubLayout()?.deactivate();
     this.gitLayout()?.reset();
     this.githubLayout()?.reset();
-    this.gitMenu()?.deactivate();
-    this.githubMenu()?.deactivate();
+    this.gitMenu.value?.deactivate();
+    this.githubMenu.value?.deactivate();
     this.sharedDomainContextKey = key;
     this.sectionActivationKey = "";
     this.domainActivationPromise = null;
@@ -1104,31 +1140,31 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   private deactivateSectionSurfaces() {
-    this.sectionDetail()?.deactivate();
-    this.terminalPage()?.deactivate();
+    this.sectionDetail.value?.deactivate();
+    this.terminalPage.value?.deactivate();
     this.deactivateReview();
     this.gitLayout()?.deactivate();
     this.githubLayout()?.deactivate();
-    this.gitMenu()?.deactivate();
-    this.githubMenu()?.deactivate();
+    this.gitMenu.value?.deactivate();
+    this.githubMenu.value?.deactivate();
     this.sectionActivationKey = "";
     this.domainActivationPromise = null;
   }
 
   private deactivateSharedChildren() {
-    this.taskSummary()?.deactivate();
-    this.terminalPage()?.deactivate();
+    this.taskSummary.value?.deactivate();
+    this.terminalPage.value?.deactivate();
     this.deactivateReview();
     this.gitLayout()?.deactivate();
     this.githubLayout()?.deactivate();
-    this.gitMenu()?.deactivate();
-    this.githubMenu()?.deactivate();
+    this.gitMenu.value?.deactivate();
+    this.githubMenu.value?.deactivate();
     this.sectionActivationKey = "";
     this.domainActivationPromise = null;
   }
 
   private taskSubjectSnapshot(event: CustomEvent<TaskSubjectSnapshot>) {
-    if (event.target !== this.taskDetail()) {
+    if (event.target !== this.taskDetail.value) {
       return;
     }
     event.stopPropagation();
@@ -1140,7 +1176,7 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   private taskTransportChange(event: CustomEvent) {
-    if (event.target !== this.taskDetail()) {
+    if (event.target !== this.taskDetail.value) {
       return;
     }
     event.stopPropagation();
@@ -1154,25 +1190,25 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   private summaryIntent(event: CustomEvent<TaskSummaryIntent>) {
-    if (event.target !== this.taskSummary()) {
+    if (event.target !== this.taskSummary.value) {
       return;
     }
     event.stopPropagation();
     if (event.detail?.type === "archive") {
-      void this.taskDetail()?.archiveSelectedTask();
+      void this.taskDetail.value?.archiveSelectedTask();
     } else if (event.detail?.type === "fork") {
-      void this.taskDetail()?.forkSelectedTask();
+      void this.taskDetail.value?.forkSelectedTask();
     } else if (event.detail?.type === "permission-instructions") {
       // Focus returns to the details button, because the popover the action
       // came from closes as the dialog takes over.
-      this.taskDetail()?.openPermissionInstructions(
-        this.taskSummary()?.querySelector(".task-detail-info-button"),
+      this.taskDetail.value?.openPermissionInstructions(
+        this.taskSummary.value?.detailsButton(),
       );
     }
   }
 
   private handleViewIntent(event: CustomEvent<{ value?: string }>) {
-    if (event.target !== this.viewSwitch()) {
+    if (event.target !== this.viewSwitch.value) {
       return;
     }
     event.stopPropagation();
@@ -1217,7 +1253,7 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   private handleGitMenuIntent(event: CustomEvent<GitMenuIntent>) {
-    if (event.target !== this.gitMenu()) {
+    if (event.target !== this.gitMenu.value) {
       return;
     }
     event.stopPropagation();
@@ -1242,7 +1278,7 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   private handleGithubMenuIntent(event: CustomEvent<GitHubMenuIntent>) {
-    if (event.target !== this.githubMenu()) {
+    if (event.target !== this.githubMenu.value) {
       return;
     }
     event.stopPropagation();
@@ -1355,7 +1391,7 @@ export class CaffoldDetailLayout extends LitElement {
   ) {
     const kind = event.detail?.kind;
     if (
-      !this.sectionDetail()?.contains(event.target as Node) ||
+      !this.sectionDetail.value?.contains(event.target as Node) ||
       event.detail?.type !== "open-github" ||
       (kind !== "issues" && kind !== "pulls")
     ) {
@@ -1370,7 +1406,7 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   private terminalButtonIntent(event: Event) {
-    if (event.target !== this.terminalButton()) {
+    if (event.target !== this.terminalButton.value) {
       return;
     }
     event.stopPropagation();
@@ -1378,7 +1414,7 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   private terminalLeave(event: Event) {
-    if (event.target !== this.terminalPage()) {
+    if (event.target !== this.terminalPage.value) {
       return;
     }
     event.stopPropagation();
@@ -1386,7 +1422,7 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   private terminalHeaderChange(event: Event) {
-    if (event.target !== this.terminalPage()) {
+    if (event.target !== this.terminalPage.value) {
       return;
     }
     event.stopPropagation();
@@ -1394,7 +1430,7 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   private terminalStateChange(event: Event) {
-    if (event.target !== this.terminalPage()) {
+    if (event.target !== this.terminalPage.value) {
       return;
     }
     event.stopPropagation();
@@ -1427,7 +1463,7 @@ export class CaffoldDetailLayout extends LitElement {
         ? "take"
         : "resume";
     this.pendingTerminalTake = "";
-    const page = this.terminalPage();
+    const page = this.terminalPage.value;
     page?.activate({ subject: identity, cwd: this.terminalDirectory(), mode });
     return page;
   }
@@ -1509,7 +1545,7 @@ export class CaffoldDetailLayout extends LitElement {
   private ensureReview() {
     const identity = this.subjectIdentity();
     const key = detailIdentityKey(identity);
-    const slot = this.reviewSlot();
+    const slot = this.reviewSlot.value;
     if (!key || !slot) {
       return null;
     }
@@ -1590,7 +1626,7 @@ export class CaffoldDetailLayout extends LitElement {
         "caffold-task-git-layout",
       ) as CaffoldTaskGitLayout;
       layout.setLiveUpdates(this.liveUpdates);
-      this.gitSlot()?.replaceChildren(layout);
+      this.gitSlot.value?.replaceChildren(layout);
     }
     return layout;
   }
@@ -1601,7 +1637,7 @@ export class CaffoldDetailLayout extends LitElement {
       layout = document.createElement(
         "caffold-task-github-layout",
       ) as CaffoldTaskGithubLayout;
-      this.githubSlot()?.replaceChildren(layout);
+      this.githubSlot.value?.replaceChildren(layout);
     }
     return layout;
   }
@@ -1611,78 +1647,6 @@ export class CaffoldDetailLayout extends LitElement {
     this.performUpdate();
   }
 
-  private taskDetail() {
-    return this.subjectSlot()?.querySelector<CaffoldTaskDetail>(
-      ":scope > caffold-task-detail",
-    );
-  }
-
-  private taskSummary() {
-    return this.querySelector<CaffoldTaskDetailSummary>(
-      "caffold-task-detail-summary",
-    );
-  }
-
-  private summaryHeader() {
-    return this.querySelector<HTMLElement>(".detail-layout-summary");
-  }
-
-  private sectionSummary() {
-    return this.querySelector<CaffoldSectionDetailSummary>(
-      "caffold-section-detail-summary",
-    );
-  }
-
-  private viewSwitch() {
-    return this.querySelector<CaffoldSegmentedControl>(
-      "caffold-segmented-control[data-detail-view-switch]",
-    );
-  }
-
-  private gitMenu() {
-    return this.querySelector<CaffoldTaskDetailGit>(
-      ":scope > .common-detail-shell caffold-task-detail-git",
-    );
-  }
-
-  private githubMenu() {
-    return this.querySelector<CaffoldTaskDetailGithub>(
-      ":scope > .common-detail-shell caffold-task-detail-github",
-    );
-  }
-
-  private sectionDetail() {
-    return this.querySelector<CaffoldSectionDetail>("caffold-section-detail");
-  }
-
-  private subjectSlot() {
-    return this.querySelector<HTMLElement>(".detail-subject-slot");
-  }
-
-  private reviewSlot() {
-    return this.querySelector<HTMLElement>(".detail-review-slot");
-  }
-
-  private gitSlot() {
-    return this.querySelector<HTMLElement>(".detail-git-slot");
-  }
-
-  private githubSlot() {
-    return this.querySelector<HTMLElement>(".detail-github-slot");
-  }
-
-  private terminalPage() {
-    return this.querySelector<CaffoldTerminalPage>(
-      ".detail-terminal-slot > caffold-terminal-page",
-    );
-  }
-
-  private terminalButton() {
-    return this.summaryHeader()?.querySelector<CaffoldTaskDetailTerminal>(
-      ":scope > caffold-task-detail-terminal",
-    );
-  }
-
   private review() {
     return this.activeReviewKey
       ? (this.reviewComponents.get(this.activeReviewKey) ?? null)
@@ -1690,13 +1654,13 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   private gitLayout() {
-    return this.gitSlot()?.querySelector<CaffoldTaskGitLayout>(
+    return this.gitSlot.value?.querySelector<CaffoldTaskGitLayout>(
       ":scope > caffold-task-git-layout",
     );
   }
 
   private githubLayout() {
-    return this.githubSlot()?.querySelector<CaffoldTaskGithubLayout>(
+    return this.githubSlot.value?.querySelector<CaffoldTaskGithubLayout>(
       ":scope > caffold-task-github-layout",
     );
   }

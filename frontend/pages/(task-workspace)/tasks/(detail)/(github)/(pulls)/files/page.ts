@@ -1,11 +1,11 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScopeOptions,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import {
   type GitHubPullFileDiff,
   type GitHubPullFiles,
@@ -17,8 +17,9 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ScrollSurfacePull,
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "#components/file-viewer.ts";
 import type { CaffoldReviewFileViewer } from "#components/file-viewer.ts";
 import {
@@ -46,6 +47,9 @@ export class CaffoldGithubPullFilesPage extends LitElement {
   private filesRequestId = 0;
   private fileRequestId = 0;
   private treeScrollTop = 0;
+  private readonly filesList = new DrawnRef<CaffoldGithubPullFilesTree>(this);
+  private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
+  private readonly viewer = new DrawnRef<CaffoldReviewFileViewer>(this);
 
   createRenderRoot() {
     return this;
@@ -53,14 +57,19 @@ export class CaffoldGithubPullFilesPage extends LitElement {
 
   render() {
     return html`
-      <caffold-github-pull-files-tree></caffold-github-pull-files-tree>
+      <caffold-github-pull-files-tree
+        ${drawn(this.filesList)}
+      ></caffold-github-pull-files-tree>
       <caffold-pane-resizer
+        ${drawn(this.paneResizer)}
         storage-key="caffold:pane-width:github-pull-files"
         collapsed-storage-key="caffold:pane-collapsed:github-pull-files"
         aria-label="Resize review side panel"
         @caffold:pane-resize=${this.handlePanelResize}
       ></caffold-pane-resizer>
-      <caffold-review-file-viewer></caffold-review-file-viewer>
+      <caffold-review-file-viewer
+        ${drawn(this.viewer)}
+      ></caffold-review-file-viewer>
     `;
   }
 
@@ -211,8 +220,7 @@ export class CaffoldGithubPullFilesPage extends LitElement {
     }
     const requestId = ++this.fileRequestId;
     this.tree.setSelectedPath(path);
-    this.treeScrollTop =
-      this.querySelector(".file-tree-scroll")?.scrollTop ?? this.treeScrollTop;
+    this.treeScrollTop = this.tree.scroller()?.scrollTop ?? this.treeScrollTop;
     this.setView("viewer");
     this.emitStateChange();
     const presentation = this.diffPresentation(path, status);
@@ -268,7 +276,7 @@ export class CaffoldGithubPullFilesPage extends LitElement {
     const top = this.treeScrollTop;
     if (top > 0) {
       window.requestAnimationFrame(() => {
-        const scroller = this.querySelector(".file-tree-scroll");
+        const scroller = this.tree.scroller();
         if (!scroller) {
           return;
         }
@@ -324,7 +332,7 @@ export class CaffoldGithubPullFilesPage extends LitElement {
   actionHintScope({
     scopeId = "github:pull-files",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
+  }: ActionHintPull = {}) {
     const number = this.currentPullNumber();
     if (!number || this.hidden) {
       return emptyActionHintScope();
@@ -341,19 +349,16 @@ export class CaffoldGithubPullFilesPage extends LitElement {
           scopeId: `${prefix}:files`,
           actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
           clipRoots: [this, ...clipRoots],
-          isCurrent: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.currentPullNumber() === number &&
-            this.panelResizer === resizer,
         })
       : null;
     return mergeActionHintScopes(
       listActive
         ? this.tree.actionHintScope({
             scopeId: `${prefix}:files`,
-            actionId: ACTION_HINT_ACTION.FILE_OPEN,
-            disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+            actions: {
+              file: ACTION_HINT_ACTION.FILE_OPEN,
+              disclosure: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+            },
             clipRoots: [this, ...clipRoots],
           })
         : null,
@@ -361,10 +366,12 @@ export class CaffoldGithubPullFilesPage extends LitElement {
       viewerActive
         ? this.fileViewer.actionHintScope({
             scopeId: `${prefix}:viewer`,
-            actionId: ACTION_HINT_ACTION.PARENT,
-            detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
-            refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-            linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
+            actions: {
+              parent: ACTION_HINT_ACTION.PARENT,
+              details: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
+              refresh: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              link: ACTION_HINT_ACTION.LINK_OPEN,
+            },
             clipRoots: [this, ...clipRoots],
           })
         : null,
@@ -374,7 +381,7 @@ export class CaffoldGithubPullFilesPage extends LitElement {
   scrollSurfaceScope({
     scopeId = "github:pull-files",
     clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}) {
+  }: ScrollSurfacePull = {}) {
     const number = this.currentPullNumber();
     if (!number || this.hidden) {
       return emptyScrollSurfaceScope();
@@ -490,23 +497,17 @@ export class CaffoldGithubPullFilesPage extends LitElement {
   // the page is in the document.
   private get tree() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-github-pull-files-tree",
-    ) as CaffoldGithubPullFilesTree;
+    return this.filesList.value as CaffoldGithubPullFilesTree;
   }
 
   private get panelResizer() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-pane-resizer",
-    ) as CaffoldPaneResizer;
+    return this.paneResizer.value as CaffoldPaneResizer;
   }
 
   private get fileViewer() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-review-file-viewer",
-    ) as CaffoldReviewFileViewer;
+    return this.viewer.value as CaffoldReviewFileViewer;
   }
 }
 

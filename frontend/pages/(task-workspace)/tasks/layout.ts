@@ -3,7 +3,7 @@ import {
   type ActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
+} from "#app/action-hint-scope.ts";
 import {
   type ActiveTask,
   type ActiveTaskRecovery,
@@ -12,13 +12,14 @@ import {
   createTask,
   type Task,
 } from "#app/api.ts";
-import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.ts";
 import { routeDomain, routeTarget } from "#app/navigation-routes.ts";
 import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
   type ScrollSurfaceScope,
-} from "#app/scroll-scope.js";
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import type { WorkspaceLiveUpdates } from "../live-updates.ts";
 import {
   INITIAL_TASK_STORE_STATUS_SNAPSHOT,
@@ -50,8 +51,6 @@ import type {
 } from "./recovery/page.ts";
 import { TASK_TRANSPORT_STATE } from "./runtime-state.ts";
 import { taskDetailThreadId } from "./task-list-model.ts";
-
-const DETAIL_PANE = ":scope > .tasks-surface > .tasks-detail-pane";
 
 type TasksView = "home" | "new" | "detail" | "recovery";
 
@@ -132,6 +131,15 @@ export class CaffoldTasksPage extends LitElement {
   private pendingTaskCreation: PendingTaskCreation | null = null;
   private liveUpdates: WorkspaceLiveUpdates | null = null;
   private connectedTaskNavigator: CaffoldTaskNavigator | null = null;
+  private readonly detailPane = new DrawnRef<HTMLDivElement>(this);
+  private readonly taskStoreRecovery = new DrawnRef<CaffoldTaskStoreRecovery>(
+    this,
+  );
+  private readonly taskNew = new DrawnRef<CaffoldTaskNew>(this);
+  private readonly detail = new DrawnRef<CaffoldDetailLayout>(this);
+  private readonly taskRecovery = new DrawnRef<CaffoldTaskRecovery>(this);
+  private readonly imagePreviewDialog =
+    new DrawnRef<CaffoldTaskImagePreviewDialog>(this);
   private readonly navigatorIntent = (event: Event) => {
     event.stopPropagation();
     const intent = (event as CustomEvent<NavigatorIntent>).detail;
@@ -165,7 +173,7 @@ export class CaffoldTasksPage extends LitElement {
     const available = Boolean(
       (event as CustomEvent<{ available?: boolean }>).detail?.available,
     );
-    this.taskNew()?.setTransportAvailable(available);
+    this.taskNew.value?.setTransportAvailable(available);
     this.taskDetail()?.setTransportAvailable(available);
     this.publishTransportState();
   };
@@ -199,13 +207,13 @@ export class CaffoldTasksPage extends LitElement {
     // Escape leaves an editor for.
     this.addEventListener(TERMINAL_PAGE_FOCUS_RELEASE_EVENT, (event) => {
       event.stopPropagation();
-      this.querySelector<HTMLElement>(DETAIL_PANE)?.focus({
+      this.detailPane.value?.focus({
         preventScroll: true,
       });
     });
     this.addEventListener(TASK_IMAGE_PREVIEW_EVENT, (event) => {
       event.stopPropagation();
-      this.imagePreviewDialog()?.openImage(
+      this.imagePreviewDialog.value?.openImage(
         (event as CustomEvent<TaskImagePreviewRequest>).detail,
       );
     });
@@ -261,7 +269,7 @@ export class CaffoldTasksPage extends LitElement {
       this.navigatorTransportChange,
     );
     this.syncTaskListState(this.connectedTaskNavigator?.listState());
-    this.taskNew()?.setTransportAvailable(
+    this.taskNew.value?.setTransportAvailable(
       Boolean(this.connectedTaskNavigator?.isTransportAvailable()),
     );
     this.connectedTaskNavigator?.setSelectedSubject(this.selectedSubject());
@@ -271,13 +279,13 @@ export class CaffoldTasksPage extends LitElement {
 
   deactivate() {
     this.taskNavigator()?.exitReorderMode({ restoreFocus: false });
-    this.imagePreviewDialog()?.dismiss();
+    this.imagePreviewDialog.value?.dismiss();
     if (this.view === "detail") {
       this.taskDetail()?.deactivate({ retainComposerDom: true });
     } else if (this.view === "recovery") {
-      this.taskRecovery()?.deactivate();
+      this.taskRecovery.value?.deactivate();
     } else {
-      this.taskNew()?.deactivate();
+      this.taskNew.value?.deactivate();
     }
   }
 
@@ -303,13 +311,13 @@ export class CaffoldTasksPage extends LitElement {
   ownsEditingEscape(element: Element | null) {
     return (
       (this.view === "home" || this.view === "new") &&
-      Boolean(this.taskNew()?.ownsEditingEscape(element))
+      Boolean(this.taskNew.value?.ownsEditingEscape(element))
     );
   }
 
   setServerPaths(server: { root?: string; homePath?: string | null }) {
     this.performUpdate();
-    this.taskNew()?.setServerPaths(server);
+    this.taskNew.value?.setServerPaths(server);
     this.taskDetail()?.setServerPaths(server);
   }
 
@@ -387,7 +395,7 @@ export class CaffoldTasksPage extends LitElement {
       nextThreadId !== this.selectedThreadId ||
       nextSectionId !== this.selectedSectionId
     ) {
-      this.imagePreviewDialog()?.dismiss();
+      this.imagePreviewDialog.value?.dismiss();
     }
     const preserveAdopted =
       nextThreadId &&
@@ -410,10 +418,10 @@ export class CaffoldTasksPage extends LitElement {
       this.taskDetail()?.deactivate();
     }
     if (nextView !== "recovery") {
-      this.taskRecovery()?.deactivate();
+      this.taskRecovery.value?.deactivate();
     }
     if (nextView === "detail") {
-      this.taskNew()?.deactivate();
+      this.taskNew.value?.deactivate();
       if (nextThreadId) {
         this.taskDetail()?.prepare(nextThreadId, { preserveLoadedTask, route });
       } else {
@@ -423,8 +431,8 @@ export class CaffoldTasksPage extends LitElement {
         }
       }
     } else if (nextView === "recovery") {
-      this.taskNew()?.deactivate();
-      this.taskRecovery()?.prepare(options.recovery ?? null);
+      this.taskNew.value?.deactivate();
+      this.taskRecovery.value?.prepare(options.recovery ?? null);
     }
     this.syncSelectedManagedTask();
     this.draw();
@@ -436,16 +444,16 @@ export class CaffoldTasksPage extends LitElement {
     const navigatorRequest = this.taskNavigator()?.activate();
     const target = routeTarget(route);
     if (target === "new") {
-      this.taskNew()?.prepare({
+      this.taskNew.value?.prepare({
         cwd: route.cwd ?? "",
         defaultCwdPath: options.defaultCwdPath ?? "",
       });
-      this.taskNew()?.open();
+      this.taskNew.value?.open();
       this.draw();
       return null;
     }
     if (target === "recovery" && route?.threadId) {
-      this.taskNew()?.deactivate();
+      this.taskNew.value?.deactivate();
       this.taskDetail()?.deactivate();
       await this.taskNavigator()?.activate({ force: true });
       const recovery = this.taskNavigator()?.recoveryFor(route.threadId);
@@ -459,12 +467,12 @@ export class CaffoldTasksPage extends LitElement {
         );
         return null;
       }
-      this.taskRecovery()?.updateRecovery(recovery);
+      this.taskRecovery.value?.updateRecovery(recovery);
       this.draw();
       return recovery;
     }
     if (route?.sectionId) {
-      this.taskNew()?.deactivate();
+      this.taskNew.value?.deactivate();
       await navigatorRequest;
       const section = this.taskNavigator()?.sectionFor(route.sectionId);
       if (!section) {
@@ -474,7 +482,7 @@ export class CaffoldTasksPage extends LitElement {
       return await this.taskDetail()?.openSection(section, route);
     }
     if (route?.threadId) {
-      this.taskNew()?.deactivate();
+      this.taskNew.value?.deactivate();
       const recovery = this.taskNavigator()?.recoveryFor(route.threadId);
       if (recovery) {
         this.requestRoute({
@@ -493,10 +501,10 @@ export class CaffoldTasksPage extends LitElement {
       }
       return result;
     }
-    this.taskNew()?.prepare({
+    this.taskNew.value?.prepare({
       defaultCwdPath: options.defaultCwdPath ?? "",
     });
-    this.taskNew()?.open();
+    this.taskNew.value?.open();
     this.draw();
     return await this.taskNavigator()?.activate({ force: true });
   }
@@ -534,12 +542,14 @@ export class CaffoldTasksPage extends LitElement {
     const wasTakenOver = this.taskStoreRecoveryVisible();
     this.taskStoreStatusSnapshot =
       snapshot ?? INITIAL_TASK_STORE_STATUS_SNAPSHOT;
-    this.taskNew()?.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
+    this.taskNew.value?.setTaskStoreStatusSnapshot(
+      this.taskStoreStatusSnapshot,
+    );
     this.taskDetail()?.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
     this.taskNavigator()?.setTaskStoreStatusSnapshot(
       this.taskStoreStatusSnapshot,
     );
-    this.taskStoreRecovery()?.setSnapshot(this.taskStoreStatusSnapshot);
+    this.taskStoreRecovery.value?.setSnapshot(this.taskStoreStatusSnapshot);
     if (this.taskStoreRecoveryVisible()) {
       this.taskDetail()?.deactivate();
     } else if (
@@ -614,7 +624,7 @@ export class CaffoldTasksPage extends LitElement {
     const activeSurface = !hasScrollLayoutBox(this)
       ? []
       : this.view === "home" || this.view === "new"
-        ? (this.taskNew()?.keyboardNavigationContexts() ?? [])
+        ? (this.taskNew.value?.keyboardNavigationContexts() ?? [])
         : this.view === "detail" && detail && hasScrollLayoutBox(detail)
           ? detail.keyboardNavigationContexts()
           : [];
@@ -622,21 +632,24 @@ export class CaffoldTasksPage extends LitElement {
       navigator && hasScrollLayoutBox(navigator)
         ? navigator.keyboardNavigationContexts()
         : [],
-      this.imagePreviewDialog()?.keyboardNavigationContexts() ?? [],
+      this.imagePreviewDialog.value?.keyboardNavigationContexts() ?? [],
       activeSurface,
     );
   }
 
   focusActionHintDestination() {
-    this.querySelector<HTMLElement>(DETAIL_PANE)?.focus({
+    this.detailPane.value?.focus({
       preventScroll: true,
     });
   }
 
+  // Where Escape takes focus from a field being edited in Tasks.
+  editingEscapeTarget() {
+    return this.detailPane.value ?? null;
+  }
+
   taskDetail() {
-    return this.querySelector<CaffoldDetailLayout>(
-      `${DETAIL_PANE} > caffold-detail-layout`,
-    );
+    return this.detail.value ?? null;
   }
 
   protected updated() {
@@ -663,7 +676,7 @@ export class CaffoldTasksPage extends LitElement {
     }
     // New Task and Detail also show and hide themselves as they open and
     // close.
-    this.taskNew()?.toggleAttribute(
+    this.taskNew.value?.toggleAttribute(
       "hidden",
       takeover || (this.view !== "new" && this.view !== "home"),
     );
@@ -679,31 +692,38 @@ export class CaffoldTasksPage extends LitElement {
     return html`
       <section class="tasks-surface" aria-label="Tasks">
         <div
+          ${drawn(this.detailPane)}
           class="tasks-detail-pane"
           role="region"
           aria-label="Task content"
           tabindex="-1"
         >
           <caffold-task-store-recovery
+            ${drawn(this.taskStoreRecovery)}
             ?hidden=${!takeover}
           ></caffold-task-store-recovery>
           <caffold-task-new
+            ${drawn(this.taskNew)}
             hidden
             @caffold:task-new-route-intent=${this.newTaskRouteIntent}
           ></caffold-task-new>
           <caffold-detail-layout
+            ${drawn(this.detail)}
             hidden
             @caffold:task-detail-intent=${this.detailIntent}
             @caffold:task-detail-transport-change=${this.detailTransportChange}
             @caffold:detail-header-change=${this.detailHeaderChange}
           ></caffold-detail-layout>
           <caffold-task-recovery
+            ${drawn(this.taskRecovery)}
             ?hidden=${takeover || this.view !== "recovery"}
             @caffold:task-recovery-intent=${this.recoveryIntent}
           ></caffold-task-recovery>
         </div>
       </section>
-      <caffold-task-image-preview-dialog></caffold-task-image-preview-dialog>
+      <caffold-task-image-preview-dialog
+        ${drawn(this.imagePreviewDialog)}
+      ></caffold-task-image-preview-dialog>
     `;
   }
 
@@ -819,7 +839,7 @@ export class CaffoldTasksPage extends LitElement {
       return;
     }
     this.taskNavigator()?.upsertCanonicalTask(recovery);
-    this.taskRecovery()?.updateRecovery(recovery);
+    this.taskRecovery.value?.updateRecovery(recovery);
   }
 
   private resolveRecovery(
@@ -843,45 +863,21 @@ export class CaffoldTasksPage extends LitElement {
   private newTaskContextPath() {
     return this.view === "detail"
       ? (this.taskDetail()?.newTaskContextPath() ?? "")
-      : (this.taskNew()?.selectedContextPath() ?? "");
+      : (this.taskNew.value?.selectedContextPath() ?? "");
   }
 
   private activeDirectSurfaceOwners() {
     if (this.taskStoreRecoveryVisible()) {
-      const recovery = this.taskStoreRecovery();
+      const recovery = this.taskStoreRecovery.value;
       return recovery && !recovery.hidden ? [recovery] : [];
     }
     const owner =
       this.view === "detail"
         ? this.taskDetail()
         : this.view === "recovery"
-          ? this.taskRecovery()
-          : this.taskNew();
+          ? this.taskRecovery.value
+          : this.taskNew.value;
     return owner && !owner.hidden ? [owner] : [];
-  }
-
-  private taskNew() {
-    return this.querySelector<CaffoldTaskNew>(
-      `${DETAIL_PANE} > caffold-task-new`,
-    );
-  }
-
-  private taskRecovery() {
-    return this.querySelector<CaffoldTaskRecovery>(
-      `${DETAIL_PANE} > caffold-task-recovery`,
-    );
-  }
-
-  private taskStoreRecovery() {
-    return this.querySelector<CaffoldTaskStoreRecovery>(
-      `${DETAIL_PANE} > caffold-task-store-recovery`,
-    );
-  }
-
-  private imagePreviewDialog() {
-    return this.querySelector<CaffoldTaskImagePreviewDialog>(
-      ":scope > caffold-task-image-preview-dialog",
-    );
   }
 
   private syncTaskListState(state: Partial<TaskNavigatorListState> = {}) {
@@ -929,7 +925,7 @@ export class CaffoldTasksPage extends LitElement {
       return;
     }
     if (this.view === "recovery") {
-      this.taskRecovery()?.updateRecovery(recovery);
+      this.taskRecovery.value?.updateRecovery(recovery);
       return;
     }
     if (this.view === "detail") {

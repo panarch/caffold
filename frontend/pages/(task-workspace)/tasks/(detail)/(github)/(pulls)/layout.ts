@@ -1,8 +1,5 @@
 import { html, LitElement } from "lit";
-import {
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
-} from "#app/action-hint-scope.js";
+import type { ActionHintPull } from "#app/action-hints.ts";
 import {
   type GitHubPulls,
   type GitHubStatus,
@@ -10,10 +7,8 @@ import {
   getGitHubPull,
   getGitHubPulls,
 } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "./detail/page.ts";
 import type { CaffoldGithubPullDetailPage } from "./detail/page.ts";
 import "./files/page.ts";
@@ -43,6 +38,9 @@ export class CaffoldGithubPullsLayout extends LitElement {
   private selectedPullSummary: { number: number; title?: string } | null = null;
   private pullListRequestId = 0;
   private pullDetailRequestId = 0;
+  private readonly list = new DrawnRef<CaffoldGithubPullsListPage>(this);
+  private readonly detail = new DrawnRef<CaffoldGithubPullDetailPage>(this);
+  private readonly files = new DrawnRef<CaffoldGithubPullFilesPage>(this);
 
   createRenderRoot() {
     return this;
@@ -57,9 +55,14 @@ export class CaffoldGithubPullsLayout extends LitElement {
 
   render() {
     return html`
-      <caffold-github-pulls-list-page></caffold-github-pulls-list-page>
-      <caffold-github-pull-detail-page></caffold-github-pull-detail-page>
+      <caffold-github-pulls-list-page
+        ${drawn(this.list)}
+      ></caffold-github-pulls-list-page>
+      <caffold-github-pull-detail-page
+        ${drawn(this.detail)}
+      ></caffold-github-pull-detail-page>
       <caffold-github-pull-files-page
+        ${drawn(this.files)}
         @caffold:github-pull-files-state-change=${this.followFilesPage}
       ></caffold-github-pull-files-page>
     `;
@@ -328,10 +331,7 @@ export class CaffoldGithubPullsLayout extends LitElement {
   actionHintScope({
     scopeId = "github:pulls",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
-    if (this.hidden) {
-      return emptyActionHintScope();
-    }
+  }: ActionHintPull = {}) {
     const options = { clipRoots: [this, ...clipRoots] };
     return this.view === "detail"
       ? this.detailPage.actionHintScope({
@@ -352,10 +352,7 @@ export class CaffoldGithubPullsLayout extends LitElement {
   scrollSurfaceScope({
     scopeId = "github:pulls",
     clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}) {
-    if (this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
+  }: ScrollSurfacePull = {}) {
     const options = { clipRoots: [this, ...clipRoots] };
     return this.view === "detail"
       ? this.detailPage.scrollSurfaceScope({
@@ -477,23 +474,17 @@ export class CaffoldGithubPullsLayout extends LitElement {
   // the layout is in the document.
   private get listPage() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-github-pulls-list-page",
-    ) as CaffoldGithubPullsListPage;
+    return this.list.value as CaffoldGithubPullsListPage;
   }
 
   private get detailPage() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-github-pull-detail-page",
-    ) as CaffoldGithubPullDetailPage;
+    return this.detail.value as CaffoldGithubPullDetailPage;
   }
 
   private get filesPage() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-github-pull-files-page",
-    ) as CaffoldGithubPullFilesPage;
+    return this.files.value as CaffoldGithubPullFilesPage;
   }
 }
 

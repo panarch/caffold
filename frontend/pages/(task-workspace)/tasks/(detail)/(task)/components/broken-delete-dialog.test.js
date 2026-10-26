@@ -6,6 +6,8 @@ import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 const registry = installCustomElementUnitRegistry();
 await import("./broken-delete-dialog.ts");
 const Dialog = registry.element("caffold-broken-task-delete-dialog");
+const { ActionHints } = await import("#app/action-hints.ts");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
 const original = { window: globalThis.window, fetch: globalThis.fetch };
 after(() => registry.restore());
 afterEach(() => {
@@ -20,10 +22,12 @@ function dialogFixture() {
   const owner = Object.create(Dialog.prototype, Object.getOwnPropertyDescriptors({
     phase: "idle", generation: 0, context: null, target: null, failure: null,
     isConnected: true, intents: [], drawn: "",
-    dialog,
+    dialog: { value: dialog },
     draw() { this.drawn = templateHtml(this.render()).replace(/\s+/g, " "); },
     intent(detail) { this.intents.push(detail); },
   }));
+  owner.hints = new ActionHints(owner, () => {});
+  owner.keyboard = new KeyboardContexts(owner, () => {});
   owner.setContext({ threadId: "broken", title: "Broken Task", error: {
     allowedActions: ["deleteTask"], worktreeId: "uuid", worktreePath: "/managed/uuid", worktreeMissing: false,
   } });

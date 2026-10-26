@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { activateActionHint } from "../support/action-hints.js";
+import { activateActionHint, workspaceTargets } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -1059,6 +1059,24 @@ test("keeps the attachment remove X legible on its circle in Light and Dark", { 
   }
 });
 
+test("offers the New Task Composer's prompt, Attach, and Start once there is a draft", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page);
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+  const form = page.locator('form[data-task-form="create"]');
+  const targets = () => workspaceTargets(page, "task-composer:new:");
+
+  await expect.poll(targets).toEqual(expect.arrayContaining([
+    ["prompt", "Edit new task prompt"],
+    ["attach", "Attach files"],
+  ]));
+  expect((await targets()).map(([id]) => id)).not.toContain("primary:send");
+
+  await form.locator('textarea[name="prompt"]').fill("Start here");
+  await expect.poll(targets).toContainEqual(["primary:send", "Start task"]);
+});
+
 test("attaches files from the picker, the clipboard, and a drop onto the Composer", { tag: "@desktop" }, async ({
   page,
 }) => {
@@ -1098,6 +1116,10 @@ test("attaches files from the picker, the clipboard, and a drop onto the Compose
   await expect(files.nth(0)).toHaveAttribute("title", "photo.heic");
   await expect(files.nth(1)).toHaveAttribute("title", "table.csv");
   await expect(files.nth(2)).toHaveAttribute("title", "server.log");
+  await expect.poll(async () =>
+    (await workspaceTargets(page, "task-composer:new:remove-file:"))
+      .map(([, label]) => label),
+  ).toEqual(["Remove photo.heic", "Remove table.csv", "Remove server.log"]);
   await expect(form.locator(".task-composer-attachment")).toHaveCount(0);
 
   await files.nth(1).getByRole("button", { name: "Remove table.csv" }).click();

@@ -20,22 +20,6 @@ const STORAGE = {
   ],
 };
 
-function control() {
-  return {
-    attributes: new Map(),
-    clicks: 0,
-    textContent: "Copy path",
-    getAttribute(name) {
-      return this.attributes.get(name) ?? null;
-    },
-    getClientRects: () => [{}],
-    focus() {},
-    click() {
-      this.clicks += 1;
-    },
-  };
-}
-
 const NOTE_CHANGED = new Map([["note", undefined]]);
 
 function copyPathHost(properties = {}) {
@@ -137,46 +121,6 @@ test("reports Copied or a failure until the feedback clears, and drops an outdat
   release();
   await pending;
   assert.equal(host.copyState, "idle");
-});
-
-test("offers Copy path to the popover's Action Hints for the path it was offered for", () => {
-  const button = control();
-  const host = copyPathHost({ button });
-  setNote(host, STORAGE);
-  const popover = { id: "popover" };
-  let current = true;
-  const scopeOf = () => host.actionHintScope({
-    scopeId: "notes:storage:details",
-    clipRoots: [popover],
-    isCurrent: () => current,
-  });
-
-  const scope = scopeOf();
-  assert.deepEqual(scope.mutationRoots, [host]);
-  const [target] = scope.targets;
-  assert.deepEqual(
-    { id: target.id, actionId: target.actionId, label: target.label },
-    {
-      id: "notes:storage:details:copy-path",
-      actionId: "button.activate",
-      label: "Copy path",
-    },
-  );
-  assert.equal(target.isActionable(), true);
-  target.activate();
-  assert.equal(button.clicks, 1);
-
-  button.attributes.set("aria-disabled", "true");
-  assert.equal(target.isActionable(), false);
-  assert.deepEqual(scopeOf().targets, []);
-  button.attributes.delete("aria-disabled");
-
-  current = false;
-  assert.equal(target.isActionable(), false);
-  current = true;
-
-  host.path = "Inbox (note id: inbox)";
-  assert.equal(target.isActionable(), false, "a target belongs to the path it was offered for");
 });
 
 test("refuses a completion that outlived its element", () => {

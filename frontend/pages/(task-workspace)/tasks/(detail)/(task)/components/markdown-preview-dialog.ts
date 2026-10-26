@@ -1,14 +1,13 @@
 import { html, LitElement } from "lit";
-import type { ActionHintScope } from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.js";
-import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
+} from "#app/action-hints.ts";
+import { KeyboardContexts } from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/markdown-preview.ts";
 import type { CaffoldMarkdownPreview } from "#components/markdown-preview.ts";
@@ -25,9 +24,24 @@ export interface MarkdownPreviewRequest {
  * one Task and closes when another Task opens.
  */
 export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
-  private threadId = "";
+  static properties = {
+    threadId: { state: true },
+  };
+
+  declare private threadId: string;
   private opener: HTMLElement | null = null;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
+  private readonly preview = new DrawnRef<CaffoldMarkdownPreview>(this);
+
+  constructor() {
+    super();
+    this.threadId = "";
+  }
 
   createRenderRoot() {
     return this;
@@ -47,9 +61,9 @@ export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
 
   openMarkdown({ markdown, opener }: MarkdownPreviewRequest = {}) {
     this.opener = opener instanceof HTMLElement ? opener : null;
-    this.preview.setMarkdown(markdown, { scroll: { top: 0, left: 0 } });
-    const dialog = this.dialog;
-    if (!dialog.open) {
+    this.preview.value?.setMarkdown(markdown, { scroll: { top: 0, left: 0 } });
+    const dialog = this.dialog.value;
+    if (dialog && !dialog.open) {
       dialog.showModal();
     }
   }
@@ -65,87 +79,30 @@ export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
   // longer the one in front of the user.
   dismiss() {
     this.opener = null;
-    const dialog = this.dialog;
+    const dialog = this.dialog.value;
     if (dialog?.open) {
       dialog.close();
     }
   }
 
   keyboardNavigationContexts() {
-    const dialog = this.dialog;
-    const preview = this.preview;
-    const presentation =
-      dialog?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const hintDialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (!dialog || !preview || !hintDialog || !hud || !selector) {
-      return [];
-    }
-    const threadId = this.threadId;
-    const scopeId = markdownPreviewScopeId(threadId);
-    return [
-      keyboardNavigationContext({
-        id: scopeId,
-        kind: "modal",
-        root: dialog,
-        actionHints: { dialog: hintDialog, scope: this.actionHintScope() },
-        scroll: {
-          hud,
-          selector,
-          scope: preview.scrollSurfaceScope({
-            scopeId: `${scopeId}:preview`,
-            label: "Markdown preview",
-            clipRoots: [dialog],
-            isCurrent: () =>
-              this.isCurrentDialog(dialog, threadId) &&
-              this.preview === preview,
+    return this.keyboard.contexts({
+      actionHints: (pull) =>
+        mergeActionHintScopes(
+          this.hints.scope(pull),
+          this.preview.value?.actionHintScope({
+            ...pull,
+            scopeId: `${pull.scopeId}:preview`,
+            actions: { link: ACTION_HINT_ACTION.LINK_OPEN },
           }),
-        },
-      }),
-    ];
-  }
-
-  actionHintScope(): ActionHintScope {
-    const dialog = this.dialog;
-    const control = this.closeButton;
-    if (!dialog || !control) {
-      return emptyActionHintScope();
-    }
-    const threadId = this.threadId;
-    const scopeId = markdownPreviewScopeId(threadId);
-    const preview = this.preview;
-    return mergeActionHintScopes(
-      {
-        blocked: false,
-        targets: [
-          buttonActionHintTarget({
-            invalidationOwner: this,
-            id: `${scopeId}:close`,
-            actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-            label:
-              control.getAttribute("aria-label") || "Close Markdown preview",
-            control,
-            clipRoots: [dialog],
-            isActionable: () =>
-              this.isCurrentDialog(dialog, threadId) &&
-              this.closeButton === control &&
-              !control.disabled,
-          }),
-        ],
-        mutationRoots: [this],
-        scrollRoots: [],
-      },
-      preview?.actionHintScope({
-        scopeId: `${scopeId}:preview`,
-        linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
-        clipRoots: [dialog],
-        isCurrent: () =>
-          this.isCurrentDialog(dialog, threadId) && this.preview === preview,
-      }),
-    );
+        ),
+      scroll: (pull) =>
+        this.preview.value?.scrollSurfaceScope({
+          ...pull,
+          scopeId: `${pull.scopeId}:preview`,
+          label: "Markdown preview",
+        }) ?? emptyScrollSurfaceScope(),
+    });
   }
 
   render() {
@@ -156,6 +113,12 @@ export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
       "task-markdown-preview-close-icon",
     );
     return html`<dialog
+      ${drawn(this.dialog)}
+      ${this.keyboard.modal({
+        id: this.threadId
+          ? `task-markdown-preview:${encodeURIComponent(this.threadId)}`
+          : "task-markdown-preview",
+      })}
       closedby="any"
       aria-labelledby="task-markdown-preview-title"
       @close=${this.handleClose}
@@ -168,6 +131,11 @@ export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
           >Markdown preview</h2>
           <form method="dialog" class="task-markdown-preview-close-form">
             <button
+              ${this.hints.button({
+                id: "close",
+                label: closeLabel,
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
               type="submit"
               class="task-markdown-preview-close"
               aria-label=${closeLabel}
@@ -175,15 +143,18 @@ export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
             >${closeIcon}</button>
           </form>
         </header>
-        <caffold-markdown-preview></caffold-markdown-preview>
+        <caffold-markdown-preview
+          ${drawn(this.preview)}
+        ></caffold-markdown-preview>
       </article>
       <caffold-keyboard-navigation-presentation
+        ${this.keyboard.presentation()}
       ></caffold-keyboard-navigation-presentation>
     </dialog>`;
   }
 
   private handleClose() {
-    if (this.dialog.open) {
+    if (this.dialog.value?.open) {
       return;
     }
     const opener = this.opener;
@@ -192,38 +163,6 @@ export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
       opener.focus();
     }
   }
-
-  private isCurrentDialog(dialog: HTMLDialogElement, threadId: string) {
-    return (
-      this.isConnected &&
-      this.dialog === dialog &&
-      dialog.open &&
-      Boolean(threadId) &&
-      this.threadId === threadId
-    );
-  }
-
-  private get dialog() {
-    return this.querySelector(":scope > dialog") as HTMLDialogElement;
-  }
-
-  private get closeButton() {
-    return this.dialog?.querySelector<HTMLButtonElement>(
-      ".task-markdown-preview-close",
-    );
-  }
-
-  private get preview() {
-    return this.querySelector(
-      ":scope > dialog > .task-markdown-preview-card > caffold-markdown-preview",
-    ) as CaffoldMarkdownPreview;
-  }
-}
-
-function markdownPreviewScopeId(threadId: string) {
-  return threadId
-    ? `task-markdown-preview:${encodeURIComponent(threadId)}`
-    : "task-markdown-preview";
 }
 
 customElements.define(

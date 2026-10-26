@@ -11,28 +11,27 @@ await import("./active-task-list.ts");
 const List = registry.element("caffold-active-task-list");
 after(() => registry.restore());
 
-test("gathers its Sections' Action Hint targets in the order they stand", () => {
-  const calls = [];
-  const groups = ["alpha", "beta"].map((id) => ({
-    querySelector: () => ({
-      actionHintTargets(options) {
-        calls.push([id, options]);
-        return [{ id: `section:${id}:reorder` }];
-      },
-    }),
-  }));
-  const list = listHost({
-    querySelector: () => ({ querySelectorAll: () => groups }),
+test("merges its Sections' actions in the order they stand", () => {
+  const pulls = [];
+  const section = (id) => ({
+    actionHintScope(pull) {
+      pulls.push([id, pull]);
+      return { targets: [{ id: `section:${id}` }] };
+    },
   });
-  const options = { clipRoots: [{ id: "task-list" }] };
+  const list = listHost({
+    hints: { scope: () => ({ targets: [] }) },
+    sectionComponents: () => [section("alpha"), section("beta")],
+  });
+  const pull = { clipRoots: [{ id: "task-list" }] };
 
-  assert.deepEqual(list.actionHintTargets(options), [
-    { id: "section:alpha:reorder" },
-    { id: "section:beta:reorder" },
-  ]);
-  assert.deepEqual(calls, [
-    ["alpha", options],
-    ["beta", options],
+  assert.deepEqual(
+    list.actionHintScope(pull).targets.map(({ id }) => id),
+    ["section:alpha", "section:beta"],
+  );
+  assert.deepEqual(pulls, [
+    ["alpha", pull],
+    ["beta", pull],
   ]);
 });
 

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  actionHintDialog,
   activateActionHintIntoPopover,
   popoverActionHintDialog,
 } from "../support/action-hints.js";
@@ -176,6 +177,17 @@ test("a Task's kept permission instructions are read and forgotten from its deta
   await expect(dialog.locator(".task-permission-instructions-text")).toContainText(
     "target 밑은 지워도 돼",
   );
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  await expect(
+    hint.getByRole("button", { name: / — Close what this Task settled$/ }),
+  ).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Forget what this Task settled$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await expect(dialog).toBeVisible();
 
   await dialog.getByRole("button", { name: "Forget these" }).click();
 

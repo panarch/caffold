@@ -39,34 +39,6 @@ test("lets go of the document shown and opens the file it is handed", () => {
   assert.deepEqual(opened, [{ generation: 5, file }], "the document shown before is let go of first");
 });
 
-test("publishes only the axis a scaled page can overflow", () => {
-  const owner = {
-    hidden: false,
-    isConnected: true,
-    getClientRects: () => [{}],
-  };
-
-  const scope = pdfViewer.scrollSurfaceScope.call(owner, {
-    scopeId: "review:viewer:pdf",
-  });
-
-  assert.equal(scope.surfaces.length, 1);
-  assert.deepEqual(scope.surfaces[0].axes, ["vertical"]);
-  assert.equal(scope.surfaces[0].scrollport, owner);
-  assert.equal(scope.surfaces[0].isEligible(), true);
-  owner.hidden = true;
-  assert.equal(scope.surfaces[0].isEligible(), false);
-});
-
-test("publishes no scroll surface without a scope identity", () => {
-  const owner = { hidden: false };
-
-  assert.deepEqual(
-    pdfViewer.scrollSurfaceScope.call(owner, {}).surfaces,
-    [],
-  );
-});
-
 test("cancels page renders and tears down the loading task when released", () => {
   const cancelled = [];
   const disconnected = [];

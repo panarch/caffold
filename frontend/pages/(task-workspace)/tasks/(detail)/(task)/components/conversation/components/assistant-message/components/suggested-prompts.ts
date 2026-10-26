@@ -1,13 +1,10 @@
 import { html, LitElement, type PropertyValues } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import type { TaskEventPayload } from "#app/api.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 
@@ -41,6 +38,9 @@ export class CaffoldTaskAssistantMessageSuggestedPrompts extends LitElement {
   declare disabled: boolean;
   private offered: SuggestedPrompt[] = [];
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
 
   constructor() {
     super();
@@ -86,6 +86,11 @@ export class CaffoldTaskAssistantMessageSuggestedPrompts extends LitElement {
       this.offered,
       this.offered.map(
         ({ label }, index) => html`<button
+          ${this.hints.button({
+            id: `prompt:${index + 1}`,
+            label,
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           class="task-suggested-prompt"
           data-suggested-prompt=${index}
@@ -122,46 +127,8 @@ export class CaffoldTaskAssistantMessageSuggestedPrompts extends LitElement {
     );
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    if (!scopeId || !this.isConnected || this.hidden) {
-      return emptyActionHintScope();
-    }
-    const targets = this.buttons.flatMap((control, index) =>
-      isChoosable(control)
-        ? [
-            buttonActionHintTarget({
-              invalidationOwner: this,
-              id: `${scopeId}:prompt:${index + 1}`,
-              actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-              label: control.textContent ?? "",
-              control,
-              clipRoots: [this, ...clipRoots].filter(Boolean),
-              isActionable: () =>
-                this.isConnected &&
-                !this.hidden &&
-                this.buttons[index] === control &&
-                isChoosable(control),
-            }),
-          ]
-        : [],
-    );
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
-  }
-
-  private get buttons() {
-    return Array.from(
-      this.querySelectorAll<HTMLButtonElement>(
-        ":scope > button[data-suggested-prompt]",
-      ),
-    );
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 }
 
@@ -182,10 +149,6 @@ function sameRequests(left: SuggestedPrompt[], right: SuggestedPrompt[]) {
         entry.prompt === right[index].prompt,
     )
   );
-}
-
-function isChoosable(control: HTMLButtonElement) {
-  return !control.disabled && hasActionHintLayoutBox(control);
 }
 
 customElements.define(

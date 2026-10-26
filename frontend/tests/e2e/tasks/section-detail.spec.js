@@ -7,6 +7,7 @@ import {
 import {
   actionHintDialog,
   activateActionHint,
+  workspaceTargets,
 } from "../support/action-hints.js";
 import {
   createdTaskFixture,
@@ -412,6 +413,8 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
     name: "Fork from Codex thread ID",
   });
   await expect(openButton).toBeEnabled();
+  await expect.poll(() => workspaceTargets(page, "section:fixture-section-1:"))
+    .toContainEqual(["fork-conversation", "Fork from Codex thread ID"]);
   await openButton.click();
 
   const dialog = page.getByRole("dialog", { name: "Fork a Codex thread" });

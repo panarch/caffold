@@ -4,6 +4,7 @@ import {
   activateActionHint,
   enterActionHints,
   workspaceOcclusionTargets,
+  workspaceTargets,
 } from "./support/action-hints.js";
 import {
   installBrowserDefaults,
@@ -700,6 +701,14 @@ test("shows the newest Codex and updates it through its own confirmation", { tag
   await expect(page.locator(
     "caffold-task-workspace > caffold-codex-runtime-update-dialog",
   )).toHaveCount(1);
+  await page.keyboard.press("f");
+  const updateHint = actionHintDialog(page);
+  await expect(updateHint.getByRole("button", { name: / — Cancel$/ })).toBeVisible();
+  await expect(
+    updateHint.getByRole("button", { name: / — Update Codex$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(updateHint).toBeHidden();
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
   expect(updateRequests).toBe(0);
@@ -1216,6 +1225,42 @@ test("shows every usage limit Codex reports, its single-bucket limit first", { t
     .toEqual([]);
   await usage.scrollIntoViewIfNeeded();
   await captureReviewScreenshot(page, testInfo, "settings-codex-usage-limits");
+});
+
+test("offers each Codex control it shows as an Action Hint", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus({
+        rateLimits: {
+          rateLimitResetCredits: {
+            availableCount: 1,
+            credits: [{
+              id: "RateLimitResetCredit_1",
+              resetType: "codexRateLimits",
+              status: "available",
+              title: "Full reset for Codex primary and weekly rate-limit windows",
+              grantedAt: 1790108687,
+              expiresAt: 1792700687,
+            }],
+          },
+        },
+      })),
+    }),
+  );
+
+  await page.goto("/settings/codex");
+  const credits = page.locator("caffold-settings-codex-page .settings-codex-reset-credits");
+  await expect(credits.locator("[data-reset-credit-count]")).toHaveText("1 available");
+  // The page's own controls, then its Refresh action's.
+  await expect.poll(() => workspaceTargets(page, "settings:codex:")).toEqual([
+    ["service-status", "Open Service status in a new tab"],
+    ["reset-credit:credit:RateLimitResetCredit_1", "Use this reset"],
+    ["restart-runtime", "Restart runtime…"],
+    ["refresh", "Refresh"],
+  ]);
 });
 
 test("shows reset expiration and requires confirmation before consuming a credit", { tag: "@all-viewports" }, async ({
@@ -2390,6 +2435,50 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
     testInfo,
     "settings-about-roles-interface-120",
   );
+});
+
+test("Appearance offers its other choices, its controls, and the resets of changed values", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.addInitScript(
+    ({ key }) => {
+      localStorage.setItem(key, JSON.stringify({ themeMode: "dark", codeTextPx: 16 }));
+    },
+    { key: SETTINGS_KEY },
+  );
+
+  await page.goto("/settings/appearance");
+  await expect(page.locator("caffold-settings-appearance-page")).toBeVisible();
+  await expect.poll(() => workspaceTargets(page, "settings:appearance:")).toEqual([
+    ["reset-all", "Reset all"],
+    ["theme:system", "Use System theme"],
+    ["theme:light", "Use Light theme"],
+    ["reset-theme", "Reset theme"],
+    ["typeface:uiTypefacePreset", "Choose interface font (current Geist Sans)"],
+    ["typeface:codeTypefacePreset", "Choose code font (current GeistMono Nerd Font)"],
+    ["range:interfaceScalePercent", "Adjust Interface size (100%)"],
+    ["range:conversationTextPx", "Adjust Conversation text (14px)"],
+    ["range:codeTextPx", "Adjust Code text (16px)"],
+    ["reset-setting:codeTextPx", "Reset code text"],
+  ]);
+});
+
+test("Settings scrolls its section list and the page it presents", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/keyboard");
+  await expect(page.locator("caffold-settings-keyboard-page")).toBeVisible();
+  await expect.poll(() =>
+    page.locator("caffold-app-shell").evaluate((shell) =>
+      shell.keyboardNavigationContexts()
+        .flatMap((context) => context.scroll?.surfaces ?? [])
+        .filter((surface) => surface.id.startsWith("settings:"))
+        .map((surface) => [surface.id, surface.label, surface.scrollport.className]),
+    ),
+  ).toEqual([
+    ["settings:sections:scroll", "Settings sections", "settings-navigator-list"],
+    ["settings:keyboard:scroll", "Keyboard", "settings-keyboard-scroll"],
+  ]);
 });
 
 test("persists file ordering and keeps it across appearance reset", { tag: "@all-viewports" }, async ({

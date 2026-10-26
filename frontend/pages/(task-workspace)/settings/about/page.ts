@@ -1,15 +1,10 @@
 import { html, LitElement, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  type ActionHintTarget,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-  linkActionHintTarget,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import {
   type CaffoldUpdateAttempt,
   type CaffoldUpdateStatus,
@@ -18,12 +13,8 @@ import {
   type Health,
 } from "#app/api.ts";
 import { BUILD_INFO } from "#app/build-info.js";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "#components/loading-text.ts";
 import "../components/detail-list.ts";
 import type { SettingsDetailRow } from "../components/detail-list.ts";
@@ -81,6 +72,15 @@ export class CaffoldSettingsAboutPage extends LitElement {
   declare updateStatus: unknown;
   declare private copyingDiagnostics: boolean;
   declare private copyStatus: string;
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.scrollport.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
 
   constructor() {
     super();
@@ -148,6 +148,11 @@ export class CaffoldSettingsAboutPage extends LitElement {
       : view.summary;
     const latest = view.latest.url
       ? html`<a
+          ${this.hints.link({
+            id: "latest-release",
+            label: `Open the ${view.latest.text} release in a new tab`,
+            action: ACTION_HINT_ACTION.LINK_OPEN,
+          })}
           href=${view.latest.url}
           target="_blank"
           rel="noreferrer"
@@ -158,7 +163,14 @@ export class CaffoldSettingsAboutPage extends LitElement {
       ? "Update Caffold"
       : "Check for Updates";
     return html`
-      <div class="settings-content-scroll">
+      <div
+        ${drawn(this.scrollport)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.scrollport.value],
+        })}
+        class="settings-content-scroll"
+      >
         <div class="settings-content-section">
           <header class="settings-about-heading">
             <img src="/assets/icons/caffold.png" alt="" />
@@ -190,6 +202,11 @@ export class CaffoldSettingsAboutPage extends LitElement {
               </dl>
             </div>
             <button
+              ${this.hints.button({
+                id: action,
+                label: actionLabel,
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               data-action=${action}
               ?disabled=${!view.actionEnabled}
@@ -209,12 +226,22 @@ export class CaffoldSettingsAboutPage extends LitElement {
               aria-live="polite"
             >${this.copyStatus}</span>
             <button
+              ${this.hints.button({
+                id: "reload-update",
+                label: "Reload to update",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               data-action="reload-update"
               ?hidden=${!preparedUpdate.ready}
               @click=${this.reloadUpdate}
             >Reload to update</button>
             <button
+              ${this.hints.button({
+                id: "copy-diagnostics",
+                label: "Copy diagnostics",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               data-action="copy-diagnostics"
               ?disabled=${this.copyingDiagnostics}
@@ -284,129 +311,17 @@ export class CaffoldSettingsAboutPage extends LitElement {
 
   actionHintScope({
     scopeId = "settings:about",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyActionHintScope();
-    }
-    const targetClipRoots = [this, scrollport, ...clipRoots].filter(Boolean);
-    const definitions = [
-      {
-        id: "update-caffold",
-        selector: 'button[data-action="update-caffold"]',
-      },
-      {
-        id: "check-for-updates",
-        selector: 'button[data-action="check-for-updates"]',
-      },
-      {
-        id: "reload-update",
-        selector: 'button[data-action="reload-update"]',
-      },
-      {
-        id: "copy-diagnostics",
-        selector: 'button[data-action="copy-diagnostics"]',
-      },
-    ];
-    const targets: ActionHintTarget[] = definitions.flatMap(
-      ({ id, selector }) => {
-        const control = this.querySelector<HTMLButtonElement>(selector);
-        if (
-          !control ||
-          control.disabled ||
-          control.hidden ||
-          !hasActionHintLayoutBox(control)
-        ) {
-          return [];
-        }
-        return [
-          buttonActionHintTarget({
-            invalidationOwner: this,
-            id: `${scopeId}:${id}`,
-            actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-            label:
-              control.getAttribute("aria-label") ||
-              control.textContent?.trim() ||
-              id,
-            control,
-            clipRoots: targetClipRoots,
-            isActionable: () =>
-              this.isConnected &&
-              !this.hidden &&
-              isCurrent() &&
-              this.querySelector(selector) === control &&
-              !control.disabled &&
-              !control.hidden &&
-              hasActionHintLayoutBox(control),
-          }),
-        ];
-      },
-    );
-    const release = this.querySelector<HTMLAnchorElement>(
-      "[data-updates-latest] > a",
-    );
-    if (release && hasActionHintLayoutBox(release)) {
-      targets.push(
-        linkActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:latest-release`,
-          actionId: ACTION_HINT_ACTION.LINK_OPEN,
-          label: `Open the ${release.textContent} release in a new tab`,
-          control: release,
-          clipRoots: targetClipRoots,
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector("[data-updates-latest] > a") === release &&
-            hasActionHintLayoutBox(release),
-        }),
-      );
-    }
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   scrollSurfaceScope({
     scopeId = "settings:about",
     label = "About Caffold",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(":scope > .settings-content-scroll") ===
-              scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   private updateAction(event: Event) {

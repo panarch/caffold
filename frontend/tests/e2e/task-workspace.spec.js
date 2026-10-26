@@ -697,7 +697,7 @@ test("offers the corner toggle as an Action Hint only while it can act", { tag: 
     page.locator("caffold-app-shell").evaluate((shell) =>
       shell.actionHintScope().targets
         .filter((target) => target.id === "workspace:side-pane:toggle")
-        .map((target) => ({ label: target.label, actionable: target.isActionable() })),
+        .map((target) => target.label),
     );
 
   await expect(page.locator("caffold-task-detail")).toBeVisible();
@@ -709,9 +709,7 @@ test("offers the corner toggle as an Action Hint only while it can act", { tag: 
 
   await page.goto("/");
   await expect(toggle).toBeDisabled();
-  expect(await toggleTargets()).toEqual([
-    { label: "Hide navigation pane", actionable: false },
-  ]);
+  expect(await toggleTargets()).toEqual([]);
 });
 
 test("keeps the corner toggle out of single-pane Task layouts", { tag: "@phone" }, async ({

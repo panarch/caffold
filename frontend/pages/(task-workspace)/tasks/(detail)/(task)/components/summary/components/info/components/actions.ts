@@ -1,13 +1,9 @@
 import { html, LitElement, nothing } from "lit";
-import type {
-  ActionHintScope,
-  ActionHintScopeOptions,
-} from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hints.js";
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import {
   isTaskTransportStale,
   type TaskTransportState,
@@ -55,9 +51,6 @@ export interface TaskInfoActionIntent {
  * What can be done with the Task from its details popover: read what its
  * prompts settled, fork it, and archive it, each with why it cannot be done
  * now.
- *
- * Task Info hands it the snapshot it draws, and reads its Action Hints right
- * after, so those first finish any drawing that is due.
  */
 export class CaffoldTaskDetailInfoActions extends LitElement {
   static properties = {
@@ -65,6 +58,7 @@ export class CaffoldTaskDetailInfoActions extends LitElement {
   };
 
   declare snapshot: TaskInfoActionsSnapshot | null;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
 
   constructor() {
     super();
@@ -75,54 +69,8 @@ export class CaffoldTaskDetailInfoActions extends LitElement {
     return this;
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    this.performUpdate();
-    const threadId = taskThreadId(this.snapshot?.task);
-    if (!scopeId || !threadId) {
-      return emptyActionHintScope();
-    }
-    const actionIds: Record<TaskInfoAction, string> = {
-      fork: ACTION_HINT_ACTION.TASK_FORK,
-      archive: ACTION_HINT_ACTION.TASK_ARCHIVE,
-      "permission-instructions": ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-    };
-    const offered = (type: TaskInfoAction) =>
-      type !== "permission-instructions" || this.keepsPermissionInstructions();
-    const targets = (Object.keys(actionIds) as TaskInfoAction[]).flatMap(
-      (type) => {
-        const control = this.actionButton(type);
-        if (!control || control.disabled || !offered(type)) {
-          return [];
-        }
-        return [
-          buttonActionHintTarget({
-            invalidationOwner: this,
-            id: `${scopeId}:${threadId}:${type}`,
-            actionId: actionIds[type],
-            label: control.textContent?.trim() || `${type} task`,
-            control,
-            clipRoots: [...clipRoots],
-            badgeAtEnd: true,
-            isActionable: () =>
-              this.isConnected &&
-              taskThreadId(this.snapshot?.task) === threadId &&
-              this.actionButton(type) === control &&
-              control.dataset.taskInfoAction === type &&
-              !control.disabled &&
-              offered(type),
-          }),
-        ];
-      },
-    );
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   render() {
@@ -135,6 +83,7 @@ export class CaffoldTaskDetailInfoActions extends LitElement {
     const forkError = actionErrorMessage(snapshot.forkState.error);
     const archiving = snapshot.archiveState.loading;
     const archiveError = actionErrorMessage(snapshot.archiveState.error);
+    const threadId = taskThreadId(snapshot.task);
     return html`
       <div
         class="task-detail-task-action
@@ -144,6 +93,13 @@ export class CaffoldTaskDetailInfoActions extends LitElement {
       >
         <p>${PERMISSION_INSTRUCTIONS_ABOUT}</p>
         <button
+          ${this.hints.button({
+            id: `${threadId}:permission-instructions`,
+            label: "What your prompts settled",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            when: this.keepsPermissionInstructions(),
+            badgeAtEnd: true,
+          })}
           type="button"
           class="task-secondary-button"
           data-task-info-action="permission-instructions"
@@ -157,6 +113,12 @@ export class CaffoldTaskDetailInfoActions extends LitElement {
           ?hidden=${forking || !forkUnavailable}
         >${forking ? "" : forkUnavailable}</p>
         <button
+          ${this.hints.button({
+            id: `${threadId}:fork`,
+            label: "Fork task",
+            action: ACTION_HINT_ACTION.TASK_FORK,
+            badgeAtEnd: true,
+          })}
           type="button"
           class="task-secondary-button"
           data-task-info-action="fork"
@@ -173,6 +135,12 @@ export class CaffoldTaskDetailInfoActions extends LitElement {
       <div class="task-detail-task-action task-detail-archive-action">
         <p>${ARCHIVE_ABOUT}</p>
         <button
+          ${this.hints.button({
+            id: `${threadId}:archive`,
+            label: "Archive task",
+            action: ACTION_HINT_ACTION.TASK_ARCHIVE,
+            badgeAtEnd: true,
+          })}
           type="button"
           class="task-secondary-button"
           data-task-info-action="archive"
@@ -210,12 +178,6 @@ export class CaffoldTaskDetailInfoActions extends LitElement {
           detail: { type },
         },
       ),
-    );
-  }
-
-  private actionButton(type: TaskInfoAction) {
-    return this.querySelector<HTMLButtonElement>(
-      `[data-task-info-action="${type}"]`,
     );
   }
 }

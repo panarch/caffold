@@ -1,11 +1,9 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 
 // The section an entry opens, its label, and either an icon or a brand mark.
@@ -33,6 +31,7 @@ export class CaffoldSettingsNavigatorItem extends LitElement {
   declare updateAvailable: boolean;
   declare reloadReady: boolean;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
 
   constructor() {
     super();
@@ -70,6 +69,8 @@ export class CaffoldSettingsNavigatorItem extends LitElement {
       this.updateAvailable && "update available",
       this.reloadReady && "reload to update",
     ].filter(Boolean);
+    const label =
+      notices.length > 0 ? `${entry.label} — ${notices.join(", ")}` : "";
     const mark = entry.brand
       ? html`<img
           class="settings-navigator-item-brand"
@@ -83,15 +84,17 @@ export class CaffoldSettingsNavigatorItem extends LitElement {
         )}</span>`;
     return html`
       <button
+        ${this.hints.button({
+          id: `section:${entry.section}`,
+          label: label || `Open ${entry.label} settings`,
+          action: ACTION_HINT_ACTION.SETTINGS_SECTION,
+          when: !this.selected,
+        })}
         type="button"
         data-settings-section=${entry.section}
         ?aria-current=${this.selected}
         ?data-update-available=${notices.length > 0}
-        aria-label=${
-          notices.length > 0
-            ? `${entry.label} — ${notices.join(", ")}`
-            : nothing
-        }
+        aria-label=${label || nothing}
         @click=${this.open}
       >
         ${mark}
@@ -100,40 +103,8 @@ export class CaffoldSettingsNavigatorItem extends LitElement {
     `;
   }
 
-  actionHintScope({
-    scopeId = "settings",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const control = this.button;
-    const entry = this.entry;
-    if (!entry || !control || this.selected) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:section:${entry.section}`,
-          actionId: ACTION_HINT_ACTION.SETTINGS_SECTION,
-          label:
-            control.getAttribute("aria-label") ||
-            `Open ${entry.label} settings`,
-          control,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            isCurrent() &&
-            !this.selected &&
-            this.button === control,
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   private open() {
@@ -143,10 +114,6 @@ export class CaffoldSettingsNavigatorItem extends LitElement {
         detail: { section: this.section },
       }),
     );
-  }
-
-  private get button() {
-    return this.querySelector<HTMLButtonElement>(":scope > button");
   }
 }
 

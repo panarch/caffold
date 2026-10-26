@@ -8,6 +8,7 @@ import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./context-usage.ts");
+const { ActionHints } = await import("#app/action-hints.ts");
 const ContextUsage = registry.element("caffold-task-context-usage");
 after(() => registry.restore());
 
@@ -91,32 +92,6 @@ test("a new count is drawn at once, and the same count draws nothing", () => {
   assert.equal(owner.updates, 2);
 });
 
-test("offers the pie to Action Hints while it is shown", () => {
-  const control = {
-    getAttribute: (name) => (name === "aria-label" ? "Context usage: 16%" : null),
-    getBoundingClientRect: () => ({ width: 28, height: 28 }),
-    getClientRects: () => [{ width: 28, height: 28 }],
-    focus() {},
-    click() {},
-  };
-  const owner = pie({
-    isConnected: true,
-    hidden: false,
-    querySelector: (selector) =>
-      selector === ":scope > .task-context-usage-button" ? control : null,
-  });
-
-  const target = owner.actionHintTarget({ scopeId: "task:thread-a" });
-
-  assert.equal(target.id, "task-composer:task:thread-a:context-usage");
-  assert.equal(target.label, "Context usage: 16%");
-  assert.equal(target.control, control);
-  assert.equal(target.isActionable(), true);
-  owner.hidden = true;
-  assert.equal(target.isActionable(), false);
-  assert.equal(owner.actionHintTarget({ scopeId: "task:thread-a" }), null);
-});
-
 // The wedge's outline: whether it starts at the center, and each arc's radius,
 // size flag, and end as a share of a turn clockwise from twelve o'clock.
 function wedge(d) {
@@ -137,7 +112,7 @@ function wedge(d) {
 // A pie whose drawing is its `render()` alone; each drawing it asks for is
 // counted.
 function pie(properties = {}) {
-  return Object.create(ContextUsage.prototype, {
+  const owner = Object.create(ContextUsage.prototype, {
     ...Object.getOwnPropertyDescriptors({
       usage: null,
       popoverId: "task-context-usage-1",
@@ -148,6 +123,8 @@ function pie(properties = {}) {
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
+  owner.hints = new ActionHints(owner, () => {});
+  return owner;
 }
 
 // What the pie draws: the wedge, the button's names, and the popover's rows.

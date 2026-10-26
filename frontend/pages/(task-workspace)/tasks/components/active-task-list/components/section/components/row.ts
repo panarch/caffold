@@ -1,15 +1,15 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintTarget,
-  buttonActionHintTarget,
-  reorderHandleActionHintTarget,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import type { ActiveTaskRecovery } from "#app/api.ts";
 import {
   type TaskOperationsPresentation,
   taskStoreOperationsPresentation,
 } from "#app/pages/(task-workspace)/task-store-status.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#tasks/components/task-status-chip.ts";
 import { taskStatusView, taskThreadStatusType } from "#tasks/runtime-state.ts";
@@ -71,6 +71,8 @@ export class CaffoldActiveTaskRow extends LitElement {
   };
   private pointerGesture: PointerGesture | null = null;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly handle = new DrawnRef<HTMLButtonElement>(this);
 
   // A captured pointer's events reach the handle and rise to this element,
   // which follows the gesture from there.
@@ -117,11 +119,11 @@ export class CaffoldActiveTaskRow extends LitElement {
   }
 
   focusHandle() {
-    this.handle?.focus();
+    this.handle.value?.focus();
   }
 
   containsReorderFocus(element: Element | null) {
-    return Boolean(element && this.handle?.contains(element));
+    return Boolean(element && this.handle.value?.contains(element));
   }
 
   setDropPosition(position: "before" | "after" | "" = "") {
@@ -129,79 +131,8 @@ export class CaffoldActiveTaskRow extends LitElement {
     this.toggleAttribute("data-task-drop-after", position === "after");
   }
 
-  actionHintTarget({
-    clipRoots = [],
-  }: {
-    clipRoots?: Element[];
-  } = {}): ActionHintTarget | null {
-    const task = this.snapshot.task;
-    const threadId = taskThreadId(task);
-    const control = this.openButton;
-    const action = control?.dataset.activeTaskRowAction;
-    if (
-      !task ||
-      !threadId ||
-      !control ||
-      (action !== "open-task" && action !== "open-task-recovery")
-    ) {
-      return null;
-    }
-    const recovery = action === "open-task-recovery";
-    return buttonActionHintTarget({
-      invalidationOwner: this,
-      id: `task:${threadId}`,
-      actionId: recovery
-        ? ACTION_HINT_ACTION.TASK_OPEN_RECOVERY
-        : ACTION_HINT_ACTION.TASK_OPEN,
-      label: recovery
-        ? `Open task recovery: ${task.title}`
-        : `Open task: ${task.title}`,
-      control,
-      clipRoots: [...clipRoots],
-      isActionable: () =>
-        !this.snapshot.reorderMode &&
-        taskThreadId(this.snapshot.task) === threadId &&
-        this.openButton === control &&
-        control.dataset.activeTaskRowAction === action &&
-        !control.disabled,
-    });
-  }
-
-  reorderActionHintTarget({
-    clipRoots = [],
-  }: {
-    clipRoots?: Element[];
-  } = {}): ActionHintTarget | null {
-    const { task, reorderMode, reorderable, pending } = this.snapshot;
-    const threadId = taskThreadId(task);
-    const control = this.handle;
-    if (
-      !task ||
-      !threadId ||
-      !reorderMode ||
-      !reorderable ||
-      pending ||
-      !control ||
-      control.disabled
-    ) {
-      return null;
-    }
-    return reorderHandleActionHintTarget({
-      invalidationOwner: this,
-      id: `task:${threadId}:reorder`,
-      actionId: ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS,
-      label: control.getAttribute("aria-label") || `Reorder ${task.title}`,
-      control,
-      clipRoots: [...clipRoots],
-      isActionable: () =>
-        this.isConnected &&
-        taskThreadId(this.snapshot.task) === threadId &&
-        this.snapshot.reorderMode &&
-        this.snapshot.reorderable &&
-        !this.snapshot.pending &&
-        this.handle === control &&
-        !control.disabled,
-    });
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   render() {
@@ -225,6 +156,12 @@ export class CaffoldActiveTaskRow extends LitElement {
       >
         <span class="task-row-title">${task.title}</span>
         <span class="task-row-indicators task-row-reorder-slot"><button
+          ${drawn(this.handle)}
+          ${this.hints.reorderHandle({
+            id: `task:${threadId}:reorder`,
+            label,
+            action: ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS,
+          })}
           type="button"
           class="task-reorder-handle"
           aria-label=${label}
@@ -248,6 +185,16 @@ export class CaffoldActiveTaskRow extends LitElement {
         ? `${task.title} — ${recovery}`
         : task.title;
     return html`<button
+      ${this.hints.button({
+        id: `task:${threadId}`,
+        label: recovery
+          ? `Open task recovery: ${task.title}`
+          : `Open task: ${task.title}`,
+        action: recovery
+          ? ACTION_HINT_ACTION.TASK_OPEN_RECOVERY
+          : ACTION_HINT_ACTION.TASK_OPEN,
+        when: !this.snapshot.reorderMode,
+      })}
       type="button"
       class="task-row"
       data-active-task-row-action=${action}
@@ -335,7 +282,7 @@ export class CaffoldActiveTaskRow extends LitElement {
         : event.key === "ArrowDown"
           ? "down"
           : null;
-    if (!direction || this.handle?.disabled) {
+    if (!direction || this.handle.value?.disabled) {
       return;
     }
     event.preventDefault();
@@ -348,7 +295,7 @@ export class CaffoldActiveTaskRow extends LitElement {
   }
 
   private handlePointerDown(event: PointerEvent) {
-    const handle = this.handle;
+    const handle = this.handle.value;
     if (
       !handle ||
       handle.disabled ||
@@ -450,18 +397,6 @@ export class CaffoldActiveTaskRow extends LitElement {
         bubbles: true,
         detail,
       }),
-    );
-  }
-
-  private get openButton() {
-    return this.querySelector<HTMLButtonElement>(
-      ":scope > button.task-row[data-active-task-row-action]",
-    );
-  }
-
-  private get handle() {
-    return this.querySelector<HTMLButtonElement>(
-      ":scope > .task-row .task-reorder-handle",
     );
   }
 }

@@ -11,65 +11,29 @@ const navigator = registry.element("caffold-settings-navigator").prototype;
 after(() => registry.restore());
 
 test("combines its Settings entries' Action Hints inside the section list", () => {
-  const scroller = {};
-  const requests = [];
-  const items = ["keyboard", "about"].map((section) => ({
-    actionHintScope(options) {
-      requests.push(options);
-      return {
-        blocked: false,
-        targets: [{ id: `settings:section:${section}` }],
-        mutationRoots: [this],
-        scrollRoots: [],
-      };
+  const list = {};
+  const pulls = [];
+  const item = (section) => ({
+    actionHintScope(pull) {
+      pulls.push(pull);
+      return { targets: [{ id: `settings:section:${section}` }] };
     },
-  }));
-  scroller.querySelectorAll = () => items;
-  const owner = {
-    hidden: false,
-    isConnected: true,
-    list: scroller,
-  };
-
-  const scope = navigator.actionHintScope.call(owner, {
-    clipRoots: [owner],
   });
+  const items = new Map([["keyboard", item("keyboard")], ["about", item("about")]]);
+  const owner = Object.assign(Object.create(navigator), {
+    hints: { scope: () => ({ targets: [], mutationRoots: [owner] }) },
+    list: { value: list },
+    items: { get: (section) => items.get(section) },
+  });
+  const pane = {};
+
+  const scope = owner.actionHintScope({ clipRoots: [pane] });
   assert.deepEqual(
     scope.targets.map(({ id }) => id),
     ["settings:section:keyboard", "settings:section:about"],
   );
-  assert.deepEqual(scope.mutationRoots, [owner, ...items]);
-  assert.deepEqual(scope.scrollRoots, [scroller]);
-  assert.ok(requests.every(({ scopeId, clipRoots }) =>
-    scopeId === "settings" &&
-    clipRoots.length === 2 &&
-    clipRoots[0] === owner &&
-    clipRoots[1] === scroller
-  ));
-
-  assert.equal(requests[0].isCurrent(), true);
-  owner.hidden = true;
-  assert.equal(requests[0].isCurrent(), false);
-  assert.deepEqual(navigator.actionHintScope.call(owner).targets, []);
-});
-
-test("provides only its exact retained section list as a Scroll surface", () => {
-  const scroller = {
-    clientHeight: 100,
-    scrollHeight: 240,
-    getClientRects: () => [{}],
-  };
-  const owner = {
-    hidden: false,
-    isConnected: true,
-    getClientRects: () => [{}],
-    list: scroller,
-  };
-  const scope = navigator.scrollSurfaceScope.call(owner);
-  assert.equal(scope.surfaces[0].scrollport, scroller);
-  assert.equal(scope.surfaces[0].isEligible(), true);
-  scroller.scrollHeight = 100;
-  assert.equal(scope.surfaces[0].isEligible(), true);
-  owner.hidden = true;
-  assert.deepEqual(navigator.scrollSurfaceScope.call(owner).surfaces, []);
+  assert.deepEqual(pulls, [
+    { scopeId: "settings", clipRoots: [pane, list] },
+    { scopeId: "settings", clipRoots: [pane, list] },
+  ]);
 });

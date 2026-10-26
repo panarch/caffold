@@ -1,29 +1,22 @@
 import { html, LitElement } from "lit";
-import type {
-  ActionHintScope,
-  ActionHintScopeOptions,
-} from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hints.js";
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import { compactIconButton } from "#app/component-styles.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
-  keyboardNavigationContext,
-  popoverScrollSurfaceScope,
-} from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
+  KeyboardContexts,
+} from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 
 // What the menu asks the Detail layout to open.
 export interface GitHubMenuIntent {
   type: "open-github-tool";
   reviewKind: string | null;
 }
-
-const GITHUB_DESTINATIONS = ["pulls", "issues"];
 
 let taskDetailGithubInstanceId = 0;
 
@@ -38,6 +31,11 @@ export class CaffoldTaskDetailGithub extends LitElement {
   private available = false;
   private readonly popoverId =
     `task-github-actions-${++taskDetailGithubInstanceId}`;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly githubPopover = new DrawnRef<HTMLDivElement>(this);
 
   constructor() {
     super();
@@ -65,7 +63,7 @@ export class CaffoldTaskDetailGithub extends LitElement {
   }
 
   deactivate() {
-    const popover = this.githubPopover;
+    const popover = this.githubPopover.value;
     if (!popover?.matches(":popover-open")) {
       return;
     }
@@ -76,39 +74,8 @@ export class CaffoldTaskDetailGithub extends LitElement {
     }
   }
 
-  actionHintScope({
-    scopeId = "task-detail",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    this.performUpdate();
-    const control = this.githubTrigger;
-    const popover = this.githubPopover;
-    if (!scopeId || !control || !popover) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:github:open`,
-          actionId: ACTION_HINT_ACTION.GITHUB_OPEN,
-          label: control.getAttribute("aria-label") || "Open GitHub workspace",
-          control,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            this.available &&
-            this.githubTrigger === control &&
-            this.githubPopover === popover &&
-            control.getAttribute("popovertarget") === popover.id &&
-            !control.disabled &&
-            !popover.matches(":popover-open"),
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope({ scopeId = "task-detail", ...pull }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   keyboardNavigationContexts({
@@ -116,49 +83,20 @@ export class CaffoldTaskDetailGithub extends LitElement {
   }: {
     scopeId?: string;
   } = {}) {
-    this.performUpdate();
-    const popover = this.githubPopover;
-    const presentation =
-      popover?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const dialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (!scopeId || !popover || !dialog || !hud || !selector) {
-      return [];
-    }
-    const contextId = `${scopeId}:github`;
-    return [
-      keyboardNavigationContext({
-        id: contextId,
-        kind: "popover",
-        root: popover,
-        actionHints: {
-          dialog,
-          scope: this.githubActionHintScope(contextId, popover),
-          sessionBound: true,
-        },
-        scroll: {
-          hud,
-          selector,
-          scope: popoverScrollSurfaceScope({
-            id: contextId,
-            label: "GitHub workspace actions",
-            popover,
-            isCurrent: () =>
-              this.isConnected &&
-              this.available &&
-              this.githubPopover === popover,
-          }),
-        },
-      }),
-    ];
+    return this.keyboard.contexts({
+      scopeId,
+      actionHints: (pull) => this.hints.scope(pull),
+    });
   }
 
   render() {
     return html`
       <button
+        ${this.hints.button({
+          id: "github:open",
+          label: "Open GitHub workspace",
+          action: ACTION_HINT_ACTION.GITHUB_OPEN,
+        })}
         type="button"
         class="task-github-button"
         popovertarget=${this.popoverId}
@@ -169,6 +107,12 @@ export class CaffoldTaskDetailGithub extends LitElement {
         <span class="task-github-icon" aria-hidden="true"></span>
       </button>
       <div
+        ${drawn(this.githubPopover)}
+        ${this.keyboard.popover({
+          id: "github",
+          label: "GitHub workspace actions",
+          sessionBound: true,
+        })}
         id=${this.popoverId}
         class="task-github-popover"
         popover="auto"
@@ -176,6 +120,12 @@ export class CaffoldTaskDetailGithub extends LitElement {
         aria-label="GitHub workspace actions"
       >
         <button
+          ${this.hints.button({
+            id: "pulls",
+            label: "Pull Requests",
+            action: ACTION_HINT_ACTION.GITHUB_DESTINATION,
+            badgeAtEnd: true,
+          })}
           type="button"
           popovertarget=${this.popoverId}
           popovertargetaction="hide"
@@ -184,6 +134,12 @@ export class CaffoldTaskDetailGithub extends LitElement {
           @click=${this.openTool}
         >Pull Requests</button>
         <button
+          ${this.hints.button({
+            id: "issues",
+            label: "Issues",
+            action: ACTION_HINT_ACTION.GITHUB_DESTINATION,
+            badgeAtEnd: true,
+          })}
           type="button"
           popovertarget=${this.popoverId}
           popovertargetaction="hide"
@@ -192,54 +148,14 @@ export class CaffoldTaskDetailGithub extends LitElement {
           @click=${this.openTool}
         >Issues</button>
         <caffold-keyboard-navigation-presentation
+          ${this.keyboard.presentation()}
         ></caffold-keyboard-navigation-presentation>
       </div>
     `;
   }
 
-  private githubActionHintScope(
-    contextId: string,
-    popover: HTMLElement,
-  ): ActionHintScope {
-    const targets = [
-      ...popover.querySelectorAll<HTMLButtonElement>(
-        ":scope > button[data-github-button-action]",
-      ),
-    ].flatMap((control) => {
-      const destination = `${control.dataset.reviewKind ?? ""}`;
-      if (!GITHUB_DESTINATIONS.includes(destination) || control.disabled) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${contextId}:${destination}`,
-          actionId: ACTION_HINT_ACTION.GITHUB_DESTINATION,
-          label: control.textContent?.trim() || destination,
-          control,
-          clipRoots: [popover],
-          badgeAtEnd: true,
-          isActionable: () =>
-            this.isConnected &&
-            this.available &&
-            this.githubPopover === popover &&
-            popover.matches(":popover-open") &&
-            popover.contains(control) &&
-            control.dataset.reviewKind === destination &&
-            !control.disabled,
-        }),
-      ];
-    });
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [popover],
-      scrollRoots: [popover],
-    };
-  }
-
   private handleDismiss(event: Event) {
-    if (event.target === this.githubPopover) {
+    if (event.target === this.githubPopover.value) {
       this.deactivate();
     }
   }
@@ -257,16 +173,6 @@ export class CaffoldTaskDetailGithub extends LitElement {
         },
       }),
     );
-  }
-
-  private get githubTrigger() {
-    return this.querySelector<HTMLButtonElement>(
-      ":scope > .task-github-button",
-    );
-  }
-
-  private get githubPopover() {
-    return this.querySelector<HTMLElement>(":scope > .task-github-popover");
   }
 }
 

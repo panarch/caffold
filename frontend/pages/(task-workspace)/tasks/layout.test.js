@@ -42,8 +42,8 @@ test("combines Navigator with only the active direct-child surface", () => {
     taskNavigator() {
       return navigatorOwner;
     },
-    taskNew() {
-      return {
+    taskNew: {
+      value: {
         hidden: false,
         getClientRects: () => [{}],
         actionHintScope() {
@@ -54,7 +54,7 @@ test("combines Navigator with only the active direct-child surface", () => {
             scrollRoots: [],
           };
         },
-      };
+      },
     },
     taskDetail() {
       return {
@@ -71,15 +71,17 @@ test("combines Navigator with only the active direct-child surface", () => {
         },
       };
     },
-    taskRecovery: () => ({
-      hidden: false,
-      getClientRects: () => [{}],
-      actionHintScope: () => ({
-        targets: [recoveryTarget],
-        mutationRoots: [recoveryRoot],
-        scrollRoots: [],
-      }),
-    }),
+    taskRecovery: {
+      value: {
+        hidden: false,
+        getClientRects: () => [{}],
+        actionHintScope: () => ({
+          targets: [recoveryTarget],
+          mutationRoots: [recoveryRoot],
+          scrollRoots: [],
+        }),
+      },
+    },
     taskStoreRecoveryVisible: () => false,
     activeDirectSurfaceOwners() {
       return tasksPage.activeDirectSurfaceOwners.call(this);
@@ -163,11 +165,11 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
     getClientRects: () => [{}],
     taskNavigator: () => navigator,
     taskDetail: () => detail,
-    imagePreviewDialog: () => ({
-      keyboardNavigationContexts: () => [imageContext],
-    }),
-    taskNew: () => taskNew,
-    taskRecovery: () => null,
+    imagePreviewDialog: {
+      value: { keyboardNavigationContexts: () => [imageContext] },
+    },
+    taskNew: { value: taskNew },
+    taskRecovery: { value: undefined },
     taskStoreRecoveryVisible: () => false,
     activeDirectSurfaceOwners() {
       return tasksPage.activeDirectSurfaceOwners.call(this);
@@ -211,10 +213,10 @@ test("selects the store takeover or the visible page owner", () => {
   const owner = {
     view: "new",
     takeover: false,
-    taskNew: () => taskNew,
+    taskNew: { value: taskNew },
     taskDetail: () => detail,
-    taskRecovery: () => recovery,
-    taskStoreRecovery: () => storeRecovery,
+    taskRecovery: { value: recovery },
+    taskStoreRecovery: { value: storeRecovery },
     taskStoreRecoveryVisible() {
       return this.takeover;
     },
@@ -283,10 +285,10 @@ test("restores managed identity before reopening Detail after a store takeover",
       takeoverChecks += 1;
       return takeoverChecks === 1;
     },
-    taskNew: () => null,
+    taskNew: { value: undefined },
     taskDetail: () => detail,
     taskNavigator: () => null,
-    taskStoreRecovery: () => null,
+    taskStoreRecovery: { value: undefined },
     syncSelectedManagedTask() {
       calls.push("managed");
     },
@@ -342,9 +344,9 @@ test("delivers the Recovery projection only after the route refresh completes", 
   const owner = {
     prepareRoute: () => ({}),
     taskNavigator: () => navigator,
-    taskNew: () => null,
+    taskNew: { value: undefined },
     taskDetail: () => null,
-    taskRecovery: () => ({ updateRecovery: (value) => updates.push(value) }),
+    taskRecovery: { value: { updateRecovery: (value) => updates.push(value) } },
     draw() {},
   };
   const opened = tasksPage.openRoute.call(owner, {

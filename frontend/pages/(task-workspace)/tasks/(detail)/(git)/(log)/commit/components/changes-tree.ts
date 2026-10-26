@@ -1,15 +1,14 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
+  type ActionHintPull,
   emptyActionHintScope,
-} from "#app/action-hint-scope.js";
+} from "#app/action-hints.ts";
 import type { GitCommit, GitCommitFile } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ScrollSurfacePull,
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import {
   buildFileTreeNodes,
   type CaffoldFileTree,
@@ -30,6 +29,7 @@ export class CaffoldCommitChangesTree extends LitElement {
   };
 
   declare private state: CommitState;
+  private readonly treeElement = new DrawnRef<CaffoldFileTree>(this);
   selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
 
@@ -84,6 +84,7 @@ export class CaffoldCommitChangesTree extends LitElement {
           message
             ? html`<p class="surface-message">${message}</p>`
             : html`<caffold-file-tree
+                ${drawn(this.treeElement)}
                 @caffold:file-tree-select=${this.openFile}
               ></caffold-file-tree>`
         }
@@ -137,50 +138,31 @@ export class CaffoldCommitChangesTree extends LitElement {
     this.state = { status: "idle" };
   }
 
-  actionHintScope({
-    scopeId = "",
-    actionId = "",
-    disclosureActionId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions & {
-    disclosureActionId?: string;
-  } = {}): ActionHintScope {
+  actionHintScope({ clipRoots = [], ...pull }: ActionHintPull = {}) {
     const tree = this.fileTree();
-    if (
-      !scopeId ||
-      (!actionId && !disclosureActionId) ||
-      this.hidden ||
-      this.state.status !== "ready" ||
-      !tree
-    ) {
-      return emptyActionHintScope();
-    }
-    return tree.actionHintScope({
-      scopeId,
-      actionId,
-      disclosureActionId,
-      clipRoots: [this, ...clipRoots],
-      isCurrent: (node) => commitFile(node)?.path === this.selectedPath,
-      labelForNode: (node) => node.ariaLabel || `Open ${node.name}`,
-    });
+    return this.state.status === "ready" && tree
+      ? tree.actionHintScope({ ...pull, clipRoots: [this, ...clipRoots] })
+      : emptyActionHintScope();
   }
 
   scrollSurfaceScope({
-    scopeId = "",
     label = "Commit files",
     clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
+    ...pull
+  }: ScrollSurfacePull = {}) {
     const tree = this.fileTree();
-    if (!scopeId || this.hidden || this.state.status !== "ready" || !tree) {
-      return emptyScrollSurfaceScope();
-    }
-    return tree.scrollSurfaceScope({
-      scopeId,
-      label,
-      clipRoots: [this, ...clipRoots],
-      isCurrent: () =>
-        this.state.status === "ready" && this.fileTree() === tree,
-    });
+    return this.state.status === "ready" && tree
+      ? tree.scrollSurfaceScope({
+          ...pull,
+          label,
+          clipRoots: [this, ...clipRoots],
+        })
+      : emptyScrollSurfaceScope();
+  }
+
+  // Where the list scrolls, which the page keeps while a file is open.
+  scroller() {
+    return this.fileTree()?.scroller() ?? null;
   }
 
   private openFile(event: CustomEvent<FileTreeSelectDetail>) {
@@ -202,7 +184,7 @@ export class CaffoldCommitChangesTree extends LitElement {
   }
 
   private fileTree() {
-    return this.querySelector<CaffoldFileTree>("caffold-file-tree");
+    return this.treeElement.value;
   }
 
   private selectedKey() {

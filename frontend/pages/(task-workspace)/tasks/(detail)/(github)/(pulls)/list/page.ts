@@ -1,27 +1,20 @@
 import { html, LitElement, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import {
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { GitHubPulls, GitHubStatus } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/loading-text.ts";
 import "#components/pagination.ts";
 import type { CaffoldPagination } from "#components/pagination.ts";
 
 const LOADING_PULLS = "Loading pull requests...";
-const PULL_LIST = ":scope > .github-pulls-panel > .github-pulls-list";
-const PULL_BUTTON = `${PULL_LIST} > .github-pull-row > button.github-pull-button`;
 
 type PullsState =
   | { status: "idle" }
@@ -38,6 +31,16 @@ export class CaffoldGithubPullsListPage extends LitElement {
 
   declare private state: PullsState;
   declare private selectedPullNumber: number | null;
+  private readonly list = new DrawnRef<HTMLOListElement>(this);
+  private readonly pagination = new DrawnRef<CaffoldPagination>(this);
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.list.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
   private readonly iconsReady = () => this.requestUpdate();
 
   constructor() {
@@ -91,6 +94,7 @@ export class CaffoldGithubPullsListPage extends LitElement {
     const pagination =
       payload && payload.totalPages > 1
         ? html`<caffold-pagination
+            ${drawn(this.pagination)}
             aria-label="Pull request pagination"
             page=${payload.page}
             total-pages=${payload.totalPages}
@@ -119,6 +123,14 @@ export class CaffoldGithubPullsListPage extends LitElement {
       (pull) => html`
         <li class="github-pull-row">
           <button
+            ${this.hints.button({
+              id: `pull:${pull.number}`,
+              label: `Open pull request #${pull.number}: ${
+                pull.title || "(no title)"
+              }`,
+              action: ACTION_HINT_ACTION.PULL_OPEN,
+              when: pull.number !== this.selectedPullNumber,
+            })}
             type="button"
             class="github-pull-button"
             data-pull-number=${pull.number}
@@ -158,7 +170,14 @@ export class CaffoldGithubPullsListPage extends LitElement {
       <section class="github-pulls-panel">
         ${
           state.payload.pulls.length
-            ? html`<ol class="github-pulls-list">${rows}</ol>`
+            ? html`<ol
+                ${drawn(this.list)}
+                ${this.surfaces.surface({
+                  id: "scroll",
+                  clipRoots: () => [this, this.list.value],
+                })}
+                class="github-pulls-list"
+              >${rows}</ol>`
             : html`<p class="surface-message">No pull requests.</p>`
         }
         ${pagination}
@@ -203,102 +222,27 @@ export class CaffoldGithubPullsListPage extends LitElement {
   actionHintScope({
     scopeId = "github:pulls",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
-    if (this.hidden || this.state.status !== "ready") {
-      return emptyActionHintScope();
-    }
-    const pulls = new Map(
-      this.state.payload.pulls.map((pull) => [`${pull.number}`, pull]),
-    );
-    const scroller = this.querySelector(PULL_LIST);
-    const rowClipRoots = [this, scroller, ...clipRoots].filter(
-      (root): root is Element => root !== null,
-    );
-    const targets = [
-      ...this.querySelectorAll<HTMLButtonElement>(
-        `${PULL_BUTTON}[data-pull-number]`,
-      ),
-    ].flatMap((control) => {
-      const number = `${control.dataset.pullNumber ?? ""}`;
-      const pull = pulls.get(number);
-      if (
-        !number ||
-        !pull ||
-        control.disabled ||
-        pull.number === this.selectedPullNumber
-      ) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:pull:${number}`,
-          actionId: ACTION_HINT_ACTION.PULL_OPEN,
-          label: `Open pull request #${number}: ${pull.title || "(no title)"}`,
-          control,
-          clipRoots: rowClipRoots,
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.state.status === "ready" &&
-            `${this.selectedPullNumber ?? ""}` !== number &&
-            this.querySelector(
-              `${PULL_BUTTON}[data-pull-number="${CSS.escape(number)}"]`,
-            ) === control &&
-            !control.disabled,
-        }),
-      ];
-    });
-    const pagination = this.querySelector<CaffoldPagination>(
-      ":scope > .github-pulls-panel > caffold-pagination",
-    );
+    ...pull
+  }: ActionHintPull = {}) {
+    const own = this.hints.scope({ ...pull, scopeId, clipRoots });
     return mergeActionHintScopes(
-      {
-        blocked: false,
-        targets,
-        mutationRoots: [this],
-        scrollRoots: scroller ? [scroller] : [],
-      },
-      pagination?.actionHintScope({
-        scopeId: `${scopeId}:pagination`,
-        actionId: ACTION_HINT_ACTION.PAGE,
-        clipRoots: [this, ...clipRoots],
-      }),
+      own,
+      this.state.status === "ready"
+        ? this.pagination.value?.actionHintScope({
+            scopeId: `${scopeId}:pagination`,
+            actionId: ACTION_HINT_ACTION.PAGE,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
     );
   }
 
   scrollSurfaceScope({
     scopeId = "github:pulls",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    if (this.hidden || this.state.status !== "ready") {
-      return emptyScrollSurfaceScope();
-    }
-    const scrollport = this.querySelector(PULL_LIST);
-    if (!scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label: "GitHub pull requests",
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots],
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.state.status === "ready" &&
-            this.querySelector(PULL_LIST) === scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    label = "GitHub pull requests",
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   private openPull(number: number) {

@@ -44,9 +44,7 @@ export class CaffoldVoiceLevelMeter extends LitElement {
   }
 
   private drawLevels() {
-    const segments = this.querySelectorAll<HTMLElement>(
-      ":scope > .task-voice-level-segment",
-    );
+    const segments = [...this.children] as HTMLElement[];
     for (const [index, segment] of segments.entries()) {
       const level = this.levels[index] ?? 0;
       const scale = MINIMUM_SCALE + level * (1 - MINIMUM_SCALE);

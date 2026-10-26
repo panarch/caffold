@@ -1,23 +1,12 @@
 import { html, LitElement } from "lit";
 import { live } from "lit/directives/live.js";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import {
   ACTION_HINT_ACTION,
-  radioActionHintTarget,
-  textboxActionHintTarget,
-} from "#app/action-hints.js";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
 import "../components/detail-list.ts";
 import {
   VOICE_KEY_PROVIDERS,
@@ -53,49 +42,8 @@ const PROVIDER_CHOICES = Object.freeze([
 ]);
 const KEY_PROVIDER_NAMES: Readonly<Record<VoiceKeyProvider, string>> =
   Object.freeze({ openai: "OpenAI", gemini: "Gemini", grok: "Grok" });
-const ACTION_BUTTONS = Object.freeze([
-  {
-    id: "refresh",
-    selector: 'button[data-action="refresh"]',
-    label: "Retry loading voice settings",
-  },
-  {
-    id: "download-model",
-    selector: 'button[data-action="download-model"]',
-    label: "Download the Whisper model",
-  },
-  {
-    id: "cancel-download",
-    selector: 'button[data-action="cancel-download"]',
-    label: "Cancel the Whisper download",
-  },
-  {
-    id: "remove-model",
-    selector: 'button[data-action="remove-model"]',
-    label: "Delete the Whisper model",
-  },
-  ...VOICE_KEY_PROVIDERS.flatMap((provider) => [
-    {
-      id: `save-key:${provider}`,
-      selector: `form[data-key-provider="${provider}"] button[type="submit"]`,
-      label: `Save the ${KEY_PROVIDER_NAMES[provider]} API key`,
-    },
-    {
-      id: `remove-key:${provider}`,
-      selector: `button[data-action="remove-key"][data-provider="${provider}"]`,
-      label: `Remove the ${KEY_PROVIDER_NAMES[provider]} API key`,
-    },
-  ]),
-]);
-
 const PROVIDER_DESCRIPTION =
   "settings-voice-description settings-voice-provider-note";
-
-interface ScopeContext {
-  scopeId: string;
-  clipRoots: Element[];
-  isCurrent: () => boolean;
-}
 
 export class CaffoldSettingsVoicePage extends LitElement {
   static properties = {
@@ -111,6 +59,17 @@ export class CaffoldSettingsVoicePage extends LitElement {
       this.announceReadiness(snapshot.settings);
     },
   });
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.scrollport.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly choiceLabels = new DrawnRefs<HTMLLabelElement>(this);
+  private readonly keyInputs = new DrawnRefs<HTMLInputElement>(this);
 
   constructor() {
     super();
@@ -162,7 +121,14 @@ export class CaffoldSettingsVoicePage extends LitElement {
     );
     const removeShown = Boolean(whisper?.installed && !whisper.downloading);
     return html`
-      <div class="settings-content-scroll">
+      <div
+        ${drawn(this.scrollport)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.scrollport.value],
+        })}
+        class="settings-content-scroll"
+      >
         <div class="settings-content-section">
           <header>
             <div>
@@ -175,6 +141,11 @@ export class CaffoldSettingsVoicePage extends LitElement {
               </p>
             </div>
             <button
+              ${this.hints.button({
+                id: "refresh",
+                label: "Retry loading voice settings",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               data-action="refresh"
               ?hidden=${!retry}
@@ -194,8 +165,15 @@ export class CaffoldSettingsVoicePage extends LitElement {
             <legend class="sr-only">Speech-to-text provider</legend>
             ${PROVIDER_CHOICES.map(
               (choice) => html`
-                <label>
+                <label ${drawn(this.choiceLabels.of(choice.id))}>
                   <input
+                    ${this.hints.radio({
+                      id: `provider:${choice.id}`,
+                      label: `Use ${choice.label} for voice input`,
+                      action: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
+                      when: settings?.selected !== choice.id,
+                      anchor: () => this.choiceLabels.get(choice.id),
+                    })}
                     type="radio"
                     name="voice-provider"
                     value=${choice.id}
@@ -227,6 +205,11 @@ export class CaffoldSettingsVoicePage extends LitElement {
             >${whisper?.downloadError ?? ""}</p>
             <div class="settings-voice-actions">
               <button
+                ${this.hints.button({
+                  id: "download-model",
+                  label: "Download the Whisper model",
+                  action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                })}
                 type="button"
                 data-action="download-model"
                 ?hidden=${!downloadShown}
@@ -234,6 +217,11 @@ export class CaffoldSettingsVoicePage extends LitElement {
                 @click=${this.downloadModel}
               >Download</button>
               <button
+                ${this.hints.button({
+                  id: "cancel-download",
+                  label: "Cancel the Whisper download",
+                  action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                })}
                 type="button"
                 data-action="cancel-download"
                 ?hidden=${!whisper?.downloading}
@@ -241,6 +229,11 @@ export class CaffoldSettingsVoicePage extends LitElement {
                 @click=${this.removeModel}
               >Cancel download</button>
               <button
+                ${this.hints.button({
+                  id: "remove-model",
+                  label: "Delete the Whisper model",
+                  action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                })}
                 type="button"
                 data-action="remove-model"
                 ?hidden=${!removeShown}
@@ -259,70 +252,17 @@ export class CaffoldSettingsVoicePage extends LitElement {
 
   actionHintScope({
     scopeId = "settings:voice",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyActionHintScope();
-    }
-    const context = {
-      scopeId,
-      isCurrent,
-      clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-    };
-    return {
-      blocked: false,
-      targets: [
-        ...PROVIDER_CHOICES.flatMap((choice) =>
-          providerChoiceTarget(this, context, choice),
-        ),
-        ...ACTION_BUTTONS.flatMap((definition) =>
-          actionButtonTarget(this, context, definition),
-        ),
-        ...VOICE_KEY_PROVIDERS.flatMap((provider) =>
-          keyInputTarget(this, context, provider),
-        ),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   scrollSurfaceScope({
     scopeId = "settings:voice",
     label = "Voice Input settings",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(":scope > .settings-content-scroll") ===
-              scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   private keyProvider(
@@ -362,6 +302,12 @@ export class CaffoldSettingsVoicePage extends LitElement {
           }</label>
           <div class="settings-voice-key-row">
             <input
+              ${drawn(this.keyInputs.of(provider))}
+              ${this.hints.textbox({
+                id: `key:${provider}`,
+                label: `Focus ${name} API key`,
+                action: ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS,
+              })}
               id=${`settings-voice-${provider}-key`}
               name="key"
               type="password"
@@ -371,8 +317,21 @@ export class CaffoldSettingsVoicePage extends LitElement {
               placeholder=${placeholder}
               ?disabled=${locked}
             >
-            <button type="submit" ?disabled=${locked}>Save key</button>
             <button
+              ${this.hints.button({
+                id: `save-key:${provider}`,
+                label: `Save the ${name} API key`,
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
+              type="submit"
+              ?disabled=${locked}
+            >Save key</button>
+            <button
+              ${this.hints.button({
+                id: `remove-key:${provider}`,
+                label: `Remove the ${name} API key`,
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               data-action="remove-key"
               data-provider=${provider}
@@ -428,9 +387,9 @@ export class CaffoldSettingsVoicePage extends LitElement {
   private async saveKey(event: Event) {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
-    const input = form.querySelector<HTMLInputElement>('input[name="key"]');
-    if (!input) return;
     const provider = form.dataset.keyProvider ?? "";
+    const input = this.keyInputs.get(provider);
+    if (!input) return;
     if (await this.lifecycle.storeKey(provider, input.value)) {
       input.value = "";
     }
@@ -450,95 +409,6 @@ function formatBytes(bytes: number) {
   return bytes >= gibibyte
     ? `${(bytes / gibibyte).toFixed(1)} GB`
     : `${Math.round(bytes / 1024 ** 2)} MB`;
-}
-
-function providerChoiceTarget(
-  owner: HTMLElement,
-  context: ScopeContext,
-  choice: (typeof PROVIDER_CHOICES)[number],
-) {
-  const selector = `input[type="radio"][name="voice-provider"][value="${choice.id}"]`;
-  const control = owner.querySelector<HTMLInputElement>(selector);
-  if (!control || !controlAvailable(control) || control.checked) {
-    return [];
-  }
-  return [
-    radioActionHintTarget({
-      invalidationOwner: owner,
-      id: `${context.scopeId}:provider:${choice.id}`,
-      actionId: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
-      label: `Use ${choice.label} for voice input`,
-      control,
-      anchor: control.closest("label") ?? control,
-      clipRoots: context.clipRoots,
-      isActionable: () =>
-        ownerIsCurrent(owner, context) &&
-        owner.querySelector(selector) === control &&
-        controlAvailable(control) &&
-        !control.checked,
-    }),
-  ];
-}
-
-function actionButtonTarget(
-  owner: HTMLElement,
-  context: ScopeContext,
-  { id, selector, label }: { id: string; selector: string; label: string },
-) {
-  const control = owner.querySelector<HTMLButtonElement>(selector);
-  if (!control || !controlAvailable(control)) {
-    return [];
-  }
-  return [
-    buttonActionHintTarget({
-      invalidationOwner: owner,
-      id: `${context.scopeId}:${id}`,
-      actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-      label,
-      control,
-      clipRoots: context.clipRoots,
-      isActionable: () =>
-        ownerIsCurrent(owner, context) &&
-        owner.querySelector(selector) === control &&
-        controlAvailable(control),
-    }),
-  ];
-}
-
-function keyInputTarget(
-  owner: HTMLElement,
-  context: ScopeContext,
-  provider: VoiceKeyProvider,
-) {
-  const selector = `form[data-key-provider="${provider}"] input[name="key"]`;
-  const control = owner.querySelector<HTMLInputElement>(selector);
-  if (!control || !controlAvailable(control)) {
-    return [];
-  }
-  return [
-    textboxActionHintTarget({
-      invalidationOwner: owner,
-      id: `${context.scopeId}:key:${provider}`,
-      actionId: ACTION_HINT_ACTION.CONTROL_TEXTBOX_FOCUS,
-      label: `Focus ${KEY_PROVIDER_NAMES[provider]} API key`,
-      control,
-      clipRoots: context.clipRoots,
-      isActionable: () =>
-        ownerIsCurrent(owner, context) &&
-        owner.querySelector(selector) === control &&
-        controlAvailable(control),
-    }),
-  ];
-}
-
-function ownerIsCurrent(owner: HTMLElement, { isCurrent }: ScopeContext) {
-  return owner.isConnected && !owner.hidden && isCurrent();
-}
-
-function controlAvailable(control: HTMLInputElement | HTMLButtonElement) {
-  return (
-    !control.disabled && !control.hidden && hasActionHintLayoutBox(control)
-  );
 }
 
 customElements.define("caffold-settings-voice-page", CaffoldSettingsVoicePage);

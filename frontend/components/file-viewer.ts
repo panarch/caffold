@@ -1,31 +1,25 @@
 import { html, LitElement, nothing, type TemplateResult } from "lit";
+import type { ActionHintScope } from "../action-hint-scope.ts";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  type ActionHintTarget,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  linkActionHintTarget,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "../action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "../action-hints.js";
+} from "../action-hints.ts";
 import { documentUrl, downloadUrl, imageUrl } from "../api.ts";
 import { type FetchedFile, fetchInChunks } from "../chunked-fetch.ts";
 import { compactIconButton } from "../component-styles.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
-  keyboardNavigationContext,
-  popoverScrollSurfaceScope,
-} from "../keyboard-navigation.js";
-import "../keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "../keyboard-navigation/components/presentation.js";
+  KeyboardContexts,
+} from "../keyboard-navigation.ts";
+import "../keyboard-navigation/components/presentation.ts";
 import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollAxis,
+  mergeScrollSurfaceScopes,
+  type ScrollSurfacePull,
   type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "../scroll-scope.js";
+  ScrollSurfaces,
+} from "../scroll-scope.ts";
 import "./docx-viewer.ts";
 import {
   type DocumentPreviewFile,
@@ -61,6 +55,7 @@ import type { CaffoldMarkdownPreview } from "./markdown-preview.ts";
 import "./pdf-viewer.ts";
 import "./pptx-viewer.ts";
 import "./xlsx-viewer.ts";
+import { DrawnRef, drawn } from "./drawn-refs.ts";
 
 // How long switching to another file keeps showing the previous one before
 // the loading state replaces it.
@@ -69,31 +64,31 @@ const RETAINED_CONTENT_MS = 180;
 // A document preview hands its file to the viewer of its kind.
 const DOCUMENT_VIEWERS: Record<
   DocumentPreviewKind,
-  {
-    tagName: string;
-    element: (file: DocumentPreviewFile | null) => TemplateResult;
-  }
+  (
+    file: DocumentPreviewFile | null,
+    viewer: DrawnRef<DocumentViewer>,
+  ) => TemplateResult
 > = {
-  pdf: {
-    tagName: "caffold-pdf-viewer",
-    element: (file) =>
-      html`<caffold-pdf-viewer .file=${file}></caffold-pdf-viewer>`,
-  },
-  docx: {
-    tagName: "caffold-docx-viewer",
-    element: (file) =>
-      html`<caffold-docx-viewer .file=${file}></caffold-docx-viewer>`,
-  },
-  pptx: {
-    tagName: "caffold-pptx-viewer",
-    element: (file) =>
-      html`<caffold-pptx-viewer .file=${file}></caffold-pptx-viewer>`,
-  },
-  xlsx: {
-    tagName: "caffold-xlsx-viewer",
-    element: (file) =>
-      html`<caffold-xlsx-viewer .file=${file}></caffold-xlsx-viewer>`,
-  },
+  pdf: (file, viewer) =>
+    html`<caffold-pdf-viewer
+      ${drawn(viewer)}
+      .file=${file}
+    ></caffold-pdf-viewer>`,
+  docx: (file, viewer) =>
+    html`<caffold-docx-viewer
+      ${drawn(viewer)}
+      .file=${file}
+    ></caffold-docx-viewer>`,
+  pptx: (file, viewer) =>
+    html`<caffold-pptx-viewer
+      ${drawn(viewer)}
+      .file=${file}
+    ></caffold-pptx-viewer>`,
+  xlsx: (file, viewer) =>
+    html`<caffold-xlsx-viewer
+      ${drawn(viewer)}
+      .file=${file}
+    ></caffold-xlsx-viewer>`,
 };
 
 // An image or document preview is fetched here, once for its file, and drawn
@@ -177,14 +172,8 @@ interface PreviewDocument extends ViewerSource {
 
 // What the viewer of every document kind offers.
 interface DocumentViewer extends HTMLElement {
-  scrollSurfaceScope(options: ScrollSurfaceScopeOptions): ScrollSurfaceScope;
-  actionHintScope?(
-    options: ActionHintScopeOptions & {
-      linkActionId?: string;
-      buttonActionId?: string;
-      isCurrent?: () => boolean;
-    },
-  ): ActionHintScope;
+  scrollSurfaceScope(pull: ScrollSurfacePull): ScrollSurfaceScope;
+  actionHintScope?(pull: ActionHintPull): ActionHintScope;
 }
 
 type ViewerState =
@@ -252,6 +241,20 @@ export class CaffoldReviewFileViewer extends LitElement {
   private previewFile: PreviewFile | null = null;
   private retainedContent: RetainedContent | null = null;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly detailsPopover = new DrawnRef<HTMLElement>(this);
+  private readonly imageStage = new DrawnRef<HTMLDivElement>(this);
+  private readonly noticeContent = new DrawnRef<HTMLDivElement>(this);
+  private readonly codeViewer = new DrawnRef<CaffoldCodeViewer>(this);
+  private readonly diffViewer = new DrawnRef<CaffoldDiffViewer>(this);
+  private readonly preview = new DrawnRef<CaffoldMarkdownPreview>(this);
+  private readonly documentViewer = new DrawnRef<DocumentViewer>(this);
 
   constructor() {
     super();
@@ -264,7 +267,7 @@ export class CaffoldReviewFileViewer extends LitElement {
     viewerInstanceId += 1;
     this.detailsPopoverId = `caffold-viewer-details-${viewerInstanceId}`;
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) => {
-      if (event.target === this.detailsPopover()) {
+      if (event.target === this.detailsPopover.value) {
         this.closeDetailsPopover();
       }
     });
@@ -309,6 +312,11 @@ export class CaffoldReviewFileViewer extends LitElement {
       <header class="viewer-header">
         <div class="viewer-title-row">
           <button
+            ${this.hints.button({
+              id: "close",
+              label: this.closeLabel || "Back to files",
+              role: "parent",
+            })}
             type="button"
             class="viewer-close-button"
             data-action="close-browser-viewer"
@@ -354,6 +362,11 @@ export class CaffoldReviewFileViewer extends LitElement {
             ${
               this.refreshEventName()
                 ? html`<button
+                    ${this.hints.button({
+                      id: "refresh",
+                      label: "Refresh file",
+                      role: "refresh",
+                    })}
                     type="button"
                     class="viewer-refresh-button"
                     data-action="refresh-viewer"
@@ -372,6 +385,12 @@ export class CaffoldReviewFileViewer extends LitElement {
             ${
               details
                 ? html`<button
+                    ${this.hints.button({
+                      id: "details:open",
+                      label: `Show details for ${title}`,
+                      role: "details",
+                      when: metadata.length > 0,
+                    })}
                     type="button"
                     class="viewer-info-button"
                     popovertarget=${this.detailsPopoverId}
@@ -387,6 +406,13 @@ export class CaffoldReviewFileViewer extends LitElement {
         ${
           details
             ? html`<div
+                ${drawn(this.detailsPopover)}
+                ${this.keyboard.popover({
+                  id: "details",
+                  label: "File details",
+                  sessionBound: Boolean(downloadPath),
+                  when: metadata.length > 0,
+                })}
                 id=${this.detailsPopoverId}
                 class="viewer-meta-popover"
                 popover="auto"
@@ -404,6 +430,11 @@ export class CaffoldReviewFileViewer extends LitElement {
                   downloadPath
                     ? html`<div class="viewer-meta-actions">
                         <a
+                          ${this.hints.link({
+                            id: "download",
+                            label: "Download",
+                            action: ACTION_HINT_ACTION.LINK_OPEN,
+                          })}
                           class="viewer-download-link"
                           href=${downloadUrl(downloadPath)}
                           download=${title}
@@ -417,6 +448,7 @@ export class CaffoldReviewFileViewer extends LitElement {
                     : nothing
                 }
                 <caffold-keyboard-navigation-presentation
+                  ${this.keyboard.presentation()}
                 ></caffold-keyboard-navigation-presentation>
               </div>`
             : nothing
@@ -448,11 +480,27 @@ export class CaffoldReviewFileViewer extends LitElement {
         return html`
           <section class=${noticeClass}>
             ${state.title ? header : nothing}
-            <div class="viewer-notice-content">
+            <div
+              ${drawn(this.noticeContent)}
+              ${this.surfaces.surface({
+                id: "notice:scroll",
+                label: (name) => `${state.title || name} notice`,
+                clipRoots: () => [this, this.noticeContent.value],
+              })}
+              class="viewer-notice-content"
+            >
               <p>${state.message}</p>
               ${
                 state.actionLabel && state.action
                   ? html`<button
+                      ${this.hints.button({
+                        id: `notice:${state.action}`,
+                        label: state.actionLabel,
+                        role: "notice",
+                        when:
+                          state.action === "view-source" ||
+                          state.action === "view-preview",
+                      })}
                       type="button"
                       class="task-secondary-button"
                       data-action=${state.action}
@@ -468,6 +516,7 @@ export class CaffoldReviewFileViewer extends LitElement {
           <section class="viewer-panel file-panel diff-panel">
             ${header}
             <caffold-diff-viewer
+              ${drawn(this.diffViewer)}
               .diff=${state.diff}
               .position=${state.position}
             ></caffold-diff-viewer>
@@ -480,7 +529,16 @@ export class CaffoldReviewFileViewer extends LitElement {
         return html`
           <section class="viewer-panel image-panel">
             ${header}
-            <div class="image-stage">
+            <div
+              ${drawn(this.imageStage)}
+              ${this.surfaces.surface({
+                id: "image:scroll",
+                label: (name) => `${state.image.name || name} image`,
+                axes: ["vertical", "horizontal"],
+                clipRoots: () => [this, this.imageStage.value],
+              })}
+              class="image-stage"
+            >
               <img
                 class="image-preview"
                 src=${this.imageSource || nothing}
@@ -498,14 +556,19 @@ export class CaffoldReviewFileViewer extends LitElement {
         return html`
           <section class="viewer-panel file-panel document-panel">
             ${header}
-            ${DOCUMENT_VIEWERS[state.document.kind].element(this.documentFile)}
+            ${DOCUMENT_VIEWERS[state.document.kind](
+              this.documentFile,
+              this.documentViewer,
+            )}
           </section>
         `;
       case "markdown":
         return html`
           <section class="viewer-panel file-panel markdown-panel">
             ${header}
-            <caffold-markdown-preview></caffold-markdown-preview>
+            <caffold-markdown-preview
+              ${drawn(this.preview)}
+            ></caffold-markdown-preview>
           </section>
         `;
       case "file":
@@ -513,6 +576,7 @@ export class CaffoldReviewFileViewer extends LitElement {
           <section class="viewer-panel file-panel">
             ${header}
             <caffold-code-viewer
+              ${drawn(this.codeViewer)}
               .file=${state.file}
               .position=${state.position}
             ></caffold-code-viewer>
@@ -700,30 +764,20 @@ export class CaffoldReviewFileViewer extends LitElement {
   }
 
   captureContentScroll(): ScrollPosition | null {
-    const viewer = this.querySelector<CaffoldCodeViewer | CaffoldDiffViewer>(
-      "caffold-code-viewer, caffold-diff-viewer",
-    );
+    const viewer = this.codeViewer.value ?? this.diffViewer.value;
     if (viewer) {
       return viewer.getScrollState();
     }
-    return (
-      this.querySelector<CaffoldMarkdownPreview>(
-        "caffold-markdown-preview",
-      )?.getScrollState() ?? null
-    );
+    return this.preview.value?.getScrollState() ?? null;
   }
 
   visibleLine() {
-    const viewer = this.querySelector<CaffoldCodeViewer | CaffoldDiffViewer>(
-      "caffold-code-viewer, caffold-diff-viewer",
-    );
+    const viewer = this.codeViewer.value ?? this.diffViewer.value;
     return viewer?.visibleLine() ?? null;
   }
 
   scrollToLine(line: number | string | null | undefined) {
-    const viewer = this.querySelector<CaffoldCodeViewer | CaffoldDiffViewer>(
-      "caffold-code-viewer, caffold-diff-viewer",
-    );
+    const viewer = this.codeViewer.value ?? this.diffViewer.value;
     return viewer?.scrollToLine(line) ?? false;
   }
 
@@ -735,325 +789,60 @@ export class CaffoldReviewFileViewer extends LitElement {
     this.closeMode = mode === "back" ? "back" : "close";
   }
 
-  actionHintScope({
-    scopeId = "",
-    actionId = "",
-    noticeActionId = "",
-    detailsActionId = "",
-    refreshActionId = "",
-    linkActionId = "",
-    buttonActionId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions & {
-    noticeActionId?: string;
-    detailsActionId?: string;
-    refreshActionId?: string;
-    linkActionId?: string;
-    buttonActionId?: string;
-  } = {}): ActionHintScope {
-    const closeSelector =
-      ':scope > .viewer-panel > .viewer-header > .viewer-title-row > button.viewer-close-button[data-action="close-browser-viewer"]';
-    const control = this.querySelector<HTMLButtonElement>(closeSelector);
-    if (!scopeId || this.hidden) {
-      return emptyActionHintScope();
-    }
-    const targets: ActionHintTarget[] = [];
-    const detailsSelector =
-      ":scope > .viewer-panel > .viewer-header > .viewer-title-row .viewer-info-button";
-    const detailsControl = detailsActionId
-      ? this.querySelector<HTMLButtonElement>(detailsSelector)
-      : null;
-    const detailsPopover = detailsActionId ? this.detailsPopover() : null;
-    if (
-      detailsActionId &&
-      detailsControl &&
-      detailsPopover &&
-      this.hasDetailsMetadata(detailsPopover) &&
-      !detailsControl.disabled
-    ) {
-      targets.push(
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:details:open`,
-          actionId: detailsActionId,
-          label:
-            detailsControl.getAttribute("aria-label") || "Show file details",
-          control: detailsControl,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.querySelector(detailsSelector) === detailsControl &&
-            this.detailsPopover() === detailsPopover &&
-            detailsControl.getAttribute("popovertarget") ===
-              detailsPopover.id &&
-            this.hasDetailsMetadata(detailsPopover) &&
-            !detailsControl.disabled &&
-            !detailsPopover.matches(":popover-open"),
-        }),
-      );
-    }
-    if (actionId && control && !control.disabled) {
-      targets.push(
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:close`,
-          actionId,
-          label:
-            control.getAttribute("aria-label") ||
-            this.closeLabel ||
-            "Back to files",
-          control,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.querySelector(closeSelector) === control &&
-            !control.disabled,
-        }),
-      );
-    }
-    const refreshSelector =
-      ':scope > .viewer-panel > .viewer-header > .viewer-title-row .viewer-refresh-button[data-action="refresh-viewer"]';
-    const refreshControl = refreshActionId
-      ? this.querySelector<HTMLButtonElement>(refreshSelector)
-      : null;
-    if (refreshControl && !refreshControl.disabled) {
-      targets.push(
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:refresh`,
-          actionId: refreshActionId,
-          label: refreshControl.getAttribute("aria-label") || "Refresh file",
-          control: refreshControl,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.querySelector(refreshSelector) === refreshControl &&
-            !refreshControl.disabled,
-        }),
-      );
-    }
-    const noticeControl = noticeActionId
-      ? this.querySelector<HTMLButtonElement>(
-          ':scope > .viewer-panel.notice-panel > .viewer-notice-content > button[data-action="view-source"], :scope > .viewer-panel.notice-panel > .viewer-notice-content > button[data-action="view-preview"]',
-        )
-      : null;
-    const noticeAction = `${noticeControl?.dataset.action ?? ""}`;
-    if (
-      noticeControl &&
-      !noticeControl.disabled &&
-      ["view-source", "view-preview"].includes(noticeAction)
-    ) {
-      targets.push(
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:notice:${noticeAction}`,
-          actionId: noticeActionId,
-          label:
-            noticeControl.getAttribute("aria-label") ||
-            noticeControl.textContent?.trim() ||
-            (noticeAction === "view-preview" ? "View preview" : "View source"),
-          control: noticeControl,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.querySelector(
-              `:scope > .viewer-panel.notice-panel > .viewer-notice-content > button[data-action="${noticeAction}"]`,
-            ) === noticeControl &&
-            !noticeControl.disabled,
-        }),
-      );
-    }
-    const ownScope: ActionHintScope = {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
-    const state = this.state;
-    if (state.status === "document") {
-      return mergeActionHintScopes(
-        ownScope,
-        this.documentActionHintScope(state, {
-          scopeId,
-          linkActionId,
-          buttonActionId,
-          clipRoots,
-        }),
-      );
-    }
-    if (state.status !== "markdown") {
-      return ownScope;
-    }
-    const preview = this.querySelector<CaffoldMarkdownPreview>(
-      ":scope > .markdown-panel > caffold-markdown-preview",
-    );
+  // `actions` names what each control does: Back or close (`parent`),
+  // `details`, `refresh`, and a `notice` button here, and a preview's `link`
+  // and `button`. Only the child the state draws has a ref.
+  actionHintScope(pull: ActionHintPull = {}) {
+    const own = this.hints.scope(pull);
+    const clipRoots = [this, ...(pull.clipRoots ?? [])];
     return mergeActionHintScopes(
-      ownScope,
-      preview?.actionHintScope({
-        scopeId: `${scopeId}:preview`,
-        linkActionId,
-        clipRoots: [this, ...clipRoots],
-        isCurrent: () =>
-          this.isConnected &&
-          !this.hidden &&
-          this.state === state &&
-          this.querySelector(
-            ":scope > .markdown-panel > caffold-markdown-preview",
-          ) === preview,
+      own,
+      this.documentViewer.value?.actionHintScope?.({
+        ...pull,
+        scopeId: `${pull.scopeId}:document`,
+        clipRoots,
+      }),
+      this.preview.value?.actionHintScope({
+        ...pull,
+        scopeId: `${pull.scopeId}:preview`,
+        clipRoots,
       }),
     );
   }
 
-  scrollSurfaceScope({
-    scopeId = "",
-    label = "File",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
+  scrollSurfaceScope({ label = "File", ...pull }: ScrollSurfacePull = {}) {
+    const own = this.surfaces.scope({ ...pull, label });
     const state = this.state;
-    if (!scopeId || this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    const childOptions = (kind: string, childLabel: string) => ({
-      scopeId: `${scopeId}:${kind}`,
+    const title =
+      ("presentation" in state && state.presentation?.title) || label;
+    const child = (kind: string, childLabel: string) => ({
+      ...pull,
+      scopeId: `${pull.scopeId}:${kind}`,
       label: childLabel,
-      clipRoots: [this, ...clipRoots],
-      isCurrent: () => this.isConnected && !this.hidden && this.state === state,
+      clipRoots: [this, ...(pull.clipRoots ?? [])],
     });
-    if (state.status === "file") {
-      return (
-        this.querySelector<CaffoldCodeViewer>(
-          ":scope > .file-panel > caffold-code-viewer",
-        )?.scrollSurfaceScope(
-          childOptions("source", `${state.presentation.title || label} source`),
-        ) ?? emptyScrollSurfaceScope()
-      );
-    }
-    if (state.status === "diff") {
-      return (
-        this.querySelector<CaffoldDiffViewer>(
-          ":scope > .diff-panel > caffold-diff-viewer",
-        )?.scrollSurfaceScope(
-          childOptions("diff", `${state.presentation.title || label} diff`),
-        ) ?? emptyScrollSurfaceScope()
-      );
-    }
-    if (state.status === "markdown") {
-      return (
-        this.querySelector<CaffoldMarkdownPreview>(
-          ":scope > .markdown-panel > caffold-markdown-preview",
-        )?.scrollSurfaceScope(
-          childOptions(
-            "preview",
-            `${state.presentation.title || label} preview`,
-          ),
-        ) ?? emptyScrollSurfaceScope()
-      );
-    }
-    if (state.status === "document") {
-      const { kind } = state.document;
-      return (
-        this.querySelector<DocumentViewer>(
-          `:scope > .document-panel > ${DOCUMENT_VIEWERS[kind].tagName}`,
-        )?.scrollSurfaceScope(
-          childOptions(kind, `${state.presentation.title || label} preview`),
-        ) ?? emptyScrollSurfaceScope()
-      );
-    }
-    if (state.status === "image") {
-      return this.ownScrollSurfaceScope({
-        scopeId: `${scopeId}:image`,
-        label: `${state.image.name || label} image`,
-        state,
-        currentScrollport: () =>
-          this.querySelector(":scope > .image-panel > .image-stage"),
-        axes: ["vertical", "horizontal"],
-        clipRoots,
-      });
-    }
-    if (state.status === "notice") {
-      return this.ownScrollSurfaceScope({
-        scopeId: `${scopeId}:notice`,
-        label: `${state.title || label} notice`,
-        state,
-        currentScrollport: () =>
-          this.querySelector(":scope > .notice-panel > .viewer-notice-content"),
-        clipRoots,
-      });
-    }
-    return emptyScrollSurfaceScope();
+    return mergeScrollSurfaceScopes(
+      own,
+      this.codeViewer.value?.scrollSurfaceScope(
+        child("source", `${title} source`),
+      ),
+      this.diffViewer.value?.scrollSurfaceScope(child("diff", `${title} diff`)),
+      this.preview.value?.scrollSurfaceScope(
+        child("preview", `${title} preview`),
+      ),
+      state.status === "document"
+        ? this.documentViewer.value?.scrollSurfaceScope(
+            child(state.document.kind, `${title} preview`),
+          )
+        : null,
+    );
   }
 
   keyboardNavigationContexts({ scopeId = "" }: { scopeId?: string } = {}) {
-    const popover = this.detailsPopover();
-    const presentation =
-      popover?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const dialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (
-      !scopeId ||
-      this.hidden ||
-      !popover ||
-      !this.hasDetailsMetadata(popover) ||
-      !dialog ||
-      !hud ||
-      !selector
-    ) {
-      return [];
-    }
-    const contextId = `${scopeId}:details`;
-    const isCurrent = () =>
-      this.isConnected &&
-      !this.hidden &&
-      this.detailsPopover() === popover &&
-      this.hasDetailsMetadata(popover);
-    const download = this.downloadLink(popover);
-    return [
-      keyboardNavigationContext({
-        id: contextId,
-        kind: "popover",
-        root: popover,
-        actionHints: {
-          dialog,
-          scope: download
-            ? {
-                blocked: false,
-                targets: [
-                  linkActionHintTarget({
-                    invalidationOwner: this,
-                    id: `${contextId}:download`,
-                    actionId: ACTION_HINT_ACTION.LINK_OPEN,
-                    label: (download.textContent ?? "").trim(),
-                    control: download,
-                    clipRoots: [popover],
-                    isActionable: () =>
-                      isCurrent() && this.downloadLink(popover) === download,
-                  }),
-                ],
-                mutationRoots: [popover],
-                scrollRoots: [popover],
-              }
-            : emptyActionHintScope(),
-          sessionBound: Boolean(download),
-        },
-        scroll: {
-          hud,
-          selector,
-          scope: popoverScrollSurfaceScope({
-            id: contextId,
-            label: "File details",
-            popover,
-            isCurrent,
-          }),
-        },
-      }),
-    ];
+    return this.keyboard.contexts({
+      scopeId,
+      actionHints: (pull) => this.hints.scope(pull),
+    });
   }
 
   // Every new state closes the details popover, and only a preview keeps the
@@ -1096,7 +885,7 @@ export class CaffoldReviewFileViewer extends LitElement {
   }
 
   private closeDetailsPopover() {
-    const popover = this.detailsPopover();
+    const popover = this.detailsPopover.value;
     if (!popover?.matches(":popover-open")) {
       return;
     }
@@ -1105,84 +894,6 @@ export class CaffoldReviewFileViewer extends LitElement {
     } catch {
       // A parent transition may already have detached the viewer.
     }
-  }
-
-  // Links and controls inside a drawn document belong to the viewer of its
-  // kind; a viewer with nothing to press publishes no scope.
-  private documentActionHintScope(
-    state: Extract<ViewerState, { status: "document" }>,
-    {
-      scopeId,
-      linkActionId,
-      buttonActionId,
-      clipRoots,
-    }: {
-      scopeId: string;
-      linkActionId: string;
-      buttonActionId: string;
-      clipRoots: Element[];
-    },
-  ) {
-    const { tagName } = DOCUMENT_VIEWERS[state.document.kind];
-    const selector = `:scope > .document-panel > ${tagName}`;
-    const viewer = this.querySelector<DocumentViewer>(selector);
-    return (
-      viewer?.actionHintScope?.({
-        scopeId: `${scopeId}:document`,
-        linkActionId,
-        buttonActionId,
-        clipRoots: [this, ...clipRoots],
-        isCurrent: () =>
-          this.isConnected &&
-          !this.hidden &&
-          this.state === state &&
-          this.querySelector(selector) === viewer,
-      }) ?? emptyActionHintScope()
-    );
-  }
-
-  private ownScrollSurfaceScope({
-    scopeId,
-    label,
-    state,
-    currentScrollport,
-    axes,
-    clipRoots = [],
-  }: {
-    scopeId: string;
-    label: string;
-    state: ViewerState;
-    currentScrollport: () => Element | null;
-    axes?: ScrollAxis[];
-    clipRoots?: Element[];
-  }): ScrollSurfaceScope {
-    const scrollport = currentScrollport();
-    if (!scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          ...(axes ? { axes } : {}),
-          clipRoots: [this, scrollport, ...clipRoots],
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.state === state &&
-            currentScrollport() === scrollport &&
-            scrollport.isConnected &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this, scrollport],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
   }
 
   private close() {
@@ -1368,25 +1079,7 @@ export class CaffoldReviewFileViewer extends LitElement {
   // the viewer switches to it.
   private get markdownPreview() {
     this.performUpdate();
-    return this.querySelector<CaffoldMarkdownPreview>(
-      ":scope > .markdown-panel > caffold-markdown-preview",
-    );
-  }
-
-  private detailsPopover() {
-    return this.querySelector<HTMLElement>(
-      `:scope > .viewer-panel > .viewer-header > #${this.detailsPopoverId}`,
-    );
-  }
-
-  private hasDetailsMetadata(popover: Element) {
-    return Boolean(popover.querySelector(":scope > dl > div"));
-  }
-
-  private downloadLink(popover: Element) {
-    return popover.querySelector<HTMLAnchorElement>(
-      ":scope > .viewer-meta-actions > .viewer-download-link",
-    );
+    return this.preview.value;
   }
 }
 

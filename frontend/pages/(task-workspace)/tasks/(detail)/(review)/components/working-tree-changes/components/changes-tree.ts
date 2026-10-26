@@ -1,17 +1,16 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
+  type ActionHintPull,
   emptyActionHintScope,
-} from "#app/action-hint-scope.js";
+} from "#app/action-hints.ts";
 import type { GitChangedFile, GitStatus } from "#app/api.ts";
 import { fileStatusPresentation } from "#app/file-status.ts";
 import {
   emptyScrollSurfaceScope,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ScrollSurfacePull,
+} from "#app/scroll-scope.ts";
 import { formatLineStats } from "#components/dom.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import {
   buildFileTreeNodes,
   type CaffoldFileTree,
@@ -46,6 +45,7 @@ export class CaffoldGitDiffChangesTree extends LitElement {
   };
 
   declare private state: ChangesState;
+  private readonly treeElement = new DrawnRef<CaffoldFileTree>(this);
   private selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
 
@@ -121,6 +121,7 @@ export class CaffoldGitDiffChangesTree extends LitElement {
           message
             ? html`<p class="surface-message">${message}</p>`
             : html`<caffold-file-tree
+                ${drawn(this.treeElement)}
                 @caffold:file-tree-select=${this.openFile}
               ></caffold-file-tree>`
         }
@@ -185,50 +186,26 @@ export class CaffoldGitDiffChangesTree extends LitElement {
     this.state = { status: "idle" };
   }
 
-  actionHintScope({
-    scopeId = "",
-    actionId = "",
-    disclosureActionId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions & {
-    disclosureActionId?: string;
-  } = {}): ActionHintScope {
+  actionHintScope({ clipRoots = [], ...pull }: ActionHintPull = {}) {
     const tree = this.fileTree();
-    if (
-      !scopeId ||
-      (!actionId && !disclosureActionId) ||
-      this.hidden ||
-      this.state.status !== "ready" ||
-      !tree
-    ) {
-      return emptyActionHintScope();
-    }
-    return tree.actionHintScope({
-      scopeId,
-      actionId,
-      disclosureActionId,
-      clipRoots: [this, ...clipRoots],
-      isCurrent: (node) => changedFile(node)?.path === this.selectedPath,
-      labelForNode: (node) => node.ariaLabel || `Open ${node.name}`,
-    });
+    return this.state.status === "ready" && tree
+      ? tree.actionHintScope({ ...pull, clipRoots: [this, ...clipRoots] })
+      : emptyActionHintScope();
   }
 
   scrollSurfaceScope({
-    scopeId = "",
     label = "Working tree changes",
     clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
+    ...pull
+  }: ScrollSurfacePull = {}) {
     const tree = this.fileTree();
-    if (!scopeId || this.hidden || this.state.status !== "ready" || !tree) {
-      return emptyScrollSurfaceScope();
-    }
-    return tree.scrollSurfaceScope({
-      scopeId,
-      label,
-      clipRoots: [this, ...clipRoots],
-      isCurrent: () =>
-        this.state.status === "ready" && this.fileTree() === tree,
-    });
+    return this.state.status === "ready" && tree
+      ? tree.scrollSurfaceScope({
+          ...pull,
+          label,
+          clipRoots: [this, ...clipRoots],
+        })
+      : emptyScrollSurfaceScope();
   }
 
   private openFile(event: CustomEvent<FileTreeSelectDetail>) {
@@ -250,7 +227,7 @@ export class CaffoldGitDiffChangesTree extends LitElement {
   }
 
   private fileTree() {
-    return this.querySelector<CaffoldFileTree>("caffold-file-tree");
+    return this.treeElement.value;
   }
 
   private selectedKey() {

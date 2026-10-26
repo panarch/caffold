@@ -1,16 +1,11 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
+  type ActionHintPull,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
+} from "#app/action-hints.ts";
 import type { TaskEvent } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import {
   type AssistantMessagePhase,
   assistantMessagePhase,
@@ -50,6 +45,11 @@ export class CaffoldTaskAssistantMessage extends LitElement {
   declare phase: AssistantMessagePhase | null;
   declare turnCompletedMs: number | null;
   declare controlsDisabled: boolean;
+  private readonly copyButton =
+    new DrawnRef<CaffoldTaskAssistantMessageCopyButton>(this);
+  private readonly markdown = new DrawnRef<CaffoldTaskMarkdown>(this);
+  private readonly suggestedPrompts =
+    new DrawnRef<CaffoldTaskAssistantMessageSuggestedPrompts>(this);
 
   constructor() {
     super();
@@ -89,12 +89,14 @@ export class CaffoldTaskAssistantMessage extends LitElement {
       <div class="task-assistant-message-header">
         <time>${time}</time>
         <caffold-task-assistant-message-copy-button
+          ${drawn(this.copyButton)}
           ?hidden=${!text.trim()}
           .text=${text}
         ></caffold-task-assistant-message-copy-button>
       </div>
       <div class="task-assistant-message-body">
         <caffold-task-markdown
+          ${drawn(this.markdown)}
           thread-id=${threadId || nothing}
           ?code-block-controls=${phase === "final"}
           .fileLinks=${fileLinks}
@@ -102,6 +104,7 @@ export class CaffoldTaskAssistantMessage extends LitElement {
         ></caffold-task-markdown>
       </div>
       <caffold-task-assistant-message-suggested-prompts
+        ${drawn(this.suggestedPrompts)}
         .threadId=${threadId}
         .prompts=${suggestedPrompts}
         .disabled=${this.controlsDisabled}
@@ -120,65 +123,31 @@ export class CaffoldTaskAssistantMessage extends LitElement {
     }
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    if (!scopeId || this.hidden) {
-      return emptyActionHintScope();
-    }
-    const childClipRoots = [this, ...clipRoots].filter(Boolean);
+  actionHintScope({ scopeId = "", clipRoots = [] }: ActionHintPull = {}) {
+    this.performUpdate();
+    const childClipRoots = [this, ...clipRoots];
     return mergeActionHintScopes(
-      this.copyButton?.actionHintScope({
+      this.copyButton.value?.actionHintScope({
         scopeId: `${scopeId}:copy-button`,
         clipRoots: childClipRoots,
       }),
-      this.markdown?.actionHintScope({
+      this.markdown.value?.actionHintScope({
         scopeId: `${scopeId}:markdown`,
         clipRoots: childClipRoots,
       }),
-      this.suggestedPrompts?.actionHintScope({
+      this.suggestedPrompts.value?.actionHintScope({
         scopeId: `${scopeId}:suggested-prompts`,
         clipRoots: childClipRoots,
       }),
     );
   }
 
-  scrollSurfaceScope({
-    scopeId = "",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const markdown = this.markdown;
-    return scopeId && markdown && !this.hidden
-      ? markdown.scrollSurfaceScope({
-          scopeId: `${scopeId}:markdown`,
-          clipRoots: [this, ...clipRoots].filter(Boolean),
-          isCurrent: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.markdown === markdown,
-        })
-      : emptyScrollSurfaceScope();
-  }
-
-  private get copyButton() {
-    return this.querySelector<CaffoldTaskAssistantMessageCopyButton>(
-      ":scope > .task-assistant-message-header > caffold-task-assistant-message-copy-button",
-    );
-  }
-
-  private get markdown() {
-    return this.querySelector<CaffoldTaskMarkdown>(
-      ":scope > .task-assistant-message-body > caffold-task-markdown",
-    );
-  }
-
-  private get suggestedPrompts() {
-    return this.querySelector<CaffoldTaskAssistantMessageSuggestedPrompts>(
-      ":scope > caffold-task-assistant-message-suggested-prompts",
-    );
+  scrollSurfaceScope({ scopeId = "", clipRoots = [] }: ScrollSurfacePull = {}) {
+    this.performUpdate();
+    return this.markdown.value?.scrollSurfaceScope({
+      scopeId: `${scopeId}:markdown`,
+      clipRoots: [this, ...clipRoots],
+    });
   }
 }
 

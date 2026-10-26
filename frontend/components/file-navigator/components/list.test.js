@@ -10,60 +10,60 @@ await import("./list.ts");
 const list = registry.element("caffold-file-list").prototype;
 after(() => registry.restore());
 
-test("merges Refresh files with the owned tree and delegates Scroll", () => {
-  const treeTarget = { id: "file-a" };
-  const treeSurface = { id: "file-tree" };
-  let treeActionOptions = null;
-  let treeScrollOptions = null;
-  let tree = {
-    actionHintScope(options) {
-      treeActionOptions = options;
-      return { targets: [treeTarget], mutationRoots: [tree] };
+test("merges its Refresh files with the tree it draws and passes the pull down", () => {
+  const clipRoot = {};
+  const received = {};
+  const tree = {
+    actionHintScope(pull) {
+      received.actions = pull;
+      return { targets: [{ id: "review:files:file:a.js" }] };
     },
-    scrollSurfaceScope(options) {
-      treeScrollOptions = options;
-      return { surfaces: [treeSurface] };
+    scrollSurfaceScope(pull) {
+      received.scroll = pull;
+      return { surfaces: [{ id: "review:files:scroll" }] };
     },
   };
-  const refresh = {
-    disabled: false,
-    getAttribute: () => "Refresh files",
-    focus() {},
-    click() {},
-  };
-  const owner = {
-    hidden: false,
-    isConnected: true,
+  const owner = Object.assign(Object.create(list), {
     state: { status: "ready" },
-    selectedPath: "src/a.js",
-    fileTree() {
-      return list.fileTree.call(this);
+    tree: { value: tree },
+    hints: {
+      scope: () => ({ targets: [{ id: "review:files:refresh" }] }),
     },
-    querySelector(selector) {
-      return selector === "caffold-file-tree" ? tree : refresh;
-    },
+    surfaces: { scope: () => ({ surfaces: [] }) },
+  });
+  const actions = {
+    file: "navigation.file.open",
+    disclosure: "disclosure.toggle",
+    refresh: "button.activate",
   };
-  const scope = list.actionHintScope.call(owner, {
+
+  const scope = owner.actionHintScope({
     scopeId: "review:files",
-    actionId: "navigation.file.open",
-    disclosureActionId: "disclosure.toggle",
-    refreshActionId: "button.activate",
+    actions,
+    clipRoots: [clipRoot],
   });
   assert.deepEqual(scope.targets.map(({ id }) => id), [
     "review:files:refresh",
-    "file-a",
+    "review:files:file:a.js",
   ]);
-  assert.equal(treeActionOptions.actionId, "navigation.file.open");
-  assert.equal(treeActionOptions.disclosureActionId, "disclosure.toggle");
-  assert.equal(treeActionOptions.includeDirectories, true);
-  assert.equal(scope.targets[0].isActionable(), true);
-
-  const scrollScope = list.scrollSurfaceScope.call(owner, {
+  assert.deepEqual(received.actions, {
     scopeId: "review:files",
+    actions,
+    clipRoots: [owner, clipRoot],
   });
-  assert.deepEqual(scrollScope.surfaces, [treeSurface]);
-  assert.equal(treeScrollOptions.label, "Files");
-  assert.equal(treeScrollOptions.isCurrent(), true);
-  tree = {};
-  assert.equal(treeScrollOptions.isCurrent(), false);
+
+  const scrollScope = owner.scrollSurfaceScope({ scopeId: "review:files" });
+  assert.deepEqual(scrollScope.surfaces.map(({ id }) => id), [
+    "review:files:scroll",
+  ]);
+  assert.deepEqual(received.scroll, {
+    scopeId: "review:files",
+    label: "Files",
+    clipRoots: [owner],
+  });
+
+  owner.state = { status: "loading" };
+  assert.deepEqual(owner.actionHintScope({ scopeId: "review:files", actions }).targets.map(({ id }) => id), [
+    "review:files:refresh",
+  ]);
 });

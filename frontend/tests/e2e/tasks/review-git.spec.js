@@ -4,6 +4,7 @@ import {
   actionHintDialog,
   enterActionHints,
   waitForActionHintTarget,
+  workspaceTargets,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
@@ -744,7 +745,7 @@ test("retires the Branch base owner when its select binding is replaced", { tag:
   await page.keyboard.press("Escape");
 });
 
-test("keeps the Branch base Hint available without ready compared files", { tag: "@viewport-independent" }, async ({
+test("offers the Branch base Hint without ready compared files, and none without base refs", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { reviewScenario, tasksPage, taskReview } =
@@ -797,6 +798,14 @@ test("keeps the Branch base Hint available without ready compared files", { tag:
     "No changes compared with origin/main.",
   );
   await assertSelectOnly();
+
+  await compareTree.evaluate((tree) => {
+    tree.setBaseSelection({ refs: [] });
+  });
+  const hint = await enterActionHints(page);
+  await expect(hint.locator("button[data-action-hint-code]").first())
+    .toBeVisible();
+  await expect(hint.getByLabel(/ — Choose comparison base/)).toHaveCount(0);
 });
 
 test("keeps equivalent Branch header refreshes mutation-free", { tag: "@all-viewports" }, async ({ page }) => {
@@ -1005,6 +1014,11 @@ test("reads Working Tree again when it is chosen after returning on Branch", { t
   const reviewBranch = taskReview.getByRole("button", { name: "Review branch changes" });
   await expect(changes).toContainText("No changes.");
   await expect(reviewBranch).toBeVisible();
+  await expect.poll(async () =>
+    (await workspaceTargets(page, "review:"))
+      .filter(([id]) => id.endsWith(":working:branch"))
+      .map(([, label]) => label),
+  ).toEqual(["Review branch changes"]);
   await selectTaskReviewScope(tasksPage, "branch");
   await expect(
     taskReview.locator('caffold-git-compare-tree button[data-file-tree-path="src/planner.rs"]'),

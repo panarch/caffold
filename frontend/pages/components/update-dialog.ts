@@ -1,19 +1,19 @@
 import { html, LitElement } from "lit";
-import type { ActionHintScope } from "../../action-hint-scope.js";
-import {
-  ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "../../action-hints.js";
-import { keyboardNavigationContext } from "../../keyboard-navigation.js";
-import "../../keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "../../keyboard-navigation/components/presentation.js";
+import { ACTION_HINT_ACTION, ActionHints } from "../../action-hints.ts";
+import { DrawnRef, drawn } from "../../components/drawn-refs.ts";
+import { KeyboardContexts } from "../../keyboard-navigation.ts";
+import "../../keyboard-navigation/components/presentation.ts";
 
 export const CAFFOLD_UPDATE_LATER_EVENT = "caffold:update-later";
 export const CAFFOLD_UPDATE_RELOAD_EVENT = "caffold:update-reload";
 
 export class CaffoldUpdateDialog extends LitElement {
   private ownerClosed = false;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
   createRenderRoot() {
     return this;
@@ -27,6 +27,8 @@ export class CaffoldUpdateDialog extends LitElement {
   render() {
     return html`
       <dialog
+        ${drawn(this.dialog)}
+        ${this.keyboard.modal({ id: "app:update" })}
         closedby="any"
         aria-labelledby="caffold-update-dialog-title"
         aria-describedby="caffold-update-dialog-description"
@@ -39,18 +41,36 @@ export class CaffoldUpdateDialog extends LitElement {
             Reload now to use it, or keep using the current build.
           </p>
           <footer>
-            <button type="submit" value="later" autofocus>Later</button>
-            <button type="submit" value="reload">Reload</button>
+            <button
+              ${this.hints.button({
+                id: "later",
+                label: "Later",
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
+              type="submit"
+              value="later"
+              autofocus
+            >Later</button>
+            <button
+              ${this.hints.button({
+                id: "reload",
+                label: "Reload",
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
+              type="submit"
+              value="reload"
+            >Reload</button>
           </footer>
         </form>
         <caffold-keyboard-navigation-presentation
+          ${this.keyboard.presentation()}
         ></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
   }
 
   open() {
-    const dialog = this.dialog;
+    const dialog = this.dialog.value;
     if (!dialog || dialog.open) {
       return;
     }
@@ -59,7 +79,7 @@ export class CaffoldUpdateDialog extends LitElement {
   }
 
   close() {
-    const dialog = this.dialog;
+    const dialog = this.dialog.value;
     if (!dialog?.open) {
       return;
     }
@@ -68,67 +88,9 @@ export class CaffoldUpdateDialog extends LitElement {
   }
 
   keyboardNavigationContexts() {
-    const dialog = this.dialog;
-    const hintDialog = dialog
-      ?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      )
-      ?.actionHintDialog();
-    if (!dialog || !hintDialog) {
-      return [];
-    }
-    return [
-      keyboardNavigationContext({
-        id: "app:update",
-        kind: "modal",
-        root: dialog,
-        actionHints: {
-          dialog: hintDialog,
-          scope: this.actionHintScope(),
-        },
-      }),
-    ];
-  }
-
-  actionHintScope(): ActionHintScope {
-    const dialog = this.dialog;
-    if (!dialog) {
-      return emptyActionHintScope();
-    }
-    const targets = ["later", "reload"].flatMap((value) => {
-      const control = dialog.querySelector<HTMLButtonElement>(
-        `button[value="${value}"]`,
-      );
-      if (!control) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `app:update:${value}`,
-          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-          label: control.textContent?.trim() || value,
-          control,
-          clipRoots: [dialog],
-          isActionable: () =>
-            this.isConnected &&
-            this.dialog === dialog &&
-            dialog.open &&
-            dialog.querySelector(`button[value="${value}"]`) === control &&
-            !control.disabled,
-        }),
-      ];
+    return this.keyboard.contexts({
+      actionHints: (pull) => this.hints.scope(pull),
     });
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
-  }
-
-  private get dialog() {
-    return this.querySelector<HTMLDialogElement>(":scope > dialog");
   }
 
   private handleClose() {
@@ -137,7 +99,7 @@ export class CaffoldUpdateDialog extends LitElement {
       return;
     }
     const type =
-      this.dialog?.returnValue === "reload"
+      this.dialog.value?.returnValue === "reload"
         ? CAFFOLD_UPDATE_RELOAD_EVENT
         : CAFFOLD_UPDATE_LATER_EVENT;
     this.dispatchEvent(

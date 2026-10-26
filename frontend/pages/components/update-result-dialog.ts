@@ -1,14 +1,9 @@
 import { html, LitElement } from "lit";
-import type { ActionHintScope } from "../../action-hint-scope.js";
-import {
-  ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "../../action-hints.js";
+import { ACTION_HINT_ACTION, ActionHints } from "../../action-hints.ts";
 import type { CaffoldUpdateAttempt } from "../../api.ts";
-import { keyboardNavigationContext } from "../../keyboard-navigation.js";
-import "../../keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "../../keyboard-navigation/components/presentation.js";
+import { DrawnRef, drawn } from "../../components/drawn-refs.ts";
+import { KeyboardContexts } from "../../keyboard-navigation.ts";
+import "../../keyboard-navigation/components/presentation.ts";
 
 type UpdateResultNotice = { title: string; description: string };
 
@@ -22,6 +17,11 @@ export class CaffoldUpdateResultDialog extends LitElement {
   };
 
   declare private notice: UpdateResultNotice | null;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
   constructor() {
     super();
@@ -40,6 +40,8 @@ export class CaffoldUpdateResultDialog extends LitElement {
   render() {
     return html`
       <dialog
+        ${drawn(this.dialog)}
+        ${this.keyboard.modal({ id: "app:update-result" })}
         closedby="any"
         aria-labelledby="caffold-update-result-title"
         aria-describedby="caffold-update-result-description"
@@ -50,10 +52,20 @@ export class CaffoldUpdateResultDialog extends LitElement {
             ${this.notice?.description}
           </p>
           <footer>
-            <button type="submit" value="ok" autofocus>OK</button>
+            <button
+              ${this.hints.button({
+                id: "ok",
+                label: "OK",
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
+              type="submit"
+              value="ok"
+              autofocus
+            >OK</button>
           </footer>
         </form>
         <caffold-keyboard-navigation-presentation
+          ${this.keyboard.presentation()}
         ></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
@@ -67,7 +79,7 @@ export class CaffoldUpdateResultDialog extends LitElement {
     }
     this.notice = notice;
     this.performUpdate();
-    const dialog = this.dialog;
+    const dialog = this.dialog.value;
     if (!dialog || dialog.open) {
       return;
     }
@@ -75,60 +87,9 @@ export class CaffoldUpdateResultDialog extends LitElement {
   }
 
   keyboardNavigationContexts() {
-    const dialog = this.dialog;
-    const hintDialog = dialog
-      ?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      )
-      ?.actionHintDialog();
-    if (!dialog || !hintDialog) {
-      return [];
-    }
-    return [
-      keyboardNavigationContext({
-        id: "app:update-result",
-        kind: "modal",
-        root: dialog,
-        actionHints: {
-          dialog: hintDialog,
-          scope: this.actionHintScope(),
-        },
-      }),
-    ];
-  }
-
-  actionHintScope(): ActionHintScope {
-    const dialog = this.dialog;
-    const control =
-      dialog?.querySelector<HTMLButtonElement>('button[value="ok"]');
-    if (!dialog || !control) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: "app:update-result:ok",
-          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-          label: control.textContent?.trim() || "OK",
-          control,
-          clipRoots: [dialog],
-          isActionable: () =>
-            this.isConnected &&
-            this.dialog === dialog &&
-            dialog.open &&
-            dialog.querySelector('button[value="ok"]') === control &&
-            !control.disabled,
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
-  }
-
-  private get dialog() {
-    return this.querySelector<HTMLDialogElement>(":scope > dialog");
+    return this.keyboard.contexts({
+      actionHints: (pull) => this.hints.scope(pull),
+    });
   }
 }
 

@@ -2,23 +2,20 @@ import { html, LitElement, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  disclosureActionHintTarget,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   emptyActionHintScope,
-  hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { Task, TaskEvent } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ScrollSurfacePull,
+  ScrollSurfaces,
+} from "#app/scroll-scope.ts";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
 import {
   isTaskTransportStale,
   type TaskTransportState,
@@ -35,10 +32,7 @@ import type {
   CaffoldTaskApproval,
 } from "./conversation/components/approval.ts";
 import "./conversation/components/assistant-message.ts";
-import type {
-  CaffoldTaskAssistantMessage,
-  SuggestedPromptIntentDetail,
-} from "./conversation/components/assistant-message.ts";
+import type { SuggestedPromptIntentDetail } from "./conversation/components/assistant-message.ts";
 import "./conversation/components/changed-files.ts";
 import {
   CaffoldTaskCommand,
@@ -50,22 +44,15 @@ import {
   type CommandGroupDisclosureIntentDetail,
 } from "./conversation/components/command-group.ts";
 import "./conversation/components/markdown.ts";
-import type {
-  CaffoldTaskMarkdown,
-  MarkdownRenderedDetail,
-} from "./conversation/components/markdown.ts";
+import type { MarkdownRenderedDetail } from "./conversation/components/markdown.ts";
 import "./conversation/components/message-attachments.ts";
-import type { CaffoldTaskMessageAttachments } from "./conversation/components/message-attachments.ts";
 import "./conversation/components/older-history.ts";
 import type {
   CaffoldTaskOlderHistory,
   OlderHistoryIntentDetail,
 } from "./conversation/components/older-history.ts";
 import "./conversation/components/user-message.ts";
-import type {
-  CaffoldTaskUserMessage,
-  UploadProgress,
-} from "./conversation/components/user-message.ts";
+import type { UploadProgress } from "./conversation/components/user-message.ts";
 import {
   CaffoldTaskWorkDetails,
   type WorkDetailsDisclosureIntentDetail,
@@ -142,12 +129,14 @@ const CONVERSATION_COMPONENTS = [
   "caffold-task-work-details",
 ].join(", ");
 
-// A Thinking entry's disclosure, its chevron, and its Markdown.
-const THINKING = ':scope > details[data-disclosure-key^="thinking:"]';
-const THINKING_CHEVRON =
-  ":scope > .task-thinking-label > .task-thinking-disclosure-chevron";
-const THINKING_MARKDOWN =
-  ":scope > details > .task-thinking-content > caffold-task-markdown";
+// A part of an entry, which the conversation pulls Action Hints and Scroll
+// surfaces from.
+interface EntryPart {
+  actionHintScope(pull: ActionHintPull): ReturnType<ActionHints["scope"]>;
+  scrollSurfaceScope?(
+    pull: ScrollSurfacePull,
+  ): ReturnType<ScrollSurfaces["scope"]>;
+}
 
 /**
  * A Task's conversation: its entries in order, the row that reads older
@@ -183,6 +172,25 @@ export class CaffoldTaskConversation extends LitElement {
   // message drawn anew, as when its Task is opened again mid-upload.
   private uploadProgressByEvent = new Map<string, UploadProgress>();
   private resizeObserver: ResizeObserver | null = null;
+  // The entries last drawn, which the keyboard modes read their parts by.
+  private shownEntries: ConversationEntry[] = [];
+  private readonly scrollerElement = new DrawnRef<HTMLDivElement>(this);
+  private readonly column = new DrawnRef<HTMLDivElement>(this);
+  private readonly list = new DrawnRef<HTMLOListElement>(this);
+  private readonly olderHistoryElement = new DrawnRef<CaffoldTaskOlderHistory>(
+    this,
+  );
+  // Each entry's parts, by what they are and the entry's identity.
+  private readonly parts = new DrawnRefs<Element>(this);
+  private readonly approvals = new DrawnRefs<CaffoldTaskApproval>(this);
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.scrollerElement.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
 
   createRenderRoot() {
     return this;
@@ -323,8 +331,14 @@ export class CaffoldTaskConversation extends LitElement {
       pendingApprovals(this.snapshot.events),
       { controlsDisabled },
     );
+    this.shownEntries = entries;
     return html`
       <div
+        ${drawn(this.scrollerElement)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.scrollerElement.value],
+        })}
         class="task-conversation-scroll"
         @scroll=${this.handleScroll}
         @caffold:task-approval-intent=${this.sendApproval}
@@ -336,7 +350,7 @@ export class CaffoldTaskConversation extends LitElement {
         @caffold:task-work-details-disclosure-intent=${this.holdWorkAnchor}
         @caffold:task-markdown-rendered=${this.handleMarkdownRendered}
       >
-        <div class="task-conversation-column">
+        <div ${drawn(this.column)} class="task-conversation-column">
           <div class="task-conversation-notices">${
             detailError
               ? html`<div
@@ -346,6 +360,11 @@ export class CaffoldTaskConversation extends LitElement {
                   <p>Task details could not be refreshed.</p>
                   <p class="task-load-error-message">${detailError.message}</p>
                   <button
+                    ${this.hints.button({
+                      id: "retry-detail",
+                      label: "Retry",
+                      action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                    })}
                     type="button"
                     class="task-secondary-button"
                     data-task-action="retry-task-detail"
@@ -356,13 +375,18 @@ export class CaffoldTaskConversation extends LitElement {
               : nothing
           }</div>
           <caffold-task-older-history
+            ${drawn(this.olderHistoryElement)}
             .threadId=${threadId}
             .hasOlder=${Boolean(this.snapshot.eventsPage.nextCursor)}
             .loading=${this.snapshot.loadingOlder}
             .error=${historyError?.message ?? null}
             .active=${this.active}
           ></caffold-task-older-history>
-          <ol class="task-conversation" aria-label="Task conversation">${keyed(
+          <ol
+            ${drawn(this.list)}
+            class="task-conversation"
+            aria-label="Task conversation"
+          >${keyed(
             threadId,
             repeat(
               entries,
@@ -385,291 +409,124 @@ export class CaffoldTaskConversation extends LitElement {
   actionHintScope({
     scopeId = "",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    const scrollport = this.scroller();
-    const list = this.conversationList();
-    const threadId = this.snapshot.threadId;
-    if (
-      !scrollport ||
-      !list ||
-      !threadId ||
-      !this.snapshot.task ||
-      !this.active ||
-      this.hidden
-    ) {
+    ...pull
+  }: ActionHintPull = {}) {
+    const target = scopeId || `task:${this.snapshot.threadId}:conversation`;
+    const own = this.hints.scope({ ...pull, scopeId: target, clipRoots });
+    if (!this.active || !this.snapshot.task) {
       return emptyActionHintScope();
     }
-    const targetScopeId = scopeId || `task:${threadId}:conversation`;
-    const current = () =>
-      this.isConnected &&
-      this.active &&
-      !this.hidden &&
-      this.snapshot.threadId === threadId &&
-      Boolean(this.snapshot.task);
-    const retrySelector = 'button[data-conversation-action="retry-detail"]';
-    const retry = this.querySelector<HTMLButtonElement>(retrySelector);
-    const ownTargets =
-      retry && !retry.disabled && hasActionHintLayoutBox(retry)
-        ? [
-            buttonActionHintTarget({
-              invalidationOwner: this,
-              id: `${targetScopeId}:retry-detail`,
-              actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-              label:
-                retry.getAttribute("aria-label") ||
-                retry.title ||
-                retry.textContent?.trim() ||
-                "retry-detail",
-              control: retry,
-              clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-              isActionable: () =>
-                current() &&
-                this.scroller() === scrollport &&
-                this.contains(retry) &&
-                this.querySelector(retrySelector) === retry &&
-                !retry.disabled &&
-                hasActionHintLayoutBox(retry),
-            }),
-          ]
-        : [];
-    const childScopes: Array<ActionHintScope | undefined> = [];
-    const olderHistory = this.olderHistory();
-    if (olderHistory) {
-      childScopes.push(
-        olderHistory.actionHintScope({
-          scopeId: `${targetScopeId}:older-history`,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-        }),
-      );
-    }
-    const entries = Array.from(list.children);
-    const thinkingTargets = entries.flatMap((entry, index) => {
-      const identity = entryIdentity(entry, index);
-      const childOptions = (kind: string) => ({
-        scopeId: `${targetScopeId}:${kind}:${identity}`,
-        clipRoots: [this, scrollport, list, ...clipRoots].filter(Boolean),
-      });
-      for (const card of this.approvalComponents(entry)) {
-        childScopes.push(
-          card.actionHintScope({
-            ...childOptions(`approval:${encodeURIComponent(card.approvalId)}`),
-            isCurrent: () =>
-              current() && this.approvalComponents().includes(card),
-          }),
-        );
-      }
-      childScopes.push(
-        entry
-          .querySelector<CaffoldTaskCommand>(":scope > caffold-task-command")
-          ?.actionHintScope(childOptions("command")),
-        entry
-          .querySelector<CaffoldTaskCommandGroup>(
-            ":scope > caffold-task-command-group",
-          )
-          ?.actionHintScope(childOptions("command-group")),
-        entry
-          .querySelector<CaffoldTaskAssistantMessage | CaffoldTaskUserMessage>(
-            ":scope > caffold-task-assistant-message, :scope > caffold-task-user-message",
-          )
-          ?.actionHintScope(childOptions("message")),
-        entry
-          .querySelector<CaffoldTaskMessageAttachments>(
-            ":scope > caffold-task-message-attachments",
-          )
-          ?.actionHintScope(childOptions("attachments")),
-        entry
-          .querySelector<CaffoldTaskWorkDetails>(
-            ":scope > caffold-task-work-details",
-          )
-          ?.actionHintScope(childOptions("work-details")),
-        entry
-          .querySelector<CaffoldTaskMarkdown>(THINKING_MARKDOWN)
-          ?.actionHintScope(childOptions("thinking")),
-      );
-      const disclosure = entry.querySelector<HTMLDetailsElement>(THINKING);
-      const summary =
-        disclosure?.querySelector<HTMLElement>(":scope > summary");
-      const anchor = summary?.querySelector(THINKING_CHEVRON);
-      const key = disclosure?.dataset.disclosureKey ?? "";
-      if (
-        !disclosure ||
-        !summary ||
-        !anchor ||
-        !key.startsWith("thinking:") ||
-        !hasActionHintLayoutBox(summary)
-      ) {
-        return [];
-      }
-      return [
-        disclosureActionHintTarget({
-          invalidationOwner: entry,
-          id: `${targetScopeId}:thinking:${encodeURIComponent(
-            identity,
-          )}:${encodeURIComponent(key)}`,
-          actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-          label: `${disclosure.open ? "Collapse" : "Expand"} Thinking`,
-          control: summary,
-          anchor,
-          clipRoots: [this, scrollport, list, ...clipRoots].filter(Boolean),
-          isActionable: () =>
-            current() &&
-            this.scroller() === scrollport &&
-            this.conversationList() === list &&
-            Array.from(list.children).includes(entry) &&
-            entryIdentity(entry, Array.from(list.children).indexOf(entry)) ===
-              identity &&
-            entry.querySelector(THINKING) === disclosure &&
-            disclosure.dataset.disclosureKey === key &&
-            disclosure.querySelector(":scope > summary") === summary &&
-            summary.querySelector(THINKING_CHEVRON) === anchor &&
-            this.contains(summary) &&
-            hasActionHintLayoutBox(summary),
-        }),
-      ];
-    });
+    const scroller = this.scrollerElement.value;
+    const partClipRoots = [this, scroller, this.list.value, ...clipRoots];
     return mergeActionHintScopes(
-      {
-        blocked: false,
-        targets: [...ownTargets, ...thinkingTargets],
-        mutationRoots: [this, scrollport],
-        scrollRoots: [scrollport],
-      },
-      ...childScopes,
+      own,
+      this.olderHistoryElement.value?.actionHintScope({
+        scopeId: `${target}:older-history`,
+        clipRoots: present([this, scroller, ...clipRoots]),
+      }),
+      ...this.shownEntries.flatMap((entry) =>
+        this.entryParts(entry).map(({ kind, part }) =>
+          part.actionHintScope({
+            scopeId: `${target}:${kind}:${entry.identity}`,
+            clipRoots: present(partClipRoots),
+          }),
+        ),
+      ),
     );
   }
 
   scrollSurfaceScope({
     scopeId = "",
     clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.scroller();
-    const list = this.conversationList();
-    const threadId = this.snapshot.threadId;
-    if (!scrollport || !list || !threadId) {
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    const target = scopeId || `task:${this.snapshot.threadId}:conversation`;
+    const own = this.surfaces.scope({
+      ...pull,
+      scopeId: target,
+      label: "Conversation",
+      clipRoots,
+    });
+    if (!this.active || !this.snapshot.task) {
       return emptyScrollSurfaceScope();
     }
-    const targetScopeId = scopeId || `task:${threadId}:conversation`;
-    const current = () =>
-      this.isConnected &&
-      this.active &&
-      !this.hidden &&
-      this.snapshot.threadId === threadId &&
-      Boolean(this.snapshot.task) &&
-      this.scroller() === scrollport &&
-      this.conversationList() === list;
-    const ownScope: ScrollSurfaceScope = {
-      blocked: false,
-      surfaces: [
-        {
-          id: targetScopeId,
-          label: "Conversation",
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            current() &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this, scrollport],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
-    const childScopes = Array.from(list.children).flatMap((entry, index) => {
-      const identity = entryIdentity(entry, index);
-      const childOptions = (kind: string) => ({
-        scopeId: `${targetScopeId}:${kind}:${identity}`,
-        clipRoots: [this, scrollport, list, ...clipRoots].filter(Boolean),
-        isCurrent: () =>
-          current() &&
-          Array.from(list.children).includes(entry) &&
-          entryIdentity(entry, Array.from(list.children).indexOf(entry)) ===
-            identity,
-      });
-      const scopes: Array<ScrollSurfaceScope | undefined> = [];
-      const rawOutput = entry.matches(".task-tool-card")
-        ? entry.querySelector<HTMLElement>(":scope > pre")
-        : null;
-      if (rawOutput) {
-        const options = childOptions("tool-output");
-        scopes.push(
-          rawScrollSurfaceScope({
-            ...options,
-            label: `${
-              entry
-                .querySelector(":scope > header > strong")
-                ?.textContent?.trim() || "Tool"
-            } output`,
-            scrollport: rawOutput,
-            isCurrent: () =>
-              options.isCurrent() &&
-              entry.matches(".task-tool-card") &&
-              entry.querySelector(":scope > pre") === rawOutput,
+    const partClipRoots = present([
+      this,
+      this.scrollerElement.value,
+      this.list.value,
+      ...clipRoots,
+    ]);
+    return mergeScrollSurfaceScopes(
+      own,
+      ...this.shownEntries.flatMap((entry) =>
+        this.entryParts(entry).map(({ kind, part }) =>
+          part.scrollSurfaceScope?.({
+            scopeId: `${target}:${kind}:${entry.identity}`,
+            clipRoots: partClipRoots,
           }),
-        );
-      }
-      for (const card of this.approvalComponents(entry)) {
-        const options = childOptions(
-          `approval:${encodeURIComponent(card.approvalId)}`,
-        );
-        scopes.push(
-          card.scrollSurfaceScope({
-            ...options,
-            isCurrent: () =>
-              options.isCurrent() &&
-              this.approvalComponents(entry).includes(card),
-          }),
-        );
-      }
-      scopes.push(
-        entry
-          .querySelector<CaffoldTaskCommand>(":scope > caffold-task-command")
-          ?.scrollSurfaceScope(childOptions("command")),
-        entry
-          .querySelector<CaffoldTaskAssistantMessage>(
-            ":scope > caffold-task-assistant-message",
-          )
-          ?.scrollSurfaceScope(childOptions("message")),
-        entry
-          .querySelector<CaffoldTaskWorkDetails>(
-            ":scope > caffold-task-work-details",
-          )
-          ?.scrollSurfaceScope(childOptions("work-details")),
-        entry
-          .querySelector<CaffoldTaskMarkdown>(THINKING_MARKDOWN)
-          ?.scrollSurfaceScope(childOptions("thinking")),
-      );
-      return scopes;
-    });
-    return mergeScrollSurfaceScopes(ownScope, ...childScopes);
+        ),
+      ),
+    );
   }
 
   scroller() {
-    return this.querySelector<HTMLElement>(
-      ":scope > .task-conversation-scroll",
-    );
+    return this.scrollerElement.value ?? null;
   }
 
   conversationList() {
-    return (
-      this.scroller()?.querySelector<HTMLElement>(
-        ":scope .task-conversation",
-      ) ?? null
-    );
+    return this.list.value ?? null;
   }
 
   olderHistory() {
-    return this.querySelector<CaffoldTaskOlderHistory>(
-      ".task-conversation-column > caffold-task-older-history",
+    return this.olderHistoryElement.value ?? null;
+  }
+
+  approvalComponents() {
+    return this.shownEntries.flatMap((entry) =>
+      entry.kind === "approvals"
+        ? entry.requests.flatMap((request) => {
+            const card = this.approvals.get(request.approvalId ?? "");
+            return card ? [card] : [];
+          })
+        : [],
     );
   }
 
-  approvalComponents(entry: Element | null = this.conversationList()) {
-    return Array.from(
-      entry?.querySelectorAll<CaffoldTaskApproval>(
-        ":scope > .task-approval-flow > .task-approvals > caffold-task-approval, :scope > .task-approvals > caffold-task-approval",
-      ) ?? [],
-    );
+  // The components an entry draws, each with the name its scope goes by.
+  private entryParts(entry: ConversationEntry) {
+    const part = (kind: string, key = kind) => {
+      const found = this.parts.get(`${key}:${entry.identity}`);
+      return found ? [{ kind, part: found as unknown as EntryPart }] : [];
+    };
+    switch (entry.kind) {
+      case "user-message":
+      case "assistant-message":
+        return part("message");
+      case "generated-image":
+        return part("attachments");
+      case "thinking":
+        return part("thinking");
+      case "command":
+        return part("command");
+      case "command-group":
+        return part("command-group");
+      case "turn-work":
+        return part("work-details");
+      case "approvals":
+        return entry.requests.flatMap((request) => {
+          const card = this.approvals.get(request.approvalId ?? "");
+          return card
+            ? [
+                {
+                  kind: `approval:${encodeURIComponent(card.approvalId)}`,
+                  part: card as EntryPart,
+                },
+              ]
+            : [];
+        });
+      default:
+        return [];
+    }
   }
 
   private entryTemplate(entry: ConversationEntry, controlsDisabled: boolean) {
@@ -694,6 +551,7 @@ export class CaffoldTaskConversation extends LitElement {
           data-message-role="user"
         >
           <caffold-task-user-message
+            ${drawn(this.parts.of(`message:${entry.identity}`))}
             .text=${entry.text}
             .attachments=${entry.attachments}
             .deliveryState=${entry.deliveryState}
@@ -714,6 +572,7 @@ export class CaffoldTaskConversation extends LitElement {
         >
           <div class="task-message-header">${observedTime(entry.time)}</div>
           <caffold-task-message-attachments
+            ${drawn(this.parts.of(`attachments:${entry.identity}`))}
             .attachments=${entry.attachments}
           ></caffold-task-message-attachments>
         </li>`;
@@ -725,6 +584,7 @@ export class CaffoldTaskConversation extends LitElement {
           data-event-type=${entry.eventType}
         >
           <caffold-task-assistant-message
+            ${drawn(this.parts.of(`message:${entry.identity}`))}
             .event=${entry.event}
             .phase=${entry.phase}
             .turnCompletedMs=${entry.turnCompletedMs}
@@ -733,6 +593,7 @@ export class CaffoldTaskConversation extends LitElement {
         </li>`;
       case "thinking":
         return html`<li
+          ${drawn(this.parts.of(`entry:${entry.identity}`))}
           class="task-event task-thinking"
           data-conversation-entry-key=${entry.identity}
           data-event-type=${entry.eventType}
@@ -741,11 +602,31 @@ export class CaffoldTaskConversation extends LitElement {
           <details
             ?open=${this.thinkingOpen(entry)}
             data-disclosure-key=${entry.disclosureKey || nothing}
+            @toggle=${this.followThinking}
           >
-            <summary @click=${this.toggleThinking}>
+            <summary
+              ${this.hints.disclosure({
+                id: `thinking:${encodeURIComponent(
+                  entry.identity,
+                )}:${encodeURIComponent(entry.disclosureKey)}`,
+                label: `${
+                  this.thinkingOpen(entry) ? "Collapse" : "Expand"
+                } Thinking`,
+                action: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+                anchor: () =>
+                  this.parts.get(`thinking-chevron:${entry.identity}`) as
+                    | HTMLElement
+                    | undefined,
+                owner: () => this.parts.get(`entry:${entry.identity}`),
+                clipRoots: () => [this.list.value],
+                when: entry.disclosureKey.startsWith("thinking:"),
+              })}
+              @click=${this.toggleThinking}
+            >
               <span class="task-thinking-label">
                 <span>Thinking</span>
                 <span
+                  ${drawn(this.parts.of(`thinking-chevron:${entry.identity}`))}
                   class="task-thinking-disclosure-chevron"
                   aria-hidden="true"
                 ></span>
@@ -754,6 +635,7 @@ export class CaffoldTaskConversation extends LitElement {
             </summary>
             <div class="task-thinking-content">
               <caffold-task-markdown
+                ${drawn(this.parts.of(`thinking:${entry.identity}`))}
                 thread-id=${entry.threadId || nothing}
                 .fileLinks=${entry.fileLinks}
                 .markdown=${entry.text}
@@ -772,7 +654,14 @@ export class CaffoldTaskConversation extends LitElement {
             <strong>${entry.label}</strong>
             ${observedTime(entry.time)}
           </header>
-          <pre>${entry.text}</pre>
+          <pre
+            ${this.surfaces.surface({
+              id: `tool-output:${entry.identity}:scroll`,
+              label: () => `${entry.label || "Tool"} output`,
+              axes: ["horizontal"],
+              clipRoots: () => [this, this.list.value],
+            })}
+          >${entry.text}</pre>
         </li>`;
       case "command":
         return html`<li
@@ -781,16 +670,21 @@ export class CaffoldTaskConversation extends LitElement {
           data-conversation-entry-key=${entry.identity}
           data-event-type=${entry.eventType}
         >
-          <caffold-task-command .event=${entry.event}></caffold-task-command>
+          <caffold-task-command
+            ${drawn(this.parts.of(`command:${entry.identity}`))}
+            .event=${entry.event}
+          ></caffold-task-command>
         </li>`;
       case "command-group":
         return html`<li
+          ${drawn(this.parts.of(`entry:${entry.identity}`))}
           class="task-event task-command-group"
           data-event-id=${entry.eventId || nothing}
           data-conversation-entry-key=${entry.identity}
           data-event-type="command_execution"
         >
           <caffold-task-command-group
+            ${drawn(this.parts.of(`command-group:${entry.identity}`))}
             .identity=${entry.identity}
             .events=${entry.events}
           ></caffold-task-command-group>
@@ -820,6 +714,7 @@ export class CaffoldTaskConversation extends LitElement {
           data-conversation-entry-key=${entry.identity}
         >
           <caffold-task-work-details
+            ${drawn(this.parts.of(`work-details:${entry.identity}`))}
             .identity=${entry.identity}
             .label=${entry.label}
             .updateText=${entry.updateText}
@@ -839,6 +734,7 @@ export class CaffoldTaskConversation extends LitElement {
             entry.requests,
             (request) => request.approvalId ?? "",
             (request) => html`<caffold-task-approval
+              ${drawn(this.approvals.of(request.approvalId ?? ""))}
               data-approval-id=${request.approvalId ?? ""}
               .threadId=${threadId}
               .request=${request}
@@ -918,6 +814,12 @@ export class CaffoldTaskConversation extends LitElement {
         .get(this.snapshot.threadId)
         ?.get(entry.disclosureKey) ?? entry.state === "active"
     );
+  }
+
+  // A Thinking disclosure has opened or closed, so its Action Hint says the
+  // other.
+  private followThinking() {
+    this.requestUpdate();
   }
 
   // The summary toggles the native disclosure; drawing again keeps what the
@@ -1145,9 +1047,7 @@ export class CaffoldTaskConversation extends LitElement {
       return null;
     }
     const scrollerRect = scroller.getBoundingClientRect();
-    const events = [
-      ...scroller.querySelectorAll<HTMLElement>(".task-event[data-event-id]"),
-    ];
+    const events = this.eventEntries();
     const anchor =
       events.find((event) => {
         const rect = event.getBoundingClientRect();
@@ -1228,9 +1128,7 @@ export class CaffoldTaskConversation extends LitElement {
       return false;
     }
     const anchor =
-      [
-        ...scroller.querySelectorAll<HTMLElement>(".task-event[data-event-id]"),
-      ].find(
+      this.eventEntries().find(
         (event) => event.dataset.eventId === previousScroll.anchorEventId,
       ) ?? this.commandGroupEntryHolding(previousScroll.anchorEventId);
     if (!anchor) {
@@ -1251,14 +1149,25 @@ export class CaffoldTaskConversation extends LitElement {
   // The entry a reader was anchored on may have folded into a group since;
   // the group's entry then stands where the reader was looking.
   private commandGroupEntryHolding(eventId: string) {
-    return (
-      Array.from(this.conversationList()?.children ?? []).find((entry) =>
-        entry
-          .querySelector<CaffoldTaskCommandGroup>(
-            ":scope > caffold-task-command-group",
-          )
-          ?.holdsEvent(eventId),
-      ) ?? null
+    const holding = this.shownEntries.find(
+      (entry) =>
+        entry.kind === "command-group" &&
+        (
+          this.parts.get(`command-group:${entry.identity}`) as
+            | CaffoldTaskCommandGroup
+            | undefined
+        )?.holdsEvent(eventId),
+    );
+    return holding
+      ? ((this.parts.get(`entry:${holding.identity}`) as HTMLElement) ?? null)
+      : null;
+  }
+
+  // The drawn entries that stand for an event, in their order.
+  private eventEntries() {
+    return Array.from(this.list.value?.children ?? []).filter(
+      (entry): entry is HTMLElement =>
+        entry instanceof HTMLElement && Boolean(entry.dataset.eventId),
     );
   }
 
@@ -1332,7 +1241,7 @@ export class CaffoldTaskConversation extends LitElement {
   private bindResizeObserver() {
     this.disconnectResizeObserver();
     const scroller = this.scroller();
-    const column = scroller?.querySelector(".task-conversation-column");
+    const column = this.column.value;
     const threadId = this.snapshot.threadId;
     if (
       !this.active ||
@@ -1424,50 +1333,13 @@ function disclosureState(scroller: HTMLElement, pending: DisclosureAnchor) {
 }
 
 // The name an entry's keyboard and scroll actions are known by.
-function entryIdentity(entry: Element, index: number) {
-  return (
-    entry.getAttribute("data-conversation-entry-key") ||
-    entry.getAttribute("data-event-id") ||
-    `${index + 1}`
-  );
-}
-
 function observedTime(time: string) {
   return time ? html`<time>${time}</time>` : nothing;
 }
 
-function rawScrollSurfaceScope({
-  scopeId,
-  label,
-  scrollport,
-  clipRoots = [],
-  isCurrent = () => true,
-}: {
-  scopeId: string;
-  label: string;
-  scrollport: HTMLElement;
-  clipRoots?: Element[];
-  isCurrent?: () => boolean;
-}): ScrollSurfaceScope {
-  if (!scopeId || !label || !scrollport) {
-    return emptyScrollSurfaceScope();
-  }
-  return {
-    blocked: false,
-    surfaces: [
-      {
-        id: `${scopeId}:scroll`,
-        label,
-        scrollport,
-        axes: ["horizontal"],
-        clipRoots: [scrollport, ...clipRoots].filter(Boolean),
-        isEligible: () => isCurrent() && hasScrollLayoutBox(scrollport),
-      },
-    ],
-    mutationRoots: [scrollport],
-    resizeElements: [scrollport],
-    scrollRoots: [scrollport],
-  };
+// The roots that are drawn.
+function present(roots: Array<Element | null | undefined>) {
+  return roots.filter((root): root is Element => root != null);
 }
 
 function isScrolledToBottom(element: HTMLElement) {

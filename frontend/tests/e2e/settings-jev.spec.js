@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { activateActionHint } from "./support/action-hints.js";
+import { activateActionHint, workspaceTargets } from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import { mockAgentModels } from "./support/task-fixtures.js";
 
@@ -224,4 +224,21 @@ test("the page holds its own width on a phone", { tag: "@phone" }, async ({
     .locator(".settings-content-scroll")
     .evaluate((scrollport) => scrollport.scrollWidth - scrollport.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("offers the rules and key controls it shows as Action Hints", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await installJevSettings(page, { keyConfigured: true });
+
+  await page.goto("/settings/jev");
+  await expect(page.locator("caffold-settings-jev-page").getByLabel("Replace API key")).toBeVisible();
+
+  await expect.poll(() => workspaceTargets(page, "settings:jev:")).toEqual([
+    ["criteria", "Focus Extra rules"],
+    ["save-criteria", "Save the extra rules"],
+    ["key", "Focus Replace API key"],
+    ["save-key", "Save the Jev API key"],
+    ["remove-key", "Remove the Jev API key"],
+  ]);
 });

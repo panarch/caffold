@@ -1,14 +1,14 @@
 import { html, LitElement } from "lit";
 import {
   emptyActionHintScope,
-  hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
+} from "#app/action-hint-scope.ts";
 import { getNote, getNotes } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   mergeScrollSurfaceScopes,
-} from "#app/scroll-scope.js";
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "./components/document.ts";
 import type {
   CaffoldNoteDocument,
@@ -89,7 +89,11 @@ export class CaffoldNotesWorkspace extends LitElement {
   private primarySlot: Element | null = null;
   // Kept from the first render: in a split view the documents sit in other
   // panes than this element.
+  // The two documents, kept once drawn: they move to the panes the selection
+  // puts them in, out of this element.
   private documents: Record<NoteSide, CaffoldNoteDocument> | null = null;
+  private readonly primaryDocument = new DrawnRef<CaffoldNoteDocument>(this);
+  private readonly secondaryDocument = new DrawnRef<CaffoldNoteDocument>(this);
   private readonly navigatorIntent = (event: Event) => {
     event.stopPropagation();
     this.handleNavigatorIntent(
@@ -145,10 +149,12 @@ export class CaffoldNotesWorkspace extends LitElement {
       !this.secondaryNoteId || this.selection.picker === "secondary";
     return html`
       <caffold-note-document
+        ${drawn(this.primaryDocument)}
         .snapshot=${primary}
         @caffold:note-document-intent=${this.documentIntent}
       ></caffold-note-document>
       <caffold-note-document
+        ${drawn(this.secondaryDocument)}
         ?hidden=${secondaryHidden}
         .snapshot=${secondary}
         @caffold:note-document-intent=${this.documentIntent}
@@ -157,10 +163,10 @@ export class CaffoldNotesWorkspace extends LitElement {
   }
 
   firstUpdated() {
-    const [primary, secondary] = this.querySelectorAll<CaffoldNoteDocument>(
-      ":scope > caffold-note-document",
-    );
-    this.documents = { primary, secondary };
+    this.documents = {
+      primary: this.primaryDocument.value as CaffoldNoteDocument,
+      secondary: this.secondaryDocument.value as CaffoldNoteDocument,
+    };
   }
 
   // The navigator is not part of this element's template, so it takes its
@@ -318,12 +324,10 @@ export class CaffoldNotesWorkspace extends LitElement {
         scopeId: `${scopeId}:secondary`,
         clipRoots: rightClipRoots,
       }),
-      navigator && hasActionHintLayoutBox(navigator)
-        ? navigator.actionHintScope({
-            scopeId: `${scopeId}:navigator`,
-            clipRoots: navigatorRoots,
-          })
-        : null,
+      navigator?.actionHintScope({
+        scopeId: `${scopeId}:navigator`,
+        clipRoots: navigatorRoots,
+      }),
     );
   }
 
@@ -361,15 +365,13 @@ export class CaffoldNotesWorkspace extends LitElement {
         scopeId: `${scopeId}:secondary`,
         clipRoots: rightClipRoots,
       }),
-      navigator && hasActionHintLayoutBox(navigator)
-        ? navigator.scrollSurfaceScope({
-            scopeId: `${scopeId}:navigator`,
-            clipRoots:
-              this.selection.picker === "secondary"
-                ? rightClipRoots
-                : leftClipRoots,
-          })
-        : null,
+      navigator?.scrollSurfaceScope({
+        scopeId: `${scopeId}:navigator`,
+        clipRoots:
+          this.selection.picker === "secondary"
+            ? rightClipRoots
+            : leftClipRoots,
+      }),
     );
   }
 

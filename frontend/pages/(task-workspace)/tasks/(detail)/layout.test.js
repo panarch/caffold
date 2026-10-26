@@ -58,20 +58,11 @@ test("merges the view switch with only the active direct-child surface", () => {
     presentedSurface() {
       return surface;
     },
-    summaryHeader() {
-      return {};
-    },
-    gitMenu() {
-      return null;
-    },
-    githubMenu() {
-      return null;
-    },
-    taskSummary() {
-      return null;
-    },
-    viewSwitch() {
-      return {
+    summaryHeader: { value: {} },
+    gitMenu: { value: null },
+    githubMenu: { value: null },
+    taskSummary: { value: null },
+    viewSwitch: { value: {
         actionHintScope(options) {
           assert.equal(options.actionId, "navigation.detail.view");
           return {
@@ -80,14 +71,9 @@ test("merges the view switch with only the active direct-child surface", () => {
             scrollRoots: [],
           };
         },
-      };
-    },
-    taskDetail() {
-      return task;
-    },
-    sectionDetail() {
-      return section;
-    },
+      } },
+    taskDetail: { value: task },
+    sectionDetail: { value: section },
     review() {
       return { actionHintScope: () => ({ targets: [reviewTarget] }) };
     },
@@ -97,17 +83,13 @@ test("merges the view switch with only the active direct-child surface", () => {
     githubLayout() {
       return { actionHintScope: () => ({ targets: [githubTarget] }) };
     },
-    terminalButton() {
-      return null;
-    },
-    terminalPage() {
-      return {
+    terminalButton: { value: null },
+    terminalPage: { value: {
         actionHintScope(options) {
           assert.equal(options.scopeId, `detail:${owner.subjectKind}:subject-a`);
           return { targets: [terminalTarget] };
         },
-      };
-    },
+      } },
   };
 
   assert.deepEqual(detailLayout.actionHintScope.call(owner), {
@@ -190,10 +172,10 @@ test("delegates Scroll and keyboard contexts only to the active direct owner", (
     performUpdate() {},
     subjectIdentity: () => ({ kind: "task", id: "thread-a" }),
     presentedSurface: () => surface,
-    taskDetail: () => task,
-    gitMenu: () => null,
-    githubMenu: () => null,
-    taskSummary: () => null,
+    taskDetail: { value: task },
+    gitMenu: { value: null },
+    githubMenu: { value: null },
+    taskSummary: { value: null },
     review: () => null,
     gitLayout: () => null,
     githubLayout: () => null,
@@ -213,13 +195,13 @@ test("delegates Scroll and keyboard contexts only to the active direct owner", (
 test("deactivation closes the persistent Task summary interaction owner", () => {
   const calls = [];
   const owner = {
-    taskSummary: () => ({ deactivate: () => calls.push("summary") }),
-    terminalPage: () => ({ deactivate: () => calls.push("terminal") }),
+    taskSummary: { value: { deactivate: () => calls.push("summary") } },
+    terminalPage: { value: { deactivate: () => calls.push("terminal") } },
     deactivateReview: () => calls.push("review"),
     gitLayout: () => ({ deactivate: () => calls.push("git") }),
     githubLayout: () => ({ deactivate: () => calls.push("github") }),
-    gitMenu: () => ({ deactivate: () => calls.push("git-menu") }),
-    githubMenu: () => ({ deactivate: () => calls.push("github-menu") }),
+    gitMenu: { value: { deactivate: () => calls.push("git-menu") } },
+    githubMenu: { value: { deactivate: () => calls.push("github-menu") } },
     sectionActivationKey: "section",
     domainActivationPromise: Promise.resolve(),
   };
@@ -250,7 +232,7 @@ test("delegates Scroll to each exact active Detail domain", () => {
     subjectIdentity: () => ({ kind: "task", id: "thread-a" }),
     presentedSurface: () => surface,
     performUpdate() {},
-    taskDetail: () => null,
+    taskDetail: { value: null },
     review: () => ({ scrollSurfaceScope: () => ({ surfaces: [surfaces.review] }) }),
     gitLayout: () => ({ scrollSurfaceScope: () => ({ surfaces: [surfaces.git] }) }),
     githubLayout: () => ({ scrollSurfaceScope: () => ({ surfaces: [surfaces.github] }) }),
@@ -285,22 +267,22 @@ function headerOwner(state, { menus = [], flags = [], summaries = [], choices = 
       menus.push(["git", "hidden", hidden(/<caffold-task-detail-git \?hidden="(\w+)"/)]);
       menus.push(["github", "hidden", hidden(/<caffold-task-detail-github \?hidden="(\w+)"/)]);
     },
-    taskSummary: () => ({ setSnapshot: (snapshot) => summaries.push(snapshot) }),
-    viewSwitch: () => ({
+    taskSummary: { value: { setSnapshot: (snapshot) => summaries.push(snapshot) } },
+    viewSwitch: { value: ({
       setSnapshot(snapshot) {
         choices.push(snapshot.choices.map(({ value }) => value));
         selected.push(snapshot.selected);
         assert.ok(snapshot.choices.some(({ value }) => value === snapshot.selected));
       },
-    }),
-    gitMenu: () => repositoryMenu("git", menus),
-    githubMenu: () => repositoryMenu("github", menus),
-    terminalButton: () => ({
+    }) },
+    gitMenu: { value: repositoryMenu("git", menus) },
+    githubMenu: { value: repositoryMenu("github", menus) },
+    terminalButton: { value: ({
       setSnapshot: (snapshot) => terminalButtons.push(snapshot),
-    }),
+    }) },
     applySurfaceVisibility() {},
     selectedTaskContextPath: () => "",
-    taskDetail: () => ({ reconcileVisibleSurface() {} }),
+    taskDetail: { value: { reconcileVisibleSurface() {} } },
     ...state,
   }));
   return owner;
@@ -454,7 +436,7 @@ test("the terminal toggle enters from any screen and returns to where it was", (
     taskRoute: reviewRoute,
     taskSnapshot: { task: { threadId: "thread-a", cwdPath: "projects/app" } },
     activeSurface: () => surface,
-    terminalPage: () => ({ activate: (options) => activations.push(options) }),
+    terminalPage: { value: { activate: (options) => activations.push(options) } },
     requestSubjectRoute: (route) => requested.push(route),
   });
 
@@ -531,7 +513,7 @@ test("the terminal opens with take only right after the toggle asked for it", ()
   const owner = terminalOwner({
     subjectKind: "task",
     taskSnapshot: { task: { threadId: "thread-a", cwdPath: "projects/app" } },
-    terminalPage: () => ({ activate: (options) => activations.push(options.mode) }),
+    terminalPage: { value: { activate: (options) => activations.push(options.mode) } },
   });
 
   owner.pendingTerminalTake = "task:thread-a";
@@ -553,8 +535,12 @@ test("a lost terminal socket reports the Detail transport as unavailable", () =>
   const owner = {
     subjectKind: "task",
     presentedSurface: () => surface,
-    terminalPage: () => ({ transportState: terminal }),
-    taskDetail: () => ({ streamState: "reconnecting" }),
+    terminalPage: {
+      get value() {
+        return { transportState: terminal };
+      },
+    },
+    taskDetail: { value: { streamState: "reconnecting" } },
   };
   const streamState = () =>
     Object.getOwnPropertyDescriptor(detailLayout, "streamState").get.call(owner);

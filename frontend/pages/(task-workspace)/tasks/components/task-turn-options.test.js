@@ -219,158 +219,6 @@ const SHARED_NAME_CATALOG = {
   unavailable: [],
 };
 
-test("provides Model through the owned native popover button", () => {
-  const clipRoot = {};
-  let clicks = 0;
-  const attributes = new Map([
-    ["aria-label", "Choose GPT-5.6 and reasoning"],
-    ["popovertarget", "model-options"],
-    ["popovertargetaction", "toggle"],
-  ]);
-  const control = {
-    disabled: false,
-    focusOptions: null,
-    getAttribute(name) {
-      return attributes.get(name) ?? null;
-    },
-    focus(options) {
-      this.focusOptions = options;
-    },
-    click() {
-      clicks += 1;
-    },
-  };
-  let currentControl = control;
-  let popoverOpen = false;
-  const popover = {
-    id: "model-options",
-    matches(selector) {
-      assert.equal(selector, ":popover-open");
-      return popoverOpen;
-    },
-  };
-  const owner = {
-    isConnected: true,
-    context: { locked: false },
-    get modelButton() {
-      return currentControl;
-    },
-    modelPopover: popover,
-  };
-
-  const target = turnOptions.actionHintModelTarget.call(owner, {
-    scopeId: "task:thread-a",
-    clipRoots: [clipRoot],
-  });
-
-  assert.deepEqual(
-    {
-      id: target.id,
-      actionId: target.actionId,
-      label: target.label,
-      controlKind: target.controlKind,
-    },
-    {
-      id: "task-composer:task:thread-a:model",
-      actionId: "task.model.choose",
-      label: "Choose GPT-5.6 and reasoning",
-      controlKind: "button",
-    },
-  );
-  assert.equal(target.control, control);
-  assert.equal(target.anchor, control);
-  assert.equal(target.badgeAtEnd, false);
-  assert.deepEqual(target.clipRoots, [clipRoot]);
-  assert.equal(target.isActionable(), true);
-  target.activate();
-  assert.equal(clicks, 1);
-  assert.deepEqual(control.focusOptions, { preventScroll: true });
-
-  popoverOpen = true;
-  assert.equal(target.isActionable(), false);
-  popoverOpen = false;
-  owner.context.locked = true;
-  assert.equal(target.isActionable(), false);
-  owner.context.locked = false;
-  currentControl = { ...control };
-  assert.equal(target.isActionable(), false);
-});
-
-test("provides Permission through the same retained native popover contract", () => {
-  let focused = false;
-  let clicked = false;
-  const control = {
-    disabled: false,
-    focus() {
-      focused = true;
-    },
-    click() {
-      clicked = true;
-    },
-    getAttribute(name) {
-      return new Map([
-        ["aria-label", "Choose approval mode"],
-        ["popovertarget", "permission-options"],
-        ["popovertargetaction", "toggle"],
-      ]).get(name) ?? null;
-    },
-  };
-  const popover = {
-    id: "permission-options",
-    matches: () => false,
-  };
-  const picker = { hidden: false };
-  const owner = {
-    isConnected: true,
-    context: { locked: false },
-    permissionFixed: () => false,
-    permissionButton: control,
-    permissionPicker: picker,
-    permissionPopover: popover,
-  };
-
-  const target = turnOptions.actionHintPermissionTarget.call(owner, {
-    scopeId: "new",
-  });
-  assert.equal(target.actionId, "task.permission.open");
-  assert.equal(target.isActionable(), true);
-  target.activate();
-  assert.equal(focused, true);
-  assert.equal(clicked, true);
-
-  picker.hidden = true;
-  assert.equal(target.isActionable(), false);
-});
-
-test("permission Action Hint is not actionable once the catalog has fixed the mode", () => {
-  const control = {
-    disabled: false,
-    getAttribute(name) {
-      return new Map([
-        ["aria-label", "Choose approval mode"],
-        ["popovertarget", "permission-options"],
-        ["popovertargetaction", "toggle"],
-      ]).get(name) ?? null;
-    },
-  };
-  const owner = {
-    isConnected: true,
-    context: { locked: false, provider: "grok" },
-    permissionFixed: () => true,
-    permissionButton: control,
-    permissionPicker: { hidden: false },
-    permissionPopover: {
-      id: "permission-options",
-      matches: () => false,
-    },
-  };
-
-  const target = turnOptions.actionHintPermissionTarget.call(owner, {
-    scopeId: "task:thread-a",
-  });
-  assert.equal(target.isActionable(), false);
-});
-
 test("locks only the approval picker when the conversation exists and the catalog fixes the mode", async (t) => {
   const { element, server } = mount({
     provider: "grok",
@@ -494,99 +342,6 @@ test("a pick for Caffold's own mode survives the list being asked again", async 
   assert.equal(element.snapshot().permissionExplicit, true);
 });
 
-test("provides selected model options and excludes disabled permission options", () => {
-  const selectedModel = optionControl({
-    action: "select-model",
-    provider: "codex",
-    model: "gpt-5.6-sol",
-    label: "GPT-5.6-Sol",
-  });
-  const provider = optionControl({
-    action: "browse-provider",
-    provider: "claude",
-    label: "Claude",
-  });
-  const selectedReasoning = optionControl({
-    action: "select-effort",
-    effort: "max",
-    label: "max",
-  });
-  const selectedSpeed = optionControl({
-    action: "select-fast-mode",
-    fastMode: "false",
-    label: "Normal",
-  });
-  const blockedPermission = optionControl({
-    action: "select-permission",
-    permissionMode: "fullAccess",
-    label: "Full access",
-    disabled: true,
-  });
-  const modelPopover = popoverWithOptions([
-    provider,
-    selectedModel,
-    selectedReasoning,
-    selectedSpeed,
-  ]);
-  const permissionPopover = popoverWithOptions([blockedPermission]);
-  const owner = {
-    isConnected: true,
-    context: { locked: false },
-    modelPopover,
-    permissionPopover,
-  };
-
-  const modelScope = turnOptions.popoverActionHintScope.call(owner, {
-    contextId: "new:model",
-    kind: "model",
-    popover: modelPopover,
-  });
-  assert.equal(modelScope.targets.every(({ badgeAtEnd }) => badgeAtEnd), true);
-  assert.deepEqual(
-    modelScope.targets.map(({ actionId }) => actionId),
-    ["task.model.provider.browse", "task.model.select", "task.reasoning.select", "task.speed.select"],
-  );
-  assert.equal(modelScope.targets.every(({ isActionable }) => isActionable()), true);
-  assert.deepEqual(
-    turnOptions.popoverActionHintScope.call(owner, {
-      contextId: "new:permission",
-      kind: "permission",
-      popover: permissionPopover,
-    }).targets,
-    [],
-  );
-});
-
-test("uses provider and model together as the option identity", async (t) => {
-  const codex = optionControl({
-    action: "select-model",
-    provider: "codex",
-    model: "shared",
-    label: "Codex Shared",
-  });
-  const claude = optionControl({
-    action: "select-model",
-    provider: "claude",
-    model: "shared",
-    label: "Claude Shared",
-  });
-  const popover = popoverWithOptions([codex, claude]);
-  const { element, nodes, server } = mount();
-  t.after(() => server.restore());
-  nodes.modelPopover = popover;
-  await answerModels(server, SHARED_NAME_CATALOG);
-
-  const scope = element.popoverActionHintScope({
-    contextId: "new:model",
-    kind: "model",
-    popover,
-  });
-  assert.equal(new Set(scope.targets.map(({ id }) => id)).size, 2);
-
-  element.selectModel("shared", "claude");
-  assert.equal(element.selectedModel().provider, "claude");
-});
-
 test("restores a retained dangerous permission option after confirmation is canceled", async (t) => {
   const frames = [];
   const option = optionControl({
@@ -616,57 +371,6 @@ test("restores a retained dangerous permission option after confirmation is canc
   assert.equal(frames.length, 1);
   frames.shift()();
   assert.deepEqual(focusOptions, { preventScroll: true });
-});
-
-test("declares a session-bound Action Hint context for both retained popover contexts", () => {
-  const presentation = {
-    actionHintDialog: () => ({}),
-    scrollModeHud: () => ({}),
-    scrollSurfaceSelector: () => ({}),
-  };
-  const popover = () => ({
-    matches: () => false,
-    querySelector: () => presentation,
-    querySelectorAll: () => [],
-  });
-  const modelPopover = popover();
-  const permissionPopover = popover();
-  const owner = {
-    isConnected: true,
-    context: { locked: false },
-    modelPopover,
-    permissionPopover,
-    popoverKeyboardNavigationContext:
-      turnOptions.popoverKeyboardNavigationContext,
-    popoverActionHintScope: turnOptions.popoverActionHintScope,
-  };
-
-  const contexts = turnOptions.keyboardNavigationContexts.call(owner, {
-    scopeId: "task:thread-a",
-  });
-
-  assert.deepEqual(
-    contexts.map(({ id, kind, root, actionHints }) => ({
-      id,
-      kind,
-      root,
-      sessionBound: actionHints.sessionBound,
-    })),
-    [
-      {
-        id: "task-composer:task:thread-a:model-options",
-        kind: "popover",
-        root: modelPopover,
-        sessionBound: true,
-      },
-      {
-        id: "task-composer:task:thread-a:permission-options",
-        kind: "popover",
-        root: permissionPopover,
-        sessionBound: true,
-      },
-    ],
-  );
 });
 
 test("marks only the selected model and permission options as the popover autofocus", async (t) => {
@@ -1473,11 +1177,16 @@ function turnOptionsHost(nodes, properties = {}) {
     addEventListener() {},
     removeEventListener() {},
     dispatchEvent: () => true,
-    querySelector: (selector) =>
-      ({
-        ":scope .task-model-popover": nodes.modelPopover,
-        ":scope .task-permission-popover": nodes.permissionPopover,
-      })[selector] ?? null,
+    modelPopover: {
+      get value() {
+        return nodes.modelPopover;
+      },
+    },
+    permissionPopover: {
+      get value() {
+        return nodes.permissionPopover;
+      },
+    },
     performUpdate() {
       this.willUpdate();
       this.drawn = this.render();
@@ -1570,7 +1279,10 @@ function installAgentServer() {
 }
 
 function openModelMenu(element) {
-  element.handleBeforeToggle({ newState: "open", target: element.modelPopover });
+  element.handleBeforeToggle({
+    newState: "open",
+    target: element.modelPopover.value,
+  });
 }
 
 async function answerModels(server, catalog = CATALOG) {

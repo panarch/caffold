@@ -1,26 +1,17 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import {
   ACTION_HINT_ACTION,
-  radioActionHintTarget,
-} from "#app/action-hints.js";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
 import {
   FILE_SORT_MODES,
   getSettings,
   type Settings,
   setFileSortMode,
 } from "#app/settings.ts";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
 
 const SORT_OPTIONS = Object.freeze([
   Object.freeze({
@@ -46,6 +37,16 @@ export class CaffoldSettingsFilesPage extends LitElement {
       (event as CustomEvent<{ settings?: Settings }>).detail?.settings ??
       getSettings();
   };
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.scrollport.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly optionLabels = new DrawnRefs<HTMLLabelElement>(this);
 
   constructor() {
     super();
@@ -74,8 +75,15 @@ export class CaffoldSettingsFilesPage extends LitElement {
   render() {
     const options = SORT_OPTIONS.map(
       (option) => html`
-        <label>
+        <label ${drawn(this.optionLabels.of(option.value))}>
           <input
+            ${this.hints.radio({
+              id: `sort:${option.value}`,
+              label: `Use ${option.label} ordering`,
+              action: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
+              when: option.value !== this.settings.fileSortMode,
+              anchor: () => this.optionLabels.get(option.value),
+            })}
             type="radio"
             name="settings-file-sort-mode"
             value=${option.value}
@@ -91,7 +99,14 @@ export class CaffoldSettingsFilesPage extends LitElement {
       `,
     );
     return html`
-      <div class="settings-files-scroll">
+      <div
+        ${drawn(this.scrollport)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.scrollport.value],
+        })}
+        class="settings-files-scroll"
+      >
         <section class="settings-files-section">
           <header>
             <p id="settings-files-description">
@@ -112,88 +127,18 @@ export class CaffoldSettingsFilesPage extends LitElement {
 
   actionHintScope({
     scopeId = "settings:files",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const scrollport = this.querySelector(":scope > .settings-files-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyActionHintScope();
-    }
-    const targetClipRoots = [this, scrollport, ...clipRoots].filter(Boolean);
-    const targets = SORT_OPTIONS.flatMap((option) => {
-      const selector = `input[type="radio"][data-file-sort-mode][value="${option.value}"]`;
-      const control = this.querySelector<HTMLInputElement>(selector);
-      if (!control || !fileSortControlAvailable(control) || control.checked) {
-        return [];
-      }
-      return [
-        radioActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:sort:${option.value}`,
-          actionId: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
-          label: `Use ${option.label} ordering`,
-          control,
-          anchor: control.closest("label") ?? control,
-          clipRoots: targetClipRoots,
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(selector) === control &&
-            fileSortControlAvailable(control) &&
-            !control.checked,
-        }),
-      ];
-    });
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   scrollSurfaceScope({
     scopeId = "settings:files",
     label = "File settings",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.querySelector(":scope > .settings-files-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(":scope > .settings-files-scroll") ===
-              scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
-}
-
-function fileSortControlAvailable(control: HTMLInputElement) {
-  return (
-    !control.disabled && !control.hidden && hasActionHintLayoutBox(control)
-  );
 }
 
 customElements.define("caffold-settings-files-page", CaffoldSettingsFilesPage);

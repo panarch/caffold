@@ -847,6 +847,19 @@ test("names the work an agent did that Caffold draws no surface for", { tag: "@a
   await expect(probed.locator("header strong")).toHaveText("inspector.probe");
   await expect(probed).toContainText("Status: failed");
   await expect(probed).toHaveAttribute("data-tool-tone", "danger");
+
+  // Each printed output of the open work scrolls as a surface of its own.
+  const surfaceLabels = await tasksPage
+    .locator("caffold-task-conversation")
+    .evaluate((conversation) =>
+      conversation.scrollSurfaceScope().surfaces.map(({ label }) => label),
+    );
+  expect(surfaceLabels).toEqual(
+    expect.arrayContaining([
+      expect.stringMatching(/^web_search output \d+$/),
+      expect.stringMatching(/^inspector\.probe output \d+$/),
+    ]),
+  );
 });
 
 test("shows a prompt as the characters a person typed", { tag: "@all-viewports" }, async ({

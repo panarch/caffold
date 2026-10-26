@@ -10,11 +10,12 @@ const registry = installCustomElementUnitRegistry();
 await import("./layout.ts");
 const TaskDetail = registry.element("caffold-task-detail");
 const taskDetail = TaskDetail.prototype;
+const { ActionHints } = await import("#app/action-hints.ts");
 after(() => registry.restore());
 
 // A Task screen with only the state its drawing reads, and no conversation.
 function screen(state = {}) {
-  return Object.create(TaskDetail.prototype, Object.getOwnPropertyDescriptors({
+  const owner = Object.create(TaskDetail.prototype, Object.getOwnPropertyDescriptors({
     reviewView: "conversation",
     selectedThreadId: "thread-a",
     taskDetail: null,
@@ -26,6 +27,8 @@ function screen(state = {}) {
     notice: null,
     ...state,
   }));
+  owner.hints = new ActionHints(owner, () => {});
+  return owner;
 }
 
 function drawn(owner) {
@@ -96,72 +99,48 @@ test("Git and GitHub name a Task they are waiting for in their own panel", () =>
   assert.doesNotMatch(failed, /<caffold-loading-text>Loading Task/);
 });
 
-test("merges Conversation, follow-up composer, and Current Plan direct-owner scopes", () => {
-  const composerTarget = { id: "prompt" };
-  const conversationTarget = { id: "conversation-action" };
-  const planTarget = { id: "plan" };
+test("offers the conversation, follow-up Composer, and Current Plan while the conversation shows", () => {
+  const pulls = [];
+  const part = (id, root) => ({
+    actionHintScope(pull) {
+      pulls.push(pull);
+      return { targets: [{ id }], mutationRoots: [root] };
+    },
+  });
   const slot = {};
-  const conversation = {};
-  const planRoot = {};
-  const conversationRoot = {};
-  const planScrollRoot = {};
-  const composer = {
-    parentElement: slot,
-    actionHintTargets(options) {
-      assert.equal(options.scopeId, "task:thread-a");
-      assert.deepEqual(options.clipRoots, [owner, conversation]);
-      return [composerTarget];
-    },
-  };
-  const currentPlan = {
-    actionHintScope(options) {
-      assert.equal(options.scopeId, "task:thread-a:current-plan");
-      assert.deepEqual(options.clipRoots, [owner, conversation]);
-      return {
-        blocked: false,
-        targets: [planTarget],
-        mutationRoots: [planRoot],
-        scrollRoots: [planScrollRoot],
-      };
-    },
-  };
-  const conversationOwner = {
-    actionHintScope(options) {
-      assert.equal(options.scopeId, "task:thread-a:conversation");
-      assert.deepEqual(options.clipRoots, [owner, conversation]);
-      return {
-        targets: [conversationTarget],
-        mutationRoots: [conversationRoot],
-      };
-    },
-  };
-  const owner = {
-    hidden: false,
-    reviewView: "conversation",
-    selectedThreadId: "thread-a",
-    performUpdate() {},
-    absenceNotice: () => null,
+  const pane = {};
+  let composer = { parentElement: slot, ...part("prompt", {}) };
+  const owner = Object.assign(screen(), {
+    hints: { scope: () => ({ targets: [{ id: "load-error" }] }) },
+    absenceNotice: { value: undefined },
+    conversationPane: { value: pane },
+    followUpComposerSlot: { value: slot },
+    conversationComponent: { value: part("conversation-action", {}) },
+    currentPlanComponent: { value: part("plan", {}) },
     followUpComposer: () => composer,
-    followUpComposerSlot: () => slot,
-    conversationComponent: () => conversationOwner,
-    currentPlanComponent: () => currentPlan,
-    querySelector: (selector) => selector === ":scope .task-conversation-pane" ? conversation : null,
+  });
+  const scope = () => taskDetail.actionHintScope.call(owner);
+  const ids = () => scope().targets.map(({ id }) => id);
+
+  assert.deepEqual(ids(), ["prompt", "conversation-action", "plan"]);
+  assert.deepEqual(pulls.map(({ scopeId }) => scopeId), [
+    "task:thread-a",
+    "task:thread-a:conversation",
+    "task:thread-a:current-plan",
+  ]);
+  assert.deepEqual(pulls[0].clipRoots, [owner, pane]);
+  assert.ok(scope().mutationRoots.includes(slot));
+
+  composer = null;
+  assert.deepEqual(ids(), ["conversation-action", "plan"]);
+
+  owner.notice = {};
+  assert.deepEqual(ids(), ["load-error"], "a read that failed offers its action");
+
+  owner.absenceNotice = {
+    value: { actionHintScope: ({ scopeId }) => ({ targets: [{ id: scopeId }] }) },
   };
-
-  assert.deepEqual(taskDetail.actionHintScope.call(owner), {
-    blocked: false,
-    targets: [composerTarget, conversationTarget, planTarget],
-    mutationRoots: [slot, conversationRoot, planRoot],
-    scrollRoots: [planScrollRoot],
-  });
-
-  owner.followUpComposer = () => null;
-  assert.deepEqual(taskDetail.actionHintScope.call(owner), {
-    blocked: false,
-    targets: [conversationTarget, planTarget],
-    mutationRoots: [conversationRoot, planRoot],
-    scrollRoots: [planScrollRoot],
-  });
+  assert.deepEqual(ids(), ["task:thread-a:absence"]);
 });
 
 test("merges composer popovers, Current Plan, Command, Markdown preview, and permission instruction modals independently", () => {
@@ -183,21 +162,23 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
     reviewView: "conversation",
     selectedThreadId: "thread-a",
     performUpdate() {},
-    brokenDeleteDialog: () => null,
+    brokenDeleteDialog: { value: undefined },
     followUpComposer: () => composer,
-    followUpComposerSlot: () => slot,
-    currentPlanComponent: () => ({
-      keyboardNavigationContexts: () => [planContext],
-    }),
-    commandDialog: () => ({
-      keyboardNavigationContexts: () => [commandContext],
-    }),
-    markdownPreviewDialog: () => ({
-      keyboardNavigationContexts: () => [markdownPreviewContext],
-    }),
-    permissionInstructionsDialog: () => ({
-      keyboardNavigationContexts: () => [permissionInstructionsContext],
-    }),
+    followUpComposerSlot: { value: slot },
+    currentPlanComponent: {
+      value: { keyboardNavigationContexts: () => [planContext] },
+    },
+    commandDialog: {
+      value: { keyboardNavigationContexts: () => [commandContext] },
+    },
+    markdownPreviewDialog: {
+      value: { keyboardNavigationContexts: () => [markdownPreviewContext] },
+    },
+    permissionInstructionsDialog: {
+      value: {
+        keyboardNavigationContexts: () => [permissionInstructionsContext],
+      },
+    },
   };
 
   assert.deepEqual(
@@ -210,7 +191,7 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
       permissionInstructionsContext,
     ],
   );
-  owner.currentPlanComponent = () => null;
+  owner.currentPlanComponent = { value: undefined };
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
     [
@@ -220,12 +201,12 @@ test("merges composer popovers, Current Plan, Command, Markdown preview, and per
       permissionInstructionsContext,
     ],
   );
-  owner.markdownPreviewDialog = () => null;
+  owner.markdownPreviewDialog = { value: undefined };
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
     [composerContext, commandContext, permissionInstructionsContext],
   );
-  owner.permissionInstructionsDialog = () => null;
+  owner.permissionInstructionsDialog = { value: undefined };
   assert.deepEqual(
     taskDetail.keyboardNavigationContexts.call(owner),
     [composerContext, commandContext],

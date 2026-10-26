@@ -441,8 +441,7 @@ test("reaches the field, its rows, and its scroll area from the keyboard", { tag
 
   const surfaces = await page.locator("caffold-app-shell").evaluate((shell) =>
     shell.keyboardNavigationContexts()
-      .flatMap((context) => context.scroll?.scope?.surfaces ?? [])
-      .filter((surface) => surface.isEligible())
+      .flatMap((context) => context.scroll?.surfaces ?? [])
       .map((surface) => surface.label)
   );
   expect(surfaces).toContain("Folders");

@@ -9,12 +9,17 @@ import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 const registry = installCustomElementUnitRegistry();
 await import("./permission-instructions-dialog.ts");
 const Dialog = registry.element("caffold-task-permission-instructions-dialog");
+const { ActionHints } = await import("#app/action-hints.ts");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
 after(() => registry.restore());
 
 function draw(state) {
   const dialog = Object.create(Dialog.prototype, {
     state: { value: state },
+    threadId: { value: "thread-a" },
   });
+  dialog.hints = new ActionHints(dialog, () => {});
+  dialog.keyboard = new KeyboardContexts(dialog, () => {});
   const drawn = templateHtml(dialog.render());
   return {
     text: /<pre[^>]*>([\s\S]*?)<\/pre>/.exec(drawn)?.[1],

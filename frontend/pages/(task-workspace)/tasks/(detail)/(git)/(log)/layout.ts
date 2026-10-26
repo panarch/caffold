@@ -1,8 +1,5 @@
 import { html, LitElement } from "lit";
-import {
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
-} from "#app/action-hint-scope.js";
+import type { ActionHintPull } from "#app/action-hints.ts";
 import {
   fetchGitRemote,
   type GitFetchResult,
@@ -10,10 +7,8 @@ import {
   type GitRepository,
   getGitLog,
 } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "./commit/page.ts";
 import type { CaffoldGitLogCommitPage } from "./commit/page.ts";
 import "./list/page.ts";
@@ -50,6 +45,8 @@ export class CaffoldGitLogLayout extends LitElement {
   private currentPath = "";
   private log: GitLog | null = null;
   private logRequestId = 0;
+  private readonly listPage = new DrawnRef<CaffoldGitLogListPage>(this);
+  private readonly detailPage = new DrawnRef<CaffoldGitLogCommitPage>(this);
 
   createRenderRoot() {
     return this;
@@ -57,8 +54,11 @@ export class CaffoldGitLogLayout extends LitElement {
 
   render() {
     return html`
-      <caffold-git-log-list-page></caffold-git-log-list-page>
+      <caffold-git-log-list-page
+        ${drawn(this.listPage)}
+      ></caffold-git-log-list-page>
       <caffold-git-log-commit-page
+        ${drawn(this.detailPage)}
         @caffold:git-log-commit-state-change=${this.followCommitPage}
       ></caffold-git-log-commit-page>
     `;
@@ -236,10 +236,7 @@ export class CaffoldGitLogLayout extends LitElement {
   actionHintScope({
     scopeId = "git:log",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
-    if (this.hidden) {
-      return emptyActionHintScope();
-    }
+  }: ActionHintPull = {}) {
     return this.view === "detail"
       ? this.commitPage.actionHintScope({
           scopeId: `${scopeId}:commit`,
@@ -254,10 +251,7 @@ export class CaffoldGitLogLayout extends LitElement {
   scrollSurfaceScope({
     scopeId = "git:log",
     clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}) {
-    if (this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
+  }: ScrollSurfacePull = {}) {
     return this.view === "detail"
       ? this.commitPage.scrollSurfaceScope({
           scopeId: `${scopeId}:commit`,
@@ -389,16 +383,12 @@ export class CaffoldGitLogLayout extends LitElement {
   // the layout is in the document.
   private get list() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-git-log-list-page",
-    ) as CaffoldGitLogListPage;
+    return this.listPage.value as CaffoldGitLogListPage;
   }
 
   private get commitPage() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-git-log-commit-page",
-    ) as CaffoldGitLogCommitPage;
+    return this.detailPage.value as CaffoldGitLogCommitPage;
   }
 }
 

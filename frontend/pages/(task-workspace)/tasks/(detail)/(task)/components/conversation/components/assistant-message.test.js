@@ -13,19 +13,10 @@ after(() => registry.restore());
 
 function messageOwner({ copyButton, markdown, suggestedPrompts } = {}) {
   return Object.assign(Object.create(message), {
-    hidden: false,
-    isConnected: true,
-    querySelector(selector) {
-      if (selector.includes("copy-button")) {
-        return copyButton ?? null;
-      }
-      if (selector.includes("suggested-prompts")) {
-        return suggestedPrompts ?? null;
-      }
-      return selector.includes("caffold-task-markdown")
-        ? markdown ?? null
-        : null;
-    },
+    performUpdate() {},
+    copyButton: { value: copyButton },
+    markdown: { value: markdown },
+    suggestedPrompts: { value: suggestedPrompts },
   });
 }
 
@@ -71,9 +62,6 @@ test("merges only the Copy, Markdown, and suggested prompt children it mounts", 
   for (const child of [copyButton, markdown, suggestedPrompts]) {
     assert.deepEqual(child.options.clipRoots, [owner, conversation]);
   }
-
-  owner.hidden = true;
-  assert.deepEqual(owner.actionHintScope({ scopeId: "message:a" }).targets, []);
 });
 
 test("publishes nothing before its children are mounted", () => {
@@ -82,7 +70,7 @@ test("publishes nothing before its children are mounted", () => {
   assert.deepEqual(scope.mutationRoots, []);
 });
 
-test("delegates Scroll only to its exact current Markdown child", () => {
+test("delegates Scroll only to its Markdown child", () => {
   const surfaces = { surfaces: [{ id: "markdown-table" }] };
   const child = {
     scrollSurfaceScope(options) {
@@ -90,21 +78,20 @@ test("delegates Scroll only to its exact current Markdown child", () => {
       return surfaces;
     },
   };
-  let markdown = child;
-  const owner = messageOwner();
-  owner.querySelector = () => markdown;
+  const owner = messageOwner({ markdown: child });
+  const conversation = { id: "conversation" };
 
   assert.equal(
     owner.scrollSurfaceScope({
       scopeId: "message:a",
-      clipRoots: [{ id: "conversation" }],
+      clipRoots: [conversation],
     }),
     surfaces,
   );
-  assert.equal(child.options.scopeId, "message:a:markdown");
-  assert.equal(child.options.isCurrent(), true);
-  markdown = null;
-  assert.equal(child.options.isCurrent(), false);
+  assert.deepEqual(child.options, {
+    scopeId: "message:a:markdown",
+    clipRoots: [owner, conversation],
+  });
 });
 
 test("shows the turn's time only on an answer the provider did not time", () => {

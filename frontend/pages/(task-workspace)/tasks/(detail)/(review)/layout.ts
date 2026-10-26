@@ -3,14 +3,15 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hint-scope.ts";
+import { ACTION_HINT_ACTION } from "#app/action-hints.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "#app/scroll-scope.js";
+} from "#app/scroll-scope.ts";
 import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "#components/file-navigator.ts";
 import type { CaffoldFileNavigator } from "#components/file-navigator.ts";
 import "#components/pane-resizer.ts";
@@ -54,10 +55,6 @@ import {
 
 // Matches the width where layout.css stops showing one pane at a time.
 const REVIEW_SPLIT_MEDIA_QUERY = "(min-width: 561px)";
-const NAVIGATOR_PANE =
-  ":scope > .task-review-workspace > .task-review-layout > .task-review-navigator-pane";
-const VIEWER_PANE =
-  ":scope > .task-review-workspace > .task-review-layout > .task-review-viewer-pane";
 
 type ReviewChangesElement =
   | CaffoldReviewWorkingTreeChanges
@@ -100,6 +97,17 @@ export class CaffoldTaskReview extends LitElement {
     { top: number; left: number }
   >();
   private liveUpdates: unknown = null;
+  private readonly navigatorPane = new DrawnRef<HTMLElement>(this);
+  private readonly viewerPane = new DrawnRef<HTMLElement>(this);
+  private readonly navigatorAxis = new DrawnRef<CaffoldSegmentedControl>(this);
+  private readonly viewerAxis = new DrawnRef<CaffoldSegmentedControl>(this);
+  private readonly workingList = new DrawnRef<CaffoldReviewWorkingTreeChanges>(
+    this,
+  );
+  private readonly branchList = new DrawnRef<CaffoldReviewBranchChanges>(this);
+  private readonly filesList = new DrawnRef<CaffoldFileNavigator>(this);
+  private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
+  private readonly fileViewer = new DrawnRef<CaffoldReviewSelectedFile>(this);
 
   constructor() {
     super();
@@ -148,11 +156,13 @@ export class CaffoldTaskReview extends LitElement {
           }
         >
           <aside
+            ${drawn(this.navigatorPane)}
             class="task-review-navigator-pane"
             aria-label="Review navigator"
           >
             <div class="task-review-pane-axis task-review-navigator-axis">
               <caffold-segmented-control
+                ${drawn(this.navigatorAxis)}
                 data-review-axis="navigator"
                 @caffold:segmented-control-intent=${this.chooseAxis}
               ></caffold-segmented-control>
@@ -163,6 +173,7 @@ export class CaffoldTaskReview extends LitElement {
               ?hidden=${!changesShown || route.scope !== "working"}
             >
               <caffold-review-working-tree-changes
+                ${drawn(this.workingList)}
                 @caffold:review-branch-intent=${this.reviewBranch}
                 @caffold:review-changes-read=${this.followChangesRead}
                 @caffold:open-git-diff=${this.openChange}
@@ -174,6 +185,7 @@ export class CaffoldTaskReview extends LitElement {
               ?hidden=${!changesShown || route.scope !== "branch"}
             >
               <caffold-review-branch-changes
+                ${drawn(this.branchList)}
                 @caffold:review-base-intent=${this.chooseBase}
                 @caffold:review-changes-read=${this.followChangesRead}
                 @caffold:open-compare-diff=${this.openChange}
@@ -185,12 +197,14 @@ export class CaffoldTaskReview extends LitElement {
               ?hidden=${route.navigator !== "files"}
             >
               <caffold-file-navigator
+                ${drawn(this.filesList)}
                 @caffold:file-navigator-open-file=${this.openChange}
                 @caffold:file-navigator-refresh-selected=${this.refreshFile}
               ></caffold-file-navigator>
             </div>
           </aside>
           <caffold-pane-resizer
+            ${drawn(this.paneResizer)}
             start-min="220"
             end-min="360"
             storage-key="caffold:pane-width:task-review"
@@ -198,18 +212,24 @@ export class CaffoldTaskReview extends LitElement {
             aria-label="Resize review navigator"
             @caffold:pane-resize=${this.resizePanel}
           ></caffold-pane-resizer>
-          <section class="task-review-viewer-pane" aria-label="Review file">
+          <section
+            ${drawn(this.viewerPane)}
+            class="task-review-viewer-pane"
+            aria-label="Review file"
+          >
             <div
               class="task-review-viewer-empty-header"
               aria-hidden="true"
             ></div>
             <div class="task-review-pane-axis task-review-viewer-axis">
               <caffold-segmented-control
+                ${drawn(this.viewerAxis)}
                 data-review-axis="viewer"
                 @caffold:segmented-control-intent=${this.chooseAxis}
               ></caffold-segmented-control>
             </div>
             <caffold-review-selected-file
+              ${drawn(this.fileViewer)}
               @caffold:review-representation-intent=${this.chooseRepresentation}
               @caffold:close-file-viewer=${this.closeFile}
             ></caffold-review-selected-file>
@@ -290,8 +310,9 @@ export class CaffoldTaskReview extends LitElement {
       return emptyActionHintScope();
     }
     const scopeId = `review:${encodeURIComponent(subjectId)}`;
-    const navigatorPane = this.querySelector(NAVIGATOR_PANE);
-    const viewerPane = this.querySelector(VIEWER_PANE);
+    this.performUpdate();
+    const navigatorPane: Element | null = this.navigatorPane.value ?? null;
+    const viewerPane: Element | null = this.viewerPane.value ?? null;
     const navigatorActive = hasActionHintLayoutBox(navigatorPane);
     const viewerActive = hasActionHintLayoutBox(viewerPane);
     const navigatorClipRoots = [this, navigatorPane].filter(
@@ -305,7 +326,6 @@ export class CaffoldTaskReview extends LitElement {
           scopeId: `${scopeId}:navigator-axis`,
           actionId: ACTION_HINT_ACTION.REVIEW_AXIS,
           clipRoots: navigatorClipRoots,
-          labelForChoice: (choice) => `Show ${choice.label}`,
         })
       : null;
     const viewerAxis = viewerActive
@@ -313,7 +333,6 @@ export class CaffoldTaskReview extends LitElement {
           scopeId: `${scopeId}:viewer-axis`,
           actionId: ACTION_HINT_ACTION.REVIEW_AXIS,
           clipRoots: viewerClipRoots,
-          labelForChoice: (choice) => `Show ${choice.label}`,
         })
       : null;
     const navigatorScope = !navigatorActive
@@ -321,54 +340,51 @@ export class CaffoldTaskReview extends LitElement {
       : this.route.navigator === "files"
         ? this.fileNavigator.actionHintScope({
             scopeId: `${scopeId}:files`,
-            actionId: ACTION_HINT_ACTION.FILE_OPEN,
-            disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-            refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            actions: {
+              file: ACTION_HINT_ACTION.FILE_OPEN,
+              disclosure: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+              refresh: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            },
             clipRoots: navigatorClipRoots,
           })
         : this.route.scope === "branch"
           ? this.branchChanges.actionHintScope({
               scopeId: `${scopeId}:branch`,
-              actionId: ACTION_HINT_ACTION.FILE_OPEN,
-              disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-              selectActionId: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
+              actions: {
+                file: ACTION_HINT_ACTION.FILE_OPEN,
+                disclosure: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+                select: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
+              },
               clipRoots: navigatorClipRoots,
             })
           : this.workingTreeChanges.actionHintScope({
               scopeId: `${scopeId}:working`,
-              actionId: ACTION_HINT_ACTION.FILE_OPEN,
-              disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-              branchTargetId: `${scopeId}:scope:branch`,
-              branchActionId: ACTION_HINT_ACTION.REVIEW_AXIS,
+              actions: {
+                file: ACTION_HINT_ACTION.FILE_OPEN,
+                disclosure: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+                branch: ACTION_HINT_ACTION.REVIEW_AXIS,
+              },
               clipRoots: navigatorClipRoots,
-              isCurrent: () => this.isConnected && this.active && !this.hidden,
             });
     const viewerScope =
       viewerActive && this.route.path
         ? this.selectedFile.actionHintScope({
             scopeId: `${scopeId}:viewer`,
-            actionId: ACTION_HINT_ACTION.PARENT,
-            noticeActionId: ACTION_HINT_ACTION.REVIEW_AXIS,
-            detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
-            refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-            linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
-            buttonActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            actions: {
+              parent: ACTION_HINT_ACTION.PARENT,
+              notice: ACTION_HINT_ACTION.REVIEW_AXIS,
+              details: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
+              refresh: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              link: ACTION_HINT_ACTION.LINK_OPEN,
+              button: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            },
             clipRoots: viewerClipRoots,
           })
         : null;
-    const resizer = this.resizer;
-    const contextKey = this.contextKey;
-    const resizerScope = resizer.actionHintScope({
+    const resizerScope = this.resizer.actionHintScope({
       scopeId: `${scopeId}:navigator`,
       actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
       clipRoots: [this],
-      isCurrent: () =>
-        this.isConnected &&
-        this.active &&
-        !this.hidden &&
-        taskThreadId(this.task) === subjectId &&
-        this.contextKey === contextKey &&
-        this.resizer === resizer,
     });
     return mergeActionHintScopes(
       navigatorAxis,
@@ -385,8 +401,9 @@ export class CaffoldTaskReview extends LitElement {
       return emptyScrollSurfaceScope();
     }
     const scopeId = `review:${encodeURIComponent(subjectId)}`;
-    const navigatorPane = this.querySelector(NAVIGATOR_PANE);
-    const viewerPane = this.querySelector(VIEWER_PANE);
+    this.performUpdate();
+    const navigatorPane: Element | null = this.navigatorPane.value ?? null;
+    const viewerPane: Element | null = this.viewerPane.value ?? null;
     const navigatorClipRoots = [this, navigatorPane].filter(
       (root): root is Element => root !== null,
     );
@@ -430,7 +447,7 @@ export class CaffoldTaskReview extends LitElement {
       !subjectId ||
       !this.contextKey ||
       !this.route.path ||
-      !hasActionHintLayoutBox(this.querySelector(VIEWER_PANE))
+      !hasActionHintLayoutBox(this.viewerPane.value ?? null)
     ) {
       return [];
     }
@@ -828,6 +845,7 @@ export class CaffoldTaskReview extends LitElement {
     this.dataset.reviewNavigatorChoiceCount = `${navigatorChoices.length}`;
     this.axisControl("navigator").setSnapshot({
       label: "Review navigator",
+      actionVerb: "Show",
       selected: this.route.navigator,
       choices: navigatorChoices,
     });
@@ -844,6 +862,7 @@ export class CaffoldTaskReview extends LitElement {
     this.dataset.reviewViewerChoiceCount = `${viewerChoices.length}`;
     this.axisControl("viewer").setSnapshot({
       label: "Review viewer",
+      actionVerb: "Show",
       selected: this.route.viewer,
       choices: viewerChoices,
     });
@@ -1016,40 +1035,33 @@ export class CaffoldTaskReview extends LitElement {
   // Review is in the document.
   private get workingTreeChanges() {
     this.performUpdate();
-    return this.querySelector(
-      "caffold-review-working-tree-changes",
-    ) as CaffoldReviewWorkingTreeChanges;
+    return this.workingList.value as CaffoldReviewWorkingTreeChanges;
   }
 
   private get branchChanges() {
     this.performUpdate();
-    return this.querySelector(
-      "caffold-review-branch-changes",
-    ) as CaffoldReviewBranchChanges;
+    return this.branchList.value as CaffoldReviewBranchChanges;
   }
 
   private get fileNavigator() {
     this.performUpdate();
-    return this.querySelector("caffold-file-navigator") as CaffoldFileNavigator;
+    return this.filesList.value as CaffoldFileNavigator;
   }
 
   private get selectedFile() {
     this.performUpdate();
-    return this.querySelector(
-      "caffold-review-selected-file",
-    ) as CaffoldReviewSelectedFile;
+    return this.fileViewer.value as CaffoldReviewSelectedFile;
   }
 
   private get resizer() {
     this.performUpdate();
-    return this.querySelector("caffold-pane-resizer") as CaffoldPaneResizer;
+    return this.paneResizer.value as CaffoldPaneResizer;
   }
 
   private axisControl(axis: "navigator" | "viewer") {
     this.performUpdate();
-    return this.querySelector(
-      `caffold-segmented-control[data-review-axis="${axis}"]`,
-    ) as CaffoldSegmentedControl;
+    return (axis === "navigator" ? this.navigatorAxis : this.viewerAxis)
+      .value as CaffoldSegmentedControl;
   }
 }
 

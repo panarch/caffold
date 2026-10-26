@@ -8,209 +8,9 @@ import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./composer.ts");
+const { ActionHints } = await import("#app/action-hints.ts");
 const Composer = registry.element("caffold-task-composer");
 after(() => registry.restore());
-
-test("provides Model, Permission, and Prompt through their existing component actions", () => {
-  const clipRoot = {};
-  let modelClicks = 0;
-  let permissionClicks = 0;
-  let promptFocuses = 0;
-  const modelControl = {};
-  const modelTarget = {
-    id: "task-composer:task:thread-a:model",
-    actionId: "task.model.choose",
-    label: "Choose model and reasoning",
-    controlKind: "button",
-    control: modelControl,
-    anchor: modelControl,
-    clipRoots: [clipRoot],
-    isActionable: () => true,
-    activate: () => {
-      modelClicks += 1;
-    },
-  };
-  const permissionControl = {};
-  const permissionTarget = {
-    id: "task-composer:task:thread-a:permission",
-    actionId: "task.permission.open",
-    label: "Choose approval mode",
-    controlKind: "button",
-    control: permissionControl,
-    anchor: permissionControl,
-    clipRoots: [clipRoot],
-    isActionable: () => true,
-    activate: () => {
-      permissionClicks += 1;
-    },
-  };
-  let delegatedOptions = null;
-  const options = {
-    actionHintModelTarget(value) {
-      delegatedOptions = value;
-      return modelTarget;
-    },
-    actionHintPermissionTarget(value) {
-      assert.deepEqual(value, delegatedOptions);
-      return permissionTarget;
-    },
-  };
-  const textarea = {
-    disabled: false,
-    focus() {
-      promptFocuses += 1;
-    },
-    setSelectionRange() {},
-  };
-  const stripTarget = {
-    id: "task-composer:task:thread-a:remove-image:image-a",
-    isActionable: () => true,
-  };
-  let stripOptions = null;
-  const pieTarget = { id: "task-composer:task:thread-a:context-usage" };
-  let pieOptions = null;
-  const owner = composerHost({
-    turnOptions: () => options,
-    querySelector: (selector) =>
-      selector === "textarea[name='prompt']" ? textarea : null,
-    querySelectorAll: () => [],
-    attachmentStrip: {
-      actionHintTargets(value) {
-        stripOptions = value;
-        return [stripTarget];
-      },
-    },
-    contextUsage: {
-      actionHintTarget(value) {
-        pieOptions = value;
-        return pieTarget;
-      },
-    },
-  });
-  owner.context.mode = "follow-up";
-
-  const targets = owner.actionHintTargets({
-    scopeId: "task:thread-a",
-    clipRoots: [clipRoot],
-  });
-
-  assert.equal(targets.length, 5);
-  assert.deepEqual(delegatedOptions, {
-    scopeId: "task:thread-a",
-    clipRoots: [clipRoot],
-  });
-  assert.deepEqual(stripOptions, delegatedOptions, "the attachment strip provides its own targets");
-  assert.deepEqual(pieOptions, delegatedOptions, "the pie provides its own target");
-  const [model, permission, prompt, attachment, pie] = targets;
-  assert.equal(attachment.id, stripTarget.id);
-  assert.equal(attachment.isActionable(), true);
-  assert.equal(pie, pieTarget);
-  assert.equal(model.control, modelControl);
-  assert.equal(model.isActionable(), true);
-  model.activate();
-  assert.equal(modelClicks, 1);
-
-  assert.equal(permission.control, permissionControl);
-  assert.equal(permission.isActionable(), true);
-  permission.activate();
-  assert.equal(permissionClicks, 1);
-
-  assert.deepEqual(
-    {
-      id: prompt.id,
-      actionId: prompt.actionId,
-      label: prompt.label,
-      controlKind: prompt.controlKind,
-    },
-    {
-      id: "task-composer:task:thread-a:prompt",
-      actionId: "task.prompt.focus",
-      label: "Edit follow-up prompt",
-      controlKind: "textbox",
-    },
-  );
-  assert.equal(prompt.control, textarea);
-  assert.equal(prompt.anchor, textarea);
-  assert.deepEqual(prompt.clipRoots, [clipRoot]);
-  assert.equal(prompt.isActionable(), true);
-  prompt.activate();
-  assert.equal(promptFocuses, 1);
-
-  owner.context.mode = "review";
-  assert.equal(model.isActionable(), false);
-  assert.equal(permission.isActionable(), false);
-  assert.equal(prompt.isActionable(), false);
-  assert.equal(attachment.isActionable(), false, "an attachment key belongs to the draft it was offered for");
-});
-
-function composerButton({ action = "", primaryAction = "" }) {
-  return {
-    dataset: { composerAction: action, primaryAction },
-    disabled: false,
-    title: "",
-    textContent: action || primaryAction,
-    clicks: 0,
-    getAttribute: () => null,
-    getClientRects: () => [{}],
-    focus() {},
-    click() {
-      this.clicks += 1;
-    },
-  };
-}
-
-test("provides the current Composer button catalog without retargeting it", () => {
-  const attach = composerButton({ action: "attach" });
-  const voice = composerButton({ action: "voice" });
-  const cancelVoice = composerButton({ action: "cancel-voice" });
-  const cancel = composerButton({ action: "cancel" });
-  const primary = composerButton({ primaryAction: "start" });
-  let controls = [attach, voice, cancelVoice, cancel, primary];
-  const matches = (selector) => {
-    if (selector.includes("task-primary-action-button")) {
-      return controls.filter(({ dataset }) => dataset.primaryAction);
-    }
-    const actions = Array.from(
-      selector.matchAll(/data-composer-action="([^"]+)"/g),
-      (match) => match[1],
-    );
-    return controls.filter(({ dataset }) => actions.includes(dataset.composerAction));
-  };
-  const owner = composerHost({
-    isConnected: true,
-    querySelector: (selector) => matches(selector)[0] ?? null,
-    querySelectorAll: matches,
-  });
-  owner.context.cwd = "/repo";
-
-  const targets = owner.actionHintButtonTargets({
-    scopeId: "new",
-    clipRoots: [{}],
-  });
-  assert.deepEqual(targets.map(({ id }) => id), [
-    "task-composer:new:attach",
-    "task-composer:new:voice",
-    "task-composer:new:cancel-voice",
-    "task-composer:new:cancel",
-    "task-composer:new:primary:start",
-  ]);
-  targets.forEach((target) => target.activate());
-  assert.deepEqual(
-    controls.map(({ clicks }) => clicks),
-    [1, 1, 1, 1, 1],
-  );
-
-  // The primary button changes its action in place; the key offered for the
-  // old action no longer presses it.
-  primary.dataset.primaryAction = "stop";
-  assert.equal(targets[4].isActionable(), false);
-  primary.dataset.primaryAction = "start";
-  assert.equal(targets[4].isActionable(), true);
-  owner.state.activeSubmissionId = "submission-a";
-  assert.equal(targets[0].isActionable(), false);
-  controls = controls.filter((control) => control !== voice);
-  assert.equal(targets[1].isActionable(), false);
-});
 
 test("offers Send once the turn options have settled what the turn runs under", () => {
   let ready = false;
@@ -525,8 +325,9 @@ function composerHost(properties = {}) {
       activeSubmissions: new Map(),
       dropTarget: false,
       isConnected: false,
-      querySelector: () => null,
-      querySelectorAll: () => [],
+      promptField: { value: undefined },
+      attachmentStrip: { value: undefined },
+      levelMeter: { value: undefined },
       dispatchEvent: () => true,
       turnOptions: () => null,
       requestUpdate() {},
@@ -534,6 +335,7 @@ function composerHost(properties = {}) {
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
+  host.hints = new ActionHints(host, () => {});
   return host;
 }
 

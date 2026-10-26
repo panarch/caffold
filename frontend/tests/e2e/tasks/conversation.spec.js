@@ -1354,6 +1354,13 @@ test("keeps cross-turn work chronological and the active status at the timeline 
     "plan",
     `active:${activeTurnId}`,
   ]);
+  // The plan's card scrolls its text sideways as a surface of its own.
+  expect(
+    await tasksPage.locator("caffold-task-conversation").evaluate(
+      (conversation) =>
+        conversation.scrollSurfaceScope().surfaces.map(({ label }) => label),
+    ),
+  ).toContain("Plan output");
 
   const finalAnswer = event(
     "event_final_a",

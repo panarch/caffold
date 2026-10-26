@@ -1,22 +1,17 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
+} from "#app/action-hints.ts";
 import { type GrokStatus, getGrokStatus } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "../components/detail-list.ts";
 import type { SettingsDetailRow } from "../components/detail-list.ts";
 import "../components/refresh-button.ts";
 import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.ts";
-import { serviceStatusTargets } from "../service-status.ts";
 import {
   onDemandValue,
   prepaidValue,
@@ -56,6 +51,18 @@ export class CaffoldSettingsGrokPage extends LitElement {
   declare private statusState: "idle" | "loading" | "loaded" | "unavailable";
   private operation = 0;
   private active = false;
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.scrollport.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly refreshButton = new DrawnRef<CaffoldSettingsRefreshButton>(
+    this,
+  );
 
   constructor() {
     super();
@@ -98,12 +105,23 @@ export class CaffoldSettingsGrokPage extends LitElement {
   render() {
     const unanswered = this.unansweredRows();
     return html`
-      <div class="settings-content-scroll">
+      <div
+        ${drawn(this.scrollport)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.scrollport.value],
+        })}
+        class="settings-content-scroll"
+      >
         <div class="settings-content-section">
           <header>
             <div>
               <p>The Grok CLI installation this server drives.</p>
               <a
+                ${this.hints.link({
+                  id: "service-status",
+                  action: ACTION_HINT_ACTION.LINK_OPEN,
+                })}
                 class="settings-service-status"
                 href=${GROK_SERVICE_STATUS_URL}
                 target="_blank"
@@ -111,6 +129,7 @@ export class CaffoldSettingsGrokPage extends LitElement {
               >Service status</a>
             </div>
             <caffold-settings-refresh-button
+              ${drawn(this.refreshButton)}
               .refreshing=${this.statusState === "loading"}
               @caffold:settings-refresh-intent=${this.refresh}
             ></caffold-settings-refresh-button>
@@ -155,69 +174,27 @@ export class CaffoldSettingsGrokPage extends LitElement {
     `;
   }
 
-  actionHintScope({
-    scopeId = "settings:grok",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyActionHintScope();
-    }
-    const targetClipRoots = [this, scrollport, ...clipRoots].filter(Boolean);
+  actionHintScope({ scopeId = "settings:grok", ...pull }: ActionHintPull = {}) {
+    const own = this.hints.scope({ ...pull, scopeId });
     return mergeActionHintScopes(
-      this.refreshButton?.actionHintScope({
+      own,
+      this.refreshButton.value?.actionHintScope({
         scopeId,
-        clipRoots: targetClipRoots,
-        isCurrent: () => this.isConnected && !this.hidden && isCurrent(),
+        clipRoots: [
+          this,
+          this.scrollport.value as HTMLDivElement,
+          ...(pull.clipRoots ?? []),
+        ],
       }),
-      {
-        blocked: false,
-        targets: serviceStatusTargets(this, {
-          scopeId,
-          clipRoots: targetClipRoots,
-          isCurrent,
-        }),
-        mutationRoots: [this],
-        scrollRoots: [scrollport],
-      },
     );
   }
 
   scrollSurfaceScope({
     scopeId = "settings:grok",
     label = "Grok settings",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(":scope > .settings-content-scroll") ===
-              scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   private agentRows(): readonly SettingsDetailRow[] {
@@ -366,12 +343,6 @@ export class CaffoldSettingsGrokPage extends LitElement {
   private refresh(event: Event) {
     event.stopPropagation();
     void this.reconcile();
-  }
-
-  private get refreshButton() {
-    return this.querySelector<CaffoldSettingsRefreshButton>(
-      "caffold-settings-refresh-button",
-    );
   }
 }
 

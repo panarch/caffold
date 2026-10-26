@@ -9,61 +9,8 @@ import { templateHtml } from "../../../tests/support/lit-template.js";
 const registry = installCustomElementUnitRegistry();
 await import("./navigation.ts");
 const Navigation = registry.element("caffold-task-workspace-navigation");
-const navigation = Navigation.prototype;
+const { ActionHints } = await import("#app/action-hints.ts");
 after(() => registry.restore());
-
-test("provides only the non-current workspace routes through their owned buttons", () => {
-  let clicks = 0;
-  const controls = {
-    tasks: { disabled: false, getAttribute: () => null },
-    notes: { disabled: false, getAttribute: () => null, focus() {}, click() {} },
-    settings: {
-      disabled: false,
-      getAttribute: () => "Settings — Caffold update available",
-      focus() {},
-      click() {
-        clicks += 1;
-      },
-    },
-  };
-  const owner = {
-    hidden: false,
-    isConnected: true,
-    mode: "tasks",
-    performUpdate() {},
-    modeButton: (mode) => controls[mode] ?? null,
-  };
-
-  const scope = navigation.actionHintScope.call(owner, {
-    clipRoots: [owner],
-  });
-  assert.deepEqual(
-    scope.targets.map(({ id, actionId, label }) => ({ id, actionId, label })),
-    [
-      {
-        id: "workspace:mode:notes",
-        actionId: "navigation.workspace.select",
-        label: "Open Notes",
-      },
-      {
-        id: "workspace:mode:settings",
-        actionId: "navigation.workspace.select",
-        label: "Settings — Caffold update available",
-      },
-    ],
-  );
-  const settings = scope.targets[1];
-  assert.equal(settings.isActionable(), true);
-  settings.activate();
-  assert.equal(clicks, 1);
-
-  owner.mode = "settings";
-  assert.equal(settings.isActionable(), false);
-  assert.deepEqual(
-    navigation.actionHintScope.call(owner, { clipRoots: [owner] }).targets.map(({ id }) => id),
-    ["workspace:mode:tasks", "workspace:mode:notes"],
-  );
-});
 
 test("marks exactly the chosen workspace mode as current", () => {
   const owner = Object.create(
@@ -121,6 +68,7 @@ test("marks the Settings button and its name while a newer Caffold exists", () =
 });
 
 function buttons(owner) {
+  owner.hints ??= new ActionHints(owner, () => {});
   return templateHtml(owner.render())
     .replace(/\s+/g, " ")
     .split("<button")

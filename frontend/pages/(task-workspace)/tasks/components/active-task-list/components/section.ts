@@ -1,14 +1,15 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintTarget,
-  buttonActionHintTarget,
-  reorderHandleActionHintTarget,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+  mergeActionHintScopes,
+} from "#app/action-hints.ts";
 import {
   type TaskOperationsPresentation,
   taskStoreOperationsPresentation,
 } from "#app/pages/(task-workspace)/task-store-status.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import { sectionLabel } from "#tasks/task-format.ts";
 import { type ListedTask, taskThreadId } from "#tasks/task-list-model.ts";
@@ -20,6 +21,10 @@ import {
 
 export const ACTIVE_TASK_SECTION_INTENT_EVENT =
   "caffold:active-task-section-intent";
+
+// The component in each row a Section made. A row keeps it when it moves to
+// another Section.
+const rowComponents = new WeakMap<HTMLLIElement, CaffoldActiveTaskRow>();
 
 export type ReorderMode = "none" | "tasks" | "sections";
 
@@ -87,6 +92,9 @@ export class CaffoldActiveTaskSection extends LitElement {
   };
   private pointerGesture: PointerGesture | null = null;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly list = new DrawnRef<HTMLOListElement>(this);
+  private readonly handle = new DrawnRef<HTMLButtonElement>(this);
 
   // A captured pointer's events reach the handle and rise to this element,
   // which follows the gesture from there.
@@ -149,7 +157,7 @@ export class CaffoldActiveTaskSection extends LitElement {
   }
 
   focusHandle() {
-    this.handle?.focus();
+    this.handle.value?.focus();
   }
 
   containsReorderFocus(element: Element | null) {
@@ -157,7 +165,7 @@ export class CaffoldActiveTaskSection extends LitElement {
       return false;
     }
     return (
-      Boolean(this.handle?.contains(element)) ||
+      Boolean(this.handle.value?.contains(element)) ||
       this.rowComponents().some((row) => row.containsReorderFocus(element))
     );
   }
@@ -171,53 +179,17 @@ export class CaffoldActiveTaskSection extends LitElement {
     if (!threadId) {
       return null;
     }
-    return this.querySelector<HTMLLIElement>(
-      `:scope > .task-list > li[data-thread-id="${CSS.escape(threadId)}"]`,
-    );
+    return this.rows().find((row) => row.dataset.threadId === threadId) ?? null;
   }
 
-  actionHintTargets({ clipRoots = [] }: { clipRoots?: Element[] } = {}) {
-    const { section, reorderMode } = this.snapshot;
-    if (reorderMode === "sections") {
-      const target = this.reorderActionHintTarget(clipRoots);
-      return target ? [target] : [];
-    }
-    const rows = this.rowComponents();
-    if (reorderMode === "tasks") {
-      return rows.flatMap((row) => {
-        const target = row.reorderActionHintTarget({ clipRoots });
-        return target ? [target] : [];
-      });
-    }
-    const targets: ActionHintTarget[] = [];
-    const control = this.openButton;
-    if (section && !section.recovery && control && !control.disabled) {
-      const sectionId = section.id;
-      targets.push(
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `section:${sectionId}`,
-          actionId: ACTION_HINT_ACTION.SECTION_OPEN,
-          label: `Open section: ${section.label ?? sectionLabel(section.name)}`,
-          control,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            this.snapshot.section?.id === sectionId &&
-            !this.snapshot.section.recovery &&
-            this.snapshot.reorderMode === "none" &&
-            this.openButton === control &&
-            !control.disabled,
-        }),
-      );
-    }
-    for (const row of rows) {
-      const target = row.actionHintTarget({ clipRoots });
-      if (target) {
-        targets.push(target);
-      }
-    }
-    return targets;
+  actionHintScope(pull: ActionHintPull = {}) {
+    const own = this.hints.scope(pull);
+    return mergeActionHintScopes(
+      own,
+      ...(this.snapshot.reorderMode === "sections"
+        ? []
+        : this.rowComponents().map((row) => row.actionHintScope(pull))),
+    );
   }
 
   hasTaskRow(threadId: string) {
@@ -237,14 +209,12 @@ export class CaffoldActiveTaskSection extends LitElement {
   // Marks where a dragged row would land and answers the Task it would go
   // before: `null` for the end, `undefined` when the row is not in this list.
   updateTaskDropTarget(threadId: string, clientY: number) {
-    const list = this.list;
+    const list = this.list.value;
     const source = this.rowFor(threadId);
     if (!Number.isFinite(clientY) || !list || source?.parentElement !== list) {
       return undefined;
     }
-    const candidates = [
-      ...list.querySelectorAll<HTMLLIElement>(":scope > li"),
-    ].filter((row) => row !== source);
+    const candidates = this.rows().filter((row) => row !== source);
     const before =
       candidates.find((row) => {
         const bounds = row.getBoundingClientRect();
@@ -304,7 +274,7 @@ export class CaffoldActiveTaskSection extends LitElement {
   }
 
   moveTaskRow(threadId: string, beforeThreadId: string | null) {
-    const list = this.list;
+    const list = this.list.value;
     const row = this.rowFor(threadId);
     const before = beforeThreadId ? this.rowFor(beforeThreadId) : null;
     if (
@@ -337,6 +307,7 @@ export class CaffoldActiveTaskSection extends LitElement {
     const header = section ? this.header(section) : nothing;
     return html`<div class="task-repository-header">${header}</div>
       <ol
+        ${drawn(this.list)}
         class="task-list"
         @caffold:active-task-row-intent=${this.forwardTaskIntent}
       ></ol>`;
@@ -380,6 +351,11 @@ export class CaffoldActiveTaskSection extends LitElement {
     const select =
       !section.recovery && reorderMode === "none"
         ? html`<button
+            ${this.hints.button({
+              id: `section:${section.id}`,
+              label: `Open section: ${label}`,
+              action: ACTION_HINT_ACTION.SECTION_OPEN,
+            })}
             type="button"
             class="task-repository-select"
             title=${section.name}
@@ -397,6 +373,13 @@ export class CaffoldActiveTaskSection extends LitElement {
     const handle = section.recovery
       ? nothing
       : html`<button
+          ${drawn(this.handle)}
+          ${this.hints.reorderHandle({
+            id: `section:${section.id}:reorder`,
+            label: `Reorder ${label}`,
+            action: ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS,
+            when: reorderMode === "sections",
+          })}
           type="button"
           class="section-reorder-handle"
           data-section-id=${section.id}
@@ -419,7 +402,7 @@ export class CaffoldActiveTaskSection extends LitElement {
   // another Section, or new.
   private reconcileRows(availableRows: Map<string, HTMLLIElement>) {
     const section = this.snapshot.section;
-    const list = this.list;
+    const list = this.list.value;
     if (!section || !list) {
       return;
     }
@@ -451,11 +434,10 @@ export class CaffoldActiveTaskSection extends LitElement {
   }
 
   private syncRow(row: HTMLLIElement, task: ListedTask) {
-    let component = row.querySelector<CaffoldActiveTaskRow>(
-      ":scope > caffold-active-task-row",
-    );
+    let component = rowComponents.get(row);
     if (!component) {
       component = new CaffoldActiveTaskRow();
+      rowComponents.set(row, component);
       row.replaceChildren(component);
     }
     const { section, selectedThreadId, taskOperations, reorderMode, pending } =
@@ -467,39 +449,6 @@ export class CaffoldActiveTaskSection extends LitElement {
       reorderMode: reorderMode === "tasks",
       reorderable: !section?.recovery,
       pending,
-    });
-  }
-
-  private reorderActionHintTarget(clipRoots: Element[]) {
-    const { section, reorderMode, pending } = this.snapshot;
-    const control = this.handle;
-    if (
-      !section ||
-      section.recovery ||
-      reorderMode !== "sections" ||
-      pending ||
-      !control ||
-      control.disabled
-    ) {
-      return null;
-    }
-    const sectionId = section.id;
-    const label = section.label ?? sectionLabel(section.name);
-    return reorderHandleActionHintTarget({
-      invalidationOwner: this,
-      id: `section:${sectionId}:reorder`,
-      actionId: ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS,
-      label: control.getAttribute("aria-label") || `Reorder ${label}`,
-      control,
-      clipRoots: [...clipRoots],
-      isActionable: () =>
-        this.isConnected &&
-        this.snapshot.section?.id === sectionId &&
-        !this.snapshot.section.recovery &&
-        this.snapshot.reorderMode === "sections" &&
-        !this.snapshot.pending &&
-        this.handle === control &&
-        !control.disabled,
     });
   }
 
@@ -536,7 +485,7 @@ export class CaffoldActiveTaskSection extends LitElement {
         : event.key === "ArrowDown"
           ? "down"
           : null;
-    if (!direction || this.handle?.disabled) {
+    if (!direction || this.handle.value?.disabled) {
       return;
     }
     event.preventDefault();
@@ -545,7 +494,7 @@ export class CaffoldActiveTaskSection extends LitElement {
   }
 
   private handlePointerDown(event: PointerEvent) {
-    const handle = this.handle;
+    const handle = this.handle.value;
     if (
       !handle ||
       handle.disabled ||
@@ -647,42 +596,21 @@ export class CaffoldActiveTaskSection extends LitElement {
     );
   }
 
+  // The rows this Section holds, in their order.
   private rows() {
-    return [
-      ...this.querySelectorAll<HTMLLIElement>(":scope > .task-list > li"),
-    ];
+    return [...(this.list.value?.children ?? [])] as HTMLLIElement[];
   }
 
   private rowComponents() {
-    return [
-      ...this.querySelectorAll<CaffoldActiveTaskRow>(
-        ":scope > .task-list > li > caffold-active-task-row",
-      ),
-    ];
+    return this.rows().flatMap((row) => {
+      const component = rowComponents.get(row);
+      return component ? [component] : [];
+    });
   }
 
   private rowComponentFor(threadId: string) {
-    return (
-      this.rowFor(threadId)?.querySelector<CaffoldActiveTaskRow>(
-        ":scope > caffold-active-task-row",
-      ) ?? null
-    );
-  }
-
-  private get list() {
-    return this.querySelector<HTMLOListElement>(":scope > .task-list");
-  }
-
-  private get openButton() {
-    return this.querySelector<HTMLButtonElement>(
-      ':scope > .task-repository-header > button[data-active-task-section-action="open-section"]',
-    );
-  }
-
-  private get handle() {
-    return this.querySelector<HTMLButtonElement>(
-      ":scope > .task-repository-header > .section-reorder-handle",
-    );
+    const row = this.rowFor(threadId);
+    return (row && rowComponents.get(row)) ?? null;
   }
 }
 

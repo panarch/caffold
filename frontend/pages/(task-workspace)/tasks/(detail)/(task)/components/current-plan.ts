@@ -1,25 +1,19 @@
 import { html, LitElement, nothing } from "lit";
-import type {
-  ActionHintScope,
-  ActionHintTarget,
-} from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hints.js";
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import { getCurrentPlan } from "#app/api.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
-  keyboardNavigationContext,
+  KeyboardContexts,
   mergeKeyboardNavigationContexts,
-  popoverScrollSurfaceScope,
-} from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
+} from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
 import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.ts";
 import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "./current-plan/components/document-dialog.ts";
 import type { CaffoldCurrentPlanDocumentDialog } from "./current-plan/components/document-dialog.ts";
@@ -66,6 +60,16 @@ export class CaffoldTaskCurrentPlan extends LitElement {
   // Whether focus sat on the status controls before a drawing hid them.
   private statusHadFocus = false;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly strip = new DrawnRef<HTMLElement>(this);
+  private readonly planAction = new DrawnRef<HTMLButtonElement>(this);
+  private readonly statusAction = new DrawnRef<HTMLButtonElement>(this);
+  private readonly statusPopover = new DrawnRef<HTMLDivElement>(this);
+  private readonly documentDialog =
+    new DrawnRef<CaffoldCurrentPlanDocumentDialog>(this);
 
   constructor() {
     super();
@@ -145,107 +149,18 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     }
   }
 
-  actionHintScope({
-    scopeId = "",
-    clipRoots = [],
-  }: {
-    scopeId?: string;
-    clipRoots?: Element[];
-  } = {}): ActionHintScope {
-    const strip = this.strip;
+  actionHintScope({ scopeId = "", ...pull }: ActionHintPull = {}) {
     const threadId = this.context?.threadId ?? "";
-    if (
-      !this.isConnected ||
-      this.hidden ||
-      !threadId ||
-      !strip ||
-      strip.hidden
-    ) {
-      return emptyActionHintScope();
-    }
-    const generation = this.contextGeneration;
-    const targetScopeId = scopeId || `task:${threadId}:current-plan`;
-    const plan =
-      this.projection?.status === "ready" ? this.projection.plan : null;
-    const documentTargets = !plan
-      ? []
-      : (["plan", "checklist"] as const).flatMap((action) => {
-          const documentPath =
-            (action === "plan" ? plan.planDocument : plan.checklistDocument)
-              ?.path ?? "";
-          const control = this.stripAction(action);
-          if (!documentPath || !control || control.hidden || control.disabled) {
-            return [];
-          }
-          return [
-            buttonActionHintTarget({
-              invalidationOwner: this,
-              id: `${targetScopeId}:${action}`,
-              actionId: ACTION_HINT_ACTION.CURRENT_PLAN_DOCUMENT_OPEN,
-              label: control.getAttribute("aria-label") || `Open ${action}`,
-              control,
-              clipRoots: [this, strip, ...clipRoots],
-              isActionable: () => {
-                const currentPlan =
-                  this.projection?.status === "ready"
-                    ? this.projection.plan
-                    : null;
-                const currentDocument =
-                  action === "plan"
-                    ? currentPlan?.planDocument
-                    : currentPlan?.checklistDocument;
-                return (
-                  this.isConnected &&
-                  !this.hidden &&
-                  this.contextGeneration === generation &&
-                  this.context?.threadId === threadId &&
-                  !strip.hidden &&
-                  this.stripAction(action) === control &&
-                  !control.hidden &&
-                  !control.disabled &&
-                  currentDocument?.path === documentPath
-                );
-              },
-            }),
-          ];
-        });
-    const status = this.stripAction("status");
-    const popover = this.statusPopover;
-    const statusTargets: ActionHintTarget[] =
-      !status || status.hidden || !popover
-        ? []
-        : [
-            buttonActionHintTarget({
-              invalidationOwner: this,
-              id: `${targetScopeId}:status`,
-              actionId: ACTION_HINT_ACTION.CURRENT_PLAN_STATUS_OPEN,
-              label: status.getAttribute("aria-label") || "Plan status",
-              control: status,
-              clipRoots: [this, strip, ...clipRoots],
-              isActionable: () =>
-                this.isConnected &&
-                !this.hidden &&
-                this.contextGeneration === generation &&
-                !strip.hidden &&
-                this.stripAction("status") === status &&
-                !status.hidden &&
-                this.statusPopover === popover &&
-                status.getAttribute("popovertarget") === popover.id &&
-                !popover.matches(":popover-open"),
-            }),
-          ];
-    return {
-      blocked: false,
-      targets: [...documentTargets, ...statusTargets],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+    return this.hints.scope({
+      ...pull,
+      scopeId: scopeId || `task:${threadId}:current-plan`,
+    });
   }
 
   keyboardNavigationContexts() {
     return mergeKeyboardNavigationContexts(
-      this.statusKeyboardNavigationContexts(),
-      this.documentDialog?.keyboardNavigationContexts() ?? [],
+      this.keyboard.contexts({ actionHints: (pull) => this.hints.scope(pull) }),
+      this.documentDialog.value?.keyboardNavigationContexts() ?? [],
     );
   }
 
@@ -269,13 +184,22 @@ export class CaffoldTaskCurrentPlan extends LitElement {
       "",
       "task-current-plan-segment-icon-svg",
     );
+    const planLabel = plan ? `Open plan: ${plan.title}` : "Open plan";
     const checklistLabel = !plan
       ? "Open checklist"
       : plan.total === 0
         ? "Open checklist: no items"
         : `Open checklist: ${plan.completed} of ${plan.total} complete`;
+    const statusLabel = `Plan status: ${presentation.label}`;
+    const refreshLabel =
+      this.node === CURRENT_PLAN_NODE.READING ? "Refreshing..." : "Refresh";
+    // The status popover opens out of the strip, so only the strip's own
+    // controls are clipped by it.
+    const stripClipRoots = () => [this, this.strip.value];
+    const threadId = this.context?.threadId ?? "";
     return html`
       <section
+        ${drawn(this.strip)}
         class="task-current-plan-strip"
         aria-label="Current plan"
         data-presentation=${presentation.presentation || nothing}
@@ -286,10 +210,18 @@ export class CaffoldTaskCurrentPlan extends LitElement {
       >
         <div class="task-current-plan-main">
           <button
+            ${drawn(this.planAction)}
+            ${this.hints.button({
+              id: "plan",
+              label: planLabel,
+              action: ACTION_HINT_ACTION.CURRENT_PLAN_DOCUMENT_OPEN,
+              when: Boolean(plan?.planDocument?.path),
+              clipRoots: stripClipRoots,
+            })}
             type="button"
             class="task-current-plan-segment task-current-plan-plan-action"
             data-current-plan-action="plan"
-            aria-label=${plan ? `Open plan: ${plan.title}` : "Open plan"}
+            aria-label=${planLabel}
             ?hidden=${!plan}
             @click=${this.openPlan}
           >
@@ -305,6 +237,13 @@ export class CaffoldTaskCurrentPlan extends LitElement {
             >${plan?.title ?? ""}</strong>
           </button>
           <button
+            ${this.hints.button({
+              id: "checklist",
+              label: checklistLabel,
+              action: ACTION_HINT_ACTION.CURRENT_PLAN_DOCUMENT_OPEN,
+              when: Boolean(plan?.checklistDocument?.path),
+              clipRoots: stripClipRoots,
+            })}
             type="button"
             class="task-current-plan-segment task-current-plan-checklist-action"
             data-current-plan-action="checklist"
@@ -317,13 +256,19 @@ export class CaffoldTaskCurrentPlan extends LitElement {
             >
           </button>
           <button
+            ${drawn(this.statusAction)}
+            ${this.hints.button({
+              id: "status",
+              label: statusLabel,
+              action: ACTION_HINT_ACTION.CURRENT_PLAN_STATUS_OPEN,
+              when: attention,
+              clipRoots: stripClipRoots,
+            })}
             type="button"
             class="task-current-plan-segment task-current-plan-status-action"
             data-current-plan-action="status"
             popovertarget=${popoverId}
-            aria-label=${
-              attention ? `Plan status: ${presentation.label}` : nothing
-            }
+            aria-label=${attention ? statusLabel : nothing}
             title=${attention ? presentation.label : nothing}
             ?hidden=${!attention}
           >
@@ -342,6 +287,12 @@ export class CaffoldTaskCurrentPlan extends LitElement {
         </div>
       </section>
       <div
+        ${drawn(this.statusPopover)}
+        ${this.keyboard.popover({
+          id: `task:${threadId}:current-plan:status`,
+          label: "Plan status",
+          sessionBound: presentation.refreshAvailable,
+        })}
         id=${popoverId}
         class="task-current-plan-popover"
         popover="auto"
@@ -357,20 +308,24 @@ export class CaffoldTaskCurrentPlan extends LitElement {
           ?hidden=${!presentation.refreshAvailable}
         >
           <button
+            ${this.hints.button({
+              id: "refresh",
+              label: refreshLabel,
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              badgeAtEnd: true,
+            })}
             type="button"
             class="task-secondary-button"
             data-current-plan-action="refresh"
             @click=${this.requestRead}
-          >${
-            this.node === CURRENT_PLAN_NODE.READING
-              ? "Refreshing..."
-              : "Refresh"
-          }</button>
+          >${refreshLabel}</button>
         </div>
         <caffold-keyboard-navigation-presentation
+          ${this.keyboard.presentation()}
         ></caffold-keyboard-navigation-presentation>
       </div>
       <caffold-current-plan-document-dialog
+        ${drawn(this.documentDialog)}
       ></caffold-current-plan-document-dialog>
     `;
   }
@@ -379,8 +334,8 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     const focused = document.activeElement;
     this.statusHadFocus = Boolean(
       focused &&
-        (focused === this.stripAction("status") ||
-          this.statusPopover?.contains(focused)),
+        (focused === this.statusAction.value ||
+          this.statusPopover.value?.contains(focused)),
     );
   }
 
@@ -391,12 +346,12 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     if (this.dataset.lifecycle !== this.node) {
       this.dataset.lifecycle = this.node;
     }
-    const strip = this.strip;
-    const status = this.stripAction("status");
-    if (!strip.hidden && status?.hidden && this.statusHadFocus) {
-      this.stripAction("plan")?.focus({ preventScroll: true });
+    const strip = this.strip.value;
+    const status = this.statusAction.value;
+    if (!strip?.hidden && status?.hidden && this.statusHadFocus) {
+      this.planAction.value?.focus({ preventScroll: true });
     }
-    if (strip.hidden || status?.hidden) {
+    if (strip?.hidden || status?.hidden) {
       this.hideStatusPopover();
     }
   }
@@ -410,7 +365,7 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     this.contextGeneration += 1;
     this.invalidateRequest();
     this.releaseWatch();
-    this.documentDialog?.deactivate();
+    this.documentDialog.value?.deactivate();
     this.hideStatusPopover();
     this.projection = null;
     this.readError = null;
@@ -521,7 +476,7 @@ export class CaffoldTaskCurrentPlan extends LitElement {
           documents.length === 0 ||
           documents.some((document) => watchChangeAffectsPath(change, document))
         ) {
-          this.documentDialog?.refreshOpenDocument();
+          this.documentDialog.value?.refreshOpenDocument();
           this.requestRead();
         }
       },
@@ -583,7 +538,7 @@ export class CaffoldTaskCurrentPlan extends LitElement {
       return;
     }
     const rootPath = this.context?.rootPath ?? "";
-    this.documentDialog?.openDocument({
+    this.documentDialog.value?.openDocument({
       label: kind === "plan" ? "Plan" : "Checklist",
       document,
       displayPath: currentPlanDocumentDisplayPath(document.path, rootPath),
@@ -592,85 +547,14 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     });
   }
 
-  private statusKeyboardNavigationContexts() {
-    const threadId = this.context?.threadId ?? "";
-    const popover = this.statusPopover;
-    const presentation =
-      popover?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const dialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (!threadId || !popover || !dialog || !hud || !selector) {
-      return [];
-    }
-    const generation = this.contextGeneration;
-    const contextId = `task:${threadId}:current-plan:status`;
-    const isCurrent = () =>
-      this.isConnected &&
-      this.contextGeneration === generation &&
-      this.statusPopover === popover;
-    const refreshSelector = '[data-current-plan-action="refresh"]';
-    const refresh = popover.querySelector<HTMLButtonElement>(refreshSelector);
-    const refreshTargets =
-      !refresh || !hasActionHintLayoutBox(refresh)
-        ? []
-        : [
-            buttonActionHintTarget({
-              invalidationOwner: this,
-              id: `${contextId}:refresh`,
-              actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-              label: refresh.textContent?.trim() || "Refresh",
-              control: refresh,
-              clipRoots: [popover],
-              badgeAtEnd: true,
-              isActionable: () =>
-                isCurrent() &&
-                popover.querySelector(refreshSelector) === refresh &&
-                hasActionHintLayoutBox(refresh),
-            }),
-          ];
-    return [
-      keyboardNavigationContext({
-        id: contextId,
-        kind: "popover",
-        root: popover,
-        actionHints:
-          refreshTargets.length === 0
-            ? { dialog, scope: emptyActionHintScope() }
-            : {
-                dialog,
-                scope: {
-                  blocked: false,
-                  targets: refreshTargets,
-                  mutationRoots: [popover],
-                  scrollRoots: [popover],
-                },
-                sessionBound: true,
-              },
-        scroll: {
-          hud,
-          selector,
-          scope: popoverScrollSurfaceScope({
-            id: contextId,
-            label: "Plan status",
-            popover,
-            isCurrent,
-          }),
-        },
-      }),
-    ];
-  }
-
   private handleDismiss(event: Event) {
-    if (event.target === this.statusPopover) {
+    if (event.target === this.statusPopover.value) {
       this.hideStatusPopover();
     }
   }
 
   private hideStatusPopover() {
-    const popover = this.statusPopover;
+    const popover = this.statusPopover.value;
     if (!popover?.matches(":popover-open")) {
       return;
     }
@@ -679,30 +563,6 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     } catch {
       // The component may have been detached during a parent transition.
     }
-  }
-
-  private stripAction(action: "plan" | "checklist" | "status") {
-    return this.querySelector<HTMLButtonElement>(
-      `:scope > .task-current-plan-strip [data-current-plan-action="${action}"]`,
-    );
-  }
-
-  private get strip() {
-    return this.querySelector(
-      ":scope > .task-current-plan-strip",
-    ) as HTMLElement;
-  }
-
-  private get statusPopover() {
-    return this.querySelector<HTMLElement>(
-      ":scope > .task-current-plan-popover",
-    );
-  }
-
-  private get documentDialog() {
-    return this.querySelector<CaffoldCurrentPlanDocumentDialog>(
-      ":scope > caffold-current-plan-document-dialog",
-    );
   }
 }
 

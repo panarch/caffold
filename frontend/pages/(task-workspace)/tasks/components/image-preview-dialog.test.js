@@ -8,30 +8,10 @@ import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./image-preview-dialog.ts");
+const { ActionHints } = await import("#app/action-hints.ts");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
 const ImageDialog = registry.element("caffold-task-image-preview-dialog");
-const imageDialog = ImageDialog.prototype;
 after(() => registry.restore());
-
-test("keeps the retained image Close control as its only target", () => {
-  const control = {
-    disabled: false,
-    getAttribute: () => "Close image preview",
-    focus() {},
-    click() {},
-  };
-  const dialog = {
-    open: true,
-    querySelector: () => control,
-  };
-  const owner = { isConnected: true, dialog };
-  const scope = imageDialog.actionHintScope.call(owner);
-
-  assert.equal(scope.targets.length, 1);
-  assert.equal(scope.targets[0].id, "task-image-preview:close");
-  assert.equal(scope.targets[0].isActionable(), true);
-  dialog.querySelector = () => null;
-  assert.equal(scope.targets[0].isActionable(), false);
-});
 
 test("says the picture is loading until it can be drawn, or that it cannot", () => {
   const loading = draw({ name: "diagram.png", src: "", view: "loading" });
@@ -53,5 +33,7 @@ function draw(state) {
     ImageDialog.prototype,
     Object.getOwnPropertyDescriptors(state),
   );
+  dialog.hints = new ActionHints(dialog, () => {});
+  dialog.keyboard = new KeyboardContexts(dialog, () => {});
   return templateHtml(dialog.render()).replace(/\s+/g, " ");
 }

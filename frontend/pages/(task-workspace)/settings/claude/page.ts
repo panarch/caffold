@@ -1,25 +1,17 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import { type ClaudeStatus, getClaudeStatus } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "../components/detail-list.ts";
 import type { SettingsDetailRow } from "../components/detail-list.ts";
 import "../components/refresh-button.ts";
 import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.ts";
-import { serviceStatusTargets } from "../service-status.ts";
 import {
   idleTimeoutValue,
   usageWindowLabel,
@@ -56,6 +48,18 @@ export class CaffoldSettingsClaudePage extends LitElement {
   declare private statusState: "idle" | "loading" | "loaded" | "unavailable";
   private operation = 0;
   private active = false;
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.scrollport.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly refreshButton = new DrawnRef<CaffoldSettingsRefreshButton>(
+    this,
+  );
 
   constructor() {
     super();
@@ -111,12 +115,23 @@ export class CaffoldSettingsClaudePage extends LitElement {
     const unanswered = this.unansweredRows();
     const restarting = this.restartState === "restarting";
     return html`
-      <div class="settings-content-scroll">
+      <div
+        ${drawn(this.scrollport)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.scrollport.value],
+        })}
+        class="settings-content-scroll"
+      >
         <div class="settings-content-section">
           <header>
             <div>
               <p>The Claude Code installation this server drives.</p>
               <a
+                ${this.hints.link({
+                  id: "service-status",
+                  action: ACTION_HINT_ACTION.LINK_OPEN,
+                })}
                 class="settings-service-status"
                 href=${CLAUDE_SERVICE_STATUS_URL}
                 target="_blank"
@@ -124,6 +139,7 @@ export class CaffoldSettingsClaudePage extends LitElement {
               >Service status</a>
             </div>
             <caffold-settings-refresh-button
+              ${drawn(this.refreshButton)}
               .refreshing=${this.statusState === "loading"}
               @caffold:settings-refresh-intent=${this.refresh}
             ></caffold-settings-refresh-button>
@@ -153,6 +169,11 @@ export class CaffoldSettingsClaudePage extends LitElement {
                 </p>
               </div>
               <button
+                ${this.hints.button({
+                  id: "restart-runtime",
+                  label: "Restart runtime",
+                  action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                })}
                 type="button"
                 data-action="open-claude-restart"
                 ?disabled=${restarting}
@@ -177,98 +198,28 @@ export class CaffoldSettingsClaudePage extends LitElement {
 
   actionHintScope({
     scopeId = "settings:claude",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyActionHintScope();
-    }
-    const targetClipRoots = [this, scrollport, ...clipRoots].filter(Boolean);
-    const selector = 'button[data-action="open-claude-restart"]';
-    const control = this.querySelector<HTMLButtonElement>(selector);
-    const targets = serviceStatusTargets(this, {
-      scopeId,
-      clipRoots: targetClipRoots,
-      isCurrent,
-    });
-    if (
-      control &&
-      !control.disabled &&
-      !control.hidden &&
-      hasActionHintLayoutBox(control)
-    ) {
-      targets.push(
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:restart-runtime`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label:
-            control.getAttribute("aria-label") ||
-            control.textContent?.trim() ||
-            "Restart runtime",
-          control,
-          clipRoots: targetClipRoots,
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(selector) === control &&
-            !control.disabled &&
-            !control.hidden &&
-            hasActionHintLayoutBox(control),
-        }),
-      );
-    }
+    ...pull
+  }: ActionHintPull = {}) {
+    const own = this.hints.scope({ ...pull, scopeId });
     return mergeActionHintScopes(
-      this.refreshButton?.actionHintScope({
+      own,
+      this.refreshButton.value?.actionHintScope({
         scopeId,
-        clipRoots: targetClipRoots,
-        isCurrent: () => this.isConnected && !this.hidden && isCurrent(),
+        clipRoots: [
+          this,
+          this.scrollport.value as HTMLDivElement,
+          ...(pull.clipRoots ?? []),
+        ],
       }),
-      {
-        blocked: false,
-        targets,
-        mutationRoots: [this],
-        scrollRoots: [scrollport],
-      },
     );
   }
 
   scrollSurfaceScope({
     scopeId = "settings:claude",
     label = "Claude settings",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.querySelector(":scope > .settings-content-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(":scope > .settings-content-scroll") ===
-              scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   private agentRows(): readonly SettingsDetailRow[] {
@@ -367,12 +318,6 @@ export class CaffoldSettingsClaudePage extends LitElement {
   private openRestart() {
     this.dispatchEvent(
       new CustomEvent(CLAUDE_RUNTIME_RESTART_REQUEST_EVENT, { bubbles: true }),
-    );
-  }
-
-  private get refreshButton() {
-    return this.querySelector<CaffoldSettingsRefreshButton>(
-      "caffold-settings-refresh-button",
     );
   }
 }

@@ -1,11 +1,9 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import type { CaffoldUpdateSnapshot } from "../settings/about/page.ts";
 
@@ -20,15 +18,13 @@ const MODES: readonly { mode: WorkspaceMode; label: string; icon: string }[] = [
 /**
  * The workspace's Tasks, Notes, and Settings buttons, with the one shown
  * marked current and Settings marked while an update waits.
- *
- * The workspace hands it the mode and update state and reads its Action
- * Hints right after, so it draws at once.
  */
 export class CaffoldTaskWorkspaceNavigation extends LitElement {
   private mode: WorkspaceMode = "tasks";
   private updateAvailable = false;
   private reloadReady = false;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
 
   createRenderRoot() {
     return this;
@@ -63,42 +59,8 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
     this.draw();
   }
 
-  actionHintScope({
-    scopeId = "workspace",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    this.performUpdate();
-    if (this.hidden) {
-      return emptyActionHintScope();
-    }
-    const targets = MODES.flatMap(({ mode, label }) => {
-      const control = this.modeButton(mode);
-      if (!control || control.disabled || mode === this.mode) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:mode:${mode}`,
-          actionId: ACTION_HINT_ACTION.WORKSPACE_SELECT,
-          label: control.getAttribute("aria-label") || `Open ${label}`,
-          control,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.mode !== mode &&
-            this.modeButton(mode) === control &&
-            !control.disabled,
-        }),
-      ];
-    });
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope({ scopeId = "workspace", ...pull }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   render() {
@@ -108,17 +70,23 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
     ].filter(Boolean);
     return html`
       <nav class="task-workspace-navigation" aria-label="Workspace">
-        ${MODES.map(
-          ({ mode, label, icon }) => html`<button
+        ${MODES.map(({ mode, label, icon }) => {
+          const notice =
+            mode === "settings" && notices.length > 0
+              ? `Settings — ${notices.join(", ")}`
+              : "";
+          return html`<button
+            ${this.hints.button({
+              id: `mode:${mode}`,
+              label: notice || `Open ${label}`,
+              action: ACTION_HINT_ACTION.WORKSPACE_SELECT,
+              when: mode !== this.mode,
+            })}
             type="button"
             data-workspace-mode=${mode}
             ?aria-current=${mode === this.mode}
-            ?data-update-available=${mode === "settings" && notices.length > 0}
-            aria-label=${
-              mode === "settings" && notices.length > 0
-                ? `Settings — ${notices.join(", ")}`
-                : nothing
-            }
+            ?data-update-available=${Boolean(notice)}
+            aria-label=${notice || nothing}
             @click=${this.select}
           >
             <span data-workspace-navigation-icon=${mode}>${inlineIcon(
@@ -127,8 +95,8 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
               "task-workspace-navigation-icon",
             )}</span>
             <span>${label}</span>
-          </button>`,
-        )}
+          </button>`;
+        })}
       </nav>
     `;
   }
@@ -140,12 +108,6 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
         bubbles: true,
         detail: { mode: button.dataset.workspaceMode },
       }),
-    );
-  }
-
-  private modeButton(mode: WorkspaceMode) {
-    return this.querySelector<HTMLButtonElement>(
-      `:scope > .task-workspace-navigation > button[data-workspace-mode="${mode}"]`,
     );
   }
 

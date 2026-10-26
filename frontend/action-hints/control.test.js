@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   ACTION_HINT_ACTIVATE_EVENT,
   ACTION_HINT_CANCEL_EVENT,
-} from "./control.js";
+} from "./control.ts";
 
 test("keeps Action Hint presentation events inside the Action Hint boundary", () => {
   assert.equal(ACTION_HINT_ACTIVATE_EVENT, "caffold:action-hint-activate");

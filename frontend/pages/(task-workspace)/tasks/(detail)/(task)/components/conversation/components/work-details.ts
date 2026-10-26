@@ -1,21 +1,20 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  disclosureActionHintTarget,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { TaskEvent } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ScrollSurfacePull,
+  ScrollSurfaces,
+} from "#app/scroll-scope.ts";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import {
   eventIdentityKey,
@@ -101,8 +100,19 @@ export class CaffoldTaskWorkDetails extends LitElement {
   declare events: TaskEvent[];
   declare filePathPresentationBase: string;
   private items: WorkItem[] = [];
-  private scrollSurfaceRecords: RawScrollSurfaceRecord[] = [];
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly details = new DrawnRef<HTMLDetailsElement>(this);
+  private readonly summary = new DrawnRef<HTMLElement>(this);
+  private readonly chevron = new DrawnRef<HTMLElement>(this);
+  private readonly body = new DrawnRef<HTMLDivElement>(this);
+  // Each item's command, command group, or message, by kind and identity.
+  private readonly parts = new DrawnRefs<WorkItemPart>(this);
 
   constructor() {
     super();
@@ -138,15 +148,40 @@ export class CaffoldTaskWorkDetails extends LitElement {
   // The summary toggles the native disclosure; drawing again keeps what the
   // person chose.
   render() {
+    const open = this.disclosureState().get("root") ?? false;
+    const outputs = outputOrdinals(this.items);
+    const parts = {
+      parts: this.parts,
+      surfaces: this.surfaces,
+      clipRoots: () => [this, this.body.value],
+    };
     return html`
       <details
+        ${drawn(this.details)}
         data-work-details-disclosure-key="root"
-        ?open=${this.disclosureState().get("root") ?? false}
+        ?open=${open}
+        @toggle=${this.followDisclosure}
       >
-        <summary @click=${this.toggleDisclosure}>
+        <summary
+          ${drawn(this.summary)}
+          ${this.hints.disclosure({
+            id: `disclosure:${encodeURIComponent(this.identity)}:root`,
+            label: `${open ? "Collapse" : "Expand"} ${
+              this.label.trim() || "Work details"
+            }`,
+            action: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+            anchor: () => this.chevron.value,
+            when: Boolean(this.identity),
+          })}
+          @click=${this.toggleDisclosure}
+        >
           <span class="task-work-details-label">
             <span class="task-work-details-label-text">${this.label}</span>
-            <span class="task-work-details-chevron" aria-hidden="true">
+            <span
+              ${drawn(this.chevron)}
+              class="task-work-details-chevron"
+              aria-hidden="true"
+            >
               ${inlineIcon(
                 "ChevronRight",
                 "Collapsed",
@@ -161,10 +196,10 @@ export class CaffoldTaskWorkDetails extends LitElement {
           </span>
           <span class="task-work-details-count">${this.updateText}</span>
         </summary>
-        <div class="task-work-details-body">${repeat(
+        <div ${drawn(this.body)} class="task-work-details-body">${repeat(
           this.items,
           (item) => item.key,
-          workItemTemplate,
+          (item) => workItemTemplate(item, outputs.get(item.key) ?? 0, parts),
         )}</div>
       </details>
     `;
@@ -174,12 +209,6 @@ export class CaffoldTaskWorkDetails extends LitElement {
     if (changed.has("identity")) {
       this.dataset.workDetailsIdentity = this.identity;
     }
-    if (changed.has("events") || changed.has("filePathPresentationBase")) {
-      const body = this.querySelector<HTMLElement>(
-        ":scope > details > .task-work-details-body",
-      );
-      this.scrollSurfaceRecords = body ? rawScrollSurfaceRecords(body) : [];
-    }
   }
 
   disclosureOpen(key = "root") {
@@ -187,187 +216,62 @@ export class CaffoldTaskWorkDetails extends LitElement {
   }
 
   disclosureAnchorTop(key = "root") {
-    return (
-      this.disclosure(key)
-        ?.querySelector(":scope > summary")
-        ?.getBoundingClientRect().top ?? null
-    );
+    return key === "root"
+      ? (this.summary.value?.getBoundingClientRect().top ?? null)
+      : null;
   }
 
   actionHintScope({
     scopeId = "",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    const disclosureSelector =
-      ':scope > details[data-work-details-disclosure-key="root"]';
-    const disclosure =
-      this.querySelector<HTMLDetailsElement>(disclosureSelector);
-    const control = disclosure?.querySelector<HTMLElement>(":scope > summary");
-    const anchor = control?.querySelector(
-      ":scope > .task-work-details-label > .task-work-details-chevron",
-    );
-    const body = this.querySelector<HTMLElement>(
-      ":scope > details > .task-work-details-body",
-    );
-    const identity = this.identity;
-    if (!scopeId || !body || !identity || this.hidden) {
+    ...pull
+  }: ActionHintPull = {}) {
+    const own = this.hints.scope({ ...pull, scopeId, clipRoots });
+    const body = this.body.value;
+    if (!body) {
       return emptyActionHintScope();
     }
-    const ownScope: ActionHintScope | null =
-      disclosure && control && anchor
-        ? {
-            blocked: false,
-            targets: [
-              disclosureActionHintTarget({
-                invalidationOwner: this,
-                id: `${scopeId}:disclosure:${encodeURIComponent(identity)}:root`,
-                actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-                label: `${disclosure.open ? "Collapse" : "Expand"} ${
-                  this.label.trim() || "Work details"
-                }`,
-                control,
-                anchor,
-                clipRoots: [this, ...clipRoots].filter(Boolean),
-                isActionable: () =>
-                  this.isConnected &&
-                  !this.hidden &&
-                  this.identity === identity &&
-                  this.querySelector(disclosureSelector) === disclosure &&
-                  disclosure.querySelector(":scope > summary") === control &&
-                  control.querySelector(
-                    ":scope > .task-work-details-label > .task-work-details-chevron",
-                  ) === anchor,
-              }),
-            ],
-            mutationRoots: [this],
-            scrollRoots: [],
-          }
-        : null;
-    const childClipRoots = [this, body, ...clipRoots].filter(Boolean);
-    const scopes = Array.from(body.children)
-      .flatMap((item) => {
-        const commandIdentity =
-          item.getAttribute("data-command-work-identity") ?? "";
-        const groupIdentity =
-          item.getAttribute("data-command-group-work-identity") ?? "";
-        const messageIdentity =
-          item.getAttribute("data-message-work-identity") ?? "";
-        return [
-          commandIdentity &&
-            item
-              .querySelector<CaffoldTaskCommand>(
-                ":scope > caffold-task-command",
-              )
-              ?.actionHintScope({
-                scopeId: `${scopeId}:command:${commandIdentity}`,
-                clipRoots: childClipRoots,
-              }),
-          groupIdentity &&
-            item
-              .querySelector<CaffoldTaskCommandGroup>(
-                ":scope > caffold-task-command-group",
-              )
-              ?.actionHintScope({
-                scopeId: `${scopeId}:command-group:${groupIdentity}`,
-                clipRoots: childClipRoots,
-              }),
-          messageIdentity &&
-            item
-              .querySelector<CaffoldTaskAssistantMessage>(
-                ":scope > caffold-task-assistant-message",
-              )
-              ?.actionHintScope({
-                scopeId: `${scopeId}:message:${messageIdentity}`,
-                clipRoots: childClipRoots,
-              }),
-        ];
-      })
-      .filter((scope): scope is ActionHintScope => Boolean(scope));
-    return mergeActionHintScopes(ownScope, ...scopes);
+    const childClipRoots = [this, body, ...clipRoots];
+    return mergeActionHintScopes(
+      own,
+      ...this.items.map((item) =>
+        "identity" in item
+          ? this.parts.get(`${item.kind}:${item.identity}`)?.actionHintScope({
+              scopeId: `${scopeId}:${item.kind}:${item.identity}`,
+              clipRoots: childClipRoots,
+            })
+          : null,
+      ),
+    );
   }
 
   scrollSurfaceScope({
     scopeId = "",
     clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const disclosure = this.querySelector<HTMLDetailsElement>(
-      ':scope > details[data-work-details-disclosure-key="root"]',
-    );
-    const body = disclosure?.querySelector<HTMLElement>(
-      ":scope > .task-work-details-body",
-    );
-    const identity = this.identity;
-    if (!scopeId || !disclosure || !body || !identity || this.hidden) {
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    const own = this.surfaces.scope({ ...pull, scopeId, clipRoots });
+    const body = this.body.value;
+    if (!body || !this.details.value?.open) {
       return emptyScrollSurfaceScope();
     }
-    const current = () =>
-      this.isConnected &&
-      !this.hidden &&
-      isCurrent() &&
-      this.identity === identity &&
-      this.querySelector(
-        ':scope > details[data-work-details-disclosure-key="root"]',
-      ) === disclosure &&
-      disclosure.open &&
-      disclosure.querySelector(":scope > .task-work-details-body") === body;
-    const rawScopes = this.scrollSurfaceRecords.map(
-      (record): ScrollSurfaceScope => ({
-        blocked: false,
-        surfaces: [
-          {
-            id: `${scopeId}:raw:${record.ordinal}`,
-            label: record.label,
-            scrollport: record.scrollport,
-            axes: ["horizontal"],
-            clipRoots: [this, body, record.scrollport, ...clipRoots].filter(
-              Boolean,
-            ),
-            isEligible: () =>
-              current() &&
-              this.scrollSurfaceRecords.includes(record) &&
-              body.contains(record.scrollport) &&
-              hasScrollLayoutBox(this) &&
-              hasScrollLayoutBox(record.scrollport),
-          },
-        ],
-        mutationRoots: [this],
-        resizeElements: [this, record.scrollport],
-        scrollRoots: [record.scrollport],
-      }),
+    const childClipRoots = [this, body, ...clipRoots];
+    return mergeScrollSurfaceScopes(
+      own,
+      ...this.items.map((item) =>
+        item.kind === "command" || item.kind === "message"
+          ? (
+              this.parts.get(`${item.kind}:${item.identity}`) as
+                | CaffoldTaskCommand
+                | CaffoldTaskAssistantMessage
+                | undefined
+            )?.scrollSurfaceScope({
+              scopeId: `${scopeId}:${item.kind}:${item.identity}`,
+              clipRoots: childClipRoots,
+            })
+          : null,
+      ),
     );
-    const childClipRoots = [this, body, ...clipRoots].filter(Boolean);
-    const childScopes = Array.from(body.children)
-      .flatMap((item) => {
-        const commandIdentity =
-          item.getAttribute("data-command-work-identity") ?? "";
-        const messageIdentity =
-          item.getAttribute("data-message-work-identity") ?? "";
-        return [
-          commandIdentity &&
-            item
-              .querySelector<CaffoldTaskCommand>(
-                ":scope > caffold-task-command",
-              )
-              ?.scrollSurfaceScope({
-                scopeId: `${scopeId}:command:${commandIdentity}`,
-                clipRoots: childClipRoots,
-                isCurrent: current,
-              }),
-          messageIdentity &&
-            item
-              .querySelector<CaffoldTaskAssistantMessage>(
-                ":scope > caffold-task-assistant-message",
-              )
-              ?.scrollSurfaceScope({
-                scopeId: `${scopeId}:message:${messageIdentity}`,
-                clipRoots: childClipRoots,
-                isCurrent: current,
-              }),
-        ];
-      })
-      .filter((scope): scope is ScrollSurfaceScope => Boolean(scope));
-    return mergeScrollSurfaceScopes(...rawScopes, ...childScopes);
   }
 
   private toggleDisclosure(event: Event) {
@@ -392,12 +296,13 @@ export class CaffoldTaskWorkDetails extends LitElement {
     );
   }
 
+  // The disclosure has opened or closed, so its Action Hint says the other.
+  private followDisclosure() {
+    this.requestUpdate();
+  }
+
   private disclosure(key: string) {
-    return Array.from(
-      this.querySelectorAll<HTMLDetailsElement>(
-        "details[data-work-details-disclosure-key]",
-      ),
-    ).find((entry) => entry.dataset.workDetailsDisclosureKey === key);
+    return key === "root" ? this.details.value : undefined;
   }
 
   private disclosureState() {
@@ -417,25 +322,53 @@ export class CaffoldTaskWorkDetails extends LitElement {
     if (!this.hasUpdated || !this.identity) {
       return;
     }
-    const state = this.disclosureState();
-    for (const disclosure of this.querySelectorAll<HTMLDetailsElement>(
-      "details[data-work-details-disclosure-key]",
-    )) {
-      state.set(
-        disclosure.dataset.workDetailsDisclosureKey ?? "",
-        disclosure.open,
-      );
+    const disclosure = this.details.value;
+    if (disclosure) {
+      this.disclosureState().set("root", disclosure.open);
     }
   }
 }
 
-interface RawScrollSurfaceRecord {
-  scrollport: HTMLElement;
-  ordinal: number;
-  label: string;
+type WorkItemPart =
+  | CaffoldTaskCommand
+  | CaffoldTaskCommandGroup
+  | CaffoldTaskAssistantMessage;
+
+// Where an item's parts are kept and how its printed output scrolls.
+interface WorkItemParts {
+  parts: DrawnRefs<WorkItemPart>;
+  surfaces: ScrollSurfaces;
+  clipRoots: () => Array<Element | undefined>;
 }
 
-function workItemTemplate(item: WorkItem) {
+// The place of each item's printed output among all of the turn's, which its
+// Scroll surface is numbered by.
+function outputOrdinals(items: WorkItem[]) {
+  const ordinals = new Map<string, number>();
+  for (const item of items) {
+    if ((item.kind === "file-change" || item.kind === "shell") && item.text) {
+      ordinals.set(item.key, ordinals.size + 1);
+    }
+  }
+  return ordinals;
+}
+
+function workItemTemplate(
+  item: WorkItem,
+  output: number,
+  { parts, surfaces, clipRoots }: WorkItemParts,
+) {
+  const printed = (label: string, text: string) =>
+    text
+      ? html`<pre
+          ${surfaces.surface({
+            id: `raw:${output}`,
+            label: () => `${label || "Work details"} output ${output}`,
+            axes: ["horizontal"],
+            clipRoots,
+          })}
+        >${text}</pre>`
+      : nothing;
   if (item.kind === "message") {
     // A message the agent wrote reads as prose wherever it appears, so a
     // folded turn mounts the same component the conversation shows inline.
@@ -446,6 +379,7 @@ function workItemTemplate(item: WorkItem) {
       data-message-work-identity=${item.identity}
     >
       <caffold-task-assistant-message
+        ${drawn(parts.of(`message:${item.identity}`))}
         .event=${item.event}
       ></caffold-task-assistant-message>
     </article>`;
@@ -456,7 +390,10 @@ function workItemTemplate(item: WorkItem) {
       data-event-type="command_execution"
       data-command-work-identity=${item.identity}
     >
-      <caffold-task-command .event=${item.event}></caffold-task-command>
+      <caffold-task-command
+        ${drawn(parts.of(`command:${item.identity}`))}
+        .event=${item.event}
+      ></caffold-task-command>
     </article>`;
   }
   if (item.kind === "command-group") {
@@ -466,6 +403,7 @@ function workItemTemplate(item: WorkItem) {
       data-command-group-work-identity=${item.identity}
     >
       <caffold-task-command-group
+        ${drawn(parts.of(`command-group:${item.identity}`))}
         .identity=${item.identity}
         .events=${item.events}
       ></caffold-task-command-group>
@@ -482,7 +420,7 @@ function workItemTemplate(item: WorkItem) {
         <strong>Files changed</strong>
         ${observedTime(item.event)}
       </header>
-      ${item.text ? html`<pre>${item.text}</pre>` : nothing}
+      ${printed("Files changed", item.text)}
       <caffold-task-changed-files
         .files=${item.files}
       ></caffold-task-changed-files>
@@ -498,7 +436,7 @@ function workItemTemplate(item: WorkItem) {
         <strong>${item.label}</strong>
         ${observedTime(item.event)}
       </header>
-      ${item.text ? html`<pre>${item.text}</pre>` : nothing}
+      ${printed(item.label, item.text)}
     </article>`;
   }
   return html`<article
@@ -669,23 +607,6 @@ function fileChangeWorkIdentity(events: TaskEvent[]) {
       taskEventPositionIndex(first),
     ].join(":")
   }`;
-}
-
-function rawScrollSurfaceRecords(body: HTMLElement): RawScrollSurfaceRecord[] {
-  return Array.from(
-    body.querySelectorAll<HTMLElement>(
-      ":scope > .task-work-details-item > pre",
-    ),
-  ).map((scrollport, index) => {
-    const itemLabel = scrollport.parentElement
-      ?.querySelector(":scope > header > strong")
-      ?.textContent?.trim();
-    return {
-      scrollport,
-      ordinal: index + 1,
-      label: `${itemLabel || "Work details"} output ${index + 1}`,
-    };
-  });
 }
 
 function changedEventList(next: TaskEvent[], previous?: TaskEvent[]) {

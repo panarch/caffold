@@ -1,11 +1,11 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScopeOptions,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import {
   type GitCommit,
   type GitDiff,
@@ -17,8 +17,9 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ScrollSurfacePull,
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "#components/file-viewer.ts";
 import type { CaffoldReviewFileViewer } from "#components/file-viewer.ts";
 import {
@@ -58,6 +59,9 @@ export class CaffoldGitLogCommitPage extends LitElement {
   private commitRequestId = 0;
   private fileRequestId = 0;
   private treeScrollTop = 0;
+  private readonly filesList = new DrawnRef<CaffoldCommitChangesTree>(this);
+  private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
+  private readonly viewer = new DrawnRef<CaffoldReviewFileViewer>(this);
 
   createRenderRoot() {
     return this;
@@ -65,14 +69,18 @@ export class CaffoldGitLogCommitPage extends LitElement {
 
   render() {
     return html`
-      <caffold-commit-changes-tree></caffold-commit-changes-tree>
+      <caffold-commit-changes-tree
+        ${drawn(this.filesList)}
+      ></caffold-commit-changes-tree>
       <caffold-pane-resizer
+        ${drawn(this.paneResizer)}
         storage-key="caffold:pane-width:git-log-commit"
         collapsed-storage-key="caffold:pane-collapsed:git-log-commit"
         aria-label="Resize review side panel"
         @caffold:pane-resize=${this.handlePanelResize}
       ></caffold-pane-resizer>
       <caffold-review-file-viewer
+        ${drawn(this.viewer)}
         refresh-action="refresh-git-review"
       ></caffold-review-file-viewer>
     `;
@@ -240,8 +248,7 @@ export class CaffoldGitLogCommitPage extends LitElement {
     const requestId = ++this.fileRequestId;
     this.commitTree.setSelectedPath(path);
     this.treeScrollTop =
-      this.commitTree.querySelector(".file-tree-scroll")?.scrollTop ??
-      this.treeScrollTop;
+      this.commitTree.scroller()?.scrollTop ?? this.treeScrollTop;
     this.setDetailView("viewer");
     this.emitStateChange();
     const presentation = this.diffPresentation(path, sha, options.status);
@@ -335,7 +342,7 @@ export class CaffoldGitLogCommitPage extends LitElement {
   actionHintScope({
     scopeId = "git:commit",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
+  }: ActionHintPull = {}) {
     const sha = this.currentCommitSha();
     if (!sha || this.hidden) {
       return emptyActionHintScope();
@@ -352,19 +359,16 @@ export class CaffoldGitLogCommitPage extends LitElement {
           scopeId: `${prefix}:files`,
           actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
           clipRoots: [this, ...clipRoots],
-          isCurrent: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.currentCommitSha() === sha &&
-            this.panelResizer === resizer,
         })
       : null;
     return mergeActionHintScopes(
       listActive
         ? this.commitTree.actionHintScope({
             scopeId: `${prefix}:files`,
-            actionId: ACTION_HINT_ACTION.FILE_OPEN,
-            disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+            actions: {
+              file: ACTION_HINT_ACTION.FILE_OPEN,
+              disclosure: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+            },
             clipRoots: [this, ...clipRoots],
           })
         : null,
@@ -372,10 +376,12 @@ export class CaffoldGitLogCommitPage extends LitElement {
       viewerActive
         ? this.fileViewer.actionHintScope({
             scopeId: `${prefix}:viewer`,
-            actionId: ACTION_HINT_ACTION.PARENT,
-            detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
-            refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-            linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
+            actions: {
+              parent: ACTION_HINT_ACTION.PARENT,
+              details: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
+              refresh: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              link: ACTION_HINT_ACTION.LINK_OPEN,
+            },
             clipRoots: [this, ...clipRoots],
           })
         : null,
@@ -385,7 +391,7 @@ export class CaffoldGitLogCommitPage extends LitElement {
   scrollSurfaceScope({
     scopeId = "git:commit",
     clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}) {
+  }: ScrollSurfacePull = {}) {
     const sha = this.currentCommitSha();
     if (!sha || this.hidden) {
       return emptyScrollSurfaceScope();
@@ -506,7 +512,7 @@ export class CaffoldGitLogCommitPage extends LitElement {
     const top = this.treeScrollTop;
     if (top > 0) {
       window.requestAnimationFrame(() => {
-        const scroller = this.commitTree.querySelector(".file-tree-scroll");
+        const scroller = this.commitTree.scroller();
         if (!scroller) {
           return;
         }
@@ -577,23 +583,17 @@ export class CaffoldGitLogCommitPage extends LitElement {
   // the page is in the document.
   private get commitTree() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-commit-changes-tree",
-    ) as CaffoldCommitChangesTree;
+    return this.filesList.value as CaffoldCommitChangesTree;
   }
 
   private get panelResizer() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-pane-resizer",
-    ) as CaffoldPaneResizer;
+    return this.paneResizer.value as CaffoldPaneResizer;
   }
 
   private get fileViewer() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-review-file-viewer",
-    ) as CaffoldReviewFileViewer;
+    return this.viewer.value as CaffoldReviewFileViewer;
   }
 }
 

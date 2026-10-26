@@ -1,8 +1,5 @@
 import { html, LitElement } from "lit";
-import {
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
-} from "#app/action-hint-scope.js";
+import type { ActionHintPull } from "#app/action-hints.ts";
 import {
   type GitHubIssues,
   type GitHubStatus,
@@ -10,10 +7,8 @@ import {
   getGitHubIssue,
   getGitHubIssues,
 } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "./detail/page.ts";
 import type { CaffoldGithubIssueDetailPage } from "./detail/page.ts";
 import "./list/page.ts";
@@ -43,6 +38,8 @@ export class CaffoldGithubIssuesLayout extends LitElement {
     null;
   private issueListRequestId = 0;
   private issueDetailRequestId = 0;
+  private readonly list = new DrawnRef<CaffoldGithubIssuesListPage>(this);
+  private readonly detail = new DrawnRef<CaffoldGithubIssueDetailPage>(this);
 
   createRenderRoot() {
     return this;
@@ -57,8 +54,12 @@ export class CaffoldGithubIssuesLayout extends LitElement {
 
   render() {
     return html`
-      <caffold-github-issues-list-page></caffold-github-issues-list-page>
-      <caffold-github-issue-detail-page></caffold-github-issue-detail-page>
+      <caffold-github-issues-list-page
+        ${drawn(this.list)}
+      ></caffold-github-issues-list-page>
+      <caffold-github-issue-detail-page
+        ${drawn(this.detail)}
+      ></caffold-github-issue-detail-page>
     `;
   }
 
@@ -229,10 +230,7 @@ export class CaffoldGithubIssuesLayout extends LitElement {
   actionHintScope({
     scopeId = "github:issues",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
-    if (this.hidden) {
-      return emptyActionHintScope();
-    }
+  }: ActionHintPull = {}) {
     return this.view === "detail"
       ? this.detailPage.actionHintScope({
           scopeId: `${scopeId}:detail`,
@@ -247,10 +245,7 @@ export class CaffoldGithubIssuesLayout extends LitElement {
   scrollSurfaceScope({
     scopeId = "github:issues",
     clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}) {
-    if (this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
+  }: ScrollSurfacePull = {}) {
     return this.view === "detail"
       ? this.detailPage.scrollSurfaceScope({
           scopeId: `${scopeId}:detail`,
@@ -334,16 +329,12 @@ export class CaffoldGithubIssuesLayout extends LitElement {
   // the layout is in the document.
   private get listPage() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-github-issues-list-page",
-    ) as CaffoldGithubIssuesListPage;
+    return this.list.value as CaffoldGithubIssuesListPage;
   }
 
   private get detailPage() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-github-issue-detail-page",
-    ) as CaffoldGithubIssueDetailPage;
+    return this.detail.value as CaffoldGithubIssueDetailPage;
   }
 }
 

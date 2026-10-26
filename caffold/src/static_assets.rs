@@ -18,6 +18,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "styles.css" => Some(css(include_str!("../../frontend/styles.css"))),
         "app.js" => Some(js(include_str!("../../frontend/app.js"))),
         "lit/index.js" => Some(js(include_str!("../../frontend/node_modules/lit/index.js"))),
+        "lit/async-directive.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit/async-directive.js"
+        ))),
         "lit/directives/keyed.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit/directives/keyed.js"
         ))),
@@ -32,6 +35,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "lit-html/lit-html.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit-html/lit-html.js"
+        ))),
+        "lit-html/async-directive.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit-html/async-directive.js"
         ))),
         "lit-html/directive.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit-html/directive.js"
@@ -67,7 +73,14 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/api.ts"
         )))),
-        "action-hint-scope.js" => Some(js(include_str!("../../frontend/action-hint-scope.js"))),
+        "action-hint-scope.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/action-hint-scope.ts"
+        )))),
+        "element-declarations.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/element-declarations.ts"
+        )))),
         "component-styles.ts" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/component-styles.ts"
@@ -519,10 +532,6 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/settings/components/navigator/components/item.ts"
             ))))
         }
-        "pages/(task-workspace)/settings/service-status.ts" => Some(js(include_str!(concat!(
-            env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/service-status.ts"
-        )))),
         "pages/(task-workspace)/settings/components/detail-list.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/components/detail-list.css"
         ))),
@@ -617,61 +626,88 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/layout.ts"
         )))),
-        "keyboard-navigation.js" => Some(js(include_str!("../../frontend/keyboard-navigation.js"))),
-        "scroll-scope.js" => Some(js(include_str!("../../frontend/scroll-scope.js"))),
-        "keyboard-navigation/control.js" => Some(js(include_str!(
-            "../../frontend/keyboard-navigation/control.js"
-        ))),
-        "keyboard-navigation/context.js" => Some(js(include_str!(
-            "../../frontend/keyboard-navigation/context.js"
-        ))),
-        "keyboard-navigation/model.js" => Some(js(include_str!(
-            "../../frontend/keyboard-navigation/model.js"
-        ))),
-        "keyboard-navigation/shortcuts.js" => Some(js(include_str!(
-            "../../frontend/keyboard-navigation/shortcuts.js"
-        ))),
+        "keyboard-navigation.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/keyboard-navigation.ts"
+        )))),
+        "scroll-scope.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/scroll-scope.ts"
+        )))),
+        "keyboard-navigation/control.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/keyboard-navigation/control.ts"
+        )))),
+        "keyboard-navigation/context.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/keyboard-navigation/context.ts"
+        )))),
+        "keyboard-navigation/model.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/keyboard-navigation/model.ts"
+        )))),
+        "keyboard-navigation/shortcuts.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/keyboard-navigation/shortcuts.ts"
+        )))),
         "keyboard-navigation/components/hud.css" => Some(css(include_str!(
             "../../frontend/keyboard-navigation/components/hud.css"
         ))),
-        "keyboard-navigation/components/hud.js" => Some(js(include_str!(
-            "../../frontend/keyboard-navigation/components/hud.js"
-        ))),
+        "keyboard-navigation/components/hud.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/keyboard-navigation/components/hud.ts"
+        )))),
         "keyboard-navigation/components/selector.css" => Some(css(include_str!(
             "../../frontend/keyboard-navigation/components/selector.css"
         ))),
-        "keyboard-navigation/components/selector.js" => Some(js(include_str!(
-            "../../frontend/keyboard-navigation/components/selector.js"
-        ))),
+        "keyboard-navigation/components/selector.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/keyboard-navigation/components/selector.ts"
+        )))),
         "keyboard-navigation/components/presentation.css" => Some(css(include_str!(
             "../../frontend/keyboard-navigation/components/presentation.css"
         ))),
-        "keyboard-navigation/components/presentation.js" => Some(js(include_str!(
-            "../../frontend/keyboard-navigation/components/presentation.js"
-        ))),
+        "keyboard-navigation/components/presentation.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/keyboard-navigation/components/presentation.ts"
+        )))),
         "keyboard-navigation/components/shortcut-list.css" => Some(css(include_str!(
             "../../frontend/keyboard-navigation/components/shortcut-list.css"
         ))),
-        "keyboard-navigation/components/shortcut-list.js" => Some(js(include_str!(
-            "../../frontend/keyboard-navigation/components/shortcut-list.js"
-        ))),
+        "keyboard-navigation/components/shortcut-list.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/keyboard-navigation/components/shortcut-list.ts"
+        )))),
         "keyboard-navigation/components/shortcut-dialog.css" => Some(css(include_str!(
             "../../frontend/keyboard-navigation/components/shortcut-dialog.css"
         ))),
-        "keyboard-navigation/components/shortcut-dialog.js" => Some(js(include_str!(
-            "../../frontend/keyboard-navigation/components/shortcut-dialog.js"
-        ))),
-        "action-hints.js" => Some(js(include_str!("../../frontend/action-hints.js"))),
-        "action-hints/control.js" => {
-            Some(js(include_str!("../../frontend/action-hints/control.js")))
-        }
-        "action-hints/model.js" => Some(js(include_str!("../../frontend/action-hints/model.js"))),
+        "keyboard-navigation/components/shortcut-dialog.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/keyboard-navigation/components/shortcut-dialog.ts"
+        )))),
+        "action-hints.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/action-hints.ts"
+        )))),
+        "action-hints/control.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/action-hints/control.ts"
+        )))),
+        "action-hints/declarations.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/action-hints/declarations.ts"
+        )))),
+        "action-hints/model.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/action-hints/model.ts"
+        )))),
         "action-hints/components/dialog.css" => Some(css(include_str!(
             "../../frontend/action-hints/components/dialog.css"
         ))),
-        "action-hints/components/dialog.js" => Some(js(include_str!(
-            "../../frontend/action-hints/components/dialog.js"
-        ))),
+        "action-hints/components/dialog.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/action-hints/components/dialog.ts"
+        )))),
         "pages/(task-workspace)/live-updates.ts" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/live-updates.ts"
@@ -873,12 +909,6 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/tasks/components/composer.ts"
         )))),
-        "pages/(task-workspace)/tasks/components/composer/action-hints.ts" => {
-            Some(js(include_str!(concat!(
-                env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/composer/action-hints.ts"
-            ))))
-        }
         "pages/(task-workspace)/tasks/components/composer/components/attachments.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/components/composer/components/attachments.css"
@@ -1898,6 +1928,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/components/icons.ts"
         )))),
+        "components/drawn-refs.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/drawn-refs.ts"
+        )))),
         "components/loading-text.css" => Some(css(include_str!(
             "../../frontend/components/loading-text.css"
         ))),
@@ -2018,11 +2052,13 @@ mod tests {
     fn serves_lit_from_the_installed_packages() {
         for path in [
             "lit/index.js",
+            "lit/async-directive.js",
             "lit/directives/keyed.js",
             "lit/directives/live.js",
             "lit/directives/repeat.js",
             "lit/directives/unsafe-html.js",
             "lit-html/lit-html.js",
+            "lit-html/async-directive.js",
             "lit-html/directive.js",
             "lit-html/directive-helpers.js",
             "lit-html/directives/keyed.js",
@@ -2324,25 +2360,26 @@ mod tests {
         assert!(settings_page.body.starts_with(b"import "));
 
         for path in [
-            "keyboard-navigation.js",
-            "keyboard-navigation/control.js",
-            "keyboard-navigation/context.js",
-            "keyboard-navigation/model.js",
-            "keyboard-navigation/shortcuts.js",
-            "keyboard-navigation/components/hud.js",
-            "keyboard-navigation/components/selector.js",
-            "keyboard-navigation/components/presentation.js",
-            "keyboard-navigation/components/shortcut-list.js",
-            "keyboard-navigation/components/shortcut-dialog.js",
+            "keyboard-navigation.ts",
+            "keyboard-navigation/control.ts",
+            "keyboard-navigation/context.ts",
+            "keyboard-navigation/model.ts",
+            "keyboard-navigation/shortcuts.ts",
+            "keyboard-navigation/components/hud.ts",
+            "keyboard-navigation/components/selector.ts",
+            "keyboard-navigation/components/presentation.ts",
+            "keyboard-navigation/components/shortcut-list.ts",
+            "keyboard-navigation/components/shortcut-dialog.ts",
             "chunked-fetch.ts",
             "chunked-fetch/cell-scheduler.ts",
             "chunked-fetch/in-flight-limit.ts",
             "chunked-fetch/transfer.ts",
             "components/file-viewer/syntax-spans.ts",
-            "action-hints.js",
-            "action-hints/control.js",
-            "action-hints/model.js",
-            "action-hints/components/dialog.js",
+            "action-hints.ts",
+            "action-hints/control.ts",
+            "action-hints/declarations.ts",
+            "action-hints/model.ts",
+            "action-hints/components/dialog.ts",
             "pages/(task-workspace)/notes/layout.ts",
             "pages/(task-workspace)/notes/layout/selection.ts",
             "pages/(task-workspace)/notes/components/document.ts",
@@ -2354,7 +2391,6 @@ mod tests {
             "pages/(task-workspace)/settings/layout.ts",
             "pages/(task-workspace)/settings/components/navigator.ts",
             "pages/(task-workspace)/settings/components/navigator/components/item.ts",
-            "pages/(task-workspace)/settings/service-status.ts",
             "pages/(task-workspace)/settings/keyboard/page.ts",
             "pages/(task-workspace)/settings/files/page.ts",
             "pages/(task-workspace)/settings/notifications/page.ts",
@@ -2372,7 +2408,6 @@ mod tests {
             "pages/(task-workspace)/settings/grok/page.ts",
             "pages/(task-workspace)/settings/grok/display.ts",
             "pages/(task-workspace)/settings/about/page.ts",
-            "pages/(task-workspace)/tasks/components/composer/action-hints.ts",
             "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.ts",
             "pages/(task-workspace)/tasks/components/task-create/directory-path.ts",
         ] {
@@ -2385,13 +2420,9 @@ mod tests {
             assert!(body.starts_with(b"import ") || body.starts_with(b"export "));
         }
 
-        let scroll_scope = get("scroll-scope.js").expect("Scroll scope module asset");
+        let scroll_scope = get("scroll-scope.ts").expect("Scroll scope module asset");
         assert_eq!(scroll_scope.content_type, "text/javascript; charset=utf-8");
-        assert!(
-            scroll_scope
-                .body
-                .starts_with(b"const SCROLL_SCOPE_LIST_KEYS")
-        );
+        assert!(scroll_scope.body.starts_with(b"import {"));
 
         for path in [
             "components/pagination/components/button.css",

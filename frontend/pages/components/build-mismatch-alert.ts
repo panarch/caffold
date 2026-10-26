@@ -1,15 +1,12 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScope,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 
 export const CAFFOLD_BUILD_MISMATCH_RELOAD_EVENT =
   "caffold:build-mismatch-reload";
-const RELOAD_BUTTON = ":scope > .build-mismatch-alert > button";
 
 /**
  * Says the server runs another Caffold build than this window loaded, with
@@ -22,6 +19,9 @@ export class CaffoldBuildMismatchAlert extends LitElement {
 
   // The server's build while it differs from this window's, or empty.
   declare serverLabel: string;
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
 
   constructor() {
     super();
@@ -32,39 +32,11 @@ export class CaffoldBuildMismatchAlert extends LitElement {
     return this;
   }
 
-  actionHintScope(): ActionHintScope {
-    this.performUpdate();
-    const control = this.querySelector<HTMLButtonElement>(RELOAD_BUTTON);
-    if (!control) {
-      return emptyActionHintScope();
-    }
-    const visible =
-      Boolean(this.serverLabel) &&
-      !this.hidden &&
-      hasActionHintLayoutBox(control);
-    return {
-      blocked: false,
-      targets: visible
-        ? [
-            buttonActionHintTarget({
-              invalidationOwner: this,
-              id: "app:build-mismatch:reload",
-              actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-              label: control.textContent?.trim() || "Reload Caffold",
-              control,
-              clipRoots: [this],
-              isActionable: () =>
-                this.isConnected &&
-                Boolean(this.serverLabel) &&
-                !this.hidden &&
-                this.querySelector(RELOAD_BUTTON) === control &&
-                !control.disabled,
-            }),
-          ]
-        : [],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope({
+    scopeId = "app:build-mismatch",
+    ...pull
+  }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   protected updated() {
@@ -82,7 +54,15 @@ export class CaffoldBuildMismatchAlert extends LitElement {
             ? `New Caffold build available (${this.serverLabel}).`
             : ""
         }</span>
-        <button type="button" @click=${this.reload}>Reload</button>
+        <button
+          ${this.hints.button({
+            id: "reload",
+            label: "Reload",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
+          type="button"
+          @click=${this.reload}
+        >Reload</button>
       </div>
     `;
   }

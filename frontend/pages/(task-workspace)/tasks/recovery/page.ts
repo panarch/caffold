@@ -1,14 +1,9 @@
 import { html, LitElement, nothing } from "lit";
-import type {
-  ActionHintScope,
-  ActionHintScopeOptions,
-} from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hints.js";
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import {
   type ActiveTask,
   type ActiveTaskRecovery,
@@ -23,12 +18,8 @@ import {
   taskAbsence,
   taskAlreadyActive,
 } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/loading-text.ts";
 import "../components/task-absence.ts";
@@ -40,7 +31,6 @@ import { taskThreadId } from "../task-list-model.ts";
 
 const REMOVAL_WARNING =
   "The Codex Thread could not be found. Caffold will remove its membership and managed Task resources. This cannot be undone.";
-const BODY = ":scope > .task-recovery-view > .task-recovery-body";
 const PENDING_LABELS: Record<string, string> = {
   restore: "Restoring Task…",
   archive: "Moving Task to Archived…",
@@ -84,6 +74,16 @@ export class CaffoldTaskRecovery extends LitElement {
   private actionError: Error | null = null;
   private confirmingRemoval = false;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly body = new DrawnRef<HTMLDivElement>(this);
+  private readonly notice = new DrawnRef<CaffoldTaskAbsence>(this);
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.body.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
 
   createRenderRoot() {
     return this;
@@ -131,97 +131,40 @@ export class CaffoldTaskRecovery extends LitElement {
   actionHintScope({
     scopeId = "task-recovery",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    this.performUpdate();
-    const notice = this.absenceNotice();
-    if (notice) {
-      return notice.actionHintScope({
-        scopeId: `${scopeId}:${taskThreadId(this.recovery)}:absence`,
-        clipRoots: [this, ...clipRoots],
-      });
-    }
-    const scrollport = this.querySelector(BODY);
+    ...pull
+  }: ActionHintPull = {}) {
     const threadId = taskThreadId(this.recovery);
-    if (this.hidden || !scrollport || !threadId) {
-      return emptyActionHintScope();
-    }
-    const targets = [
-      ...this.querySelectorAll<HTMLButtonElement>(
-        "button[data-task-recovery-action]",
-      ),
-    ].flatMap((control) => {
-      const action = `${control.dataset.taskRecoveryAction ?? ""}`;
-      if (!action || control.disabled || !hasActionHintLayoutBox(control)) {
-        return [];
-      }
-      const selector = `button[data-task-recovery-action="${action}"]`;
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:${threadId}:${action}`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label:
-            control.getAttribute("aria-label") ||
-            control.textContent?.trim() ||
-            action,
-          control,
-          clipRoots: [this, scrollport, ...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            taskThreadId(this.recovery) === threadId &&
-            this.querySelector(selector) === control &&
-            !control.disabled &&
-            hasActionHintLayoutBox(control),
-        }),
-      ];
+    const own = this.hints.scope({
+      ...pull,
+      clipRoots,
+      scopeId: `${scopeId}:${threadId}`,
     });
-    return {
-      blocked: false,
-      targets,
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
+    const notice = this.notice.value;
+    return notice
+      ? notice.actionHintScope({
+          scopeId: `${scopeId}:${threadId}:absence`,
+          clipRoots: [this, ...clipRoots],
+        })
+      : own;
   }
 
   scrollSurfaceScope({
     scopeId = "task-recovery",
     label = "Task recovery",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    this.performUpdate();
-    const scrollport = this.querySelector(BODY);
-    const threadId = taskThreadId(this.recovery);
-    if (this.hidden || !scrollport || !threadId) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:${threadId}:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots],
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            taskThreadId(this.recovery) === threadId &&
-            this.querySelector(BODY) === scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({
+      ...pull,
+      label,
+      scopeId: `${scopeId}:${taskThreadId(this.recovery)}`,
+    });
   }
 
   render() {
     const recovery = this.recovery;
     if (recovery && this.absence) {
       return html`<caffold-task-absence
+        ${drawn(this.notice)}
         @caffold:task-absence-intent=${this.absenceIntent}
       ></caffold-task-absence>`;
     }
@@ -251,6 +194,11 @@ export class CaffoldTaskRecovery extends LitElement {
           <p>${REMOVAL_WARNING}</p>
           <div class="task-recovery-confirmation-actions">
             <button
+              ${this.hints.button({
+                id: "cancel-remove",
+                label: "Cancel",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               class="task-secondary-button"
               data-task-recovery-action="cancel-remove"
@@ -258,6 +206,11 @@ export class CaffoldTaskRecovery extends LitElement {
               @click=${this.takeAction}
             >Cancel</button>
             <button
+              ${this.hints.button({
+                id: "confirm-remove",
+                label: "Remove Task",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               class="task-secondary-button task-recovery-remove-button"
               data-task-recovery-action="confirm-remove"
@@ -271,6 +224,11 @@ export class CaffoldTaskRecovery extends LitElement {
             ${
               actions.has("restoreToActive")
                 ? html`<button
+                    ${this.hints.button({
+                      id: "restore",
+                      label: "Restore to Active",
+                      action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                    })}
                     type="button"
                     class="task-secondary-button"
                     data-task-recovery-action="restore"
@@ -289,6 +247,11 @@ export class CaffoldTaskRecovery extends LitElement {
             ${
               actions.has("moveToArchived")
                 ? html`<button
+                    ${this.hints.button({
+                      id: "archive",
+                      label: "Move to Archived",
+                      action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                    })}
                     type="button"
                     class="task-secondary-button"
                     data-task-recovery-action="archive"
@@ -303,6 +266,11 @@ export class CaffoldTaskRecovery extends LitElement {
             ${
               actions.has("removeFromCaffold")
                 ? html`<button
+                    ${this.hints.button({
+                      id: "remove",
+                      label: "Remove from Caffold",
+                      action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                    })}
                     type="button"
                     class="task-secondary-button task-recovery-remove-button"
                     data-task-recovery-action="remove"
@@ -318,6 +286,11 @@ export class CaffoldTaskRecovery extends LitElement {
           ${
             actions.has("recheck")
               ? html`<button
+                  ${this.hints.button({
+                    id: "recheck",
+                    label: "Recheck",
+                    action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                  })}
                   type="button"
                   class="task-recovery-recheck-button"
                   data-task-recovery-action="recheck"
@@ -340,7 +313,14 @@ export class CaffoldTaskRecovery extends LitElement {
             recovery.title ?? "Unavailable Task"
           }</h2>
         </header>
-        <div class="task-recovery-body">
+        <div
+          ${drawn(this.body)}
+          ${this.surfaces.surface({
+            id: "scroll",
+            clipRoots: () => [this, this.body.value],
+          })}
+          class="task-recovery-body"
+        >
           <div class="task-recovery-content">
             <div class="task-recovery-heading">
               <span
@@ -538,19 +518,13 @@ export class CaffoldTaskRecovery extends LitElement {
     this.performUpdate();
     const absence = this.absence;
     if (absence) {
-      this.absenceNotice()?.setSnapshot({
+      this.notice.value?.setSnapshot({
         absence,
         title: this.recovery?.title,
         restoring: this.pendingAction === "restore-archived",
         error: this.actionError,
       });
     }
-  }
-
-  private absenceNotice() {
-    return this.querySelector<CaffoldTaskAbsence>(
-      ":scope > caffold-task-absence",
-    );
   }
 }
 

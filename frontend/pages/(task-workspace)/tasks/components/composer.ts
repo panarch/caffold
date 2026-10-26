@@ -1,15 +1,15 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintTarget,
-  buttonActionHintTarget,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
+  mergeActionHintScopes,
+} from "#app/action-hints.ts";
 import { getVoiceStatus, transcribeVoice, type VoiceStatus } from "#app/api.ts";
 import { busySpin } from "#app/component-styles.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import { cleanLogicalPath } from "../task-format.ts";
-import { collectComposerActionHintTargets } from "./composer/action-hints.ts";
 import "./composer/components/attachments.ts";
 import type {
   AttachmentRemoveDetail,
@@ -166,7 +166,6 @@ const IMAGE_INPUT_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
-const COMPOSER_KEYBOARD_CONTEXT_MODES = new Set(["create", "follow-up"]);
 
 /**
  * The prompt field, its attachments, voice input, the turn options, and the
@@ -231,6 +230,15 @@ export class CaffoldTaskComposer extends LitElement {
   private drewWhileComposing = false;
   private compositionTimer: number | null = null;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly promptField = new DrawnRef<HTMLTextAreaElement>(this);
+  private readonly attachmentStrip =
+    new DrawnRef<CaffoldTaskComposerAttachments>(this);
+  private readonly fileInput = new DrawnRef<HTMLInputElement>(this);
+  private readonly optionsControl = new DrawnRef<CaffoldTaskTurnOptions>(this);
+  private readonly usagePie = new DrawnRef<CaffoldTaskContextUsage>(this);
+  private readonly levelMeter = new DrawnRef<CaffoldVoiceLevelMeter>(this);
+  private readonly primaryButton = new DrawnRef<HTMLButtonElement>(this);
   private readonly voiceSettingsChanged = () => {
     if (VOICE_STATUS_REFRESH_PHASES.has(this.voice.phase)) {
       void this.loadVoiceStatus();
@@ -493,7 +501,7 @@ export class CaffoldTaskComposer extends LitElement {
   }
 
   focus() {
-    const textarea = this.promptField;
+    const textarea = this.promptField.value;
     textarea?.focus();
     textarea?.setSelectionRange(
       this.state.selectionStart,
@@ -510,81 +518,21 @@ export class CaffoldTaskComposer extends LitElement {
   }
 
   turnOptions() {
-    return this.querySelector<CaffoldTaskTurnOptions>(
-      ":scope caffold-task-turn-options",
+    return this.optionsControl.value ?? null;
+  }
+
+  actionHintScope({ scopeId = "", ...pull }: ActionHintPull = {}) {
+    const own = { ...pull, scopeId: `task-composer:${scopeId}` };
+    const composer = this.hints.scope(own);
+    return mergeActionHintScopes(
+      composer,
+      this.turnOptions()?.actionHintScope({ ...pull, scopeId }),
+      this.attachmentStrip.value?.actionHintScope(own),
+      this.contextUsage?.actionHintScope(own),
     );
   }
 
-  actionHintTargets({
-    scopeId = "",
-    clipRoots = [],
-  }: {
-    scopeId?: string;
-    clipRoots?: Element[];
-  } = {}) {
-    const mode = this.context.mode;
-    const fromTurnOptions = (target: ActionHintTarget | null | undefined) =>
-      target
-        ? {
-            ...target,
-            isActionable: () =>
-              this.context.mode === mode && target.isActionable(),
-          }
-        : null;
-    const existingTargets = collectComposerActionHintTargets({
-      mode,
-      scopeId,
-      modelTarget: () =>
-        fromTurnOptions(
-          this.turnOptions()?.actionHintModelTarget({ scopeId, clipRoots }),
-        ),
-      permissionTarget: () =>
-        fromTurnOptions(
-          this.turnOptions()?.actionHintPermissionTarget({
-            scopeId,
-            clipRoots,
-          }),
-        ),
-      promptTarget: () => {
-        const textarea = this.promptField;
-        return textarea
-          ? {
-              id: `task-composer:${scopeId}:prompt`,
-              actionId: ACTION_HINT_ACTION.PROMPT_FOCUS,
-              label:
-                mode === "create"
-                  ? "Edit new task prompt"
-                  : "Edit follow-up prompt",
-              invalidationOwner: this,
-              controlKind: "textbox",
-              control: textarea,
-              anchor: textarea,
-              clipRoots: [...clipRoots],
-              badgeAtEnd: false,
-              isActionable: () =>
-                this.context.mode === mode &&
-                this.promptField === textarea &&
-                !textarea.disabled,
-              activate: () => this.focus(),
-            }
-          : null;
-      },
-    });
-    if (!COMPOSER_KEYBOARD_CONTEXT_MODES.has(mode) || !scopeId) {
-      return existingTargets;
-    }
-    return [
-      ...existingTargets,
-      ...this.actionHintButtonTargets({ scopeId, clipRoots }),
-      ...this.attachmentActionHintTargets({ scopeId, clipRoots }),
-      this.contextUsage?.actionHintTarget({ scopeId, clipRoots }),
-    ].filter((target): target is ActionHintTarget => Boolean(target));
-  }
-
   keyboardNavigationContexts({ scopeId = "" }: { scopeId?: string } = {}) {
-    if (!COMPOSER_KEYBOARD_CONTEXT_MODES.has(this.context.mode)) {
-      return [];
-    }
     return this.turnOptions()?.keyboardNavigationContexts({ scopeId }) ?? [];
   }
 
@@ -705,9 +653,23 @@ export class CaffoldTaskComposer extends LitElement {
       >
         <div class="task-composer-panel" ?data-drop-target=${this.dropTarget}>
           <caffold-task-composer-attachments
+            ${drawn(this.attachmentStrip)}
             @caffold:task-composer-attachment-remove=${this.removeAttachment}
           ></caffold-task-composer-attachments>
           <textarea
+            ${drawn(this.promptField)}
+            ${this.hints.textbox({
+              id: "prompt",
+              label:
+                context.mode === "create"
+                  ? "Edit new task prompt"
+                  : "Edit follow-up prompt",
+              action: ACTION_HINT_ACTION.PROMPT_FOCUS,
+              // Focusing the Composer puts the caret back where the draft
+              // left it.
+              control: () => this,
+              when: !fieldDisabled,
+            })}
             name="prompt"
             rows="1"
             placeholder=${context.placeholder}
@@ -791,6 +753,11 @@ export class CaffoldTaskComposer extends LitElement {
           <div class="task-composer-toolbar">
             <div class="task-composer-tools">
               <button
+                ${this.hints.button({
+                  id: "attach",
+                  label: "Attach files",
+                  action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                })}
                 type="button"
                 class="task-composer-attach-button"
                 data-composer-action="attach"
@@ -804,6 +771,7 @@ export class CaffoldTaskComposer extends LitElement {
                 "task-composer-attach-icon",
               )}</button>
               <input
+                ${drawn(this.fileInput)}
                 type="file"
                 multiple
                 hidden
@@ -816,6 +784,11 @@ export class CaffoldTaskComposer extends LitElement {
               >${
                 context.cancel
                   ? html`<button
+                      ${this.hints.button({
+                        id: "cancel",
+                        label: "Cancel",
+                        action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                      })}
                       type="button"
                       class="task-toolbar-button"
                       data-composer-action="cancel"
@@ -824,11 +797,13 @@ export class CaffoldTaskComposer extends LitElement {
                   : nothing
               }</div>
               <caffold-task-turn-options
+                ${drawn(this.optionsControl)}
                 @caffold:task-turn-options-change=${this.turnOptionsChanged}
               ></caffold-task-turn-options>
             </div>
             <div class="task-composer-actions">
               <caffold-task-context-usage
+                ${drawn(this.usagePie)}
                 ?hidden=${context.mode !== "follow-up"}
               ></caffold-task-context-usage>
               <div
@@ -836,6 +811,7 @@ export class CaffoldTaskComposer extends LitElement {
                 data-composer-region="actions"
               >
                 <caffold-voice-level-meter
+                  ${drawn(this.levelMeter)}
                   ?hidden=${!recording}
                 ></caffold-voice-level-meter>
                 <span
@@ -849,6 +825,11 @@ export class CaffoldTaskComposer extends LitElement {
                   ?hidden=${!durationShown}
                 >${duration}</span>
                 <button
+                  ${this.hints.button({
+                    id: "cancel-voice",
+                    label: "Cancel voice input",
+                    action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                  })}
                   type="button"
                   class="task-voice-cancel-button"
                   data-composer-action="cancel-voice"
@@ -862,6 +843,11 @@ export class CaffoldTaskComposer extends LitElement {
                   "task-voice-cancel-icon",
                 )}</button>
                 <button
+                  ${this.hints.button({
+                    id: "voice",
+                    label: voiceLabel,
+                    action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                  })}
                   type="button"
                   class=${voiceButtonClasses(voice.phase)}
                   data-composer-action="voice"
@@ -876,6 +862,14 @@ export class CaffoldTaskComposer extends LitElement {
                   "task-voice-icon",
                 )}</button>
                 <button
+                  ${drawn(this.primaryButton)}
+                  ${this.hints.button({
+                    // Send and Stop take turns on one button; a key offered
+                    // for one does not press the other.
+                    id: `primary:${action.kind}`,
+                    label: action.label,
+                    action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+                  })}
                   class="task-primary-action-button"
                   type=${action.kind === "send" ? "submit" : "button"}
                   data-primary-action=${action.kind}
@@ -905,7 +899,7 @@ export class CaffoldTaskComposer extends LitElement {
     if (this.dataset.composerMode !== this.context.mode) {
       this.dataset.composerMode = this.context.mode;
     }
-    this.attachmentStrip?.setAttachments(this.state.attachments);
+    this.attachmentStrip.value?.setAttachments(this.state.attachments);
     this.syncPromptField();
   }
 
@@ -919,7 +913,7 @@ export class CaffoldTaskComposer extends LitElement {
   }
 
   private syncPromptField() {
-    const textarea = this.promptField;
+    const textarea = this.promptField.value;
     if (!textarea) {
       return;
     }
@@ -996,108 +990,6 @@ export class CaffoldTaskComposer extends LitElement {
       restored.length > MAX_ATTACHMENTS ? TOO_MANY_ATTACHMENTS : "";
   }
 
-  // The keys an Action Hint session offers the Composer's own buttons. Each
-  // stays offered only while the Composer still holds the draft and context
-  // it was offered for.
-  private actionHintButtonTargets({
-    scopeId,
-    clipRoots,
-  }: {
-    scopeId: string;
-    clipRoots: Element[];
-  }) {
-    const contextKey = this.actionHintContextKey();
-    const definitions: Array<{
-      id: string;
-      selector: string;
-      control: HTMLButtonElement;
-      identity: ((candidate: HTMLButtonElement) => boolean) | null;
-    }> = [];
-    for (const [id, selector] of [
-      ["attach", 'button[data-composer-action="attach"]'],
-      ["voice", 'button[data-composer-action="voice"]'],
-      ["cancel-voice", 'button[data-composer-action="cancel-voice"]'],
-      ["cancel", 'button[data-composer-action="cancel"]'],
-      ["primary", "button.task-primary-action-button[data-primary-action]"],
-    ]) {
-      const control = this.querySelector<HTMLButtonElement>(selector);
-      if (control) {
-        // The button turns between Send and Stop in place; a key offered for
-        // one must not press the other.
-        const primaryAction = control.dataset.primaryAction;
-        definitions.push({
-          id: id === "primary" ? `primary:${primaryAction ?? "action"}` : id,
-          selector,
-          control,
-          identity:
-            id === "primary"
-              ? (candidate) => candidate.dataset.primaryAction === primaryAction
-              : null,
-        });
-      }
-    }
-    return definitions.flatMap((definition) => {
-      const { control } = definition;
-      if (control.disabled || !hasActionHintLayoutBox(control)) {
-        return [];
-      }
-      const currentControl = () =>
-        Array.from(
-          this.querySelectorAll<HTMLButtonElement>(definition.selector),
-        ).find((candidate) =>
-          definition.identity ? definition.identity(candidate) : true,
-        );
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `task-composer:${scopeId}:${definition.id}`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label:
-            control.getAttribute("aria-label") ||
-            control.title ||
-            control.textContent?.trim() ||
-            definition.id,
-          control,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            this.actionHintContextKey() === contextKey &&
-            currentControl() === control &&
-            !control.disabled &&
-            hasActionHintLayoutBox(control),
-        }),
-      ];
-    });
-  }
-
-  // The strip offers its own buttons; each stays offered only while the
-  // Composer still holds the draft it was offered for.
-  private attachmentActionHintTargets({
-    scopeId,
-    clipRoots,
-  }: {
-    scopeId: string;
-    clipRoots: Element[];
-  }) {
-    const contextKey = this.actionHintContextKey();
-    return (
-      this.attachmentStrip?.actionHintTargets({ scopeId, clipRoots }) ?? []
-    ).map((target) => ({
-      ...target,
-      isActionable: () =>
-        this.actionHintContextKey() === contextKey && target.isActionable(),
-    }));
-  }
-
-  private actionHintContextKey() {
-    return JSON.stringify([
-      this.context.mode,
-      this.context.threadId,
-      this.context.cwd,
-      this.state.activeSubmissionId,
-    ]);
-  }
-
   private activeSubmissionFor() {
     const submissionId = this.state.activeSubmissionId;
     return submissionId
@@ -1106,7 +998,7 @@ export class CaffoldTaskComposer extends LitElement {
   }
 
   private captureCurrentState() {
-    const textarea = this.promptField;
+    const textarea = this.promptField.value;
     if (!textarea) {
       return;
     }
@@ -1191,7 +1083,7 @@ export class CaffoldTaskComposer extends LitElement {
     ) {
       return;
     }
-    const textarea = this.promptField;
+    const textarea = this.promptField.value;
     const form = textarea?.form;
     if (
       !textarea ||
@@ -1253,14 +1145,12 @@ export class CaffoldTaskComposer extends LitElement {
         }),
       );
     } else if (type === "attach") {
-      this.querySelector<HTMLInputElement>(
-        "input[data-composer-file-input]",
-      )?.click();
+      this.fileInput.value?.click();
     }
   }
 
   private removeAttachment(event: CustomEvent<AttachmentRemoveDetail>) {
-    if (event.target !== this.attachmentStrip) {
+    if (event.target !== this.attachmentStrip.value) {
       return;
     }
     event.stopPropagation();
@@ -1277,7 +1167,7 @@ export class CaffoldTaskComposer extends LitElement {
     if (!this.voice.ready || !["idle", "error"].includes(this.voice.phase)) {
       return;
     }
-    const textarea = this.promptField;
+    const textarea = this.promptField.value;
     if (!textarea) {
       return;
     }
@@ -1335,7 +1225,7 @@ export class CaffoldTaskComposer extends LitElement {
       },
       onLevel: (level) => {
         if (operationId === this.voiceOperationId) {
-          this.levelMeter?.setLevel(level);
+          this.levelMeter.value?.setLevel(level);
         }
       },
       onLimit: () => {
@@ -1345,7 +1235,7 @@ export class CaffoldTaskComposer extends LitElement {
       },
     });
     this.voiceRecorder = recorder;
-    this.levelMeter?.reset();
+    this.levelMeter.value?.reset();
     this.setVoicePhase("requesting");
     this.voice.error = "";
     this.draw();
@@ -1425,9 +1315,7 @@ export class CaffoldTaskComposer extends LitElement {
     }
     this.draw();
     if (shouldSubmit) {
-      const send = this.querySelector<HTMLButtonElement>(
-        ".task-primary-action-button",
-      );
+      const send = this.primaryButton.value;
       send?.form?.requestSubmit(send);
     }
   }
@@ -1629,7 +1517,7 @@ export class CaffoldTaskComposer extends LitElement {
     const options = this.turnOptions()?.submissionOptions() ?? {
       fastMode: false,
     };
-    const textarea = this.promptField;
+    const textarea = this.promptField.value;
     const restorePromptFocusOnRejection =
       !event.submitter && document.activeElement === textarea;
     const submission: Submission = {
@@ -1677,28 +1565,10 @@ export class CaffoldTaskComposer extends LitElement {
     );
   }
 
-  private get promptField() {
-    return this.querySelector<HTMLTextAreaElement>("textarea[name='prompt']");
-  }
-
-  private get attachmentStrip() {
-    return this.querySelector<CaffoldTaskComposerAttachments>(
-      ":scope caffold-task-composer-attachments",
-    );
-  }
-
-  private get levelMeter() {
-    return this.querySelector<CaffoldVoiceLevelMeter>(
-      ":scope caffold-voice-level-meter",
-    );
-  }
-
   // Mounted once, so an open popover stays open while the agent's count moves.
   private get contextUsage() {
     this.performUpdate();
-    return this.querySelector<CaffoldTaskContextUsage>(
-      ":scope caffold-task-context-usage",
-    );
+    return this.usagePie.value;
   }
 }
 

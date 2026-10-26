@@ -1,11 +1,5 @@
 import { html, LitElement } from "lit";
-import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-  separatorActionHintTarget,
-} from "../action-hint-scope.js";
+import { type ActionHintPull, ActionHints } from "../action-hints.ts";
 
 const START_DEFAULT_WIDTH = 320;
 const START_MIN_WIDTH = 180;
@@ -31,13 +25,24 @@ export class CaffoldPaneResizer extends LitElement {
   private readonly onKeyDown = (event: KeyboardEvent) =>
     this.adjustFromKeyboard(event);
   private readonly onFocus = () => this.syncRange();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
 
   createRenderRoot() {
     return this;
   }
 
+  // The separator is the host, so the handle carries its Action Hint.
   render() {
-    return html`<span class="pane-resizer-handle" aria-hidden="true"></span>`;
+    return html`<span
+      ${this.hints.separator({
+        id: "separator",
+        label: this.getAttribute("aria-label") || "Resize pane",
+        control: () => this,
+        clipRoots: () => [this],
+      })}
+      class="pane-resizer-handle"
+      aria-hidden="true"
+    ></span>`;
   }
 
   connectedCallback() {
@@ -78,47 +83,8 @@ export class CaffoldPaneResizer extends LitElement {
     this.removeEventListener("focus", this.onFocus);
   }
 
-  actionHintScope({
-    scopeId = "",
-    actionId = "",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const parent = this.parentElement;
-    if (
-      !scopeId ||
-      !actionId ||
-      this.hidden ||
-      !this.canResize() ||
-      !hasActionHintLayoutBox(this)
-    ) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        separatorActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:separator`,
-          actionId,
-          label: this.getAttribute("aria-label") || "Resize pane",
-          control: this,
-          anchor: this.handle,
-          clipRoots: [this, ...clipRoots].filter(Boolean),
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.parentElement === parent &&
-            isCurrent() &&
-            this.canResize() &&
-            hasActionHintLayoutBox(this),
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   get value() {
@@ -136,13 +102,6 @@ export class CaffoldPaneResizer extends LitElement {
     writeStoredValue(
       this.getAttribute("collapsed-storage-key"),
       `${this.collapsedPreference}`,
-    );
-  }
-
-  private get handle() {
-    return (
-      this.querySelector<HTMLElement>(":scope > .pane-resizer-handle") ??
-      undefined
     );
   }
 

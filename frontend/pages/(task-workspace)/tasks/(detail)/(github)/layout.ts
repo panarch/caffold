@@ -1,19 +1,20 @@
 import { html, LitElement } from "lit";
 import {
-  buttonActionHintTarget,
+  ACTION_HINT_ACTION,
+  ActionHints,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import {
   type GitHubStatus,
   type GitRepository,
   getGitHubStatus,
 } from "#app/api.ts";
 import { compactIconButton } from "#app/component-styles.ts";
-import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.ts";
 import { routeMode } from "#app/navigation-routes.ts";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "./(issues)/layout.ts";
 import type { CaffoldGithubIssuesLayout } from "./(issues)/layout.ts";
@@ -24,10 +25,6 @@ import type {
   CaffoldGithubTaskStartDialog,
   TaskStartSource,
 } from "./components/task-start-dialog.ts";
-
-const BACK_BUTTON =
-  ':scope > .task-github-surface > .task-domain-header > .task-domain-back[data-action="domain-back"]';
-const BODY = ":scope > .task-github-surface > .task-domain-body";
 
 type GithubMode = "issues" | "pulls";
 
@@ -52,6 +49,8 @@ interface Chrome {
   subtitle: string;
   backLabel: string;
   backShown: boolean;
+  // Which route Back returns to, empty where there is none.
+  parentKey: string;
 }
 
 export class CaffoldTaskGithubLayout extends LitElement {
@@ -70,6 +69,13 @@ export class CaffoldTaskGithubLayout extends LitElement {
   private githubStatus: GitHubStatus | null = null;
   private githubStatusRequestId = 0;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly body = new DrawnRef<HTMLDivElement>(this);
+  private readonly issues = new DrawnRef<CaffoldGithubIssuesLayout>(this);
+  private readonly pulls = new DrawnRef<CaffoldGithubPullsLayout>(this);
+  private readonly startDialog = new DrawnRef<CaffoldGithubTaskStartDialog>(
+    this,
+  );
 
   constructor() {
     super();
@@ -79,6 +85,7 @@ export class CaffoldTaskGithubLayout extends LitElement {
       subtitle: "",
       backLabel: "Back",
       backShown: false,
+      parentKey: "",
     };
   }
 
@@ -110,6 +117,12 @@ export class CaffoldTaskGithubLayout extends LitElement {
       <section class="task-github-surface" aria-label="GitHub">
         <header class="task-domain-header">
           <button
+            ${this.hints.button({
+              id: `parent:${chrome.parentKey}`,
+              label: chrome.backLabel,
+              action: ACTION_HINT_ACTION.PARENT,
+              when: Boolean(chrome.parentKey),
+            })}
             type="button"
             class="task-domain-back"
             data-action="domain-back"
@@ -123,12 +136,13 @@ export class CaffoldTaskGithubLayout extends LitElement {
             <span class="task-domain-subtitle">${chrome.subtitle}</span>
           </div>
         </header>
-        <div class="task-domain-body">
+        <div ${drawn(this.body)} class="task-domain-body">
           <div
             class="github-review-view github-mode-issues"
             ?hidden=${chrome.mode !== "issues"}
           >
             <caffold-github-issues-layout
+              ${drawn(this.issues)}
               @caffold:github-issues-state-change=${this.updateChrome}
               @caffold:open-github-issue=${this.openIssue}
               @caffold:change-github-issues-page=${this.changeIssuesPage}
@@ -140,6 +154,7 @@ export class CaffoldTaskGithubLayout extends LitElement {
             ?hidden=${chrome.mode !== "pulls"}
           >
             <caffold-github-pulls-layout
+              ${drawn(this.pulls)}
               @caffold:github-pulls-state-change=${this.updateChrome}
               @caffold:open-github-pull=${this.openPull}
               @caffold:change-github-pulls-page=${this.changePullsPage}
@@ -151,7 +166,9 @@ export class CaffoldTaskGithubLayout extends LitElement {
           </div>
         </div>
       </section>
-      <caffold-github-task-start-dialog></caffold-github-task-start-dialog>
+      <caffold-github-task-start-dialog
+        ${drawn(this.startDialog)}
+      ></caffold-github-task-start-dialog>
     `;
   }
 
@@ -261,41 +278,11 @@ export class CaffoldTaskGithubLayout extends LitElement {
       return emptyActionHintScope();
     }
     const scopeId = this.scopeId();
-    const body = this.querySelector(BODY);
+    const own = this.hints.scope({ scopeId, clipRoots: [this] });
+    const body = this.body.value;
     const clipRoots = body ? [this, body] : [this];
-    const back = this.querySelector<HTMLButtonElement>(BACK_BUTTON);
-    const parentKey =
-      back && !back.hidden && !back.disabled
-        ? githubParentKey(this.routeForWorkspaceBack())
-        : "";
-    const backScope =
-      back && parentKey
-        ? {
-            blocked: false,
-            targets: [
-              buttonActionHintTarget({
-                invalidationOwner: this,
-                id: `${scopeId}:parent:${parentKey}`,
-                actionId: ACTION_HINT_ACTION.PARENT,
-                label: back.getAttribute("aria-label") || "Back",
-                control: back,
-                clipRoots: [this],
-                isActionable: () =>
-                  this.isConnected &&
-                  this.active &&
-                  !this.hidden &&
-                  githubParentKey(this.routeForWorkspaceBack()) === parentKey &&
-                  this.querySelector(BACK_BUTTON) === back &&
-                  !back.hidden &&
-                  !back.disabled,
-              }),
-            ],
-            mutationRoots: [back],
-            scrollRoots: [],
-          }
-        : null;
     return mergeActionHintScopes(
-      backScope,
+      own,
       this.mode === "issues"
         ? this.issuesLayout.actionHintScope({
             scopeId: `${scopeId}:issues`,
@@ -312,7 +299,8 @@ export class CaffoldTaskGithubLayout extends LitElement {
     if (!this.active || this.hidden || !this.mode) {
       return emptyScrollSurfaceScope();
     }
-    const body = this.querySelector(BODY);
+    this.performUpdate();
+    const body = this.body.value;
     const options = {
       scopeId: `${this.scopeId()}:${this.mode}`,
       clipRoots: body ? [this, body] : [this],
@@ -618,6 +606,7 @@ export class CaffoldTaskGithubLayout extends LitElement {
       subtitle: details.subtitle,
       backLabel: details.backLabel ?? "Back",
       backShown: Boolean(details.backLabel) && !fileOpen,
+      parentKey: githubParentKey(this.routeForWorkspaceBack()),
     };
     this.dataset.mobileDetail =
       (mode === "issues" && issues.view === "detail") ||
@@ -638,23 +627,17 @@ export class CaffoldTaskGithubLayout extends LitElement {
   // the layout is in the document.
   private get issuesLayout() {
     this.performUpdate();
-    return this.querySelector(
-      "caffold-github-issues-layout",
-    ) as CaffoldGithubIssuesLayout;
+    return this.issues.value as CaffoldGithubIssuesLayout;
   }
 
   private get pullsLayout() {
     this.performUpdate();
-    return this.querySelector(
-      "caffold-github-pulls-layout",
-    ) as CaffoldGithubPullsLayout;
+    return this.pulls.value as CaffoldGithubPullsLayout;
   }
 
   private get taskStartDialog() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-github-task-start-dialog",
-    ) as CaffoldGithubTaskStartDialog;
+    return this.startDialog.value as CaffoldGithubTaskStartDialog;
   }
 }
 

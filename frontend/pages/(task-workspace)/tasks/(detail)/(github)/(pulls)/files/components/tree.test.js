@@ -27,14 +27,19 @@ test("forwards file and disclosure semantics to its retained File Tree", () => {
   };
   const clipRoot = {};
 
+  const actions = {
+    file: "navigation.file.open",
+    disclosure: "disclosure.toggle",
+  };
+
   assert.deepEqual(pullFilesTree.actionHintScope.call(owner, {
     scopeId: "github:pull-files",
-    actionId: "navigation.file.open",
-    disclosureActionId: "disclosure.toggle",
+    actions,
     clipRoots: [clipRoot],
   }).targets, [target]);
-  assert.equal(options.actionId, "navigation.file.open");
-  assert.equal(options.disclosureActionId, "disclosure.toggle");
-  assert.deepEqual(options.clipRoots, [owner, clipRoot]);
-  assert.equal(options.isCurrent({ source: { path: "src/a.js" } }), true);
+  assert.deepEqual(options, {
+    scopeId: "github:pull-files",
+    actions,
+    clipRoots: [owner, clipRoot],
+  });
 });

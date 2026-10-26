@@ -1,18 +1,17 @@
 import { html, LitElement, type PropertyValues } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import { compactIconButton } from "#app/component-styles.ts";
 import {
-  emptyScrollSurfaceScope,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  mergeScrollSurfaceScopes,
+  type ScrollSurfacePull,
+  ScrollSurfaces,
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import type {
   CaffoldFileTree,
   FileTreeSelectDetail,
@@ -64,6 +63,13 @@ export class CaffoldNotesNavigator extends LitElement {
   private revealSignature = "";
   private pendingRevealKeys: string[] = [];
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly tree = new DrawnRef<CaffoldFileTree>(this);
 
   constructor() {
     super();
@@ -141,6 +147,11 @@ export class CaffoldNotesNavigator extends LitElement {
           ?hidden=${Boolean(picker)}
         ></caffold-workspace-brand>
         <button
+          ${this.hints.button({
+            id: "cancel",
+            label: "Cancel note selection",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           class="notes-picker-back"
           data-picker-action="cancel"
@@ -153,6 +164,11 @@ export class CaffoldNotesNavigator extends LitElement {
           companion ? "Choose a note to read alongside" : "Choose another note"
         }</h2>
         <button
+          ${this.hints.button({
+            id: "close",
+            label: "Close side by side",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           class="notes-picker-close"
           data-picker-action="close"
@@ -169,6 +185,11 @@ export class CaffoldNotesNavigator extends LitElement {
       >
         <p class="notes-navigator-message">${message}</p>
         <button
+          ${this.hints.button({
+            id: "retry",
+            label: "Retry loading notes",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          })}
           type="button"
           data-action="retry-notes"
           ?hidden=${top?.state !== "failed"}
@@ -176,6 +197,7 @@ export class CaffoldNotesNavigator extends LitElement {
         >Retry</button>
       </div>
       <caffold-file-tree
+        ${drawn(this.tree)}
         file-sort-mode="folders-first"
         ?hidden=${!listing || isEmpty}
         @caffold:file-tree-select=${this.openNote}
@@ -204,84 +226,31 @@ export class CaffoldNotesNavigator extends LitElement {
     this.revealOpenNote();
   }
 
-  actionHintScope({
-    scopeId = "notes",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    if (!this.hasUpdated || this.hidden) {
-      return emptyActionHintScope();
-    }
-    const retry = this.retryButton;
-    const retryScope =
-      retry && !retry.hidden && !retry.disabled
-        ? {
-            blocked: false,
-            targets: [
-              buttonActionHintTarget({
-                invalidationOwner: this,
-                id: `${scopeId}:retry`,
-                actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-                label: "Retry loading notes",
-                control: retry,
-                clipRoots: [this, ...clipRoots],
-                isActionable: () =>
-                  this.isConnected &&
-                  !this.hidden &&
-                  this.retryButton === retry &&
-                  !retry.hidden &&
-                  !retry.disabled,
-              }),
-            ],
-            mutationRoots: [retry],
-            scrollRoots: [],
-          }
-        : null;
-    const pickerControls = [
-      ...this.querySelectorAll<HTMLButtonElement>("button[data-picker-action]"),
-    ].filter((control) => !control.hidden);
-    const pickerScope = {
-      blocked: false,
-      targets: pickerControls.map((control) =>
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:${control.dataset.pickerAction}`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label: control.getAttribute("aria-label") ?? "",
-          control,
-          clipRoots: [this, ...clipRoots],
-          isActionable: () =>
-            this.isConnected && !this.hidden && !control.hidden,
-        }),
-      ),
-      mutationRoots: pickerControls,
-      scrollRoots: [],
-    };
-    const fileTree = this.fileTree;
-    const treeScope = !fileTree.hidden
-      ? fileTree.actionHintScope({
-          scopeId: `${scopeId}:tree`,
-          actionId: ACTION_HINT_ACTION.NOTE_OPEN,
-          disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-          clipRoots: [this, ...clipRoots],
-          isCurrent: (node) => noteIdOf(node) === this.snapshot.selectedNoteId,
-          labelForNode: (node) => `Open ${node.name}`,
-        })
-      : null;
-    return mergeActionHintScopes(pickerScope, retryScope, treeScope);
+  actionHintScope({ scopeId = "notes", ...pull }: ActionHintPull = {}) {
+    const own = this.hints.scope({ ...pull, scopeId });
+    return mergeActionHintScopes(
+      own,
+      this.fileTree.actionHintScope({
+        scopeId: `${scopeId}:tree`,
+        actions: {
+          file: ACTION_HINT_ACTION.NOTE_OPEN,
+          disclosure: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+        },
+        clipRoots: [this, ...(pull.clipRoots ?? [])],
+      }),
+    );
   }
 
-  scrollSurfaceScope({
-    scopeId = "notes",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    if (!this.hasUpdated || this.hidden || this.fileTree.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    return this.fileTree.scrollSurfaceScope({
-      scopeId: `${scopeId}:tree`,
-      label: "Notes",
-      clipRoots: [this, ...clipRoots],
-    });
+  scrollSurfaceScope({ scopeId = "notes", ...pull }: ScrollSurfacePull = {}) {
+    const own = this.surfaces.scope({ ...pull, scopeId });
+    return mergeScrollSurfaceScopes(
+      own,
+      this.fileTree.scrollSurfaceScope({
+        scopeId: `${scopeId}:tree`,
+        label: "Notes",
+        clipRoots: [this, ...(pull.clipRoots ?? [])],
+      }),
+    );
   }
 
   scrollToTop() {
@@ -300,9 +269,7 @@ export class CaffoldNotesNavigator extends LitElement {
       return;
     }
     const target = before?.parentElement === parent ? before : null;
-    const scrollport = this.fileTree.scrollSurfaceScope({
-      scopeId: "notes:placement",
-    }).surfaces[0]?.scrollport;
+    const scrollport = this.fileTree.scroller();
     const scroll = scrollport
       ? { top: scrollport.scrollTop, left: scrollport.scrollLeft }
       : null;
@@ -379,13 +346,7 @@ export class CaffoldNotesNavigator extends LitElement {
   }
 
   private get fileTree() {
-    return this.querySelector(":scope > caffold-file-tree") as CaffoldFileTree;
-  }
-
-  private get retryButton() {
-    return this.querySelector<HTMLButtonElement>(
-      ':scope > .notes-navigator-status > button[data-action="retry-notes"]',
-    );
+    return this.tree.value as CaffoldFileTree;
   }
 }
 

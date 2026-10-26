@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   ActionHintController,
   normalizeMutationRootList,
-} from "./action-hints.js";
+} from "./action-hints.ts";
 
 test("normalizes Action Hint mutation roots at the public boundary", () => {
   const restoreGlobals = installDomGlobals();
@@ -30,7 +30,7 @@ test("captures declared occlusion, observes its geometry, and retires only cover
     const descriptor = (control, id) => ({
       id, actionId: "task.open", controlKind: "button", label: id,
       invalidationOwner: control, control, anchor: control, clipRoots: [],
-      occlusionRoots: [panel], isActionable: () => true, activate: () => {},
+      occlusionRoots: [panel], activate: () => {},
     });
     const scope = { targets: [descriptor(covered, "covered"), descriptor(adjacent, "adjacent")] };
     const controller = new ActionHintController({
@@ -1013,7 +1013,7 @@ test("snapshot capture rejects a descriptor outside the central semantic policy"
         control,
         anchor: control,
         clipRoots: [],
-        isActionable: () => true,
+       
         activate: () => {},
       }],
       mutationRoots: [],
@@ -1029,7 +1029,7 @@ test("snapshot capture rejects a descriptor outside the central semantic policy"
         control,
         anchor: {},
         clipRoots: [],
-        isActionable: () => true,
+       
         activate: () => {},
       }],
       mutationRoots: [],
@@ -1044,7 +1044,7 @@ test("snapshot capture rejects a descriptor outside the central semantic policy"
         control,
         anchor: control,
         clipRoots: [],
-        isActionable: () => true,
+       
         activate: () => {},
       }],
       mutationRoots: [],
@@ -1088,7 +1088,7 @@ function normalizeTestTarget(target) {
     label: target.label ?? target.id,
     actionable: true,
     visibleRect: { left: 0, top: 0, right: 20, bottom: 20 },
-    isActionable: () => true,
+   
     ...target,
   };
 }

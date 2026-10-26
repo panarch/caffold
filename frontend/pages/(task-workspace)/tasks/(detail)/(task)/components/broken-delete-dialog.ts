@@ -1,14 +1,9 @@
 import { html, LitElement } from "lit";
-import type { ActionHintScope } from "#app/action-hint-scope.js";
-import {
-  ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hints.js";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
 import { deleteTask, getTask, type TaskResponseError } from "#app/api.ts";
-import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 
 // The Task a broken worktree keeps from opening, as its Task screen holds it.
 export interface BrokenTaskContext {
@@ -56,6 +51,11 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
   private context: BrokenTaskContext | null = null;
   private target: BrokenTaskContext | null = null;
   private failure: Error | null = null;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
   createRenderRoot() {
     return this;
@@ -97,58 +97,14 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
     this.target = { ...this.context };
     this.failure = null;
     this.draw();
-    this.dialog.showModal();
+    this.dialog.value?.showModal();
     return true;
   }
 
-  actionHintScope(): ActionHintScope {
-    const dialog = this.dialog;
-    if (!dialog) {
-      return emptyActionHintScope();
-    }
-    const generation = this.generation;
-    return {
-      blocked: false,
-      targets: [
-        ...dialog.querySelectorAll<HTMLButtonElement>("form button"),
-      ].map((control) =>
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `broken-task-delete:${this.target?.threadId}:${control.value}`,
-          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-          label: control.textContent,
-          control,
-          clipRoots: [dialog],
-          isActionable: () =>
-            this.isConnected &&
-            dialog.open &&
-            this.generation === generation &&
-            this.phase === "confirming" &&
-            !control.disabled,
-        }),
-      ),
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
-  }
-
   keyboardNavigationContexts() {
-    const dialog = this.dialog;
-    const hintDialog = dialog
-      ?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      )
-      ?.actionHintDialog();
-    return dialog && hintDialog
-      ? [
-          keyboardNavigationContext({
-            id: `broken-task-delete:${this.target?.threadId ?? ""}`,
-            kind: "modal",
-            root: dialog,
-            actionHints: { dialog: hintDialog, scope: this.actionHintScope() },
-          }),
-        ]
-      : [];
+    return this.keyboard.contexts({
+      actionHints: (pull) => this.hints.scope(pull),
+    });
   }
 
   render() {
@@ -166,6 +122,10 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
         ? "The worktree folder is missing. This permanently deletes this conversation and Caffold-owned task data. This cannot be undone."
         : "Caffold cannot check for uncommitted changes in this worktree. This permanently deletes the remaining worktree files, this conversation, and Caffold-owned task data. This cannot be undone.";
     return html`<dialog
+      ${drawn(this.dialog)}
+      ${this.keyboard.modal({
+        id: `broken-task-delete:${target?.threadId ?? ""}`,
+      })}
       closedby=${deleting ? "none" : "any"}
       aria-labelledby="broken-task-delete-title"
       aria-describedby="broken-task-delete-description"
@@ -199,6 +159,11 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
         >${this.failure?.message ?? ""}</p>
         <footer class="broken-delete-actions">
           <button
+            ${this.hints.button({
+              id: "cancel",
+              label: "Cancel",
+              action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+            })}
             type="submit"
             class="broken-delete-button"
             value="cancel"
@@ -206,6 +171,11 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
             ?disabled=${deleting}
           >Cancel</button>
           <button
+            ${this.hints.button({
+              id: "delete",
+              label: "Delete task",
+              action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+            })}
             type="submit"
             class="broken-delete-button broken-delete-confirm"
             value="delete"
@@ -214,6 +184,7 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
         </footer>
       </form>
       <caffold-keyboard-navigation-presentation
+        ${this.keyboard.presentation()}
       ></caffold-keyboard-navigation-presentation>
     </dialog>`;
   }
@@ -238,8 +209,9 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
       return;
     }
     this.target = null;
-    if (this.dialog.open) {
-      this.dialog.close();
+    const dialog = this.dialog.value;
+    if (dialog?.open) {
+      dialog.close();
     }
   }
 
@@ -249,8 +221,9 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
     this.generation += 1;
     this.transition("reset");
     this.target = null;
-    if (this.dialog?.open) {
-      this.dialog.close();
+    const dialog = this.dialog.value;
+    if (dialog?.open) {
+      dialog.close();
     }
   }
 
@@ -276,7 +249,7 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
         return;
       }
       this.transition("success");
-      this.dialog.close();
+      this.dialog.value?.close();
       this.intent({ type: "task-deleted", threadId: target.threadId });
     } catch (error) {
       if (!current()) {
@@ -303,7 +276,7 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
         this.intent({ type: "broken-delete-error", error: diagnostic });
       } else {
         this.transition("refused");
-        this.dialog.close();
+        this.dialog.value?.close();
         this.intent({
           type: "broken-delete-error",
           error: diagnostic ?? error,
@@ -328,7 +301,7 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
   }
 
   private handleClose() {
-    if (!this.dialog.open) {
+    if (!this.dialog.value?.open) {
       this.cancel();
     }
   }
@@ -341,10 +314,6 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
         detail,
       }),
     );
-  }
-
-  private get dialog() {
-    return this.querySelector(":scope > dialog") as HTMLDialogElement;
   }
 }
 

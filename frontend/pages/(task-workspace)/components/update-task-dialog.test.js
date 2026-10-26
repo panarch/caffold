@@ -10,6 +10,9 @@ const registry = installCustomElementUnitRegistry();
 const { updateTaskFrom, updateTaskPrompt } = await import("./update-task-dialog.ts");
 const Dialog = registry.element("caffold-update-task-dialog");
 const dialog = Dialog.prototype;
+const { ActionHints } = await import("#app/action-hints.ts");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
+const { ScrollSurfaces } = await import("#app/scroll-scope.ts");
 after(() => registry.restore());
 
 const COMMAND =
@@ -68,18 +71,20 @@ function dialogHost({ accept = true, completion = Promise.resolve({}) } = {}) {
     error: null,
     createRequestId: 0,
     updateTask: { to: "0.18.3", cwd: STATUS.updateTask.cwd, command: COMMAND },
-    turnOptions: () => ({
-      readyForSubmission: () => true,
-      submissionOptions: () => ({
-        provider: "codex",
-        model: "gpt-6",
-        effort: "high",
-        fastMode: false,
-        permissionMode: "fullAccess",
-      }),
-      resetFastMode() {},
-    }),
-    dialog: () => ({ close: (value) => closes.push(value) }),
+    turnOptions: {
+      value: {
+        readyForSubmission: () => true,
+        submissionOptions: () => ({
+          provider: "codex",
+          model: "gpt-6",
+          effort: "high",
+          fastMode: false,
+          permissionMode: "fullAccess",
+        }),
+        resetFastMode() {},
+      },
+    },
+    dialog: { value: { close: (value) => closes.push(value) } },
     updateSetup() {},
     dispatchEvent(event) {
       events.push(event);
@@ -138,6 +143,9 @@ test("renders the agreed text and two buttons", () => {
       error: null,
     }),
   );
+  owner.hints = new ActionHints(owner, () => {});
+  owner.surfaces = new ScrollSurfaces(owner, () => {});
+  owner.keyboard = new KeyboardContexts(owner, () => {});
   const drawn = templateHtml(owner.render()).replace(/\s+/g, " ");
 
   assert.match(drawn, /<h2 id="caffold-update-task-title">Update Caffold to 0\.18\.3<\/h2>/);

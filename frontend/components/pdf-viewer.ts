@@ -1,10 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "../scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.ts";
 import type { DocumentPreviewFile } from "./dom.ts";
 import "./loading-text.ts";
 
@@ -86,6 +81,10 @@ class CaffoldPdfViewer extends LitElement {
     this.pages = null;
   }
 
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+
   createRenderRoot() {
     return this;
   }
@@ -114,7 +113,15 @@ class CaffoldPdfViewer extends LitElement {
         : message
           ? html`<p class="pdf-viewer-message">${message}</p>`
           : nothing;
-    return html`<div class="pdf-viewer-body">${content}</div>`;
+    return html`<div
+      ${this.surfaces.surface({
+        id: "scroll",
+        axes: ["vertical"],
+        scrollport: () => this,
+        clipRoots: () => [this],
+      })}
+      class="pdf-viewer-body"
+    >${content}</div>`;
   }
 
   // A file handed over again before it is drawn replaces the one before it.
@@ -133,34 +140,10 @@ class CaffoldPdfViewer extends LitElement {
   }
 
   scrollSurfaceScope({
-    scopeId = "",
     label = "PDF preview",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    if (!scopeId || !label || this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport: this,
-          axes: ["vertical"],
-          clipRoots: [this, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            hasScrollLayoutBox(this),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this],
-      scrollRoots: [this],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, label });
   }
 
   private async open(generation: number, file: Blob | Promise<Blob>) {

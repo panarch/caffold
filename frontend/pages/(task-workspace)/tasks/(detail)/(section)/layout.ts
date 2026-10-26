@@ -1,14 +1,15 @@
 import { html, LitElement, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
-import { mergeActionHintScopes } from "#app/action-hints.js";
+import { mergeActionHintScopes } from "#app/action-hints.ts";
 import type { ActiveTaskSection } from "#app/api.ts";
-import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.ts";
 import type { TaskStoreStatusSnapshot } from "#app/pages/(task-workspace)/task-store-status.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "#app/scroll-scope.js";
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "../../components/task-create.ts";
 import type { CaffoldTaskCreate } from "../../components/task-create.ts";
 import { cleanLogicalPath } from "../../task-format.ts";
@@ -40,6 +41,10 @@ export class CaffoldSectionDetail extends LitElement {
   private transportAvailable = true;
   private taskStoreStatusSnapshot: TaskStoreStatusSnapshot | null = null;
   private drawn = false;
+  private readonly create = new DrawnRef<CaffoldTaskCreate>(this);
+  private readonly conversations =
+    new DrawnRef<CaffoldSectionConversationShortcuts>(this);
+  private readonly github = new DrawnRef<CaffoldSectionGithubShortcuts>(this);
 
   createRenderRoot() {
     return this;
@@ -128,23 +133,21 @@ export class CaffoldSectionDetail extends LitElement {
     if (this.hidden || !sectionId) {
       return emptyScrollSurfaceScope();
     }
+    // The Section scrolls as a whole, and the host is no template's to draw.
     const section = {
       blocked: false,
-      surfaces: [
-        {
-          id: `section:${sectionId}:scroll`,
-          label: this.section?.name
-            ? `Section ${this.section.name}`
-            : "Section",
-          scrollport: this,
-          clipRoots: [this],
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            `${this.section?.id ?? ""}` === sectionId &&
-            hasScrollLayoutBox(this),
-        },
-      ],
+      surfaces: hasScrollLayoutBox(this)
+        ? [
+            {
+              id: `section:${sectionId}:scroll`,
+              label: this.section?.name
+                ? `Section ${this.section.name}`
+                : "Section",
+              scrollport: this,
+              clipRoots: [this],
+            },
+          ]
+        : [],
       mutationRoots: [this],
       resizeElements: [this],
       scrollRoots: [this],
@@ -178,11 +181,15 @@ export class CaffoldSectionDetail extends LitElement {
     return html`
       ${keyed(
         sectionContextKey(this.section),
-        html`<caffold-task-create></caffold-task-create>`,
+        html`<caffold-task-create ${drawn(this.create)}></caffold-task-create>`,
       )}
-      <caffold-section-conversation-shortcuts hidden
+      <caffold-section-conversation-shortcuts
+        ${drawn(this.conversations)}
+        hidden
       ></caffold-section-conversation-shortcuts>
-      <caffold-section-github-shortcuts hidden
+      <caffold-section-github-shortcuts
+        ${drawn(this.github)}
+        hidden
       ></caffold-section-github-shortcuts>
     `;
   }
@@ -201,21 +208,15 @@ export class CaffoldSectionDetail extends LitElement {
   }
 
   private taskCreate() {
-    return this.querySelector<CaffoldTaskCreate>(
-      ":scope > caffold-task-create",
-    );
+    return this.create.value;
   }
 
   private githubShortcuts() {
-    return this.querySelector<CaffoldSectionGithubShortcuts>(
-      ":scope > caffold-section-github-shortcuts",
-    );
+    return this.github.value;
   }
 
   private conversationShortcuts() {
-    return this.querySelector<CaffoldSectionConversationShortcuts>(
-      ":scope > caffold-section-conversation-shortcuts",
-    );
+    return this.conversations.value;
   }
 
   private syncTaskCreate() {

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { actionHintDialog } from "../support/action-hints.js";
+import { actionHintDialog, enterActionHints } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { activeTaskProjection, canonicalTaskState, captureReviewScreenshot, installEventSourceMock, mockAgentModels } from "../support/task-fixtures.js";
 
@@ -109,6 +109,10 @@ test("a broken worktree offers deletion with native focus, cancellation and one 
   await openBroken(page);
   const button = page.locator('button[data-task-action="delete-broken-task"]');
   await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+  const workspaceHint = await enterActionHints(page);
+  await expect(workspaceHint.getByRole("button", { name: / — Delete task$/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(workspaceHint).toBeHidden();
   await button.click();
   const dialog = page.locator("caffold-broken-task-delete-dialog > dialog");
   await expect(dialog).toBeVisible();
@@ -133,6 +137,7 @@ test("a broken worktree offers deletion with native focus, cancellation and one 
   await captureReviewScreenshot(page, testInfo, "broken-worktree-confirmation");
   await page.keyboard.press("f");
   await expect(actionHintDialog(page)).toBeVisible();
+  await expect(actionHintDialog(page).getByRole("button", { name: / — Delete task$/ })).toBeVisible();
   const cancelCode = await actionHintDialog(page).getByRole("button", { name: / — Cancel$/ }).getAttribute("data-action-hint-code");
   expect(cancelCode).toBeTruthy();
   await page.keyboard.type(cancelCode.toLowerCase());

@@ -1,23 +1,19 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
   hasActionHintLayoutBox,
   linkActionHintLabel,
   linkActionHintTarget,
-  mergeActionHintScopes,
-} from "../action-hint-scope.js";
+} from "../action-hint-scope.ts";
 import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurface,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "../scroll-scope.js";
+  type ActionHintPull,
+  ActionHints,
+  mergeActionHintScopes,
+} from "../action-hints.ts";
+import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.ts";
 import type { DocumentPreviewFile } from "./dom.ts";
 import "./loading-text.ts";
 import "./segmented-control.ts";
+import { DrawnRef, drawn } from "./drawn-refs.ts";
 import type { CaffoldSegmentedControl } from "./segmented-control.ts";
 import {
   containsRange,
@@ -72,6 +68,17 @@ class CaffoldXlsxViewer extends LitElement {
   private renderedRange: TrackRange | null = null;
   private sizeObserver: ResizeObserver | null = null;
   private windowFrame = 0;
+  // The sheet's corner and scrolling layers, made by `layoutSheet`.
+  private corner: HTMLElement | null = null;
+  private layers: Record<LayerName, HTMLElement> | null = null;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly sheetport = new DrawnRef<HTMLDivElement>(this);
+  private readonly space = new DrawnRef<HTMLDivElement>(this);
+  private readonly tabStrip = new DrawnRef<HTMLDivElement>(this);
+  private readonly sheetTabs = new DrawnRef<CaffoldSegmentedControl>(this);
 
   constructor() {
     super();
@@ -104,27 +111,44 @@ class CaffoldXlsxViewer extends LitElement {
         : this.renderState === "error"
           ? "This document could not be displayed."
           : "";
+    const tabbed = (this.visibleSheets?.length ?? 0) > 1;
     const content =
       this.renderState === "xlsx"
         ? html`
             <div class="xlsx-viewer-workbook">
               <div
+                ${drawn(this.sheetport)}
+                ${this.surfaces.surface({
+                  id: "sheet",
+                  axes: ["vertical", "horizontal"],
+                  clipRoots: () => [this],
+                })}
                 class="xlsx-viewer-sheet"
                 @scroll=${{
                   handleEvent: () => this.scheduleWindow(this.generation),
                   passive: true,
                 }}
-              ><div class="xlsx-viewer-space"></div></div>
+              ><div ${drawn(this.space)} class="xlsx-viewer-space"></div></div>
               <div
+                ${drawn(this.tabStrip)}
+                ${this.surfaces.surface({
+                  id: "sheets",
+                  label: (name) => `${name} sheets`,
+                  axes: ["horizontal"],
+                  when: tabbed,
+                  clipRoots: () => [this],
+                })}
                 class="xlsx-viewer-tabs"
-                ?hidden=${(this.visibleSheets?.length ?? 0) < 2}
+                ?hidden=${!tabbed}
                 @caffold:segmented-control-intent=${(event: CustomEvent) => {
                   // The tabs choose this viewer's sheet; no review surface
                   // above owns them.
                   event.stopPropagation();
                   this.showSheet(this.generation, Number(event.detail?.value));
                 }}
-              ><caffold-segmented-control></caffold-segmented-control></div>
+              ><caffold-segmented-control
+                ${drawn(this.sheetTabs)}
+              ></caffold-segmented-control></div>
             </div>
           `
         : message
@@ -155,88 +179,23 @@ class CaffoldXlsxViewer extends LitElement {
   }
 
   scrollSurfaceScope({
-    scopeId = "",
     label = "Excel preview",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const sheetport = this.sheetport();
-    if (!scopeId || !label || this.hidden || !sheetport) {
-      return emptyScrollSurfaceScope();
-    }
-    const eligible = (element: HTMLElement) => () =>
-      this.isConnected &&
-      !this.hidden &&
-      isCurrent() &&
-      element.isConnected &&
-      hasScrollLayoutBox(element);
-    const surfaces: ScrollSurface[] = [
-      {
-        id: `${scopeId}:sheet`,
-        label,
-        scrollport: sheetport,
-        axes: ["vertical", "horizontal"],
-        clipRoots: [this, ...clipRoots].filter(Boolean),
-        isEligible: eligible(sheetport),
-      },
-    ];
-    const tabs = this.tabStrip();
-    if (tabs && !tabs.hidden) {
-      surfaces.push({
-        id: `${scopeId}:sheets`,
-        label: `${label} sheets`,
-        scrollport: tabs,
-        axes: ["horizontal"],
-        clipRoots: [this, ...clipRoots].filter(Boolean),
-        isEligible: eligible(tabs),
-      });
-    }
-    return {
-      blocked: false,
-      surfaces,
-      mutationRoots: [this],
-      resizeElements: [this, sheetport],
-      scrollRoots: [this, sheetport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, label });
   }
 
-  // The sheet tabs and the links of the cells drawn now.
-  actionHintScope({
-    scopeId = "",
-    linkActionId = "",
-    buttonActionId = "",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    linkActionId?: string;
-    buttonActionId?: string;
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const sheetport = this.sheetport();
-    if (
-      !scopeId ||
-      !sheetport ||
-      !this.isConnected ||
-      this.hidden ||
-      this.renderState !== "xlsx"
-    ) {
-      return emptyActionHintScope();
+  // The sheet tabs, which do what the owner's `button` action names, and the
+  // links of the cells drawn now, its `link` action.
+  actionHintScope(pull: ActionHintPull = {}) {
+    const own = this.hints.scope(pull);
+    const sheetport = this.sheetport.value;
+    const tabs = this.tabStrip.value;
+    if (!sheetport || this.renderState !== "xlsx") {
+      return own;
     }
-    const roots = [this, ...clipRoots].filter(Boolean);
-    const tabs = this.tabStrip();
-    const tabScope =
-      buttonActionId && tabs && !tabs.hidden
-        ? tabs
-            .querySelector<CaffoldSegmentedControl>(
-              ":scope > caffold-segmented-control",
-            )
-            ?.actionHintScope({
-              scopeId: `${scopeId}:sheets`,
-              actionId: buttonActionId,
-              clipRoots: [tabs, ...roots],
-              labelForChoice: (choice) => `Show sheet ${choice.label}`,
-            })
-        : null;
+    const clipRoots = [this, ...(pull.clipRoots ?? [])];
+    const linkActionId = pull.actions?.link;
     const links = linkActionId
       ? [...sheetport.querySelectorAll<HTMLAnchorElement>("a[href]")].flatMap(
           (control) => {
@@ -247,31 +206,26 @@ class CaffoldXlsxViewer extends LitElement {
             return [
               linkActionHintTarget({
                 invalidationOwner: this,
-                id: `${scopeId}:cell:${control.dataset.cell}`,
+                id: `${pull.scopeId}:cell:${control.dataset.cell}`,
                 actionId: linkActionId,
                 label,
                 control,
-                clipRoots: [sheetport, ...roots],
-                isActionable: () =>
-                  this.isConnected &&
-                  !this.hidden &&
-                  isCurrent() &&
-                  this.renderState === "xlsx" &&
-                  sheetport.contains(control) &&
-                  hasActionHintLayoutBox(control),
+                clipRoots: [sheetport, ...clipRoots],
               }),
             ];
           },
         )
       : [];
     return mergeActionHintScopes(
-      {
-        blocked: false,
-        targets: links,
-        mutationRoots: [this],
-        scrollRoots: [this, sheetport],
-      },
-      tabScope ?? emptyActionHintScope(),
+      own,
+      { targets: links, scrollRoots: [sheetport] },
+      tabs
+        ? this.sheetTabs.value?.actionHintScope({
+            scopeId: `${pull.scopeId}:sheets`,
+            actionId: pull.actions?.button,
+            clipRoots: [tabs, ...clipRoots],
+          })
+        : null,
     );
   }
 
@@ -317,7 +271,7 @@ class CaffoldXlsxViewer extends LitElement {
       return;
     }
 
-    const sheetport = this.sheetport();
+    const sheetport = this.sheetport.value;
     if (sheetport) {
       this.sizeObserver = new ResizeObserver(() =>
         this.scheduleWindow(generation),
@@ -342,21 +296,18 @@ class CaffoldXlsxViewer extends LitElement {
       return;
     }
     this.selectedSheetName = sheet.name;
-    this.tabStrip()
-      ?.querySelector<CaffoldSegmentedControl>(
-        ":scope > caffold-segmented-control",
-      )
-      ?.setSnapshot({
-        label: "Sheets",
-        selected: `${index}`,
-        choices: (this.visibleSheets ?? []).map((candidate) => ({
-          value: `${candidate.index}`,
-          label: candidate.name,
-        })),
-      });
+    this.sheetTabs.value?.setSnapshot({
+      label: "Sheets",
+      actionVerb: "Show sheet",
+      selected: `${index}`,
+      choices: (this.visibleSheets ?? []).map((candidate) => ({
+        value: `${candidate.index}`,
+        label: candidate.name,
+      })),
+    });
     this.sheet = this.workbook.sheet(index);
     this.layoutSheet(this.sheet);
-    const sheetport = this.sheetport();
+    const sheetport = this.sheetport.value;
     if (sheetport) {
       sheetport.scrollTop = 0;
       sheetport.scrollLeft = 0;
@@ -373,7 +324,7 @@ class CaffoldXlsxViewer extends LitElement {
     this.columnOffsets = trackOffsets(sheet.columnWidths, sheet.frozenColumns);
     const frozenHeight = sum(sheet.rowHeights, 0, sheet.frozenRows);
     const frozenWidth = sum(sheet.columnWidths, 0, sheet.frozenColumns);
-    const space = this.space();
+    const space = this.space.value;
     if (!space) {
       return;
     }
@@ -390,11 +341,21 @@ class CaffoldXlsxViewer extends LitElement {
 
     const frozenRows = range(0, sheet.frozenRows - 1);
     const frozenColumns = range(0, sheet.frozenColumns - 1);
+    this.corner = this.block(
+      "corner",
+      [-1, ...frozenRows],
+      [-1, ...frozenColumns],
+    );
+    this.layers = {
+      top: this.layer("top"),
+      left: this.layer("left"),
+      main: this.layer("main"),
+    };
     space.replaceChildren(
-      this.block("corner", [-1, ...frozenRows], [-1, ...frozenColumns]),
-      this.layer("top"),
-      this.layer("left"),
-      this.layer("main"),
+      this.corner,
+      this.layers.top,
+      this.layers.left,
+      this.layers.main,
     );
   }
 
@@ -413,14 +374,12 @@ class CaffoldXlsxViewer extends LitElement {
   // Draws the scrolling rows and columns near the viewport when they leave the
   // range already drawn.
   private drawWindow(sheet: SheetModel) {
-    const sheetport = this.sheetport();
-    const space = this.space();
+    const sheetport = this.sheetport.value;
+    const space = this.space.value;
     if (!sheetport || !space) {
       return;
     }
-    const corner = space.querySelector<HTMLElement>(
-      ":scope > .xlsx-viewer-corner",
-    );
+    const corner = this.corner;
     const visibleRows = visibleTracks(
       this.rowOffsets,
       sheet.frozenRows,
@@ -490,9 +449,7 @@ class CaffoldXlsxViewer extends LitElement {
   ) {
     block.style.top = `${top}px`;
     block.style.left = `${left}px`;
-    this.space()
-      ?.querySelector(`:scope > .xlsx-viewer-${name}`)
-      ?.replaceChildren(block);
+    this.layers?.[name].replaceChildren(block);
   }
 
   // One CSS grid of cells, with -1 standing for the header track. Merged cells
@@ -611,28 +568,12 @@ class CaffoldXlsxViewer extends LitElement {
     this.visibleSheets = null;
     this.sheet = null;
     this.renderedRange = null;
+    this.corner = null;
+    this.layers = null;
   }
 
   private isCurrent(generation: number) {
     return this.isConnected && this.generation === generation;
-  }
-
-  private sheetport() {
-    return this.querySelector<HTMLElement>(
-      ":scope > .xlsx-viewer-body > .xlsx-viewer-workbook > .xlsx-viewer-sheet",
-    );
-  }
-
-  private space() {
-    return this.sheetport()?.querySelector<HTMLElement>(
-      ":scope > .xlsx-viewer-space",
-    );
-  }
-
-  private tabStrip() {
-    return this.querySelector<HTMLElement>(
-      ":scope > .xlsx-viewer-body > .xlsx-viewer-workbook > .xlsx-viewer-tabs",
-    );
   }
 }
 

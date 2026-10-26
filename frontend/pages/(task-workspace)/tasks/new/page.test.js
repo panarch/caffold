@@ -15,16 +15,18 @@ test("offers Task Create's popovers while shown", () => {
   const owner = {
     hidden: false,
     performUpdate() {},
-    taskCreate: () => ({
-      keyboardNavigationContexts(options) {
-        assert.equal(options.scopeId, "new");
-        return [createContext];
+    create: {
+      value: {
+        keyboardNavigationContexts(options) {
+          assert.equal(options.scopeId, "new");
+          return [createContext];
+        },
       },
-    }),
+    },
   };
 
   assert.deepEqual(taskNew.keyboardNavigationContexts.call(owner), [createContext]);
-  owner.taskCreate = () => null;
+  owner.create = { value: undefined };
   assert.deepEqual(taskNew.keyboardNavigationContexts.call(owner), []);
   owner.hidden = true;
   assert.deepEqual(taskNew.keyboardNavigationContexts.call(owner), []);
@@ -41,8 +43,8 @@ test("combines Task Create's actions and folder list with its own workspace", ()
   };
   const owner = {
     performUpdate() {},
-    querySelector: () => scrollRoot,
-    taskCreate: () => taskCreate,
+    workspace: { value: scrollRoot },
+    create: { value: taskCreate },
   };
 
   assert.deepEqual(taskNew.actionHintScope.call(owner), {
@@ -57,7 +59,9 @@ test("Escape belongs to Task Create's directory path only while New Task shows",
   const directoryInput = { id: "directory-input" };
   const owner = {
     hidden: false,
-    taskCreate: () => ({ ownsEditingEscape: (element) => element === directoryInput }),
+    create: {
+      value: { ownsEditingEscape: (element) => element === directoryInput },
+    },
   };
 
   assert.equal(taskNew.ownsEditingEscape.call(owner, directoryInput), true);
@@ -66,37 +70,35 @@ test("Escape belongs to Task Create's directory path only while New Task shows",
   assert.equal(taskNew.ownsEditingEscape.call(owner, directoryInput), false);
 });
 
-test("provides the retained New Task workspace and Task Create's folder list", () => {
-  const scrollport = {
-    clientHeight: 100,
-    scrollHeight: 280,
-    getClientRects: () => [{}],
-  };
-  const folders = { id: "new:directory:scroll" };
+test("names its workspace New Task, beside Task Create's folder list", () => {
+  const workspace = { id: "workspace" };
+  const pulls = [];
   const owner = {
-    hidden: false,
-    isConnected: true,
-    performUpdate() {},
-    selectedContextPath: () => "/repo",
-    getClientRects: () => [{}],
-    querySelector: () => scrollport,
-    taskCreate: () => ({
-      scrollSurfaceScope(options) {
-        assert.equal(options.scopeId, "new");
-        return { surfaces: [folders] };
+    workspace: { value: workspace },
+    surfaces: {
+      scope(pull) {
+        pulls.push(["own", pull]);
+        return { surfaces: [{ id: "new:/repo:scroll", label: pull.label }] };
       },
-    }),
+    },
+    create: {
+      value: {
+        scrollSurfaceScope(pull) {
+          pulls.push(["create", pull]);
+          return { surfaces: [{ id: "new:directory:scroll", label: "Folders" }] };
+        },
+      },
+    },
   };
 
-  const scope = taskNew.scrollSurfaceScope.call(owner);
-  assert.deepEqual(scope.surfaces.map(({ id }) => id), [
-    "new:/repo:scroll",
-    "new:directory:scroll",
+  assert.deepEqual(
+    taskNew.scrollSurfaceScope.call(owner).surfaces.map(({ label }) => label),
+    ["New Task", "Folders"],
+  );
+  assert.deepEqual(pulls, [
+    ["own", { label: "New Task" }],
+    ["create", { scopeId: "new", clipRoots: [owner, workspace] }],
   ]);
-  assert.equal(scope.surfaces[0].scrollport, scrollport);
-  assert.equal(scope.surfaces[0].isEligible(), true);
-  owner.selectedContextPath = () => "/other";
-  assert.equal(scope.surfaces[0].isEligible(), false);
 });
 
 test("a chosen directory becomes the route; a start request goes on", () => {

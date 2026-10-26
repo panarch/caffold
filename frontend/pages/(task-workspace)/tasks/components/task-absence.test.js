@@ -8,6 +8,7 @@ import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./task-absence.ts");
+const { ActionHints } = await import("#app/action-hints.ts");
 const Absence = registry.element("caffold-task-absence");
 after(() => registry.restore());
 
@@ -41,6 +42,7 @@ function draw(snapshot) {
   const absence = Object.create(Absence.prototype, {
     snapshot: { value: snapshot },
   });
+  absence.hints = new ActionHints(absence, () => {});
   return templateHtml(absence.render())
     .replace(/\s+/g, " ")
     .replaceAll(" >", ">")

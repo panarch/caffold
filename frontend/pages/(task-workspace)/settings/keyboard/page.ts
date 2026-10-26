@@ -1,21 +1,12 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hint-scope.js";
-import {
   ACTION_HINT_ACTION,
-  switchActionHintTarget,
-} from "#app/action-hints.js";
-import "#app/keyboard-navigation/components/shortcut-list.js";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+import "#app/keyboard-navigation/components/shortcut-list.ts";
 import {
   getSettings,
   type Settings,
@@ -33,6 +24,16 @@ export class CaffoldSettingsKeyboardPage extends LitElement {
       (event as CustomEvent<{ settings?: Settings }>).detail?.settings ??
       getSettings();
   };
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.scrollport.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
+  private readonly toggleLabel = new DrawnRef<HTMLLabelElement>(this);
 
   constructor() {
     super();
@@ -60,12 +61,19 @@ export class CaffoldSettingsKeyboardPage extends LitElement {
 
   render() {
     return html`
-      <div class="settings-keyboard-scroll">
+      <div
+        ${drawn(this.scrollport)}
+        ${this.surfaces.surface({
+          id: "scroll",
+          clipRoots: () => [this, this.scrollport.value],
+        })}
+        class="settings-keyboard-scroll"
+      >
         <section class="settings-keyboard-section">
           <header>
             <p>Navigate Caffold with single keys when you are not typing.</p>
           </header>
-          <label class="settings-keyboard-toggle">
+          <label ${drawn(this.toggleLabel)} class="settings-keyboard-toggle">
             <span class="settings-keyboard-copy">
               <strong id="settings-action-hints-label">
                 Keyboard navigation
@@ -75,6 +83,13 @@ export class CaffoldSettingsKeyboardPage extends LitElement {
               </span>
             </span>
             <input
+              ${this.hints.switch({
+                id: "action-hints:disable",
+                label: "Turn keyboard navigation off",
+                action: ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE,
+                when: this.settings.actionHintsEnabled !== false,
+                anchor: () => this.toggleLabel.value,
+              })}
               type="checkbox"
               role="switch"
               data-action-hints-enabled
@@ -107,91 +122,22 @@ export class CaffoldSettingsKeyboardPage extends LitElement {
 
   actionHintScope({
     scopeId = "settings:keyboard",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const scrollport = this.querySelector(":scope > .settings-keyboard-scroll");
-    const selector = "input[data-action-hints-enabled]";
-    const control = this.querySelector<HTMLInputElement>(selector);
-    if (
-      this.hidden ||
-      !scrollport ||
-      !control ||
-      !keyboardSwitchAvailable(control) ||
-      !control.checked
-    ) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        switchActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:action-hints:disable`,
-          actionId: ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE,
-          label: "Turn keyboard navigation off",
-          control,
-          anchor: control.closest("label") ?? control,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(selector) === control &&
-            keyboardSwitchAvailable(control) &&
-            control.checked,
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   scrollSurfaceScope({
     scopeId = "settings:keyboard",
     label = "Keyboard settings",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const scrollport = this.querySelector(":scope > .settings-keyboard-scroll");
-    if (this.hidden || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.querySelector(":scope > .settings-keyboard-scroll") ===
-              scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   private toggle(event: Event) {
     setActionHintsEnabled((event.target as HTMLInputElement).checked);
   }
-}
-
-function keyboardSwitchAvailable(control: HTMLInputElement) {
-  return (
-    !control.disabled && !control.hidden && hasActionHintLayoutBox(control)
-  );
 }
 
 customElements.define(

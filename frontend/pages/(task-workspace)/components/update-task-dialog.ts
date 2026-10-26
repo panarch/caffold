@@ -1,22 +1,17 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  buttonActionHintTarget,
-  emptyActionHintScope,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import {
-  keyboardNavigationContext,
+  KeyboardContexts,
   mergeKeyboardNavigationContexts,
-} from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-} from "#app/scroll-scope.js";
+} from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import type { TaskStartIntent } from "#tasks/components/task-create.ts";
 import "#tasks/components/task-turn-options.ts";
 import type { CaffoldUpdateStatus } from "#app/api.ts";
@@ -25,7 +20,6 @@ import type {
   TurnOptionsSelection,
 } from "#tasks/components/task-turn-options.ts";
 
-const SCOPE_ID = "caffold-update-task";
 const RESTART_NOTICE =
   "Running Tasks keep going while Caffold restarts. Claude sessions stop if it takes more than 10 minutes. Open terminals close.";
 const PERMISSION_HINT =
@@ -56,6 +50,16 @@ export class CaffoldUpdateTaskDialog extends LitElement {
   private error: Error | null = null;
   private opener: HTMLElement | null = null;
   private createRequestId = 0;
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
+  private readonly body = new DrawnRef<HTMLDivElement>(this);
+  private readonly turnOptions = new DrawnRef<CaffoldTaskTurnOptions>(this);
 
   createRenderRoot() {
     return this;
@@ -91,13 +95,13 @@ export class CaffoldUpdateTaskDialog extends LitElement {
     this.error = null;
     this.choosing = true;
     this.draw();
-    this.turnOptions()?.reset({
+    this.turnOptions.value?.reset({
       cwd: update.cwd,
       initialSelection: normalizeComposerSettings(composerSettings) ?? {},
       placement: "below",
     });
     this.updateSetup();
-    const dialog = this.dialog();
+    const dialog = this.dialog.value;
     if (dialog) {
       dialog.returnValue = "";
       if (!dialog.open) {
@@ -107,122 +111,31 @@ export class CaffoldUpdateTaskDialog extends LitElement {
     return true;
   }
 
-  actionHintScope(): ActionHintScope {
-    const dialog = this.dialog();
-    const body = dialog?.querySelector(".update-task-dialog-body");
-    if (!dialog?.open || !body || !this.updateTask) {
-      return emptyActionHintScope();
-    }
-    const ownScope = {
-      blocked: false,
-      targets: [
-        ["cancel", '[data-update-task-dialog-action="cancel"]'],
-        ["start", 'button[type="submit"]'],
-      ].flatMap(([identity, selector]) => {
-        const control = dialog.querySelector<HTMLButtonElement>(selector);
-        if (!control) {
-          return [];
-        }
-        return [
-          buttonActionHintTarget({
-            invalidationOwner: this,
-            id: `${SCOPE_ID}:${identity}`,
-            actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-            label: control.textContent?.trim() || identity,
-            control,
-            clipRoots: [dialog],
-            isActionable: () =>
-              this.isConnected &&
-              this.dialog() === dialog &&
-              dialog.open &&
-              dialog.querySelector(selector) === control &&
-              !control.disabled,
-          }),
-        ];
-      }),
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
-    const turnOptions = this.turnOptions();
-    const turnScope = {
-      blocked: this.pending,
-      targets: turnOptions
-        ? [
-            turnOptions.actionHintModelTarget({
-              scopeId: SCOPE_ID,
-              clipRoots: [dialog, body],
-            }),
-            turnOptions.actionHintPermissionTarget({
-              scopeId: SCOPE_ID,
-              clipRoots: [dialog, body],
-            }),
-          ].filter((target) => target !== null)
-        : [],
-      mutationRoots: turnOptions ? [turnOptions] : [],
-      scrollRoots: [],
-    };
-    return mergeActionHintScopes(ownScope, turnScope);
-  }
-
-  scrollSurfaceScope(): ScrollSurfaceScope {
-    const dialog = this.dialog();
-    const scrollport = dialog?.querySelector(".update-task-dialog-body");
-    if (!dialog?.open || !scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${SCOPE_ID}:body`,
-          label: "Caffold update",
-          scrollport,
-          clipRoots: [dialog, scrollport],
-          isEligible: () =>
-            this.isConnected &&
-            this.dialog() === dialog &&
-            dialog.open &&
-            dialog.querySelector(".update-task-dialog-body") === scrollport &&
-            hasScrollLayoutBox(dialog) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this, scrollport],
-      resizeElements: [dialog, scrollport],
-      scrollRoots: [scrollport],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    const body = this.body.value;
+    const own = this.hints.scope(pull);
+    const turnScope = this.turnOptions.value?.actionHintScope({
+      scopeId: pull.scopeId,
+      clipRoots: [...(pull.clipRoots ?? []), ...(body ? [body] : [])],
+    });
+    return mergeActionHintScopes(
+      own,
+      turnScope && { ...turnScope, blocked: this.pending },
+    );
   }
 
   keyboardNavigationContexts() {
-    const dialog = this.dialog();
-    const presentation =
-      dialog?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const hintDialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (!dialog?.open || !hintDialog || !hud || !selector || !this.updateTask) {
-      return [];
-    }
-    const modalContext = keyboardNavigationContext({
-      id: SCOPE_ID,
-      kind: "modal",
-      root: dialog,
-      actionHints: {
-        dialog: hintDialog,
-        scope: this.actionHintScope(),
-      },
-      scroll: {
-        hud,
-        selector,
-        scope: this.scrollSurfaceScope(),
-      },
+    const contexts = this.keyboard.contexts({
+      actionHints: (pull) => this.actionHintScope(pull),
+      scroll: (pull) => this.surfaces.scope(pull),
     });
     return mergeKeyboardNavigationContexts(
-      [modalContext],
-      this.turnOptions()?.keyboardNavigationContexts({ scopeId: SCOPE_ID }) ??
-        [],
+      contexts,
+      ...contexts.map(
+        ({ id }) =>
+          this.turnOptions.value?.keyboardNavigationContexts({ scopeId: id }) ??
+          [],
+      ),
     );
   }
 
@@ -233,6 +146,11 @@ export class CaffoldUpdateTaskDialog extends LitElement {
       : "";
     return html`
       <dialog
+        ${drawn(this.dialog)}
+        ${this.keyboard.modal({
+          id: "caffold-update-task",
+          when: Boolean(update),
+        })}
         closedby="any"
         aria-labelledby="caffold-update-task-title"
         aria-describedby="caffold-update-task-description"
@@ -253,10 +171,19 @@ export class CaffoldUpdateTaskDialog extends LitElement {
               <p>${RESTART_NOTICE}</p>
             </div>
           </header>
-          <div class="update-task-dialog-body">
+          <div
+            ${drawn(this.body)}
+            ${this.surfaces.surface({
+              id: "body",
+              label: () => "Caffold update",
+              clipRoots: () => [this.body.value],
+            })}
+            class="update-task-dialog-body"
+          >
             ${
               this.choosing
                 ? html`<caffold-task-turn-options
+                    ${drawn(this.turnOptions)}
                     @caffold:task-turn-options-change=${this.updateSetup}
                   ></caffold-task-turn-options>`
                 : nothing
@@ -270,6 +197,11 @@ export class CaffoldUpdateTaskDialog extends LitElement {
           </div>
           <footer>
             <button
+              ${this.hints.button({
+                id: "cancel",
+                label: "Cancel",
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
               type="button"
               class="update-task-dialog-button"
               data-update-task-dialog-action="cancel"
@@ -277,6 +209,11 @@ export class CaffoldUpdateTaskDialog extends LitElement {
               @click=${this.cancel}
             >Cancel</button>
             <button
+              ${this.hints.button({
+                id: "start",
+                label: "Start Update",
+                action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+              })}
               type="submit"
               class="update-task-dialog-button is-primary"
               ?disabled=${this.pending || !this.ready}
@@ -284,13 +221,14 @@ export class CaffoldUpdateTaskDialog extends LitElement {
           </footer>
         </form>
         <caffold-keyboard-navigation-presentation
+          ${this.keyboard.presentation()}
         ></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
   }
 
   private async startUpdate() {
-    const turnOptions = this.turnOptions();
+    const turnOptions = this.turnOptions.value;
     if (
       this.pending ||
       !this.updateTask ||
@@ -332,8 +270,8 @@ export class CaffoldUpdateTaskDialog extends LitElement {
         return;
       }
       this.pending = false;
-      this.turnOptions()?.resetFastMode();
-      this.dialog()?.close("started");
+      this.turnOptions.value?.resetFastMode();
+      this.dialog.value?.close("started");
     } catch (error) {
       if (requestId !== this.createRequestId) {
         return;
@@ -347,7 +285,7 @@ export class CaffoldUpdateTaskDialog extends LitElement {
   // Whether the update can start follows the turn options, which lock while
   // it is being started.
   private updateSetup() {
-    const turnOptions = this.turnOptions();
+    const turnOptions = this.turnOptions.value;
     if (!this.updateTask || !turnOptions) {
       return;
     }
@@ -367,7 +305,7 @@ export class CaffoldUpdateTaskDialog extends LitElement {
 
   private cancel() {
     if (!this.pending) {
-      this.dialog()?.close("cancel");
+      this.dialog.value?.close("cancel");
     }
   }
 
@@ -381,7 +319,7 @@ export class CaffoldUpdateTaskDialog extends LitElement {
     if (this.pending) {
       return;
     }
-    this.turnOptions()?.hidePopovers();
+    this.turnOptions.value?.hidePopovers();
     this.choosing = false;
     this.draw();
     const opener = this.opener;
@@ -389,16 +327,6 @@ export class CaffoldUpdateTaskDialog extends LitElement {
     if (opener?.isConnected) {
       window.requestAnimationFrame(() => opener.focus());
     }
-  }
-
-  private dialog() {
-    return this.querySelector<HTMLDialogElement>(":scope > dialog");
-  }
-
-  private turnOptions() {
-    return this.querySelector<CaffoldTaskTurnOptions>(
-      ":scope caffold-task-turn-options",
-    );
   }
 
   private draw() {

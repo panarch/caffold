@@ -1,19 +1,16 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
+} from "#app/action-hints.ts";
 import { type GitStatus, getGitDiff, getGitStatus } from "#app/api.ts";
-import type { ScrollSurfaceScopeOptions } from "#app/scroll-scope.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { ChangesReading } from "../changes-reading.ts";
 import type { ReviewChange } from "./selected-file/content.ts";
 import "./working-tree-changes/components/changes-tree.ts";
 import type { CaffoldGitDiffChangesTree } from "./working-tree-changes/components/changes-tree.ts";
-
-const BRANCH_ACTION_SELECTOR =
-  ':scope > .working-tree-changes-empty-action:not([hidden]) > button[data-review-action="review-branch"]';
 
 export class CaffoldReviewWorkingTreeChanges extends LitElement {
   static properties = {
@@ -27,6 +24,8 @@ export class CaffoldReviewWorkingTreeChanges extends LitElement {
   private status: GitStatus | null = null;
   private error: Error | null = null;
   private readonly reading = new ChangesReading();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly treeElement = new DrawnRef<CaffoldGitDiffChangesTree>(this);
   private listShows = "";
   private generation = 0;
   private selectedPath = "";
@@ -47,13 +46,20 @@ export class CaffoldReviewWorkingTreeChanges extends LitElement {
 
   render() {
     return html`
-      <caffold-git-diff-changes-tree></caffold-git-diff-changes-tree>
+      <caffold-git-diff-changes-tree
+        ${drawn(this.treeElement)}
+      ></caffold-git-diff-changes-tree>
       <div
         class="working-tree-changes-empty-action"
         ?hidden=${!this.branchActionShown}
       >
         <p>Review committed changes against the branch base.</p>
         <button
+          ${this.hints.button({
+            id: "branch",
+            label: "Review branch changes",
+            role: "branch",
+          })}
           type="button"
           class="task-secondary-button"
           data-review-action="review-branch"
@@ -185,63 +191,15 @@ export class CaffoldReviewWorkingTreeChanges extends LitElement {
     this.tree.restoreListScroll(scroll);
   }
 
-  actionHintScope({
-    scopeId = "",
-    actionId = "",
-    disclosureActionId = "",
-    branchTargetId = "",
-    branchActionId = "",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    disclosureActionId?: string;
-    branchTargetId?: string;
-    branchActionId?: string;
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const branchControl = this.querySelector<HTMLButtonElement>(
-      BRANCH_ACTION_SELECTOR,
-    );
-    const branchScope =
-      branchControl && !branchControl.disabled
-        ? {
-            blocked: false,
-            targets: [
-              buttonActionHintTarget({
-                invalidationOwner: this,
-                id: branchTargetId,
-                actionId: branchActionId,
-                label:
-                  branchControl.textContent?.trim() || "Review branch changes",
-                control: branchControl,
-                clipRoots,
-                isActionable: () =>
-                  this.isConnected &&
-                  isCurrent() &&
-                  this.querySelector(BRANCH_ACTION_SELECTOR) ===
-                    branchControl &&
-                  !branchControl.disabled,
-              }),
-            ],
-            mutationRoots: [branchControl.parentElement].filter(
-              (root): root is HTMLElement => root !== null,
-            ),
-            scrollRoots: [],
-          }
-        : null;
+  actionHintScope(pull: ActionHintPull = {}) {
     return mergeActionHintScopes(
-      branchScope,
-      this.tree.actionHintScope({
-        scopeId,
-        actionId,
-        disclosureActionId,
-        clipRoots,
-      }),
+      this.hints.scope(pull),
+      this.tree.actionHintScope(pull),
     );
   }
 
-  scrollSurfaceScope(options: ScrollSurfaceScopeOptions = {}) {
-    return this.tree.scrollSurfaceScope(options);
+  scrollSurfaceScope(pull: ScrollSurfacePull = {}) {
+    return this.tree.scrollSurfaceScope(pull);
   }
 
   private reviewBranch(event: Event) {
@@ -304,9 +262,7 @@ export class CaffoldReviewWorkingTreeChanges extends LitElement {
   // changes are in the document.
   private get tree() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-git-diff-changes-tree",
-    ) as CaffoldGitDiffChangesTree;
+    return this.treeElement.value as CaffoldGitDiffChangesTree;
   }
 }
 

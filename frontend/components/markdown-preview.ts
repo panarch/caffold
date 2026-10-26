@@ -1,7 +1,6 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
   type ActionHintScope,
-  type ActionHintScopeOptions,
   captureLinkActionHintBinding,
   emptyActionHintScope,
   hasActionHintLayoutBox,
@@ -9,18 +8,20 @@ import {
   linkActionHintLabel,
   linkActionHintTarget,
   matchesLinkActionHintBinding,
-} from "../action-hint-scope.js";
+} from "../action-hint-scope.ts";
+import type { ActionHintPull } from "../action-hints.ts";
 import { imageUrl } from "../api.ts";
 import { fetchInChunks } from "../chunked-fetch.ts";
 import { parseLinkRoute } from "../navigation-routes.ts";
 import {
-  emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
+  type ScrollSurfacePull,
   type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "../scroll-scope.js";
+  ScrollSurfaces,
+} from "../scroll-scope.ts";
 import "./loading-text.ts";
+import { DrawnRef, drawn } from "./drawn-refs.ts";
 
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 
@@ -98,6 +99,10 @@ export class CaffoldMarkdownPreview extends LitElement {
   private scrollSurfaceRecords: ScrollSurfaceRecord[] = [];
   private fetchedImages = new Map<HTMLElement, FetchedImage>();
   private imageObserver: IntersectionObserver | null = null;
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly body = new DrawnRef<HTMLElement>(this);
 
   constructor() {
     super();
@@ -139,7 +144,16 @@ export class CaffoldMarkdownPreview extends LitElement {
                 role="status"
               >Rendering Markdown...</span>`
             : nothing;
-    return html`<article class="markdown-preview-body">${content}</article>`;
+    return html`<article
+      ${drawn(this.body)}
+      ${this.surfaces.surface({
+        id: "scroll",
+        axes: ["vertical", "horizontal"],
+        scrollport: () => this,
+        clipRoots: () => [this],
+      })}
+      class="markdown-preview-body"
+    >${content}</article>`;
   }
 
   updated(changed: PropertyValues) {
@@ -174,130 +188,84 @@ export class CaffoldMarkdownPreview extends LitElement {
   }
 
   scrollSurfaceScope({
-    scopeId = "",
     label = "Markdown preview",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    if (!scopeId || !label || this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    const ownScope: ScrollSurfaceScope = {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label,
-          scrollport: this,
-          axes: ["vertical", "horizontal"],
-          clipRoots: [this, ...clipRoots].filter(Boolean),
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            hasScrollLayoutBox(this),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this],
-      scrollRoots: [this],
-    };
-    const body = this.body();
-    const nestedScopes = (this.scrollSurfaceRecords ?? []).map(
-      (record): ScrollSurfaceScope => {
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    const body = this.body.value;
+    return mergeScrollSurfaceScopes(
+      this.surfaces.scope({ ...pull, label }),
+      ...(this.renderState === "markdown" && body
+        ? this.scrollSurfaceRecords
+        : []
+      ).flatMap((record): ScrollSurfaceScope[] => {
         const nested = record.scrollport;
-        return {
-          blocked: false,
-          surfaces: [
-            {
-              id: `${scopeId}:${record.kind}:${record.ordinal}`,
-              label: `${label} ${record.label}`,
-              scrollport: nested,
-              axes: ["horizontal"],
-              clipRoots: [this, body, nested, ...clipRoots].filter(
-                (root): root is Element => Boolean(root),
-              ),
-              isEligible: () =>
-                this.isConnected &&
-                !this.hidden &&
-                isCurrent() &&
-                this.renderState === "markdown" &&
-                this.body() === body &&
-                Boolean(this.scrollSurfaceRecords?.includes(record)) &&
-                Boolean(body?.contains(nested)) &&
-                hasScrollLayoutBox(this) &&
-                hasScrollLayoutBox(nested),
-            },
-          ],
-          mutationRoots: [this],
-          resizeElements: [this, nested],
-          scrollRoots: [this, nested],
-        };
-      },
+        if (!body?.contains(nested) || !hasScrollLayoutBox(nested)) {
+          return [];
+        }
+        return [
+          {
+            blocked: false,
+            surfaces: [
+              {
+                id: `${pull.scopeId}:${record.kind}:${record.ordinal}`,
+                label: `${label} ${record.label}`,
+                scrollport: nested,
+                axes: ["horizontal"],
+                clipRoots: [this, body, nested, ...(pull.clipRoots ?? [])],
+              },
+            ],
+            mutationRoots: [this],
+            resizeElements: [this, nested],
+            scrollRoots: [this, nested],
+          },
+        ];
+      }),
     );
-    return mergeScrollSurfaceScopes(ownScope, ...nestedScopes);
   }
 
-  actionHintScope({
-    scopeId = "",
-    linkActionId = "",
-    clipRoots = [],
-    isCurrent = () => true,
-  }: ActionHintScopeOptions & {
-    linkActionId?: string;
-    isCurrent?: () => boolean;
-  } = {}): ActionHintScope {
-    const body = this.body();
-    if (
-      !scopeId ||
-      !linkActionId ||
-      !body ||
-      !this.isConnected ||
-      this.hidden ||
-      this.renderState !== "markdown"
-    ) {
+  // The links drawn from the Markdown, which do what the owner's `link`
+  // action names.
+  actionHintScope(pull: ActionHintPull = {}): ActionHintScope {
+    const body = this.body.value;
+    const actionId = pull.actions?.link;
+    if (!actionId || !body || this.renderState !== "markdown") {
       return emptyActionHintScope();
     }
     const tableScrollRoots: Element[] = [];
-    const targets = (this.actionHintLinks ?? []).flatMap((record) => {
-      const { binding, control, ordinal } = record;
-      const label = linkActionHintLabel(control);
-      if (
-        !label ||
-        !matchesLinkActionHintBinding(control, binding) ||
-        !body.contains(control) ||
-        !hasActionHintLayoutBox(control)
-      ) {
-        return [];
-      }
-      const tableScrollRoot = control.closest(".markdown-preview-table-scroll");
-      if (tableScrollRoot && body.contains(tableScrollRoot)) {
-        tableScrollRoots.push(tableScrollRoot);
-      }
-      return [
-        linkActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:link:${ordinal}`,
-          actionId: linkActionId,
-          label,
-          control,
-          clipRoots: [this, body, tableScrollRoot, ...clipRoots].filter(
-            (root): root is Element => Boolean(root),
-          ),
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            isCurrent() &&
-            this.renderState === "markdown" &&
-            this.body() === body &&
-            Boolean(this.actionHintLinks?.includes(record)) &&
-            body.contains(control) &&
-            matchesLinkActionHintBinding(control, binding) &&
-            Boolean(linkActionHintLabel(control)) &&
-            hasActionHintLayoutBox(control),
-        }),
-      ];
-    });
+    const targets = this.actionHintLinks.flatMap(
+      ({ binding, control, ordinal }) => {
+        const label = linkActionHintLabel(control);
+        if (
+          !label ||
+          !matchesLinkActionHintBinding(control, binding) ||
+          !body.contains(control) ||
+          !hasActionHintLayoutBox(control)
+        ) {
+          return [];
+        }
+        const tableScrollRoot = control.closest(
+          ".markdown-preview-table-scroll",
+        );
+        if (tableScrollRoot && body.contains(tableScrollRoot)) {
+          tableScrollRoots.push(tableScrollRoot);
+        }
+        return [
+          linkActionHintTarget({
+            invalidationOwner: this,
+            id: `${pull.scopeId}:link:${ordinal}`,
+            actionId,
+            label,
+            control,
+            clipRoots: [
+              this,
+              body,
+              ...(tableScrollRoot ? [tableScrollRoot] : []),
+              ...(pull.clipRoots ?? []),
+            ],
+          }),
+        ];
+      },
+    );
     return {
       blocked: false,
       targets,
@@ -333,8 +301,9 @@ export class CaffoldMarkdownPreview extends LitElement {
 
   private watchImages() {
     const slots =
-      this.body()?.querySelectorAll<HTMLElement>(".markdown-preview-image") ??
-      [];
+      this.body.value?.querySelectorAll<HTMLElement>(
+        ".markdown-preview-image",
+      ) ?? [];
     if (!slots.length) {
       return;
     }
@@ -453,7 +422,7 @@ export class CaffoldMarkdownPreview extends LitElement {
       this.renderedContent = content;
       this.renderState = "markdown";
       this.performUpdate();
-      const body = this.body();
+      const body = this.body.value;
       this.actionHintLinks = body ? collectActionHintLinks(body) : [];
       this.scrollSurfaceRecords = body ? collectScrollSurfaceRecords(body) : [];
       this.pendingScroll = null;
@@ -467,12 +436,8 @@ export class CaffoldMarkdownPreview extends LitElement {
 
   private acceptRender(renderToken: symbol) {
     return (
-      this.renderToken === renderToken && Boolean(this.body()?.isConnected)
+      this.renderToken === renderToken && Boolean(this.body.value?.isConnected)
     );
-  }
-
-  private body() {
-    return this.querySelector<HTMLElement>(":scope > .markdown-preview-body");
   }
 }
 

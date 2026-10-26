@@ -1,12 +1,9 @@
 import { html, LitElement } from "lit";
 import {
-  type ActionHintScope,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
+  ACTION_HINT_ACTION,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import {
   checkCaffoldUpdate,
   getCaffoldUpdate,
@@ -17,14 +14,13 @@ import {
 import { BUILD_INFO } from "#app/build-info.js";
 import { busySpin } from "#app/component-styles.ts";
 import {
+  KeyboardContexts,
   KeyboardNavigationController,
-  keyboardNavigationContext,
   mergeKeyboardNavigationContexts,
-} from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
-import "#app/keyboard-navigation/components/shortcut-dialog.js";
-import type { KeyboardNavigationContext } from "#app/keyboard-navigation/context.js";
+} from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import "#app/keyboard-navigation/components/shortcut-dialog.ts";
+import type { CaffoldKeyboardShortcutDialog } from "#app/keyboard-navigation/components/shortcut-dialog.ts";
 import {
   type ParsedRoute,
   parseRoute,
@@ -33,6 +29,7 @@ import {
 } from "#app/navigation-routes.ts";
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.ts";
 import { getSettings } from "#app/settings.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "./(task-workspace)/layout.ts";
 import type { CaffoldTaskWorkspace } from "./(task-workspace)/layout.ts";
@@ -127,6 +124,22 @@ export class CaffoldAppShell extends LitElement {
     diagnostics: normalizePwaUpdateDiagnostics(null),
   };
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly workspace = new DrawnRef<CaffoldTaskWorkspace>(this);
+  private readonly bootstrapErrorPanel = new DrawnRef<HTMLElement>(this);
+  private readonly foregroundRecoveryNotice = new DrawnRef<HTMLElement>(this);
+  private readonly updateDialog = new DrawnRef<CaffoldUpdateDialog>(this);
+  private readonly updateResultDialog = new DrawnRef<CaffoldUpdateResultDialog>(
+    this,
+  );
+  private readonly buildMismatchAlert = new DrawnRef<CaffoldBuildMismatchAlert>(
+    this,
+  );
+  private readonly keyboardShortcutDialog =
+    new DrawnRef<CaffoldKeyboardShortcutDialog>(this);
   private readonly originReachable = () => {
     void this.foregroundRecoveryLifecycle.reportOriginReachable();
   };
@@ -158,7 +171,7 @@ export class CaffoldAppShell extends LitElement {
       workspace: this,
       collectKeyboardNavigationContexts: () =>
         this.keyboardNavigationContexts(),
-      shortcutDialog: this.keyboardShortcutDialog,
+      shortcutDialog: this.keyboardShortcutDialog.value,
       afterActionHintActivation: (target) =>
         this.taskWorkspace.afterActionHintActivation(target),
       openTaskSwitcher: () => this.taskWorkspace.openTaskSwitcher(),
@@ -334,50 +347,29 @@ export class CaffoldAppShell extends LitElement {
     return true;
   }
 
-  actionHintScope(): ActionHintScope {
+  actionHintScope() {
     return mergeActionHintScopes(
-      this.bootstrapRetryActionHintScope(),
-      this.foregroundRetryActionHintScope(),
-      this.buildMismatchAlert.actionHintScope(),
+      this.hints.scope(),
+      this.buildMismatchAlert.value?.actionHintScope(),
       this.taskWorkspace.actionHintScope(),
     );
   }
 
   keyboardNavigationContexts() {
-    const presentation = this.keyboardNavigationPresentation;
-    const dialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    const workspaceContexts =
-      dialog && hud && selector
-        ? [
-            keyboardNavigationContext({
-              id: "workspace",
-              kind: "workspace",
-              root: this,
-              actionHints: {
-                dialog,
-                scope: this.actionHintScope(),
-              },
-              scroll: {
-                hud,
-                selector,
-                scope: this.taskWorkspace.scrollSurfaceScope(),
-              },
-              editing: {
-                escapeTarget: (editable: Element | null) =>
-                  this.taskWorkspace.contains(editable)
-                    ? this.taskWorkspace.actionHintEditingEscapeTarget(editable)
-                    : null,
-              },
-            }),
-          ]
-        : [];
     return mergeKeyboardNavigationContexts(
-      workspaceContexts,
-      this.updateDialog.keyboardNavigationContexts(),
-      this.updateResultDialog.keyboardNavigationContexts(),
-      this.keyboardShortcutDialog.keyboardNavigationContexts(),
+      this.keyboard.workspace("workspace", {
+        actionHints: () => this.actionHintScope(),
+        scroll: () => this.taskWorkspace.scrollSurfaceScope(),
+        editing: {
+          escapeTarget: (editable: Element | null) =>
+            this.taskWorkspace.contains(editable)
+              ? this.taskWorkspace.actionHintEditingEscapeTarget(editable)
+              : null,
+        },
+      }),
+      this.updateDialog.value?.keyboardNavigationContexts() ?? [],
+      this.updateResultDialog.value?.keyboardNavigationContexts() ?? [],
+      this.keyboardShortcutDialog.value?.keyboardNavigationContexts() ?? [],
       this.taskWorkspace.keyboardNavigationContexts(),
     );
   }
@@ -406,12 +398,25 @@ export class CaffoldAppShell extends LitElement {
     return html`
       <main class="app-main" aria-label="Workspace">
         <caffold-task-workspace
+          ${drawn(this.workspace)}
           ?hidden=${Boolean(error)}
         ></caffold-task-workspace>
-        <section class="app-bootstrap-error" role="alert" ?hidden=${!error}>
+        <section
+          ${drawn(this.bootstrapErrorPanel)}
+          class="app-bootstrap-error"
+          role="alert"
+          ?hidden=${!error}
+        >
           <h1>Caffold is unavailable</h1>
           <p data-bootstrap-error-message>${error?.message ?? ""}</p>
           <button
+            ${this.hints.button({
+              id: "app:bootstrap:retry",
+              label: "Retry",
+              action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              owner: () => this.bootstrapErrorPanel.value,
+              clipRoots: () => [this.bootstrapErrorPanel.value],
+            })}
             type="button"
             data-action="retry-bootstrap"
             @click=${this.retryBootstrap}
@@ -419,6 +424,7 @@ export class CaffoldAppShell extends LitElement {
         </section>
       </main>
       <section
+        ${drawn(this.foregroundRecoveryNotice)}
         class="app-foreground-recovery"
         role="status"
         aria-live="polite"
@@ -449,23 +455,38 @@ export class CaffoldAppShell extends LitElement {
               : "Reconnecting to Caffold server..."
         }</span>
         <button
+          ${this.hints.button({
+            id: "app:foreground-recovery:retry",
+            label: "Retry",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            owner: () => this.foregroundRecoveryNotice.value,
+            clipRoots: () => [this.foregroundRecoveryNotice.value],
+          })}
           type="button"
           data-action="retry-foreground-recovery"
           ?hidden=${!unavailable}
           @click=${this.retryForegroundRecovery}
         >Retry</button>
       </section>
-      <caffold-update-dialog></caffold-update-dialog>
-      <caffold-update-result-dialog></caffold-update-result-dialog>
+      <caffold-update-dialog
+        ${drawn(this.updateDialog)}
+      ></caffold-update-dialog>
+      <caffold-update-result-dialog
+        ${drawn(this.updateResultDialog)}
+      ></caffold-update-result-dialog>
       <caffold-build-mismatch-alert
+        ${drawn(this.buildMismatchAlert)}
         hidden
         .serverLabel=${
           mismatch ? this.buildHealth?.buildLabel || serverId || "" : ""
         }
       ></caffold-build-mismatch-alert>
       <caffold-keyboard-navigation-presentation
+        ${this.keyboard.presentation()}
       ></caffold-keyboard-navigation-presentation>
-      <caffold-keyboard-shortcut-dialog></caffold-keyboard-shortcut-dialog>
+      <caffold-keyboard-shortcut-dialog
+        ${drawn(this.keyboardShortcutDialog)}
+      ></caffold-keyboard-shortcut-dialog>
     `;
   }
 
@@ -586,7 +607,7 @@ export class CaffoldAppShell extends LitElement {
     this.keyboardNavigation.cancelStoredMode("interaction-owner", {
       restoreFocus: false,
     });
-    this.updateResultDialog.open(attempt);
+    this.updateResultDialog.value?.open(attempt);
   }
 
   private installNavigationHandlers() {
@@ -826,7 +847,7 @@ export class CaffoldAppShell extends LitElement {
     this.taskWorkspace.setUpdateStatus(this.pwaUpdateStatus);
     this.draw();
     if (!preparedUpdate.ready) {
-      this.updateDialog.close();
+      this.updateDialog.value?.close();
       return;
     }
     if (!this.presentedUpdateBuildIds.has(preparedUpdate.buildId)) {
@@ -834,7 +855,7 @@ export class CaffoldAppShell extends LitElement {
       this.keyboardNavigation.cancelStoredMode("interaction-owner", {
         restoreFocus: false,
       });
-      this.updateDialog.open();
+      this.updateDialog.value?.open();
     }
   }
 
@@ -867,133 +888,13 @@ export class CaffoldAppShell extends LitElement {
     return true;
   }
 
-  private bootstrapRetryActionHintScope(): ActionHintScope {
-    const panel = this.querySelector<HTMLElement>(
-      ":scope > .app-main > .app-bootstrap-error",
-    );
-    const control = panel?.querySelector<HTMLButtonElement>(
-      '[data-action="retry-bootstrap"]',
-    );
-    if (!panel || !control) {
-      return emptyActionHintScope();
-    }
-    const visible =
-      !panel.hidden && !control.hidden && hasActionHintLayoutBox(control);
-    return {
-      blocked: false,
-      targets: visible
-        ? [
-            buttonActionHintTarget({
-              invalidationOwner: this,
-              id: "app:bootstrap:retry",
-              actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-              label: control.textContent?.trim() || "Retry Caffold bootstrap",
-              control,
-              clipRoots: [panel],
-              isActionable: () =>
-                this.isConnected &&
-                this.querySelector(
-                  ":scope > .app-main > .app-bootstrap-error",
-                ) === panel &&
-                !panel.hidden &&
-                panel.querySelector('[data-action="retry-bootstrap"]') ===
-                  control &&
-                !control.hidden &&
-                !control.disabled,
-            }),
-          ]
-        : [],
-      mutationRoots: [panel],
-      scrollRoots: [],
-    };
-  }
-
-  private foregroundRetryActionHintScope(): ActionHintScope {
-    const notice = this.querySelector<HTMLElement>(
-      ":scope > .app-foreground-recovery",
-    );
-    const control = notice?.querySelector<HTMLButtonElement>(
-      '[data-action="retry-foreground-recovery"]',
-    );
-    if (!notice || !control) {
-      return emptyActionHintScope();
-    }
-    const visible =
-      !notice.hidden &&
-      !control.hidden &&
-      notice.dataset.recoveryState === "unavailable" &&
-      hasActionHintLayoutBox(control);
-    return {
-      blocked: false,
-      targets: visible
-        ? [
-            buttonActionHintTarget({
-              invalidationOwner: this,
-              id: "app:foreground-recovery:retry",
-              actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-              label: control.textContent?.trim() || "Retry foreground recovery",
-              control,
-              clipRoots: [notice],
-              isActionable: () =>
-                this.isConnected &&
-                this.querySelector(":scope > .app-foreground-recovery") ===
-                  notice &&
-                !notice.hidden &&
-                notice.dataset.recoveryState === "unavailable" &&
-                notice.querySelector(
-                  '[data-action="retry-foreground-recovery"]',
-                ) === control &&
-                !control.hidden &&
-                !control.disabled,
-            }),
-          ]
-        : [],
-      mutationRoots: [notice],
-      scrollRoots: [],
-    };
-  }
-
   private draw() {
     this.requestUpdate();
     this.performUpdate();
   }
 
   private get taskWorkspace() {
-    return this.querySelector(
-      ":scope > .app-main > caffold-task-workspace",
-    ) as CaffoldTaskWorkspace;
-  }
-
-  private get updateDialog() {
-    return this.querySelector(
-      ":scope > caffold-update-dialog",
-    ) as CaffoldUpdateDialog;
-  }
-
-  private get updateResultDialog() {
-    return this.querySelector(
-      ":scope > caffold-update-result-dialog",
-    ) as CaffoldUpdateResultDialog;
-  }
-
-  private get buildMismatchAlert() {
-    return this.querySelector(
-      ":scope > caffold-build-mismatch-alert",
-    ) as CaffoldBuildMismatchAlert;
-  }
-
-  private get keyboardNavigationPresentation() {
-    return this.querySelector<CaffoldKeyboardNavigationPresentation>(
-      ":scope > caffold-keyboard-navigation-presentation",
-    );
-  }
-
-  private get keyboardShortcutDialog() {
-    return this.querySelector(
-      ":scope > caffold-keyboard-shortcut-dialog",
-    ) as HTMLElement & {
-      keyboardNavigationContexts(): KeyboardNavigationContext[];
-    };
+    return this.workspace.value as CaffoldTaskWorkspace;
   }
 }
 

@@ -1,11 +1,9 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
+} from "#app/action-hints.ts";
 import {
   type DirectoryEntry,
   type DirectoryListing,
@@ -13,10 +11,10 @@ import {
 } from "#app/api.ts";
 import { compactIconButton } from "#app/component-styles.ts";
 import {
-  emptyScrollSurfaceScope,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  mergeScrollSurfaceScopes,
+  type ScrollSurfacePull,
+  ScrollSurfaces,
+} from "#app/scroll-scope.ts";
 import { entryKindLabel } from "../../dom.ts";
 import {
   type CaffoldFileTree,
@@ -30,6 +28,7 @@ import {
 } from "../../file-tree.ts";
 import { inlineIcon, warmIcons } from "../../icons.ts";
 import "../../loading-text.ts";
+import { DrawnRef, drawn } from "../../drawn-refs.ts";
 
 const TREE_LOADING_DELAY_MS = 180;
 
@@ -71,6 +70,11 @@ export class CaffoldFileList extends LitElement {
   private modelPending = false;
   private scrollToTop = false;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly tree = new DrawnRef<CaffoldFileTree>(this);
 
   constructor() {
     super();
@@ -98,6 +102,7 @@ export class CaffoldFileList extends LitElement {
   render() {
     const state = this.state;
     const tree = html`<caffold-file-tree
+      ${drawn(this.tree)}
       @caffold:file-tree-select=${this.openTreeEntry}
       @caffold:file-tree-load-children=${this.loadTreeChildren}
     ></caffold-file-tree>`;
@@ -152,6 +157,12 @@ export class CaffoldFileList extends LitElement {
                 this.refreshVisible
                   ? html`
                       <button
+                        ${this.hints.button({
+                          id: "refresh",
+                          label: refreshTitle,
+                          role: "refresh",
+                          clipRoots: () => [this],
+                        })}
                         type="button"
                         class=${refreshClass}
                         data-action="refresh-files"
@@ -269,87 +280,42 @@ export class CaffoldFileList extends LitElement {
   }
 
   fileTree() {
-    return this.querySelector<CaffoldFileTree>("caffold-file-tree");
+    return this.tree.value ?? null;
   }
 
-  actionHintScope({
-    scopeId = "",
-    actionId = "",
-    disclosureActionId = "",
-    refreshActionId = "",
-    clipRoots = [],
-  }: ActionHintScopeOptions & {
-    disclosureActionId?: string;
-    refreshActionId?: string;
-  } = {}): ActionHintScope {
-    const tree = this.fileTree();
-    if (!scopeId || this.hidden || this.state?.status !== "ready" || !tree) {
-      return emptyActionHintScope();
-    }
-    const refresh = this.querySelector<HTMLButtonElement>(
-      ':scope > .file-list-panel > header button[data-action="refresh-files"]',
-    );
-    const refreshScope =
-      refreshActionId && refresh && !refresh.disabled
-        ? {
-            blocked: false,
-            targets: [
-              buttonActionHintTarget({
-                invalidationOwner: this,
-                id: `${scopeId}:refresh`,
-                actionId: refreshActionId,
-                label: refresh.getAttribute("aria-label") || "Refresh files",
-                control: refresh,
-                clipRoots: [this, ...clipRoots],
-                isActionable: () =>
-                  this.isConnected &&
-                  !this.hidden &&
-                  this.state?.status === "ready" &&
-                  this.querySelector(
-                    ':scope > .file-list-panel > header button[data-action="refresh-files"]',
-                  ) === refresh &&
-                  !refresh.disabled,
-              }),
-            ],
-            mutationRoots: [this],
-            scrollRoots: [],
-          }
-        : null;
-    const treeScope =
-      actionId || disclosureActionId
-        ? tree.actionHintScope({
-            scopeId,
-            actionId,
-            disclosureActionId,
-            clipRoots: [this, ...clipRoots],
-            isCurrent: (node) => listedEntry(node)?.path === this.selectedPath,
-            includeDirectories: true,
-            labelForNode: (node) =>
-              node.ariaLabel || `Open ${listedEntry(node)?.name ?? node.name}`,
+  captureScroll() {
+    return this.fileTree()?.captureScroll() ?? null;
+  }
+
+  restoreScroll(scroll: { top: number; left: number } | null | undefined) {
+    this.fileTree()?.restoreScroll(scroll);
+  }
+
+  // `actions` names what `refresh` does and, for the tree, what opening a
+  // `file` and toggling a `disclosure` do.
+  actionHintScope(pull: ActionHintPull = {}) {
+    return mergeActionHintScopes(
+      this.hints.scope(pull),
+      this.state.status === "ready"
+        ? this.fileTree()?.actionHintScope({
+            ...pull,
+            clipRoots: [this, ...(pull.clipRoots ?? [])],
           })
-        : null;
-    return mergeActionHintScopes(refreshScope, treeScope);
+        : null,
+    );
   }
 
-  scrollSurfaceScope({
-    scopeId = "",
-    label = "Files",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    const tree = this.fileTree();
-    if (!scopeId || this.hidden || this.state?.status !== "ready" || !tree) {
-      return emptyScrollSurfaceScope();
-    }
-    return tree.scrollSurfaceScope({
-      scopeId,
-      label,
-      clipRoots: [this, ...clipRoots],
-      isCurrent: () =>
-        this.isConnected &&
-        !this.hidden &&
-        this.state?.status === "ready" &&
-        this.fileTree() === tree,
-    });
+  scrollSurfaceScope({ label = "Files", ...pull }: ScrollSurfacePull = {}) {
+    return mergeScrollSurfaceScopes(
+      this.surfaces.scope(pull),
+      this.state.status === "ready"
+        ? this.fileTree()?.scrollSurfaceScope({
+            ...pull,
+            label,
+            clipRoots: [this, ...(pull.clipRoots ?? [])],
+          })
+        : null,
+    );
   }
 
   setSelectedPath(path: string | null | undefined) {

@@ -1,11 +1,9 @@
 import { html, LitElement, nothing } from "lit";
-import type { ActionHintScope } from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
-} from "#app/action-hints.js";
+  type ActionHintPull,
+  ActionHints,
+} from "#app/action-hints.ts";
 import { TASK_ABSENCE, type TaskAbsence } from "#app/api.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 
@@ -53,6 +51,9 @@ const COPY: Readonly<
 export class CaffoldTaskAbsence extends LitElement {
   private snapshot: TaskAbsenceSnapshot | null = null;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
 
   createRenderRoot() {
     return this;
@@ -76,46 +77,8 @@ export class CaffoldTaskAbsence extends LitElement {
     this.performUpdate();
   }
 
-  actionHintScope({
-    scopeId,
-    clipRoots = [],
-  }: {
-    scopeId: string;
-    clipRoots?: Element[];
-  }): ActionHintScope {
-    const control = this.restoreButton;
-    if (
-      !this.isConnected ||
-      this.hidden ||
-      !control ||
-      control.parentElement?.hidden ||
-      control.disabled ||
-      !hasActionHintLayoutBox(control)
-    ) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:restore`,
-          actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-          label: "Restore",
-          control,
-          clipRoots: [this, ...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.restoreButton === control &&
-            !control.parentElement?.hidden &&
-            !control.disabled &&
-            hasActionHintLayoutBox(control),
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.hints.scope(pull);
   }
 
   render() {
@@ -148,6 +111,11 @@ export class CaffoldTaskAbsence extends LitElement {
             ?hidden=${snapshot?.absence !== TASK_ABSENCE.ARCHIVED}
           >
             <button
+              ${this.hints.button({
+                id: "restore",
+                label: "Restore",
+                action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+              })}
               type="button"
               class="task-secondary-button"
               data-task-absence-action="restore"
@@ -182,12 +150,6 @@ export class CaffoldTaskAbsence extends LitElement {
         composed: true,
         detail: { type: "restore" },
       }),
-    );
-  }
-
-  private get restoreButton() {
-    return this.querySelector<HTMLButtonElement>(
-      '[data-task-absence-action="restore"]',
     );
   }
 }

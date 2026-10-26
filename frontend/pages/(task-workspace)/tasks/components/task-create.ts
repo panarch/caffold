@@ -1,14 +1,14 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
+} from "#app/action-hints.ts";
 import {
   emptyScrollSurfaceScope,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+  type ScrollSurfacePull,
+} from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import {
   type TaskStoreStatusSnapshot,
@@ -82,6 +82,11 @@ export class CaffoldTaskCreate extends LitElement {
   private error: Error | null = null;
   private activeSubmissionId = "";
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly composerElement = new DrawnRef<CaffoldTaskComposer>(this);
+  private readonly directoryElement = new DrawnRef<CaffoldTaskDirectoryField>(
+    this,
+  );
 
   createRenderRoot() {
     return this;
@@ -173,36 +178,25 @@ export class CaffoldTaskCreate extends LitElement {
   }
 
   composer() {
-    return this.querySelector<CaffoldTaskComposer>(
-      ":scope > caffold-task-composer",
-    );
+    return this.composerElement.value ?? null;
   }
 
   directoryField() {
-    return this.querySelector<CaffoldTaskDirectoryField>(
-      ":scope > .task-create-directory > caffold-task-directory-field",
-    );
+    return this.directoryElement.value ?? null;
   }
 
-  actionHintScope(options: ActionHintScopeOptions = {}): ActionHintScope {
-    this.performUpdate();
+  actionHintScope(pull: ActionHintPull = {}) {
     return mergeActionHintScopes(
-      this.directoryField()?.actionHintScope(options),
-      {
-        blocked: false,
-        targets: this.composer()?.actionHintTargets(options) ?? [],
-        mutationRoots: [this],
-        scrollRoots: [],
-      },
+      this.hints.scope(pull),
+      this.directoryField()?.actionHintScope(pull),
+      this.composer()?.actionHintScope(pull),
     );
   }
 
-  scrollSurfaceScope(
-    options: ScrollSurfaceScopeOptions = {},
-  ): ScrollSurfaceScope {
+  scrollSurfaceScope(pull: ScrollSurfacePull = {}) {
     this.performUpdate();
     return (
-      this.directoryField()?.scrollSurfaceScope(options) ??
+      this.directoryField()?.scrollSurfaceScope(pull) ??
       emptyScrollSurfaceScope()
     );
   }
@@ -224,6 +218,7 @@ export class CaffoldTaskCreate extends LitElement {
       <div class="task-create-directory">${
         this.browseCwd
           ? html`<caffold-task-directory-field
+              ${drawn(this.directoryElement)}
               @caffold:task-directory-chosen=${this.directoryChosen}
             ></caffold-task-directory-field>`
           : html`<p class="task-create-fixed-directory">
@@ -250,6 +245,7 @@ export class CaffoldTaskCreate extends LitElement {
           : nothing
       }</div>
       <caffold-task-composer
+        ${drawn(this.composerElement)}
         @caffold:task-composer-intent=${this.composerIntent}
         @caffold:task-composer-submit=${this.composerSubmit}
       ></caffold-task-composer>

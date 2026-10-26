@@ -23,7 +23,10 @@ test("renders each requested Markdown from the top of the retained preview", () 
       this.open = true;
     },
   };
-  const owner = dialogHost({ dialog, preview });
+  const owner = dialogHost({
+    dialog: { value: dialog },
+    preview: { value: preview },
+  });
 
   owner.openMarkdown({ markdown: "# One" });
   owner.openMarkdown({ markdown: "# Two" });
@@ -36,114 +39,49 @@ test("renders each requested Markdown from the top of the retained preview", () 
   assert.equal(owner.opener, null);
 });
 
-test("provides Close and merges the current preview link scope", () => {
-  const close = actionControl("Close Markdown preview");
-  const previewTarget = { id: "preview-link" };
-  let received;
+test("merges its own Close with its preview's links and scrolling", () => {
+  const previewPulls = {};
   const preview = {
-    actionHintScope(options) {
-      received = options;
-      return {
-        blocked: false,
-        targets: [previewTarget],
-        mutationRoots: [this],
-        scrollRoots: [this],
-      };
+    actionHintScope(pull) {
+      previewPulls.actions = pull;
+      return { targets: [{ id: "preview-link" }] };
     },
-  };
-  const dialog = {
-    open: true,
-    querySelector: (selector) =>
-      selector === ".task-markdown-preview-close" ? close : null,
-  };
-  const owner = dialogHost({ dialog, preview });
-
-  const scope = owner.actionHintScope();
-
-  assert.deepEqual(scope.targets.map(({ id }) => id), [
-    "task-markdown-preview:thread%2F1:close",
-    "preview-link",
-  ]);
-  assert.equal(scope.targets[0].isActionable(), true);
-  assert.equal(received.scopeId, "task-markdown-preview:thread%2F1:preview");
-  assert.equal(received.linkActionId, "link.open");
-  assert.deepEqual(received.clipRoots, [dialog]);
-  assert.equal(received.isCurrent(), true);
-  dialog.open = false;
-  assert.equal(scope.targets[0].isActionable(), false);
-  assert.equal(received.isCurrent(), false);
-  dialog.open = true;
-  owner.threadId = "thread/2";
-  assert.equal(scope.targets[0].isActionable(), false);
-  assert.equal(received.isCurrent(), false);
-});
-
-test("provides its exact modal context and preview scrollport", () => {
-  const hintDialog = {};
-  const hud = { show() {}, close() {}, updateLabel() {} };
-  const selector = {};
-  const presentation = {
-    actionHintDialog: () => hintDialog,
-    scrollModeHud: () => hud,
-    scrollSurfaceSelector: () => selector,
-  };
-  const actionScope = { targets: [{ id: "close" }] };
-  const preview = {
-    clientHeight: 300,
-    scrollHeight: 900,
-    hidden: false,
-    getClientRects: () => [{}],
-    scrollSurfaceScope(options) {
-      return {
-        blocked: false,
-        surfaces: [{
-          id: `${options.scopeId}:scroll`,
-          label: options.label,
-          scrollport: this,
-          axes: ["vertical", "horizontal"],
-          clipRoots: [this, ...options.clipRoots],
-          isEligible: options.isCurrent,
-        }],
-        mutationRoots: [this],
-        resizeElements: [this],
-        scrollRoots: [this],
-      };
-    },
-  };
-  const dialog = {
-    open: true,
-    getClientRects: () => [{}],
-    querySelector(selectorText) {
-      assert.equal(
-        selectorText,
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-      return presentation;
+    scrollSurfaceScope(pull) {
+      previewPulls.scroll = pull;
+      return { surfaces: [{ id: "preview" }] };
     },
   };
   const owner = dialogHost({
-    dialog,
-    preview,
-    actionHintScope: () => actionScope,
+    hints: { scope: () => ({ targets: [{ id: "close" }] }) },
+    keyboard: { contexts: (capabilities) => [capabilities] },
+    preview: { value: preview },
   });
+  const [capabilities] = owner.keyboardNavigationContexts();
+  const root = {};
+  const pull = {
+    scopeId: "task-markdown-preview:thread%2F1",
+    clipRoots: [root],
+    contextRoot: root,
+  };
 
-  const [context] = owner.keyboardNavigationContexts();
-  const surface = context.scroll.scope.surfaces[0];
-
-  assert.equal(context.id, "task-markdown-preview:thread%2F1");
-  assert.equal(context.kind, "modal");
-  assert.equal(context.root, dialog);
-  assert.equal(context.actionHints.dialog, hintDialog);
-  assert.deepEqual(context.actionHints.scope.targets, actionScope.targets);
-  assert.equal(context.scroll.hud, hud);
-  assert.equal(context.scroll.selector, selector);
-  assert.equal(surface.id, "task-markdown-preview:thread%2F1:preview:scroll");
-  assert.equal(surface.label, "Markdown preview");
-  assert.equal(surface.scrollport, preview);
-  assert.deepEqual(surface.axes, ["vertical", "horizontal"]);
-  assert.equal(surface.isEligible(), true);
-  owner.threadId = "thread/2";
-  assert.equal(surface.isEligible(), false);
+  assert.deepEqual(
+    capabilities.actionHints(pull).targets.map(({ id }) => id),
+    ["close", "preview-link"],
+  );
+  assert.deepEqual(previewPulls.actions, {
+    ...pull,
+    scopeId: "task-markdown-preview:thread%2F1:preview",
+    actions: { link: "link.open" },
+  });
+  assert.deepEqual(
+    capabilities.scroll(pull).surfaces.map(({ id }) => id),
+    ["preview"],
+  );
+  assert.deepEqual(previewPulls.scroll, {
+    ...pull,
+    scopeId: "task-markdown-preview:thread%2F1:preview",
+    label: "Markdown preview",
+  });
 });
 
 test("returns focus to a connected opener only once the dialog has closed", () => {
@@ -155,7 +93,7 @@ test("returns focus to a connected opener only once the dialog has closed", () =
     },
   };
   const dialog = { open: true };
-  const owner = dialogHost({ opener, dialog });
+  const owner = dialogHost({ opener, dialog: { value: dialog } });
 
   owner.handleClose();
   assert.equal(focused, 0);
@@ -187,7 +125,7 @@ test("closes without returning focus when its Task changes", () => {
     },
   };
   const opener = { isConnected: true, focus() {} };
-  const owner = dialogHost({ threadId: "", opener, dialog });
+  const owner = dialogHost({ threadId: "", opener, dialog: { value: dialog } });
 
   owner.setThreadId("thread/1");
   owner.setThreadId("thread/1");
@@ -207,19 +145,9 @@ function dialogHost(properties) {
       isConnected: true,
       threadId: "thread/1",
       opener: null,
-      dialog: null,
-      preview: null,
+      dialog: { value: undefined },
+      preview: { value: undefined },
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
-}
-
-function actionControl(label) {
-  return {
-    disabled: false,
-    getAttribute: (name) => name === "aria-label" ? label : "",
-    getClientRects: () => [{}],
-    focus() {},
-    click() {},
-  };
 }

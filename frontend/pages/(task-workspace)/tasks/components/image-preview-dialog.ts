@@ -1,14 +1,9 @@
 import { html, LitElement, nothing } from "lit";
-import type { ActionHintScope } from "#app/action-hint-scope.js";
-import {
-  ACTION_HINT_ACTION,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-} from "#app/action-hints.js";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
 import { fetchInChunks } from "#app/chunked-fetch.ts";
-import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/loading-text.ts";
 
@@ -57,6 +52,11 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
   private picture: { fetching: AbortController; objectUrl: string } | null =
     null;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
   createRenderRoot() {
     return this;
@@ -74,58 +74,9 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
   }
 
   keyboardNavigationContexts() {
-    this.performUpdate();
-    const dialog = this.dialog;
-    const presentation =
-      dialog?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const hintDialog = presentation?.actionHintDialog();
-    if (!dialog || !hintDialog) {
-      return [];
-    }
-    return [
-      keyboardNavigationContext({
-        id: "task-image-preview",
-        kind: "modal",
-        root: dialog,
-        actionHints: {
-          dialog: hintDialog,
-          scope: this.actionHintScope(),
-        },
-      }),
-    ];
-  }
-
-  actionHintScope(): ActionHintScope {
-    const dialog = this.dialog;
-    const control = dialog?.querySelector<HTMLButtonElement>(
-      ".task-image-preview-close",
-    );
-    if (!dialog || !control) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: "task-image-preview:close",
-          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
-          label: control.getAttribute("aria-label") || "Close image preview",
-          control,
-          clipRoots: [dialog],
-          isActionable: () =>
-            this.isConnected &&
-            this.dialog === dialog &&
-            dialog.open &&
-            dialog.querySelector(".task-image-preview-close") === control &&
-            !control.disabled,
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+    return this.keyboard.contexts({
+      actionHints: (pull) => this.hints.scope(pull),
+    });
   }
 
   openImage(image: Partial<TaskImagePreviewRequest> = {}) {
@@ -144,7 +95,7 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
     if (!inline) {
       this.showFetchedPicture(src);
     }
-    const dialog = this.dialog;
+    const dialog = this.dialog.value;
     if (dialog && !dialog.open) {
       dialog.showModal();
     }
@@ -152,7 +103,7 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
   }
 
   dismiss() {
-    const dialog = this.dialog;
+    const dialog = this.dialog.value;
     if (dialog?.open) {
       dialog.close();
     }
@@ -161,6 +112,8 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
   render() {
     return html`
       <dialog
+        ${drawn(this.dialog)}
+        ${this.keyboard.modal({ id: "task-image-preview" })}
         closedby="any"
         aria-labelledby="task-image-preview-title"
         @close=${this.reset}
@@ -173,6 +126,11 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
             </div>
             <form method="dialog">
               <button
+                ${this.hints.button({
+                  id: "close",
+                  label: "Close image preview",
+                  action: ACTION_HINT_ACTION.DIALOG_BUTTON,
+                })}
                 type="submit"
                 class="task-image-preview-close"
                 aria-label="Close image preview"
@@ -208,6 +166,7 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
           </div>
         </article>
         <caffold-keyboard-navigation-presentation
+          ${this.keyboard.presentation()}
         ></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
@@ -272,10 +231,6 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
   private draw() {
     this.requestUpdate();
     this.performUpdate();
-  }
-
-  private get dialog() {
-    return this.querySelector<HTMLDialogElement>(":scope > dialog");
   }
 }
 

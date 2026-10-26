@@ -1,23 +1,19 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
-  type ActionHintScope,
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  linkActionHintTarget,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { Note, NoteTask } from "#app/api.ts";
 import { compactIconButton } from "#app/component-styles.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
-  keyboardNavigationContext,
-  popoverScrollSurfaceScope,
-} from "#app/keyboard-navigation.js";
-import "#app/keyboard-navigation/components/presentation.js";
-import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
+  KeyboardContexts,
+} from "#app/keyboard-navigation.ts";
+import "#app/keyboard-navigation/components/presentation.ts";
 import { formatModified } from "#components/dom.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "./info/components/copy-markdown.ts";
 import type { CaffoldNotesInfoCopyMarkdown } from "./info/components/copy-markdown.ts";
@@ -41,6 +37,15 @@ export class CaffoldNotesInfo extends LitElement {
   declare private shownNote: Note | null;
   private readonly popoverId = `notes-info-${++notesInfoInstanceId}`;
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly keyboard = new KeyboardContexts(this, () =>
+    this.performUpdate(),
+  );
+  private readonly infoPopover = new DrawnRef<HTMLDivElement>(this);
+  private readonly copyPath = new DrawnRef<CaffoldNotesInfoCopyPath>(this);
+  private readonly copyMarkdown = new DrawnRef<CaffoldNotesInfoCopyMarkdown>(
+    this,
+  );
 
   constructor() {
     super();
@@ -86,8 +91,15 @@ export class CaffoldNotesInfo extends LitElement {
     const note = this.shownNote;
     const changedByAnotherTask =
       note !== null && note.updatedBy.threadId !== note.createdBy.threadId;
+    const shown = Boolean(this.note);
     return html`
       <button
+        ${this.hints.button({
+          id: `${note?.id}:details:open`,
+          label: "Note details",
+          action: ACTION_HINT_ACTION.NOTE_DETAILS_OPEN,
+          when: shown,
+        })}
         type="button"
         class="notes-info-button"
         popovertarget=${this.popoverId}
@@ -95,6 +107,13 @@ export class CaffoldNotesInfo extends LitElement {
         title="Note details"
       >${inlineIcon("Info", "Note details", "notes-info-icon")}</button>
       <div
+        ${drawn(this.infoPopover)}
+        ${this.keyboard.popover({
+          id: `${note?.id}:details`,
+          label: "Note details",
+          sessionBound: true,
+          when: shown,
+        })}
         id=${this.popoverId}
         class="notes-info-popover"
         popover="auto"
@@ -116,32 +135,37 @@ export class CaffoldNotesInfo extends LitElement {
           <div>
             <dt>Created in</dt>
             <dd data-notes-info-field="created-by">${
-              note ? taskValue(note.createdBy) : nothing
+              note ? this.taskValue("created-by", note.createdBy) : nothing
             }</dd>
           </div>
           <div data-notes-info-changed-by ?hidden=${!changedByAnotherTask}>
             <dt>Changed in</dt>
             <dd data-notes-info-field="changed-by">${
-              changedByAnotherTask ? taskValue(note.updatedBy) : nothing
+              changedByAnotherTask
+                ? this.taskValue("changed-by", note.updatedBy)
+                : nothing
             }</dd>
           </div>
         </dl>
         <div class="notes-info-actions">
           <caffold-notes-info-copy-path
+            ${drawn(this.copyPath)}
             .note=${note}
           ></caffold-notes-info-copy-path>
           <caffold-notes-info-copy-markdown
+            ${drawn(this.copyMarkdown)}
             .note=${note}
           ></caffold-notes-info-copy-markdown>
         </div>
         <caffold-keyboard-navigation-presentation
+          ${this.keyboard.presentation()}
         ></caffold-keyboard-navigation-presentation>
       </div>
     `;
   }
 
   deactivate() {
-    const popover = this.infoPopover;
+    const popover = this.infoPopover.value;
     if (!popover?.matches(":popover-open")) {
       return;
     }
@@ -152,126 +176,44 @@ export class CaffoldNotesInfo extends LitElement {
     }
   }
 
-  actionHintScope({
-    scopeId = "notes",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}): ActionHintScope {
-    const noteId = this.note?.id;
-    const control = this.infoButton;
-    const popover = this.infoPopover;
-    if (!noteId || this.hidden || !control || !popover) {
-      return emptyActionHintScope();
-    }
-    return {
-      blocked: false,
-      targets: [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:${noteId}:details:open`,
-          actionId: ACTION_HINT_ACTION.NOTE_DETAILS_OPEN,
-          label: "Note details",
-          control,
-          clipRoots: [...clipRoots],
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.note?.id === noteId &&
-            !popover.matches(":popover-open"),
-        }),
-      ],
-      mutationRoots: [this],
-      scrollRoots: [],
-    };
+  actionHintScope({ scopeId = "notes", ...pull }: ActionHintPull = {}) {
+    return this.hints.scope({ ...pull, scopeId });
   }
 
   keyboardNavigationContexts({ scopeId = "notes" }: { scopeId?: string } = {}) {
-    const noteId = this.note?.id;
-    const popover = this.infoPopover;
-    const presentation =
-      popover?.querySelector<CaffoldKeyboardNavigationPresentation>(
-        ":scope > caffold-keyboard-navigation-presentation",
-      );
-    const dialog = presentation?.actionHintDialog();
-    const hud = presentation?.scrollModeHud();
-    const selector = presentation?.scrollSurfaceSelector();
-    if (!noteId || this.hidden || !popover || !dialog || !hud || !selector) {
-      return [];
+    return this.keyboard.contexts({
+      scopeId,
+      actionHints: (pull) =>
+        mergeActionHintScopes(
+          this.hints.scope(pull),
+          this.copyPath.value?.actionHintScope(pull),
+          this.copyMarkdown.value?.actionHintScope(pull),
+        ),
+    });
+  }
+
+  // Only an active Task has a page to open.
+  private taskValue(field: string, task: NoteTask) {
+    if (task.state === "deleted") {
+      return "a deleted task";
     }
-    const contextId = `${scopeId}:${noteId}:details`;
-    const isCurrent = () => this.isConnected && this.note?.id === noteId;
-    const links = [
-      ...popover.querySelectorAll<HTMLAnchorElement>(":scope > dl a[href]"),
-    ];
-    const actions = popover.querySelector(":scope > .notes-info-actions");
-    const copyPath = actions?.querySelector<CaffoldNotesInfoCopyPath>(
-      ":scope > caffold-notes-info-copy-path",
-    );
-    const copyMarkdown = actions?.querySelector<CaffoldNotesInfoCopyMarkdown>(
-      ":scope > caffold-notes-info-copy-markdown",
-    );
-    return [
-      keyboardNavigationContext({
-        id: contextId,
-        kind: "popover",
-        root: popover,
-        actionHints: {
-          dialog,
-          scope: mergeActionHintScopes(
-            {
-              blocked: false,
-              targets: links.map((link, index) =>
-                linkActionHintTarget({
-                  invalidationOwner: this,
-                  id: `${contextId}:task-link:${index}`,
-                  actionId: ACTION_HINT_ACTION.LINK_OPEN,
-                  label: (link.textContent ?? "").trim(),
-                  control: link,
-                  clipRoots: [popover],
-                  isActionable: () => isCurrent() && link.isConnected,
-                }),
-              ),
-              mutationRoots: [popover],
-              scrollRoots: [popover],
-            },
-            copyPath?.actionHintScope({
-              scopeId: contextId,
-              clipRoots: [popover],
-              isCurrent,
-            }),
-            copyMarkdown?.actionHintScope({
-              scopeId: contextId,
-              clipRoots: [popover],
-              isCurrent,
-            }),
-          ),
-          sessionBound: true,
-        },
-        scroll: {
-          hud,
-          selector,
-          scope: popoverScrollSurfaceScope({
-            id: contextId,
-            label: "Note details",
-            popover,
-            isCurrent,
-          }),
-        },
-      }),
-    ];
+    if (task.state === "archived") {
+      return `${task.displayName} (archived)`;
+    }
+    return html`<a
+      ${this.hints.link({
+        id: `task-link:${field}`,
+        label: task.displayName,
+        action: ACTION_HINT_ACTION.LINK_OPEN,
+      })}
+      href=${`/tasks/${encodeURIComponent(task.threadId)}`}
+    >${task.displayName}</a>`;
   }
 
   private handleDismiss(event: Event) {
-    if (event.target === this.infoPopover) {
+    if (event.target === this.infoPopover.value) {
       this.deactivate();
     }
-  }
-
-  private get infoButton() {
-    return this.querySelector<HTMLButtonElement>(":scope > .notes-info-button");
-  }
-
-  private get infoPopover() {
-    return this.querySelector<HTMLElement>(":scope > .notes-info-popover");
   }
 }
 
@@ -283,17 +225,4 @@ function timeValue(ms: number) {
   return html`<time datetime=${new Date(ms).toISOString()}>${formatModified(
     ms,
   )}</time>`;
-}
-
-// Only an active Task has a page to open.
-function taskValue(task: NoteTask) {
-  if (task.state === "deleted") {
-    return "a deleted task";
-  }
-  if (task.state === "archived") {
-    return `${task.displayName} (archived)`;
-  }
-  return html`<a href=${`/tasks/${encodeURIComponent(task.threadId)}`}>${
-    task.displayName
-  }</a>`;
 }

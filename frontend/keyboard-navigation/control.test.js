@@ -6,7 +6,7 @@ import {
   KEYBOARD_NAVIGATION_GRAPH,
   KEYBOARD_NAVIGATION_NODE,
   transitionKeyboardNavigation,
-} from "./control.js";
+} from "./control.ts";
 
 test("declares every keyboard navigation edge and reaches every node", () => {
   assert.deepEqual(KEYBOARD_NAVIGATION_GRAPH, {

@@ -1,15 +1,17 @@
 import { html, LitElement } from "lit";
+import type { ActionHintScope } from "#app/action-hint-scope.ts";
 import {
-  buttonActionHintTarget,
-  emptyActionHintScope,
-  hasActionHintLayoutBox,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-} from "#app/scroll-scope.js";
+  mergeScrollSurfaceScopes,
+  type ScrollSurfacePull,
+  type ScrollSurfaceScope,
+  ScrollSurfaces,
+} from "#app/scroll-scope.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import type { CodexStatusSnapshot } from "../codex-status.ts";
 import "./about/page.ts";
@@ -32,6 +34,7 @@ import "./keyboard/page.ts";
 import "./notifications/page.ts";
 import "./remote-access/page.ts";
 import "./voice/page.ts";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
 
 const TITLES: Readonly<Record<string, string>> = {
   appearance: "Appearance",
@@ -47,19 +50,6 @@ const TITLES: Readonly<Record<string, string>> = {
   about: "About Caffold",
 };
 const SETTINGS_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
-const PAGE_ELEMENTS: Readonly<Record<string, string>> = {
-  appearance: "caffold-settings-appearance-page",
-  keyboard: "caffold-settings-keyboard-page",
-  files: "caffold-settings-files-page",
-  notifications: "caffold-settings-notifications-page",
-  "remote-access": "caffold-settings-remote-access-page",
-  voice: "caffold-settings-voice-page",
-  jev: "caffold-settings-jev-page",
-  codex: "caffold-settings-codex-page",
-  claude: "caffold-settings-claude-page",
-  grok: "caffold-settings-grok-page",
-  about: "caffold-settings-about-page",
-};
 // The pages that read while they are shown and stop when they are not.
 const ACTIVE_PAGES = [
   "codex",
@@ -77,17 +67,8 @@ interface SettingsPage extends HTMLElement {
   activate?: () => void;
   deactivate?: () => void;
   prepareRoute?: () => void;
-  actionHintScope?: (options: {
-    scopeId: string;
-    clipRoots: Element[];
-    isCurrent: () => boolean;
-  }) => ReturnType<typeof emptyActionHintScope>;
-  scrollSurfaceScope?: (options: {
-    scopeId: string;
-    label: string;
-    clipRoots: Element[];
-    isCurrent: () => boolean;
-  }) => ReturnType<typeof emptyScrollSurfaceScope>;
+  actionHintScope?: (pull: ActionHintPull) => ActionHintScope;
+  scrollSurfaceScope?: (pull: ScrollSurfacePull) => ScrollSurfaceScope;
 }
 
 export class CaffoldSettingsWorkspace extends LitElement {
@@ -127,6 +108,12 @@ export class CaffoldSettingsWorkspace extends LitElement {
     );
   };
   private readonly iconsReady = () => this.requestUpdate();
+  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
+  private readonly detailPane = new DrawnRef<HTMLDivElement>(this);
+  private readonly pages = new DrawnRefs<SettingsPage>(this);
 
   constructor() {
     super();
@@ -172,6 +159,7 @@ export class CaffoldSettingsWorkspace extends LitElement {
     return html`
       <div class="settings-workspace-surface">
         <div
+          ${drawn(this.detailPane)}
           class="settings-workspace-detail-pane"
           role="region"
           aria-labelledby="settings-workspace-title"
@@ -182,6 +170,12 @@ export class CaffoldSettingsWorkspace extends LitElement {
             ?hidden=${!presented}
           >
             <button
+              ${this.hints.button({
+                id: "parent:list",
+                label: "Back to settings",
+                action: ACTION_HINT_ACTION.PARENT,
+                when: Boolean(this.section),
+              })}
               type="button"
               data-action="back-to-settings"
               title="Back to settings"
@@ -197,39 +191,50 @@ export class CaffoldSettingsWorkspace extends LitElement {
             }</h1>
           </header>
           <caffold-settings-appearance-page
+            ${drawn(this.pages.of("appearance"))}
             ?hidden=${presented !== "appearance"}
           ></caffold-settings-appearance-page>
           <caffold-settings-keyboard-page
+            ${drawn(this.pages.of("keyboard"))}
             ?hidden=${presented !== "keyboard"}
           ></caffold-settings-keyboard-page>
           <caffold-settings-files-page
+            ${drawn(this.pages.of("files"))}
             ?hidden=${presented !== "files"}
           ></caffold-settings-files-page>
           <caffold-settings-notifications-page
+            ${drawn(this.pages.of("notifications"))}
             ?hidden=${presented !== "notifications"}
           ></caffold-settings-notifications-page>
           <caffold-settings-remote-access-page
+            ${drawn(this.pages.of("remote-access"))}
             ?hidden=${presented !== "remote-access"}
           ></caffold-settings-remote-access-page>
           <caffold-settings-voice-page
+            ${drawn(this.pages.of("voice"))}
             ?hidden=${presented !== "voice"}
           ></caffold-settings-voice-page>
           <caffold-settings-jev-page
+            ${drawn(this.pages.of("jev"))}
             ?hidden=${presented !== "jev"}
           ></caffold-settings-jev-page>
           <caffold-settings-codex-page
+            ${drawn(this.pages.of("codex"))}
             ?hidden=${presented !== "codex"}
             .snapshot=${this.codexStatus}
             .runtimeAction=${this.codexRuntimeAction}
             .resetCreditState=${this.codexResetCredit}
           ></caffold-settings-codex-page>
           <caffold-settings-claude-page
+            ${drawn(this.pages.of("claude"))}
             ?hidden=${presented !== "claude"}
           ></caffold-settings-claude-page>
           <caffold-settings-grok-page
+            ${drawn(this.pages.of("grok"))}
             ?hidden=${presented !== "grok"}
           ></caffold-settings-grok-page>
           <caffold-settings-about-page
+            ${drawn(this.pages.of("about"))}
             ?hidden=${presented !== "about"}
             .health=${this.health}
             .caffoldUpdate=${this.caffoldUpdate}
@@ -279,101 +284,42 @@ export class CaffoldSettingsWorkspace extends LitElement {
     this.syncPresentation();
   }
 
-  actionHintScope({
-    scopeId = "settings",
-    clipRoots = [],
-  }: {
-    scopeId?: string;
-    clipRoots?: Element[];
-  } = {}) {
-    if (this.hidden) {
-      return emptyActionHintScope();
-    }
-    this.performUpdate();
+  // Where Escape takes focus from a field being edited in Settings.
+  editingEscapeTarget() {
+    return this.detailPane.value ?? null;
+  }
+
+  actionHintScope({ scopeId = "settings", ...pull }: ActionHintPull = {}) {
+    const own = this.hints.scope({ ...pull, scopeId });
     const presented = this.presentedSection();
-    const page = this.page(presented);
-    const detailPane = this.querySelector(
-      ":scope > .settings-workspace-surface > .settings-workspace-detail-pane",
+    return mergeActionHintScopes(
+      own,
+      this.page(presented)?.actionHintScope?.({
+        scopeId: `${scopeId}:${presented}`,
+        clipRoots: [
+          this.detailPane.value as HTMLDivElement,
+          ...(pull.clipRoots ?? []),
+        ],
+      }),
     );
-    const header = detailPane?.querySelector<HTMLElement>(
-      ":scope > .settings-workspace-detail-header",
-    );
-    const backSelector = ':scope > button[data-action="back-to-settings"]';
-    const control = header?.querySelector<HTMLButtonElement>(backSelector);
-    const ownScope =
-      this.section && control && !control.disabled && !header?.hidden
-        ? {
-            blocked: false,
-            targets: [
-              buttonActionHintTarget({
-                invalidationOwner: this,
-                id: `${scopeId}:parent:list`,
-                actionId: ACTION_HINT_ACTION.PARENT,
-                label: control.getAttribute("aria-label") || "Back to settings",
-                control,
-                clipRoots: [...clipRoots],
-                isActionable: () =>
-                  this.isConnected &&
-                  !this.hidden &&
-                  Boolean(this.section) &&
-                  !header?.hidden &&
-                  header?.querySelector(backSelector) === control &&
-                  !control.disabled,
-              }),
-            ],
-            mutationRoots: [header, control].filter(
-              (node): node is HTMLElement => Boolean(node),
-            ),
-            scrollRoots: [],
-          }
-        : emptyActionHintScope();
-    const pageScope =
-      presented && page && !page.hidden && hasActionHintLayoutBox(page)
-        ? page.actionHintScope?.({
-            scopeId: `${scopeId}:${presented}`,
-            clipRoots: [detailPane, ...clipRoots].filter(
-              (root): root is Element => Boolean(root),
-            ),
-            isCurrent: () =>
-              this.presentedSection() === presented &&
-              this.page(presented) === page &&
-              !page.hidden,
-          })
-        : null;
-    return mergeActionHintScopes(ownScope, pageScope);
   }
 
   scrollSurfaceScope({
     scopeId = "settings",
-    clipRoots = [],
-  }: {
-    scopeId?: string;
-    clipRoots?: Element[];
-  } = {}) {
-    if (this.hidden) {
-      return emptyScrollSurfaceScope();
-    }
-    this.performUpdate();
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    const own = this.surfaces.scope({ ...pull, scopeId });
     const presented = this.presentedSection();
-    const page = this.page(presented);
-    const detailPane = this.querySelector(
-      ":scope > .settings-workspace-surface > .settings-workspace-detail-pane",
-    );
-    if (!presented || !page || page.hidden || !hasScrollLayoutBox(page)) {
-      return emptyScrollSurfaceScope();
-    }
-    return (
-      page.scrollSurfaceScope?.({
+    return mergeScrollSurfaceScopes(
+      own,
+      this.page(presented)?.scrollSurfaceScope?.({
         scopeId: `${scopeId}:${presented}`,
         label: TITLES[presented] ?? "Settings",
-        clipRoots: [detailPane, ...clipRoots].filter((root): root is Element =>
-          Boolean(root),
-        ),
-        isCurrent: () =>
-          this.presentedSection() === presented &&
-          this.page(presented) === page &&
-          !page.hidden,
-      }) ?? emptyScrollSurfaceScope()
+        clipRoots: [
+          this.detailPane.value as HTMLDivElement,
+          ...(pull.clipRoots ?? []),
+        ],
+      }),
     );
   }
 
@@ -475,12 +421,7 @@ export class CaffoldSettingsWorkspace extends LitElement {
   }
 
   private page(section: string) {
-    const name = PAGE_ELEMENTS[section];
-    return name
-      ? this.querySelector<SettingsPage>(
-          `:scope > .settings-workspace-surface > .settings-workspace-detail-pane > ${name}`,
-        )
-      : null;
+    return this.pages.get(section);
   }
 
   private get codexPage() {

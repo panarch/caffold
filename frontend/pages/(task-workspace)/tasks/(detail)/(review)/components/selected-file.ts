@@ -1,7 +1,10 @@
 import { html, LitElement } from "lit";
+import type { ActionHintPull } from "#app/action-hints.ts";
 import { type GitDiff, readFile } from "#app/api.ts";
 import { fileStatusPresentation } from "#app/file-status.ts";
+import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
 import { fileNameFromPath, imageTypeLabel } from "#components/dom.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "#components/file-viewer.ts";
 import type { ScrollPosition } from "#components/file-viewer/components/code-viewer.ts";
 import type { CaffoldReviewFileViewer } from "#components/file-viewer.ts";
@@ -27,6 +30,7 @@ export class CaffoldReviewSelectedFile extends LitElement {
   private generation = 0;
   private shownStateKey = "";
   private readonly positions = new Map<string, ViewPosition>();
+  private readonly viewerElement = new DrawnRef<CaffoldReviewFileViewer>(this);
   private readonly pendingLines = new Map<string, number>();
 
   createRenderRoot() {
@@ -40,6 +44,7 @@ export class CaffoldReviewSelectedFile extends LitElement {
 
   render() {
     return html`<caffold-review-file-viewer
+      ${drawn(this.viewerElement)}
       compact-chrome
       @click=${this.chooseRepresentation}
     ></caffold-review-file-viewer>`;
@@ -104,16 +109,12 @@ export class CaffoldReviewSelectedFile extends LitElement {
     });
   }
 
-  actionHintScope(
-    options: Parameters<CaffoldReviewFileViewer["actionHintScope"]>[0] = {},
-  ) {
-    return this.viewer.actionHintScope(options);
+  actionHintScope(pull: ActionHintPull = {}) {
+    return this.viewer.actionHintScope(pull);
   }
 
-  scrollSurfaceScope(
-    options: Parameters<CaffoldReviewFileViewer["scrollSurfaceScope"]>[0] = {},
-  ) {
-    return this.viewer.scrollSurfaceScope(options);
+  scrollSurfaceScope(pull: ScrollSurfacePull = {}) {
+    return this.viewer.scrollSurfaceScope(pull);
   }
 
   keyboardNavigationContexts(options: { scopeId?: string } = {}) {
@@ -322,9 +323,7 @@ export class CaffoldReviewSelectedFile extends LitElement {
   // selected file is in the document.
   private get viewer() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-review-file-viewer",
-    ) as CaffoldReviewFileViewer;
+    return this.viewerElement.value as CaffoldReviewFileViewer;
   }
 }
 

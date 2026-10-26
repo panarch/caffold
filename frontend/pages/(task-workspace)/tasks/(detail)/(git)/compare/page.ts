@@ -1,17 +1,22 @@
 import { html, LitElement } from "lit";
-import type { ActionHintScopeOptions } from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { ScrollSurfaceScopeOptions } from "#app/scroll-scope.js";
+import { ACTION_HINT_ACTION, type ActionHintPull } from "#app/action-hints.ts";
+import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "#components/git-compare-browser.ts";
 import type { CaffoldGitCompareBrowser } from "#components/git-compare-browser.ts";
 
 export class CaffoldGitComparePage extends LitElement {
+  private readonly browserElement = new DrawnRef<CaffoldGitCompareBrowser>(
+    this,
+  );
+
   createRenderRoot() {
     return this;
   }
 
   render() {
     return html`<caffold-git-compare-browser
+      ${drawn(this.browserElement)}
       @caffold:git-compare-state-change=${this.followBrowser}
     ></caffold-git-compare-browser>`;
   }
@@ -92,19 +97,18 @@ export class CaffoldGitComparePage extends LitElement {
     return this.browser.sidePane();
   }
 
-  actionHintScope({
-    scopeId = "git",
-    clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
+  actionHintScope({ scopeId = "git", clipRoots = [] }: ActionHintPull = {}) {
     return this.browser.actionHintScope({
       scopeId,
-      fileActionId: ACTION_HINT_ACTION.FILE_OPEN,
-      disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
-      parentActionId: ACTION_HINT_ACTION.PARENT,
-      detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
-      refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-      linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
-      separatorActionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
+      actions: {
+        file: ACTION_HINT_ACTION.FILE_OPEN,
+        disclosure: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+        parent: ACTION_HINT_ACTION.PARENT,
+        details: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
+        refresh: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        link: ACTION_HINT_ACTION.LINK_OPEN,
+        separator: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
+      },
       clipRoots: [this, ...clipRoots],
     });
   }
@@ -112,7 +116,7 @@ export class CaffoldGitComparePage extends LitElement {
   scrollSurfaceScope({
     scopeId = "git",
     clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}) {
+  }: ScrollSurfacePull = {}) {
     return this.browser.scrollSurfaceScope({
       scopeId,
       clipRoots: [this, ...clipRoots],
@@ -131,9 +135,7 @@ export class CaffoldGitComparePage extends LitElement {
   // page is in the document.
   private get browser() {
     this.performUpdate();
-    return this.querySelector(
-      ":scope > caffold-git-compare-browser",
-    ) as CaffoldGitCompareBrowser;
+    return this.browserElement.value as CaffoldGitCompareBrowser;
   }
 }
 

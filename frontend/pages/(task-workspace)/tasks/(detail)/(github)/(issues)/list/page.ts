@@ -1,25 +1,17 @@
 import { html, LitElement, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import {
-  type ActionHintScopeOptions,
-  buttonActionHintTarget,
-  emptyActionHintScope,
+  ACTION_HINT_ACTION,
+  type ActionHintPull,
+  ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import type { GitHubIssues, GitHubStatus } from "#app/api.ts";
-import {
-  emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  type ScrollSurfaceScope,
-  type ScrollSurfaceScopeOptions,
-} from "#app/scroll-scope.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+import { DrawnRef, drawn } from "#components/drawn-refs.ts";
 import "#components/loading-text.ts";
 import "#components/pagination.ts";
 import type { CaffoldPagination } from "#components/pagination.ts";
-
-const ISSUE_LIST = ":scope > .github-issues-panel > .github-issues-list";
-const ISSUE_BUTTON = `${ISSUE_LIST} > .github-issue-row > button.github-issue-button`;
 
 type IssuesState =
   | { status: "idle" }
@@ -36,6 +28,16 @@ export class CaffoldGithubIssuesListPage extends LitElement {
 
   declare private state: IssuesState;
   declare private selectedIssueNumber: number | null;
+  private readonly list = new DrawnRef<HTMLOListElement>(this);
+  private readonly pagination = new DrawnRef<CaffoldPagination>(this);
+  private readonly hints: ActionHints = new ActionHints(
+    this,
+    () => this.performUpdate(),
+    { clipRoots: () => [this, this.list.value] },
+  );
+  private readonly surfaces = new ScrollSurfaces(this, () =>
+    this.performUpdate(),
+  );
 
   constructor() {
     super();
@@ -71,6 +73,7 @@ export class CaffoldGithubIssuesListPage extends LitElement {
     const pagination =
       payload && payload.totalPages > 1
         ? html`<caffold-pagination
+            ${drawn(this.pagination)}
             aria-label="Issue pagination"
             page=${payload.page}
             total-pages=${payload.totalPages}
@@ -99,6 +102,14 @@ export class CaffoldGithubIssuesListPage extends LitElement {
       (issue) => html`
         <li class="github-issue-row">
           <button
+            ${this.hints.button({
+              id: `issue:${issue.number}`,
+              label: `Open issue #${issue.number}: ${
+                issue.title || "(no title)"
+              }`,
+              action: ACTION_HINT_ACTION.ISSUE_OPEN,
+              when: issue.number !== this.selectedIssueNumber,
+            })}
             type="button"
             class="github-issue-button"
             data-issue-number=${issue.number}
@@ -130,7 +141,14 @@ export class CaffoldGithubIssuesListPage extends LitElement {
       <section class="github-issues-panel">
         ${
           state.payload.issues.length
-            ? html`<ol class="github-issues-list">${rows}</ol>`
+            ? html`<ol
+                ${drawn(this.list)}
+                ${this.surfaces.surface({
+                  id: "scroll",
+                  clipRoots: () => [this, this.list.value],
+                })}
+                class="github-issues-list"
+              >${rows}</ol>`
             : html`<p class="surface-message">No issues.</p>`
         }
         ${pagination}
@@ -175,102 +193,27 @@ export class CaffoldGithubIssuesListPage extends LitElement {
   actionHintScope({
     scopeId = "github:issues",
     clipRoots = [],
-  }: ActionHintScopeOptions = {}) {
-    if (this.hidden || this.state.status !== "ready") {
-      return emptyActionHintScope();
-    }
-    const issues = new Map(
-      this.state.payload.issues.map((issue) => [`${issue.number}`, issue]),
-    );
-    const scroller = this.querySelector(ISSUE_LIST);
-    const rowClipRoots = [this, scroller, ...clipRoots].filter(
-      (root): root is Element => root !== null,
-    );
-    const targets = [
-      ...this.querySelectorAll<HTMLButtonElement>(
-        `${ISSUE_BUTTON}[data-issue-number]`,
-      ),
-    ].flatMap((control) => {
-      const number = `${control.dataset.issueNumber ?? ""}`;
-      const issue = issues.get(number);
-      if (
-        !number ||
-        !issue ||
-        control.disabled ||
-        issue.number === this.selectedIssueNumber
-      ) {
-        return [];
-      }
-      return [
-        buttonActionHintTarget({
-          invalidationOwner: this,
-          id: `${scopeId}:issue:${number}`,
-          actionId: ACTION_HINT_ACTION.ISSUE_OPEN,
-          label: `Open issue #${number}: ${issue.title || "(no title)"}`,
-          control,
-          clipRoots: rowClipRoots,
-          isActionable: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.state.status === "ready" &&
-            `${this.selectedIssueNumber ?? ""}` !== number &&
-            this.querySelector(
-              `${ISSUE_BUTTON}[data-issue-number="${CSS.escape(number)}"]`,
-            ) === control &&
-            !control.disabled,
-        }),
-      ];
-    });
-    const pagination = this.querySelector<CaffoldPagination>(
-      ":scope > .github-issues-panel > caffold-pagination",
-    );
+    ...pull
+  }: ActionHintPull = {}) {
+    const own = this.hints.scope({ ...pull, scopeId, clipRoots });
     return mergeActionHintScopes(
-      {
-        blocked: false,
-        targets,
-        mutationRoots: [this],
-        scrollRoots: scroller ? [scroller] : [],
-      },
-      pagination?.actionHintScope({
-        scopeId: `${scopeId}:pagination`,
-        actionId: ACTION_HINT_ACTION.PAGE,
-        clipRoots: [this, ...clipRoots],
-      }),
+      own,
+      this.state.status === "ready"
+        ? this.pagination.value?.actionHintScope({
+            scopeId: `${scopeId}:pagination`,
+            actionId: ACTION_HINT_ACTION.PAGE,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
     );
   }
 
   scrollSurfaceScope({
     scopeId = "github:issues",
-    clipRoots = [],
-  }: ScrollSurfaceScopeOptions = {}): ScrollSurfaceScope {
-    if (this.hidden || this.state.status !== "ready") {
-      return emptyScrollSurfaceScope();
-    }
-    const scrollport = this.querySelector(ISSUE_LIST);
-    if (!scrollport) {
-      return emptyScrollSurfaceScope();
-    }
-    return {
-      blocked: false,
-      surfaces: [
-        {
-          id: `${scopeId}:scroll`,
-          label: "GitHub issues",
-          scrollport,
-          clipRoots: [this, scrollport, ...clipRoots],
-          isEligible: () =>
-            this.isConnected &&
-            !this.hidden &&
-            this.state.status === "ready" &&
-            this.querySelector(ISSUE_LIST) === scrollport &&
-            hasScrollLayoutBox(this) &&
-            hasScrollLayoutBox(scrollport),
-        },
-      ],
-      mutationRoots: [this],
-      resizeElements: [this, scrollport],
-      scrollRoots: [scrollport],
-    };
+    label = "GitHub issues",
+    ...pull
+  }: ScrollSurfacePull = {}) {
+    return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
   private openIssue(number: number) {

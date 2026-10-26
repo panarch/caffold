@@ -266,6 +266,7 @@ test("hands a long list to Scroll mode and gives the rows it reveals new codes",
 
   // One declared surface, so Scroll starts on it without asking which.
   await expect(switcherHud(page)).toBeVisible();
+  await expect(switcherHud(page)).toContainText("Scroll: Recent tasks");
   await expect(switcherScrollSelector(page)).toBeHidden();
   await expect(hintDialog(page)).toBeHidden();
 

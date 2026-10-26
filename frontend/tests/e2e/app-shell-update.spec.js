@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { expect, test } from "@playwright/test";
-import { waitForActionHintTarget } from "./support/action-hints.js";
+import {
+  waitForActionHintTarget,
+  workspaceTargets,
+} from "./support/action-hints.js";
 import {
   installBrowserDefaults,
   mockCaffoldUpdate,
@@ -71,6 +74,11 @@ test("tells each browser once that an update of Caffold was rolled back", { tag:
   });
   expect(ok.width).toBeGreaterThanOrEqual(2 * controlHeight - 0.5);
   await captureReviewScreenshot(page, testInfo, "update-result-dialog");
+  await page.keyboard.press("f");
+  const resultHint = page.locator("caffold-action-hint-dialog > dialog:modal");
+  await expect(resultHint.getByRole("button", { name: / — OK$/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(resultHint).toBeHidden();
   await alert.getByRole("button", { name: "OK" }).click();
   await expect(alert).toBeHidden();
 
@@ -369,6 +377,11 @@ test("keeps a dismissed update available and only reports a settled mismatch", {
   );
   await expect(settings).toHaveAttribute("data-update-available", "");
   await expect(settings).toHaveAttribute("aria-label", "Settings — reload to update");
+  // A phone shows New Task alone here, without the workspace navigation.
+  if (await settings.isVisible()) {
+    await expect.poll(() => workspaceTargets(page, "workspace:mode:"))
+      .toContainEqual(["settings", "Settings — reload to update"]);
+  }
 
   await openAboutWithoutReload(page);
   await expect(aboutEntry).toHaveAttribute("data-update-available", "");

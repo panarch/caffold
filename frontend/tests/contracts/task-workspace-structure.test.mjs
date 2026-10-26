@@ -47,23 +47,23 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     "pages/(task-workspace)/notes/layout.ts",
   );
   const actionHints = readFrontend(
-    "action-hints.js",
+    "action-hints.ts",
   );
   const keyboardNavigation = readFrontend(
-    "keyboard-navigation.js",
+    "keyboard-navigation.ts",
   );
   const actionHintDialog = readFrontend(
-    "action-hints/components/dialog.js",
+    "action-hints/components/dialog.ts",
   );
   const shortcutDialog = readFrontend(
-    "keyboard-navigation/components/shortcut-dialog.js",
+    "keyboard-navigation/components/shortcut-dialog.ts",
   );
   const keyboardSettings = readFrontend(
     "pages/(task-workspace)/settings/keyboard/page.ts",
   );
 
   const masterPane = workspace.match(
-    /<aside\s+class="task-workspace-master-pane"[\s\S]*?<\/aside>/,
+    /<aside\s+\$\{drawn\(this\.parts\.of\("master-pane"\)\)\}\s+class="task-workspace-master-pane"[\s\S]*?<\/aside>/,
   )?.[0];
   assert.ok(masterPane, "workspace must declare its master pane");
   assert.match(masterPane, /<caffold-task-navigator/);
@@ -77,7 +77,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   assert.match(workspaceNavigation, /mode: "settings"/);
 
   const detailPane = workspace.match(
-    /<div class="task-workspace-detail-pane"[\s\S]*?<\/div>/,
+    /<div\s+\$\{drawn\(this\.parts\.of\("detail-pane"\)\)\}\s+class="task-workspace-detail-pane"[\s\S]*?<\/div>/,
   )?.[0];
   assert.ok(detailPane, "workspace must declare its detail pane");
   assert.match(detailPane, /<caffold-tasks-page/);
@@ -90,7 +90,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     /closeActiveSubview|tasksPage\.taskDetailView|tasksPage\?\.taskDetailView/,
   );
   const routeControls = workspace.match(
-    /<div class="task-workspace-route-controls">[\s\S]*?<\/div>/,
+    /<div\s+\$\{drawn\(this\.parts\.of\("route-controls"\)\)\}\s+class="task-workspace-route-controls"\s*>[\s\S]*?<\/div>/,
   )?.[0];
   assert.ok(routeControls, "workspace must group its compact route controls");
   assert.match(
@@ -122,7 +122,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     1,
   );
   assert.equal(
-    [...appShell.matchAll(/<caffold-keyboard-shortcut-dialog>/g)].length,
+    [...appShell.matchAll(/<caffold-keyboard-shortcut-dialog\b/g)].length,
     1,
   );
   assert.match(appShell, /shortcutDialog: this\.keyboardShortcutDialog/);
@@ -134,7 +134,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   );
   assert.doesNotMatch(actionHints, /document\.addEventListener\("keydown"/);
   for (const [path, source] of frontendModules()) {
-    if (path !== "action-hints.js" && !path.startsWith("action-hints/")) {
+    if (path !== "action-hints.ts" && !path.startsWith("action-hints/")) {
       assert.doesNotMatch(
         source,
         /(?:\.{1,2}\/)+action-hints\/(?:control|model)\.js/,
@@ -142,7 +142,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
       );
     }
     if (
-      path !== "keyboard-navigation.js" &&
+      path !== "keyboard-navigation.ts" &&
       !path.startsWith("keyboard-navigation/")
     ) {
       assert.doesNotMatch(
@@ -179,11 +179,11 @@ test("App Shell owns one global keyboard listener over explicit Scroll providers
     )
     .map(([path]) => path);
   assert.deepEqual(keyboardOwners, [
-    "keyboard-navigation.js",
+    "keyboard-navigation.ts",
   ]);
 
   const keyboardNavigation = readFrontend(
-    "keyboard-navigation.js",
+    "keyboard-navigation.ts",
   );
   const taskNavigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.ts",
@@ -199,21 +199,27 @@ test("App Shell owns one global keyboard listener over explicit Scroll providers
     keyboardNavigation,
     /querySelector(?:All)?\([^\n]*(?:scroll|overflow)|elementFromPoint|last(?:Pointer|Scroll)/i,
   );
-  assert.match(taskNavigator, /:scope > \.task-list-scroll/);
-  assert.match(conversation, /:scope > \.task-conversation-scroll/);
+  assert.match(
+    taskNavigator,
+    /this\.surfaces\.surface\(\{\s*id: "task-list",[\s\S]*?\}\)\}\s*class="task-list-scroll"/,
+  );
+  assert.match(
+    conversation,
+    /\$\{drawn\(this\.scrollerElement\)\}\s*\$\{this\.surfaces\.surface\(\{[\s\S]*?\}\)\}\s*class="task-conversation-scroll"/,
+  );
   assert.match(currentPlanDialog, /this\.preview\b/);
-  assert.match(currentPlanDialog, /preview\.scrollSurfaceScope\(/);
+  assert.match(currentPlanDialog, /preview\.value\?\.scrollSurfaceScope\(/);
 });
 
 test("App Shell owns the normal context and route cleanup while Task Workspace provides product state", () => {
   const appShell = readFrontend("pages/layout.ts");
   const workspace = readFrontend("pages/(task-workspace)/layout.ts");
   const presentation = readFrontend(
-    "keyboard-navigation/components/presentation.js",
+    "keyboard-navigation/components/presentation.ts",
   );
-  const context = readFrontend("keyboard-navigation/context.js");
+  const context = readFrontend("keyboard-navigation/context.ts");
 
-  assert.equal([...appShell.matchAll(/kind: "workspace"/g)].length, 1);
+  assert.equal([...appShell.matchAll(/this\.keyboard\.workspace\(/g)].length, 1);
   assert.match(appShell, /this\.keyboardNavigation\.connect\(\)/);
   assert.match(appShell, /this\.keyboardNavigation\.disconnect\(\)/);
   assert.match(appShell, /this\.taskWorkspace\.actionHintScope\(\)/);
@@ -224,12 +230,11 @@ test("App Shell owns the normal context and route cleanup while Task Workspace p
   assert.match(workspace, /actionHintScope\(\)/);
   assert.match(workspace, /scrollSurfaceScope\(\)/);
   assert.match(workspace, /keyboardNavigationContexts\(\)/);
-  assert.match(presentation, /<caffold-action-hint-dialog>/);
-  assert.match(presentation, /<caffold-scroll-mode-hud>/);
-  assert.match(presentation, /<caffold-scroll-surface-selector>/);
-  assert.doesNotMatch(presentation, /<caffold-keyboard-shortcut-dialog>/);
-  assert.match(context, /selector: scroll\.selector/);
-  assert.match(context, /!root\.contains\(selector\)/);
+  assert.match(presentation, /<caffold-action-hint-dialog\b/);
+  assert.match(presentation, /<caffold-scroll-mode-hud\b/);
+  assert.match(presentation, /<caffold-scroll-surface-selector\b/);
+  assert.doesNotMatch(presentation, /<caffold-keyboard-shortcut-dialog\b/);
+  assert.match(context, /!context\.root\.contains\(context\.presentation\)/);
 
   const applyRoute = appShell.match(
     /async applyRoute\([\s\S]*?\n  \}\n/,
@@ -259,18 +264,18 @@ test("registered dialog contexts stay owned and compose through public providers
   for (const source of [appShell, workspace, tasks, section, task, github]) {
     assert.match(source, /mergeKeyboardNavigationContexts\(/);
   }
-  assert.match(appShell, /this\.updateDialog\.keyboardNavigationContexts/);
+  assert.match(appShell, /this\.updateDialog\.value\?\.keyboardNavigationContexts/);
   assert.match(appShell, /this\.taskWorkspace\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.codexRuntimeRestartDialog\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.claudeRuntimeRestartDialog\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.archivedDeleteDialog\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.taskSwitcherDialog\.keyboardNavigationContexts/);
-  assert.match(tasks, /this\.imagePreviewDialog\(\)\?\.keyboardNavigationContexts/);
-  assert.match(taskNew, /this\.taskCreate\(\)\?\.keyboardNavigationContexts/);
+  assert.match(tasks, /this\.imagePreviewDialog\.value\?\.keyboardNavigationContexts/);
+  assert.match(taskNew, /this\.create\.value\?\.keyboardNavigationContexts/);
   assert.match(section, /this\.conversationShortcuts\(\)\?\.keyboardNavigationContexts/);
-  assert.match(task, /this\.currentPlanComponent\(\)\?\.keyboardNavigationContexts/);
-  assert.match(task, /this\.commandDialog\(\)\?\.keyboardNavigationContexts/);
-  assert.match(task, /this\.markdownPreviewDialog\(\)\?\.keyboardNavigationContexts/);
+  assert.match(task, /this\.currentPlanComponent\.value\?\.keyboardNavigationContexts/);
+  assert.match(task, /this\.commandDialog\.value\?\.keyboardNavigationContexts/);
+  assert.match(task, /this\.markdownPreviewDialog\.value\?\.keyboardNavigationContexts/);
   assert.match(github, /this\.taskStartDialog\.keyboardNavigationContexts/);
   assert.doesNotMatch(
     workspace,
@@ -300,16 +305,12 @@ test("registered product dialogs retain one context-local keyboard presentation"
   for (const path of dialogs) {
     const source = readFrontend(path);
     assert.equal(
-      [...source.matchAll(/<caffold-keyboard-navigation-presentation\s*>/g)].length,
+      [...source.matchAll(/<caffold-keyboard-navigation-presentation\b/g)].length,
       1,
       path,
     );
-    assert.match(
-      source,
-      /:scope > caffold-keyboard-navigation-presentation/,
-      path,
-    );
-    assert.match(source, /kind: "modal"/, path);
+    assert.match(source, /this\.keyboard\.presentation\(\)/, path);
+    assert.match(source, /this\.keyboard\.modal\(/, path);
   }
 });
 
@@ -441,8 +442,14 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   for (const child of ["(review)", "(git)", "(github)"]) {
     assert.ok(detailLayout.includes(`import "./${child}/layout.ts"`));
   }
-  assert.match(detailLayout, /<caffold-task-detail\s+hidden\b/);
-  assert.match(detailLayout, /<caffold-section-detail\s+hidden\b/);
+  assert.match(
+    detailLayout,
+    /<caffold-task-detail\s+\$\{drawn\(this\.taskDetail\)\}\s+hidden\b/,
+  );
+  assert.match(
+    detailLayout,
+    /<caffold-section-detail\s+\$\{drawn\(this\.sectionDetail\)\}\s+hidden\b/,
+  );
   assert.match(detailLayout, /class="detail-review-slot"/);
   assert.match(detailLayout, /class="detail-git-slot"/);
   assert.match(detailLayout, /class="detail-github-slot"/);
@@ -457,7 +464,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(taskLayout, /import "\.\/components\/command-dialog\.ts"/);
   assert.match(taskLayout, /import "\.\/components\/markdown-preview-dialog\.ts"/);
   assert.match(taskLayout, /<caffold-task-conversation\b/);
-  assert.match(taskLayout, /<caffold-task-command-dialog>/);
+  assert.match(taskLayout, /<caffold-task-command-dialog\b/);
   assert.match(taskLayout, /<caffold-task-markdown-preview-dialog\b/);
   assert.doesNotMatch(taskLayout, /\(review\)|\(git\)|\(github\)/);
   assert.doesNotMatch(
@@ -468,9 +475,15 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(sectionLayout, /import "\.\.\/\.\.\/components\/task-create\.ts"/);
   assert.match(sectionLayout, /import "\.\/components\/github-shortcuts\.ts"/);
   assert.match(sectionLayout, /import "\.\/components\/conversation-shortcuts\.ts"/);
-  assert.match(sectionLayout, /<caffold-task-create>/);
-  assert.match(sectionLayout, /<caffold-section-conversation-shortcuts hidden\s*>/);
-  assert.match(sectionLayout, /<caffold-section-github-shortcuts hidden\s*>/);
+  assert.match(sectionLayout, /<caffold-task-create\b/);
+  assert.match(
+    sectionLayout,
+    /<caffold-section-conversation-shortcuts\s+\$\{drawn\(this\.conversations\)\}\s+hidden\s*>/,
+  );
+  assert.match(
+    sectionLayout,
+    /<caffold-section-github-shortcuts\s+\$\{drawn\(this\.github\)\}\s+hidden\s*>/,
+  );
   assert.doesNotMatch(
     sectionLayout,
     /getGitHubStatus|statusRequestId|section-github-repository/,
@@ -478,7 +491,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(sectionGithubShortcuts, /getGitHubStatus/);
   assert.match(sectionGithubShortcuts, /statusRequestId/);
   assert.match(sectionGithubShortcuts, /caffold:section-detail-intent/);
-  assert.match(sectionConversationShortcuts, /<caffold-conversation-fork-dialog>/);
+  assert.match(sectionConversationShortcuts, /<caffold-conversation-fork-dialog\b/);
   assert.match(sectionConversationShortcuts, /Fork from Codex thread ID/);
   assert.match(conversationForkDialog, /previewTaskForkSource/);
   assert.match(conversationForkDialog, /createTaskFork/);
@@ -760,9 +773,9 @@ test("Task navigator keeps primary chrome outside its role-specific scrolling li
   const header = renderMarkup.indexOf(
     '<header class="task-list-section-header task-list-primary-header">',
   );
-  const scroller = renderMarkup.indexOf('<div class="task-list-scroll">');
+  const scroller = renderMarkup.search(/<div\b[^`]*?class="task-list-scroll"/);
   const active = renderMarkup.search(/<caffold-active-task-list\b/);
-  const archived = renderMarkup.search(/<caffold-archived-task-list\s+hidden\b/);
+  const archived = renderMarkup.search(/<caffold-archived-task-list\s+\$\{drawn\(this\.archivedList\)\}\s+hidden\b/);
 
   assert.ok(header >= 0 && header < scroller);
   assert.ok(active > scroller);
@@ -824,7 +837,7 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
     /customElements\.define\(\s*"caffold-active-task-section"/,
   );
   assert.match(active, /new CaffoldActiveTaskSection\(\)/);
-  assert.match(section, /<ol\s+class="task-list"/);
+  assert.match(section, /<ol\s+\$\{drawn\(this\.list\)\}\s+class="task-list"/);
   assert.match(
     section,
     /reconcileRows\(availableRows: Map<string, HTMLLIElement>\)/,
@@ -857,7 +870,7 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
   assert.doesNotMatch(archivedStyles, /task-unseen-complete|load-more-tasks/);
 
   assert.match(navigator, /<caffold-active-task-list\b/);
-  assert.match(navigator, /<caffold-archived-task-list\s+hidden\b/);
+  assert.match(navigator, /<caffold-archived-task-list\s+\$\{drawn\(this\.archivedList\)\}\s+hidden\b/);
   assert.doesNotMatch(
     navigator,
     /\bgetTasks\b|\bgetArchivedTasks\b|\brestoreTask\b|\bdeleteTask\b|TaskStreamLifecycle/,
@@ -926,7 +939,7 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
   assert.match(active, /@caffold:active-task-section-intent=/);
   assert.match(active, /new CaffoldActiveTaskSection\(\)/);
   assert.match(section, /new CaffoldActiveTaskRow\(\)/);
-  assert.match(section, /<ol\s+class="task-list"/);
+  assert.match(section, /<ol\s+\$\{drawn\(this\.list\)\}\s+class="task-list"/);
   assert.match(section, /updateTaskDropTarget\(threadId: string, clientY: number\)/);
   assert.match(section, /clearTaskDropTarget\(\)/);
   assert.match(
@@ -1096,7 +1109,10 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   assert.match(updateDialog, /customElements\.define\(/);
   assert.doesNotMatch(tasks, /codex-readiness-card|CODEX_INSTALL_COMMAND/);
   assert.match(tasks, /import "\.\/components\/task-store-recovery\.ts"/);
-  assert.match(tasks, /<caffold-task-store-recovery\s+\?hidden=\$\{!takeover\}/);
+  assert.match(
+    tasks,
+    /<caffold-task-store-recovery\s+\$\{drawn\(this\.taskStoreRecovery\)\}\s+\?hidden=\$\{!takeover\}/,
+  );
   assert.match(storeRecovery, /class CaffoldTaskStoreRecovery/);
   assert.match(storeRecovery, /TASK_STORE_RETRY_REQUEST_EVENT/);
   assert.doesNotMatch(storeRecovery, /codex/i);

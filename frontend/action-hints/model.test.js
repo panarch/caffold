@@ -16,7 +16,7 @@ import {
   sameActionHintViewport,
   sortByVisualOrder,
   visibleTargetRect,
-} from "./model.js";
+} from "./model.ts";
 
 function target(id, actionId, controlKind = "button") {
   return { id, actionId, controlKind };

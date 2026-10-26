@@ -25,64 +25,47 @@ after(() => {
   buildInfoHook.deregister();
 });
 
-test("merges responsive Back with only the presented direct page", () => {
-  const childTarget = { id: "appearance-reset" };
-  const childSurface = { id: "appearance-scroll" };
+test("merges its own Back with only the presented page, clipped by the detail pane", () => {
+  const pulls = [];
   const page = {
-    hidden: false,
-    getClientRects: () => [{}],
-    actionHintScope: () => ({
-      targets: [childTarget],
-      mutationRoots: [page],
-      scrollRoots: [],
-    }),
-    scrollSurfaceScope: () => ({
-      surfaces: [childSurface],
-      mutationRoots: [page],
-      resizeElements: [page],
-      scrollRoots: [],
-    }),
+    actionHintScope(pull) {
+      pulls.push(["actions", pull]);
+      return { targets: [{ id: "settings:appearance:reset-all" }] };
+    },
+    scrollSurfaceScope(pull) {
+      pulls.push(["scroll", pull]);
+      return { surfaces: [{ id: "settings:appearance:scroll" }] };
+    },
   };
-  const control = {
-    disabled: false,
-    getAttribute: () => "Back to settings",
-    focus() {},
-    click() {},
-  };
-  const header = { hidden: false, querySelector: () => control };
-  const detail = {
-    querySelector: (selector) =>
-      selector.endsWith(".settings-workspace-detail-header") ? header : null,
-  };
-  const owner = {
-    hidden: false,
-    isConnected: true,
+  const detailPane = {};
+  const owner = Object.assign(Object.create(workspace), {
     section: "appearance",
     wide: true,
-    performUpdate() {},
-    presentedSection: workspace.presentedSection,
-    page: (section) => (section === "appearance" ? page : null),
-    querySelector: (selector) =>
-      selector.endsWith(".settings-workspace-detail-pane") ? detail : null,
-  };
+    hints: { scope: () => ({ targets: [{ id: "settings:parent:list" }] }) },
+    surfaces: { scope: () => ({ surfaces: [] }) },
+    detailPane: { value: detailPane },
+    pages: { get: (section) => (section === "appearance" ? page : undefined) },
+  });
 
   assert.deepEqual(
-    workspace.actionHintScope.call(owner).targets.map(({ id }) => id),
-    ["settings:parent:list", "appearance-reset"],
+    owner.actionHintScope().targets.map(({ id }) => id),
+    ["settings:parent:list", "settings:appearance:reset-all"],
   );
   assert.deepEqual(
-    workspace.scrollSurfaceScope.call(owner).surfaces,
-    [childSurface],
+    owner.scrollSurfaceScope().surfaces.map(({ id }) => id),
+    ["settings:appearance:scroll"],
   );
+  assert.deepEqual(pulls, [
+    ["actions", { scopeId: "settings:appearance", clipRoots: [detailPane] }],
+    ["scroll", { scopeId: "settings:appearance", label: "Appearance", clipRoots: [detailPane] }],
+  ]);
 
   owner.section = "";
-  assert.deepEqual(
-    workspace.actionHintScope.call(owner).targets,
-    [childTarget],
-  );
   owner.wide = false;
-  assert.deepEqual(workspace.actionHintScope.call(owner).targets, []);
-  assert.deepEqual(workspace.scrollSurfaceScope.call(owner).surfaces, []);
+  assert.deepEqual(
+    owner.actionHintScope().targets.map(({ id }) => id),
+    ["settings:parent:list"],
+  );
 });
 
 test("hands a navigator that connects later the update states it missed", () => {

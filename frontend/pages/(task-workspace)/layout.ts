@@ -1,23 +1,23 @@
 import { html, LitElement, nothing } from "lit";
 import {
-  type ActionHintScope,
-  buttonActionHintTarget,
+  ACTION_HINT_ACTION,
+  ActionHints,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
   withActionHintOcclusionRoots,
-} from "#app/action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "#app/action-hints.js";
+} from "#app/action-hints.ts";
 import { type Health, restartClaudeRuntime } from "#app/api.ts";
 import { compactIconButton } from "#app/component-styles.ts";
-import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.ts";
 import { routeDomain, routeTab, routeTarget } from "#app/navigation-routes.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
   type ScrollSurfaceScope,
-} from "#app/scroll-scope.js";
+} from "#app/scroll-scope.ts";
+import { DrawnRefs, drawn } from "#components/drawn-refs.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/pane-resizer.ts";
 import type { CaffoldPaneResizer } from "#components/pane-resizer.ts";
@@ -185,6 +185,11 @@ export class CaffoldTaskWorkspace extends LitElement {
   };
   private taskStoreTakeover = false;
   private showBack = false;
+  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+    clipRoots: () => [this],
+  });
+  // Each part the workspace draws, by the name its getter reads it with.
+  private readonly parts = new DrawnRefs<Element>(this);
   private detailOpen = false;
   private navigationPaneCollapsed = false;
   private sidePaneToggleState = {
@@ -286,16 +291,16 @@ export class CaffoldTaskWorkspace extends LitElement {
   }
 
   get tasksPage() {
-    return this.child<CaffoldTasksPage>("caffold-tasks-page");
+    return this.child<CaffoldTasksPage>("tasks-page");
   }
 
   get taskNavigator() {
-    return this.child<CaffoldTaskNavigator>("caffold-task-navigator");
+    return this.child<CaffoldTaskNavigator>("task-navigator");
   }
 
   get codexRuntimeRestartDialog() {
     return this.child<CaffoldCodexRuntimeRestartDialog>(
-      ":scope > caffold-codex-runtime-restart-dialog",
+      "codex-runtime-restart-dialog",
     );
   }
 
@@ -447,7 +452,8 @@ export class CaffoldTaskWorkspace extends LitElement {
     this.tasksPage.setServerPaths(server);
   }
 
-  actionHintScope(): ActionHintScope {
+  actionHintScope() {
+    const own = this.hints.scope({ scopeId: "workspace" });
     if (this.hidden) {
       return emptyActionHintScope();
     }
@@ -482,29 +488,10 @@ export class CaffoldTaskWorkspace extends LitElement {
           scopeId: "workspace:navigation-pane",
           actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
           clipRoots: [this, this.masterDetail],
-          isCurrent: () =>
-            this.isConnected && !this.hidden && this.masterResizer === resizer,
         })
       : null;
     return mergeActionHintScopes(
-      routeControlActionHintScope(this, this.sidePaneToggle, {
-        id: "workspace:side-pane:toggle",
-        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-        fallbackLabel: "Toggle side pane",
-        retained: () => this.sidePaneToggle,
-      }),
-      routeControlActionHintScope(this, this.backButton, {
-        id: "workspace:parent:tasks",
-        actionId: ACTION_HINT_ACTION.PARENT,
-        fallbackLabel: "Back",
-        retained: () => this.backButton,
-      }),
-      routeControlActionHintScope(this, this.taskSwitcherButton, {
-        id: "workspace:task-switcher:open",
-        actionId: ACTION_HINT_ACTION.TASK_SWITCHER_OPEN,
-        fallbackLabel: "Switch task",
-        retained: () => this.taskSwitcherButton,
-      }),
+      own,
       hasActionHintLayoutBox(this.navigation)
         ? this.navigation.actionHintScope({
             scopeId: "workspace",
@@ -578,14 +565,12 @@ export class CaffoldTaskWorkspace extends LitElement {
       return null;
     }
     if (this.tasksPage.contains(editable)) {
-      return this.tasksPage.querySelector(":scope .tasks-detail-pane");
+      return this.tasksPage.editingEscapeTarget();
     }
     if (this.settingsWorkspace.contains(editable)) {
-      return this.settingsWorkspace.querySelector(
-        ":scope .settings-workspace-detail-pane",
-      );
+      return this.settingsWorkspace.editingEscapeTarget();
     }
-    return this.querySelector(":scope > .task-workspace-surface");
+    return this.workspaceSurface;
   }
 
   /** The terminal toggle of the open Task or Section; Tasks alone has one. */
@@ -657,7 +642,7 @@ export class CaffoldTaskWorkspace extends LitElement {
     this.tasksPage.connectTaskNavigator(this.taskNavigator);
     this.notesWorkspace.connectNotesNavigator(this.notesNavigator);
     this.notesWorkspace.connectPrimarySlot(
-      this.querySelector(".notes-primary-slot"),
+      this.child<HTMLDivElement>("notes-primary-slot"),
     );
     this.settingsWorkspace.connectSettingsNavigator(this.settingsNavigator);
     this.setTaskStoreStatusSnapshot(this.taskStoreStatusSnapshot);
@@ -713,8 +698,17 @@ export class CaffoldTaskWorkspace extends LitElement {
     const toggle = this.sidePaneToggleState;
     const mode = this.mode;
     return html`
-      <div class="task-workspace-route-controls">
+      <div
+        ${drawn(this.parts.of("route-controls"))}
+        class="task-workspace-route-controls"
+      >
         <button
+          ${this.hints.button({
+            id: "side-pane:toggle",
+            label: toggle.label || "Toggle side pane",
+            action: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            owner: () => this.parts.get("route-controls"),
+          })}
           type="button"
           class="task-workspace-route-control task-workspace-side-pane-toggle"
           aria-expanded=${toggle.expanded ? "true" : "false"}
@@ -729,6 +723,12 @@ export class CaffoldTaskWorkspace extends LitElement {
             : nothing
         }</button>
         <button
+          ${this.hints.button({
+            id: "parent:tasks",
+            label: "Back to tasks",
+            action: ACTION_HINT_ACTION.PARENT,
+            owner: () => this.parts.get("route-controls"),
+          })}
           type="button"
           class="task-workspace-route-control task-workspace-back"
           aria-label="Back to tasks"
@@ -741,6 +741,12 @@ export class CaffoldTaskWorkspace extends LitElement {
           ROUTE_CONTROL_ICON,
         )}</button>
         <button
+          ${this.hints.button({
+            id: "task-switcher:open",
+            label: "Switch task",
+            action: ACTION_HINT_ACTION.TASK_SWITCHER_OPEN,
+            owner: () => this.parts.get("route-controls"),
+          })}
           type="button"
           class="task-workspace-route-control task-workspace-switcher"
           aria-label="Switch task"
@@ -750,33 +756,46 @@ export class CaffoldTaskWorkspace extends LitElement {
         >${inlineIcon("History", "Switch task", ROUTE_CONTROL_ICON)}</button>
       </div>
       <section
+        ${drawn(this.parts.of("surface"))}
         class="task-workspace-surface"
         aria-label="Task workspace"
         tabindex="-1"
       >
-        <div class="task-workspace-master-detail">
+        <div
+          ${drawn(this.parts.of("master-detail"))}
+          class="task-workspace-master-detail"
+        >
           <aside
+            ${drawn(this.parts.of("master-pane"))}
             class="task-workspace-master-pane"
             aria-label="Workspace navigation"
           >
             <caffold-task-navigator
+              ${drawn(this.parts.of("task-navigator"))}
               class="tasks-list-region"
               ?hidden=${mode !== "tasks"}
               @caffold:task-navigator-intent=${this.taskNavigatorIntent}
               @caffold:active-task-list-state=${this.activeTasksChange}
             ></caffold-task-navigator>
             <caffold-notes-navigator
+              ${drawn(this.parts.of("notes-navigator"))}
               ?hidden=${mode !== "notes"}
             ></caffold-notes-navigator>
             <caffold-settings-navigator
+              ${drawn(this.parts.of("settings-navigator"))}
               ?hidden=${mode !== "settings"}
             ></caffold-settings-navigator>
-            <div class="notes-primary-slot"></div>
+            <div
+              ${drawn(this.parts.of("notes-primary-slot"))}
+              class="notes-primary-slot"
+            ></div>
             <caffold-task-workspace-navigation
+              ${drawn(this.parts.of("navigation"))}
               @caffold:workspace-navigation-intent=${this.chooseTab}
             ></caffold-task-workspace-navigation>
           </aside>
           <caffold-pane-resizer
+            ${drawn(this.parts.of("master-resizer"))}
             start-default="380"
             start-min="280"
             start-max="520"
@@ -786,16 +805,22 @@ export class CaffoldTaskWorkspace extends LitElement {
             aria-label="Resize navigation pane"
             @caffold:pane-resize=${this.resizeNavigationPane}
           ></caffold-pane-resizer>
-          <div class="task-workspace-detail-pane">
+          <div
+            ${drawn(this.parts.of("detail-pane"))}
+            class="task-workspace-detail-pane"
+          >
             <caffold-tasks-page
+              ${drawn(this.parts.of("tasks-page"))}
               ?hidden=${mode !== "tasks"}
               @caffold:tasks-presentation-change=${this.presentationChange}
             ></caffold-tasks-page>
             <caffold-notes-workspace
+              ${drawn(this.parts.of("notes-workspace"))}
               ?hidden=${mode !== "notes"}
               @caffold:notes-presentation-change=${this.presentationChange}
             ></caffold-notes-workspace>
             <caffold-settings-workspace
+              ${drawn(this.parts.of("settings-workspace"))}
               ?hidden=${mode !== "settings"}
               @caffold:settings-presentation-change=${this.presentationChange}
             ></caffold-settings-workspace>
@@ -803,24 +828,31 @@ export class CaffoldTaskWorkspace extends LitElement {
         </div>
       </section>
       <caffold-task-archived-delete-dialog
+        ${drawn(this.parts.of("archived-delete-dialog"))}
         @caffold:task-archived-delete-confirmed=${this.deleteArchivedTask}
       ></caffold-task-archived-delete-dialog>
       <caffold-task-switcher-dialog
+        ${drawn(this.parts.of("task-switcher-dialog"))}
         @caffold:task-switcher-select=${this.openSwitchedTaskFromDialog}
       ></caffold-task-switcher-dialog>
       <caffold-codex-runtime-restart-dialog
+        ${drawn(this.parts.of("codex-runtime-restart-dialog"))}
         @caffold:codex-runtime-restart-confirmed=${this.restartCodexRuntime}
       ></caffold-codex-runtime-restart-dialog>
       <caffold-codex-runtime-update-dialog
+        ${drawn(this.parts.of("codex-runtime-update-dialog"))}
         @caffold:codex-runtime-update-confirmed=${this.updateCodexRuntime}
       ></caffold-codex-runtime-update-dialog>
       <caffold-codex-reset-credit-dialog
+        ${drawn(this.parts.of("codex-reset-credit-dialog"))}
         @caffold:codex-reset-credit-confirmed=${this.consumeResetCredit}
       ></caffold-codex-reset-credit-dialog>
       <caffold-claude-runtime-restart-dialog
+        ${drawn(this.parts.of("claude-runtime-restart-dialog"))}
         @caffold:claude-runtime-restart-confirmed=${this.restartClaudeRunner}
       ></caffold-claude-runtime-restart-dialog>
       <caffold-update-task-dialog
+        ${drawn(this.parts.of("update-task-dialog"))}
         @caffold:task-create-intent=${this.startUpdateTask}
       ></caffold-update-task-dialog>
     `;
@@ -1237,143 +1269,82 @@ export class CaffoldTaskWorkspace extends LitElement {
 
   // The children are drawn the first time one is needed, which can be before
   // the workspace is in the document.
-  private child<T extends Element>(selector: string) {
+  private child<T extends Element>(name: string) {
     this.performUpdate();
-    return this.querySelector(selector) as T;
-  }
-
-  private get sidePaneToggle() {
-    return this.child<HTMLButtonElement>(".task-workspace-side-pane-toggle");
-  }
-
-  private get backButton() {
-    return this.child<HTMLButtonElement>(".task-workspace-back");
-  }
-
-  private get taskSwitcherButton() {
-    return this.child<HTMLButtonElement>(".task-workspace-switcher");
+    return this.parts.get(name) as T;
   }
 
   private get workspaceSurface() {
-    return this.child<HTMLElement>(":scope > .task-workspace-surface");
+    return this.child<HTMLElement>("surface");
   }
 
   private get masterDetail() {
-    return this.child<HTMLElement>(".task-workspace-master-detail");
+    return this.child<HTMLElement>("master-detail");
   }
 
   private get masterPane() {
-    return this.child<HTMLElement>(".task-workspace-master-pane");
+    return this.child<HTMLElement>("master-pane");
   }
 
   private get detailPane() {
-    return this.child<HTMLElement>(".task-workspace-detail-pane");
+    return this.child<HTMLElement>("detail-pane");
   }
 
   private get masterResizer() {
-    return this.child<CaffoldPaneResizer>(
-      ":scope > .task-workspace-surface > .task-workspace-master-detail > caffold-pane-resizer",
-    );
+    return this.child<CaffoldPaneResizer>("master-resizer");
   }
 
   private get notesNavigator() {
-    return this.child<CaffoldNotesNavigator>("caffold-notes-navigator");
+    return this.child<CaffoldNotesNavigator>("notes-navigator");
   }
 
   private get settingsNavigator() {
-    return this.child<CaffoldSettingsNavigator>("caffold-settings-navigator");
+    return this.child<CaffoldSettingsNavigator>("settings-navigator");
   }
 
   private get notesWorkspace() {
-    return this.child<CaffoldNotesWorkspace>("caffold-notes-workspace");
+    return this.child<CaffoldNotesWorkspace>("notes-workspace");
   }
 
   private get settingsWorkspace() {
-    return this.child<CaffoldSettingsWorkspace>("caffold-settings-workspace");
+    return this.child<CaffoldSettingsWorkspace>("settings-workspace");
   }
 
   private get navigation() {
-    return this.child<CaffoldTaskWorkspaceNavigation>(
-      "caffold-task-workspace-navigation",
-    );
+    return this.child<CaffoldTaskWorkspaceNavigation>("navigation");
   }
 
   private get archivedDeleteDialog() {
     return this.child<CaffoldTaskArchivedDeleteDialog>(
-      ":scope > caffold-task-archived-delete-dialog",
+      "archived-delete-dialog",
     );
   }
 
   private get taskSwitcherDialog() {
-    return this.child<CaffoldTaskSwitcherDialog>(
-      ":scope > caffold-task-switcher-dialog",
-    );
+    return this.child<CaffoldTaskSwitcherDialog>("task-switcher-dialog");
   }
 
   private get codexRuntimeUpdateDialog() {
     return this.child<CaffoldCodexRuntimeUpdateDialog>(
-      ":scope > caffold-codex-runtime-update-dialog",
+      "codex-runtime-update-dialog",
     );
   }
 
   private get codexResetCreditDialog() {
     return this.child<CaffoldCodexResetCreditDialog>(
-      ":scope > caffold-codex-reset-credit-dialog",
+      "codex-reset-credit-dialog",
     );
   }
 
   private get claudeRuntimeRestartDialog() {
     return this.child<CaffoldClaudeRuntimeRestartDialog>(
-      ":scope > caffold-claude-runtime-restart-dialog",
+      "claude-runtime-restart-dialog",
     );
   }
 
   private get updateTaskDialog() {
-    return this.child<CaffoldUpdateTaskDialog>(
-      ":scope > caffold-update-task-dialog",
-    );
+    return this.child<CaffoldUpdateTaskDialog>("update-task-dialog");
   }
-}
-
-function routeControlActionHintScope(
-  workspace: CaffoldTaskWorkspace,
-  control: HTMLButtonElement | null | undefined,
-  {
-    id,
-    actionId,
-    fallbackLabel,
-    retained,
-  }: {
-    id: string;
-    actionId: string;
-    fallbackLabel: string;
-    retained: () => HTMLButtonElement | null | undefined;
-  },
-): ActionHintScope | null {
-  if (!control || control.hidden || !hasActionHintLayoutBox(control)) {
-    return null;
-  }
-  return {
-    blocked: false,
-    targets: [
-      buttonActionHintTarget({
-        invalidationOwner: workspace,
-        id,
-        actionId,
-        label: control.getAttribute("aria-label") || fallbackLabel,
-        control,
-        clipRoots: [workspace],
-        isActionable: () =>
-          workspace.isConnected &&
-          !workspace.hidden &&
-          !control.hidden &&
-          retained() === control &&
-          !control.disabled,
-      }),
-    ],
-    mutationRoots: [control],
-    scrollRoots: [],
-  };
 }
 
 await compactIconButton.register(

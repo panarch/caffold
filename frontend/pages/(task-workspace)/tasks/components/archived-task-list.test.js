@@ -8,6 +8,7 @@ import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./archived-task-list.ts");
+const { ActionHints } = await import("#app/action-hints.ts");
 const Archived = registry.element("caffold-archived-task-list");
 after(() => registry.restore());
 
@@ -18,21 +19,6 @@ const ready = {
   title: "",
   message: "",
 };
-
-function ownedButton(action, threadId = "") {
-  return {
-    dataset: { taskAction: action, threadId },
-    disabled: false,
-    textContent: action,
-    clicks: 0,
-    getAttribute: () => null,
-    getClientRects: () => [{}],
-    focus() {},
-    click() {
-      this.clicks += 1;
-    },
-  };
-}
 
 function archivedTask(overrides = {}) {
   return {
@@ -52,42 +38,6 @@ function archivedTask(overrides = {}) {
     ...overrides,
   };
 }
-
-test("offers every visible archived-list button through the controls it drew", () => {
-  const retry = ownedButton("retry-archived-task-list");
-  const loadMore = ownedButton("load-more-archived-tasks");
-  const restore = ownedButton("restore-archived-task", "thread-a");
-  const remove = ownedButton("delete-archived-task", "thread-a");
-  let controls = [retry, loadMore, restore, remove];
-  const matching = (selector) => controls.filter((control) =>
-    selector.includes(`"${control.dataset.taskAction}"`) &&
-    (!selector.includes("[data-thread-id]") || control.dataset.threadId)
-  );
-  const list = archivedHost({
-    revealed: true,
-    querySelector: (selector) => matching(selector)[0] ?? null,
-    querySelectorAll: matching,
-  });
-
-  const scope = list.actionHintScope();
-  assert.deepEqual(scope.targets.map(({ id }) => id), [
-    "task-list:archived:retry",
-    "task-list:archived:load-more",
-    "task-list:archived:restore-archived-task:thread-a",
-    "task-list:archived:delete-archived-task:thread-a",
-  ]);
-  assert.ok(scope.targets.every(({ actionId }) => actionId === "button.activate"));
-  scope.targets[2].activate();
-  assert.equal(restore.clicks, 1);
-
-  controls = controls.filter((control) => control !== restore);
-  assert.equal(scope.targets[2].isActionable(), false);
-  list.taskOperations = { ...ready, key: "blocked", blocked: true };
-  assert.equal(scope.targets[0].isActionable(), false);
-
-  list.revealed = false;
-  assert.deepEqual(list.actionHintScope().targets, []);
-});
 
 test("draws nothing and stays hidden until its navigator reveals it", () => {
   const list = archivedHost({ archivedTasks: [archivedTask()] });
@@ -167,7 +117,7 @@ test("says why the list is empty", () => {
 function archivedHost(properties) {
   const attributes = {};
   const classes = new Set();
-  return Object.create(Archived.prototype, Object.getOwnPropertyDescriptors({
+  const list = Object.create(Archived.prototype, Object.getOwnPropertyDescriptors({
     archivedTasks: [],
     loading: false,
     loadingMore: false,
@@ -201,10 +151,10 @@ function archivedHost(properties) {
     removeAttribute: (name) => {
       delete attributes[name];
     },
-    querySelector: () => null,
-    querySelectorAll: () => [],
     ...properties,
   }));
+  list.hints = new ActionHints(list, () => {});
+  return list;
 }
 
 function dashed(name) {
