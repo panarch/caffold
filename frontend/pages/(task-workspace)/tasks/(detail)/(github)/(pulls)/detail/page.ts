@@ -31,12 +31,10 @@ export class CaffoldGithubPullDetailPage extends LitElement {
 
   declare private state: PullState;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly details = new DrawnRef<HTMLDivElement>(this);
   // The Markdown blocks by the order they are drawn in.
   private readonly markdowns = new DrawnRefs<CaffoldGithubMarkdown>(this);

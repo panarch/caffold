@@ -24,7 +24,7 @@ export class CaffoldReviewWorkingTreeChanges extends LitElement {
   private status: GitStatus | null = null;
   private error: Error | null = null;
   private readonly reading = new ChangesReading();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly treeElement = new DrawnRef<CaffoldGitDiffChangesTree>(this);
   private listShows = "";
   private generation = 0;

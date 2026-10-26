@@ -70,7 +70,7 @@ test("composes one App Shell workspace context with public child contexts", () =
       value: { keyboardNavigationContexts: () => [shortcutChild] },
     },
   }));
-  owner.keyboard = new KeyboardContexts(owner, () => {});
+  owner.keyboard = new KeyboardContexts(owner);
   owner.keyboard.presentations.add({}, {
     element: Object.assign(presentation, { parentElement: null }),
     value: null,

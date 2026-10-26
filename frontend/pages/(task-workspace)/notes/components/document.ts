@@ -72,12 +72,10 @@ export class CaffoldNoteDocument extends LitElement {
   // The Markdown the preview was last given.
   private renderedMarkdown: { noteId: string; content: string } | null = null;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly pane = new DrawnRef<HTMLDivElement>(this);
   private readonly choose = new DrawnRef<HTMLButtonElement>(this);
   private readonly split = new DrawnRef<HTMLButtonElement>(this);

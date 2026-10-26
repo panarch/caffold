@@ -26,7 +26,7 @@ export class CaffoldTaskContextUsage extends LitElement {
 
   declare private usage: ContextUsage | null;
   private readonly popoverId = `task-context-usage-${++contextUsageInstanceId}`;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
 
   constructor() {
     super();

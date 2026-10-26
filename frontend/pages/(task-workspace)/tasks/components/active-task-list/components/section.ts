@@ -92,7 +92,7 @@ export class CaffoldActiveTaskSection extends LitElement {
   };
   private pointerGesture: PointerGesture | null = null;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly list = new DrawnRef<HTMLOListElement>(this);
   private readonly handle = new DrawnRef<HTMLButtonElement>(this);
 

@@ -232,31 +232,34 @@ test("pagination offers its enabled page buttons as Action Hints from the page i
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
   await page.evaluate(() => customElements.whenDefined("caffold-pagination"));
-  // Each pull follows a change without waiting for Lit, so it also shows
-  // that pulling draws first.
-  const result = await page.evaluate(() => {
+  // Each pull waits for the next frame, as keyboard navigation does, by which
+  // Lit has drawn the change.
+  const result = await page.evaluate(async () => {
     const pagination = document.createElement("caffold-pagination");
     pagination.setAttribute("page", "1");
     pagination.setAttribute("total-pages", "3");
     pagination.setAttribute("has-next", "");
     document.body.append(pagination);
     const clip = document.body;
-    const targets = () => pagination.actionHintScope({
-      scopeId: "issues:page",
-      actionId: "navigation.page",
-      clipRoots: [clip],
-    }).targets.map((target) => ({
-      id: target.id,
-      actionId: target.actionId,
-      label: target.label,
-      clipped: target.clipRoots.includes(clip),
-    }));
-    const firstPage = targets();
+    const targets = async () => {
+      await new Promise(requestAnimationFrame);
+      return pagination.actionHintScope({
+        scopeId: "issues:page",
+        actionId: "navigation.page",
+        clipRoots: [clip],
+      }).targets.map((target) => ({
+        id: target.id,
+        actionId: target.actionId,
+        label: target.label,
+        clipped: target.clipRoots.includes(clip),
+      }));
+    };
+    const firstPage = await targets();
     pagination.setAttribute("has-previous", "");
     pagination.setAttribute("page", "2");
-    const secondPage = targets();
+    const secondPage = await targets();
     pagination.setAttribute("total-pages", "1");
-    const onePage = targets();
+    const onePage = await targets();
     return { firstPage, secondPage, onePage };
   });
   const target = (id, label) => ({ id: `issues:page:page:${id}`, actionId: "navigation.page", label, clipped: true });

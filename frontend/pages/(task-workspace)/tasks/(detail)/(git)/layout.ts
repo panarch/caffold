@@ -75,7 +75,7 @@ export class CaffoldTaskGitLayout extends LitElement {
     (state) => this.setRefreshState(state),
   );
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly headerControls = new DrawnRef<CaffoldGitReviewControls>(
     this,
@@ -331,7 +331,6 @@ export class CaffoldTaskGitLayout extends LitElement {
     if (!this.active || this.hidden || !this.mode) {
       return emptyScrollSurfaceScope();
     }
-    this.performUpdate();
     const scopeId = this.scopeId();
     const body = this.body.value;
     const clipRoots = body ? [this, body] : [this];

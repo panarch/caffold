@@ -27,7 +27,7 @@ function owner(prototype, state) {
 
 function drawnActions(snapshot) {
   const host = owner(actions, { snapshot: taskInfoSnapshot(snapshot) });
-  host.hints = new ActionHints(host, () => {});
+  host.hints = new ActionHints(host);
   const markup = templateHtml(host.render()).replace(/\s+/g, " ");
   const button = (type) =>
     markup.match(new RegExp(`data-task-info-action="${type}"[^>]*>`))?.[0] ?? "";

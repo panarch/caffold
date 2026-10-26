@@ -26,8 +26,8 @@ function dialogFixture() {
     draw() { this.drawn = templateHtml(this.render()).replace(/\s+/g, " "); },
     intent(detail) { this.intents.push(detail); },
   }));
-  owner.hints = new ActionHints(owner, () => {});
-  owner.keyboard = new KeyboardContexts(owner, () => {});
+  owner.hints = new ActionHints(owner);
+  owner.keyboard = new KeyboardContexts(owner);
   owner.setContext({ threadId: "broken", title: "Broken Task", error: {
     allowedActions: ["deleteTask"], worktreeId: "uuid", worktreePath: "/managed/uuid", worktreeMissing: false,
   } });

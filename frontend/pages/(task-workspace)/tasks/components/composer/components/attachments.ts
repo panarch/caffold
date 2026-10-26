@@ -45,7 +45,7 @@ export class CaffoldTaskComposerAttachments extends LitElement {
   private attachments: ComposerAttachment[] = [];
   private thumbnailQueue = Promise.resolve();
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
 
   constructor() {
     super();

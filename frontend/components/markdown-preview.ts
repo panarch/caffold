@@ -99,9 +99,7 @@ export class CaffoldMarkdownPreview extends LitElement {
   private scrollSurfaceRecords: ScrollSurfaceRecord[] = [];
   private fetchedImages = new Map<HTMLElement, FetchedImage>();
   private imageObserver: IntersectionObserver | null = null;
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly body = new DrawnRef<HTMLElement>(this);
 
   constructor() {

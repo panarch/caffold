@@ -35,13 +35,9 @@ export class CaffoldTaskCommandDialog extends LitElement {
   declare private threadId: string;
   private command: CommandView | null = null;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly output = new DrawnRef<HTMLPreElement>(this);

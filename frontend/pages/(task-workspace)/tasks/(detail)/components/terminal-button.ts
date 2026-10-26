@@ -16,7 +16,7 @@ export class CaffoldTaskDetailTerminal extends LitElement {
   private available = false;
   private pressed = false;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
 
   createRenderRoot() {
     return this;

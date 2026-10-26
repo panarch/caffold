@@ -33,7 +33,7 @@ function draw(state) {
     ImageDialog.prototype,
     Object.getOwnPropertyDescriptors(state),
   );
-  dialog.hints = new ActionHints(dialog, () => {});
-  dialog.keyboard = new KeyboardContexts(dialog, () => {});
+  dialog.hints = new ActionHints(dialog);
+  dialog.keyboard = new KeyboardContexts(dialog);
   return templateHtml(dialog.render()).replace(/\s+/g, " ");
 }

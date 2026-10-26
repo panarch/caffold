@@ -19,7 +19,7 @@ export class CaffoldBuildMismatchAlert extends LitElement {
 
   // The server's build while it differs from this window's, or empty.
   declare serverLabel: string;
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
 

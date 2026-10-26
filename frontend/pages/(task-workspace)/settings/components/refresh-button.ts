@@ -25,7 +25,7 @@ export class CaffoldSettingsRefreshButton extends LitElement {
   declare refreshing: boolean;
   declare disabled: boolean;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
 
   constructor() {
     super();

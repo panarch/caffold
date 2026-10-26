@@ -310,7 +310,6 @@ export class CaffoldTaskReview extends LitElement {
       return emptyActionHintScope();
     }
     const scopeId = `review:${encodeURIComponent(subjectId)}`;
-    this.performUpdate();
     const navigatorPane: Element | null = this.navigatorPane.value ?? null;
     const viewerPane: Element | null = this.viewerPane.value ?? null;
     const navigatorActive = hasActionHintLayoutBox(navigatorPane);
@@ -401,7 +400,6 @@ export class CaffoldTaskReview extends LitElement {
       return emptyScrollSurfaceScope();
     }
     const scopeId = `review:${encodeURIComponent(subjectId)}`;
-    this.performUpdate();
     const navigatorPane: Element | null = this.navigatorPane.value ?? null;
     const viewerPane: Element | null = this.viewerPane.value ?? null;
     const navigatorClipRoots = [this, navigatorPane].filter(

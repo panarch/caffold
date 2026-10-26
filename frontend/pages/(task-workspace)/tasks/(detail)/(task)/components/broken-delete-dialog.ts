@@ -51,10 +51,8 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
   private context: BrokenTaskContext | null = null;
   private target: BrokenTaskContext | null = null;
   private failure: Error | null = null;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
   createRenderRoot() {

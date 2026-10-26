@@ -192,29 +192,6 @@ test("a link left unlabeled is named from what it shows and where it goes", () =
   );
 });
 
-test("pulling finishes the owner's waiting draw before it reads", () => {
-  const owner = control();
-  const button = control();
-  const hints = new ActionHints(owner, () => {
-    hints.declarations.add(button, {
-      element: button,
-      value: {
-        kind: "button",
-        declaration: {
-          id: "cancel",
-          label: "Cancel",
-          action: ACTION_HINT_ACTION.DIALOG_BUTTON,
-        },
-      },
-    });
-  });
-
-  assert.deepEqual(
-    hints.scope({ scopeId: "dialog" }).targets.map((target) => target.id),
-    ["dialog:cancel"],
-  );
-});
-
 function declared(element, kind, declaration) {
   return { element, value: { kind, declaration } };
 }

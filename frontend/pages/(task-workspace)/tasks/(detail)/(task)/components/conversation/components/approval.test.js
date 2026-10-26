@@ -107,8 +107,8 @@ function approvalHost(properties = {}) {
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
-  host.hints = new ActionHints(host, () => {});
-  host.surfaces = new ScrollSurfaces(host, () => {});
+  host.hints = new ActionHints(host);
+  host.surfaces = new ScrollSurfaces(host);
   return host;
 }
 

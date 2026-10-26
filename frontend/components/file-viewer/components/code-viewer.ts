@@ -37,9 +37,7 @@ export class CaffoldCodeViewer extends LitElement {
   declare file: CodeFile | null;
   declare position: ViewerPosition | null;
 
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly table = new DrawnRef<HTMLDivElement>(this);
 

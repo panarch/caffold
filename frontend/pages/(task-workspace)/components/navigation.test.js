@@ -68,7 +68,7 @@ test("marks the Settings button and its name while a newer Caffold exists", () =
 });
 
 function buttons(owner) {
-  owner.hints ??= new ActionHints(owner, () => {});
+  owner.hints ??= new ActionHints(owner);
   return templateHtml(owner.render())
     .replace(/\s+/g, " ")
     .split("<button")

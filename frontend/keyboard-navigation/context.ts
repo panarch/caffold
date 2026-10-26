@@ -89,13 +89,11 @@ type DeclaredContext =
  */
 export class KeyboardContexts {
   private readonly owner: HTMLElement;
-  private readonly draw: () => void;
   private readonly roots: ElementDeclarations<DeclaredContext>;
   private readonly presentations: ElementDeclarations<null>;
 
-  constructor(owner: HTMLElement, draw: () => void) {
+  constructor(owner: HTMLElement) {
     this.owner = owner;
-    this.draw = draw;
     this.roots = new ElementDeclarations(owner, { contextRoots: true });
     this.presentations = new ElementDeclarations(owner);
   }
@@ -115,7 +113,6 @@ export class KeyboardContexts {
   contexts(
     capabilities: KeyboardContextCapabilities = {},
   ): KeyboardNavigationContext[] {
-    this.draw();
     return this.roots.all().flatMap(({ element, value }) => {
       const root = element as HTMLElement;
       const open =
@@ -155,7 +152,6 @@ export class KeyboardContexts {
     id: string,
     { actionHints, scroll, editing }: KeyboardContextCapabilities = {},
   ): KeyboardNavigationContext[] {
-    this.draw();
     const pull = { contextRoot: null };
     return this.context({
       id,

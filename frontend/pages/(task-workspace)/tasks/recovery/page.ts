@@ -76,14 +76,10 @@ export class CaffoldTaskRecovery extends LitElement {
   private readonly iconsReady = () => this.requestUpdate();
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly notice = new DrawnRef<CaffoldTaskAbsence>(this);
-  private readonly hints: ActionHints = new ActionHints(
-    this,
-    () => this.performUpdate(),
-    { clipRoots: () => [this, this.body.value] },
-  );
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints: ActionHints = new ActionHints(this, {
+    clipRoots: () => [this, this.body.value],
+  });
+  private readonly surfaces = new ScrollSurfaces(this);
 
   createRenderRoot() {
     return this;

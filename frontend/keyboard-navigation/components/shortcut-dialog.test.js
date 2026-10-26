@@ -16,9 +16,9 @@ after(() => registry.restore());
 
 test("draws the shared shortcut map in one native dialog", () => {
   const owner = Object.create(dialog);
-  owner.hints = new ActionHints(owner, () => {});
-  owner.surfaces = new ScrollSurfaces(owner, () => {});
-  owner.keyboard = new KeyboardContexts(owner, () => {});
+  owner.hints = new ActionHints(owner);
+  owner.surfaces = new ScrollSurfaces(owner);
+  owner.keyboard = new KeyboardContexts(owner);
   const drawn = templateHtml(owner.render()).replace(/\s+/g, " ");
 
   assert.match(drawn, /^<dialog/);

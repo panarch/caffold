@@ -37,14 +37,10 @@ export class CaffoldSettingsFilesPage extends LitElement {
       (event as CustomEvent<{ settings?: Settings }>).detail?.settings ??
       getSettings();
   };
-  private readonly hints: ActionHints = new ActionHints(
-    this,
-    () => this.performUpdate(),
-    { clipRoots: () => [this, this.scrollport.value] },
-  );
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints: ActionHints = new ActionHints(this, {
+    clipRoots: () => [this, this.scrollport.value],
+  });
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly optionLabels = new DrawnRefs<HTMLLabelElement>(this);
 

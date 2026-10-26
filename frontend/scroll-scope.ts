@@ -51,16 +51,14 @@ export interface ScrollSurfacePull {
  * The Scroll surfaces one component declares in its template.
  *
  * Like `ActionHints`, each declaration rides on its scrollport, and `scope()`
- * finishes any draw still waiting before it reads.
+ * reads what the last draw declared.
  */
 export class ScrollSurfaces {
   private readonly owner: Element;
-  private readonly draw: () => void;
   private readonly declarations: ElementDeclarations<ScrollSurfaceDeclaration>;
 
-  constructor(owner: Element, draw: () => void) {
+  constructor(owner: Element) {
     this.owner = owner;
-    this.draw = draw;
     this.declarations = new ElementDeclarations(owner);
   }
 
@@ -69,7 +67,6 @@ export class ScrollSurfaces {
   }
 
   scope(pull: ScrollSurfacePull = {}): ScrollSurfaceScope {
-    this.draw();
     return declaredScrollSurfaceScope(
       this.owner,
       this.declarations.list(pull.contextRoot),

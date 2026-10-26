@@ -74,10 +74,8 @@ export class CaffoldTaskDetailInfo extends LitElement {
   declare snapshot: TaskInfoSnapshot;
   private readonly popoverId = `task-detail-info-${++taskInfoInstanceId}`;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly infoButton = new DrawnRef<HTMLButtonElement>(this);
   private readonly infoPopover = new DrawnRef<HTMLDivElement>(this);
   private readonly actions = new DrawnRef<CaffoldTaskDetailInfoActions>(this);

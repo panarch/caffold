@@ -18,8 +18,8 @@ function draw(state) {
     state: { value: state },
     threadId: { value: "thread-a" },
   });
-  dialog.hints = new ActionHints(dialog, () => {});
-  dialog.keyboard = new KeyboardContexts(dialog, () => {});
+  dialog.hints = new ActionHints(dialog);
+  dialog.keyboard = new KeyboardContexts(dialog);
   const drawn = templateHtml(dialog.render());
   return {
     text: /<pre[^>]*>([\s\S]*?)<\/pre>/.exec(drawn)?.[1],

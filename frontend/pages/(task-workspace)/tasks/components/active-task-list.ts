@@ -182,7 +182,7 @@ export class CaffoldActiveTaskList extends LitElement {
   private selectedThreadId = "";
   private selectedSectionId = "";
   private readonly revisionByThread = new Map<string, number>();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly groups = new DrawnRef<HTMLOListElement>(this);
   private readonly announcement = new DrawnRef<HTMLParagraphElement>(this);
   private active = false;

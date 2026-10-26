@@ -101,12 +101,10 @@ export class CaffoldTaskWorkDetails extends LitElement {
   declare filePathPresentationBase: string;
   private items: WorkItem[] = [];
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly details = new DrawnRef<HTMLDetailsElement>(this);
   private readonly summary = new DrawnRef<HTMLElement>(this);
   private readonly chevron = new DrawnRef<HTMLElement>(this);

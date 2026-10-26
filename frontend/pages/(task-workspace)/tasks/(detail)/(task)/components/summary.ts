@@ -51,12 +51,10 @@ export class CaffoldTaskDetailSummary extends LitElement {
   }
 
   actionHintScope(pull: ActionHintPull = {}) {
-    this.performUpdate();
     return this.info.value?.actionHintScope(pull) ?? emptyActionHintScope();
   }
 
   keyboardNavigationContexts(options: { scopeId?: string } = {}) {
-    this.performUpdate();
     return this.info.value?.keyboardNavigationContexts(options) ?? [];
   }
 

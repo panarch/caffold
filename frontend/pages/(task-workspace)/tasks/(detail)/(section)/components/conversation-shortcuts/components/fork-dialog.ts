@@ -52,13 +52,9 @@ export class CaffoldConversationForkDialog extends LitElement {
   private forkRequestId = 0;
   private previewController: AbortController | null = null;
   private restoreFocus = true;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly modal = new DrawnRef<HTMLDialogElement>(this);
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly threadIdInput = new DrawnRef<HTMLInputElement>(this);

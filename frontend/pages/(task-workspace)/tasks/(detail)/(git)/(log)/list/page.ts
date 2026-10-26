@@ -33,14 +33,10 @@ export class CaffoldGitLogListPage extends LitElement {
   private readonly iconsReady = () => this.requestUpdate();
   private readonly list = new DrawnRef<HTMLOListElement>(this);
   private readonly pagination = new DrawnRef<CaffoldPagination>(this);
-  private readonly hints: ActionHints = new ActionHints(
-    this,
-    () => this.performUpdate(),
-    { clipRoots: () => [this, this.list.value] },
-  );
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints: ActionHints = new ActionHints(this, {
+    clipRoots: () => [this, this.list.value],
+  });
+  private readonly surfaces = new ScrollSurfaces(this);
 
   constructor() {
     super();

@@ -74,13 +74,9 @@ export class CaffoldTaskNavigator extends LitElement {
   private readonly reorderPopoverId =
     `task-list-reorder-${++taskNavigatorInstanceId}`;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly listScroll = new DrawnRef<HTMLDivElement>(this);
   private readonly activeList = new DrawnRef<CaffoldActiveTaskList>(this);
   private readonly archivedList = new DrawnRef<CaffoldArchivedTaskList>(this);

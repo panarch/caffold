@@ -35,12 +35,10 @@ export class CaffoldTaskMarkdownCodeBlock extends LitElement {
   private generation = 0;
   private feedbackTimer: number | undefined;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly content = new DrawnRef<HTMLDivElement>(this);
   private readonly previewButton = new DrawnRef<HTMLButtonElement>(this);
 

@@ -182,7 +182,7 @@ test("without the header the toggle offers it back and leaving joins the bar", (
     hasAttribute: (name) => attributes.has(name),
     toggleAttribute: (name, on) => (on ? attributes.add(name) : attributes.delete(name)),
   }));
-  owner.hints = new ActionHints(owner, () => {});
+  owner.hints = new ActionHints(owner);
   const bar = () => {
     terminalPage.updated.call(owner);
     return templateHtml(owner.render()).replace(/\s+/g, " ");

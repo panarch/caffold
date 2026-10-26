@@ -106,6 +106,7 @@ interface SessionSignals {
   ownershipObserver: MutationObserver | null;
   resizeObserver: ResizeObserver | null;
   revalidationQueued: boolean;
+  revalidationAfterDrawQueued: boolean;
 }
 
 interface SelectionSession extends ScrollSnapshot, SessionSignals {
@@ -253,7 +254,8 @@ export class KeyboardNavigationController {
       collectBinding: () => this.resolveActionHintBinding(),
       afterActivation: (target, activation) => {
         afterActionHintActivation(target);
-        this.continueActionHints(activation);
+        // What the activation opened has drawn by the next frame.
+        requestAnimationFrame(() => this.continueActionHints(activation));
       },
       hasOtherInteractionOwner: (binding) =>
         this.hasHintInteractionOwner(binding),
@@ -695,8 +697,9 @@ export class KeyboardNavigationController {
    * Open the Task switcher and hand the Action Hint session to it.
    *
    * The switcher is an ordinary modal context rather than a mode of its own,
-   * so this adds no control node: it opens the surface and then enters Hint
-   * the same way the Action Hints key does.
+   * so this adds no control node: it opens the surface and, once its rows
+   * have drawn in the next frame, enters Hint the same way the Action Hints
+   * key does.
    */
   private startTaskSwitcher() {
     if (
@@ -708,7 +711,11 @@ export class KeyboardNavigationController {
     if (!this.openTaskSwitcher()) {
       return false;
     }
-    this.startActionHints();
+    requestAnimationFrame(() => {
+      if (this.controlNode() === KEYBOARD_NAVIGATION_NODE.NORMAL) {
+        this.startActionHints();
+      }
+    });
     return true;
   }
 
@@ -832,6 +839,7 @@ export class KeyboardNavigationController {
       ownershipObserver: null,
       resizeObserver: null,
       revalidationQueued: false,
+      revalidationAfterDrawQueued: false,
     };
     this.selectionSession = session;
     try {
@@ -937,6 +945,7 @@ export class KeyboardNavigationController {
       ownershipObserver: null,
       resizeObserver: null,
       revalidationQueued: false,
+      revalidationAfterDrawQueued: false,
     };
     this.activeSession = session;
     if (!this.showActiveHud(session)) {
@@ -1281,7 +1290,7 @@ export class KeyboardNavigationController {
     });
     if (typeof MutationObserver === "function") {
       session.mutationObserver = new MutationObserver(() =>
-        this.queueSelectionRevalidation(session),
+        this.queueSelectionRevalidation(session, { afterDraw: true }),
       );
       for (const root of session.context.mutationRoots) {
         session.mutationObserver.observe(root, {
@@ -1337,7 +1346,7 @@ export class KeyboardNavigationController {
     });
     if (typeof MutationObserver === "function") {
       session.mutationObserver = new MutationObserver(() =>
-        this.queueActiveRevalidation(session),
+        this.queueActiveRevalidation(session, { afterDraw: true }),
       );
       for (const root of session.mutationRoots) {
         session.mutationObserver.observe(root, {
@@ -1423,13 +1432,11 @@ export class KeyboardNavigationController {
     );
   }
 
-  private queueSelectionRevalidation(session: SelectionSession) {
-    if (this.selectionSession !== session || session.revalidationQueued) {
-      return;
-    }
-    session.revalidationQueued = true;
-    queueMicrotask(() => {
-      session.revalidationQueued = false;
+  private queueSelectionRevalidation(
+    session: SelectionSession,
+    options?: { afterDraw: boolean },
+  ) {
+    queueRevalidation(session, options, () => {
       if (
         this.selectionSession === session &&
         !this.selectionSnapshotIsCurrent(session)
@@ -1439,13 +1446,11 @@ export class KeyboardNavigationController {
     });
   }
 
-  private queueActiveRevalidation(session: ActiveSession) {
-    if (this.activeSession !== session || session.revalidationQueued) {
-      return;
-    }
-    session.revalidationQueued = true;
-    queueMicrotask(() => {
-      session.revalidationQueued = false;
+  private queueActiveRevalidation(
+    session: ActiveSession,
+    options?: { afterDraw: boolean },
+  ) {
+    queueRevalidation(session, options, () => {
       if (
         this.activeSession === session &&
         !this.activeBindingIsCurrent(session, { refreshPresentation: true })
@@ -1635,4 +1640,33 @@ function detachSignals(session: SessionSignals) {
     cleanup();
   }
   session.cleanup = [];
+}
+
+// Revalidates once for each burst of signals. A DOM change waits for the next
+// frame, by which Lit has drawn everything it set off however deeply the
+// owners nest; a size or scroll change is read at once.
+function queueRevalidation(
+  session: SessionSignals,
+  options: { afterDraw: boolean } | undefined,
+  revalidate: () => void,
+) {
+  if (options?.afterDraw) {
+    if (session.revalidationAfterDrawQueued) {
+      return;
+    }
+    session.revalidationAfterDrawQueued = true;
+    requestAnimationFrame(() => {
+      session.revalidationAfterDrawQueued = false;
+      revalidate();
+    });
+    return;
+  }
+  if (session.revalidationQueued) {
+    return;
+  }
+  session.revalidationQueued = true;
+  queueMicrotask(() => {
+    session.revalidationQueued = false;
+    revalidate();
+  });
 }

@@ -20,10 +20,8 @@ export class CaffoldCodexResetCreditDialog extends LitElement {
   };
 
   declare private request: ResetCreditRequest;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
   constructor() {

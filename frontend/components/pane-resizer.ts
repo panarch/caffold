@@ -25,7 +25,7 @@ export class CaffoldPaneResizer extends LitElement {
   private readonly onKeyDown = (event: KeyboardEvent) =>
     this.adjustFromKeyboard(event);
   private readonly onFocus = () => this.syncRange();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
 
   createRenderRoot() {
     return this;

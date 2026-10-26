@@ -42,7 +42,7 @@ function draw(snapshot) {
   const absence = Object.create(Absence.prototype, {
     snapshot: { value: snapshot },
   });
-  absence.hints = new ActionHints(absence, () => {});
+  absence.hints = new ActionHints(absence);
   return templateHtml(absence.render())
     .replace(/\s+/g, " ")
     .replaceAll(" >", ">")

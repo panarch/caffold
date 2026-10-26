@@ -339,9 +339,11 @@ test("selects nested Conversation code and table scrollports and cancels a lost 
   await codeBlock.evaluate((element) => element.toggleWrap());
   await expect(codeBlock).toHaveAttribute("data-code-wrap", "on");
   await expect(selector).toBeHidden();
+  // The taller block also moves the Conversation, and that scroll closes the
+  // selection before the next frame reads the lost axis.
   await expect(workspace).toHaveAttribute(
     "data-scroll-mode-last-exit",
-    "snapshot-invalidated",
+    "scroll",
   );
   await expect(hud).toBeHidden();
 
@@ -994,7 +996,7 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   );
   await Promise.all([refreshedProjection, refreshedPreview]);
   await expect(preview).toContainText("Refreshed checklist");
-  await expect(modalHud).toBeHidden();
+  await expect(modalHud).toContainText("Scroll: Checklist document");
   await expect.poll(() => preview.evaluate((element) => element.scrollTop))
     .toBe(beforeRefresh);
   await page.keyboard.press("s");

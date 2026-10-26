@@ -69,7 +69,7 @@ export class CaffoldTaskGithubLayout extends LitElement {
   private githubStatus: GitHubStatus | null = null;
   private githubStatusRequestId = 0;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly issues = new DrawnRef<CaffoldGithubIssuesLayout>(this);
   private readonly pulls = new DrawnRef<CaffoldGithubPullsLayout>(this);
@@ -299,7 +299,6 @@ export class CaffoldTaskGithubLayout extends LitElement {
     if (!this.active || this.hidden || !this.mode) {
       return emptyScrollSurfaceScope();
     }
-    this.performUpdate();
     const body = this.body.value;
     const options = {
       scopeId: `${this.scopeId()}:${this.mode}`,

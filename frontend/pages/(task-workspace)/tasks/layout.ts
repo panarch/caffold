@@ -590,7 +590,6 @@ export class CaffoldTasksPage extends LitElement {
   }
 
   actionHintScope(): ActionHintScope {
-    this.performUpdate();
     const navigator = this.taskNavigator();
     const activeOwners = !hasActionHintLayoutBox(this)
       ? []
@@ -604,7 +603,6 @@ export class CaffoldTasksPage extends LitElement {
   }
 
   scrollSurfaceScope(): ScrollSurfaceScope {
-    this.performUpdate();
     const navigator = this.taskNavigator();
     const activeOwners = hasScrollLayoutBox(this)
       ? this.activeDirectSurfaceOwners().filter(hasScrollLayoutBox)
@@ -618,7 +616,6 @@ export class CaffoldTasksPage extends LitElement {
   }
 
   keyboardNavigationContexts() {
-    this.performUpdate();
     const navigator = this.taskNavigator();
     const detail = this.taskDetail();
     const activeSurface = !hasScrollLayoutBox(this)

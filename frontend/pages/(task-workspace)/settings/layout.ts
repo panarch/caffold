@@ -108,10 +108,8 @@ export class CaffoldSettingsWorkspace extends LitElement {
     );
   };
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly detailPane = new DrawnRef<HTMLDivElement>(this);
   private readonly pages = new DrawnRefs<SettingsPage>(this);
 

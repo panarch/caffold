@@ -24,7 +24,7 @@ test("shows the Fork opener only once Codex is known to be installed", () => {
     taskStoreStatusSnapshot: null,
     codexReadiness: createCodexStatusSnapshot(),
   }));
-  owner.hints = new ActionHints(owner, () => {});
+  owner.hints = new ActionHints(owner);
   const drawn = () => {
     shortcuts.updated.call(owner);
     const markup = templateHtml(owner.render()).replace(/\s+/g, " ");

@@ -220,9 +220,9 @@ function navigatorHost(properties) {
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
-  navigator.hints ??= new ActionHints(navigator, () => {});
-  navigator.surfaces ??= new ScrollSurfaces(navigator, () => {});
-  navigator.keyboard ??= new KeyboardContexts(navigator, () => {});
+  navigator.hints ??= new ActionHints(navigator);
+  navigator.surfaces ??= new ScrollSurfaces(navigator);
+  navigator.keyboard ??= new KeyboardContexts(navigator);
   return navigator;
 }
 

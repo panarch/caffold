@@ -73,14 +73,10 @@ export class CaffoldSettingsRemoteAccessPage extends LitElement {
       }
     },
   });
-  private readonly hints: ActionHints = new ActionHints(
-    this,
-    () => this.performUpdate(),
-    { clipRoots: () => [this, this.scrollport.value] },
-  );
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints: ActionHints = new ActionHints(this, {
+    clipRoots: () => [this, this.scrollport.value],
+  });
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
 
   constructor() {

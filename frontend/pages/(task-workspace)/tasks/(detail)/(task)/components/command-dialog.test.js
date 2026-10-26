@@ -49,9 +49,9 @@ function dialogHost(properties) {
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
-  host.hints = new ActionHints(host, () => {});
-  host.surfaces = new ScrollSurfaces(host, () => {});
-  host.keyboard = new KeyboardContexts(host, () => {});
+  host.hints = new ActionHints(host);
+  host.surfaces = new ScrollSurfaces(host);
+  host.keyboard = new KeyboardContexts(host);
   return host;
 }
 

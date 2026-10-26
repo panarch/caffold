@@ -48,14 +48,10 @@ export class CaffoldSettingsClaudePage extends LitElement {
   declare private statusState: "idle" | "loading" | "loaded" | "unavailable";
   private operation = 0;
   private active = false;
-  private readonly hints: ActionHints = new ActionHints(
-    this,
-    () => this.performUpdate(),
-    { clipRoots: () => [this, this.scrollport.value] },
-  );
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints: ActionHints = new ActionHints(this, {
+    clipRoots: () => [this, this.scrollport.value],
+  });
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly refreshButton = new DrawnRef<CaffoldSettingsRefreshButton>(
     this,

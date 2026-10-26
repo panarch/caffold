@@ -143,9 +143,9 @@ test("renders the agreed text and two buttons", () => {
       error: null,
     }),
   );
-  owner.hints = new ActionHints(owner, () => {});
-  owner.surfaces = new ScrollSurfaces(owner, () => {});
-  owner.keyboard = new KeyboardContexts(owner, () => {});
+  owner.hints = new ActionHints(owner);
+  owner.surfaces = new ScrollSurfaces(owner);
+  owner.keyboard = new KeyboardContexts(owner);
   const drawn = templateHtml(owner.render()).replace(/\s+/g, " ");
 
   assert.match(drawn, /<h2 id="caffold-update-task-title">Update Caffold to 0\.18\.3<\/h2>/);

@@ -123,7 +123,7 @@ function pie(properties = {}) {
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
-  owner.hints = new ActionHints(owner, () => {});
+  owner.hints = new ActionHints(owner);
   return owner;
 }
 

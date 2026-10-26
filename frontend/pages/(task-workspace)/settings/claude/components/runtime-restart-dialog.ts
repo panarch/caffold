@@ -8,10 +8,8 @@ export const CLAUDE_RUNTIME_RESTART_CONFIRMED_EVENT =
   "caffold:claude-runtime-restart-confirmed";
 
 export class CaffoldClaudeRuntimeRestartDialog extends LitElement {
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
   createRenderRoot() {

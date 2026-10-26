@@ -51,7 +51,7 @@ const COPY: Readonly<
 export class CaffoldTaskAbsence extends LitElement {
   private snapshot: TaskAbsenceSnapshot | null = null;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
 

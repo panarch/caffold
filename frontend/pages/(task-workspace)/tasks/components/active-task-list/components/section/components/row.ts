@@ -71,7 +71,7 @@ export class CaffoldActiveTaskRow extends LitElement {
   };
   private pointerGesture: PointerGesture | null = null;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly handle = new DrawnRef<HTMLButtonElement>(this);
 
   // A captured pointer's events reach the handle and rise to this element,

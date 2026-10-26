@@ -124,7 +124,6 @@ export class CaffoldTaskAssistantMessage extends LitElement {
   }
 
   actionHintScope({ scopeId = "", clipRoots = [] }: ActionHintPull = {}) {
-    this.performUpdate();
     const childClipRoots = [this, ...clipRoots];
     return mergeActionHintScopes(
       this.copyButton.value?.actionHintScope({
@@ -143,7 +142,6 @@ export class CaffoldTaskAssistantMessage extends LitElement {
   }
 
   scrollSurfaceScope({ scopeId = "", clipRoots = [] }: ScrollSurfacePull = {}) {
-    this.performUpdate();
     return this.markdown.value?.scrollSurfaceScope({
       scopeId: `${scopeId}:markdown`,
       clipRoots: [this, ...clipRoots],

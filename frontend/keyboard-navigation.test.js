@@ -223,7 +223,7 @@ test("route, setting, and disconnect cleanup close shortcut help", () => {
   }
 });
 
-test("the Task switcher key opens its surface and then enters Hint", () => {
+test("the Task switcher key opens its surface and enters Hint once it has drawn", () => {
   const restoreDom = installEventGlobals();
   try {
     const order = [];
@@ -244,9 +244,13 @@ test("the Task switcher key opens its surface and then enters Hint", () => {
     const event = keyEvent("T");
     controller.handleKeydown(event);
 
-    assert.deepEqual(order, ["open-switcher", "start-hints"]);
+    assert.deepEqual(order, ["open-switcher"]);
     assert.equal(event.prevented, true);
     assert.equal(event.stopped, true);
+    assert.equal(controller.controlNode(), KEYBOARD_NAVIGATION_NODE.NORMAL);
+
+    nextFrame();
+    assert.deepEqual(order, ["open-switcher", "start-hints"]);
     assert.equal(controller.controlNode(), KEYBOARD_NAVIGATION_NODE.HINT);
   } finally {
     restoreDom();
@@ -1015,9 +1019,14 @@ test("continues Action Hints into an owner that declares itself session-bound", 
     controller.collectKeyboardNavigationContexts = () => [workspace, popover];
 
     document.popover = popover.root;
-    activate(workspace);
-
+    controller.actionHints.afterActivation(
+      { id: "model", actionId: "task.model.choose", code: "M" },
+      { context: workspace },
+    );
     assert.equal(hooks(), 1);
+    assert.deepEqual(order, [], "the popover is read once it has drawn");
+
+    nextFrame();
     assert.deepEqual(order, ["capture", "start"]);
     assert.equal(controller.storedNode, KEYBOARD_NAVIGATION_NODE.HINT);
   } finally {
@@ -1876,11 +1885,13 @@ function continuationController() {
     controller,
     order,
     hooks: () => hooks,
-    activate: (context) =>
+    activate: (context) => {
       controller.actionHints.afterActivation(
         { id: "model", actionId: "task.model.choose", code: "M" },
         { context },
-      ),
+      );
+      nextFrame();
+    },
   };
 }
 
@@ -1965,12 +1976,27 @@ function installEventGlobals() {
   const windowTarget = Object.assign(new FakeEventTarget(), {
     visualViewport: null,
   });
+  const previousFrame = globalThis.requestAnimationFrame;
   globalThis.document = documentTarget;
   globalThis.window = windowTarget;
+  frames = [];
+  globalThis.requestAnimationFrame = (callback) => frames.push(callback);
   return () => {
     restoreGlobal("document", previousDocument);
     restoreGlobal("window", previousWindow);
+    restoreGlobal("requestAnimationFrame", previousFrame);
   };
+}
+
+let frames = [];
+
+// Runs what the controller left for the next frame.
+function nextFrame() {
+  const pending = frames;
+  frames = [];
+  for (const callback of pending) {
+    callback();
+  }
 }
 
 function context(id, kind) {

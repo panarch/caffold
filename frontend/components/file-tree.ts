@@ -110,10 +110,8 @@ export class CaffoldFileTree extends LitElement {
   private nodeByKey = new Map<string, FileTreeNode>();
   private knownDirectoryKeys = new Set<string>();
   private pendingRevealKey: string | null = null;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly rowsByKey = new DrawnRefs<HTMLLIElement>(this);
   private readonly entriesByKey = new DrawnRefs<HTMLButtonElement>(this);

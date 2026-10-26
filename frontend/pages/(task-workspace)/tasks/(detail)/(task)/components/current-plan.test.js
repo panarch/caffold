@@ -65,8 +65,8 @@ function planHost(properties) {
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
-  host.hints ??= new ActionHints(host, () => {});
-  host.keyboard ??= new KeyboardContexts(host, () => {});
+  host.hints ??= new ActionHints(host);
+  host.keyboard ??= new KeyboardContexts(host);
   return host;
 }
 

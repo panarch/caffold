@@ -461,7 +461,6 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   actionHintScope(): ActionHintScope {
-    this.performUpdate();
     const identityKey = detailIdentityKey(this.subjectIdentity());
     if (!identityKey || this.hidden) {
       return emptyActionHintScope();
@@ -517,7 +516,6 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   keyboardNavigationContexts() {
-    this.performUpdate();
     const identityKey = detailIdentityKey(this.subjectIdentity());
     if (!identityKey || this.hidden) {
       return [];
@@ -556,7 +554,6 @@ export class CaffoldDetailLayout extends LitElement {
   }
 
   scrollSurfaceScope() {
-    this.performUpdate();
     if (!detailIdentityKey(this.subjectIdentity()) || this.hidden) {
       return emptyScrollSurfaceScope();
     }

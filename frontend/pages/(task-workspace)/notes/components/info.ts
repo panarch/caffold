@@ -37,10 +37,8 @@ export class CaffoldNotesInfo extends LitElement {
   declare private shownNote: Note | null;
   private readonly popoverId = `notes-info-${++notesInfoInstanceId}`;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly infoPopover = new DrawnRef<HTMLDivElement>(this);
   private readonly copyPath = new DrawnRef<CaffoldNotesInfoCopyPath>(this);
   private readonly copyMarkdown = new DrawnRef<CaffoldNotesInfoCopyMarkdown>(

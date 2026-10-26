@@ -38,7 +38,7 @@ export class CaffoldTaskAssistantMessageSuggestedPrompts extends LitElement {
   declare disabled: boolean;
   private offered: SuggestedPrompt[] = [];
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
 

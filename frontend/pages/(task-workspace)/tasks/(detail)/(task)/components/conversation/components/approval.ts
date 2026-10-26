@@ -43,12 +43,10 @@ export class CaffoldTaskApproval extends LitElement {
   declare disabled: boolean;
   declare active: boolean;
   declare errorMessage: string;
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
 
   constructor() {
     super();

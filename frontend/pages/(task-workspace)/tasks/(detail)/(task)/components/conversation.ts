@@ -145,9 +145,9 @@ interface EntryPart {
  * The Task screen hands it each snapshot, and the conversation draws it at
  * once, entries and all, then keeps the reader's place: at the bottom while new
  * work arrives, on the entry they were reading otherwise, and under the summary
- * of a disclosure they toggled. The Task screen, the keyboard modes, and the
- * place it keeps all read the drawn conversation right after the change, so no
- * part of it is left to draw later.
+ * of a disclosure they toggled. The Task screen and the place it keeps both
+ * read the drawn conversation right after the change, so no part of it is left
+ * to draw later.
  */
 export class CaffoldTaskConversation extends LitElement {
   snapshot: ConversationSnapshot = {
@@ -183,14 +183,10 @@ export class CaffoldTaskConversation extends LitElement {
   // Each entry's parts, by what they are and the entry's identity.
   private readonly parts = new DrawnRefs<Element>(this);
   private readonly approvals = new DrawnRefs<CaffoldTaskApproval>(this);
-  private readonly hints: ActionHints = new ActionHints(
-    this,
-    () => this.performUpdate(),
-    { clipRoots: () => [this, this.scrollerElement.value] },
-  );
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints: ActionHints = new ActionHints(this, {
+    clipRoots: () => [this, this.scrollerElement.value],
+  });
+  private readonly surfaces = new ScrollSurfaces(this);
 
   createRenderRoot() {
     return this;

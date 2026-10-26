@@ -105,14 +105,10 @@ export class CaffoldSettingsCodexPage extends LitElement {
   declare private copyState: "idle" | "copied" | "failed";
   private active = false;
   private updatesOperation = 0;
-  private readonly hints: ActionHints = new ActionHints(
-    this,
-    () => this.performUpdate(),
-    { clipRoots: () => [this, this.scrollport.value] },
-  );
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints: ActionHints = new ActionHints(this, {
+    clipRoots: () => [this, this.scrollport.value],
+  });
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly refreshButton = new DrawnRef<CaffoldSettingsRefreshButton>(
     this,

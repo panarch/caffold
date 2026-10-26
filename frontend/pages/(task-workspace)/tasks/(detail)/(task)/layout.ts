@@ -290,7 +290,7 @@ export class CaffoldTaskDetail extends LitElement {
   private pane: { threadId: string; view: TaskDetailView } | null = null;
   // What shows in the pane's place, or null where the pane shows.
   private notice: TemplateResult | typeof nothing | null = nothing;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly conversationPane = new DrawnRef<HTMLElement>(this);
   private readonly conversationComponent =
     new DrawnRef<CaffoldTaskConversation>(this);
@@ -567,7 +567,6 @@ export class CaffoldTaskDetail extends LitElement {
   }
 
   scrollSurfaceScope() {
-    this.performUpdate();
     if (
       this.hidden ||
       this.reviewView !== "conversation" ||
@@ -583,7 +582,6 @@ export class CaffoldTaskDetail extends LitElement {
   }
 
   keyboardNavigationContexts() {
-    this.performUpdate();
     const deletionContexts =
       this.brokenDeleteDialog.value?.keyboardNavigationContexts() ?? [];
     if (

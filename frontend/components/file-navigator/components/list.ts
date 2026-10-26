@@ -70,10 +70,8 @@ export class CaffoldFileList extends LitElement {
   private modelPending = false;
   private scrollToTop = false;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly tree = new DrawnRef<CaffoldFileTree>(this);
 
   constructor() {

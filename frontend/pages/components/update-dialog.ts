@@ -9,10 +9,8 @@ export const CAFFOLD_UPDATE_RELOAD_EVENT = "caffold:update-reload";
 
 export class CaffoldUpdateDialog extends LitElement {
   private ownerClosed = false;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
   createRenderRoot() {

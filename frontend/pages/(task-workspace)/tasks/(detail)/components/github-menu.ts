@@ -31,10 +31,8 @@ export class CaffoldTaskDetailGithub extends LitElement {
   private available = false;
   private readonly popoverId =
     `task-github-actions-${++taskDetailGithubInstanceId}`;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly githubPopover = new DrawnRef<HTMLDivElement>(this);
 
   constructor() {

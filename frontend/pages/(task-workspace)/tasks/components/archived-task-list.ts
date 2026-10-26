@@ -74,7 +74,7 @@ export interface ArchivedTaskListIntent {
  */
 export class CaffoldArchivedTaskList extends LitElement {
   private archivedTasks: Task[] = [];
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
   private loading = false;

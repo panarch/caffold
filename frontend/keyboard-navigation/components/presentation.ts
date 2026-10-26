@@ -33,20 +33,15 @@ export class CaffoldKeyboardNavigationPresentation extends LitElement {
     `;
   }
 
-  // The parts are drawn the first time one is asked for, which can be before
-  // the context is in the document.
   actionHintDialog() {
-    this.performUpdate();
     return this.dialog.value ?? null;
   }
 
   scrollModeHud() {
-    this.performUpdate();
     return this.hud.value ?? null;
   }
 
   scrollSurfaceSelector() {
-    this.performUpdate();
     return this.selector.value ?? null;
   }
 }

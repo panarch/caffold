@@ -159,6 +159,7 @@ interface ActionHintSession extends ActionHintSnapshot {
   observedScrollRoots: Element[];
   ownershipObserver: MutationObserver | null;
   revalidationQueued: boolean;
+  revalidationAfterDrawQueued: boolean;
   resizeObserver: ResizeObserver | null;
   scrollCleanup: Array<() => void>;
 }
@@ -367,6 +368,7 @@ export class ActionHintController {
       observedScrollRoots: [],
       ownershipObserver: null,
       revalidationQueued: false,
+      revalidationAfterDrawQueued: false,
       resizeObserver: null,
       scrollCleanup: [],
     };
@@ -607,7 +609,7 @@ export class ActionHintController {
         ) {
           return;
         }
-        revalidate();
+        this.queueRevalidationAfterDraw(session);
       });
       for (const root of session.mutationRoots) {
         session.mutationObserver.observe(root, {
@@ -642,13 +644,30 @@ export class ActionHintController {
     session.revalidationQueued = true;
     queueMicrotask(() => {
       session.revalidationQueued = false;
-      if (
-        this.session === session &&
-        !this.revalidateSnapshot(session, { refreshPresentation: true })
-      ) {
-        this.cancel("snapshot-invalidated");
-      }
+      this.revalidate(session);
     });
+  }
+
+  // A DOM change waits for the next frame, by which Lit has drawn everything
+  // it set off however deeply the owners nest.
+  private queueRevalidationAfterDraw(session: ActionHintSession) {
+    if (this.session !== session || session.revalidationAfterDrawQueued) {
+      return;
+    }
+    session.revalidationAfterDrawQueued = true;
+    requestAnimationFrame(() => {
+      session.revalidationAfterDrawQueued = false;
+      this.revalidate(session);
+    });
+  }
+
+  private revalidate(session: ActionHintSession) {
+    if (
+      this.session === session &&
+      !this.revalidateSnapshot(session, { refreshPresentation: true })
+    ) {
+      this.cancel("snapshot-invalidated");
+    }
   }
 
   private revalidateSnapshot(

@@ -94,7 +94,7 @@ function rowHost(properties) {
     isConnected: true,
     ...properties,
   }));
-  row.hints = new ActionHints(row, () => {});
+  row.hints = new ActionHints(row);
   return row;
 }
 

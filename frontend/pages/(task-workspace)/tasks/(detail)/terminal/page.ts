@@ -77,7 +77,7 @@ export class CaffoldTerminalPage extends LitElement {
   private headerChoice = false;
   private stopKeyboardWatch: (() => void) | null = null;
   private readonly iconsReady = () => this.draw();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly terminalView = new DrawnRef<CaffoldTerminalView>(this);
   private readonly specialKeys = new DrawnRef<CaffoldTerminalSpecialKeys>(this);
 

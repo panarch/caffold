@@ -60,10 +60,8 @@ export class CaffoldTaskCurrentPlan extends LitElement {
   // Whether focus sat on the status controls before a drawing hid them.
   private statusHadFocus = false;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly strip = new DrawnRef<HTMLElement>(this);
   private readonly planAction = new DrawnRef<HTMLButtonElement>(this);
   private readonly statusAction = new DrawnRef<HTMLButtonElement>(this);

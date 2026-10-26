@@ -73,13 +73,12 @@ export type DeclaredActionHint = {
 /**
  * The Action Hints one component declares in its template.
  *
- * Each declaration rides on the control it describes and leaves with it. The
- * component's public scope method returns `scope()`, which finishes any draw
- * still waiting before it reads, so a pull never sees an earlier render.
+ * Each declaration rides on the control it describes and leaves with it.
+ * `scope()` reads what the last draw declared; keyboard navigation pulls once
+ * drawing has settled.
  */
 export class ActionHints {
   private readonly owner: Element;
-  private readonly draw: () => void;
   private readonly clipRoots: () => Array<Element | null | undefined>;
   private readonly declarations: ElementDeclarations<DeclaredActionHint>;
 
@@ -87,13 +86,11 @@ export class ActionHints {
   // the scrollport they all sit in.
   constructor(
     owner: Element,
-    draw: () => void,
     {
       clipRoots = () => [],
     }: { clipRoots?: () => Array<Element | null | undefined> } = {},
   ) {
     this.owner = owner;
-    this.draw = draw;
     this.clipRoots = clipRoots;
     this.declarations = new ElementDeclarations(owner);
   }
@@ -139,7 +136,6 @@ export class ActionHints {
   }
 
   scope(pull: ActionHintPull = {}): ActionHintScope {
-    this.draw();
     const clipRoots = this.clipRoots().filter((root) => root != null);
     return declaredActionHintScope(
       this.owner,

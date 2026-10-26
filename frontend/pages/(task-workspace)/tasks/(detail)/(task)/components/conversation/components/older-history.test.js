@@ -30,7 +30,7 @@ function host(properties = {}) {
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
-  owner.hints = new ActionHints(owner, () => {});
+  owner.hints = new ActionHints(owner);
   owner.show = (state = {}) => {
     Object.assign(owner, state);
     owner.updated();

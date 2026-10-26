@@ -153,7 +153,7 @@ function archivedHost(properties) {
     },
     ...properties,
   }));
-  list.hints = new ActionHints(list, () => {});
+  list.hints = new ActionHints(list);
   return list;
 }
 

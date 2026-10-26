@@ -1419,16 +1419,21 @@ test("the file viewer offers a notice's representation button, and details only 
     await import("/assets/components/file-viewer.ts");
     const viewer = document.createElement("caffold-review-file-viewer");
     document.body.append(viewer);
-    const targets = () => viewer.actionHintScope({
-      scopeId: "review:viewer",
-      actions: {
-        parent: "navigation.parent",
-        notice: "navigation.review.axis",
-        details: "navigation.file-details.open",
-      },
-    }).targets.map((target) => [target.id, target.actionId, target.label]);
-    const openDetails = () => {
+    const drawn = () => new Promise(requestAnimationFrame);
+    const targets = async () => {
+      await drawn();
+      return viewer.actionHintScope({
+        scopeId: "review:viewer",
+        actions: {
+          parent: "navigation.parent",
+          notice: "navigation.review.axis",
+          details: "navigation.file-details.open",
+        },
+      }).targets.map((target) => [target.id, target.actionId, target.label]);
+    };
+    const openDetails = async () => {
       viewer.querySelector(".viewer-info-button").click();
+      await drawn();
       return viewer.keyboardNavigationContexts({ scopeId: "review:viewer" })
         .map((context) => [context.id, context.actionHints.targets.length]);
     };
@@ -1438,26 +1443,26 @@ test("the file viewer offers a notice's representation button, and details only 
       actionLabel: "View rendered preview",
       action: "view-preview",
     });
-    const notice = targets();
+    const notice = await targets();
     viewer.setNotice("This file could not be read.", {
       title: "big.md",
       actionLabel: "Try again",
       action: "retry",
     });
-    const otherNotice = targets();
+    const otherNotice = await targets();
     viewer.setDiff({ diff: "" }, {
       presentation: { title: "a.rs", subtitle: "src/a.rs", metadata: [] },
     });
-    const bare = targets();
-    const bareDetails = openDetails();
+    const bare = await targets();
+    const bareDetails = await openDetails();
     viewer.setDiff({ diff: "" }, {
       presentation: {
         title: "a.rs",
         metadata: [{ field: "size", label: "Size", value: "1 KB" }],
       },
     });
-    const described = targets();
-    const describedDetails = openDetails();
+    const described = await targets();
+    const describedDetails = await openDetails();
     return { notice, otherNotice, bare, bareDetails, described, describedDetails };
   });
 
@@ -1488,6 +1493,7 @@ test("each document preview scrolls as one vertical surface named after its file
       const element = document.createElement(`caffold-${kind}-viewer`);
       element.style.cssText = "display: block; height: 100px; overflow: auto;";
       document.body.append(element);
+      await new Promise(requestAnimationFrame);
       described.push(element.scrollSurfaceScope({
         scopeId: `review:viewer:${kind}`,
         label: `report.${kind} preview`,
@@ -1498,6 +1504,7 @@ test("each document preview scrolls as one vertical surface named after its file
         scrollport: surface.scrollport === element,
       })));
       element.hidden = true;
+      await new Promise(requestAnimationFrame);
       described.push(element.scrollSurfaceScope({
         scopeId: `review:viewer:${kind}`,
       }).surfaces);
@@ -1526,17 +1533,20 @@ test("the file viewer scrolls a source file and a notice under the names it show
     const viewer = document.createElement("caffold-review-file-viewer");
     viewer.style.cssText = "display: block; height: 300px;";
     document.body.append(viewer);
-    const described = () => viewer.scrollSurfaceScope({ scopeId: "review:viewer" })
-      .surfaces.map((surface) => ({
-        id: surface.id,
-        label: surface.label,
-        axes: surface.axes ?? ["vertical"],
-        scrollport: surface.scrollport.className,
-      }));
+    const described = async () => {
+      await new Promise(requestAnimationFrame);
+      return viewer.scrollSurfaceScope({ scopeId: "review:viewer" })
+        .surfaces.map((surface) => ({
+          id: surface.id,
+          label: surface.label,
+          axes: surface.axes ?? ["vertical"],
+          scrollport: surface.scrollport.className,
+        }));
+    };
     viewer.setFile({ path: "src/PLAN.md", content: "# Plan\nNext" });
-    const source = described();
+    const source = await described();
     viewer.setNotice("This file is large.", { title: "big.bin" });
-    const notice = described();
+    const notice = await described();
     return { source, notice };
   });
 

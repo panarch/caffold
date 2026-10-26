@@ -27,8 +27,8 @@ test("offers Preview only for a Markdown fence and never as a toggle", () => {
       copyState: "idle",
       wrapped: false,
     }));
-    owner.hints = new ActionHints(owner, () => {});
-    owner.surfaces = new ScrollSurfaces(owner, () => {});
+    owner.hints = new ActionHints(owner);
+    owner.surfaces = new ScrollSurfaces(owner);
     const html = templateHtml(owner.render());
     const preview = html.match(/<button[^>]*data-code-action="preview"[^>]*>/)?.[0];
     assert.equal(Boolean(preview), offered, label);

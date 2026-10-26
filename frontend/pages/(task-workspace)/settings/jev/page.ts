@@ -30,14 +30,10 @@ export class CaffoldSettingsJevPage extends LitElement {
       this.announceAvailability(snapshot.settings);
     },
   });
-  private readonly hints: ActionHints = new ActionHints(
-    this,
-    () => this.performUpdate(),
-    { clipRoots: () => [this, this.scrollport.value] },
-  );
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints: ActionHints = new ActionHints(this, {
+    clipRoots: () => [this, this.scrollport.value],
+  });
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly criteria = new DrawnRef<HTMLTextAreaElement>(this);
   private readonly key = new DrawnRef<HTMLInputElement>(this);

@@ -46,13 +46,9 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
   private order: string[] = [];
   private entries = new Map<string, TaskWithSection>();
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly modal = new DrawnRef<HTMLDialogElement>(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly items = new DrawnRefs<HTMLLIElement>(this);

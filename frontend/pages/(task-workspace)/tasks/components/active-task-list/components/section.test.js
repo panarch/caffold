@@ -99,7 +99,7 @@ function sectionHost(properties) {
     Section.prototype,
     Object.getOwnPropertyDescriptors({ isConnected: true, ...properties }),
   );
-  section.hints ??= new ActionHints(section, () => {});
+  section.hints ??= new ActionHints(section);
   return section;
 }
 

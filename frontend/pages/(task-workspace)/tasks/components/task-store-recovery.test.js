@@ -20,8 +20,8 @@ function draw({ readiness = null, retryAvailable = false }) {
   const owner = Object.create(Recovery.prototype, {
     snapshot: { value: { readiness, retryAvailable } },
   });
-  owner.hints = new ActionHints(owner, () => {});
-  owner.surfaces = new ScrollSurfaces(owner, () => {});
+  owner.hints = new ActionHints(owner);
+  owner.surfaces = new ScrollSurfaces(owner);
   return templateHtml(owner.render())
     .replace(/\s+/g, " ")
     .replaceAll(" >", ">")

@@ -237,9 +237,7 @@ export class CaffoldGithubMarkdown extends LitElement {
   private actionHintDisclosures: DisclosureRecord[] = [];
   private scrollSurfaceRecords: ScrollRecord[] = [];
   private readonly body = new DrawnRef<HTMLElement>(this);
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
 
   constructor() {
     super();
@@ -283,7 +281,6 @@ export class CaffoldGithubMarkdown extends LitElement {
   }
 
   actionHintScope({ scopeId = "", clipRoots = [] }: ActionHintPull = {}) {
-    this.performUpdate();
     const body = this.body.value;
     if (!body) {
       return emptyActionHintScope();

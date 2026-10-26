@@ -58,7 +58,7 @@ export class CaffoldTaskDetailInfoActions extends LitElement {
   };
 
   declare snapshot: TaskInfoActionsSnapshot | null;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
 
   constructor() {
     super();

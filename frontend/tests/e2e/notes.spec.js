@@ -384,10 +384,12 @@ test("Action Hints copy the Note path from inside Note details", { tag: "@viewpo
   await stubNotes(page);
   await page.goto("/notes/storage");
   await expect(notesTitle(page)).toHaveText("Storage decision");
-  await page.clock.install();
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 60_000));
 
   await activateActionHintIntoPopover(page, "Note details");
+  // Paused only now: a paused clock also holds the frame the session waits
+  // for before it continues into the popover.
+  await page.clock.install();
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 60_000));
   const hint = popoverActionHintDialog(page);
   await expect(hint.getByRole("button", { name: / — Copy Markdown$/ })).toBeVisible();
   const code = await hint.getByRole("button", { name: / — Copy path$/ })

@@ -122,7 +122,7 @@ test("makes a context for each declared modal or popover that is open and offere
   const owner = element();
   const modal = declaredRoot(owner, ":modal");
   const popover = declaredRoot(owner, ":popover-open");
-  const keyboard = new KeyboardContexts(owner, () => {});
+  const keyboard = new KeyboardContexts(owner);
   keyboard.roots.add(modal, {
     element: modal,
     value: { kind: "modal", declaration: { id: "restart" } },
@@ -202,7 +202,7 @@ test("a declared root whose presentation is not drawn makes no context", () => {
   const owner = element();
   const modal = declaredRoot(owner, ":modal");
   modal.open = true;
-  const keyboard = new KeyboardContexts(owner, () => {});
+  const keyboard = new KeyboardContexts(owner);
   keyboard.roots.add(modal, {
     element: modal,
     value: { kind: "modal", declaration: { id: "restart" } },
@@ -217,13 +217,10 @@ test("a declared root whose presentation is not drawn makes no context", () => {
 test("the workspace context is rooted at the owner and reads outside its roots", () => {
   const owner = element();
   const ownPresentation = presentation(owner);
-  let drawn = false;
-  const keyboard = new KeyboardContexts(owner, () => {
-    drawn = true;
-    keyboard.presentations.add(ownPresentation, {
-      element: ownPresentation,
-      value: null,
-    });
+  const keyboard = new KeyboardContexts(owner);
+  keyboard.presentations.add(ownPresentation, {
+    element: ownPresentation,
+    value: null,
   });
   const pulls = [];
   const escapeTarget = () => owner;
@@ -239,7 +236,6 @@ test("the workspace context is rooted at the owner and reads outside its roots",
     editing: { escapeTarget },
   });
 
-  assert.equal(drawn, true);
   assert.equal(workspace.id, "workspace");
   assert.equal(workspace.kind, "workspace");
   assert.equal(workspace.root, owner);

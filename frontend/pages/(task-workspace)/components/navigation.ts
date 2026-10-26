@@ -24,7 +24,7 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
   private updateAvailable = false;
   private reloadReady = false;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
 
   createRenderRoot() {
     return this;

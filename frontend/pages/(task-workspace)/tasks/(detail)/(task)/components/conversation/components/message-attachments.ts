@@ -69,7 +69,7 @@ export class CaffoldTaskMessageAttachments extends LitElement {
   // The box each watched picture is observed through.
   private readonly watchedBoxes = new Map<Element, HTMLImageElement>();
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
   private readonly pictures = new DrawnRefs<HTMLImageElement>(this);

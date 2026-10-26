@@ -103,7 +103,6 @@ export class CaffoldTaskUserMessage extends LitElement {
   }
 
   actionHintScope({ scopeId = "", clipRoots = [] }: ActionHintPull = {}) {
-    this.performUpdate();
     return this.attachmentList.value?.actionHintScope({
       scopeId: `${scopeId}:attachments`,
       clipRoots: [this, ...clipRoots],

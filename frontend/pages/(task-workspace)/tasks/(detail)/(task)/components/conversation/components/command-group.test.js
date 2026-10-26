@@ -86,7 +86,7 @@ test("draws each command as a row of the group, so the group draws the frame", (
       { id: "b", type: "reasoning", payload: { summary: [] } },
     ],
   }));
-  owner.hints = new ActionHints(owner, () => {});
+  owner.hints = new ActionHints(owner);
   owner.commands = new DrawnRefs(owner);
 
   const html = templateHtml(owner.render());

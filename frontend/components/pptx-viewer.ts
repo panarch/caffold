@@ -110,9 +110,7 @@ class CaffoldPptxViewer extends LitElement {
     this.mount = null;
   }
 
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
 
   createRenderRoot() {
     return this;

@@ -35,7 +35,7 @@ export class CaffoldGithubIssueTaskSource extends LitElement {
   declare private locked: boolean;
   private repository: GitRepository | null = null;
   private refsRequestId = 0;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly baseRefSelect = new DrawnRef<HTMLSelectElement>(this);
 
   constructor() {

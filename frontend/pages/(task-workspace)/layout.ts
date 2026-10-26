@@ -185,7 +185,7 @@ export class CaffoldTaskWorkspace extends LitElement {
   };
   private taskStoreTakeover = false;
   private showBack = false;
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
   // Each part the workspace draws, by the name its getter reads it with.
@@ -504,7 +504,6 @@ export class CaffoldTaskWorkspace extends LitElement {
   }
 
   keyboardNavigationContexts() {
-    this.performUpdate();
     const childContexts = this.hidden
       ? []
       : this.mode === "tasks"

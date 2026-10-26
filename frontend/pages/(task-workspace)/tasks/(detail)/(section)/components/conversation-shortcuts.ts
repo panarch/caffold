@@ -47,7 +47,7 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
   // it is blocked. The previous answer stays on show while the next is asked.
   private codexReadiness: CodexStatusSnapshot = createCodexStatusSnapshot();
   private codexReadinessRequest = 0;
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
   private readonly dialog = new DrawnRef<CaffoldConversationForkDialog>(this);
@@ -126,7 +126,6 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
   }
 
   keyboardNavigationContexts() {
-    this.performUpdate();
     return this.active && !this.hidden
       ? (this.forkDialog()?.keyboardNavigationContexts() ?? [])
       : [];

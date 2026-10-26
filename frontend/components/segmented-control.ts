@@ -28,7 +28,7 @@ export class CaffoldSegmentedControl extends LitElement {
 
   declare private snapshot: SegmentedSnapshot;
 
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
 
   constructor() {
     super();

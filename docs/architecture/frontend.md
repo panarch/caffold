@@ -108,8 +108,8 @@ that command a component are still JavaScript, the component also renders at
 once when it connects and when one of its public methods changes what it
 shows, so those owners can read its DOM right after mounting or calling it.
 The Task conversation renders the components its entries mount at once in the
-same way, because Task Detail and the keyboard modes read the whole transcript
-right after it changes.
+same way, because Task Detail reads the whole transcript right after it
+changes.
 Event listeners bound in a template come and go with their nodes.
 
 Lit keeps the nodes of a rendered template across later renders and commits
@@ -485,8 +485,9 @@ infer actions or scrollports from overlay descendants.
 The coordinator enters Action Hint mode from a non-editing `F` key, or from
 its key combination below, and pulls one-shot semantic descriptors from
 explicitly participating owners. A non-editing `T` key first asks Task
-Workspace to open the Task switcher and then enters the same mode, so the
-session it collects is scoped to that modal.
+Workspace to open the Task switcher and, in the next frame, once the switcher
+has drawn its rows, enters the same mode, so the session it collects is scoped
+to that modal.
 Task Workspace opens it only on its Tasks surface, because the Notes and
 Settings surfaces do not load the Task list the switcher shows; a refusal
 leaves the key unhandled. Its two pointer openers reach the same Task
@@ -543,8 +544,8 @@ Each owner declares these targets in its template, on the control they act on,
 with the `ActionHints` it keeps (`action-hints/declarations.ts`), for example
 `${this.hints.button({ id, label, action, when })}`. A declaration stays while
 its element is drawn and leaves with it. The owner's public
-`actionHintScope(pull)` returns `this.hints.scope(pull)`, which finishes any
-draw still waiting, puts the parent's scope ID in front of each declared ID,
+`actionHintScope(pull)` returns `this.hints.scope(pull)`, which reads what the
+owner last drew, puts the parent's scope ID in front of each declared ID,
 and leaves out a declaration whose `when` is false, whose control is disabled,
 or whose anchor has no layout box. A container adds only which direct children
 it merges, and reaches them through the `DrawnRef` it drew them with rather
@@ -678,7 +679,8 @@ textboxes keep their owner-specific focus behavior, while dialog selects use
 the same general native select contract as workspace controls. Popover and
 dialog openers are ordinary workspace actions. A context that declares itself
 session-bound continues Action Hints when a Hint activation makes it the
-interaction owner and closes itself when the user dismisses that session; the
+interaction owner, in the next frame once it has drawn, and closes itself when
+the user dismisses that session; the
 coordinator reports the dismissal on the context root, and the owner hides its
 own surface. Every registered popover with actions declares it, and so does the
 Task switcher, which receives the session its key starts and the session in
@@ -738,9 +740,13 @@ the remaining targets in one viewport-sized native modal dialog. The target set
 is monotonic for that session: later descriptors never receive codes, and a
 retired or initially offscreen target can participate only after a fresh `F`.
 
-Mutation, resize (including declared occlusion roots), and declared owner-scroll
-observations request one coalesced scope revalidation; their roots are signals,
-not evidence from which the controller infers ownership. A declared scope
+Resize (including declared occlusion roots) and declared owner-scroll
+observations request one coalesced scope revalidation at once. Mutation
+observations request one in the next frame instead: a declared scope reads only
+what its owner last drew, and Lit draws what a mutation set off owner by owner
+in the microtasks after it. Scroll selection and active Scroll revalidate on
+the same schedule. The observed roots are signals, not evidence from which the
+controller infers ownership. A declared scope
 watches the owners its declarations name: the component, or a narrower element
 a declaration names as its owner. If a frozen target
 disappears, becomes

@@ -504,16 +504,19 @@ test("the file list offers Refresh files while it shows the button, under the la
       path: "project",
       entries: [{ name: "a.js", path: "project/a.js", kind: "file", supported: true }],
     });
-    const refreshTargets = () => list.actionHintScope({
-      scopeId: "review:files",
-      actions: { refresh: "button.activate" },
-    }).targets.map((target) => [target.id, target.actionId, target.label]);
+    const refreshTargets = async () => {
+      await new Promise(requestAnimationFrame);
+      return list.actionHintScope({
+        scopeId: "review:files",
+        actions: { refresh: "button.activate" },
+      }).targets.map((target) => [target.id, target.actionId, target.label]);
+    };
     list.setRefreshVisible(false);
-    const hidden = refreshTargets();
+    const hidden = await refreshTargets();
     list.setRefreshVisible(true);
-    const shown = refreshTargets();
+    const shown = await refreshTargets();
     list.setRefreshState("unavailable");
-    const unavailable = refreshTargets();
+    const unavailable = await refreshTargets();
     return { hidden, shown, unavailable };
   });
 

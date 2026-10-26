@@ -32,14 +32,10 @@ export class CaffoldTaskStoreRecovery extends LitElement {
   private snapshot: TaskStoreStatusSnapshot =
     INITIAL_TASK_STORE_STATUS_SNAPSHOT;
   private readonly surface = new DrawnRef<HTMLElement>(this);
-  private readonly hints: ActionHints = new ActionHints(
-    this,
-    () => this.performUpdate(),
-    { clipRoots: () => [this, this.surface.value] },
-  );
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints: ActionHints = new ActionHints(this, {
+    clipRoots: () => [this, this.surface.value],
+  });
+  private readonly surfaces = new ScrollSurfaces(this);
 
   createRenderRoot() {
     return this;

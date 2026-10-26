@@ -63,12 +63,10 @@ export class CaffoldNotesNavigator extends LitElement {
   private revealSignature = "";
   private pendingRevealKeys: string[] = [];
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly tree = new DrawnRef<CaffoldFileTree>(this);
 
   constructor() {

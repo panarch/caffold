@@ -230,7 +230,7 @@ export class CaffoldTaskComposer extends LitElement {
   private drewWhileComposing = false;
   private compositionTimer: number | null = null;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly promptField = new DrawnRef<HTMLTextAreaElement>(this);
   private readonly attachmentStrip =
     new DrawnRef<CaffoldTaskComposerAttachments>(this);

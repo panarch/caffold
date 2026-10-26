@@ -8,10 +8,8 @@ export const CODEX_RUNTIME_UPDATE_CONFIRMED_EVENT =
   "caffold:codex-runtime-update-confirmed";
 
 export class CaffoldCodexRuntimeUpdateDialog extends LitElement {
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
   createRenderRoot() {

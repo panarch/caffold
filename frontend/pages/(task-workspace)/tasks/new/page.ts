@@ -35,9 +35,7 @@ export class CaffoldTaskNew extends LitElement {
   private server: ServerPaths = {};
   private transportAvailable = true;
   private taskStoreStatusSnapshot: TaskStoreStatusSnapshot | null = null;
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly workspace = new DrawnRef<HTMLElement>(this);
   private readonly create = new DrawnRef<CaffoldTaskCreate>(this);
 
@@ -92,7 +90,6 @@ export class CaffoldTaskNew extends LitElement {
   }
 
   actionHintScope() {
-    this.performUpdate();
     const workspace = this.workspace.value;
     return mergeActionHintScopes(
       this.create.value?.actionHintScope({
@@ -117,7 +114,6 @@ export class CaffoldTaskNew extends LitElement {
   }
 
   keyboardNavigationContexts() {
-    this.performUpdate();
     if (this.hidden) {
       return [];
     }

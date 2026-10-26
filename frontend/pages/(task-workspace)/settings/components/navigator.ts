@@ -45,10 +45,8 @@ export class CaffoldSettingsNavigator extends LitElement {
   // ready to load. Only the About entry shows either.
   declare updateAvailable: boolean;
   declare reloadReady: boolean;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly list = new DrawnRef<HTMLElement>(this);
   private readonly items = new DrawnRefs<CaffoldSettingsNavigatorItem>(this);
 

@@ -81,9 +81,7 @@ class CaffoldPdfViewer extends LitElement {
     this.pages = null;
   }
 
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
 
   createRenderRoot() {
     return this;

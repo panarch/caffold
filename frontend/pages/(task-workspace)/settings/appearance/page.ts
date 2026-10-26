@@ -79,14 +79,10 @@ export class CaffoldSettingsAppearancePage extends LitElement {
       getSettings();
   };
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints: ActionHints = new ActionHints(
-    this,
-    () => this.performUpdate(),
-    { clipRoots: () => [this, this.scrollport.value] },
-  );
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints: ActionHints = new ActionHints(this, {
+    clipRoots: () => [this, this.scrollport.value],
+  });
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly themeLabels = new DrawnRefs<HTMLLabelElement>(this);
   private readonly typefaceSelects = new DrawnRefs<HTMLSelectElement>(this);

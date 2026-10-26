@@ -41,7 +41,7 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
   private githubStatus: GitHubStatus | null = null;
   private statusContextKey = "";
   private statusRequestId = 0;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
 
   createRenderRoot() {
     return this;

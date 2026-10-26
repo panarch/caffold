@@ -36,7 +36,7 @@ export class CaffoldPagination extends LitElement {
   declare lastLabel: string | null | undefined;
 
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly pageButtons = new DrawnRefs<CaffoldPaginationButton>(this);
 
   constructor() {

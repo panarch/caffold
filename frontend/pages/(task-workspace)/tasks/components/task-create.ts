@@ -82,7 +82,7 @@ export class CaffoldTaskCreate extends LitElement {
   private error: Error | null = null;
   private activeSubmissionId = "";
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly composerElement = new DrawnRef<CaffoldTaskComposer>(this);
   private readonly directoryElement = new DrawnRef<CaffoldTaskDirectoryField>(
     this,
@@ -194,7 +194,6 @@ export class CaffoldTaskCreate extends LitElement {
   }
 
   scrollSurfaceScope(pull: ScrollSurfacePull = {}) {
-    this.performUpdate();
     return (
       this.directoryField()?.scrollSurfaceScope(pull) ??
       emptyScrollSurfaceScope()
@@ -206,7 +205,6 @@ export class CaffoldTaskCreate extends LitElement {
   }
 
   keyboardNavigationContexts(options: { scopeId?: string } = {}) {
-    this.performUpdate();
     return this.composer()?.keyboardNavigationContexts(options) ?? [];
   }
 

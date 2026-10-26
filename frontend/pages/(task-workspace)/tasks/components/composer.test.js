@@ -335,7 +335,7 @@ function composerHost(properties = {}) {
     }),
     ...Object.getOwnPropertyDescriptors(properties),
   });
-  host.hints = new ActionHints(host, () => {});
+  host.hints = new ActionHints(host);
   return host;
 }
 

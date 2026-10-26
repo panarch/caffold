@@ -39,10 +39,8 @@ export class CaffoldGithubPullTaskSource extends LitElement {
     this.locked = false;
   }
 
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly relationship = new DrawnRef<HTMLDListElement>(this);
 
   createRenderRoot() {

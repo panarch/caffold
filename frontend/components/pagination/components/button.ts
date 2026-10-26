@@ -20,7 +20,7 @@ export class CaffoldPaginationButton extends LitElement {
   declare icon: string;
   declare disabled: boolean;
 
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
 
   constructor() {
     super();

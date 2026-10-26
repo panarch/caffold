@@ -71,10 +71,8 @@ class CaffoldXlsxViewer extends LitElement {
   // The sheet's corner and scrolling layers, made by `layoutSheet`.
   private corner: HTMLElement | null = null;
   private layers: Record<LayerName, HTMLElement> | null = null;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly sheetport = new DrawnRef<HTMLDivElement>(this);
   private readonly space = new DrawnRef<HTMLDivElement>(this);
   private readonly tabStrip = new DrawnRef<HTMLDivElement>(this);

@@ -171,9 +171,9 @@ function openedSwitcher() {
       dispatchEvent() {},
     }),
   );
-  switcher.hints = new ActionHints(switcher, () => {});
-  switcher.surfaces = new ScrollSurfaces(switcher, () => {});
-  switcher.keyboard = new KeyboardContexts(switcher, () => {});
+  switcher.hints = new ActionHints(switcher);
+  switcher.surfaces = new ScrollSurfaces(switcher);
+  switcher.keyboard = new KeyboardContexts(switcher);
   switcher.items = new DrawnRefs(switcher);
   return switcher;
 }

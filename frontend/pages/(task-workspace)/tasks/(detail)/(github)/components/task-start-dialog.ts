@@ -63,13 +63,9 @@ export class CaffoldGithubTaskStartDialog extends LitElement {
   private createRequestId = 0;
   private restoreFocus = true;
   private composerSettings: TurnOptionsSelection | null = null;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly modal = new DrawnRef<HTMLDialogElement>(this);
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly issue = new DrawnRef<CaffoldGithubIssueTaskSource>(this);

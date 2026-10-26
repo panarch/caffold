@@ -42,9 +42,7 @@ export class CaffoldDiffViewer extends LitElement {
   declare diff: FileDiff | null;
   declare position: ViewerPosition | null;
 
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly table = new DrawnRef<HTMLDivElement>(this);
 

@@ -124,10 +124,8 @@ export class CaffoldAppShell extends LitElement {
     diagnostics: normalizePwaUpdateDiagnostics(null),
   };
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly workspace = new DrawnRef<CaffoldTaskWorkspace>(this);
   private readonly bootstrapErrorPanel = new DrawnRef<HTMLElement>(this);
   private readonly foregroundRecoveryNotice = new DrawnRef<HTMLElement>(this);

@@ -30,10 +30,8 @@ let taskDetailGitInstanceId = 0;
 export class CaffoldTaskDetailGit extends LitElement {
   private available = false;
   private readonly popoverId = `task-git-actions-${++taskDetailGitInstanceId}`;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly gitPopover = new DrawnRef<HTMLDivElement>(this);
 
   constructor() {

@@ -171,8 +171,8 @@ function recoveryView(current) {
       },
     }),
   );
-  view.hints = new ActionHints(view, () => {});
-  view.surfaces = new ScrollSurfaces(view, () => {});
+  view.hints = new ActionHints(view);
+  view.surfaces = new ScrollSurfaces(view);
   return { view, renders };
 }
 

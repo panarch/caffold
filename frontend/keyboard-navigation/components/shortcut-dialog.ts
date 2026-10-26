@@ -19,13 +19,9 @@ export class CaffoldKeyboardShortcutDialog extends LitElement {
   // no request back.
   private ownerClosed = false;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
   private readonly closeButton = new DrawnRef<HTMLButtonElement>(this);
   private readonly list = new DrawnRef<HTMLElement>(this);

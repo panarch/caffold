@@ -574,9 +574,12 @@ test("owned scroll revalidates geometry and retires an unavailable owner", async
   }
 });
 
-test("coalesces owner signals and cleans every refreshed subscription", async () => {
+test("coalesces owner signals, reads DOM changes after a frame, and cleans every refreshed subscription", async () => {
   const restoreGlobals = installDomGlobals();
+  const previousFrame = globalThis.requestAnimationFrame;
   try {
+    const frames = [];
+    globalThis.requestAnimationFrame = (callback) => frames.push(callback);
     const mutationObservers = [];
     const resizeObservers = [];
     globalThis.MutationObserver = class {
@@ -651,7 +654,10 @@ test("coalesces owner signals and cleans every refreshed subscription", async ()
     scrollRoot.dispatch("scroll");
     assert.equal(validations, 1);
     await Promise.resolve();
-    assert.equal(validations, 2);
+    assert.equal(validations, 2, "size and scroll changes are read at once");
+    assert.equal(frames.length, 1);
+    frames.shift()();
+    assert.equal(validations, 3, "DOM changes are read once drawing settles");
 
     controller.cancel("unit");
     assert.equal(mutationObservers[0].disconnected, true);
@@ -662,9 +668,15 @@ test("coalesces owner signals and cleans every refreshed subscription", async ()
     resizeObservers[0].callback([]);
     scrollRoot.dispatch("scroll");
     await Promise.resolve();
-    assert.equal(validations, 2);
+    assert.equal(frames.length, 0);
+    assert.equal(validations, 3);
   } finally {
     restoreGlobals();
+    if (previousFrame === undefined) {
+      delete globalThis.requestAnimationFrame;
+    } else {
+      globalThis.requestAnimationFrame = previousFrame;
+    }
   }
 });
 

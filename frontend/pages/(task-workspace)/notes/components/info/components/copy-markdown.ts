@@ -23,7 +23,7 @@ export class CaffoldNotesInfoCopyMarkdown extends LitElement {
   private markdown = "";
   private generation = 0;
   private feedbackTimer: number | undefined;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
 
   constructor() {
     super();

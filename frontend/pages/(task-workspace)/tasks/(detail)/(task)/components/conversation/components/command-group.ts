@@ -40,7 +40,7 @@ export class CaffoldTaskCommandGroup extends LitElement {
   declare identity: string;
   declare events: TaskEvent[];
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
   private readonly details = new DrawnRef<HTMLDetailsElement>(this);

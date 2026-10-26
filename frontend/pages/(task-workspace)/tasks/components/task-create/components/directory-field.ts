@@ -79,7 +79,7 @@ export class CaffoldTaskDirectoryField extends LitElement {
   private listeningOutside = false;
   private readonly fieldId = `task-directory-field-${++nextFieldId}`;
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
+  private readonly hints = new ActionHints(this);
   private readonly toggle = new DrawnRef<HTMLButtonElement>(this);
   private readonly input = new DrawnRef<HTMLInputElement>(this);
   private readonly panel = new DrawnRef<HTMLDivElement>(this);

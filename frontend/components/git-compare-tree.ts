@@ -54,10 +54,8 @@ export class CaffoldGitCompareTree extends LitElement {
   declare private emptyMessage: string;
   selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
   private readonly compareBase = new DrawnRef<HTMLSpanElement>(this);
   private readonly baseRefSelect = new DrawnRef<HTMLSelectElement>(this);
   private readonly tree = new DrawnRef<CaffoldFileTree>(this);

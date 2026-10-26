@@ -196,10 +196,8 @@ export class CaffoldTaskTurnOptions extends LitElement {
       hidePopover(popover);
     }
   };
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly modelButton = new DrawnRef<HTMLButtonElement>(this);
   private readonly permissionButton = new DrawnRef<HTMLButtonElement>(this);
   private readonly modelPopover = new DrawnRef<HTMLElement>(this);

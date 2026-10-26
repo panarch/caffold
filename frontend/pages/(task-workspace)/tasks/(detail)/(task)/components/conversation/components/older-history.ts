@@ -30,7 +30,7 @@ export class CaffoldTaskOlderHistory extends LitElement {
   // Why older messages could not be read, or `null` when nothing failed.
   declare error: string | null;
   declare active: boolean;
-  private readonly hints = new ActionHints(this, () => this.performUpdate(), {
+  private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
 

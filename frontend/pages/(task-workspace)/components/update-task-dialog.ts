@@ -50,13 +50,9 @@ export class CaffoldUpdateTaskDialog extends LitElement {
   private error: Error | null = null;
   private opener: HTMLElement | null = null;
   private createRequestId = 0;
-  private readonly hints = new ActionHints(this, () => this.performUpdate());
-  private readonly surfaces = new ScrollSurfaces(this, () =>
-    this.performUpdate(),
-  );
-  private readonly keyboard = new KeyboardContexts(this, () =>
-    this.performUpdate(),
-  );
+  private readonly hints = new ActionHints(this);
+  private readonly surfaces = new ScrollSurfaces(this);
+  private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly turnOptions = new DrawnRef<CaffoldTaskTurnOptions>(this);
