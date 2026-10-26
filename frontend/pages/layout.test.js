@@ -35,7 +35,7 @@ const buildInfoHook = registerHooks({
   },
 });
 const registry = installCustomElementUnitRegistry();
-await import("./layout.js");
+await import("./layout.ts");
 const appShell = registry.element("caffold-app-shell").prototype;
 
 after(() => {
@@ -123,6 +123,7 @@ test("composes one App Shell workspace context with public child contexts", () =
     updateDialog: {
       keyboardNavigationContexts: () => [updateChild],
     },
+    updateResultDialog: { keyboardNavigationContexts: () => [] },
     keyboardShortcutDialog: {
       keyboardNavigationContexts: () => [shortcutChild],
     },
@@ -164,7 +165,7 @@ test("merges only owner-declared Action Hint dependencies", () => {
       mutationRoots: [],
       scrollRoots: [],
     }),
-    buildMismatchAlert: null,
+    buildMismatchAlert: { actionHintScope: () => null },
     taskWorkspace,
   };
 

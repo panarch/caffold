@@ -19,7 +19,7 @@ type ResetCreditRequest = {
   retry?: boolean;
 };
 
-class CaffoldCodexResetCreditDialog extends LitElement {
+export class CaffoldCodexResetCreditDialog extends LitElement {
   static properties = {
     request: { state: true },
   };
@@ -95,7 +95,7 @@ class CaffoldCodexResetCreditDialog extends LitElement {
       ?.querySelector<CaffoldKeyboardNavigationPresentation>(
         ":scope > caffold-keyboard-navigation-presentation",
       )
-      ?.actionHintDialog?.();
+      ?.actionHintDialog();
     if (!dialog || !hintDialog) {
       return [];
     }

@@ -472,7 +472,7 @@ export class CaffoldFileTree extends LitElement {
         }
         const expanded =
           this.expandedKeys?.has(key) ??
-          control.getAttribute?.("aria-expanded") === "true";
+          control.getAttribute("aria-expanded") === "true";
         return [
           disclosureActionHintTarget({
             invalidationOwner: this,

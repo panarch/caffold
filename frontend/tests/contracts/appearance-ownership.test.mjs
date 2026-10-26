@@ -653,9 +653,9 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
     assert.match(source, /var\(--settings-page-description-size\)/);
   }
 
-  const appLayout = readFrontend("pages/layout.js");
-  const taskWorkspace = readFrontend("pages/(task-workspace)/layout.js");
-  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
+  const appLayout = readFrontend("pages/layout.ts");
+  const taskWorkspace = readFrontend("pages/(task-workspace)/layout.ts");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.ts");
   const settingsWorkspace = readFrontend(
     "pages/(task-workspace)/settings/layout.ts",
   );

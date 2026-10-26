@@ -12,7 +12,7 @@ import type { CaffoldKeyboardNavigationPresentation } from "../../keyboard-navig
 export const CAFFOLD_UPDATE_LATER_EVENT = "caffold:update-later";
 export const CAFFOLD_UPDATE_RELOAD_EVENT = "caffold:update-reload";
 
-class CaffoldUpdateDialog extends LitElement {
+export class CaffoldUpdateDialog extends LitElement {
   private ownerClosed = false;
 
   createRenderRoot() {
@@ -73,7 +73,7 @@ class CaffoldUpdateDialog extends LitElement {
       ?.querySelector<CaffoldKeyboardNavigationPresentation>(
         ":scope > caffold-keyboard-navigation-presentation",
       )
-      ?.actionHintDialog?.();
+      ?.actionHintDialog();
     if (!dialog || !hintDialog) {
       return [];
     }

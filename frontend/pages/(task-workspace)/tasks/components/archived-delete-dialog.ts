@@ -13,7 +13,7 @@ import { taskThreadId } from "../task-list-model.js";
 export const TASK_ARCHIVED_DELETE_CONFIRMED_EVENT =
   "caffold:task-archived-delete-confirmed";
 
-class CaffoldTaskArchivedDeleteDialog extends LitElement {
+export class CaffoldTaskArchivedDeleteDialog extends LitElement {
   static properties = {
     taskTitle: { state: true },
   };
@@ -106,7 +106,7 @@ class CaffoldTaskArchivedDeleteDialog extends LitElement {
       ?.querySelector<CaffoldKeyboardNavigationPresentation>(
         ":scope > caffold-keyboard-navigation-presentation",
       )
-      ?.actionHintDialog?.();
+      ?.actionHintDialog();
     if (!dialog || !hintDialog) {
       return [];
     }

@@ -3,6 +3,22 @@
 
 export function parseLinkRoute(href: string): { kind: string } | null;
 
+// A route an address names; the fields beside `kind` depend on it.
+export interface ParsedRoute {
+  kind: string;
+  threadId?: string;
+  sectionId?: string;
+  section?: string;
+  [field: string]: unknown;
+}
+
+export function parseRoute(url?: string): ParsedRoute | null;
+
+export function routeEquals(
+  left: { kind: string; [field: string]: unknown },
+  right: { kind: string; [field: string]: unknown },
+): boolean;
+
 // The address of a route, whose other fields depend on its kind.
 export function routeUrl(route: {
   kind: string;
@@ -10,6 +26,17 @@ export function routeUrl(route: {
 }): string;
 
 export function routeMode(
+  route: { kind?: string } | null | undefined,
+): string | null;
+
+// The workspace tab a route belongs to.
+export function routeTab(
+  route: { kind?: string } | null | undefined,
+): "tasks" | "notes" | "settings";
+
+// What a route opens within its surface, such as New Task or a Task's
+// review, or null.
+export function routeTarget(
   route: { kind?: string } | null | undefined,
 ): string | null;
 

@@ -135,7 +135,7 @@ export class CaffoldSettingsFilesPage extends LitElement {
           actionId: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
           label: `Use ${option.label} ordering`,
           control,
-          anchor: control.closest?.("label") ?? control,
+          anchor: control.closest("label") ?? control,
           clipRoots: targetClipRoots,
           isActionable: () =>
             this.isConnected &&

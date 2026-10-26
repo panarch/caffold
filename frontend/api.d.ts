@@ -2,6 +2,7 @@
 // goes when that module moves to TypeScript.
 
 import type { CodexReadiness } from "./pages/(task-workspace)/codex-status.js";
+import type { CaffoldUpdateStatus } from "./pages/(task-workspace)/settings/about/page.ts";
 
 // The server colors source text and sends each line's spans as
 // `[start, length, color]` in UTF-16 units. The color numbers follow
@@ -421,7 +422,7 @@ export interface GitHubPullFileDiff {
   message: string | null;
 }
 
-export function createTask(task: Record<string, unknown>): Promise<unknown>;
+export function createTask(task: Record<string, unknown>): Promise<CreatedTask>;
 
 // A Task as the Task API reports it, as far as TypeScript callers read it.
 export interface Task {
@@ -531,6 +532,20 @@ export function reorderSection(
 export function restoreTask(
   threadId: string,
 ): Promise<{ task: ActiveTask; activeTopPlacement: ActiveTaskTopPlacement }>;
+
+// What a Task that needs recovery can do: go back to Active, be checked
+// again, move to Archived, or leave Caffold.
+export function restoreRecoveryTask(
+  threadId: string,
+): Promise<{ task: ActiveTask; activeTopPlacement: ActiveTaskTopPlacement }>;
+
+export function recheckRecoveryTask(
+  threadId: string,
+): Promise<ActiveTaskRecovery>;
+
+export function archiveRecoveryTask(threadId: string): Promise<Task>;
+
+export function removeRecoveryTask(threadId: string): Promise<unknown>;
 
 // A Task whose worktree is broken is deleted only with the worktree its
 // diagnosis named.
@@ -1011,6 +1026,33 @@ export interface GrokStatus {
 }
 
 export function getClaudeStatus(): Promise<ClaudeStatus>;
+
+// What the server says about itself: the directories it serves, where New
+// Task starts, and the build it runs.
+export interface Health {
+  root?: string | null;
+  homePath?: string | null;
+  initialPath?: string | null;
+  buildId?: string | null;
+  buildLabel?: string | null;
+  version?: string | null;
+}
+
+export function getHealth(): Promise<Health>;
+
+// The server's word on Caffold releases; it may ask GitHub first, or, when
+// checking, always does.
+export function getCaffoldUpdate(): Promise<CaffoldUpdateStatus>;
+
+export function checkCaffoldUpdate(): Promise<CaffoldUpdateStatus>;
+
+// Hands the server foreground recovery diagnostics, for its log.
+export function sendForegroundRecoveryDiagnostics(
+  records: unknown[],
+): Promise<unknown>;
+
+// Restarts the Claude runner; its conversations resume as their Tasks open.
+export function restartClaudeRuntime(): Promise<unknown>;
 
 export function getGrokStatus(): Promise<GrokStatus>;
 

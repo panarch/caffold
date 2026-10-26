@@ -12,7 +12,7 @@ import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-naviga
 export const CLAUDE_RUNTIME_RESTART_CONFIRMED_EVENT =
   "caffold:claude-runtime-restart-confirmed";
 
-class CaffoldClaudeRuntimeRestartDialog extends LitElement {
+export class CaffoldClaudeRuntimeRestartDialog extends LitElement {
   createRenderRoot() {
     return this;
   }
@@ -66,7 +66,7 @@ class CaffoldClaudeRuntimeRestartDialog extends LitElement {
       ?.querySelector<CaffoldKeyboardNavigationPresentation>(
         ":scope > caffold-keyboard-navigation-presentation",
       )
-      ?.actionHintDialog?.();
+      ?.actionHintDialog();
     if (!dialog || !hintDialog) {
       return [];
     }

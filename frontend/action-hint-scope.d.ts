@@ -92,3 +92,9 @@ export function hasActionHintLayoutBox(
 export function mergeActionHintScopes(
   ...scopes: Array<ActionHintScope | null | undefined>
 ): ActionHintScope;
+
+// The scope with each target also hidden behind `occlusionRoots`.
+export function withActionHintOcclusionRoots(
+  scope: ActionHintScope | null | undefined,
+  occlusionRoots: Element[],
+): ActionHintScope | null | undefined;

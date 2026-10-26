@@ -11,6 +11,12 @@ export interface TaskStoreStatusSnapshot {
   retryAvailable: boolean;
 }
 
+// The snapshot before the store has said anything.
+export const INITIAL_TASK_STORE_STATUS_SNAPSHOT: TaskStoreStatusSnapshot;
+
+// What a screen asks when the person retries a failed store upgrade.
+export const TASK_STORE_RETRY_REQUEST_EVENT: string;
+
 export function taskStoreBlocksTaskOperations(
   snapshot: TaskStoreStatusSnapshot | null,
 ): boolean;
@@ -28,3 +34,19 @@ export interface TaskOperationsPresentation {
 export function taskStoreOperationsPresentation(
   snapshot: TaskStoreStatusSnapshot | null,
 ): TaskOperationsPresentation;
+
+// The workspace's one Task store status: it asks the store, rechecks while an
+// upgrade runs, and retries a failed one.
+export interface TaskStoreStatusLifecycle {
+  connect(): void;
+  disconnect(): void;
+  suspend(): void;
+  resume(): void;
+  check(): Promise<unknown>;
+  retry(): void;
+  snapshot(): TaskStoreStatusSnapshot;
+}
+
+export function createTaskStoreStatusLifecycle(options: {
+  onSnapshotChange(snapshot: TaskStoreStatusSnapshot): void;
+}): TaskStoreStatusLifecycle;

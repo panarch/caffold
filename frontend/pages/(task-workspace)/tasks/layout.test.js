@@ -6,7 +6,7 @@ import {
 } from "../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./layout.js");
+await import("./layout.ts");
 const tasksPage = registry.element("caffold-tasks-page").prototype;
 after(() => registry.restore());
 
@@ -38,7 +38,7 @@ test("combines Navigator with only the active direct-child surface", () => {
     getClientRects() {
       return this.visible ? [{}] : [];
     },
-    ensureRendered() {},
+    performUpdate() {},
     taskNavigator() {
       return navigatorOwner;
     },
@@ -159,7 +159,7 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
   };
   const owner = {
     view: "detail",
-    ensureRendered() {},
+    performUpdate() {},
     getClientRects: () => [{}],
     taskNavigator: () => navigator,
     taskDetail: () => detail,
@@ -239,6 +239,7 @@ test("passes only the selected managed Task to Detail and clears it off-route", 
     selectedThreadId: "thread-a",
     selectedSectionId: "",
     taskNavigator: () => ({
+      recoveryFor: () => null,
       taskFor(threadId) {
         return threadId === task.threadId ? task : null;
       },
@@ -273,11 +274,11 @@ test("restores managed identity before reopening Detail after a store takeover",
     },
   };
   const owner = {
-    taskStoreStatusSnapshotValue: {},
+    taskStoreStatusSnapshot: {},
     view: "detail",
     selectedThreadId: "thread-a",
     currentRoute: { kind: "tasks", threadId: "thread-a" },
-    ensureRendered() {},
+    performUpdate() {},
     taskStoreRecoveryVisible() {
       takeoverChecks += 1;
       return takeoverChecks === 1;
@@ -289,7 +290,7 @@ test("restores managed identity before reopening Detail after a store takeover",
     syncSelectedManagedTask() {
       calls.push("managed");
     },
-    render() {},
+    draw() {},
   };
 
   tasksPage.setTaskStoreStatusSnapshot.call(owner, {});
@@ -344,7 +345,7 @@ test("delivers the Recovery projection only after the route refresh completes", 
     taskNew: () => null,
     taskDetail: () => null,
     taskRecovery: () => ({ updateRecovery: (value) => updates.push(value) }),
-    render() {},
+    draw() {},
   };
   const opened = tasksPage.openRoute.call(owner, {
     kind: "tasks", threadId: recovery.threadId, recovery: true,

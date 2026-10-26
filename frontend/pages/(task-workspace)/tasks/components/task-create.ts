@@ -46,15 +46,16 @@ type ComposerSettingsInput = {
   [Key in keyof ComposerSettings]?: ComposerSettings[Key] | null;
 };
 
-// A request to start a Task. The owner that takes it sets `accepted` and the
-// `completion` that settles once the new Task holds the submission.
+// A request to start a Task, with as much of a submission as its asker has.
+// The owner that takes it sets `accepted` and the `completion` that settles
+// once the new Task holds the submission.
 export interface TaskStartIntent {
   type: "start";
   request: {
     cwd?: string;
     titleSource: string;
   } & Partial<TurnSubmissionOptions>;
-  submission: ComposerSubmission;
+  submission: Partial<ComposerSubmission>;
   accepted: boolean;
   completion: Promise<unknown> | null;
 }

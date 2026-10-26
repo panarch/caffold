@@ -4,10 +4,12 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./navigation.js");
-const navigation = registry.element("caffold-task-workspace-navigation").prototype;
+await import("./navigation.ts");
+const Navigation = registry.element("caffold-task-workspace-navigation");
+const navigation = Navigation.prototype;
 after(() => registry.restore());
 
 test("provides only the non-current workspace routes through their owned buttons", () => {
@@ -28,11 +30,8 @@ test("provides only the non-current workspace routes through their owned buttons
     hidden: false,
     isConnected: true,
     mode: "tasks",
-    ensureRendered() {},
-    querySelector(selector) {
-      const mode = selector.match(/data-workspace-mode="([^"]+)"/)?.[1];
-      return controls[mode] ?? null;
-    },
+    performUpdate() {},
+    modeButton: (mode) => controls[mode] ?? null,
   };
 
   const scope = navigation.actionHintScope.call(owner, {
@@ -67,96 +66,79 @@ test("provides only the non-current workspace routes through their owned buttons
 });
 
 test("marks exactly the chosen workspace mode as current", () => {
-  const buttons = ["tasks", "notes", "settings"].map((mode) => ({
-    dataset: { workspaceMode: mode },
-    current: false,
-    toggleAttribute(name, force) {
-      assert.equal(name, "aria-current");
-      this.current = force;
-    },
-  }));
-  const owner = {
-    ensureRendered() {},
-    querySelectorAll: () => buttons,
-  };
+  const owner = Object.create(
+    Navigation.prototype,
+    Object.getOwnPropertyDescriptors({ mode: "tasks", draw() {} }),
+  );
 
   for (const mode of ["notes", "settings", "tasks"]) {
-    navigation.setMode.call(owner, mode);
+    owner.setMode(mode);
     assert.equal(owner.mode, mode);
-    assert.deepEqual(
-      buttons.filter((button) => button.current).map((button) => button.dataset.workspaceMode),
-      [mode],
-    );
+    assert.deepEqual(currentModes(owner), [mode]);
   }
-  navigation.setMode.call(owner, "unknown");
+  owner.setMode("unknown");
   assert.equal(owner.mode, "tasks");
+  assert.deepEqual(currentModes(owner), ["tasks"]);
 });
 
 test("marks the Settings button and its name while a newer Caffold exists", () => {
-  const button = {
-    dataset: {},
-    attributes: new Map(),
-    setAttribute(name, value) {
-      this.attributes.set(name, value);
-    },
-    removeAttribute(name) {
-      this.attributes.delete(name);
-    },
-    toggleAttribute(name, force) {
-      if (force) {
-        this.attributes.set(name, "");
-      } else {
-        this.attributes.delete(name);
-      }
-    },
-  };
-  const owner = {
-    updateAvailable: false,
-    reloadReady: false,
-    ensureRendered() {},
-    querySelector: () => button,
-  };
-  owner.syncSettingsStatus = () => navigation.syncSettingsStatus.call(owner);
-
-  navigation.setCaffoldUpdate.call(owner, {
-    checking: false,
-    status: { updateAvailable: true },
-  });
-
-  assert.equal(button.attributes.has("data-update-available"), true);
-  assert.equal(
-    button.attributes.get("aria-label"),
-    "Settings — Caffold update available",
+  const owner = Object.create(
+    Navigation.prototype,
+    Object.getOwnPropertyDescriptors({
+      mode: "tasks",
+      updateAvailable: false,
+      reloadReady: false,
+      draw() {},
+    }),
   );
 
-  navigation.setCaffoldUpdate.call(owner, {
-    checking: false,
-    status: { updateAvailable: false },
+  owner.setCaffoldUpdate({ checking: false, status: { updateAvailable: true } });
+  assert.deepEqual(settingsButton(owner), {
+    marked: true,
+    label: "Settings — Caffold update available",
   });
-  assert.equal(button.attributes.has("data-update-available"), false);
-  assert.equal(button.attributes.has("aria-label"), false);
 
-  navigation.setCaffoldUpdate.call(owner, null);
-  assert.equal(button.attributes.has("data-update-available"), false);
+  owner.setCaffoldUpdate({ checking: false, status: { updateAvailable: false } });
+  assert.deepEqual(settingsButton(owner), { marked: false, label: null });
+
+  owner.setCaffoldUpdate(null);
+  assert.deepEqual(settingsButton(owner), { marked: false, label: null });
 
   // A new build this window can load marks the same button.
-  navigation.setUpdateStatus.call(owner, { state: "ready", preparedUpdate: { ready: true } });
-  assert.equal(button.attributes.has("data-update-available"), true);
-  assert.equal(
-    button.attributes.get("aria-label"),
-    "Settings — reload to update",
-  );
-  navigation.setCaffoldUpdate.call(owner, {
-    checking: false,
-    status: { updateAvailable: true },
+  owner.setUpdateStatus({ state: "ready", preparedUpdate: { ready: true } });
+  assert.deepEqual(settingsButton(owner), {
+    marked: true,
+    label: "Settings — reload to update",
   });
-  assert.equal(
-    button.attributes.get("aria-label"),
-    "Settings — Caffold update available, reload to update",
-  );
-  navigation.setCaffoldUpdate.call(owner, null);
-  navigation.setUpdateStatus.call(owner, { state: "settled", preparedUpdate: { ready: false } });
-  assert.equal(button.attributes.has("data-update-available"), false);
-  assert.equal(button.attributes.has("aria-label"), false);
-  assert.deepEqual(button.dataset, {});
+  owner.setCaffoldUpdate({ checking: false, status: { updateAvailable: true } });
+  assert.deepEqual(settingsButton(owner), {
+    marked: true,
+    label: "Settings — Caffold update available, reload to update",
+  });
+  owner.setCaffoldUpdate(null);
+  owner.setUpdateStatus({ state: "settled", preparedUpdate: { ready: false } });
+  assert.deepEqual(settingsButton(owner), { marked: false, label: null });
 });
+
+function buttons(owner) {
+  return templateHtml(owner.render())
+    .replace(/\s+/g, " ")
+    .split("<button")
+    .slice(1);
+}
+
+function currentModes(owner) {
+  return buttons(owner)
+    .filter((button) => button.includes('?aria-current="true"'))
+    .map((button) => button.match(/data-workspace-mode="([^"]+)"/)[1]);
+}
+
+function settingsButton(owner) {
+  const settings = buttons(owner).find((button) =>
+    button.includes('data-workspace-mode="settings"')
+  );
+  return {
+    marked: settings.includes('?data-update-available="true"'),
+    label: settings.match(/aria-label="([^"]+)"/)?.[1] ?? null,
+  };
+}

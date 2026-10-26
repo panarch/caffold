@@ -4,83 +4,52 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 const { TASK_STORE_RETRY_REQUEST_EVENT } = await import(
   "../../task-store-status.js"
 );
-function createTaskStoreStatusSnapshot({ readiness = null, retryAvailable = false }) {
-  return { readiness, retryAvailable };
-}
-await import("./task-store-recovery.js");
-const recovery = registry.element("caffold-task-store-recovery").prototype;
+await import("./task-store-recovery.ts");
+const Recovery = registry.element("caffold-task-store-recovery");
+const recovery = Recovery.prototype;
 after(() => registry.restore());
 
-function fakeCard() {
-  const element = () => ({
-    textContent: "",
-    hidden: false,
-    disabled: false,
-    toggleAttribute(name, force) {
-      this[name] = force;
-    },
+function draw({ readiness = null, retryAvailable = false }) {
+  const owner = Object.create(Recovery.prototype, {
+    snapshot: { value: { readiness, retryAvailable } },
   });
-  const parts = {
-    title: element(),
-    message: element(),
-    instruction: element(),
-    retry: element(),
-    diagnostic: element(),
-  };
-  const card = {
-    dataset: {},
-    querySelector(selector) {
-      if (selector === "[data-task-store-title]") return parts.title;
-      if (selector === "[data-task-store-message]") return parts.message;
-      if (selector === ".task-store-recovery-instruction") return parts.instruction;
-      if (selector.includes('data-task-store-recovery-action="retry"')) return parts.retry;
-      if (selector === ".task-store-recovery-diagnostic") return parts.diagnostic;
-      return null;
-    },
-  };
-  return { card, parts };
-}
-
-function rendered(snapshot) {
-  const { card, parts } = fakeCard();
-  const owner = {
-    rendered: true,
-    snapshotValue: snapshot,
-    querySelector: (selector) =>
-      selector === ".task-store-recovery-card" ? card : null,
-  };
-  recovery.patch.call(owner);
-  return { card, parts };
+  return templateHtml(owner.render())
+    .replace(/\s+/g, " ")
+    .replaceAll(" >", ">")
+    .replaceAll("> ", ">")
+    .replaceAll(" <", "<");
 }
 
 test("shows preparing while the store migrates, with retry held back", () => {
-  const { card, parts } = rendered(createTaskStoreStatusSnapshot({
+  const drawn = draw({
     readiness: {
       state: "migrating",
       blocksTaskOperations: true,
       diagnosticMessage: "Caffold is preparing the Task store.",
     },
-  }));
+  });
 
-  assert.equal(card.dataset.taskStoreState, "migrating");
-  assert.equal(parts.title.textContent, "Preparing Tasks…");
-  assert.equal(
-    parts.message.textContent,
-    "Caffold is preparing the local Task navigator before Tasks start.",
+  assert.match(drawn, /data-task-store-state="migrating"/);
+  assert.match(drawn, /data-task-store-title>Preparing Tasks…<\/h2>/);
+  assert.match(
+    drawn,
+    /role="status">Caffold is preparing the local Task navigator before Tasks start.<\/p>/,
   );
-  assert.equal(
-    parts.instruction.textContent,
-    "This finishes automatically when the local upgrade succeeds.",
+  assert.match(
+    drawn,
+    /instruction">This finishes automatically when the local upgrade succeeds.<\/p>/,
   );
-  assert.equal(parts.retry.textContent, "Preparing…");
-  assert.equal(parts.retry.disabled, true);
-  assert.equal(parts.diagnostic.hidden, false);
-  assert.equal(parts.diagnostic.textContent, "Caffold is preparing the Task store.");
+  assert.match(drawn, /\?disabled="true" @click="">Preparing…<\/button>/);
+  assert.match(
+    drawn,
+    /\?hidden="false">Caffold is preparing the Task store.<\/p>/,
+  );
 });
 
 test("offers Retry Task setup only while the store failed and no retry runs", () => {
@@ -89,48 +58,30 @@ test("offers Retry Task setup only while the store failed and no retry runs", ()
     blocksTaskOperations: true,
     diagnosticMessage: "Task-store migration failed: disk full",
   };
-  const waiting = rendered(createTaskStoreStatusSnapshot({
-    readiness: failed,
-    retryAvailable: true,
-  }));
-  assert.equal(waiting.card.dataset.taskStoreState, "failed");
-  assert.equal(waiting.parts.title.textContent, "Task data upgrade failed");
-  assert.equal(
-    waiting.parts.instruction.textContent,
-    "Retry the upgrade. The existing Task database remains unchanged until it succeeds.",
+  const waiting = draw({ readiness: failed, retryAvailable: true });
+  assert.match(waiting, /data-task-store-state="failed"/);
+  assert.match(waiting, /data-task-store-title>Task data upgrade failed<\/h2>/);
+  assert.match(
+    waiting,
+    /instruction">Retry the upgrade. The existing Task database remains unchanged until it succeeds.<\/p>/,
   );
-  assert.equal(waiting.parts.retry.textContent, "Retry Task setup");
-  assert.equal(waiting.parts.retry.disabled, false);
+  assert.match(waiting, /\?disabled="false" @click="">Retry Task setup<\/button>/);
 
-  const retrying = rendered(createTaskStoreStatusSnapshot({ readiness: failed }));
-  assert.equal(retrying.parts.retry.textContent, "Retry Task setup");
-  assert.equal(retrying.parts.retry.disabled, true);
+  const retrying = draw({ readiness: failed });
+  assert.match(retrying, /\?disabled="true" @click="">Retry Task setup<\/button>/);
 
-  const quiet = rendered(createTaskStoreStatusSnapshot({
+  const quiet = draw({
     readiness: { ...failed, diagnosticMessage: "" },
     retryAvailable: true,
-  }));
-  assert.equal(quiet.parts.diagnostic.hidden, true);
+  });
+  assert.match(quiet, /diagnostic" \?hidden="true"><\/p>/);
 });
 
-test("Retry asks the store owner through one intent event", (t) => {
-  const previousElement = globalThis.Element;
-  globalThis.Element ??= class Element {};
-  t.after(() => {
-    if (previousElement === undefined) {
-      delete globalThis.Element;
-    }
-  });
+test("Retry asks the store owner through one intent event", () => {
   const events = [];
-  const retry = { dataset: { taskStoreRecoveryAction: "retry" } };
-  const owner = {
-    contains: (element) => element === retry,
+  recovery.requestRetry.call({
     dispatchEvent: (event) => events.push(event),
-  };
-  const target = Object.create(globalThis.Element.prototype);
-  target.closest = () => retry;
-
-  recovery.handleClick.call(owner, { target });
+  });
 
   assert.deepEqual(events.map(({ type, bubbles }) => ({ type, bubbles })), [
     { type: TASK_STORE_RETRY_REQUEST_EVENT, bubbles: true },
@@ -156,7 +107,7 @@ test("exposes its retry action and scroll surface only while shown", () => {
   const owner = {
     hidden: false,
     isConnected: true,
-    ensureRendered() {},
+    performUpdate() {},
     getClientRects: () => [{}],
     querySelector(selector) {
       if (selector.includes("task-store-recovery-surface")) return scrollport;

@@ -36,6 +36,7 @@ export interface ServerHealth {
 }
 
 interface UpdateAttempt {
+  id: string;
   outcome: string;
   fromVersion?: string;
   toVersion?: string | null;
@@ -51,7 +52,7 @@ export interface CaffoldUpdateStatus {
   releaseError?: string | null;
   runningAttempt?: { toVersion?: string | null } | null;
   lastAttempt?: UpdateAttempt | null;
-  updateTask?: unknown;
+  updateTask?: { cwd: string; command: string } | null;
 }
 
 // The app shell's latest answer about Caffold updates.

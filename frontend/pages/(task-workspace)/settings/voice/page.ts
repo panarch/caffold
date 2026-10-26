@@ -469,7 +469,7 @@ function providerChoiceTarget(
       actionId: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
       label: `Use ${choice.label} for voice input`,
       control,
-      anchor: control.closest?.("label") ?? control,
+      anchor: control.closest("label") ?? control,
       clipRoots: context.clipRoots,
       isActionable: () =>
         ownerIsCurrent(owner, context) &&

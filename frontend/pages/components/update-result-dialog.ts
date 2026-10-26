@@ -21,7 +21,7 @@ type UpdateResultNotice = { title: string; description: string };
  * Tells this browser that an update of Caffold did not stick. It only
  * informs, so its one button closes it.
  */
-class CaffoldUpdateResultDialog extends LitElement {
+export class CaffoldUpdateResultDialog extends LitElement {
   static properties = {
     notice: { state: true },
   };
@@ -85,7 +85,7 @@ class CaffoldUpdateResultDialog extends LitElement {
       ?.querySelector<CaffoldKeyboardNavigationPresentation>(
         ":scope > caffold-keyboard-navigation-presentation",
       )
-      ?.actionHintDialog?.();
+      ?.actionHintDialog();
     if (!dialog || !hintDialog) {
       return [];
     }

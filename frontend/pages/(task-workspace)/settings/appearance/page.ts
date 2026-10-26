@@ -532,7 +532,7 @@ function themeActionHintTargets(owner: HTMLElement, context: ScopeContext) {
         actionId: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
         label: `Use ${theme.label} theme`,
         control,
-        anchor: control.closest?.("label") ?? control,
+        anchor: control.closest("label") ?? control,
         clipRoots: context.clipRoots,
         isActionable: () =>
           actionHintOwnerIsCurrent(owner, context) &&

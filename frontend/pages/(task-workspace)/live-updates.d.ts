@@ -18,8 +18,16 @@ export interface LiveSubscription {
   retry(): void;
 }
 
+// What the workspace tells the app shell about each physical connection.
+export const LIVE_CONNECTION_REPORT_EVENT: string;
+
 // The workspace's one live connection, shared by its channels.
 export class WorkspaceLiveUpdates {
+  constructor(options?: { onConnectionReport?(report: unknown): void });
+  connect(): void;
+  disconnect(): void;
+  suspend(): void;
+  resume(): void;
   subscribeTaskList(listener: LiveSubscriptionListener): LiveSubscription;
   subscribeTaskDetail(
     threadId: string,

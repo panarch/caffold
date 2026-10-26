@@ -11,7 +11,7 @@ import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import { fetchInChunks } from "#app/chunked-fetch.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/loading-text.ts";
-import { requestTaskImagePreview } from "#tasks/components/image-preview-dialog.js";
+import { requestTaskImagePreview } from "#tasks/components/image-preview-dialog.ts";
 
 // A picture is fetched when it comes this near view, in the viewport and in
 // the conversation that scrolls it: the distance Chrome itself keeps for a

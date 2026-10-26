@@ -13,12 +13,12 @@ page-level custom-element ownership, not a URL router such as Next.js. The
 directory path expresses ownership even when it does not appear in the browser
 URL.
 
-Use `layout.js` and `layout.css` for container components that own nested
-surfaces, shared chrome, state transitions, or pane behavior. Use `page.js` and
+Use `layout.ts` and `layout.css` for container components that own nested
+surfaces, shared chrome, state transitions, or pane behavior. Use `page.ts` and
 `page.css` for leaf app surfaces. Intermediate `frontend/pages` directories
-without their own `page.js` are wrapped in parentheses, such as `(git)`,
+without their own `page.ts` are wrapped in parentheses, such as `(git)`,
 `(log)`, and `(github)`; these are pathless ownership/layout nodes, not URL
-segments. The root `frontend/pages/layout.js` is the sole exception because an
+segments. The root `frontend/pages/layout.ts` is the sole exception because an
 additional parenthesized root would repeat the application hierarchy.
 
 Lower-level or reusable leaves stay in `frontend/components` even when they are
@@ -33,7 +33,7 @@ lifecycle implementation, plus a `components/` directory for Web Components
 mounted by the feature's outside owner. Non-visual consumers import only the
 explicit public API from `name.js`. A mounting owner imports the component path
 directly so custom-element registration remains visible. Unlike page ownership
-directories, an expanded module directory contains no `page.js` or `layout.js`.
+directories, an expanded module directory contains no `page.ts` or `layout.ts`.
 
 ## Native module imports
 
@@ -164,7 +164,7 @@ subject identity throughout shared child transitions.
 
 ## App Shell
 
-`frontend/pages/layout.js` defines `caffold-app-shell`. It owns only
+`frontend/pages/layout.ts` defines `caffold-app-shell`. It owns only
 application-lifetime coordination:
 
 - bootstrap health and initial-path loading;
@@ -412,7 +412,7 @@ Markdown Preview through their optional `--file-tree-scroll-end-clearance` and
 detail pane does not inherit this clearance. Navigation owns the panel chrome
 and preserves the same buttons, input paths, and semantic selection.
 
-`frontend/pages/(task-workspace)/layout.js` is the only routed workspace. It
+`frontend/pages/(task-workspace)/layout.ts` is the only routed workspace. It
 owns:
 
 - the shared master/detail presentation;
@@ -1940,16 +1940,16 @@ frontend/
 |       `-- selector.js
 |-- navigation-routes.js
 |-- pages/
-|   |-- layout.js
+|   |-- layout.ts
 |   |-- components/
-|   |   |-- build-mismatch-alert.js
+|   |   |-- build-mismatch-alert.ts
 |   |   `-- update-dialog.ts
 |   |-- foreground-recovery.js
 |   |-- foreground-recovery/...
 |   |-- pwa-update-lifecycle.js
 |   |-- pwa-update-lifecycle/...
 |   `-- (task-workspace)/
-|       |-- layout.js
+|       |-- layout.ts
 |       |-- live-updates.js
 |       |-- live-updates/lifecycle.js
 |       |-- codex-status.js
@@ -1966,11 +1966,11 @@ frontend/
 |       |   |-- keyboard/page.ts
 |       |   `-- ...
 |       `-- tasks/
-|           |-- layout.js
+|           |-- layout.ts
 |           |-- stream.js
 |           |-- stream/machine.js
-|           |-- new/page.js
-|           |-- recovery/page.js
+|           |-- new/page.ts
+|           |-- recovery/page.ts
 |           |-- components/
 |           |   |-- navigator.ts
 |           |   |-- active-task-list.ts
@@ -2051,8 +2051,8 @@ frontend/
 ```
 
 Parenthesized directories are pathless ownership nodes. A directory with its
-own `page.js`, such as Global New or Git Compare, remains a leaf surface.
-Routed `page.js` and `layout.js` files register the page or layout owner they
+own `page.ts`, such as Global New or Git Compare, remains a leaf surface.
+Routed `page.ts` and `layout.ts` files register the page or layout owner they
 represent; child Web Components use the nearest `components/` namespace. Names
 describe the current owner and role: Task-only Conversation and Command stay
 below `(task)`; shared review and repository domains are siblings below
@@ -2125,8 +2125,7 @@ remove it, its text, and its place: the first row's position in list and tree
 panels, the center of other content areas, and the existing slot inside a row
 or a value. Its text size follows that Interface container. An owner keeps the
 same element while the wait lasts, because a new element starts the delay and
-the animation again; owners that patch their DOM use `showLoadingText`, which
-keeps a phrase that already says the same thing.
+the animation again.
 
 `--font-ui` and `--font-code` are the two typeface roles. `--font-ui` covers
 interface chrome and conversation prose, including the Composer textarea;

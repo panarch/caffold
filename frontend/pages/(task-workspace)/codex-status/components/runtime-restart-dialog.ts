@@ -12,7 +12,7 @@ import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-naviga
 export const CODEX_RUNTIME_RESTART_CONFIRMED_EVENT =
   "caffold:codex-runtime-restart-confirmed";
 
-class CaffoldCodexRuntimeRestartDialog extends LitElement {
+export class CaffoldCodexRuntimeRestartDialog extends LitElement {
   createRenderRoot() {
     return this;
   }
@@ -67,7 +67,7 @@ class CaffoldCodexRuntimeRestartDialog extends LitElement {
       ?.querySelector<CaffoldKeyboardNavigationPresentation>(
         ":scope > caffold-keyboard-navigation-presentation",
       )
-      ?.actionHintDialog?.();
+      ?.actionHintDialog();
     if (!dialog || !hintDialog) {
       return [];
     }

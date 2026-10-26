@@ -6,7 +6,7 @@ import {
 } from "../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./build-mismatch-alert.js");
+await import("./build-mismatch-alert.ts");
 const buildMismatchAlert = registry.element(
   "caffold-build-mismatch-alert",
 ).prototype;
@@ -25,7 +25,8 @@ test("provides only its current visible Reload button", () => {
   const owner = {
     hidden: false,
     isConnected: true,
-    status: { serverLabel: "next" },
+    serverLabel: "next",
+    performUpdate() {},
     querySelector: () => current,
   };
 

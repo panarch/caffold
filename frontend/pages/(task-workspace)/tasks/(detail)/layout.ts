@@ -370,12 +370,6 @@ export class CaffoldDetailLayout extends LitElement {
       : this.hasSelectedTaskDetail();
   }
 
-  selectedTaskContextPath() {
-    return this.subjectKind === "task"
-      ? (this.taskDetail()?.selectedTaskContextPath() ?? "")
-      : (this.sectionDetail()?.selectedContextPath() ?? "");
-  }
-
   newTaskContextPath() {
     return this.subjectKind === "task"
       ? (this.taskDetail()?.newTaskContextPath() ?? "")
@@ -739,6 +733,12 @@ export class CaffoldDetailLayout extends LitElement {
     this.hidden = false;
     this.draw();
     this.syncActivePresentation();
+  }
+
+  private selectedTaskContextPath() {
+    return this.subjectKind === "task"
+      ? (this.taskDetail()?.selectedTaskContextPath() ?? "")
+      : (this.sectionDetail()?.selectedContextPath() ?? "");
   }
 
   private captureTaskSnapshot() {

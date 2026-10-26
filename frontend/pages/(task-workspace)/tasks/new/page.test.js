@@ -6,7 +6,7 @@ import {
 } from "../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./page.js");
+await import("./page.ts");
 const taskNew = registry.element("caffold-task-new").prototype;
 after(() => registry.restore());
 
@@ -14,7 +14,7 @@ test("offers Task Create's popovers while shown", () => {
   const createContext = { id: "task-create-popover" };
   const owner = {
     hidden: false,
-    ensureRendered() {},
+    performUpdate() {},
     taskCreate: () => ({
       keyboardNavigationContexts(options) {
         assert.equal(options.scopeId, "new");
@@ -40,7 +40,7 @@ test("combines Task Create's actions and folder list with its own workspace", ()
     },
   };
   const owner = {
-    ensureRendered() {},
+    performUpdate() {},
     querySelector: () => scrollRoot,
     taskCreate: () => taskCreate,
   };
@@ -76,7 +76,7 @@ test("provides the retained New Task workspace and Task Create's folder list", (
   const owner = {
     hidden: false,
     isConnected: true,
-    ensureRendered() {},
+    performUpdate() {},
     selectedContextPath: () => "/repo",
     getClientRects: () => [{}],
     querySelector: () => scrollport,
@@ -97,4 +97,27 @@ test("provides the retained New Task workspace and Task Create's folder list", (
   assert.equal(scope.surfaces[0].isEligible(), true);
   owner.selectedContextPath = () => "/other";
   assert.equal(scope.surfaces[0].isEligible(), false);
+});
+
+test("a chosen directory becomes the route; a start request goes on", () => {
+  const routes = [];
+  let synced = 0;
+  let stopped = 0;
+  const owner = {
+    cwd: ".",
+    syncTaskCreate: () => { synced += 1; },
+    dispatchEvent: (event) => routes.push(event.detail.route),
+  };
+  const intent = (detail) => ({
+    detail,
+    stopPropagation: () => { stopped += 1; },
+  });
+
+  taskNew.chooseCwd.call(owner, intent({ type: "start" }));
+  assert.deepEqual([routes, synced, stopped], [[], 0, 0]);
+
+  taskNew.chooseCwd.call(owner, intent({ type: "choose-cwd", path: "repo/app/" }));
+  assert.equal(owner.cwd, "repo/app");
+  assert.deepEqual(routes, [{ kind: "tasks", new: true, cwd: "repo/app" }]);
+  assert.deepEqual([synced, stopped], [1, 1]);
 });

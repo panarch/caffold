@@ -133,7 +133,7 @@ export class CaffoldSettingsKeyboardPage extends LitElement {
           actionId: ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE,
           label: "Turn keyboard navigation off",
           control,
-          anchor: control.closest?.("label") ?? control,
+          anchor: control.closest("label") ?? control,
           clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
           isActionable: () =>
             this.isConnected &&

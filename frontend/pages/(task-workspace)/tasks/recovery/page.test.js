@@ -4,9 +4,10 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./page.js");
+await import("./page.ts");
 const Recovery = registry.element("caffold-task-recovery");
 const recovery = Recovery.prototype;
 after(() => registry.restore());
@@ -45,7 +46,7 @@ test("provides the current recovery actions and exact recovery body", () => {
     hidden: false,
     isConnected: true,
     recovery: { threadId: "thread-a" },
-    ensureState() {},
+    performUpdate() {},
     absenceNotice: () => null,
     getClientRects: () => [{}],
     querySelector(selector) {
@@ -76,6 +77,65 @@ test("provides the current recovery actions and exact recovery body", () => {
   assert.equal(scrollScope.surfaces[0].isEligible(), true);
   controls = [];
   assert.equal(scope.targets[0].isActionable(), false);
+});
+
+test("draws only the actions the server offers, all held while one runs", () => {
+  const { view } = recoveryView(recoveryTask());
+  const idle = drawn(view);
+  assert.match(idle, /<h2 id="task-recovery-task-title">Recovery Task<\/h2>/);
+  assert.match(idle, /<h3>Thread unavailable<\/h3>/);
+  assert.match(
+    idle,
+    /<p>Caffold still has this Task.<\/p><p>Its Codex Thread could not be found.<\/p>/,
+  );
+  assert.doesNotMatch(idle, /data-task-recovery-action="restore"/);
+  assert.doesNotMatch(idle, /data-task-recovery-action="archive"/);
+  assert.match(idle, /data-task-recovery-action="remove" \?disabled="false"/);
+  assert.match(idle, /data-task-recovery-action="recheck" \?disabled="false"/);
+  assert.match(idle, /<code>thread-recovery<\/code>/);
+
+  view.pendingAction = "recheck";
+  const busy = drawn(view);
+  assert.match(busy, /data-task-recovery-action="remove" \?disabled="true"/);
+  assert.match(busy, /role="status">Checking Task state…<\/p>/);
+});
+
+test("asks before removing, and says why an action failed", () => {
+  const { view } = recoveryView(recoveryTask());
+  view.confirmingRemoval = true;
+  view.actionError = new Error("Removal failed");
+  const confirming = drawn(view);
+
+  assert.match(confirming, /<strong>Remove this Task from Caffold\?<\/strong>/);
+  assert.match(
+    confirming,
+    /<p>The Codex Thread could not be found. Caffold will remove its membership and managed Task resources. This cannot be undone.<\/p>/,
+  );
+  assert.match(confirming, /data-task-recovery-action="cancel-remove"/);
+  assert.match(confirming, /data-task-recovery-action="confirm-remove"/);
+  assert.doesNotMatch(confirming, /data-task-recovery-action="remove"/);
+  assert.match(confirming, /role="alert">Removal failed<\/p>/);
+});
+
+test("an absent Task's notice takes the screen, and its Restore is answered here", () => {
+  const { view } = recoveryView(recoveryTask());
+  view.absence = "archived";
+  assert.match(
+    drawn(view),
+    /^<caffold-task-absence @caffold:task-absence-intent=""><\/caffold-task-absence>$/,
+  );
+
+  let restores = 0;
+  let stopped = 0;
+  const owner = { restoreArchived: () => { restores += 1; } };
+  const intent = (type) => ({
+    detail: { type },
+    stopPropagation: () => { stopped += 1; },
+  });
+  recovery.absenceIntent.call(owner, intent("restore"));
+  recovery.absenceIntent.call(owner, intent("other"));
+  assert.equal(restores, 1);
+  assert.equal(stopped, 2);
 });
 
 test("stores an equivalent fresh projection without clearing confirmation or error", () => {
@@ -162,15 +222,28 @@ function recoveryTask() {
 }
 
 function recoveryView(current) {
-  const view = new Recovery();
-  Object.assign(view, {
-    stateReady: true,
-    recovery: current,
-    pendingAction: "",
-    actionError: null,
-    confirmingRemoval: false,
-  });
   const renders = [];
-  view.render = () => renders.push(view.recovery);
+  const view = Object.create(
+    Recovery.prototype,
+    Object.getOwnPropertyDescriptors({
+      recovery: current,
+      absence: null,
+      pendingAction: "",
+      actionError: null,
+      confirmingRemoval: false,
+      draw() {
+        renders.push(this.recovery);
+      },
+    }),
+  );
   return { view, renders };
+}
+
+function drawn(view) {
+  return templateHtml(view.render())
+    .replace(/\s+/g, " ")
+    .replaceAll(" >", ">")
+    .replaceAll("> ", ">")
+    .replaceAll(" <", "<")
+    .trim();
 }

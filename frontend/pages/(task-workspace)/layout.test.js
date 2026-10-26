@@ -19,7 +19,7 @@ const buildInfoHook = registerHooks({
   },
 });
 const registry = installCustomElementUnitRegistry();
-await import("./layout.js");
+await import("./layout.ts");
 const workspace = registry.element("caffold-task-workspace").prototype;
 after(() => {
   registry.restore();
@@ -74,8 +74,7 @@ test("composes the navigation pane resizer through its public scope", () => {
     masterPane: null,
     backButton: null,
     navigation: null,
-    tasksPage: null,
-    querySelector: () => null,
+    tasksPage: { actionHintScope: () => null },
   };
 
   assert.deepEqual(workspace.actionHintScope.call(owner).targets, [
@@ -96,7 +95,6 @@ test("declares navigation as an occluder of content without occluding its own ac
   const owner = {
     hidden: false, mode: "tasks", masterPane: {}, navigation,
     tasksPage: { actionHintScope: () => ({ targets: [contentTarget] }) },
-    querySelector: () => null,
   };
   const targets = workspace.actionHintScope.call(owner).targets;
   assert.equal(targets[0], navigationTarget);
@@ -124,8 +122,7 @@ test("offers the visible compact Back and the Task switcher beside it", () => {
     masterDetail: {},
     masterPane: null,
     navigation: null,
-    tasksPage: null,
-    querySelector: () => null,
+    tasksPage: { actionHintScope: () => null },
   };
 
   const [back, switcher, ...others] =
@@ -159,32 +156,15 @@ test("shows the compact Back and the Task switcher on Task, Section, and New Tas
   });
   const backVisible = (url) => {
     const route = parseRoute(url);
-    const attributes = new Map();
     const owner = {
-      backButton: { hidden: true },
-      taskSwitcherButton: { hidden: true },
       route,
       mode: route.kind === "settings" ? "settings" : "tasks",
-      dataset: {},
+      showBack: false,
       navigation: { setMode() {} },
-      renderIcons() {},
       syncPresentationState() {},
-      toggleAttribute(name, force) {
-        attributes.set(name, force);
-      },
     };
     workspace.updateChrome.call(owner);
-    assert.equal(
-      attributes.get("data-workspace-route-control-visible"),
-      !owner.backButton.hidden,
-      url,
-    );
-    assert.equal(
-      owner.taskSwitcherButton.hidden,
-      owner.backButton.hidden,
-      url,
-    );
-    return !owner.backButton.hidden;
+    return owner.showBack;
   };
 
   for (const url of [
@@ -226,12 +206,20 @@ test("shows the compact Back and the Task switcher on Task, Section, and New Tas
 test("composes the keyboard contexts of the shown workspace mode", () => {
   const tasksContext = { id: "tasks" };
   const notesContext = { id: "notes" };
+  const dialog = { keyboardNavigationContexts: () => [] };
   const owner = {
     hidden: false,
     mode: "notes",
-    ensureRendered() {},
+    performUpdate() {},
     tasksPage: { keyboardNavigationContexts: () => [tasksContext] },
     notesWorkspace: { keyboardNavigationContexts: () => [notesContext] },
+    codexRuntimeRestartDialog: dialog,
+    codexRuntimeUpdateDialog: dialog,
+    codexResetCreditDialog: dialog,
+    claudeRuntimeRestartDialog: dialog,
+    updateTaskDialog: dialog,
+    archivedDeleteDialog: dialog,
+    taskSwitcherDialog: dialog,
   };
 
   assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), [notesContext]);
@@ -253,7 +241,7 @@ test("hands the Task switcher the navigator's own active Task snapshot", () => {
   const owner = {
     hidden: false,
     mode: "tasks",
-    ensureRendered() {},
+    performUpdate() {},
     taskNavigator: { activeTaskSnapshot: () => snapshot },
     taskSwitcherDialog: {
       open(given) {
@@ -283,7 +271,7 @@ test("offers the terminal toggle only where Tasks is shown", () => {
   const owner = {
     hidden: false,
     mode: "tasks",
-    ensureRendered() {},
+    performUpdate() {},
     tasksPage: {
       toggleTerminal() {
         toggles += 1;
@@ -318,7 +306,7 @@ test("the side pane key combination acts only where the corner button would", ()
   };
   const owner = {
     hidden: false,
-    ensureRendered() {},
+    performUpdate() {},
     currentSidePane: () => pane,
     sidePaneToggleShown: () => shown,
     syncSidePaneToggle() {},

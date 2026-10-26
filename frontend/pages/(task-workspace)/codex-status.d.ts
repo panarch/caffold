@@ -108,3 +108,43 @@ export function formatUsedPercent(
 export function resetCreditExpiry(
   expiresAt: unknown,
 ): { datetime: string; label: string } | null;
+
+// What a runtime restart or update request is doing, and what a reset credit
+// request is doing.
+export interface CodexRuntimeRequestState {
+  state: string;
+  message: string;
+}
+
+export interface CodexResetCreditRequestState {
+  state: string;
+  message: string;
+  retryPending: boolean;
+  creditId?: string | null;
+}
+
+// The workspace's one Codex status: it loads and refreshes it, and runs the
+// runtime restart and update and the reset credit the person confirms.
+export interface CodexStatusLifecycle {
+  connect(): void;
+  disconnect(): void;
+  suspend(): void;
+  resume(): void;
+  refresh(): Promise<unknown>;
+  snapshot(): CodexStatusSnapshot;
+  statusSnapshot(): CodexStatus | null;
+  canRestartRuntime(): boolean;
+  canUpdateRuntime(): boolean;
+  canConsumeResetCredit(creditId?: string | null): boolean;
+  requestRuntimeRestart(): Promise<unknown>;
+  requestRuntimeUpdate(): Promise<unknown>;
+  requestResetCredit(creditId?: string | null): Promise<unknown>;
+}
+
+export function createCodexStatusLifecycle(options: {
+  onSnapshotChange(snapshot: CodexStatusSnapshot): void;
+  onRestartStateChange(state: CodexRuntimeRequestState): void;
+  onUpdateStateChange(state: CodexRuntimeRequestState): void;
+  onResetCreditStateChange(state: CodexResetCreditRequestState): void;
+  onRuntimeActionChange(action: string): void;
+}): CodexStatusLifecycle;

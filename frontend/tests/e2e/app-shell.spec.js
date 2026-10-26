@@ -40,12 +40,12 @@ test("serves one Task workspace shell and only active static assets", { tag: "@a
     `const CACHE_NAME = ${JSON.stringify(`caffold-shell-${health.buildId}`)};`,
   );
   for (const asset of [
-    "/assets/pages/layout.js",
+    "/assets/pages/layout.ts",
     "/assets/pages/pwa-update-lifecycle.js",
     "/assets/pages/pwa-update-lifecycle/machine.js",
     "/assets/pages/pwa-update-lifecycle/runtime.js",
     "/assets/pages/components/build-mismatch-alert.css",
-    "/assets/pages/components/build-mismatch-alert.js",
+    "/assets/pages/components/build-mismatch-alert.ts",
     "/assets/pages/components/update-dialog.css",
     "/assets/pages/components/update-dialog.ts",
     "/assets/action-hints.js",
@@ -54,7 +54,7 @@ test("serves one Task workspace shell and only active static assets", { tag: "@a
     "/assets/keyboard-navigation/context.js",
     "/assets/keyboard-navigation/components/presentation.js",
     "/assets/keyboard-navigation/components/selector.js",
-    "/assets/pages/(task-workspace)/layout.js",
+    "/assets/pages/(task-workspace)/layout.ts",
     "/assets/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.ts",
     "/assets/pages/(task-workspace)/tasks/(detail)/(git)/layout.ts",
     "/assets/pages/(task-workspace)/tasks/(detail)/(github)/layout.ts",

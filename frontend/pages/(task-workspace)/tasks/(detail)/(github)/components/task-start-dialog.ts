@@ -332,9 +332,9 @@ export class CaffoldGithubTaskStartDialog extends LitElement {
       dialog?.querySelector<CaffoldKeyboardNavigationPresentation>(
         ":scope > caffold-keyboard-navigation-presentation",
       );
-    const hintDialog = presentation?.actionHintDialog?.();
-    const hud = presentation?.scrollModeHud?.();
-    const selector = presentation?.scrollSurfaceSelector?.();
+    const hintDialog = presentation?.actionHintDialog();
+    const hud = presentation?.scrollModeHud();
+    const selector = presentation?.scrollSurfaceSelector();
     const sourceNumber = `${this.sourceComponent?.source()?.number ?? ""}`;
     const sourceKind = `${this.sourceKind ?? ""}`;
     if (
@@ -420,7 +420,6 @@ export class CaffoldGithubTaskStartDialog extends LitElement {
         submission: {
           submissionId: `github:${Date.now()}:${requestId}`,
           prompt,
-          images: [],
           attachments: [],
           options,
         },
