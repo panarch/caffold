@@ -5,16 +5,16 @@ import {
   reorderHandleActionHintTarget,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { ActiveTaskRecovery } from "#app/api.js";
+import type { ActiveTaskRecovery } from "#app/api.ts";
 import {
   type TaskOperationsPresentation,
   taskStoreOperationsPresentation,
-} from "#app/pages/(task-workspace)/task-store-status.js";
+} from "#app/pages/(task-workspace)/task-store-status.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#tasks/components/task-status-chip.ts";
-import { taskStatusView, taskThreadStatusType } from "#tasks/runtime-state.js";
-import { formatRelativeAgePresentation } from "#tasks/task-format.js";
-import { type ListedTask, taskThreadId } from "#tasks/task-list-model.js";
+import { taskStatusView, taskThreadStatusType } from "#tasks/runtime-state.ts";
+import { formatRelativeAgePresentation } from "#tasks/task-format.ts";
+import { type ListedTask, taskThreadId } from "#tasks/task-list-model.ts";
 
 export const ACTIVE_TASK_ROW_INTENT_EVENT = "caffold:active-task-row-intent";
 

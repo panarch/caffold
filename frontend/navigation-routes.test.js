@@ -14,7 +14,7 @@ import {
   routeTab,
   routeTarget,
   routeUrl,
-} from "./navigation-routes.js";
+} from "./navigation-routes.ts";
 
 globalThis.window = {
   location: { origin: "http://caffold.test" },

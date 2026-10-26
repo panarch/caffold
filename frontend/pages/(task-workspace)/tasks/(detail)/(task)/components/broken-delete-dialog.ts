@@ -5,7 +5,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "#app/action-hints.js";
-import { deleteTask, getTask, type TaskResponseError } from "#app/api.js";
+import { deleteTask, getTask, type TaskResponseError } from "#app/api.ts";
 import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";

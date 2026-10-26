@@ -1,9 +1,9 @@
 import { html, LitElement, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { mergeActionHintScopes } from "#app/action-hints.js";
-import type { ActiveTaskSection } from "#app/api.js";
+import type { ActiveTaskSection } from "#app/api.ts";
 import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
-import type { TaskStoreStatusSnapshot } from "#app/pages/(task-workspace)/task-store-status.js";
+import type { TaskStoreStatusSnapshot } from "#app/pages/(task-workspace)/task-store-status.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -11,7 +11,7 @@ import {
 } from "#app/scroll-scope.js";
 import "../../components/task-create.ts";
 import type { CaffoldTaskCreate } from "../../components/task-create.ts";
-import { cleanLogicalPath } from "../../task-format.js";
+import { cleanLogicalPath } from "../../task-format.ts";
 import "./components/conversation-shortcuts.ts";
 import type { CaffoldSectionConversationShortcuts } from "./components/conversation-shortcuts.ts";
 import "./components/github-shortcuts.ts";

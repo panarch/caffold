@@ -16,9 +16,9 @@ import {
   type ScrollSurfaceScope,
 } from "#app/scroll-scope.js";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
-import { taskStatusKey, taskStatusView } from "../runtime-state.js";
-import { formatRelativeAgePresentation } from "../task-format.js";
-import { type ListedTask, taskThreadId } from "../task-list-model.js";
+import { taskStatusKey, taskStatusView } from "../runtime-state.ts";
+import { formatRelativeAgePresentation } from "../task-format.ts";
+import { type ListedTask, taskThreadId } from "../task-list-model.ts";
 import type { TaskWithSection } from "./active-task-list.ts";
 import "./task-status-chip.ts";
 

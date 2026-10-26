@@ -9,7 +9,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
 } from "#app/action-hints.js";
-import { getCurrentPlan } from "#app/api.js";
+import { getCurrentPlan } from "#app/api.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
@@ -18,8 +18,8 @@ import {
 } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
-import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.js";
-import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.js";
+import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.ts";
+import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "./current-plan/components/document-dialog.ts";
 import type { CaffoldCurrentPlanDocumentDialog } from "./current-plan/components/document-dialog.ts";

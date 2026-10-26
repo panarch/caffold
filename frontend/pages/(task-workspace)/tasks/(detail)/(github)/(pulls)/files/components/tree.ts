@@ -4,7 +4,7 @@ import {
   type ActionHintScopeOptions,
   emptyActionHintScope,
 } from "#app/action-hint-scope.js";
-import type { GitHubPullFile, GitHubPullFiles } from "#app/api.js";
+import type { GitHubPullFile, GitHubPullFiles } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfaceScope,

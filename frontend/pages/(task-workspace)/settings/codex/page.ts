@@ -11,7 +11,14 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import { type CodexUpdates, getCodexUpdates } from "#app/api.js";
+import {
+  type CodexRateWindow,
+  type CodexReadiness,
+  type CodexResetCredit,
+  type CodexStatus,
+  type CodexUpdates,
+  getCodexUpdates,
+} from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -24,10 +31,6 @@ import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
   CODEX_RUNTIME_UPDATE_REQUEST_EVENT,
   CODEX_STATUS_REFRESH_REQUEST_EVENT,
-  type CodexRateWindow,
-  type CodexReadiness,
-  type CodexResetCredit,
-  type CodexStatus,
   type CodexStatusSnapshot,
   codexRateWindows,
   codexResetCredits,
@@ -41,7 +44,7 @@ import {
   formatResetCredits,
   formatUsedPercent,
   resetCreditExpiry,
-} from "../../codex-status.js";
+} from "../../codex-status.ts";
 import "../components/detail-list.ts";
 import type { SettingsDetailRow } from "../components/detail-list.ts";
 import "../components/refresh-button.ts";

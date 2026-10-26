@@ -1,4 +1,4 @@
-import type { ClaudeStatus } from "#app/api.js";
+import type { ClaudeStatus } from "#app/api.ts";
 
 type UsageWindow = NonNullable<ClaudeStatus["usage"]>["windows"][number];
 

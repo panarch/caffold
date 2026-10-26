@@ -1187,7 +1187,7 @@ test("keeps selector and HUD visible at appearance and zoom extremes", { tag: "@
   ].entries()) {
     await page.evaluate(async ({ interfaceScalePercent, themeMode }) => {
       const { setAppearanceRangeSetting, setThemeMode } = await import(
-        "/assets/settings.js"
+        "/assets/settings.ts"
       );
       setAppearanceRangeSetting("interfaceScalePercent", interfaceScalePercent);
       setThemeMode(themeMode);

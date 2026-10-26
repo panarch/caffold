@@ -20,7 +20,7 @@ import {
   getSettings,
   type Settings,
   setFileSortMode,
-} from "#app/settings.js";
+} from "#app/settings.ts";
 
 const SORT_OPTIONS = Object.freeze([
   Object.freeze({

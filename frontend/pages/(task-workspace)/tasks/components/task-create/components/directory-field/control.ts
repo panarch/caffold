@@ -1,4 +1,4 @@
-import type { DirectoryEntry, DirectoryListing } from "#app/api.js";
+import type { DirectoryEntry, DirectoryListing } from "#app/api.ts";
 import {
   completeTypedDirectoryPath,
   directoryPathEditingText,

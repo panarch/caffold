@@ -17,10 +17,10 @@ test("native import aliases share module identity with asset URLs and register t
 
   const result = await page.evaluate(async () => {
     const modules = [
-      ["#app/api.js", "/assets/api.js"],
-      ["#app/component-styles.js", "/assets/component-styles.js"],
+      ["#app/api.ts", "/assets/api.ts"],
+      ["#app/component-styles.ts", "/assets/component-styles.ts"],
       ["#components/dom.ts", "/assets/components/dom.ts"],
-      ["#tasks/task-format.js", "/assets/pages/(task-workspace)/tasks/task-format.js"],
+      ["#tasks/task-format.ts", "/assets/pages/(task-workspace)/tasks/task-format.ts"],
     ];
     const identities = await Promise.all(modules.map(async ([alias, url]) => {
       const [aliased, direct] = await Promise.all([import(alias), import(url)]);
@@ -39,10 +39,10 @@ test("native import aliases share module identity with asset URLs and register t
   });
 
   expect(result.identities).toEqual([
-    { alias: "#app/api.js", sameModule: true },
-    { alias: "#app/component-styles.js", sameModule: true },
+    { alias: "#app/api.ts", sameModule: true },
+    { alias: "#app/component-styles.ts", sameModule: true },
     { alias: "#components/dom.ts", sameModule: true },
-    { alias: "#tasks/task-format.js", sameModule: true },
+    { alias: "#tasks/task-format.ts", sameModule: true },
   ]);
   expect(result.registrations.every(({ registered }) => registered)).toBe(true);
   expect(errors).toEqual([]);

@@ -6,7 +6,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
 } from "#app/action-hints.js";
-import { TASK_ABSENCE, type TaskAbsence } from "#app/api.js";
+import { TASK_ABSENCE, type TaskAbsence } from "#app/api.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 
 export const TASK_ABSENCE_INTENT_EVENT = "caffold:task-absence-intent";

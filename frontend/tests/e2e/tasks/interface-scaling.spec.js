@@ -68,7 +68,7 @@ test("scales visible Task controls without shrinking their touch targets", { tag
   const compact = await taskInterfaceMetrics(page);
 
   await page.evaluate(async () => {
-    const { setAppearanceRangeSetting } = await import("/assets/settings.js");
+    const { setAppearanceRangeSetting } = await import("/assets/settings.ts");
     setAppearanceRangeSetting("interfaceScalePercent", 120);
   });
   const detailsPopover = page.locator(".task-detail-popover");

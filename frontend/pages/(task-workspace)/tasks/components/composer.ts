@@ -5,10 +5,10 @@ import {
   hasActionHintLayoutBox,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import { getVoiceStatus, transcribeVoice, type VoiceStatus } from "#app/api.js";
-import { busySpin } from "#app/component-styles.js";
+import { getVoiceStatus, transcribeVoice, type VoiceStatus } from "#app/api.ts";
+import { busySpin } from "#app/component-styles.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
-import { cleanLogicalPath } from "../task-format.js";
+import { cleanLogicalPath } from "../task-format.ts";
 import { collectComposerActionHintTargets } from "./composer/action-hints.ts";
 import "./composer/components/attachments.ts";
 import type {

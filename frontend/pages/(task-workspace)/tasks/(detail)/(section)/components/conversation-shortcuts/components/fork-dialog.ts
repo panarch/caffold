@@ -13,7 +13,7 @@ import {
   type TaskForkSourcePreview,
   type TaskResponseError,
   type TaskThreadStatus,
-} from "#app/api.js";
+} from "#app/api.ts";
 import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
@@ -23,7 +23,7 @@ import {
   type ScrollSurfaceScope,
 } from "#app/scroll-scope.js";
 import "#components/loading-text.ts";
-import { formatDate } from "#tasks/task-format.js";
+import { formatDate } from "#tasks/task-format.ts";
 
 const CODEX_THREAD_URI_PREFIX = "codex://threads/";
 const DESCRIPTION =

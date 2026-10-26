@@ -8,10 +8,10 @@ import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import {
   type TaskOperationsPresentation,
   taskStoreOperationsPresentation,
-} from "#app/pages/(task-workspace)/task-store-status.js";
+} from "#app/pages/(task-workspace)/task-store-status.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
-import { sectionLabel } from "#tasks/task-format.js";
-import { type ListedTask, taskThreadId } from "#tasks/task-list-model.js";
+import { sectionLabel } from "#tasks/task-format.ts";
+import { type ListedTask, taskThreadId } from "#tasks/task-list-model.ts";
 import { moveListItemBefore } from "../move-list-item.ts";
 import {
   CaffoldActiveTaskRow,

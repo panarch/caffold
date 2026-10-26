@@ -63,16 +63,25 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "@lit/reactive-element/css-tag.js" => Some(js(include_str!(
             "../../frontend/node_modules/@lit/reactive-element/css-tag.js"
         ))),
-        "api.js" => Some(js(include_str!("../../frontend/api.js"))),
+        "api.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/api.ts"
+        )))),
         "action-hint-scope.js" => Some(js(include_str!("../../frontend/action-hint-scope.js"))),
-        "component-styles.js" => Some(js(include_str!("../../frontend/component-styles.js"))),
+        "component-styles.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/component-styles.ts"
+        )))),
         "component-styles/compact-icon-button.css" => Some(css(include_str!(
             "../../frontend/component-styles/compact-icon-button.css"
         ))),
         "component-styles/busy-spin.css" => Some(css(include_str!(
             "../../frontend/component-styles/busy-spin.css"
         ))),
-        "origin-reachability.js" => Some(js(include_str!("../../frontend/origin-reachability.js"))),
+        "origin-reachability.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/origin-reachability.ts"
+        )))),
         "file-status.ts" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/file-status.ts"
@@ -93,10 +102,22 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/chunked-fetch/transfer.ts"
         )))),
-        "fonts.js" => Some(js(include_str!("../../frontend/fonts.js"))),
-        "navigation-routes.js" => Some(js(include_str!("../../frontend/navigation-routes.js"))),
-        "settings.js" => Some(js(include_str!("../../frontend/settings.js"))),
-        "theme.js" => Some(js(include_str!("../../frontend/theme.js"))),
+        "fonts.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/fonts.ts"
+        )))),
+        "navigation-routes.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/navigation-routes.ts"
+        )))),
+        "settings.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/settings.ts"
+        )))),
+        "theme.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/theme.ts"
+        )))),
         "fonts/GeistSans-Variable.woff2" => Some(woff2(include_bytes!(
             "../../frontend/assets/fonts/GeistSans-Variable.woff2"
         ))),
@@ -273,33 +294,42 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/layout.ts"
         )))),
-        "pages/navigation-history.js" => Some(js(include_str!(
-            "../../frontend/pages/navigation-history.js"
-        ))),
-        "pages/foreground-recovery.js" => Some(js(include_str!(
-            "../../frontend/pages/foreground-recovery.js"
-        ))),
-        "pages/foreground-recovery/browser-signals.js" => Some(js(include_str!(
-            "../../frontend/pages/foreground-recovery/browser-signals.js"
-        ))),
-        "pages/foreground-recovery/lifecycle.js" => Some(js(include_str!(
-            "../../frontend/pages/foreground-recovery/lifecycle.js"
-        ))),
-        "pages/foreground-recovery/machine.js" => Some(js(include_str!(
-            "../../frontend/pages/foreground-recovery/machine.js"
-        ))),
-        "pages/foreground-recovery/diagnostics.js" => Some(js(include_str!(
-            "../../frontend/pages/foreground-recovery/diagnostics.js"
-        ))),
-        "pages/pwa-update-lifecycle.js" => Some(js(include_str!(
-            "../../frontend/pages/pwa-update-lifecycle.js"
-        ))),
-        "pages/pwa-update-lifecycle/machine.js" => Some(js(include_str!(
-            "../../frontend/pages/pwa-update-lifecycle/machine.js"
-        ))),
-        "pages/pwa-update-lifecycle/runtime.js" => Some(js(include_str!(
-            "../../frontend/pages/pwa-update-lifecycle/runtime.js"
-        ))),
+        "pages/navigation-history.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/navigation-history.ts"
+        )))),
+        "pages/foreground-recovery.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/foreground-recovery.ts"
+        )))),
+        "pages/foreground-recovery/browser-signals.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/foreground-recovery/browser-signals.ts"
+        )))),
+        "pages/foreground-recovery/lifecycle.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/foreground-recovery/lifecycle.ts"
+        )))),
+        "pages/foreground-recovery/machine.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/foreground-recovery/machine.ts"
+        )))),
+        "pages/foreground-recovery/diagnostics.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/foreground-recovery/diagnostics.ts"
+        )))),
+        "pages/pwa-update-lifecycle.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/pwa-update-lifecycle.ts"
+        )))),
+        "pages/pwa-update-lifecycle/machine.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/pwa-update-lifecycle/machine.ts"
+        )))),
+        "pages/pwa-update-lifecycle/runtime.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/pwa-update-lifecycle/runtime.ts"
+        )))),
         "pages/components/build-mismatch-alert.css" => Some(css(include_str!(
             "../../frontend/pages/components/build-mismatch-alert.css"
         ))),
@@ -353,7 +383,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/components/review-responsive.ts"
         )))),
-        "watch.js" => Some(js(include_str!("../../frontend/watch.js"))),
+        "watch.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/watch.ts"
+        )))),
         "pages/(task-workspace)/settings/appearance/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/appearance/page.css"
         ))),
@@ -639,12 +672,14 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "action-hints/components/dialog.js" => Some(js(include_str!(
             "../../frontend/action-hints/components/dialog.js"
         ))),
-        "pages/(task-workspace)/live-updates.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/live-updates.js"
-        ))),
-        "pages/(task-workspace)/live-updates/lifecycle.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/live-updates/lifecycle.js"
-        ))),
+        "pages/(task-workspace)/live-updates.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/live-updates.ts"
+        )))),
+        "pages/(task-workspace)/live-updates/lifecycle.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/live-updates/lifecycle.ts"
+        )))),
         "pages/(task-workspace)/components/navigation.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/components/navigation.css"
         ))),
@@ -668,28 +703,35 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/components/workspace-brand.ts"
         )))),
-        "pages/(task-workspace)/codex-status.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/codex-status.js"
-        ))),
-        "pages/(task-workspace)/codex-status/model.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/codex-status/model.js"
-        ))),
-        "pages/(task-workspace)/codex-status/lifecycle.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/codex-status/lifecycle.js"
-        ))),
-        "pages/(task-workspace)/task-store-status.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/task-store-status.js"
-        ))),
-        "pages/(task-workspace)/task-store-status/model.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/task-store-status/model.js"
-        ))),
-        "pages/(task-workspace)/task-store-status/lifecycle.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/task-store-status/lifecycle.js"
-        ))),
-        "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js"
-            )))
+        "pages/(task-workspace)/codex-status.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/codex-status.ts"
+        )))),
+        "pages/(task-workspace)/codex-status/model.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/codex-status/model.ts"
+        )))),
+        "pages/(task-workspace)/codex-status/lifecycle.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/codex-status/lifecycle.ts"
+        )))),
+        "pages/(task-workspace)/task-store-status.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/task-store-status.ts"
+        )))),
+        "pages/(task-workspace)/task-store-status/model.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/task-store-status/model.ts"
+        )))),
+        "pages/(task-workspace)/task-store-status/lifecycle.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/task-store-status/lifecycle.ts"
+        )))),
+        "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/codex-status/runtime-restart-lifecycle.ts"
+            ))))
         }
         "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css" => {
             Some(css(include_str!(
@@ -713,10 +755,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts"
             ))))
         }
-        "pages/(task-workspace)/codex-status/runtime-update-lifecycle.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/codex-status/runtime-update-lifecycle.js"
-            )))
+        "pages/(task-workspace)/codex-status/runtime-update-lifecycle.ts" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/codex-status/runtime-update-lifecycle.ts"
+            ))))
         }
         "pages/(task-workspace)/codex-status/components/runtime-update-dialog.css" => {
             Some(css(include_str!(
@@ -799,24 +842,30 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.ts"
             ))))
         }
-        "pages/(task-workspace)/tasks/runtime-state.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/runtime-state.js"
-        ))),
-        "pages/(task-workspace)/tasks/stream.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/stream.js"
-        ))),
-        "pages/(task-workspace)/tasks/stream/machine.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/stream/machine.js"
-        ))),
-        "pages/(task-workspace)/tasks/task-events.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/task-events.js"
-        ))),
-        "pages/(task-workspace)/tasks/task-format.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/task-format.js"
-        ))),
-        "pages/(task-workspace)/tasks/task-list-model.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/tasks/task-list-model.js"
-        ))),
+        "pages/(task-workspace)/tasks/runtime-state.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/tasks/runtime-state.ts"
+        )))),
+        "pages/(task-workspace)/tasks/stream.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/tasks/stream.ts"
+        )))),
+        "pages/(task-workspace)/tasks/stream/machine.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/tasks/stream/machine.ts"
+        )))),
+        "pages/(task-workspace)/tasks/task-events.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/tasks/task-events.ts"
+        )))),
+        "pages/(task-workspace)/tasks/task-format.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/tasks/task-format.ts"
+        )))),
+        "pages/(task-workspace)/tasks/task-list-model.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/tasks/task-list-model.ts"
+        )))),
         "pages/(task-workspace)/tasks/components/composer.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/composer.css"
         ))),
@@ -1951,7 +2000,7 @@ mod tests {
     #[test]
     fn serves_component_style_registration_assets() {
         for (path, content_type) in [
-            ("component-styles.js", "text/javascript; charset=utf-8"),
+            ("component-styles.ts", "text/javascript; charset=utf-8"),
             (
                 "component-styles/compact-icon-button.css",
                 "text/css; charset=utf-8",
@@ -2060,19 +2109,29 @@ mod tests {
         }
 
         let codex_status_model =
-            get("pages/(task-workspace)/codex-status/model.js").expect("Codex status model asset");
+            get("pages/(task-workspace)/codex-status/model.ts").expect("Codex status model asset");
         assert_eq!(
             codex_status_model.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(codex_status_model.body.starts_with(b"export "));
-        let codex_status_lifecycle = get("pages/(task-workspace)/codex-status/lifecycle.js")
+        assert!(
+            codex_status_model
+                .body
+                .trim_ascii_start()
+                .starts_with(b"export ")
+        );
+        let codex_status_lifecycle = get("pages/(task-workspace)/codex-status/lifecycle.ts")
             .expect("Codex status lifecycle asset");
         assert_eq!(
             codex_status_lifecycle.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(codex_status_lifecycle.body.starts_with(b"import "));
+        assert!(
+            codex_status_lifecycle
+                .body
+                .trim_ascii_start()
+                .starts_with(b"import ")
+        );
 
         let review_responsive_js =
             get("components/review-responsive.ts").expect("review responsive js asset");
@@ -2144,7 +2203,7 @@ mod tests {
         assert!(build_mismatch_alert.body.starts_with(b"import "));
 
         let pwa_update_lifecycle =
-            get("pages/pwa-update-lifecycle.js").expect("PWA update lifecycle js asset");
+            get("pages/pwa-update-lifecycle.ts").expect("PWA update lifecycle js asset");
         assert_eq!(
             pwa_update_lifecycle.content_type,
             "text/javascript; charset=utf-8"
@@ -2152,8 +2211,8 @@ mod tests {
         assert!(pwa_update_lifecycle.body.starts_with(b"import "));
 
         for path in [
-            "pages/pwa-update-lifecycle/machine.js",
-            "pages/pwa-update-lifecycle/runtime.js",
+            "pages/pwa-update-lifecycle/machine.ts",
+            "pages/pwa-update-lifecycle/runtime.ts",
         ] {
             let asset = get(path).expect("PWA update private module asset");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
@@ -2182,20 +2241,25 @@ mod tests {
         assert!(get("pages/components/about-dialog.js").is_none());
         assert!(get("pages/components/about-dialog.css").is_none());
 
-        let settings_module = get("settings.js").expect("settings module asset");
+        let settings_module = get("settings.ts").expect("settings module asset");
         assert_eq!(
             settings_module.content_type,
             "text/javascript; charset=utf-8"
         );
         assert!(settings_module.body.starts_with(b"import "));
 
-        let theme_module = get("theme.js").expect("theme module asset");
+        let theme_module = get("theme.ts").expect("theme module asset");
         assert_eq!(theme_module.content_type, "text/javascript; charset=utf-8");
         assert!(theme_module.body.starts_with(b"const "));
 
-        let fonts_module = get("fonts.js").expect("fonts module asset");
+        let fonts_module = get("fonts.ts").expect("fonts module asset");
         assert_eq!(fonts_module.content_type, "text/javascript; charset=utf-8");
-        assert!(fonts_module.body.starts_with(b"export const"));
+        assert!(
+            fonts_module
+                .body
+                .trim_ascii_start()
+                .starts_with(b"export const")
+        );
 
         for family in ["GeistSans", "Inter", "Pretendard"] {
             let path = format!("fonts/{family}-Variable.woff2");
@@ -2492,11 +2556,11 @@ mod tests {
         );
         for (path, marker) in [
             (
-                "pages/(task-workspace)/live-updates.js",
+                "pages/(task-workspace)/live-updates.ts",
                 b"WorkspaceLiveUpdates".as_slice(),
             ),
             (
-                "pages/(task-workspace)/live-updates/lifecycle.js",
+                "pages/(task-workspace)/live-updates/lifecycle.ts",
                 b"LIVE_CONNECTION_NODE".as_slice(),
             ),
         ] {
@@ -2574,16 +2638,21 @@ mod tests {
                 .any(|window| window == b"caffold-tasks-page")
         );
         let tasks_runtime_state =
-            get("pages/(task-workspace)/tasks/runtime-state.js").expect("tasks runtime state js");
+            get("pages/(task-workspace)/tasks/runtime-state.ts").expect("tasks runtime state js");
         assert_eq!(
             tasks_runtime_state.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(tasks_runtime_state.body.starts_with(b"export "));
+        assert!(
+            tasks_runtime_state
+                .body
+                .trim_ascii_start()
+                .starts_with(b"export ")
+        );
         for path in [
-            "pages/(task-workspace)/tasks/task-events.js",
-            "pages/(task-workspace)/tasks/task-format.js",
-            "pages/(task-workspace)/tasks/task-list-model.js",
+            "pages/(task-workspace)/tasks/task-events.ts",
+            "pages/(task-workspace)/tasks/task-format.ts",
+            "pages/(task-workspace)/tasks/task-list-model.ts",
             "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/entries.ts",
         ] {
             let asset = get(path).expect("tasks state module");
@@ -2744,11 +2813,11 @@ mod tests {
         );
         for (path, marker) in [
             (
-                "pages/(task-workspace)/tasks/stream.js",
+                "pages/(task-workspace)/tasks/stream.ts",
                 b"TaskStreamLifecycle".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/stream/machine.js",
+                "pages/(task-workspace)/tasks/stream/machine.ts",
                 b"TASK_STREAM_NODE".as_slice(),
             ),
         ] {
@@ -2967,10 +3036,10 @@ mod tests {
             );
         }
         for path in [
-            "/assets/pages/(task-workspace)/live-updates.js",
-            "/assets/pages/(task-workspace)/live-updates/lifecycle.js",
-            "/assets/pages/(task-workspace)/tasks/stream.js",
-            "/assets/pages/(task-workspace)/tasks/stream/machine.js",
+            "/assets/pages/(task-workspace)/live-updates.ts",
+            "/assets/pages/(task-workspace)/live-updates/lifecycle.ts",
+            "/assets/pages/(task-workspace)/tasks/stream.ts",
+            "/assets/pages/(task-workspace)/tasks/stream/machine.ts",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.css",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.ts",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list/move-list-item.ts",
@@ -2986,16 +3055,16 @@ mod tests {
             "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.ts",
             "/assets/pages/(task-workspace)/tasks/components/task-absence.css",
             "/assets/pages/(task-workspace)/tasks/components/task-absence.ts",
-            "/assets/pages/(task-workspace)/task-store-status.js",
-            "/assets/pages/(task-workspace)/task-store-status/model.js",
-            "/assets/pages/(task-workspace)/task-store-status/lifecycle.js",
+            "/assets/pages/(task-workspace)/task-store-status.ts",
+            "/assets/pages/(task-workspace)/task-store-status/model.ts",
+            "/assets/pages/(task-workspace)/task-store-status/lifecycle.ts",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.css",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.ts",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/attachments.css",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/attachments.ts",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.css",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.ts",
-            "/assets/pages/(task-workspace)/codex-status/lifecycle.js",
+            "/assets/pages/(task-workspace)/codex-status/lifecycle.ts",
             "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
             "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts",
         ] {
@@ -3446,7 +3515,7 @@ mod tests {
         assert!(file_tree_css.body.starts_with(b"caffold-file-tree"));
         assert!(get("pages/files/components/list.js").is_none());
         assert!(get("pages/files/components/list.css").is_none());
-        let watch_module = get("watch.js").expect("watch js asset");
+        let watch_module = get("watch.ts").expect("watch js asset");
         assert_eq!(watch_module.content_type, "text/javascript; charset=utf-8");
         assert!(
             watch_module

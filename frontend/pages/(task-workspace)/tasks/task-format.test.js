@@ -14,7 +14,7 @@ import {
   shortId,
   taskEventObservedMs,
   toolCallPresentation,
-} from "./task-format.js";
+} from "./task-format.ts";
 
 test("Task event time distinguishes direct evidence from a history placement anchor", () => {
   assert.equal(taskEventObservedMs({ observedMs: 120 }), 120);

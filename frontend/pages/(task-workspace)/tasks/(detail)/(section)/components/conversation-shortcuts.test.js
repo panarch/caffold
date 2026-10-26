@@ -7,7 +7,7 @@ import {
 import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 import {
   createCodexStatusSnapshot,
-} from "#app/pages/(task-workspace)/codex-status.js";
+} from "#app/pages/(task-workspace)/codex-status.ts";
 
 const registry = installCustomElementUnitRegistry();
 await import("./conversation-shortcuts.ts");

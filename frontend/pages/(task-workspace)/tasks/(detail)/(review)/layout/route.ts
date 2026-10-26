@@ -1,4 +1,4 @@
-import { taskThreadId } from "#tasks/task-list-model.js";
+import { taskThreadId } from "#tasks/task-list-model.ts";
 import {
   type ReviewViewer,
   representationForFile,

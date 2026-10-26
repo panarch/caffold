@@ -13,7 +13,7 @@ import {
   INITIAL_TASK_STORE_STATUS_SNAPSHOT,
   TASK_STORE_RETRY_REQUEST_EVENT,
   type TaskStoreStatusSnapshot,
-} from "#app/pages/(task-workspace)/task-store-status.js";
+} from "#app/pages/(task-workspace)/task-store-status.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

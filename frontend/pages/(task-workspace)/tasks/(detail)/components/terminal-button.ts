@@ -8,7 +8,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "#app/action-hints.js";
-import { compactIconButton } from "#app/component-styles.js";
+import { compactIconButton } from "#app/component-styles.ts";
 import { inlineIcon } from "#components/icons.ts";
 
 export const TERMINAL_BUTTON_INTENT_EVENT =

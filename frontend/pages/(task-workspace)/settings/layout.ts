@@ -11,9 +11,10 @@ import {
   hasScrollLayoutBox,
 } from "#app/scroll-scope.js";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
-import type { CodexStatusSnapshot } from "../codex-status.js";
+import type { CodexStatusSnapshot } from "../codex-status.ts";
 import "./about/page.ts";
-import type { CaffoldUpdateSnapshot, ServerHealth } from "./about/page.ts";
+import type { Health } from "#app/api.ts";
+import type { CaffoldUpdateSnapshot } from "./about/page.ts";
 import "./appearance/page.ts";
 import "./claude/page.ts";
 import type { CaffoldSettingsClaudePage } from "./claude/page.ts";
@@ -108,7 +109,7 @@ export class CaffoldSettingsWorkspace extends LitElement {
   declare private codexStatus: CodexStatusSnapshot | null;
   declare private codexRuntimeAction: string;
   declare private codexResetCredit: ResetCreditState | null;
-  declare private health: ServerHealth | null;
+  declare private health: Health | null;
   declare private caffoldUpdate: CaffoldUpdateSnapshot | null;
   declare private updateStatus: unknown;
   private readonly masterDetailMedia = window.matchMedia(
@@ -405,7 +406,7 @@ export class CaffoldSettingsWorkspace extends LitElement {
     this.claudePage?.setRestartState(state ?? null);
   }
 
-  setBuildStatus(health: ServerHealth | null | undefined) {
+  setBuildStatus(health: Health | null | undefined) {
     this.health = health ?? null;
     this.performUpdate();
   }

@@ -3,7 +3,7 @@ import {
   removeJevKey,
   saveJevCriteria,
   storeJevKey,
-} from "#app/api.js";
+} from "#app/api.ts";
 
 export interface JevSettings {
   model: string;

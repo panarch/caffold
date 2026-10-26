@@ -23,7 +23,7 @@ import {
   type FileSortMode,
   getSettings,
   normalizeFileSortMode,
-} from "../settings.js";
+} from "../settings.ts";
 import { entryIcon, warmIcons } from "./icons.ts";
 import "./loading-text.ts";
 

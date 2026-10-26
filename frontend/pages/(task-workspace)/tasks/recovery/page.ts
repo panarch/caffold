@@ -22,7 +22,7 @@ import {
   type TaskAbsence,
   taskAbsence,
   taskAlreadyActive,
-} from "#app/api.js";
+} from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -36,7 +36,7 @@ import type {
   CaffoldTaskAbsence,
   TaskAbsenceIntent,
 } from "../components/task-absence.ts";
-import { taskThreadId } from "../task-list-model.js";
+import { taskThreadId } from "../task-list-model.ts";
 
 const REMOVAL_WARNING =
   "The Codex Thread could not be found. Caffold will remove its membership and managed Task resources. This cannot be undone.";

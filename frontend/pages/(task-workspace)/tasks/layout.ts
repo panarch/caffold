@@ -11,20 +11,20 @@ import {
   type CreatedTask,
   createTask,
   type Task,
-} from "#app/api.js";
+} from "#app/api.ts";
 import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
-import { routeDomain, routeTarget } from "#app/navigation-routes.js";
+import { routeDomain, routeTarget } from "#app/navigation-routes.ts";
 import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
   type ScrollSurfaceScope,
 } from "#app/scroll-scope.js";
-import type { WorkspaceLiveUpdates } from "../live-updates.js";
+import type { WorkspaceLiveUpdates } from "../live-updates.ts";
 import {
   INITIAL_TASK_STORE_STATUS_SNAPSHOT,
   type TaskStoreStatusSnapshot,
   taskStoreBlocksTaskOperations,
-} from "../task-store-status.js";
+} from "../task-store-status.ts";
 import "./(detail)/layout.ts";
 import type { CaffoldDetailLayout } from "./(detail)/layout.ts";
 import { TERMINAL_PAGE_FOCUS_RELEASE_EVENT } from "./(detail)/terminal/page.ts";
@@ -48,8 +48,8 @@ import type {
   CaffoldTaskRecovery,
   TaskRecoveryIntent,
 } from "./recovery/page.ts";
-import { TASK_TRANSPORT_STATE } from "./runtime-state.js";
-import { taskDetailThreadId } from "./task-list-model.js";
+import { TASK_TRANSPORT_STATE } from "./runtime-state.ts";
+import { taskDetailThreadId } from "./task-list-model.ts";
 
 const DETAIL_PANE = ":scope > .tasks-surface > .tasks-detail-pane";
 

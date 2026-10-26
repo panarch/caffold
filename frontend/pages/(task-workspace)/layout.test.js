@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test, { after } from "node:test";
 
-import { parseRoute } from "../../navigation-routes.js";
+import { parseRoute } from "../../navigation-routes.ts";
 import {
   installCustomElementUnitRegistry,
 } from "../../tests/support/custom-element-unit.js";

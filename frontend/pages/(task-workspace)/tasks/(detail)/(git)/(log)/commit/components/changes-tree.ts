@@ -4,7 +4,7 @@ import {
   type ActionHintScopeOptions,
   emptyActionHintScope,
 } from "#app/action-hint-scope.js";
-import type { GitCommit, GitCommitFile } from "#app/api.js";
+import type { GitCommit, GitCommitFile } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfaceScope,

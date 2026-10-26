@@ -12,8 +12,8 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { TaskFileLink } from "#app/api.js";
-import { parseLinkRoute, routeUrl } from "#app/navigation-routes.js";
+import type { TaskFileLink } from "#app/api.ts";
+import { parseLinkRoute, routeUrl } from "#app/navigation-routes.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

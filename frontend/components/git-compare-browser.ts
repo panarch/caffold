@@ -15,7 +15,7 @@ import {
   getGitCompare,
   getGitCompareDiff,
   getGitRefs,
-} from "../api.js";
+} from "../api.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

@@ -4,7 +4,7 @@ import {
   hasActionHintLayoutBox,
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
-import { getNote, getNotes } from "#app/api.js";
+import { getNote, getNotes } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   mergeScrollSurfaceScopes,

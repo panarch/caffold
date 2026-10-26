@@ -81,7 +81,7 @@ test("representative text, feedback, syntax, and diff roles meet contrast target
 test("theme-sensitive component assets follow app theme roles, not OS media", () => {
   for (const path of frontendSourcePaths()) {
     const source = readFrontend(path);
-    if (path === "index.html" || path === "theme.js") {
+    if (path === "index.html" || path === "theme.ts") {
       continue;
     }
     assert.doesNotMatch(

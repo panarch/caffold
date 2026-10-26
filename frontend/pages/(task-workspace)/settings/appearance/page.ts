@@ -36,7 +36,7 @@ import {
   THEME_MODES,
   type TypefacePreset,
   UI_TYPEFACE_PRESETS,
-} from "#app/settings.js";
+} from "#app/settings.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 
 type TypefaceSetting = "uiTypefacePreset" | "codeTypefacePreset";

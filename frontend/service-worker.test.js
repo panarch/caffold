@@ -148,28 +148,28 @@ test("installs the complete shell without replacing the current worker", async (
     harness.puts.every(({ cache }) => cache === "caffold-shell-test-build"),
   );
   assert.ok(installedAssets.includes("/assets/file-status.ts"));
-  assert.ok(installedAssets.includes("/assets/pages/foreground-recovery.js"));
+  assert.ok(installedAssets.includes("/assets/pages/foreground-recovery.ts"));
   assert.ok(
     installedAssets.includes(
-      "/assets/pages/foreground-recovery/browser-signals.js",
+      "/assets/pages/foreground-recovery/browser-signals.ts",
     ),
   );
   assert.ok(
     installedAssets.includes(
-      "/assets/pages/foreground-recovery/lifecycle.js",
+      "/assets/pages/foreground-recovery/lifecycle.ts",
     ),
   );
   assert.ok(
     installedAssets.includes(
-      "/assets/pages/foreground-recovery/machine.js",
+      "/assets/pages/foreground-recovery/machine.ts",
     ),
   );
-  assert.ok(installedAssets.includes("/assets/pages/pwa-update-lifecycle.js"));
+  assert.ok(installedAssets.includes("/assets/pages/pwa-update-lifecycle.ts"));
   assert.ok(
-    installedAssets.includes("/assets/pages/pwa-update-lifecycle/machine.js"),
+    installedAssets.includes("/assets/pages/pwa-update-lifecycle/machine.ts"),
   );
   assert.ok(
-    installedAssets.includes("/assets/pages/pwa-update-lifecycle/runtime.js"),
+    installedAssets.includes("/assets/pages/pwa-update-lifecycle/runtime.ts"),
   );
   assert.ok(installedAssets.includes("/assets/pages/components/update-dialog.ts"));
   assert.ok(

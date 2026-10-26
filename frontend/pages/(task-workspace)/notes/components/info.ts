@@ -8,8 +8,8 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { Note, NoteTask } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
+import type { Note, NoteTask } from "#app/api.ts";
+import { compactIconButton } from "#app/component-styles.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,

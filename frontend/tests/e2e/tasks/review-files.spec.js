@@ -125,7 +125,7 @@ test("browses source through the shared Files navigator and one root watch", { t
   );
   const listRequestsBeforeOrderChange = listRequests;
   await page.evaluate(async () => {
-    const { setFileSortMode } = await import("/assets/settings.js");
+    const { setFileSortMode } = await import("/assets/settings.ts");
     setFileSortMode("name");
   });
   expect((await rootFile.boundingBox()).y).toBeLessThan(

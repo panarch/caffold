@@ -7,8 +7,8 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { ActiveTask, ActiveTaskTopPlacement, Task } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
+import type { ActiveTask, ActiveTaskTopPlacement, Task } from "#app/api.ts";
+import { compactIconButton } from "#app/component-styles.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
@@ -23,13 +23,13 @@ import {
 } from "#app/scroll-scope.js";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "../../components/workspace-brand.ts";
-import type { WorkspaceLiveUpdates } from "../../live-updates.js";
+import type { WorkspaceLiveUpdates } from "../../live-updates.ts";
 import {
   type TaskStoreStatusSnapshot,
   taskStoreOperationsPresentation,
-} from "../../task-store-status.js";
-import type { TaskTransportState } from "../runtime-state.js";
-import { type ListedTask, taskThreadId } from "../task-list-model.js";
+} from "../../task-store-status.ts";
+import type { TaskTransportState } from "../runtime-state.ts";
+import { type ListedTask, taskThreadId } from "../task-list-model.ts";
 import "./active-task-list.ts";
 import type {
   ActiveTaskListState,

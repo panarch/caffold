@@ -5,7 +5,7 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
-import type { TaskEvent } from "#app/api.js";
+import type { TaskEvent } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfaceScope,
@@ -14,8 +14,8 @@ import {
 import {
   type AssistantMessagePhase,
   assistantMessagePhase,
-} from "#tasks/task-events.js";
-import { formatDate, taskEventObservedMs } from "#tasks/task-format.js";
+} from "#tasks/task-events.ts";
+import { formatDate, taskEventObservedMs } from "#tasks/task-format.ts";
 import "./assistant-message/components/copy-button.ts";
 import type { CaffoldTaskAssistantMessageCopyButton } from "./assistant-message/components/copy-button.ts";
 import "./assistant-message/components/suggested-prompts.ts";

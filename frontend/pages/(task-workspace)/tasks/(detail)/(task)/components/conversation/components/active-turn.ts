@@ -1,5 +1,5 @@
 import { html, LitElement, type PropertyValues } from "lit";
-import { busySpin } from "#app/component-styles.js";
+import { busySpin } from "#app/component-styles.ts";
 import { activeTurnDuration } from "../active-turn.ts";
 
 // The turn in progress: how long it has run and what it is doing. Its clock

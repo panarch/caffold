@@ -8,21 +8,21 @@ import {
   getTasks,
   reorderSection,
   reorderTask,
-} from "#app/api.js";
+} from "#app/api.ts";
 import "#components/loading-text.ts";
-import type { WorkspaceLiveUpdates } from "../../live-updates.js";
+import type { WorkspaceLiveUpdates } from "../../live-updates.ts";
 import {
   type TaskOperationsPresentation,
   taskStoreOperationsPresentation,
-} from "../../task-store-status.js";
+} from "../../task-store-status.ts";
 import {
   isTaskTransportStale,
   type TaskTransportState,
   taskThreadStatusType,
-} from "../runtime-state.js";
-import { TaskStreamLifecycle, type TaskStreamRecovery } from "../stream.js";
-import { sectionLabel } from "../task-format.js";
-import { type ListedTask, taskThreadId } from "../task-list-model.js";
+} from "../runtime-state.ts";
+import { TaskStreamLifecycle, type TaskStreamRecovery } from "../stream.ts";
+import { sectionLabel } from "../task-format.ts";
+import { type ListedTask, taskThreadId } from "../task-list-model.ts";
 import {
   CaffoldActiveTaskSection,
   type ListedSection,

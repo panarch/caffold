@@ -8,7 +8,7 @@ import {
   hasActionHintLayoutBox,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { TaskEventPayload } from "#app/api.js";
+import type { TaskEventPayload } from "#app/api.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 
 export interface SuggestedPromptIntentDetail {

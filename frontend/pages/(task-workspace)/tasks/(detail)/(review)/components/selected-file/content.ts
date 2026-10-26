@@ -3,7 +3,7 @@ import type {
   GitChangedFile,
   GitCompareFile,
   GitDiff,
-} from "#app/api.js";
+} from "#app/api.ts";
 import { type DocumentPreviewKind, fileNameFromPath } from "#components/dom.ts";
 import {
   fileRepresentationCapabilities,

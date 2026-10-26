@@ -1,5 +1,5 @@
 import { html, LitElement, nothing } from "lit";
-import { sectionLabel } from "#tasks/task-format.js";
+import { sectionLabel } from "#tasks/task-format.ts";
 
 /**
  * The heading of a Section's Detail: the last part of its directory, with the

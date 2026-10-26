@@ -4,7 +4,7 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../../../tests/support/custom-element-unit.js";
-import { formatDate } from "../../../../../task-format.js";
+import { formatDate } from "../../../../../task-format.ts";
 
 const registry = installCustomElementUnitRegistry();
 await import("./assistant-message.ts");

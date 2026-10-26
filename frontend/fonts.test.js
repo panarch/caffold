@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const moduleUrl = new URL("./fonts.js", import.meta.url);
+const moduleUrl = new URL("./fonts.ts", import.meta.url);
 
 async function importFreshFonts(label) {
   const url = new URL(moduleUrl);

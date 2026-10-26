@@ -9,8 +9,8 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "#app/action-hints.js";
-import type { Task, TaskWorktree } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
+import type { Task, TaskWorktree } from "#app/api.ts";
+import { compactIconButton } from "#app/component-styles.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
@@ -20,9 +20,9 @@ import "#app/keyboard-navigation/components/presentation.js";
 import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#tasks/components/task-status-chip.ts";
-import { formatTaskStatus, taskStatusView } from "#tasks/runtime-state.js";
-import { shortId } from "#tasks/task-format.js";
-import { taskThreadId } from "#tasks/task-list-model.js";
+import { formatTaskStatus, taskStatusView } from "#tasks/runtime-state.ts";
+import { shortId } from "#tasks/task-format.ts";
+import { taskThreadId } from "#tasks/task-list-model.ts";
 import "./info/components/actions.ts";
 import type {
   CaffoldTaskDetailInfoActions,

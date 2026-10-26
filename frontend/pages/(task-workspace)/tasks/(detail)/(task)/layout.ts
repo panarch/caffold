@@ -26,11 +26,11 @@ import {
   taskAlreadyActive,
   taskResponseError,
   uploadTaskFile,
-} from "#app/api.js";
+} from "#app/api.ts";
 import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
-import { routeDomain } from "#app/navigation-routes.js";
-import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.js";
-import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.js";
+import { routeDomain } from "#app/navigation-routes.ts";
+import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.ts";
+import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -58,19 +58,19 @@ import {
   type TaskTransportState,
   taskThreadStatusType,
   withPromptSubmissionState,
-} from "../../runtime-state.js";
+} from "../../runtime-state.ts";
 import {
   appendOptimisticEvent,
   eventIdentityKey,
   handoffOptimisticSubmission,
   optimisticUserMessageEvent,
-} from "../../task-events.js";
-import { cleanLogicalPath } from "../../task-format.js";
+} from "../../task-events.ts";
+import { cleanLogicalPath } from "../../task-format.ts";
 import {
   taskDetailThreadId,
   taskRepositoryPath,
   taskThreadId,
-} from "../../task-list-model.js";
+} from "../../task-list-model.ts";
 import "./components/broken-delete-dialog.ts";
 import type {
   BrokenTaskDeleteIntent,

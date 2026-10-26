@@ -4,7 +4,7 @@ import {
   type ActionHintScopeOptions,
   emptyActionHintScope,
 } from "../action-hint-scope.js";
-import { type DirectoryListing, listDirectory } from "../api.js";
+import { type DirectoryListing, listDirectory } from "../api.ts";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfaceScope,
@@ -16,7 +16,7 @@ import {
   type RefreshState,
   subscribeToWatch,
   type WatchChange,
-} from "../watch.js";
+} from "../watch.ts";
 import "./file-navigator/components/list.ts";
 import type {
   CaffoldFileList,

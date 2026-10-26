@@ -1,5 +1,5 @@
 import { html, LitElement } from "lit";
-import { type GitDiff, readFile } from "#app/api.js";
+import { type GitDiff, readFile } from "#app/api.ts";
 import { fileStatusPresentation } from "#app/file-status.ts";
 import { fileNameFromPath, imageTypeLabel } from "#components/dom.ts";
 import "#components/file-viewer.ts";

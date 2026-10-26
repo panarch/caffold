@@ -117,5 +117,5 @@ async function styleEnvironment(t, fetchSource) {
       this.cssRules = [{ cssRules: [{ cssRules: [{}] }] }];
     }
   };
-  return await import(`./component-styles.js?environment=${++environmentId}`);
+  return await import(`./component-styles.ts?environment=${++environmentId}`);
 }

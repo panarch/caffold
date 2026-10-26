@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   FOREGROUND_RECOVERY_BROWSER_SIGNAL,
   ForegroundRecoveryBrowserSignals,
-} from "./browser-signals.js";
+} from "./browser-signals.ts";
 
 function eventTarget() {
   const listeners = new Map();

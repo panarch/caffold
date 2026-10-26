@@ -8,13 +8,13 @@ import {
 import {
   forgetTaskPermissionInstructions,
   getTaskPermissionInstructions,
-} from "#app/api.js";
+} from "#app/api.ts";
 import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
 import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
-import { formatDate } from "#tasks/task-format.js";
+import { formatDate } from "#tasks/task-format.ts";
 
 const EMPTY_MESSAGE =
   "Nothing yet. A prompt that says what this Task may or may not do is kept here while it runs under Ask Jev first.";

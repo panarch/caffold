@@ -8,7 +8,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "#app/action-hints.js";
-import { type GitHubStatus, getGitHubStatus } from "#app/api.js";
+import { type GitHubStatus, getGitHubStatus } from "#app/api.ts";
 
 // The Section's directory, and whether it is a Git repository. `key` names
 // the Section the directory belongs to.

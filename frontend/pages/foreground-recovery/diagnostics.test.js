@@ -8,7 +8,7 @@ import {
   DIAGNOSTICS_STORAGE_KEY,
   ForegroundRecoveryDiagnostics,
   transitionDiagnostics,
-} from "./diagnostics.js";
+} from "./diagnostics.ts";
 
 const ORIGIN = "https://caffold.test";
 

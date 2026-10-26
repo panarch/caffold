@@ -8,10 +8,10 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { TaskEvent } from "#app/api.js";
+import type { TaskEvent } from "#app/api.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
-import { eventIdentityKey } from "#tasks/task-events.js";
-import { formatDate, taskEventObservedMs } from "#tasks/task-format.js";
+import { eventIdentityKey } from "#tasks/task-events.ts";
+import { formatDate, taskEventObservedMs } from "#tasks/task-format.ts";
 import { commandGroupIdentity, isCommandEvent } from "../command-runs.ts";
 import "./command.ts";
 import type { CaffoldTaskCommand } from "./command.ts";

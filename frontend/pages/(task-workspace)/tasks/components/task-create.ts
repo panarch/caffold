@@ -13,8 +13,8 @@ import { inlineIcon, warmIcons } from "#components/icons.ts";
 import {
   type TaskStoreStatusSnapshot,
   taskStoreBlocksTaskOperations,
-} from "../../task-store-status.js";
-import { cleanLogicalPath } from "../task-format.js";
+} from "../../task-store-status.ts";
+import { cleanLogicalPath } from "../task-format.ts";
 import "./composer.ts";
 import type {
   CaffoldTaskComposer,

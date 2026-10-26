@@ -12,7 +12,7 @@ import {
   type GitRepository,
   getGitHubPull,
   prepareGitHubPullHead,
-} from "#app/api.js";
+} from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

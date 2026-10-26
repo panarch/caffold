@@ -5,15 +5,10 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "../../action-hints.js";
+import type { CaffoldUpdateAttempt } from "../../api.ts";
 import { keyboardNavigationContext } from "../../keyboard-navigation.js";
 import "../../keyboard-navigation/components/presentation.js";
 import type { CaffoldKeyboardNavigationPresentation } from "../../keyboard-navigation/components/presentation.js";
-
-type UpdateAttempt = {
-  outcome?: string;
-  fromVersion?: string;
-  reason?: string;
-};
 
 type UpdateResultNotice = { title: string; description: string };
 
@@ -65,7 +60,7 @@ export class CaffoldUpdateResultDialog extends LitElement {
   }
 
   /** Shows what happened to the attempt, which must have failed. */
-  open(attempt: UpdateAttempt | null | undefined) {
+  open(attempt: CaffoldUpdateAttempt | null | undefined) {
     const notice = updateResultNotice(attempt);
     if (!notice) {
       return;
@@ -142,7 +137,7 @@ export class CaffoldUpdateResultDialog extends LitElement {
  * and not running as planned. Other outcomes are told elsewhere.
  */
 export function updateResultNotice(
-  attempt: UpdateAttempt | null | undefined,
+  attempt: CaffoldUpdateAttempt | null | undefined,
 ): UpdateResultNotice | null {
   const from = `${attempt?.fromVersion ?? ""}`;
   const reason = `${attempt?.reason ?? ""}`;

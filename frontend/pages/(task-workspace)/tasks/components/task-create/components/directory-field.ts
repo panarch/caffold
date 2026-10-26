@@ -8,7 +8,7 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import { listDirectory } from "#app/api.js";
+import { listDirectory } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfaceScope,

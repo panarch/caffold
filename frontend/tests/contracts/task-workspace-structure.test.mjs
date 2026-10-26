@@ -575,7 +575,7 @@ test("workspace brand owns the shared Tasks, Notes, and Settings navigator ident
 
 test("App Shell owns one foreground recovery UI and retry intent", () => {
   const appShell = readFrontend("pages/layout.ts");
-  const foreground = readFrontend("pages/foreground-recovery.js");
+  const foreground = readFrontend("pages/foreground-recovery.ts");
   const navigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.ts",
   );
@@ -603,7 +603,7 @@ test("App Shell owns one foreground recovery UI and retry intent", () => {
 });
 
 test("foreground recovery machine reads from graph to private projection", () => {
-  const foreground = readFrontend("pages/foreground-recovery/machine.js");
+  const foreground = readFrontend("pages/foreground-recovery/machine.ts");
   const declarations = [
     "export const FOREGROUND_RECOVERY_NODE",
     "export const FOREGROUND_RECOVERY_TRANSITIONS",
@@ -624,7 +624,7 @@ test("foreground recovery machine reads from graph to private projection", () =>
 });
 
 test("foreground recovery public exports contain only consumer contracts", () => {
-  const foreground = readFrontend("pages/foreground-recovery.js");
+  const foreground = readFrontend("pages/foreground-recovery.ts");
   const exportedNames = [...foreground.matchAll(
     /^export (?:class|const|function)\s+([A-Za-z0-9_]+)/gm,
   )].map((match) => match[1]);
@@ -642,9 +642,9 @@ test("foreground recovery public exports contain only consumer contracts", () =>
 
 test("PWA update lifecycle keeps one public non-visual owner and private graph", () => {
   const appShell = readFrontend("pages/layout.ts");
-  const lifecycle = readFrontend("pages/pwa-update-lifecycle.js");
-  const machine = readFrontend("pages/pwa-update-lifecycle/machine.js");
-  const runtime = readFrontend("pages/pwa-update-lifecycle/runtime.js");
+  const lifecycle = readFrontend("pages/pwa-update-lifecycle.ts");
+  const machine = readFrontend("pages/pwa-update-lifecycle/machine.ts");
+  const runtime = readFrontend("pages/pwa-update-lifecycle/runtime.ts");
   const serviceWorker = readFrontend("service-worker.js");
   const exportedNames = [...lifecycle.matchAll(
     /^export (?:class|const|function)\s+([A-Za-z0-9_]+)/gm,
@@ -661,19 +661,19 @@ test("PWA update lifecycle keeps one public non-visual owner and private graph",
   const positions = declarations.map((declaration) => machine.indexOf(declaration));
 
   assert.deepEqual(exportedNames, ["PwaUpdateLifecycle"]);
-  assert.match(appShell, /from "\.\/pwa-update-lifecycle\.js"/);
-  assert.doesNotMatch(appShell, /pwa-update-lifecycle\/(?:machine|runtime)\.js/);
-  assert.doesNotMatch(appShell, /components\/pwa-update-lifecycle\.js/);
+  assert.match(appShell, /from "\.\/pwa-update-lifecycle\.ts"/);
+  assert.doesNotMatch(appShell, /pwa-update-lifecycle\/(?:machine|runtime)\.ts/);
+  assert.doesNotMatch(appShell, /components\/pwa-update-lifecycle\.ts/);
   assert.ok(positions.every((position) => position >= 0));
   assert.deepEqual(positions, [...positions].sort((left, right) => left - right));
-  assert.match(runtime, /from "\.\/machine\.js"/);
+  assert.match(runtime, /from "\.\/machine\.ts"/);
   assert.match(runtime, /"controllerchange"/);
   assert.match(runtime, /transitionPwaUpdateHandoff\(this\.handoffState, event\)/);
   assert.doesNotMatch(lifecycle, /addEventListener|postMessage|controllerchange/);
   for (const path of [
-    "/assets/pages/pwa-update-lifecycle.js",
-    "/assets/pages/pwa-update-lifecycle/machine.js",
-    "/assets/pages/pwa-update-lifecycle/runtime.js",
+    "/assets/pages/pwa-update-lifecycle.ts",
+    "/assets/pages/pwa-update-lifecycle/machine.ts",
+    "/assets/pages/pwa-update-lifecycle/runtime.ts",
   ]) {
     assert.match(serviceWorker, new RegExp(path.replaceAll("/", "\\/")));
   }
@@ -681,12 +681,12 @@ test("PWA update lifecycle keeps one public non-visual owner and private graph",
 
 test("App Shell solely coordinates foreground recovery through public owners", () => {
   const appShell = readFrontend("pages/layout.ts");
-  const foreground = readFrontend("pages/foreground-recovery.js");
+  const foreground = readFrontend("pages/foreground-recovery.ts");
   const browserSignals = readFrontend(
-    "pages/foreground-recovery/browser-signals.js",
+    "pages/foreground-recovery/browser-signals.ts",
   );
   const foregroundLifecycle = readFrontend(
-    "pages/foreground-recovery/lifecycle.js",
+    "pages/foreground-recovery/lifecycle.ts",
   );
   const workspace = readFrontend("pages/(task-workspace)/layout.ts");
   const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.ts");
@@ -696,7 +696,7 @@ test("App Shell solely coordinates foreground recovery through public owners", (
   const detail = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/(task)/layout.ts",
   );
-  const stream = readFrontend("pages/(task-workspace)/tasks/stream.js");
+  const stream = readFrontend("pages/(task-workspace)/tasks/stream.ts");
   const serviceWorker = readFrontend("service-worker.js");
 
   assert.match(appShell, /new ForegroundRecoveryLifecycle\(/);
@@ -727,11 +727,11 @@ test("App Shell solely coordinates foreground recovery through public owners", (
   );
   assert.match(
     foregroundLifecycle,
-    /from "\.\/browser-signals\.js"/,
+    /from "\.\/browser-signals\.ts"/,
   );
   assert.doesNotMatch(
     appShell,
-    /foreground-recovery\/(?:browser-signals|lifecycle|machine)\.js/,
+    /foreground-recovery\/(?:browser-signals|lifecycle|machine)\.ts/,
   );
   assert.match(workspace, /async recoverForeground\(/);
   assert.match(tasksPage, /async recoverForeground\(/);
@@ -865,7 +865,7 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
 });
 
 test("Task and Section reordering keep navigation, ordering, and row presentation owners bounded", () => {
-  const api = readFrontend("api.js");
+  const api = readFrontend("api.ts");
   const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.ts");
   const navigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.ts",
@@ -889,9 +889,9 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
     "pages/(task-workspace)/tasks/components/active-task-list/components/section.css",
   );
 
-  assert.match(api, /export async function reorderTask\(threadId, beforeThreadId\)/);
+  assert.match(api, /export async function reorderTask\(\s*threadId: string,\s*beforeThreadId: string \| null,\s*\)/);
   assert.match(api, /body: \{ beforeThreadId: beforeThreadId \?\? null \}/);
-  assert.match(api, /export async function reorderSection\(sectionId, beforeSectionId\)/);
+  assert.match(api, /export async function reorderSection\(\s*sectionId: string,\s*beforeSectionId: string \| null,\s*\)/);
   assert.match(api, /body: \{ beforeSectionId: beforeSectionId \?\? null \}/);
   const switcherControl = navigator.indexOf(
     'data-task-action="open-task-switcher"',
@@ -1011,29 +1011,29 @@ test("archived task deletion dialog owns its modal state and markup", () => {
 
 test("Codex status, Task-store status, and the Task-store card keep explicit lifecycle and UI owners", () => {
   const workspace = readFrontend("pages/(task-workspace)/layout.ts");
-  const owner = readFrontend("pages/(task-workspace)/codex-status.js");
-  const model = readFrontend("pages/(task-workspace)/codex-status/model.js");
+  const owner = readFrontend("pages/(task-workspace)/codex-status.ts");
+  const model = readFrontend("pages/(task-workspace)/codex-status/model.ts");
   const lifecycle = readFrontend(
-    "pages/(task-workspace)/codex-status/lifecycle.js",
+    "pages/(task-workspace)/codex-status/lifecycle.ts",
   );
-  const storeOwner = readFrontend("pages/(task-workspace)/task-store-status.js");
+  const storeOwner = readFrontend("pages/(task-workspace)/task-store-status.ts");
   const storeModel = readFrontend(
-    "pages/(task-workspace)/task-store-status/model.js",
+    "pages/(task-workspace)/task-store-status/model.ts",
   );
   const storeLifecycle = readFrontend(
-    "pages/(task-workspace)/task-store-status/lifecycle.js",
+    "pages/(task-workspace)/task-store-status/lifecycle.ts",
   );
   const storeRecovery = readFrontend(
     "pages/(task-workspace)/tasks/components/task-store-recovery.ts",
   );
   const restartLifecycle = readFrontend(
-    "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js",
+    "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.ts",
   );
   const restartDialog = readFrontend(
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts",
   );
   const updateLifecycle = readFrontend(
-    "pages/(task-workspace)/codex-status/runtime-update-lifecycle.js",
+    "pages/(task-workspace)/codex-status/runtime-update-lifecycle.ts",
   );
   const updateDialog = readFrontend(
     "pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts",
@@ -1043,7 +1043,7 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
     "pages/(task-workspace)/settings/codex/page.ts",
   );
 
-  assert.match(workspace, /from "\.\/codex-status\.js"/);
+  assert.match(workspace, /from "\.\/codex-status\.ts"/);
   assert.match(
     workspace,
     /from "\.\/codex-status\/components\/runtime-restart-dialog\.ts"/,
@@ -1060,10 +1060,10 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
     workspace,
     /<caffold-codex-runtime-update-dialog\b[^>]*><\/caffold-codex-runtime-update-dialog>/,
   );
-  assert.match(owner, /from "\.\/codex-status\/model\.js"/);
+  assert.match(owner, /from "\.\/codex-status\/model\.ts"/);
   assert.match(
     owner,
-    /from "\.\/codex-status\/lifecycle\.js"/,
+    /from "\.\/codex-status\/lifecycle\.ts"/,
   );
   assert.match(owner, /function createCodexStatusLifecycle/);
   assert.doesNotMatch(owner, /class CodexStatusLifecycle/);
@@ -1073,9 +1073,9 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
     assert.doesNotMatch(codexSource, /taskStore|TaskStore/);
   }
   assert.match(lifecycle, /class CodexStatusLifecycle/);
-  assert.match(workspace, /from "\.\/task-store-status\.js"/);
-  assert.match(storeOwner, /from "\.\/task-store-status\/model\.js"/);
-  assert.match(storeOwner, /from "\.\/task-store-status\/lifecycle\.js"/);
+  assert.match(workspace, /from "\.\/task-store-status\.ts"/);
+  assert.match(storeOwner, /from "\.\/task-store-status\/model\.ts"/);
+  assert.match(storeOwner, /from "\.\/task-store-status\/lifecycle\.ts"/);
   assert.match(storeOwner, /function createTaskStoreStatusLifecycle/);
   assert.doesNotMatch(storeOwner, /class TaskStoreStatusLifecycle/);
   assert.doesNotMatch(storeOwner, /export \*/);
@@ -1101,7 +1101,7 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   assert.match(storeRecovery, /TASK_STORE_RETRY_REQUEST_EVENT/);
   assert.doesNotMatch(storeRecovery, /codex/i);
 
-  assert.match(settings, /codex-status\.js"/);
+  assert.match(settings, /codex-status\.ts"/);
   assert.doesNotMatch(settings, /codex-status\//);
   // Tasks treats Codex like any other agent: it reads no Codex status.
   assert.doesNotMatch(tasks, /codex-status/);
@@ -1110,24 +1110,24 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
 
   for (const [path, source] of frontendModules()) {
     const insideOwner =
-      path === "pages/(task-workspace)/codex-status.js" ||
+      path === "pages/(task-workspace)/codex-status.ts" ||
       path.startsWith("pages/(task-workspace)/codex-status/");
     const assetInventory = path === "service-worker.js";
     if (!insideOwner && !assetInventory) {
       assert.doesNotMatch(
         source,
         /codex-status\/(?!components\/)/,
-        `${path} must consume non-visual Codex status behavior through codex-status.js`,
+        `${path} must consume non-visual Codex status behavior through codex-status.ts`,
       );
     }
     const insideStoreOwner =
-      path === "pages/(task-workspace)/task-store-status.js" ||
+      path === "pages/(task-workspace)/task-store-status.ts" ||
       path.startsWith("pages/(task-workspace)/task-store-status/");
     if (!insideStoreOwner && !assetInventory) {
       assert.doesNotMatch(
         source,
         /task-store-status\//,
-        `${path} must consume Task-store status through task-store-status.js`,
+        `${path} must consume Task-store status through task-store-status.ts`,
       );
     }
     if (

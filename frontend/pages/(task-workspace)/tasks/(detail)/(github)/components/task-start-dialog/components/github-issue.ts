@@ -12,7 +12,7 @@ import {
   type GitRef,
   type GitRepository,
   getGitRefs,
-} from "#app/api.js";
+} from "#app/api.ts";
 
 interface TaskRef {
   name: string;

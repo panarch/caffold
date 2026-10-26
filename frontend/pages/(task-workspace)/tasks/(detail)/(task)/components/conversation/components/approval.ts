@@ -7,14 +7,14 @@ import {
   emptyActionHintScope,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { ApprovalTool, TaskEventPayload } from "#app/api.js";
+import type { ApprovalTool, TaskEventPayload } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   type ScrollSurfaceScope,
   type ScrollSurfaceScopeOptions,
 } from "#app/scroll-scope.js";
-import { formatDecision } from "#tasks/task-format.js";
+import { formatDecision } from "#tasks/task-format.ts";
 
 export interface ApprovalIntentDetail {
   threadId: string;

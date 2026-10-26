@@ -5,7 +5,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "#app/action-hint-scope.js";
-import { compactIconButton } from "#app/component-styles.js";
+import { compactIconButton } from "#app/component-styles.ts";
 import { inlineIcon } from "../../icons.ts";
 
 export type PageKind = "first" | "previous" | "next" | "last";

@@ -5,7 +5,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "#app/action-hints.js";
-import type { TaskEvent } from "#app/api.js";
+import type { TaskEvent } from "#app/api.ts";
 import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
@@ -20,7 +20,7 @@ import {
   formatDate,
   formatDuration,
   taskEventObservedMs,
-} from "#tasks/task-format.js";
+} from "#tasks/task-format.ts";
 
 // One finished command as the dialog shows it.
 interface CommandView {

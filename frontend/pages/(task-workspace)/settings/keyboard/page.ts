@@ -20,7 +20,7 @@ import {
   getSettings,
   type Settings,
   setActionHintsEnabled,
-} from "#app/settings.js";
+} from "#app/settings.ts";
 
 export class CaffoldSettingsKeyboardPage extends LitElement {
   static properties = {

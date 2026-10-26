@@ -6,7 +6,7 @@ import {
   emptyActionHintScope,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { Note } from "#app/api.js";
+import type { Note } from "#app/api.ts";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 

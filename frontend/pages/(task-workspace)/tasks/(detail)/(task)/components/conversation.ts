@@ -11,7 +11,7 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { Task, TaskEvent } from "#app/api.js";
+import type { Task, TaskEvent } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -22,12 +22,12 @@ import {
 import {
   isTaskTransportStale,
   type TaskTransportState,
-} from "#tasks/runtime-state.js";
+} from "#tasks/runtime-state.ts";
 import {
   dedupeCanonicalEvents,
   eventIdentityKey,
   pendingApprovals,
-} from "#tasks/task-events.js";
+} from "#tasks/task-events.ts";
 import "./conversation/components/active-turn.ts";
 import "./conversation/components/approval.ts";
 import type {

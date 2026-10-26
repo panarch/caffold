@@ -1,6 +1,6 @@
-import type { Task, TaskEvent } from "#app/api.js";
-import { taskActiveFlagLabel } from "#tasks/runtime-state.js";
-import { formatDuration } from "#tasks/task-format.js";
+import type { Task, TaskEvent } from "#app/api.ts";
+import { taskActiveFlagLabel } from "#tasks/runtime-state.ts";
+import { formatDuration } from "#tasks/task-format.ts";
 
 export interface ActiveTurnPresentation {
   startedMs: number | null;

@@ -7,7 +7,7 @@ import {
   hasActionHintLayoutBox,
   mergeActionHintScopes,
 } from "#app/action-hints.js";
-import { readFile } from "#app/api.js";
+import { readFile } from "#app/api.ts";
 import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";

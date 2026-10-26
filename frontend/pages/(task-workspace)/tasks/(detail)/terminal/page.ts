@@ -15,8 +15,8 @@ import {
   openTerminal,
   type TaskResponseError,
   type TerminalSubject,
-} from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
+} from "#app/api.ts";
+import { compactIconButton } from "#app/component-styles.ts";
 import { inlineIcon } from "#components/icons.ts";
 import {
   type CaffoldTerminalView,
@@ -26,7 +26,7 @@ import {
 import {
   TASK_TRANSPORT_STATE,
   type TaskTransportState,
-} from "../../runtime-state.js";
+} from "../../runtime-state.ts";
 import "./components/special-keys.ts";
 import type {
   CaffoldTerminalSpecialKeys,

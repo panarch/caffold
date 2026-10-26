@@ -196,7 +196,7 @@ test("normalizes and compacts shared file-tree statuses", { tag: "@all-viewports
   );
   const statusRequestsBeforeOrderChange = reviewScenario.gitStatusRequests;
   await page.evaluate(async () => {
-    const { setFileSortMode } = await import("/assets/settings.js");
+    const { setFileSortMode } = await import("/assets/settings.ts");
     setFileSortMode("name");
   });
   expect((await file.boundingBox()).y).toBeLessThan(

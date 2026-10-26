@@ -9,7 +9,7 @@ import {
   type GitRepository,
   getGitHubIssue,
   getGitHubIssues,
-} from "#app/api.js";
+} from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfaceScopeOptions,

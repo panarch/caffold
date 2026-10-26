@@ -5,12 +5,12 @@ import type {
   TaskFileLink,
   TaskMessageContent,
   TaskUploadLine,
-} from "#app/api.js";
+} from "#app/api.ts";
 import {
   isTaskActivelyWorking,
   type PromptSubmissionState,
   promptSubmissionState,
-} from "#tasks/runtime-state.js";
+} from "#tasks/runtime-state.ts";
 import {
   type AssistantMessagePhase,
   assistantMessagePhase,
@@ -26,7 +26,7 @@ import {
   sortEventsChronologically,
   taskEventAnchorMs,
   taskEventPositionIndex,
-} from "#tasks/task-events.js";
+} from "#tasks/task-events.ts";
 import {
   effectiveTaskFileRoot,
   formatDate,
@@ -35,7 +35,7 @@ import {
   type TaskFilePath,
   taskEventObservedMs,
   toolCallPresentation,
-} from "#tasks/task-format.js";
+} from "#tasks/task-format.ts";
 import { activeTurnPresentation } from "./active-turn.ts";
 import {
   type CommandRunSegment,

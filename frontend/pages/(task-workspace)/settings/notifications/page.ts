@@ -14,7 +14,7 @@ import {
   type PushInstallation,
   removePushInstallation,
   upsertPushInstallation,
-} from "#app/api.js";
+} from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

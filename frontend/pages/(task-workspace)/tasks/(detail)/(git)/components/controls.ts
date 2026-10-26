@@ -8,8 +8,8 @@ import {
   selectActionHintTarget,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { GitRef } from "#app/api.js";
-import { busySpin, compactIconButton } from "#app/component-styles.js";
+import type { GitRef } from "#app/api.ts";
+import { busySpin, compactIconButton } from "#app/component-styles.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import type { FetchState } from "../(log)/layout.ts";
 

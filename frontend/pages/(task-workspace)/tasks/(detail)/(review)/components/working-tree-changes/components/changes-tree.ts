@@ -4,7 +4,7 @@ import {
   type ActionHintScopeOptions,
   emptyActionHintScope,
 } from "#app/action-hint-scope.js";
-import type { GitChangedFile, GitStatus } from "#app/api.js";
+import type { GitChangedFile, GitStatus } from "#app/api.ts";
 import { fileStatusPresentation } from "#app/file-status.ts";
 import {
   emptyScrollSurfaceScope,

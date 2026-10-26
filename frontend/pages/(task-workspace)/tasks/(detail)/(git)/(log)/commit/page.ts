@@ -12,7 +12,7 @@ import {
   type GitRepository,
   getGitCommit,
   getGitCommitDiff,
-} from "#app/api.js";
+} from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

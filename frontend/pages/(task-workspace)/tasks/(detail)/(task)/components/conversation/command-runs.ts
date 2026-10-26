@@ -1,5 +1,5 @@
-import type { TaskEvent } from "#app/api.js";
-import { eventIdentityKey } from "#tasks/task-events.js";
+import type { TaskEvent } from "#app/api.ts";
+import { eventIdentityKey } from "#tasks/task-events.ts";
 
 export type CommandRunSegment =
   | { group: TaskEvent[]; event?: undefined }

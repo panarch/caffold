@@ -1,4 +1,4 @@
-import type { PushSubscriptionPayload } from "#app/api.js";
+import type { PushSubscriptionPayload } from "#app/api.ts";
 
 export const PUSH_CLIENT_ID_STORAGE_KEY = "caffold:push-client-id";
 

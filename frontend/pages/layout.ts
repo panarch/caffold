@@ -13,9 +13,9 @@ import {
   getHealth,
   type Health,
   sendForegroundRecoveryDiagnostics,
-} from "#app/api.js";
+} from "#app/api.ts";
 import { BUILD_INFO } from "#app/build-info.js";
-import { busySpin } from "#app/component-styles.js";
+import { busySpin } from "#app/component-styles.ts";
 import {
   KeyboardNavigationController,
   keyboardNavigationContext,
@@ -30,13 +30,13 @@ import {
   parseRoute,
   routeEquals,
   routeUrl,
-} from "#app/navigation-routes.js";
-import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.js";
-import { getSettings } from "#app/settings.js";
+} from "#app/navigation-routes.ts";
+import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.ts";
+import { getSettings } from "#app/settings.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "./(task-workspace)/layout.ts";
 import type { CaffoldTaskWorkspace } from "./(task-workspace)/layout.ts";
-import { LIVE_CONNECTION_REPORT_EVENT } from "./(task-workspace)/live-updates.js";
+import { LIVE_CONNECTION_REPORT_EVENT } from "./(task-workspace)/live-updates.ts";
 import {
   CAFFOLD_UPDATE_CHECK_REQUEST_EVENT,
   type CaffoldUpdateSnapshot,
@@ -57,12 +57,13 @@ import {
   ForegroundRecoveryLifecycle,
   type ForegroundRecoveryRequest,
   type ForegroundRecoverySnapshot,
-} from "./foreground-recovery.js";
+} from "./foreground-recovery.ts";
 import {
+  type HistoryEntry,
   NAVIGATION_HISTORY_ACTION,
   NavigationHistory,
-} from "./navigation-history.js";
-import { PwaUpdateLifecycle } from "./pwa-update-lifecycle.js";
+} from "./navigation-history.ts";
+import { PwaUpdateLifecycle } from "./pwa-update-lifecycle.ts";
 
 // The Navigation API as far as the shell and the workspace use it; TypeScript's
 // DOM types do not have it yet.
@@ -696,9 +697,7 @@ export class CaffoldAppShell extends LitElement {
   // Writing one entry reports an arrival at it, and a chain is written in one
   // synchronous run, so the listeners are held off until it is complete rather
   // than reading the shell's own scaffolding as a person navigating.
-  private writeEntryChain(
-    entries: Array<{ route: ParsedRoute; action: string }>,
-  ) {
+  private writeEntryChain(entries: HistoryEntry[]) {
     this.writingEntryChain = true;
     try {
       for (const entry of entries) {
@@ -719,7 +718,10 @@ export class CaffoldAppShell extends LitElement {
   // readable through `navigation.currentEntry`, so one writer keeps the record
   // in one place. The Navigation API decides only which events are listened
   // for, in `installNavigationHandlers`.
-  private writeHistoryEntry(route: ParsedRoute, action: string) {
+  private writeHistoryEntry(
+    route: ParsedRoute | null | undefined,
+    action: string,
+  ) {
     const url = routeUrl(route);
     const state = { caffoldNavigation: this.navigationHistory.snapshot() };
     if (action === NAVIGATION_HISTORY_ACTION.PUSH) {

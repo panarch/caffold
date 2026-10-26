@@ -7,7 +7,7 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { GitHubPulls, GitHubStatus } from "#app/api.js";
+import type { GitHubPulls, GitHubStatus } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

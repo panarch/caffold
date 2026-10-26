@@ -1703,7 +1703,7 @@ test("keeps badges aligned and legible at appearance and zoom extremes", { tag: 
   ]) {
     await page.evaluate(async ({ interfaceScalePercent, themeMode }) => {
       const { setAppearanceRangeSetting, setThemeMode } = await import(
-        "/assets/settings.js"
+        "/assets/settings.ts"
       );
       setAppearanceRangeSetting("interfaceScalePercent", interfaceScalePercent);
       setThemeMode(themeMode);

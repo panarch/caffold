@@ -12,8 +12,8 @@ import {
   isTaskTransportStale,
   type TaskTransportState,
   taskThreadStatusType,
-} from "#tasks/runtime-state.js";
-import { type ListedTask, taskThreadId } from "#tasks/task-list-model.js";
+} from "#tasks/runtime-state.ts";
+import { type ListedTask, taskThreadId } from "#tasks/task-list-model.ts";
 
 /** The approval mode Caffold answers under, which is the one Jev judges for. */
 const REVIEWED_PERMISSION_MODE = "caffold:ask-jev-first";

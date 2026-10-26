@@ -6,7 +6,7 @@ import {
   getGitCompare,
   getGitCompareDiff,
   getGitRefs,
-} from "#app/api.js";
+} from "#app/api.ts";
 import type { ScrollSurfaceScopeOptions } from "#app/scroll-scope.js";
 import "#components/git-compare-tree.ts";
 import type { CaffoldGitCompareTree } from "#components/git-compare-tree.ts";

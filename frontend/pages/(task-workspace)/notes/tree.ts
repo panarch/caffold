@@ -1,4 +1,4 @@
-import type { NoteDirectorySummary, NotesLevel } from "#app/api.js";
+import type { NoteDirectorySummary, NotesLevel } from "#app/api.ts";
 import {
   errorFileTreeChildren,
   type FileTreeChildren,

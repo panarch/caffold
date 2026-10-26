@@ -989,7 +989,7 @@ test("places attachment remove controls over thumbnail corners inside the attach
 
   for (const interfaceScalePercent of [90, 100, 120]) {
     await page.evaluate(async (value) => {
-      const { setAppearanceRangeSetting } = await import("/assets/settings.js");
+      const { setAppearanceRangeSetting } = await import("/assets/settings.ts");
       setAppearanceRangeSetting("interfaceScalePercent", value);
     }, interfaceScalePercent);
     await prompt.focus();
@@ -1040,7 +1040,7 @@ test("keeps the attachment remove X legible on its circle in Light and Dark", { 
 
   for (const themeMode of ["light", "dark"]) {
     await page.evaluate(async (value) => {
-      const { setThemeMode } = await import("/assets/settings.js");
+      const { setThemeMode } = await import("/assets/settings.ts");
       setThemeMode(value);
     }, themeMode);
     await expect(page.locator("html")).toHaveAttribute("data-theme", themeMode);

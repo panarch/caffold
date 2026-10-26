@@ -19,11 +19,11 @@ import {
 } from "#app/scroll-scope.js";
 import type { TaskStartIntent } from "#tasks/components/task-create.ts";
 import "#tasks/components/task-turn-options.ts";
+import type { CaffoldUpdateStatus } from "#app/api.ts";
 import type {
   CaffoldTaskTurnOptions,
   TurnOptionsSelection,
 } from "#tasks/components/task-turn-options.ts";
-import type { CaffoldUpdateStatus } from "../settings/about/page.ts";
 
 const SCOPE_ID = "caffold-update-task";
 const RESTART_NOTICE =

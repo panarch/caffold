@@ -6,7 +6,7 @@ import {
   DEFAULT_CODE_TYPEFACE_PRESET,
   DEFAULT_UI_TYPEFACE_PRESET,
   UI_TYPEFACE_PRESETS,
-} from "../../fonts.js";
+} from "../../fonts.ts";
 
 const frontendUrl = new URL("../../", import.meta.url);
 const fontsUrl = new URL("assets/fonts/", frontendUrl);

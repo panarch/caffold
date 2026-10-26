@@ -8,7 +8,7 @@ import {
   TaskStoreStatusLifecycle,
   createTaskStoreStatusState,
   transitionTaskStoreStatus,
-} from "./lifecycle.js";
+} from "./lifecycle.ts";
 
 const READY = { state: "ready", blocksTaskOperations: false, diagnosticMessage: "" };
 const MIGRATING = {

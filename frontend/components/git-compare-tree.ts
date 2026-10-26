@@ -6,7 +6,7 @@ import {
   mergeActionHintScopes,
   selectActionHintTarget,
 } from "../action-hint-scope.js";
-import type { GitCompare, GitCompareFile, GitRepository } from "../api.js";
+import type { GitCompare, GitCompareFile, GitRepository } from "../api.ts";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfaceScope,

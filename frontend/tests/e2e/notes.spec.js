@@ -169,7 +169,7 @@ test("Note details keeps compact paint, touch targets and native keyboard disclo
   await expect(button).toBeVisible();
   for (const scale of [90, 120]) {
     await page.evaluate(async (value) => {
-      const { setAppearanceRangeSetting } = await import("/assets/settings.js");
+      const { setAppearanceRangeSetting } = await import("/assets/settings.ts");
       setAppearanceRangeSetting("interfaceScalePercent", value);
     }, scale);
     const metrics = await button.evaluate((element) => {
@@ -1142,7 +1142,7 @@ test("constrained pairs keep long headings and horizontal code inside their pane
   const secondary = documentPane(page, "secondary");
   for (const [scale, theme] of [[90, "light"], [120, "dark"]]) {
     await page.evaluate(async ({ scale, theme }) => {
-      const settings = await import("/assets/settings.js");
+      const settings = await import("/assets/settings.ts");
       settings.setAppearanceRangeSetting("interfaceScalePercent", scale);
       settings.setThemeMode(theme);
     }, { scale, theme });
@@ -1175,7 +1175,7 @@ test("paired Notes size three equal floating tabs from the selected font and kee
     for (const [scale, theme] of [[100, "light"], [90, "light"], [120, "dark"]]) {
       await page.setViewportSize({ width: 1920, height: 704 });
       await page.evaluate(async ({ scale, theme, preset }) => {
-        const settings = await import("/assets/settings.js");
+        const settings = await import("/assets/settings.ts");
         settings.setUiTypefacePreset(preset);
         settings.setAppearanceRangeSetting("interfaceScalePercent", scale);
         settings.setThemeMode(theme);
@@ -1418,7 +1418,7 @@ test("Notes action paint gaps match the compact toolbar while floating shadows s
   for (const preset of ["geist-sans", "inter", "pretendard", "system"]) {
     for (const [scale, theme] of [[90, "light"], [100, "light"], [120, "dark"]]) {
       await page.evaluate(async ({ scale, theme, preset }) => {
-        const settings = await import("/assets/settings.js");
+        const settings = await import("/assets/settings.ts");
         settings.setUiTypefacePreset(preset);
         settings.setAppearanceRangeSetting("interfaceScalePercent", scale);
         settings.setThemeMode(theme);

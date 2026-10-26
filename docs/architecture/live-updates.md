@@ -192,7 +192,7 @@ the subscription and invalidates pending reads.
 
 ## Frontend ownership and recovery
 
-`frontend/pages/(task-workspace)/live-updates.js` is the workspace-scoped public
+`frontend/pages/(task-workspace)/live-updates.ts` is the workspace-scoped public
 owner. Its private lifecycle graph owns physical connection attachment,
 visibility suspension, native reconnection grace, silent-connection
 replacement, replacement of a connection that stopped delivering, bounded
@@ -231,10 +231,10 @@ when one does; a server that greets every connection but never opens a channel
 spends the bounded retry and leaves the connection unavailable between
 automatic retries.
 
-Task List and Task Detail keep their domain lifecycles. Shared `tasks/stream.js`
+Task List and Task Detail keep their domain lifecycles. Shared `tasks/stream.ts`
 adapts those lifecycles to logical gateway subscriptions through a control graph
 in which every wait ends on its own ([Frontend](frontend.md)), including
-canonical reconciliation and stale-generation rejection. `frontend/watch.js`
+canonical reconciliation and stale-generation rejection. `frontend/watch.ts`
 reference-counts listeners by gateway and logical scope, then maps each scope to
 one Watch subscription.
 

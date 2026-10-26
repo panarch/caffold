@@ -44,7 +44,7 @@ test("new consumers declare their own scope, retain local overrides and reconnec
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   const originalSheets = await page.evaluate(() => document.adoptedStyleSheets.length);
   await page.evaluate(async () => {
-    const { compactIconButton } = await import("/assets/component-styles.js");
+    const { compactIconButton } = await import("/assets/component-styles.ts");
     await compactIconButton.register("caffold-style-contract", "> header > .contract-actions > .contract-button");
     customElements.define("caffold-style-contract", class extends HTMLElement {
       connectedCallback() {
@@ -97,7 +97,7 @@ test("a busy spin turns only its owner's busy element and stops for reduced moti
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await page.evaluate(async () => {
-    const { busySpin } = await import("/assets/component-styles.js");
+    const { busySpin } = await import("/assets/component-styles.ts");
     await busySpin.register("caffold-spin-contract", "> .contract-button.is-busy > .contract-icon");
     customElements.define("caffold-spin-contract", class extends HTMLElement {
       connectedCallback() {

@@ -8,10 +8,10 @@ import {
   withActionHintOcclusionRoots,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import { restartClaudeRuntime } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
+import { type Health, restartClaudeRuntime } from "#app/api.ts";
+import { compactIconButton } from "#app/component-styles.ts";
 import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
-import { routeDomain, routeTab, routeTarget } from "#app/navigation-routes.js";
+import { routeDomain, routeTab, routeTarget } from "#app/navigation-routes.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -33,7 +33,7 @@ import {
   codexRuntimeUpdateAvailable,
   createCodexStatusLifecycle,
   resetCreditExpiry,
-} from "./codex-status.js";
+} from "./codex-status.ts";
 import "./codex-status/components/reset-credit-dialog.ts";
 import type { CaffoldCodexResetCreditDialog } from "./codex-status/components/reset-credit-dialog.ts";
 import "./codex-status/components/runtime-restart-dialog.ts";
@@ -47,7 +47,7 @@ import type { CaffoldUpdateTaskDialog } from "./components/update-task-dialog.ts
 import {
   LIVE_CONNECTION_REPORT_EVENT,
   WorkspaceLiveUpdates,
-} from "./live-updates.js";
+} from "./live-updates.ts";
 import "./notes/components/navigator.ts";
 import type { CaffoldNotesNavigator } from "./notes/components/navigator.ts";
 import "./notes/layout.ts";
@@ -55,7 +55,6 @@ import type { CaffoldNotesWorkspace } from "./notes/layout.ts";
 import {
   CAFFOLD_UPDATE_TASK_REQUEST_EVENT,
   type CaffoldUpdateSnapshot,
-  type ServerHealth,
 } from "./settings/about/page.ts";
 import "./settings/claude/components/runtime-restart-dialog.ts";
 import type { CaffoldClaudeRuntimeRestartDialog } from "./settings/claude/components/runtime-restart-dialog.ts";
@@ -68,7 +67,7 @@ import {
   createTaskStoreStatusLifecycle,
   TASK_STORE_RETRY_REQUEST_EVENT,
   type TaskStoreStatusSnapshot,
-} from "./task-store-status.js";
+} from "./task-store-status.ts";
 import "./tasks/components/archived-delete-dialog.ts";
 import type { CaffoldTaskArchivedDeleteDialog } from "./tasks/components/archived-delete-dialog.ts";
 import type { ArchivedTaskListIntent } from "./tasks/components/archived-task-list.ts";
@@ -422,7 +421,7 @@ export class CaffoldTaskWorkspace extends LitElement {
     this.syncNavigationPane();
   }
 
-  setBuildStatus(health: ServerHealth | null | undefined) {
+  setBuildStatus(health: Health | null | undefined) {
     this.performUpdate();
     this.settingsWorkspace.setBuildStatus(health);
   }

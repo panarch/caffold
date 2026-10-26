@@ -5,11 +5,11 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
-import type { TaskUploadLine } from "#app/api.js";
+import type { TaskUploadLine } from "#app/api.ts";
 import {
   PROMPT_SUBMISSION_STATE,
   type PromptSubmissionState,
-} from "#tasks/runtime-state.js";
+} from "#tasks/runtime-state.ts";
 import "./message-attachments.ts";
 import type {
   CaffoldTaskMessageAttachments,

@@ -9,10 +9,10 @@ import {
   type GitHubStatus,
   type GitRepository,
   getGitHubStatus,
-} from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
+} from "#app/api.ts";
+import { compactIconButton } from "#app/component-styles.ts";
 import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
-import { routeMode } from "#app/navigation-routes.js";
+import { routeMode } from "#app/navigation-routes.ts";
 import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "./(issues)/layout.ts";

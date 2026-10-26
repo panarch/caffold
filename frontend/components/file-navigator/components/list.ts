@@ -10,8 +10,8 @@ import {
   type DirectoryEntry,
   type DirectoryListing,
   listDirectory,
-} from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
+} from "#app/api.ts";
+import { compactIconButton } from "#app/component-styles.ts";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfaceScope,

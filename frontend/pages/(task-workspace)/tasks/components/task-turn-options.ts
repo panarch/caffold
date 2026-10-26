@@ -11,8 +11,8 @@ import {
   type AgentPermissionModes,
   getAgentModels,
   getAgentPermissions,
-} from "#app/api.js";
-import { busySpin } from "#app/component-styles.js";
+} from "#app/api.ts";
+import { busySpin } from "#app/component-styles.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
@@ -22,7 +22,7 @@ import "#app/keyboard-navigation/components/presentation.js";
 import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/loading-text.ts";
-import { cleanLogicalPath } from "../task-format.js";
+import { cleanLogicalPath } from "../task-format.ts";
 
 // What the Task or Section last ran under, as far as the turn options read it.
 export interface TurnOptionsSelection {

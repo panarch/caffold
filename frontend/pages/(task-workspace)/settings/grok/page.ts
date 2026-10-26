@@ -5,7 +5,7 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
-import { type GrokStatus, getGrokStatus } from "#app/api.js";
+import { type GrokStatus, getGrokStatus } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

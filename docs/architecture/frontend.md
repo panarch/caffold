@@ -56,9 +56,9 @@ Shared imports can use three native aliases:
 
 | Prefix | Frontend-relative directory | Example |
 | --- | --- | --- |
-| `#app/` | `./` | `#app/api.js` |
+| `#app/` | `./` | `#app/api.ts` |
 | `#components/` | `components/` | `#components/icons.ts` |
-| `#tasks/` | `pages/(task-workspace)/tasks/` | `#tasks/task-format.js` |
+| `#tasks/` | `pages/(task-workspace)/tasks/` | `#tasks/task-format.ts` |
 
 `frontend/index.html` declares the browser import map before the app module.
 `frontend/package.json` declares matching `imports` patterns for Node unit
@@ -197,7 +197,7 @@ the dialog first closes a background Hint or Scroll session; the user presses
 handoff.
 
 The app shell owns one `NavigationHistory` behind the public
-`navigation-history.js` entry point. It answers what a requested route does to
+`navigation-history.ts` entry point. It answers what a requested route does to
 the browser history, which entries a route arriving from outside needs beneath
 it, and where each bottom tab reopens, reading only the route schema's declared
 parents and tabs. The shell keeps the browser calls, the entry record it writes
@@ -207,7 +207,7 @@ own scaffolding is never read back as a person navigating, and it writes an
 address the browser loaded before installing its navigation listeners.
 
 The app shell owns one `ForegroundRecoveryLifecycle` behind the public
-`foreground-recovery.js` entry point. It normalizes browser activation and
+`foreground-recovery.ts` entry point. It normalizes browser activation and
 connectivity observations into one idempotent recovery request. Raw listener
 wiring, the finite control model, and effectful lifecycle work remain private
 under that same-stem boundary; consumers receive semantic operations and an
@@ -259,7 +259,7 @@ transport internals. Async completions must still match both the foreground
 generation and the active route.
 
 Task List and Task Detail each keep one Task stream through shared
-`tasks/stream.js`. Its private graph separates inactive, suspended,
+`tasks/stream.ts`. Its private graph separates inactive, suspended,
 subscribing, preparing, reconciling, ready, waiting for the gateway, backing
 off, unavailable, and gone, and every node a stream can wait in ends on its own.
 Subscribing ends through the live gateway's open check, preparing through
@@ -280,7 +280,7 @@ A stream is gone when the gateway refuses its channel because the Task is
 archived or missing, or when its owner learns that from another request about
 the Task: it releases its subscription and retries nothing, foreground recovery
 and hiding leave it alone, and it presents as idle until the owner opens a
-context again. The `api.js` boundary alone turns a refusal code into that
+context again. The `api.ts` boundary alone turns a refusal code into that
 absence. Owners read only the derived transport state: idle, connecting,
 validating, reconnecting, ready, or unavailable. Callers that join a Task list
 read in flight share its canonical answer and each decide for itself whether it
@@ -1650,9 +1650,9 @@ revision lifetimes are independent.
 
 ## Route ownership
 
-`frontend/navigation-routes.js` owns the pure schema and metadata, including
+`frontend/navigation-routes.ts` owns the pure schema and metadata, including
 each route's tab and how any two routes stand to each other. App Shell forwards
-and owns the browser history behind `frontend/pages/navigation-history.js`;
+and owns the browser history behind `frontend/pages/navigation-history.ts`;
 Task Workspace selects Tasks/Notes/Settings; Tasks selects its subject; the
 common Detail layout selects the subject or shared child; Git and GitHub select
 their domain-local modes and leaves. A screen requests a route and never
@@ -1938,23 +1938,23 @@ frontend/
 |       |-- presentation.js
 |       |-- hud.js
 |       `-- selector.js
-|-- navigation-routes.js
+|-- navigation-routes.ts
 |-- pages/
 |   |-- layout.ts
 |   |-- components/
 |   |   |-- build-mismatch-alert.ts
 |   |   `-- update-dialog.ts
-|   |-- foreground-recovery.js
+|   |-- foreground-recovery.ts
 |   |-- foreground-recovery/...
-|   |-- pwa-update-lifecycle.js
+|   |-- pwa-update-lifecycle.ts
 |   |-- pwa-update-lifecycle/...
 |   `-- (task-workspace)/
 |       |-- layout.ts
-|       |-- live-updates.js
-|       |-- live-updates/lifecycle.js
-|       |-- codex-status.js
+|       |-- live-updates.ts
+|       |-- live-updates/lifecycle.ts
+|       |-- codex-status.ts
 |       |-- codex-status/...
-|       |-- task-store-status.js
+|       |-- task-store-status.ts
 |       |-- task-store-status/...
 |       |-- notes/
 |       |   |-- layout.ts
@@ -1967,8 +1967,8 @@ frontend/
 |       |   `-- ...
 |       `-- tasks/
 |           |-- layout.ts
-|           |-- stream.js
-|           |-- stream/machine.js
+|           |-- stream.ts
+|           |-- stream/machine.ts
 |           |-- new/page.ts
 |           |-- recovery/page.ts
 |           |-- components/
@@ -2079,7 +2079,7 @@ Components render in Light DOM, so CSS remains one cascade. Each stylesheet
 must scope internal selectors below the owning custom element. A parent may
 size or hide a child host, but descendant styling belongs to the child.
 
-`frontend/component-styles.js` exports two shared styles, `compactIconButton`
+`frontend/component-styles.ts` exports two shared styles, `compactIconButton`
 and `busySpin`. Components await `register(owner, target)` on each style they
 use before defining their element, declaring the explicit child path from the
 owner to their own local class; a step in that path may add the owner's state

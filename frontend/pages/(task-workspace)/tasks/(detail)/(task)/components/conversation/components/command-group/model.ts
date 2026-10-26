@@ -1,4 +1,4 @@
-import type { TaskEvent } from "#app/api.js";
+import type { TaskEvent } from "#app/api.ts";
 import { commandResult, isCommandEvent } from "../../command-runs.ts";
 
 // The one line a folded group shows: how many commands ran, and how many of

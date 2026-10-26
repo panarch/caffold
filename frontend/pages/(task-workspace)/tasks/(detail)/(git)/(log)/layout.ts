@@ -9,7 +9,7 @@ import {
   type GitLog,
   type GitRepository,
   getGitLog,
-} from "#app/api.js";
+} from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfaceScopeOptions,

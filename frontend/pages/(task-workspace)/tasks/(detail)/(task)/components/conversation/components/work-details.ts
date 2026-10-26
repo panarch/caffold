@@ -8,7 +8,7 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import type { TaskEvent } from "#app/api.js";
+import type { TaskEvent } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -23,14 +23,14 @@ import {
   sortEventsChronologically,
   taskEventAnchorMs,
   taskEventPositionIndex,
-} from "#tasks/task-events.js";
+} from "#tasks/task-events.ts";
 import {
   formatDate,
   formatStatus,
   type TaskFilePath,
   taskEventObservedMs,
   toolCallPresentation,
-} from "#tasks/task-format.js";
+} from "#tasks/task-format.ts";
 import {
   commandGroupIdentity,
   groupFinishedCommands,

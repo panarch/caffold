@@ -5,7 +5,7 @@ import {
   buttonActionHintTarget,
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
-import { type GitStatus, getGitDiff, getGitStatus } from "#app/api.js";
+import { type GitStatus, getGitDiff, getGitStatus } from "#app/api.ts";
 import type { ScrollSurfaceScopeOptions } from "#app/scroll-scope.js";
 import { ChangesReading } from "../changes-reading.ts";
 import type { ReviewChange } from "./selected-file/content.ts";

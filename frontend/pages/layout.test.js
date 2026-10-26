@@ -5,7 +5,7 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../tests/support/custom-element-unit.js";
-import { NavigationHistory } from "./navigation-history.js";
+import { NavigationHistory } from "./navigation-history.ts";
 
 const previousDocument = globalThis.document;
 const previousWindow = globalThis.window;

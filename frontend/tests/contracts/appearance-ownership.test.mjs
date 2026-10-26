@@ -21,7 +21,7 @@ const conversationOwners = new Set([
   "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts",
   "pages/(task-workspace)/settings/appearance/page.css",
-  "settings.js",
+  "settings.ts",
   "styles.css",
 ]);
 
@@ -42,7 +42,7 @@ const codeOwners = new Set([
   "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts",
   "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css",
   "pages/(task-workspace)/settings/appearance/page.css",
-  "settings.js",
+  "settings.ts",
   "styles.css",
 ]);
 
@@ -56,7 +56,7 @@ const typefaceOwners = new Set([
   "components/pptx-viewer.ts",
   "components/terminal-view.ts",
   "components/xlsx-viewer.css",
-  "fonts.js",
+  "fonts.ts",
   "keyboard-navigation/components/selector.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css",

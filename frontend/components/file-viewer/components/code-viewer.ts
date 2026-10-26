@@ -1,5 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
-import type { SyntaxSpan } from "#app/api.js";
+import type { SyntaxSpan } from "#app/api.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

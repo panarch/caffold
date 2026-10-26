@@ -110,7 +110,7 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   expect(markdownToolbar.endOffsets.slice(1)).toEqual(plainToolbar.endOffsets);
 
   await page.evaluate(async () => {
-    const { setAppearanceRangeSetting } = await import("/assets/settings.js");
+    const { setAppearanceRangeSetting } = await import("/assets/settings.ts");
     setAppearanceRangeSetting("interfaceScalePercent", 120);
     setAppearanceRangeSetting("codeTextPx", 20);
   });

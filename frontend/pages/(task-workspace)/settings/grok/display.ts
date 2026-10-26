@@ -1,4 +1,4 @@
-import type { GrokStatus } from "#app/api.js";
+import type { GrokStatus } from "#app/api.ts";
 
 type Usage = NonNullable<GrokStatus["usage"]>;
 

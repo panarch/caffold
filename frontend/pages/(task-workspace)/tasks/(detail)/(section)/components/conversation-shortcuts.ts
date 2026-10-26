@@ -8,17 +8,17 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "#app/action-hints.js";
-import { getCodexReadiness } from "#app/api.js";
+import { getCodexReadiness } from "#app/api.ts";
 import {
   type CodexStatusSnapshot,
   codexBlocksTaskOperations,
   codexState,
   createCodexStatusSnapshot,
-} from "#app/pages/(task-workspace)/codex-status.js";
+} from "#app/pages/(task-workspace)/codex-status.ts";
 import {
   type TaskStoreStatusSnapshot,
   taskStoreBlocksTaskOperations,
-} from "#app/pages/(task-workspace)/task-store-status.js";
+} from "#app/pages/(task-workspace)/task-store-status.ts";
 import "./conversation-shortcuts/components/fork-dialog.ts";
 import type { CaffoldConversationForkDialog } from "./conversation-shortcuts/components/fork-dialog.ts";
 

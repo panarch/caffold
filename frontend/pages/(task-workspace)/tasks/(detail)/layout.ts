@@ -5,16 +5,16 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "#app/action-hints.js";
-import type { TaskDetail } from "#app/api.js";
+import type { TaskDetail } from "#app/api.ts";
 import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
 import {
   routeDomain,
   routeMode,
   type SectionDetailRoute,
   sectionDetailRoute,
-} from "#app/navigation-routes.js";
-import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.js";
-import type { TaskStoreStatusSnapshot } from "#app/pages/(task-workspace)/task-store-status.js";
+} from "#app/navigation-routes.ts";
+import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.ts";
+import type { TaskStoreStatusSnapshot } from "#app/pages/(task-workspace)/task-store-status.ts";
 import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import "#components/segmented-control.ts";
 import type { CaffoldSegmentedControl } from "#components/segmented-control.ts";
@@ -22,9 +22,9 @@ import type { ComposerSubmission } from "../components/composer.ts";
 import {
   type TaskTransportState,
   taskThreadStatusType,
-} from "../runtime-state.js";
-import { cleanLogicalPath } from "../task-format.js";
-import { type ListedTask, taskThreadId } from "../task-list-model.js";
+} from "../runtime-state.ts";
+import { cleanLogicalPath } from "../task-format.ts";
+import { type ListedTask, taskThreadId } from "../task-list-model.ts";
 import "./(git)/layout.ts";
 import type { CaffoldTaskGitLayout } from "./(git)/layout.ts";
 import "./(github)/layout.ts";

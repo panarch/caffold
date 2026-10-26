@@ -1,4 +1,4 @@
-import { cleanLogicalPath } from "#tasks/task-format.js";
+import { cleanLogicalPath } from "#tasks/task-format.ts";
 
 // What Review reads from the Task it reviews.
 export interface ReviewTask {

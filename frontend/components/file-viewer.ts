@@ -9,9 +9,9 @@ import {
   mergeActionHintScopes,
 } from "../action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "../action-hints.js";
-import { documentUrl, downloadUrl, imageUrl } from "../api.js";
+import { documentUrl, downloadUrl, imageUrl } from "../api.ts";
 import { type FetchedFile, fetchInChunks } from "../chunked-fetch.ts";
-import { compactIconButton } from "../component-styles.js";
+import { compactIconButton } from "../component-styles.ts";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,

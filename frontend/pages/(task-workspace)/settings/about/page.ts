@@ -10,7 +10,13 @@ import {
   linkActionHintTarget,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import { type CodexMcpDiagnostics, getCodexMcpDiagnostics } from "#app/api.js";
+import {
+  type CaffoldUpdateAttempt,
+  type CaffoldUpdateStatus,
+  type CodexMcpDiagnostics,
+  getCodexMcpDiagnostics,
+  type Health,
+} from "#app/api.ts";
 import { BUILD_INFO } from "#app/build-info.js";
 import {
   emptyScrollSurfaceScope,
@@ -29,31 +35,6 @@ export const CAFFOLD_UPDATE_TASK_REQUEST_EVENT =
 /** Asks the app shell to have the server ask GitHub now. */
 export const CAFFOLD_UPDATE_CHECK_REQUEST_EVENT =
   "caffold:caffold-update-check-request";
-
-export interface ServerHealth {
-  buildId?: string | null;
-  version?: string | null;
-}
-
-interface UpdateAttempt {
-  id: string;
-  outcome: string;
-  fromVersion?: string;
-  toVersion?: string | null;
-  reason?: string;
-  finishedAt?: string | null;
-}
-
-// What the server reports about Caffold releases and the update Task.
-export interface CaffoldUpdateStatus {
-  version?: string | null;
-  updateAvailable?: boolean;
-  latestRelease?: { version: string; url: string } | null;
-  releaseError?: string | null;
-  runningAttempt?: { toVersion?: string | null } | null;
-  lastAttempt?: UpdateAttempt | null;
-  updateTask?: { cwd: string; command: string } | null;
-}
 
 // The app shell's latest answer about Caffold updates.
 export interface CaffoldUpdateSnapshot {
@@ -94,7 +75,7 @@ export class CaffoldSettingsAboutPage extends LitElement {
     copyStatus: { state: true },
   };
 
-  declare health: ServerHealth | null;
+  declare health: Health | null;
   /** Whether a newer Caffold exists, and how the last update ended. */
   declare caffoldUpdate: CaffoldUpdateSnapshot | null;
   declare updateStatus: unknown;
@@ -467,7 +448,7 @@ export class CaffoldSettingsAboutPage extends LitElement {
  */
 export function caffoldUpdatesView(
   snapshot: CaffoldUpdateSnapshot | null | undefined,
-  health: ServerHealth | null = null,
+  health: Health | null = null,
 ) {
   const status = snapshot?.status ?? null;
   if (snapshot?.checking !== false && !status) {
@@ -553,7 +534,9 @@ export function caffoldUpdatesView(
 }
 
 /** How the newest finished update ended, with when. */
-export function lastUpdateValue(attempt: UpdateAttempt | null | undefined) {
+export function lastUpdateValue(
+  attempt: CaffoldUpdateAttempt | null | undefined,
+) {
   if (!attempt) {
     return null;
   }
@@ -587,7 +570,7 @@ export function lastUpdateValue(attempt: UpdateAttempt | null | undefined) {
 
 function caffoldUpdateDiagnosticLines(
   snapshot: CaffoldUpdateSnapshot,
-  health: ServerHealth | null,
+  health: Health | null,
 ) {
   const status = snapshot?.status ?? null;
   const attempt = status?.lastAttempt;
@@ -621,7 +604,7 @@ function formatBuildDate(date: Date) {
 }
 
 function buildStatus(
-  health: ServerHealth | null,
+  health: Health | null,
   updateStatus: Pick<UpdateStatus, "state"> = { state: "checking" },
 ) {
   if (updateStatus.state === "ready") {

@@ -7,7 +7,7 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "#app/action-hints.js";
-import { compactIconButton } from "#app/component-styles.js";
+import { compactIconButton } from "#app/component-styles.ts";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfaceScope,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const themeModuleUrl = new URL("./theme.js", import.meta.url);
+const themeModuleUrl = new URL("./theme.ts", import.meta.url);
 
 test("theme modes resolve System, Light, and Dark explicitly", async () => {
   const { DEFAULT_THEME_MODE, normalizeThemeMode, resolveTheme } =

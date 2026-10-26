@@ -12,7 +12,7 @@ test("reorders existing rows while preserving structural and reconciled state", 
 
   const result = await page.evaluate(async () => {
     await import("/assets/components/file-tree.ts");
-    const { setFileSortMode } = await import("/assets/settings.js");
+    const { setFileSortMode } = await import("/assets/settings.ts");
     const ready = (nodes) => ({ status: "ready", nodes });
     const tree = document.createElement("caffold-file-tree");
     tree.setAttribute("aria-label", "Ordering contract tree");
@@ -181,7 +181,7 @@ for (const themeMode of ["light", "dark"]) {
       await import("/assets/components/file-tree.ts");
       const { warmIcons } = await import("/assets/components/icons.ts");
       await warmIcons();
-      const { setThemeMode } = await import("/assets/settings.js");
+      const { setThemeMode } = await import("/assets/settings.ts");
       setThemeMode(mode);
       const ready = (nodes) => ({ status: "ready", nodes });
       const directory = (name, children) => ({

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { WorkspaceLiveUpdates } from "./live-updates.js";
+import { WorkspaceLiveUpdates } from "./live-updates.ts";
 
 const originalGlobals = {
   document: globalThis.document,

@@ -8,7 +8,7 @@ import {
 import { keyboardNavigationContext } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import type { CaffoldKeyboardNavigationPresentation } from "#app/keyboard-navigation/components/presentation.js";
-import { taskThreadId } from "../task-list-model.js";
+import { taskThreadId } from "../task-list-model.ts";
 
 export const TASK_ARCHIVED_DELETE_CONFIRMED_EVENT =
   "caffold:task-archived-delete-confirmed";

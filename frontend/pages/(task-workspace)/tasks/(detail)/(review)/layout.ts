@@ -10,15 +10,15 @@ import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
 } from "#app/scroll-scope.js";
-import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.js";
+import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.ts";
 import "#components/file-navigator.ts";
 import type { CaffoldFileNavigator } from "#components/file-navigator.ts";
 import "#components/pane-resizer.ts";
 import type { CaffoldPaneResizer } from "#components/pane-resizer.ts";
 import "#components/segmented-control.ts";
 import type { CaffoldSegmentedControl } from "#components/segmented-control.ts";
-import { cleanLogicalPath } from "#tasks/task-format.js";
-import { taskThreadId } from "#tasks/task-list-model.js";
+import { cleanLogicalPath } from "#tasks/task-format.ts";
+import { taskThreadId } from "#tasks/task-list-model.ts";
 import "./components/branch-changes.ts";
 import type { CaffoldReviewBranchChanges } from "./components/branch-changes.ts";
 import "./components/selected-file.ts";

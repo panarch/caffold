@@ -8,7 +8,7 @@ import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 const { TASK_STORE_RETRY_REQUEST_EVENT } = await import(
-  "../../task-store-status.js"
+  "../../task-store-status.ts"
 );
 await import("./task-store-recovery.ts");
 const Recovery = registry.element("caffold-task-store-recovery");

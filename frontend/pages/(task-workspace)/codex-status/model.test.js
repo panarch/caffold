@@ -11,7 +11,7 @@ import {
   formatResetCredits,
   resetCreditExpiry,
   sameCodexStatus,
-} from "./model.js";
+} from "./model.ts";
 
 function codexStatus(state, blocksTaskOperations = state !== "ready") {
   return {

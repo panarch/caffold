@@ -15,21 +15,21 @@ import {
   getArchivedTasks,
   restoreTask,
   type Task,
-} from "#app/api.js";
-import { busySpin } from "#app/component-styles.js";
+} from "#app/api.ts";
+import { busySpin } from "#app/component-styles.ts";
 import { inlineIcon, warmIcons } from "#components/icons.ts";
 import "#components/loading-text.ts";
 import {
   type TaskOperationsPresentation,
   taskStoreOperationsPresentation,
-} from "../../task-store-status.js";
+} from "../../task-store-status.ts";
 import {
   isTaskTransportStale,
   TASK_TRANSPORT_STATE,
   type TaskTransportState,
   taskStatusView,
-} from "../runtime-state.js";
-import { formatRelativeAgePresentation } from "../task-format.js";
+} from "../runtime-state.ts";
+import { formatRelativeAgePresentation } from "../task-format.ts";
 import {
   groupTasksByRepository,
   mergeTaskListPage,
@@ -38,7 +38,7 @@ import {
   taskThreadId,
   taskWorktreeLabel,
   upsertTask,
-} from "../task-list-model.js";
+} from "../task-list-model.ts";
 import "./task-status-chip.ts";
 
 export const ARCHIVED_TASK_LIST_INITIAL_SETTLED_EVENT =

@@ -10,7 +10,7 @@ import {
   type GitHubIssue,
   type GitHubPull,
   type GitRepository,
-} from "#app/api.js";
+} from "#app/api.ts";
 import {
   keyboardNavigationContext,
   mergeKeyboardNavigationContexts,

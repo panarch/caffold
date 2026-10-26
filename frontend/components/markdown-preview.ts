@@ -10,9 +10,9 @@ import {
   linkActionHintTarget,
   matchesLinkActionHintBinding,
 } from "../action-hint-scope.js";
-import { imageUrl } from "../api.js";
+import { imageUrl } from "../api.ts";
 import { fetchInChunks } from "../chunked-fetch.ts";
-import { parseLinkRoute } from "../navigation-routes.js";
+import { parseLinkRoute } from "../navigation-routes.ts";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
