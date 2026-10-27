@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   ActionHints,
@@ -121,6 +122,11 @@ interface SidePane {
   setCollapsed?(collapsed: boolean): void;
 }
 
+await compactIconButton.register(
+  "caffold-task-workspace",
+  "> .task-workspace-route-controls > .task-workspace-route-control",
+);
+
 /**
  * The workspace: the navigation pane with each tab's list and the tab
  * buttons, the detail pane with each tab's screen, the corner controls, and
@@ -129,6 +135,7 @@ interface SidePane {
  *
  * The app shell routes here and reads it right after, so it draws at once.
  */
+@customElement("caffold-task-workspace")
 export class CaffoldTaskWorkspace extends LitElement {
   private mode: WorkspaceTab = "tasks";
   private route: WorkspaceRoute = { kind: "tasks" };
@@ -266,11 +273,11 @@ export class CaffoldTaskWorkspace extends LitElement {
     });
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     this.performUpdate();
@@ -281,7 +288,7 @@ export class CaffoldTaskWorkspace extends LitElement {
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.sidePaneResizeObserver.disconnect();
@@ -635,7 +642,7 @@ export class CaffoldTaskWorkspace extends LitElement {
 
   // Each tab's screen is handed what it shares with the others once it
   // exists.
-  protected firstUpdated() {
+  protected override firstUpdated() {
     this.taskNavigator.setLiveUpdates(this.liveUpdates);
     this.tasksPage.setLiveUpdates(this.liveUpdates);
     this.tasksPage.connectTaskNavigator(this.taskNavigator);
@@ -656,7 +663,7 @@ export class CaffoldTaskWorkspace extends LitElement {
     this.updateChrome();
   }
 
-  protected updated() {
+  protected override updated() {
     const presentation = this.presentation;
     const values: Record<string, string> = {
       workspaceMode: this.mode,
@@ -693,7 +700,7 @@ export class CaffoldTaskWorkspace extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const toggle = this.sidePaneToggleState;
     const mode = this.mode;
     return html`
@@ -1346,9 +1353,8 @@ export class CaffoldTaskWorkspace extends LitElement {
   }
 }
 
-await compactIconButton.register(
-  "caffold-task-workspace",
-  "> .task-workspace-route-controls > .task-workspace-route-control",
-);
-
-customElements.define("caffold-task-workspace", CaffoldTaskWorkspace);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-workspace": CaffoldTaskWorkspace;
+  }
+}

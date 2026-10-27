@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -81,6 +82,7 @@ interface PointerGesture {
  * goes. Its own intents and its rows' leave as
  * `ACTIVE_TASK_SECTION_INTENT_EVENT`.
  */
+@customElement("caffold-active-task-section")
 export class CaffoldActiveTaskSection extends LitElement {
   private snapshot: SectionSnapshot = {
     section: null,
@@ -112,17 +114,17 @@ export class CaffoldActiveTaskSection extends LitElement {
     );
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.cancelPointerGesture({ announce: false });
@@ -302,7 +304,7 @@ export class CaffoldActiveTaskSection extends LitElement {
 
   // The header names the Section, counts its Tasks, and holds its reorder
   // handle; the rows' list stays empty here and is the Section's to fill.
-  render() {
+  override render() {
     const { section } = this.snapshot;
     const header = section ? this.header(section) : nothing;
     return html`<div class="task-repository-header">${header}</div>
@@ -313,7 +315,7 @@ export class CaffoldActiveTaskSection extends LitElement {
       ></ol>`;
   }
 
-  updated() {
+  override updated() {
     const { section, reorderMode } = this.snapshot;
     if (this.dataset.reorderMode !== reorderMode) {
       this.dataset.reorderMode = reorderMode;
@@ -614,4 +616,8 @@ export class CaffoldActiveTaskSection extends LitElement {
   }
 }
 
-customElements.define("caffold-active-task-section", CaffoldActiveTaskSection);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-active-task-section": CaffoldActiveTaskSection;
+  }
+}

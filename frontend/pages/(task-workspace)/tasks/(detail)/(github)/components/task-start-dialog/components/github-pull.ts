@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -15,39 +16,30 @@ import {
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 
+@customElement("caffold-github-pull-task-source")
 export class CaffoldGithubPullTaskSource extends LitElement {
-  static properties = {
-    payload: { state: true },
-    pending: { state: true },
-    error: { state: true },
-    locked: { state: true },
-  };
+  @state()
+  private accessor payload: GitHubPull | null = null;
+  @state()
+  private accessor pending = false;
+  @state()
+  private accessor error: Error | null = null;
+  @state()
+  private accessor locked = false;
 
-  declare private payload: GitHubPull | null;
-  declare private pending: boolean;
-  declare private error: Error | null;
-  declare private locked: boolean;
   private repository: GitRepository | null = null;
   private sourceRequestId = 0;
   private prepareRequestId = 0;
-
-  constructor() {
-    super();
-    this.payload = null;
-    this.pending = false;
-    this.error = null;
-    this.locked = false;
-  }
 
   private readonly hints = new ActionHints(this);
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly relationship = new DrawnRef<HTMLDListElement>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const pull = this.payload?.pull;
     return html`
       <span>Pull request head</span>
@@ -104,7 +96,7 @@ export class CaffoldGithubPullTaskSource extends LitElement {
     `;
   }
 
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     if (changed.has("pending")) {
       this.setAttribute("aria-busy", this.pending ? "true" : "false");
     }
@@ -259,11 +251,6 @@ export class CaffoldGithubPullTaskSource extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-github-pull-task-source",
-  CaffoldGithubPullTaskSource,
-);
-
 function pullIsValid(pull: GitHubPullDetail | null | undefined) {
   return Boolean(pull?.headRefOid && pull?.baseRepository?.nameWithOwner);
 }
@@ -343,4 +330,10 @@ function pullRefLabel(
   const ref = `${refName ?? "Unavailable"}`.trim();
   const shortOid = `${oid ?? "Unavailable"}`.trim().slice(0, 12);
   return `${repositoryName}:${ref} @ ${shortOid}`;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-github-pull-task-source": CaffoldGithubPullTaskSource;
+  }
 }

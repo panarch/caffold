@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import { type ActionHintPull, mergeActionHintScopes } from "../action-hints.js";
 import {
   type GitCompare,
@@ -28,6 +29,7 @@ const LOADING_DELAY_MS = 180;
 
 type DetailView = "list" | "viewer";
 
+@customElement("caffold-git-compare-browser")
 export class CaffoldGitCompareBrowser extends LitElement {
   // What the Compare page reads back.
   repository: GitRepository | null = null;
@@ -49,16 +51,16 @@ export class CaffoldGitCompareBrowser extends LitElement {
   private readonly resizer = new DrawnRef<CaffoldPaneResizer>(this);
   private readonly fileViewer = new DrawnRef<CaffoldReviewFileViewer>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
   }
 
-  render() {
+  override render() {
     return html`
       <caffold-git-compare-tree ${drawn(this.tree)}></caffold-git-compare-tree>
       <caffold-pane-resizer
@@ -75,7 +77,7 @@ export class CaffoldGitCompareBrowser extends LitElement {
     `;
   }
 
-  firstUpdated() {
+  override firstUpdated() {
     this.viewer.setCloseLabel("Back to compare");
     this.setView(this.detailView);
     this.applyPanelWidth();
@@ -665,8 +667,6 @@ export class CaffoldGitCompareBrowser extends LitElement {
   }
 }
 
-customElements.define("caffold-git-compare-browser", CaffoldGitCompareBrowser);
-
 function chooseCompareRef(
   preferredRef: string | null,
   fallbackRef: string | null | undefined,
@@ -684,4 +684,10 @@ function chooseCompareRef(
   }
 
   return refs[0]?.name ?? fallbackRef ?? preferredRef ?? null;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-git-compare-browser": CaffoldGitCompareBrowser;
+  }
 }

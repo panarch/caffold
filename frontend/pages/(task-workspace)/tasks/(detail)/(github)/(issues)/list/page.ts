@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   ACTION_HINT_ACTION,
@@ -20,14 +21,13 @@ type IssuesState =
   | { status: "ready"; payload: GitHubIssues }
   | { status: "error"; error: Error };
 
+@customElement("caffold-github-issues-list-page")
 export class CaffoldGithubIssuesListPage extends LitElement {
-  static properties = {
-    state: { state: true },
-    selectedIssueNumber: { state: true },
-  };
+  @state()
+  private accessor state: IssuesState = { status: "idle" };
+  @state()
+  private accessor selectedIssueNumber: number | null = null;
 
-  declare private state: IssuesState;
-  declare private selectedIssueNumber: number | null;
   private readonly list = new DrawnRef<HTMLOListElement>(this);
   private readonly pagination = new DrawnRef<CaffoldPagination>(this);
   private readonly hints: ActionHints = new ActionHints(this, {
@@ -35,17 +35,11 @@ export class CaffoldGithubIssuesListPage extends LitElement {
   });
   private readonly surfaces = new ScrollSurfaces(this);
 
-  constructor() {
-    super();
-    this.state = { status: "idle" };
-    this.selectedIssueNumber = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const state = this.state;
     if (state.status === "idle") {
       return html`
@@ -232,11 +226,6 @@ export class CaffoldGithubIssuesListPage extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-github-issues-list-page",
-  CaffoldGithubIssuesListPage,
-);
-
 function loadingPayload(payload: GitHubIssues | null, page: number | null) {
   if (!payload) {
     return null;
@@ -251,4 +240,10 @@ function loadingPayload(payload: GitHubIssues | null, page: number | null) {
     hasNext:
       payload.totalPages > 0 ? nextPage < payload.totalPages : payload.hasNext,
   };
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-github-issues-list-page": CaffoldGithubIssuesListPage;
+  }
 }

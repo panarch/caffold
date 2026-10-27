@@ -68,7 +68,7 @@ class DrawnDirective extends Directive {
     return nothing;
   }
 
-  update(part: ElementPart, [ref]: [DrawnRef<Element>]) {
+  override update(part: ElementPart, [ref]: [DrawnRef<Element>]) {
     drawnElements.set(ref, part.element);
     return nothing;
   }

@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -19,37 +20,29 @@ const MODES: readonly { mode: WorkspaceMode; label: string; icon: string }[] = [
  * The workspace's Tasks, Notes, and Settings buttons, with the one shown
  * marked current and Settings marked while an update waits.
  */
+@customElement("caffold-task-workspace-navigation")
 export class CaffoldTaskWorkspaceNavigation extends LitElement {
-  static properties = {
-    mode: { state: true },
-    updateAvailable: { state: true },
-    reloadReady: { state: true },
-  };
+  @state()
+  private accessor mode: WorkspaceMode = "tasks";
+  @state()
+  private accessor updateAvailable = false;
+  @state()
+  private accessor reloadReady = false;
 
-  declare private mode: WorkspaceMode;
-  declare private updateAvailable: boolean;
-  declare private reloadReady: boolean;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
 
-  constructor() {
-    super();
-    this.mode = "tasks";
-    this.updateAvailable = false;
-    this.reloadReady = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
@@ -73,7 +66,7 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
     return this.hints.scope({ ...pull, scopeId });
   }
 
-  render() {
+  override render() {
     const notices = [
       this.updateAvailable && "Caffold update available",
       this.reloadReady && "reload to update",
@@ -122,7 +115,8 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-task-workspace-navigation",
-  CaffoldTaskWorkspaceNavigation,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-workspace-navigation": CaffoldTaskWorkspaceNavigation;
+  }
+}

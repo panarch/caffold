@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { clampBadgePosition, type Rect } from "../../action-hints.js";
 import { DrawnRef, DrawnRefs, drawn } from "../../components/drawn-refs.js";
@@ -22,6 +23,7 @@ interface SelectorInput {
  * The modal that offers a context's Scroll surfaces when there is more than
  * one: each surface outlined, with the code that chooses it.
  */
+@customElement("caffold-scroll-surface-selector")
 export class CaffoldScrollSurfaceSelector extends LitElement {
   private surfaces: SelectableScrollSurface[] = [];
   private labels = new Map<string, string>();
@@ -51,16 +53,16 @@ export class CaffoldScrollSurfaceSelector extends LitElement {
     passive: false,
   };
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.close();
   }
 
-  render() {
+  override render() {
     const { buffer, status } = this.input;
     const matching = new Set(this.input.matches);
     return html`<dialog
@@ -242,11 +244,6 @@ export class CaffoldScrollSurfaceSelector extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-scroll-surface-selector",
-  CaffoldScrollSurfaceSelector,
-);
-
 function unoccupiedBadgePosition(
   surfaceRect: Rect,
   badgeRect: { width: number; height: number },
@@ -295,4 +292,10 @@ function rectsOverlap(
     left.top < right.bottom &&
     left.bottom > right.top
   );
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-scroll-surface-selector": CaffoldScrollSurfaceSelector;
+  }
 }

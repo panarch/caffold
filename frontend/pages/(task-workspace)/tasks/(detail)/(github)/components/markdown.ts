@@ -1,4 +1,5 @@
 import { css, html, LitElement, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import {
   type ActionHintTarget,
   captureLinkActionHintBinding,
@@ -56,13 +57,16 @@ interface ScrollRecord {
   scrollport: Element;
 }
 
+@customElement("caffold-github-markdown")
 export class CaffoldGithubMarkdown extends LitElement {
-  static properties = {
-    html: { attribute: false },
-    content: { state: true },
-  };
+  // The HTML GitHub rendered for the Markdown, and the sanitized copy of it
+  // that is shown.
+  @property({ attribute: false })
+  accessor html = "";
+  @state()
+  private accessor content: DocumentFragment | null = null;
 
-  static styles = css`
+  static override styles = css`
     :host {
       display: block;
       min-width: 0;
@@ -229,24 +233,14 @@ export class CaffoldGithubMarkdown extends LitElement {
     }
   `;
 
-  // The HTML GitHub rendered for the Markdown, and the sanitized copy of it
-  // that is shown.
-  declare html: string;
-  declare private content: DocumentFragment | null;
   private actionHintLinks: LinkRecord[] = [];
   private actionHintDisclosures: DisclosureRecord[] = [];
   private scrollSurfaceRecords: ScrollRecord[] = [];
   private readonly body = new DrawnRef<HTMLElement>(this);
   private readonly surfaces = new ScrollSurfaces(this);
 
-  constructor() {
-    super();
-    this.html = "";
-    this.content = null;
-  }
-
   // GitHub's HTML is parsed inert and sanitized before it reaches the page.
-  willUpdate(changed: PropertyValues) {
+  override willUpdate(changed: PropertyValues) {
     if (!changed.has("html")) {
       return;
     }
@@ -257,7 +251,7 @@ export class CaffoldGithubMarkdown extends LitElement {
     this.content = template.content;
   }
 
-  render() {
+  override render() {
     return html`<article
       ${drawn(this.body)}
       ${this.surfaces.surface({
@@ -270,7 +264,7 @@ export class CaffoldGithubMarkdown extends LitElement {
     >${this.content}</article>`;
   }
 
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     const body = this.body.value;
     if (!changed.has("html") || !body) {
       return;
@@ -384,8 +378,6 @@ export class CaffoldGithubMarkdown extends LitElement {
     return mergeScrollSurfaceScopes(own, ...nestedScopes);
   }
 }
-
-customElements.define("caffold-github-markdown", CaffoldGithubMarkdown);
 
 // A link's name is read when a session starts rather than here: a link inside
 // a closed disclosure has no rendered text until the disclosure opens.
@@ -546,5 +538,11 @@ function wrapTables(parent: ParentNode) {
     wrapper.className = "markdown-table-scroll";
     table.parentNode?.insertBefore(wrapper, table);
     wrapper.append(table);
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-github-markdown": CaffoldGithubMarkdown;
   }
 }

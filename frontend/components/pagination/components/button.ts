@@ -1,40 +1,36 @@
 import { html, LitElement } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import { type ActionHintPull, ActionHints } from "#app/action-hints.js";
 import { compactIconButton } from "#app/component-styles.js";
 import { inlineIcon } from "../../icons.js";
 
 export type PageKind = "first" | "previous" | "next" | "last";
 
-export class CaffoldPaginationButton extends LitElement {
-  static properties = {
-    kind: {},
-    page: { type: Number },
-    label: {},
-    icon: {},
-    disabled: { type: Boolean },
-  };
+await compactIconButton.register(
+  "caffold-pagination-button",
+  "> .pagination-button",
+);
 
-  declare kind: PageKind;
-  declare page: number;
-  declare label: string;
-  declare icon: string;
-  declare disabled: boolean;
+@customElement("caffold-pagination-button")
+export class CaffoldPaginationButton extends LitElement {
+  @property()
+  accessor kind!: PageKind;
+  @property({ type: Number })
+  accessor page = 0;
+  @property()
+  accessor label = "";
+  @property()
+  accessor icon = "";
+  @property({ type: Boolean })
+  accessor disabled = false;
 
   private readonly hints = new ActionHints(this);
 
-  constructor() {
-    super();
-    this.page = 0;
-    this.label = "";
-    this.icon = "";
-    this.disabled = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return html`
       <button
         ${this.hints.button({
@@ -73,9 +69,8 @@ export class CaffoldPaginationButton extends LitElement {
   }
 }
 
-await compactIconButton.register(
-  "caffold-pagination-button",
-  "> .pagination-button",
-);
-
-customElements.define("caffold-pagination-button", CaffoldPaginationButton);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-pagination-button": CaffoldPaginationButton;
+  }
+}

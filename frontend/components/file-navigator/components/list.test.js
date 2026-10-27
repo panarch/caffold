@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../../../tests/support/custom-element-unit.js";
 
@@ -23,7 +24,7 @@ test("merges its Refresh files with the tree it draws and passes the pull down",
       return { surfaces: [{ id: "review:files:scroll" }] };
     },
   };
-  const owner = Object.assign(Object.create(list), {
+  const owner = elementStandIn(list, {
     state: { status: "ready" },
     tree: { value: tree },
     hints: {

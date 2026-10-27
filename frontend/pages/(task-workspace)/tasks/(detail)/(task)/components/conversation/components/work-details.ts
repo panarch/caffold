@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   ACTION_HINT_ACTION,
@@ -85,20 +86,19 @@ type WorkItem =
 
 // A finished turn's work, folded behind one disclosure that says how long the
 // turn worked and how many updates it made.
+@customElement("caffold-task-work-details")
 export class CaffoldTaskWorkDetails extends LitElement {
-  static properties = {
-    identity: { attribute: false },
-    label: { attribute: false },
-    updateText: { attribute: false },
-    events: { attribute: false, hasChanged: changedEventList },
-    filePathPresentationBase: { attribute: false },
-  };
+  @property({ attribute: false })
+  accessor identity = "";
+  @property({ attribute: false })
+  accessor label = "Work details";
+  @property({ attribute: false })
+  accessor updateText = "";
+  @property({ attribute: false, hasChanged: changedEventList })
+  accessor events: TaskEvent[] = [];
+  @property({ attribute: false })
+  accessor filePathPresentationBase = "";
 
-  declare identity: string;
-  declare label: string;
-  declare updateText: string;
-  declare events: TaskEvent[];
-  declare filePathPresentationBase: string;
   private items: WorkItem[] = [];
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
@@ -112,32 +112,23 @@ export class CaffoldTaskWorkDetails extends LitElement {
   // Each item's command, command group, or message, by kind and identity.
   private readonly parts = new DrawnRefs<WorkItemPart>(this);
 
-  constructor() {
-    super();
-    this.identity = "";
-    this.label = "Work details";
-    this.updateText = "";
-    this.events = [];
-    this.filePathPresentationBase = "";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.rememberDisclosureState();
   }
 
-  willUpdate(changed: PropertyValues<this>) {
+  override willUpdate(changed: PropertyValues<this>) {
     if (changed.has("events") || changed.has("filePathPresentationBase")) {
       this.items = workItems(this.events, this.filePathPresentationBase);
     }
@@ -145,7 +136,7 @@ export class CaffoldTaskWorkDetails extends LitElement {
 
   // The summary toggles the native disclosure; drawing again keeps what the
   // person chose.
-  render() {
+  override render() {
     const open = this.disclosureState().get("root") ?? false;
     const outputs = outputOrdinals(this.items);
     const parts = {
@@ -203,7 +194,7 @@ export class CaffoldTaskWorkDetails extends LitElement {
     `;
   }
 
-  updated(changed: PropertyValues<this>) {
+  override updated(changed: PropertyValues<this>) {
     if (changed.has("identity")) {
       this.dataset.workDetailsIdentity = this.identity;
     }
@@ -615,4 +606,8 @@ function changedEventList(next: TaskEvent[], previous?: TaskEvent[]) {
   );
 }
 
-customElements.define("caffold-task-work-details", CaffoldTaskWorkDetails);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-work-details": CaffoldTaskWorkDetails;
+  }
+}

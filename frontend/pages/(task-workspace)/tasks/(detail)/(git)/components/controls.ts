@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -31,12 +32,20 @@ export const IDLE_CONTROLS: GitControlsSnapshot = {
   refreshState: "idle",
 };
 
-export class CaffoldGitReviewControls extends LitElement {
-  static properties = {
-    snapshot: { attribute: false },
-  };
+await compactIconButton.register(
+  "caffold-git-review-controls",
+  "> .git-review-controls > .git-review-refresh",
+);
+await busySpin.register(
+  "caffold-git-review-controls",
+  "> .git-review-controls > .git-review-refresh.is-refreshing > .git-review-refresh-icon",
+);
 
-  declare snapshot: GitControlsSnapshot;
+@customElement("caffold-git-review-controls")
+export class CaffoldGitReviewControls extends LitElement {
+  @property({ attribute: false })
+  accessor snapshot: GitControlsSnapshot = IDLE_CONTROLS;
+
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
@@ -44,27 +53,22 @@ export class CaffoldGitReviewControls extends LitElement {
   private readonly baseRefSelect = new DrawnRef<HTMLSelectElement>(this);
   private readonly headRefSelect = new DrawnRef<HTMLSelectElement>(this);
 
-  constructor() {
-    super();
-    this.snapshot = IDLE_CONTROLS;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  render() {
+  override render() {
     const snapshot = this.snapshot;
     const fetching =
       snapshot.action === "fetch" && snapshot.fetchState.status === "fetching";
@@ -150,7 +154,7 @@ export class CaffoldGitReviewControls extends LitElement {
   }
 
   // A `.value` binding would land before the options it names.
-  updated() {
+  override updated() {
     const { baseRef, headRef } = this.snapshot;
     for (const [select, value] of [
       [this.baseRefSelect.value, baseRef],
@@ -189,18 +193,6 @@ export class CaffoldGitReviewControls extends LitElement {
     );
   }
 }
-
-await compactIconButton.register(
-  "caffold-git-review-controls",
-  "> .git-review-controls > .git-review-refresh",
-);
-
-await busySpin.register(
-  "caffold-git-review-controls",
-  "> .git-review-controls > .git-review-refresh.is-refreshing > .git-review-refresh-icon",
-);
-
-customElements.define("caffold-git-review-controls", CaffoldGitReviewControls);
 
 function refLabel(name: string, ref: string) {
   return ref ? `Choose ${name} ref (current ${ref})` : `Choose ${name} ref`;
@@ -248,4 +240,10 @@ function refKindLabel(kind: string) {
     return "Current";
   }
   return kind === "remote" ? "Remote" : "Local";
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-git-review-controls": CaffoldGitReviewControls;
+  }
 }

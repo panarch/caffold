@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
@@ -14,26 +15,20 @@ type ResetCreditRequest = {
   retry?: boolean;
 };
 
+@customElement("caffold-codex-reset-credit-dialog")
 export class CaffoldCodexResetCreditDialog extends LitElement {
-  static properties = {
-    request: { state: true },
-  };
+  @state()
+  private accessor request: ResetCreditRequest = {};
 
-  declare private request: ResetCreditRequest;
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
-  constructor() {
-    super();
-    this.request = {};
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const { creditId, title, expiry, retry = false } = this.request;
     const heading = retry
       ? "Retry this reset request?"
@@ -121,7 +116,8 @@ export class CaffoldCodexResetCreditDialog extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-codex-reset-credit-dialog",
-  CaffoldCodexResetCreditDialog,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-codex-reset-credit-dialog": CaffoldCodexResetCreditDialog;
+  }
+}

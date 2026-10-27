@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import { type ActionHintPull, ActionHints } from "../action-hints.js";
 
 const START_DEFAULT_WIDTH = 320;
@@ -8,6 +9,7 @@ const START_MAX_RATIO = 0.7;
 
 export type PaneResizePhase = "start" | "update" | "end";
 
+@customElement("caffold-pane-resizer")
 export class CaffoldPaneResizer extends LitElement {
   private currentValue = START_DEFAULT_WIDTH;
   private preferredValue: number | null = null;
@@ -27,12 +29,12 @@ export class CaffoldPaneResizer extends LitElement {
   private readonly onFocus = () => this.syncRange();
   private readonly hints = new ActionHints(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
   // The separator is the host, so the handle carries its Action Hint.
-  render() {
+  override render() {
     return html`<span
       ${this.hints.separator({
         id: "separator",
@@ -45,7 +47,7 @@ export class CaffoldPaneResizer extends LitElement {
     ></span>`;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.setAttribute("role", "separator");
     this.setAttribute("aria-orientation", "vertical");
@@ -69,7 +71,7 @@ export class CaffoldPaneResizer extends LitElement {
     this.restoreCollapsed();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.cancelResize();
     this.resizeObserver.disconnect();
@@ -307,8 +309,6 @@ export class CaffoldPaneResizer extends LitElement {
   }
 }
 
-customElements.define("caffold-pane-resizer", CaffoldPaneResizer);
-
 function numericAttribute(element: Element, name: string, fallback: number) {
   return positiveWidth(element.getAttribute(name)) ?? fallback;
 }
@@ -342,4 +342,10 @@ function writeStoredValue(key: string | null, value: string) {
 function positiveWidth(value: string | null) {
   const width = Number(value);
   return Number.isFinite(width) && width > 0 ? Math.round(width) : null;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-pane-resizer": CaffoldPaneResizer;
+  }
 }

@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import {
   hasActionHintLayoutBox,
   linkActionHintLabel,
@@ -48,16 +49,15 @@ interface VisibleSheet {
 
 let libraryPromise: Promise<SheetJs> | undefined;
 
+@customElement("caffold-xlsx-viewer")
 class CaffoldXlsxViewer extends LitElement {
-  static properties = {
-    file: { attribute: false },
-    renderState: { state: true },
-    visibleSheets: { state: true },
-  };
+  @property({ attribute: false })
+  accessor file: DocumentPreviewFile | null = null;
+  @state()
+  private accessor renderState: RenderState = "empty";
+  @state()
+  private accessor visibleSheets: VisibleSheet[] | null = null;
 
-  declare file: DocumentPreviewFile | null;
-  declare private renderState: RenderState;
-  declare private visibleSheets: VisibleSheet[] | null;
   private generation = 0;
   private selectedSheetName: string | null = null;
   private workbook: WorkbookModel | null = null;
@@ -78,31 +78,24 @@ class CaffoldXlsxViewer extends LitElement {
   private readonly tabStrip = new DrawnRef<HTMLDivElement>(this);
   private readonly sheetTabs = new DrawnRef<CaffoldSegmentedControl>(this);
 
-  constructor() {
-    super();
-    this.file = null;
-    this.renderState = "empty";
-    this.visibleSheets = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "Excel preview");
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.release();
   }
 
   // The sheet's space is drawn by `layoutSheet` and `drawWindow`, which
   // replace only the cells near the viewport as it scrolls.
-  render() {
+  override render() {
     const message =
       this.renderState === "loading"
         ? html`<caffold-loading-text>Loading document...</caffold-loading-text>`
@@ -158,7 +151,7 @@ class CaffoldXlsxViewer extends LitElement {
   // A file handed over again before it is drawn replaces the one before it.
   // A newer copy of the file already shown keeps the sheet the person was
   // reading.
-  willUpdate(changed: PropertyValues) {
+  override willUpdate(changed: PropertyValues) {
     if (!changed.has("file") || !this.file) {
       return;
     }
@@ -170,7 +163,7 @@ class CaffoldXlsxViewer extends LitElement {
     void this.open(this.generation, this.file.file);
   }
 
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     if (changed.has("renderState")) {
       this.dataset.renderState = this.renderState;
     }
@@ -600,4 +593,8 @@ function loadLibrary() {
   return libraryPromise;
 }
 
-customElements.define("caffold-xlsx-viewer", CaffoldXlsxViewer);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-xlsx-viewer": CaffoldXlsxViewer;
+  }
+}

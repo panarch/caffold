@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   ActionHints,
@@ -58,6 +59,11 @@ export interface TaskNavigatorListState {
   selectedRecovery: ActiveTaskListState["selectedRecovery"];
 }
 
+await compactIconButton.register(
+  "caffold-task-navigator",
+  "> .task-list-primary-header > .task-list-primary-actions > .task-list-header-action",
+);
+
 /**
  * The Tasks tab's navigation pane: the workspace header with Switch task,
  * Reorder, and New Task, and below it the Active list and the Archived list.
@@ -66,6 +72,7 @@ export interface TaskNavigatorListState {
  * the Archived list once both have first answered, and hands the Archived list
  * what the Active list learns: the transport, and Tasks archived or restored.
  */
+@customElement("caffold-task-navigator")
 export class CaffoldTaskNavigator extends LitElement {
   private active = false;
   private reorderMode: ReorderMode = "none";
@@ -93,11 +100,11 @@ export class CaffoldTaskNavigator extends LitElement {
     );
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
@@ -107,7 +114,7 @@ export class CaffoldTaskNavigator extends LitElement {
     }
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.closeReorderPopover();
@@ -316,7 +323,7 @@ export class CaffoldTaskNavigator extends LitElement {
     };
   }
 
-  render() {
+  override render() {
     const blocked = this.taskOperations.blocked;
     const reordering = this.reorderMode !== "none";
     const finish = `Finish reordering ${
@@ -455,7 +462,7 @@ export class CaffoldTaskNavigator extends LitElement {
     `;
   }
 
-  updated() {
+  override updated() {
     if (this.dataset.reorderMode !== this.reorderMode) {
       this.dataset.reorderMode = this.reorderMode;
     }
@@ -623,9 +630,8 @@ export class CaffoldTaskNavigator extends LitElement {
   }
 }
 
-await compactIconButton.register(
-  "caffold-task-navigator",
-  "> .task-list-primary-header > .task-list-primary-actions > .task-list-header-action",
-);
-
-customElements.define("caffold-task-navigator", CaffoldTaskNavigator);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-navigator": CaffoldTaskNavigator;
+  }
+}

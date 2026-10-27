@@ -5,11 +5,13 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "strict": true,
+    "noImplicitOverride": true,
     "noEmit": true,
     "rootDir": ".",
     "sourceMap": true,
     "inlineSources": true,
     "sourceRoot": "/assets/",
+    "importHelpers": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "types": []

@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import {
   type ActionHintPull,
   ActionHints,
@@ -33,35 +34,27 @@ const ITEMS: readonly SettingsNavigatorEntry[] = [
   { section: "about", label: "About Caffold", icon: "Info" },
 ];
 
+@customElement("caffold-settings-navigator")
 export class CaffoldSettingsNavigator extends LitElement {
-  static properties = {
-    selectedSection: { attribute: false },
-    updateAvailable: { attribute: false },
-    reloadReady: { attribute: false },
-  };
-
-  declare selectedSection: string;
+  @property({ attribute: false })
+  accessor selectedSection = "";
   // Whether a newer Caffold exists, and whether this window has a new build
   // ready to load. Only the About entry shows either.
-  declare updateAvailable: boolean;
-  declare reloadReady: boolean;
+  @property({ attribute: false })
+  accessor updateAvailable = false;
+  @property({ attribute: false })
+  accessor reloadReady = false;
+
   private readonly hints = new ActionHints(this);
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly list = new DrawnRef<HTMLElement>(this);
   private readonly items = new DrawnRefs<CaffoldSettingsNavigatorItem>(this);
 
-  constructor() {
-    super();
-    this.selectedSection = "";
-    this.updateAvailable = false;
-    this.reloadReady = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const items = ITEMS.map((entry) => {
       const about = entry.section === "about";
       return html`<caffold-settings-navigator-item
@@ -119,4 +112,8 @@ export class CaffoldSettingsNavigator extends LitElement {
   }
 }
 
-customElements.define("caffold-settings-navigator", CaffoldSettingsNavigator);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-navigator": CaffoldSettingsNavigator;
+  }
+}

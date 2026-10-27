@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import type { TaskEvent } from "#app/api.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
@@ -27,12 +28,11 @@ interface CommandView {
  * A command a Task's agent ran, with its whole output, over the Task screen.
  * The dialog belongs to one Task and closes when another Task opens.
  */
+@customElement("caffold-task-command-dialog")
 export class CaffoldTaskCommandDialog extends LitElement {
-  static properties = {
-    threadId: { state: true },
-  };
+  @state()
+  private accessor threadId = "";
 
-  declare private threadId: string;
   private command: CommandView | null = null;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
@@ -42,22 +42,17 @@ export class CaffoldTaskCommandDialog extends LitElement {
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly output = new DrawnRef<HTMLPreElement>(this);
 
-  constructor() {
-    super();
-    this.threadId = "";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
@@ -111,7 +106,7 @@ export class CaffoldTaskCommandDialog extends LitElement {
     });
   }
 
-  render() {
+  override render() {
     const command = this.command;
     const statusLabel = command?.failed ? "Failed" : "Completed";
     const closeLabel = "Close command output";
@@ -259,4 +254,8 @@ function finiteNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-customElements.define("caffold-task-command-dialog", CaffoldTaskCommandDialog);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-command-dialog": CaffoldTaskCommandDialog;
+  }
+}

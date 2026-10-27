@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import type { SyntaxSpan } from "#app/api.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
@@ -33,30 +34,22 @@ const EMPTY_DIFF_MESSAGE = "No diff for this file.";
 // the diff.
 const SOURCE_ROWS = new Set<DiffRowType>(["added", "removed", "context"]);
 
+@customElement("caffold-diff-viewer")
 export class CaffoldDiffViewer extends LitElement {
-  static properties = {
-    diff: { attribute: false },
-    position: { attribute: false },
-  };
-
-  declare diff: FileDiff | null;
-  declare position: ViewerPosition | null;
+  @property({ attribute: false })
+  accessor diff: FileDiff | null = null;
+  @property({ attribute: false })
+  accessor position: ViewerPosition | null = null;
 
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly table = new DrawnRef<HTMLDivElement>(this);
 
-  constructor() {
-    super();
-    this.diff = null;
-    this.position = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     if (!this.diff) {
       return nothing;
     }
@@ -125,7 +118,7 @@ export class CaffoldDiffViewer extends LitElement {
 
   // The rows stay in place from one diff to the next, so a diff that keeps
   // no position starts from the top again.
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     if (changed.has("diff") || changed.has("position")) {
       this.restorePosition(this.position);
     }
@@ -227,8 +220,6 @@ function normalizeLine(line: number | string | null | undefined) {
   const value = Number(line);
   return Number.isInteger(value) && value > 0 ? value : null;
 }
-
-customElements.define("caffold-diff-viewer", CaffoldDiffViewer);
 
 function diffCodeColumns(rows: DiffRow[]) {
   const columns = rows.reduce(
@@ -358,4 +349,10 @@ function parseUnifiedDiff(diffText: string): DiffRow[] {
 
 function hunkLineCount(count: string | undefined) {
   return count === undefined ? 1 : Number(count);
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-diff-viewer": CaffoldDiffViewer;
+  }
 }

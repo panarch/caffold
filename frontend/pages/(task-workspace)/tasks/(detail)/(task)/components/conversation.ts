@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -149,6 +150,7 @@ interface EntryPart {
  * read the drawn conversation right after the change, so no part of it is left
  * to draw later.
  */
+@customElement("caffold-task-conversation")
 export class CaffoldTaskConversation extends LitElement {
   snapshot: ConversationSnapshot = {
     threadId: "",
@@ -188,17 +190,17 @@ export class CaffoldTaskConversation extends LitElement {
   });
   private readonly surfaces = new ScrollSurfaces(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.active = true;
     this.draw(null);
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.rememberScroll();
     this.active = false;
@@ -315,7 +317,7 @@ export class CaffoldTaskConversation extends LitElement {
     return this.scrollByThread.has(threadId);
   }
 
-  render() {
+  override render() {
     const { task, threadId, historyError, detailError } = this.snapshot;
     if (!task) {
       return nothing;
@@ -395,7 +397,7 @@ export class CaffoldTaskConversation extends LitElement {
     `;
   }
 
-  updated() {
+  override updated() {
     const { transportState } = this.snapshot;
     if (this.dataset.transportState !== transportState) {
       this.dataset.transportState = transportState;
@@ -1284,9 +1286,7 @@ export class CaffoldTaskConversation extends LitElement {
 function disclosureState(scroller: HTMLElement, pending: DisclosureAnchor) {
   if (pending.owner === "work-details") {
     const owner = [
-      ...scroller.querySelectorAll<CaffoldTaskWorkDetails>(
-        "caffold-task-work-details",
-      ),
+      ...scroller.querySelectorAll("caffold-task-work-details"),
     ].find((entry) => entry.identity === pending.identity);
     return owner
       ? {
@@ -1296,18 +1296,16 @@ function disclosureState(scroller: HTMLElement, pending: DisclosureAnchor) {
       : null;
   }
   if (pending.owner === "command") {
-    const owner = [
-      ...scroller.querySelectorAll<CaffoldTaskCommand>("caffold-task-command"),
-    ].find((entry) => entry.commandKey === pending.commandKey);
+    const owner = [...scroller.querySelectorAll("caffold-task-command")].find(
+      (entry) => entry.commandKey === pending.commandKey,
+    );
     return owner
       ? { open: owner.disclosureOpen(), top: owner.disclosureAnchorTop() }
       : null;
   }
   if (pending.owner === "command-group") {
     const owner = [
-      ...scroller.querySelectorAll<CaffoldTaskCommandGroup>(
-        "caffold-task-command-group",
-      ),
+      ...scroller.querySelectorAll("caffold-task-command-group"),
     ].find((entry) => entry.identity === pending.identity);
     return owner
       ? { open: owner.disclosureOpen(), top: owner.disclosureAnchorTop() }
@@ -1363,4 +1361,8 @@ function sameConversationSnapshot(
   );
 }
 
-customElements.define("caffold-task-conversation", CaffoldTaskConversation);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-conversation": CaffoldTaskConversation;
+  }
+}

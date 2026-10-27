@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type TemplateResult } from "lit";
+import { customElement } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   ACTION_HINT_ACTION,
@@ -65,6 +66,11 @@ export interface ArchivedTaskListIntent {
   task: Task;
 }
 
+await busySpin.register(
+  "caffold-archived-task-list",
+  "> .task-repository-groups > .task-repository-group > .task-list > .task-archived-row > .task-archived-actions > .task-archived-action-button.is-loading > .task-archived-action-icon",
+);
+
 /**
  * The Archived list: archived Tasks by repository, most recently active
  * first, a page at a time, each with Restore and Delete.
@@ -72,6 +78,7 @@ export interface ArchivedTaskListIntent {
  * It stays hidden until its navigator reveals it, once both lists have first
  * answered, so the two do not arrive one after the other.
  */
+@customElement("caffold-archived-task-list")
 export class CaffoldArchivedTaskList extends LitElement {
   private archivedTasks: Task[] = [];
   private readonly hints = new ActionHints(this, {
@@ -98,18 +105,18 @@ export class CaffoldArchivedTaskList extends LitElement {
   private readonly deleteErrors = new Map<string, Error>();
   private readonly iconsReady = () => this.requestUpdate();
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
     this.draw();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.requestId += 1;
@@ -287,7 +294,7 @@ export class CaffoldArchivedTaskList extends LitElement {
     return this.hints.scope({ ...pull, scopeId });
   }
 
-  render() {
+  override render() {
     if (!this.revealed) {
       return nothing;
     }
@@ -343,7 +350,7 @@ export class CaffoldArchivedTaskList extends LitElement {
   }
 
   // The host is a region only while revealed; `hidden` says which it is now.
-  updated() {
+  override updated() {
     const revealed = this.revealed;
     if (this.hidden !== revealed) {
       return;
@@ -694,9 +701,8 @@ function asError(error: unknown) {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-await busySpin.register(
-  "caffold-archived-task-list",
-  "> .task-repository-groups > .task-repository-group > .task-list > .task-archived-row > .task-archived-actions > .task-archived-action-button.is-loading > .task-archived-action-icon",
-);
-
-customElements.define("caffold-archived-task-list", CaffoldArchivedTaskList);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-archived-task-list": CaffoldArchivedTaskList;
+  }
+}

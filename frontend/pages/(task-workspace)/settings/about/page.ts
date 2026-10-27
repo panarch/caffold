@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import {
   ACTION_HINT_ACTION,
@@ -57,41 +58,31 @@ const CHECKING_UPDATE: CaffoldUpdateSnapshot = {
   error: null,
 };
 
+@customElement("caffold-settings-about-page")
 export class CaffoldSettingsAboutPage extends LitElement {
-  static properties = {
-    health: { attribute: false },
-    caffoldUpdate: { attribute: false },
-    updateStatus: { attribute: false },
-    copyingDiagnostics: { state: true },
-    copyStatus: { state: true },
-  };
-
-  declare health: Health | null;
+  @property({ attribute: false })
+  accessor health: Health | null = null;
   /** Whether a newer Caffold exists, and how the last update ended. */
-  declare caffoldUpdate: CaffoldUpdateSnapshot | null;
-  declare updateStatus: unknown;
-  declare private copyingDiagnostics: boolean;
-  declare private copyStatus: string;
+  @property({ attribute: false })
+  accessor caffoldUpdate: CaffoldUpdateSnapshot | null = null;
+  @property({ attribute: false })
+  accessor updateStatus: unknown = null;
+  @state()
+  private accessor copyingDiagnostics = false;
+  @state()
+  private accessor copyStatus = "";
+
   private readonly hints: ActionHints = new ActionHints(this, {
     clipRoots: () => [this, this.scrollport.value],
   });
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
 
-  constructor() {
-    super();
-    this.health = null;
-    this.caffoldUpdate = null;
-    this.updateStatus = null;
-    this.copyingDiagnostics = false;
-    this.copyStatus = "";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const updates = this.caffoldUpdate ?? CHECKING_UPDATE;
     const updateStatus = normalizeUpdateStatus(this.updateStatus);
     const view = caffoldUpdatesView(updates, this.health);
@@ -660,4 +651,8 @@ function diagnosticLineValue(value: unknown, fallback: string) {
     : fallback;
 }
 
-customElements.define("caffold-settings-about-page", CaffoldSettingsAboutPage);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-about-page": CaffoldSettingsAboutPage;
+  }
+}

@@ -152,14 +152,14 @@ test("task workspace declares one shared master pane and one detail pane", () =>
       );
     }
   }
-  assert.doesNotMatch(actionHints, /customElements\.define/);
+  assert.doesNotMatch(actionHints, /customElements\.define|@customElement\(/);
   assert.match(
     actionHintDialog,
-    /customElements\.define\(\s*"caffold-action-hint-dialog"/,
+    /@customElement\("caffold-action-hint-dialog"\)/,
   );
   assert.match(
     shortcutDialog,
-    /customElements\.define\(\s*"caffold-keyboard-shortcut-dialog"/,
+    /@customElement\("caffold-keyboard-shortcut-dialog"\)/,
   );
   assert.match(settingsWorkspace, /import "\.\/keyboard\/page\.js"/);
   assert.equal(
@@ -168,7 +168,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   );
   assert.match(
     keyboardSettings,
-    /customElements\.define\(\s*"caffold-settings-keyboard-page"/,
+    /@customElement\("caffold-settings-keyboard-page"\)/,
   );
 });
 
@@ -378,7 +378,7 @@ test("Git and GitHub detail components independently own their native auto popov
   assert.match(git, /type: "open-git-tool"/);
   assert.match(
     git,
-    /customElements\.define\("caffold-task-detail-git"/,
+    /@customElement\("caffold-task-detail-git"\)/,
   );
   assert.doesNotMatch(git, /CaffoldTaskDetailGithub|caffold-task-detail-github/);
 
@@ -392,7 +392,7 @@ test("Git and GitHub detail components independently own their native auto popov
   assert.match(github, /type: "open-github-tool"/);
   assert.match(
     github,
-    /customElements\.define\("caffold-task-detail-github"/,
+    /@customElement\("caffold-task-detail-github"\)/,
   );
   assert.doesNotMatch(
     github,
@@ -510,7 +510,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
 
 test("custom elements use routed owners or the nearest components namespace", () => {
   const invalidOwners = frontendModules()
-    .filter(([, source]) => source.includes("customElements.define"))
+    .filter(([, source]) => source.includes("@customElement("))
     .filter(([path]) => {
       const segments = path.split("/");
       const fileName = segments.at(-1);
@@ -535,7 +535,7 @@ test("Task Info keeps action presentation in its private leaf", () => {
   assert.match(info, /caffold:task-detail-info-action-intent/);
   assert.doesNotMatch(info, /data-task-info-action|forkDisabledReason/);
 
-  assert.match(actions, /customElements\.define/);
+  assert.match(actions, /@customElement\(/);
   assert.match(actions, /data-task-info-action="fork"/);
   assert.match(actions, /data-task-info-action="archive"/);
   assert.match(actions, /caffold:task-detail-info-action-intent/);
@@ -564,7 +564,7 @@ test("workspace brand owns the shared Tasks, Notes, and Settings navigator ident
 
   assert.match(
     brand,
-    /customElements\.define\("caffold-workspace-brand"/,
+    /@customElement\("caffold-workspace-brand"\)/,
   );
   assert.match(brand, /class="workspace-brand-icon"/);
   assert.match(brand, /class="workspace-brand-title">Caffold/);
@@ -766,7 +766,7 @@ test("Task navigator keeps primary chrome outside its role-specific scrolling li
     "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const renderMarkup = navigator.match(
-    /\n  render\(\) \{[\s\S]*?return html`([\s\S]*?)`;\n {2}}/,
+    /\n  override render\(\) \{[\s\S]*?return html`([\s\S]*?)`;\n {2}}/,
   )?.[1];
 
   assert.ok(renderMarkup, "navigator render markup must remain inspectable");
@@ -816,13 +816,13 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
     "pages/(task-workspace)/tasks/components/archived-task-list.css",
   );
 
-  assert.match(active, /customElements\.define\("caffold-active-task-list"/);
+  assert.match(active, /@customElement\("caffold-active-task-list"\)/);
   assert.match(active, /getTasks/);
   assert.match(active, /TaskStreamLifecycle/);
   assert.match(active, /aria-label", "Caffold Tasks"/);
   assert.doesNotMatch(active, /getArchivedTasks|restoreTask|deleteTask/);
   assert.doesNotMatch(active, /load-more-tasks|taskListNextCursor/);
-  assert.match(activeRow, /customElements\.define\("caffold-active-task-row"/);
+  assert.match(activeRow, /@customElement\("caffold-active-task-row"\)/);
   assert.doesNotMatch(
     active,
     /ACTIVE_TASK_ROW_INTENT_EVENT|caffold-active-task-row|li\[data-thread-id/,
@@ -834,7 +834,7 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
   assert.doesNotMatch(activeRow, /ACTIVE_TASK_SECTION_INTENT_EVENT/);
   assert.match(
     section,
-    /customElements\.define\(\s*"caffold-active-task-section"/,
+    /@customElement\("caffold-active-task-section"\)/,
   );
   assert.match(active, /new CaffoldActiveTaskSection\(\)/);
   assert.match(section, /<ol\s+\$\{drawn\(this\.list\)\}\s+class="task-list"/);
@@ -860,7 +860,7 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
 
   assert.match(
     archived,
-    /customElements\.define\("caffold-archived-task-list"/,
+    /@customElement\("caffold-archived-task-list"\)/,
   );
   assert.match(archived, /getArchivedTasks/);
   assert.match(archived, /restoreTask/);
@@ -1104,9 +1104,9 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   assert.match(restartLifecycle, /class CodexRuntimeRestartLifecycle/);
   assert.match(updateLifecycle, /class CodexRuntimeUpdateLifecycle/);
   assert.match(restartDialog, /<dialog/);
-  assert.match(restartDialog, /customElements\.define\(/);
+  assert.match(restartDialog, /@customElement\(/);
   assert.match(updateDialog, /<dialog/);
-  assert.match(updateDialog, /customElements\.define\(/);
+  assert.match(updateDialog, /@customElement\(/);
   assert.doesNotMatch(tasks, /codex-readiness-card|CODEX_INSTALL_COMMAND/);
   assert.match(tasks, /import "\.\/components\/task-store-recovery\.js"/);
   assert.match(

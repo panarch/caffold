@@ -1,4 +1,5 @@
 import { html, LitElement, type PropertyValues } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -51,15 +52,30 @@ const LOADING_MESSAGE = "Loading notes…";
 const EMPTY_MESSAGE = "No notes yet. Ask an agent in a Task to save one.";
 const ICON = "notes-picker-icon";
 
+await Promise.all(
+  ["back", "close"].map((action) =>
+    compactIconButton.register(
+      "caffold-notes-navigator",
+      `> .notes-navigator-header > .notes-picker-${action}`,
+    ),
+  ),
+);
+
 // The Notes tree in the workspace's navigation pane. The Notes workspace owns
 // what is read and which Note is open; this shows that snapshot and says which
 // Note a person picked and which directory they opened.
+@customElement("caffold-notes-navigator")
 export class CaffoldNotesNavigator extends LitElement {
-  static properties = {
-    snapshot: { attribute: false },
+  @property({ attribute: false })
+  accessor snapshot: NotesNavigatorSnapshot = {
+    levels: new Map(),
+    selectedNoteId: "",
+    picker: "",
+    companion: false,
+    disabledNoteId: "",
+    reveal: { noteId: "", keys: [] },
   };
 
-  declare snapshot: NotesNavigatorSnapshot;
   private revealSignature = "";
   private pendingRevealKeys: string[] = [];
   private readonly iconsReady = () => this.requestUpdate();
@@ -71,14 +87,6 @@ export class CaffoldNotesNavigator extends LitElement {
 
   constructor() {
     super();
-    this.snapshot = {
-      levels: new Map(),
-      selectedNoteId: "",
-      picker: "",
-      companion: false,
-      disabledNoteId: "",
-      reveal: { noteId: "", keys: [] },
-    };
     this.addEventListener("keydown", (event) => {
       if (
         event.key !== "Escape" ||
@@ -101,22 +109,22 @@ export class CaffoldNotesNavigator extends LitElement {
     });
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  render() {
+  override render() {
     const { levels, picker, companion } = this.snapshot;
     const top = levels.get("");
     const listing = top?.listing ?? null;
@@ -203,7 +211,7 @@ export class CaffoldNotesNavigator extends LitElement {
     `;
   }
 
-  updated(changed: PropertyValues<this>) {
+  override updated(changed: PropertyValues<this>) {
     if (!changed.has("snapshot")) {
       return;
     }
@@ -347,12 +355,8 @@ export class CaffoldNotesNavigator extends LitElement {
   }
 }
 
-await Promise.all(
-  ["back", "close"].map((action) =>
-    compactIconButton.register(
-      "caffold-notes-navigator",
-      `> .notes-navigator-header > .notes-picker-${action}`,
-    ),
-  ),
-);
-customElements.define("caffold-notes-navigator", CaffoldNotesNavigator);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-notes-navigator": CaffoldNotesNavigator;
+  }
+}

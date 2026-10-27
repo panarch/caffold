@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
   ActionHints,
@@ -42,16 +43,19 @@ interface BaseSelection {
   value: string;
 }
 
+@customElement("caffold-git-compare-tree")
 export class CaffoldGitCompareTree extends LitElement {
-  static properties = {
-    state: { state: true },
-    baseSelection: { state: true },
-    emptyMessage: { state: true },
+  @state()
+  private accessor state: CompareState = { status: "idle" };
+  @state()
+  private accessor baseSelection: BaseSelection = {
+    enabled: false,
+    refs: [],
+    value: "",
   };
+  @state()
+  private accessor emptyMessage = "";
 
-  declare private state: CompareState;
-  declare private baseSelection: BaseSelection;
-  declare private emptyMessage: string;
   selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
   private readonly hints = new ActionHints(this);
@@ -60,18 +64,11 @@ export class CaffoldGitCompareTree extends LitElement {
   private readonly baseRefSelect = new DrawnRef<HTMLSelectElement>(this);
   private readonly tree = new DrawnRef<CaffoldFileTree>(this);
 
-  constructor() {
-    super();
-    this.state = { status: "idle" };
-    this.baseSelection = { enabled: false, refs: [], value: "" };
-    this.emptyMessage = "";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const state = this.state;
     const compare = state.status === "ready" ? state.comparePayload : null;
     const files = compare?.files ?? [];
@@ -174,7 +171,7 @@ export class CaffoldGitCompareTree extends LitElement {
 
   // A `.value` binding would land before the options it names, and the tree
   // is handed the compared files once it is drawn.
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     const select = this.baseRefSelect.value;
     const { enabled, value } = this.baseSelection;
     if (enabled && select && select.value !== value) {
@@ -330,8 +327,6 @@ export class CaffoldGitCompareTree extends LitElement {
   }
 }
 
-customElements.define("caffold-git-compare-tree", CaffoldGitCompareTree);
-
 function comparedFile(node: FileTreeNode) {
   return node.source as GitCompareFile | undefined;
 }
@@ -405,4 +400,10 @@ function compareEntityKey(payload: GitCompare) {
     payload.baseRef ?? "",
     payload.headRef ?? "",
   ].join("\u0000");
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-git-compare-tree": CaffoldGitCompareTree;
+  }
 }

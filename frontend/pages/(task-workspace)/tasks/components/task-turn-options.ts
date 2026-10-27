@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   ACTION_HINT_ACTION,
@@ -145,6 +146,15 @@ interface PermissionFace {
   unavailable: boolean;
 }
 
+await busySpin.register(
+  "caffold-task-turn-options",
+  "> .task-turn-options > .task-model-picker > .task-model-button > .task-picker-spinner",
+);
+await busySpin.register(
+  "caffold-task-turn-options",
+  "> .task-turn-options > .task-permission-picker > .task-permission-button > .task-picker-spinner",
+);
+
 /**
  * The model, reasoning, speed, and approval mode a turn runs under, as two
  * compact controls that each open a menu.
@@ -153,6 +163,7 @@ interface PermissionFace {
  * the control shows what a turn started now would run under and announces
  * every change of it, so an owner sends only once the mode is known.
  */
+@customElement("caffold-task-turn-options")
 export class CaffoldTaskTurnOptions extends LitElement {
   private context: ResolvedContext = {
     cwd: ".",
@@ -203,13 +214,13 @@ export class CaffoldTaskTurnOptions extends LitElement {
   private readonly modelPopover = new DrawnRef<HTMLElement>(this);
   private readonly permissionPopover = new DrawnRef<HTMLElement>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
   // An owner shows the control as it is mounted, and a dialog that opens at
   // once moves focus into it.
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.dismissed);
     window.addEventListener("caffold:icons-ready", this.iconsReady);
@@ -223,7 +234,7 @@ export class CaffoldTaskTurnOptions extends LitElement {
     this.draw();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.hidePopovers();
     this.removeEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.dismissed);
@@ -392,7 +403,7 @@ export class CaffoldTaskTurnOptions extends LitElement {
 
   // Until a list describes the approval mode, the closed control keeps what
   // it showed while the delay runs, and then shows the loading slot.
-  willUpdate() {
+  override willUpdate() {
     if (this.settledPermissionList()) {
       this.shownPermission = this.permissionFace();
     } else if (
@@ -403,7 +414,7 @@ export class CaffoldTaskTurnOptions extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const { model, permission } = this.controls;
     const offered = this.offeredModels();
     const selected = this.selectedModel();
@@ -520,7 +531,7 @@ export class CaffoldTaskTurnOptions extends LitElement {
   }
 
   // Each control names its own place for its menu to open beside.
-  firstUpdated() {
+  override firstUpdated() {
     const model = `--caffold-task-model-anchor-${this.instanceId}`;
     const permission = `--caffold-task-permission-anchor-${this.instanceId}`;
     this.modelButton.value?.style.setProperty("anchor-name", model);
@@ -532,7 +543,7 @@ export class CaffoldTaskTurnOptions extends LitElement {
     );
   }
 
-  updated() {
+  override updated() {
     if (this.dataset.placement !== this.context.placement) {
       this.dataset.placement = this.context.placement;
     }
@@ -1541,14 +1552,8 @@ function compactPermissionModeLabel(mode: string, label: string) {
   return COMPACT_PERMISSION_MODE_LABELS[mode] ?? (label || mode);
 }
 
-await busySpin.register(
-  "caffold-task-turn-options",
-  "> .task-turn-options > .task-model-picker > .task-model-button > .task-picker-spinner",
-);
-
-await busySpin.register(
-  "caffold-task-turn-options",
-  "> .task-turn-options > .task-permission-picker > .task-permission-button > .task-picker-spinner",
-);
-
-customElements.define("caffold-task-turn-options", CaffoldTaskTurnOptions);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-turn-options": CaffoldTaskTurnOptions;
+  }
+}

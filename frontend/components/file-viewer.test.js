@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../tests/support/custom-element-unit.js";
 
@@ -13,8 +14,7 @@ after(() => registry.restore());
 // A viewer whose own declarations make `ownTarget` and `ownSurface`, and
 // whose drawn children are the given refs.
 function viewerWith(state, children = {}) {
-  const owner = Object.create(fileViewer);
-  return Object.assign(owner, {
+  const owner = elementStandIn(fileViewer, {
     state,
     hints: {
       scope: () => ({ blocked: false, targets: [{ id: "own" }], mutationRoots: [owner], scrollRoots: [] }),
@@ -27,6 +27,7 @@ function viewerWith(state, children = {}) {
     preview: { value: children.preview },
     documentViewer: { value: children.documentViewer },
   });
+  return owner;
 }
 
 test("merges the Action Hints of the Markdown preview it draws", () => {
@@ -319,7 +320,7 @@ function fileServer(files) {
 function previewHost(status = "document") {
   const handed = [];
   const errors = [];
-  const host = Object.assign(Object.create(fileViewer), {
+  const host = elementStandIn(fileViewer, {
     state: status === "image"
       ? { status, image: { path: "picture.png", name: "picture.png" } }
       : { status, document: { kind: "pdf", path: "document.pdf" } },

@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import { mergeActionHintScopes } from "#app/action-hints.js";
 import {
   mergeScrollSurfaceScopes,
@@ -30,6 +31,7 @@ const MOVE_CHANGES_NOTE =
  * Tasks can be made now, and starts the Task its form asks for. A directory
  * chosen here becomes the screen's route.
  */
+@customElement("caffold-task-new")
 export class CaffoldTaskNew extends LitElement {
   private cwd = ".";
   private server: ServerPaths = {};
@@ -39,11 +41,11 @@ export class CaffoldTaskNew extends LitElement {
   private readonly workspace = new DrawnRef<HTMLElement>(this);
   private readonly create = new DrawnRef<CaffoldTaskCreate>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.create.value?.deactivate();
   }
@@ -128,7 +130,7 @@ export class CaffoldTaskNew extends LitElement {
     );
   }
 
-  render() {
+  override render() {
     return html`
       <header class="task-new-header">
         <h2>New Task</h2>
@@ -172,7 +174,7 @@ export class CaffoldTaskNew extends LitElement {
 
   // The form inside is told its directory and server as soon as it exists,
   // since the Tasks screen reads it right after.
-  protected firstUpdated() {
+  protected override firstUpdated() {
     this.syncTaskCreate();
   }
 
@@ -208,4 +210,8 @@ export class CaffoldTaskNew extends LitElement {
   }
 }
 
-customElements.define("caffold-task-new", CaffoldTaskNew);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-new": CaffoldTaskNew;
+  }
+}

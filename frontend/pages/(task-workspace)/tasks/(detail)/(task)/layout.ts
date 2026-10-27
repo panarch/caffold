@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type TemplateResult } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   ActionHints,
@@ -208,6 +209,7 @@ type UpdateKind = ConversationSnapshot["updateKind"];
  * and its dialogs keep their state; each Task's Composer is kept apart and
  * moved into the pane's slot.
  */
+@customElement("caffold-task-detail")
 export class CaffoldTaskDetail extends LitElement {
   private reviewView: TaskDetailView = "conversation";
   private taskDetail: TaskDetail | null = null;
@@ -307,11 +309,11 @@ export class CaffoldTaskDetail extends LitElement {
     new DrawnRef<CaffoldBrokenTaskDeleteDialog>(this);
   private readonly absenceNotice = new DrawnRef<CaffoldTaskAbsence>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener(
       CAFFOLD_ORIGIN_REACHABLE_EVENT,
@@ -320,7 +322,7 @@ export class CaffoldTaskDetail extends LitElement {
     this.draw();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener(
       CAFFOLD_ORIGIN_REACHABLE_EVENT,
@@ -1848,9 +1850,7 @@ export class CaffoldTaskDetail extends LitElement {
     if (composer) {
       return composer;
     }
-    composer = document.createElement(
-      "caffold-task-composer",
-    ) as CaffoldTaskComposer;
+    composer = document.createElement("caffold-task-composer");
     composer.dataset.threadId = threadId;
     this.followUpComposers.set(threadId, composer);
     this.followUpComposerLastUsed.set(
@@ -2112,7 +2112,7 @@ export class CaffoldTaskDetail extends LitElement {
     );
   }
 
-  protected willUpdate() {
+  protected override willUpdate() {
     this.notice = this.regionNotice();
     const task = this.taskDetail?.task;
     if (this.notice === null && task) {
@@ -2120,13 +2120,13 @@ export class CaffoldTaskDetail extends LitElement {
     }
   }
 
-  protected updated() {
+  protected override updated() {
     if (this.dataset.taskDetailView !== this.reviewView) {
       this.dataset.taskDetailView = this.reviewView;
     }
   }
 
-  render() {
+  override render() {
     const notice = this.notice;
     const pane = this.pane;
     const conversation =
@@ -2411,8 +2411,6 @@ export class CaffoldTaskDetail extends LitElement {
   }
 }
 
-customElements.define("caffold-task-detail", CaffoldTaskDetail);
-
 // Where each attached file goes when the prompt is sent: one folder for the
 // send, and a name within it no other file of the send has.
 function plannedUpload(attachments: ComposerAttachment[]): PlannedUpload {
@@ -2556,4 +2554,10 @@ function taskDetailSurface(
     return "terminal";
   }
   return route.kind === "tasks" && route.review ? "review" : "conversation";
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-detail": CaffoldTaskDetail;
+  }
 }

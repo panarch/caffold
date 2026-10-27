@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../tests/support/custom-element-unit.js";
 
@@ -13,14 +14,14 @@ after(() => registry.restore());
 // A compare tree whose own declarations make `ownTargets` and whose drawn
 // File Tree is `tree`.
 function compareTreeWith({ status = "ready", tree = null, ownTargets = [] } = {}) {
-  const owner = Object.create(compareTree);
-  return Object.assign(owner, {
+  const owner = elementStandIn(compareTree, {
     state: { status },
     hints: {
       scope: () => ({ blocked: false, targets: ownTargets, mutationRoots: [owner], scrollRoots: [] }),
     },
     tree: { value: tree },
   });
+  return owner;
 }
 
 test("passes the pull to the File Tree it draws once the compare is ready", () => {

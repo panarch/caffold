@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -20,16 +21,20 @@ export interface GitHubMenuIntent {
 
 let taskDetailGithubInstanceId = 0;
 
+await compactIconButton.register(
+  "caffold-task-detail-github",
+  "> .task-github-button",
+);
+
 /**
  * The Detail header's GitHub button, and the popover of GitHub work it
  * opens: Pull Requests and Issues.
  */
+@customElement("caffold-task-detail-github")
 export class CaffoldTaskDetailGithub extends LitElement {
-  static properties = {
-    available: { state: true },
-  };
+  @state()
+  private accessor available = false;
 
-  declare private available: boolean;
   private readonly popoverId =
     `task-github-actions-${++taskDetailGithubInstanceId}`;
   private readonly hints = new ActionHints(this);
@@ -38,17 +43,16 @@ export class CaffoldTaskDetailGithub extends LitElement {
 
   constructor() {
     super();
-    this.available = false;
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
       this.handleDismiss(event),
     );
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
   }
@@ -87,7 +91,7 @@ export class CaffoldTaskDetailGithub extends LitElement {
     });
   }
 
-  render() {
+  override render() {
     return html`
       <button
         ${this.hints.button({
@@ -174,9 +178,8 @@ export class CaffoldTaskDetailGithub extends LitElement {
   }
 }
 
-await compactIconButton.register(
-  "caffold-task-detail-github",
-  "> .task-github-button",
-);
-
-customElements.define("caffold-task-detail-github", CaffoldTaskDetailGithub);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-detail-github": CaffoldTaskDetailGithub;
+  }
+}

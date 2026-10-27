@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import { deleteTask, getTask, type TaskResponseError } from "#app/api.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
@@ -45,34 +46,26 @@ const EDGES: Readonly<Record<Phase, Partial<Record<PhaseEvent, Phase>>>> = {
  * Asks before deleting a Task whose worktree Caffold cannot check, and
  * deletes it with the worktree its diagnosis named.
  */
+@customElement("caffold-broken-task-delete-dialog")
 export class CaffoldBrokenTaskDeleteDialog extends LitElement {
-  static properties = {
-    phase: { state: true },
-    target: { state: true },
-    failure: { state: true },
-  };
+  @state()
+  private accessor phase: Phase = "idle";
+  @state()
+  private accessor target: BrokenTaskContext | null = null;
+  @state()
+  private accessor failure: Error | null = null;
 
-  declare private phase: Phase;
-  declare private target: BrokenTaskContext | null;
-  declare private failure: Error | null;
   private generation = 0;
   private context: BrokenTaskContext | null = null;
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
-  constructor() {
-    super();
-    this.phase = "idle";
-    this.target = null;
-    this.failure = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.reset();
   }
@@ -111,7 +104,7 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
     });
   }
 
-  render() {
+  override render() {
     const target = this.target;
     const missing = Boolean(target?.error?.worktreeMissing);
     const deleting = this.phase === "deleting";
@@ -313,7 +306,8 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-broken-task-delete-dialog",
-  CaffoldBrokenTaskDeleteDialog,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-broken-task-delete-dialog": CaffoldBrokenTaskDeleteDialog;
+  }
+}

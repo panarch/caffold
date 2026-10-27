@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import {
   type ActionHintPull,
   mergeActionHintScopes,
@@ -33,33 +34,24 @@ export type { SuggestedPromptIntentDetail } from "./assistant-message/components
  * turn is decided by the surface placing it, and Claude does not mark one
  * itself.
  */
+@customElement("caffold-task-assistant-message")
 export class CaffoldTaskAssistantMessage extends LitElement {
-  static properties = {
-    event: { attribute: false },
-    phase: { attribute: false },
-    turnCompletedMs: { attribute: false },
-    controlsDisabled: { attribute: false },
-  };
+  @property({ attribute: false })
+  accessor event: TaskEvent | null = null;
+  @property({ attribute: false })
+  accessor phase: AssistantMessagePhase | null = null;
+  @property({ attribute: false })
+  accessor turnCompletedMs: number | null = null;
+  @property({ attribute: false })
+  accessor controlsDisabled = false;
 
-  declare event: TaskEvent | null;
-  declare phase: AssistantMessagePhase | null;
-  declare turnCompletedMs: number | null;
-  declare controlsDisabled: boolean;
   private readonly copyButton =
     new DrawnRef<CaffoldTaskAssistantMessageCopyButton>(this);
   private readonly markdown = new DrawnRef<CaffoldTaskMarkdown>(this);
   private readonly suggestedPrompts =
     new DrawnRef<CaffoldTaskAssistantMessageSuggestedPrompts>(this);
 
-  constructor() {
-    super();
-    this.event = null;
-    this.phase = null;
-    this.turnCompletedMs = null;
-    this.controlsDisabled = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
@@ -82,7 +74,7 @@ export class CaffoldTaskAssistantMessage extends LitElement {
     };
   }
 
-  render() {
+  override render() {
     const { text, time, threadId, fileLinks, phase, suggestedPrompts } =
       this.presentation;
     return html`
@@ -112,7 +104,7 @@ export class CaffoldTaskAssistantMessage extends LitElement {
     `;
   }
 
-  updated() {
+  override updated() {
     const { phase } = this.presentation;
     if ((this.dataset.messagePhase ?? "") !== phase) {
       if (phase) {
@@ -149,7 +141,8 @@ export class CaffoldTaskAssistantMessage extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-task-assistant-message",
-  CaffoldTaskAssistantMessage,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-assistant-message": CaffoldTaskAssistantMessage;
+  }
+}

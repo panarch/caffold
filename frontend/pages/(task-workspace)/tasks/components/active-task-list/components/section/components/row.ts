@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -60,6 +61,7 @@ interface PointerGesture {
  * `moveBefore()`, which keeps a gesture in progress, focus, and a spinner
  * going. What the person does with it leaves as `ACTIVE_TASK_ROW_INTENT_EVENT`.
  */
+@customElement("caffold-active-task-row")
 export class CaffoldActiveTaskRow extends LitElement {
   private snapshot: TaskRowSnapshot = {
     task: null,
@@ -90,17 +92,17 @@ export class CaffoldActiveTaskRow extends LitElement {
     );
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.cancelPointerGesture({ announce: false });
@@ -135,7 +137,7 @@ export class CaffoldActiveTaskRow extends LitElement {
     return this.hints.scope(pull);
   }
 
-  render() {
+  override render() {
     const { task, selectedThreadId, taskOperations, pending } = this.snapshot;
     if (!task) {
       return nothing;
@@ -422,4 +424,8 @@ function unseenAttentionDelayMs(threadId: string) {
   return 0 - phase * UNSEEN_ATTENTION_PHASE_INTERVAL_MS;
 }
 
-customElements.define("caffold-active-task-row", CaffoldActiveTaskRow);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-active-task-row": CaffoldActiveTaskRow;
+  }
+}

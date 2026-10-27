@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -13,12 +14,11 @@ import {
   setActionHintsEnabled,
 } from "#app/settings.js";
 
+@customElement("caffold-settings-keyboard-page")
 export class CaffoldSettingsKeyboardPage extends LitElement {
-  static properties = {
-    settings: { state: true },
-  };
+  @state()
+  private accessor settings: Settings = getSettings();
 
-  declare private settings: Settings;
   private readonly settingsChanged = (event: Event) => {
     this.settings =
       (event as CustomEvent<{ settings?: Settings }>).detail?.settings ??
@@ -31,22 +31,17 @@ export class CaffoldSettingsKeyboardPage extends LitElement {
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly toggleLabel = new DrawnRef<HTMLLabelElement>(this);
 
-  constructor() {
-    super();
-    this.settings = getSettings();
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:settings-change", this.settingsChanged);
     this.settings = getSettings();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:settings-change", this.settingsChanged);
   }
@@ -55,7 +50,7 @@ export class CaffoldSettingsKeyboardPage extends LitElement {
     this.settings = getSettings();
   }
 
-  render() {
+  override render() {
     return html`
       <div
         ${drawn(this.scrollport)}
@@ -136,7 +131,8 @@ export class CaffoldSettingsKeyboardPage extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-settings-keyboard-page",
-  CaffoldSettingsKeyboardPage,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-keyboard-page": CaffoldSettingsKeyboardPage;
+  }
+}

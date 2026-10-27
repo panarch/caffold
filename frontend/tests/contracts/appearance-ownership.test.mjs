@@ -522,7 +522,7 @@ test("workspace header identity and titles share semantic ownership", () => {
   ]);
   assert.match(
     brandView,
-    /customElements\.define\("caffold-workspace-brand"/,
+    /@customElement\("caffold-workspace-brand"\)/,
   );
   assert.match(taskNavigatorView, /<caffold-workspace-brand>/);
   assert.match(settingsNavigatorView, /<caffold-workspace-brand>/);

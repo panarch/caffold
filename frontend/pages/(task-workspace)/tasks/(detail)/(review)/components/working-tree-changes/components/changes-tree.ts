@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
   emptyActionHintScope,
@@ -39,26 +40,20 @@ type ChangesState =
   | { status: "ready"; gitStatus: GitStatus }
   | { status: "error"; error: Error; repository: ChangesRepository | null };
 
+@customElement("caffold-git-diff-changes-tree")
 export class CaffoldGitDiffChangesTree extends LitElement {
-  static properties = {
-    state: { state: true },
-  };
+  @state()
+  private accessor state: ChangesState = { status: "idle" };
 
-  declare private state: ChangesState;
   private readonly treeElement = new DrawnRef<CaffoldFileTree>(this);
   private selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
 
-  constructor() {
-    super();
-    this.state = { status: "idle" };
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const state = this.state;
     const ready = state.status === "ready";
     const files = ready ? state.gitStatus.files : [];
@@ -130,7 +125,7 @@ export class CaffoldGitDiffChangesTree extends LitElement {
   }
 
   // The tree is handed the changed files once it is drawn.
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     const state = this.state;
     if (!changed.has("state") || state.status !== "ready") {
       return;
@@ -235,11 +230,6 @@ export class CaffoldGitDiffChangesTree extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-git-diff-changes-tree",
-  CaffoldGitDiffChangesTree,
-);
-
 function changedFile(node: FileTreeNode) {
   return node.source as GitChangedFile | undefined;
 }
@@ -292,4 +282,10 @@ function normalizeRepoPath(path: string) {
     .split("/")
     .filter((segment) => segment && segment !== "." && segment !== "..")
     .join("/");
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-git-diff-changes-tree": CaffoldGitDiffChangesTree;
+  }
 }

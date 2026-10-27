@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../tests/support/custom-element-unit.js";
 
@@ -55,7 +56,7 @@ function workbookViewer({ links = [], tabScope = null } = {}) {
     querySelectorAll: () => links,
   };
   const tabs = {};
-  const owner = Object.assign(Object.create(xlsxViewer), {
+  const owner = elementStandIn(xlsxViewer, {
     renderState: "xlsx",
     hints: {
       scope: () => ({ blocked: false, targets: [], mutationRoots: [owner], scrollRoots: [] }),

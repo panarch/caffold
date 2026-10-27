@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../../../../tests/support/custom-element-unit.js";
 
@@ -11,7 +12,7 @@ const deleteDialog = registry.element("caffold-task-archived-delete-dialog").pro
 after(() => registry.restore());
 
 test("keeps a reopened retained dialog bound across a stale close event", () => {
-  const owner = Object.assign(Object.create(deleteDialog), {
+  const owner = elementStandIn(deleteDialog, {
     pendingThreadId: "thread/1",
     taskTitle: "Delete archived task",
     dialog: { value: { open: true, returnValue: "cancel" } },

@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -29,12 +30,11 @@ type GitHubKind = "issues" | "pulls";
  *
  * It asks GitHub about the repository while active, once for each directory.
  */
+@customElement("caffold-section-github-shortcuts")
 export class CaffoldSectionGithubShortcuts extends LitElement {
-  static properties = {
-    githubStatus: { state: true },
-  };
+  @state()
+  private accessor githubStatus: GitHubStatus | null = null;
 
-  declare private githubStatus: GitHubStatus | null;
   private active = false;
   private context: GitHubShortcutsContext = {
     key: "",
@@ -45,22 +45,17 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
   private statusRequestId = 0;
   private readonly hints = new ActionHints(this);
 
-  constructor() {
-    super();
-    this.githubStatus = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     setAttribute(this, "role", "complementary");
     setAttribute(this, "aria-label", "GitHub shortcuts");
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.active = false;
     this.invalidateStatus();
@@ -96,14 +91,14 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
     return this.active ? this.hints.scope(pull) : emptyActionHintScope();
   }
 
-  protected updated() {
+  protected override updated() {
     const hidden = !this.githubStatus?.github;
     if (this.hidden !== hidden) {
       this.hidden = hidden;
     }
   }
 
-  render() {
+  override render() {
     return html`
       <header class="section-github-repository">
         <span class="section-github-icon" aria-hidden="true"></span>
@@ -209,13 +204,14 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-section-github-shortcuts",
-  CaffoldSectionGithubShortcuts,
-);
-
 function setAttribute(element: Element, name: string, value: string) {
   if (element.getAttribute(name) !== value) {
     element.setAttribute(name, value);
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-section-github-shortcuts": CaffoldSectionGithubShortcuts;
   }
 }

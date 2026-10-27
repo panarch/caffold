@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
 import {
   ACTION_HINT_ACTION,
@@ -45,12 +46,17 @@ const KEY_PROVIDER_NAMES: Readonly<Record<VoiceKeyProvider, string>> =
 const PROVIDER_DESCRIPTION =
   "settings-voice-description settings-voice-provider-note";
 
+@customElement("caffold-settings-voice-page")
 export class CaffoldSettingsVoicePage extends LitElement {
-  static properties = {
-    snapshot: { state: true },
+  @state()
+  private accessor snapshot: VoiceSettingsSnapshot = {
+    settings: null,
+    fresh: false,
+    busy: false,
+    retry: false,
+    message: "",
   };
 
-  declare private snapshot: VoiceSettingsSnapshot;
   private active = false;
   private announcedReadiness = "";
   private readonly lifecycle = new VoiceSettingsLifecycle({
@@ -67,22 +73,11 @@ export class CaffoldSettingsVoicePage extends LitElement {
   private readonly choiceLabels = new DrawnRefs<HTMLLabelElement>(this);
   private readonly keyInputs = new DrawnRefs<HTMLInputElement>(this);
 
-  constructor() {
-    super();
-    this.snapshot = {
-      settings: null,
-      fresh: false,
-      busy: false,
-      retry: false,
-      message: "",
-    };
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
   }
@@ -98,7 +93,7 @@ export class CaffoldSettingsVoicePage extends LitElement {
     this.lifecycle.deactivate();
   }
 
-  render() {
+  override render() {
     const { settings, fresh, busy, retry, message } = this.snapshot;
     const locked = busy || !fresh || !settings;
     const whisper = settings?.whisper ?? null;
@@ -407,4 +402,8 @@ function formatBytes(bytes: number) {
     : `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
-customElements.define("caffold-settings-voice-page", CaffoldSettingsVoicePage);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-voice-page": CaffoldSettingsVoicePage;
+  }
+}

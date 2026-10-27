@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
@@ -75,16 +76,15 @@ interface SyncOptions {
   reactivated?: boolean;
 }
 
+@customElement("caffold-task-review")
 export class CaffoldTaskReview extends LitElement {
-  static properties = {
-    route: { state: true },
-    errorMessage: { state: true },
-    panelWidth: { state: true },
-  };
+  @state()
+  private accessor route: ReviewRoute = normalizeReviewRoute();
+  @state()
+  private accessor errorMessage = "";
+  @state()
+  private accessor panelWidth: number | null = null;
 
-  declare private route: ReviewRoute;
-  declare private errorMessage: string;
-  declare private panelWidth: number | null;
   private active = false;
   private task: ReviewTask | null = null;
   private contextKey = "";
@@ -109,18 +109,11 @@ export class CaffoldTaskReview extends LitElement {
   private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
   private readonly fileViewer = new DrawnRef<CaffoldReviewSelectedFile>(this);
 
-  constructor() {
-    super();
-    this.route = normalizeReviewRoute();
-    this.errorMessage = "";
-    this.panelWidth = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.active = true;
     this.markChangesOutdated();
@@ -128,14 +121,14 @@ export class CaffoldTaskReview extends LitElement {
     this.performUpdate();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.active = false;
     this.unsubscribeWatch();
     this.fileNavigator.setWatchActive(false);
   }
 
-  render() {
+  override render() {
     const route = this.route;
     const changesShown = route.navigator === "changes";
     return html`
@@ -239,7 +232,7 @@ export class CaffoldTaskReview extends LitElement {
     `;
   }
 
-  firstUpdated() {
+  override firstUpdated() {
     this.fileNavigator.setStorageKey(null);
     this.fileNavigator.setLiveUpdates(this.liveUpdates);
     this.fileNavigator.setWatchActive(false);
@@ -1063,4 +1056,8 @@ export class CaffoldTaskReview extends LitElement {
   }
 }
 
-customElements.define("caffold-task-review", CaffoldTaskReview);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-review": CaffoldTaskReview;
+  }
+}

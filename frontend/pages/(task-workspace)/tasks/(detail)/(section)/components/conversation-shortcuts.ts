@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -34,18 +35,23 @@ export interface ConversationShortcutsContext {
  * It shows only while active and once Codex is known to be installed, and
  * asks Codex each time it is shown.
  */
+@customElement("caffold-section-conversation-shortcuts")
 export class CaffoldSectionConversationShortcuts extends LitElement {
-  static properties = {
-    context: { state: true },
-    transportAvailable: { state: true },
-    codexReadiness: { state: true },
-    taskStoreStatusSnapshot: { state: true },
+  @state()
+  private accessor context: ConversationShortcutsContext = {
+    key: "",
+    sectionId: "",
+    path: "",
   };
+  @state()
+  private accessor transportAvailable = true;
+  @state()
+  private accessor codexReadiness: CodexStatusSnapshot =
+    createCodexStatusSnapshot();
+  @state()
+  private accessor taskStoreStatusSnapshot: TaskStoreStatusSnapshot | null =
+    null;
 
-  declare private context: ConversationShortcutsContext;
-  declare private transportAvailable: boolean;
-  declare private codexReadiness: CodexStatusSnapshot;
-  declare private taskStoreStatusSnapshot: TaskStoreStatusSnapshot | null;
   private active = false;
   // Asked for whenever the row is shown: whether Codex is installed, and why
   // it is blocked. The previous answer stays on show while the next is asked.
@@ -55,25 +61,17 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
   });
   private readonly dialog = new DrawnRef<CaffoldConversationForkDialog>(this);
 
-  constructor() {
-    super();
-    this.context = { key: "", sectionId: "", path: "" };
-    this.transportAvailable = true;
-    this.codexReadiness = createCodexStatusSnapshot();
-    this.taskStoreStatusSnapshot = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     setAttribute(this, "role", "complementary");
     setAttribute(this, "aria-label", "Existing conversations");
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
   }
@@ -135,7 +133,7 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
       : [];
   }
 
-  protected updated() {
+  protected override updated() {
     const state = codexState(this.codexReadiness);
     const installed =
       this.codexReadiness.status?.readiness?.state !== "missing";
@@ -145,7 +143,7 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const reason = this.disabledReason();
     return html`
       <header class="section-conversations-heading">
@@ -244,13 +242,14 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-section-conversation-shortcuts",
-  CaffoldSectionConversationShortcuts,
-);
-
 function setAttribute(element: Element, name: string, value: string) {
   if (element.getAttribute(name) !== value) {
     element.setAttribute(name, value);
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-section-conversation-shortcuts": CaffoldSectionConversationShortcuts;
   }
 }

@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "../action-hints.js";
 import { type DirectoryListing, listDirectory } from "../api.js";
 import type { ScrollSurfacePull } from "../scroll-scope.js";
@@ -31,6 +32,7 @@ export type ResolvedPath =
   | { kind: "stale"; directory: null }
   | { kind: "error"; directory: DirectoryListing | false | null };
 
+@customElement("caffold-file-navigator")
 export class CaffoldFileNavigator extends LitElement {
   private readonly list = new DrawnRef<CaffoldFileList>(this);
   private currentPath = "";
@@ -51,18 +53,18 @@ export class CaffoldFileNavigator extends LitElement {
       (state) => this.setRefreshState(state),
     );
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     if (this.watchActive && this.watchScopePath !== undefined) {
       this.subscribeWatchScope(this.watchScopePath);
     }
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.directoryRequestId += 1;
     this.refreshGeneration += 1;
@@ -70,7 +72,7 @@ export class CaffoldFileNavigator extends LitElement {
     this.watchUnsubscribe = null;
   }
 
-  render() {
+  override render() {
     return html`<caffold-file-list
       ${drawn(this.list)}
       @caffold:open-directory=${this.openDirectory}
@@ -473,8 +475,6 @@ export class CaffoldFileNavigator extends LitElement {
   }
 }
 
-customElements.define("caffold-file-navigator", CaffoldFileNavigator);
-
 function parentPath(path: string) {
   const parts = cleanPath(path).split("/").filter(Boolean);
   parts.pop();
@@ -495,4 +495,10 @@ function createPendingRefresh(): PendingRefresh {
     paths: new Set(),
     revision: null,
   };
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-file-navigator": CaffoldFileNavigator;
+  }
 }

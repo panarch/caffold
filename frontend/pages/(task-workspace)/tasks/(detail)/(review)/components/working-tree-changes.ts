@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
   ActionHints,
@@ -12,13 +13,12 @@ import type { ReviewChange } from "./selected-file/content.js";
 import "./working-tree-changes/components/changes-tree.js";
 import type { CaffoldGitDiffChangesTree } from "./working-tree-changes/components/changes-tree.js";
 
+@customElement("caffold-review-working-tree-changes")
 export class CaffoldReviewWorkingTreeChanges extends LitElement {
-  static properties = {
-    branchActionShown: { state: true },
-  };
-
   // A clean Working Tree offers the branch's changes instead.
-  declare private branchActionShown: boolean;
+  @state()
+  private accessor branchActionShown = false;
+
   private rootPath = "";
   private branch: string | null = null;
   private status: GitStatus | null = null;
@@ -30,21 +30,16 @@ export class CaffoldReviewWorkingTreeChanges extends LitElement {
   private generation = 0;
   private selectedPath = "";
 
-  constructor() {
-    super();
-    this.branchActionShown = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.generation += 1;
   }
 
-  render() {
+  override render() {
     return html`
       <caffold-git-diff-changes-tree
         ${drawn(this.treeElement)}
@@ -266,7 +261,8 @@ export class CaffoldReviewWorkingTreeChanges extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-review-working-tree-changes",
-  CaffoldReviewWorkingTreeChanges,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-review-working-tree-changes": CaffoldReviewWorkingTreeChanges;
+  }
+}

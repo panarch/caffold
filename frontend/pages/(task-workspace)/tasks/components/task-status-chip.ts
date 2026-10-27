@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import type { TaskThreadStatus } from "#app/api.js";
 import { busySpin } from "#app/component-styles.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
@@ -7,6 +8,8 @@ import { taskStatusView } from "../runtime-state.js";
 // A spinner turns once in this long; a staggered one starts somewhere along
 // the turn.
 const SPINNER_TURN_MS = 800;
+
+await busySpin.register("caffold-task-status-chip", "> .task-status-spinner");
 
 /**
  * Where a Task stands, in a round slot: a spinner while it runs, an icon while
@@ -17,28 +20,21 @@ const SPINNER_TURN_MS = 800;
  * owner that shows many running Tasks side by side sets `staggered`, so their
  * spinners do not turn in step.
  */
+@customElement("caffold-task-status-chip")
 export class CaffoldTaskStatusChip extends LitElement {
-  static properties = {
-    task: { attribute: false },
-    staggered: { type: Boolean },
-  };
+  @property({ attribute: false })
+  accessor task: { threadStatus: TaskThreadStatus } | null = null;
+  @property({ type: Boolean })
+  accessor staggered = false;
 
-  declare task: { threadStatus: TaskThreadStatus } | null;
-  declare staggered: boolean;
   private spinnerDelayMs: number | null = null;
   private readonly iconsReady = () => this.requestUpdate();
 
-  constructor() {
-    super();
-    this.task = null;
-    this.staggered = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     if (!this.classList.contains("task-status-chip")) {
       this.classList.add("task-status-chip");
@@ -47,14 +43,14 @@ export class CaffoldTaskStatusChip extends LitElement {
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
   // A staggered spinner takes its starting point when the Task starts running
   // and keeps it until the Task stops.
-  willUpdate() {
+  override willUpdate() {
     if (this.staggered && taskStatusView(this.task)?.status === "running") {
       this.spinnerDelayMs ??= -(Math.random() * (SPINNER_TURN_MS - 1) + 1);
     } else {
@@ -62,7 +58,7 @@ export class CaffoldTaskStatusChip extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const view = taskStatusView(this.task);
     if (!view) {
       return nothing;
@@ -78,7 +74,7 @@ export class CaffoldTaskStatusChip extends LitElement {
       ></span><span class="sr-only">${view.label}</span>`;
   }
 
-  updated() {
+  override updated() {
     const view = taskStatusView(this.task);
     syncAttribute(this, "data-status", view?.status ?? null);
     syncAttribute(this, "title", view?.label ?? null);
@@ -97,6 +93,8 @@ function syncAttribute(element: Element, name: string, value: string | null) {
   }
 }
 
-await busySpin.register("caffold-task-status-chip", "> .task-status-spinner");
-
-customElements.define("caffold-task-status-chip", CaffoldTaskStatusChip);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-status-chip": CaffoldTaskStatusChip;
+  }
+}

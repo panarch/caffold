@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -46,18 +47,22 @@ interface Setup {
   ready: boolean;
 }
 
+@customElement("caffold-github-task-start-dialog")
 export class CaffoldGithubTaskStartDialog extends LitElement {
-  static properties = {
-    sourceKind: { state: true },
-    pending: { state: true },
-    error: { state: true },
-    setup: { state: true },
+  @state()
+  private accessor sourceKind: TaskStartSource["kind"] | null = null;
+  @state()
+  private accessor pending = false;
+  @state()
+  private accessor error: Error | null = null;
+  @state()
+  private accessor setup: Setup = {
+    title: "",
+    sourceTitle: "",
+    number: "",
+    ready: false,
   };
 
-  declare private sourceKind: TaskStartSource["kind"] | null;
-  declare private pending: boolean;
-  declare private error: Error | null;
-  declare private setup: Setup;
   private repository: GitRepository | null = null;
   private opener: HTMLElement | null = null;
   private createRequestId = 0;
@@ -73,19 +78,11 @@ export class CaffoldGithubTaskStartDialog extends LitElement {
   private readonly options = new DrawnRef<CaffoldTaskTurnOptions>(this);
   private readonly cancelButton = new DrawnRef<HTMLButtonElement>(this);
 
-  constructor() {
-    super();
-    this.sourceKind = null;
-    this.pending = false;
-    this.error = null;
-    this.setup = { title: "", sourceTitle: "", number: "", ready: false };
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const setup = this.setup;
     return html`
       <dialog
@@ -466,11 +463,6 @@ export class CaffoldGithubTaskStartDialog extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-github-task-start-dialog",
-  CaffoldGithubTaskStartDialog,
-);
-
 function normalizeComposerSettings(
   settings: unknown,
 ): TurnOptionsSelection | null {
@@ -487,4 +479,10 @@ function normalizeComposerSettings(
     fastMode: Boolean(fastMode),
     permissionMode: `${permissionMode ?? ""}`,
   };
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-github-task-start-dialog": CaffoldGithubTaskStartDialog;
+  }
 }

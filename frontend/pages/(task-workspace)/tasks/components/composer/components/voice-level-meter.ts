@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 
 const SEGMENT_COUNT = 16;
 const MINIMUM_SCALE = 0.18;
@@ -6,22 +7,23 @@ const MINIMUM_SCALE = 0.18;
 // How loud the microphone has been over the last sixteen readings, newest on
 // the right. A reading arrives every tenth of a second while recording, and
 // each one moves the bars by writing their style rather than drawing again.
+@customElement("caffold-voice-level-meter")
 export class CaffoldVoiceLevelMeter extends LitElement {
   level = 0;
   private levels = new Array<number>(SEGMENT_COUNT).fill(0);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return Array.from(
       { length: SEGMENT_COUNT },
       () => html`<span class="task-voice-level-segment"></span>`,
     );
   }
 
-  firstUpdated() {
+  override firstUpdated() {
     this.setAttribute("aria-hidden", "true");
     this.drawLevels();
   }
@@ -54,4 +56,8 @@ export class CaffoldVoiceLevelMeter extends LitElement {
   }
 }
 
-customElements.define("caffold-voice-level-meter", CaffoldVoiceLevelMeter);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-voice-level-meter": CaffoldVoiceLevelMeter;
+  }
+}

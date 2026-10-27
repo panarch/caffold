@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -23,12 +24,11 @@ type IssueState =
   | { status: "ready"; payload: GitHubIssue }
   | { status: "error"; number: number | null; error: Error };
 
+@customElement("caffold-github-issue-detail-page")
 export class CaffoldGithubIssueDetailPage extends LitElement {
-  static properties = {
-    state: { state: true },
-  };
+  @state()
+  private accessor state: IssueState = { status: "empty" };
 
-  declare private state: IssueState;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
@@ -37,27 +37,22 @@ export class CaffoldGithubIssueDetailPage extends LitElement {
   private readonly markdown = new DrawnRef<CaffoldGithubMarkdown>(this);
   private readonly rawBody = new DrawnRef<HTMLElement>(this);
 
-  constructor() {
-    super();
-    this.state = { status: "empty" };
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  render() {
+  override render() {
     const state = this.state;
     if (state.status === "empty") {
       return html`
@@ -233,7 +228,8 @@ export class CaffoldGithubIssueDetailPage extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-github-issue-detail-page",
-  CaffoldGithubIssueDetailPage,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-github-issue-detail-page": CaffoldGithubIssueDetailPage;
+  }
+}

@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   type ActionHintPull,
   ActionHints,
@@ -73,6 +74,7 @@ export type TaskCreateIntentDetail =
  * once wherever its state changes, since it hands its directory field and
  * Composer their context right after drawing them.
  */
+@customElement("caffold-task-create")
 export class CaffoldTaskCreate extends LitElement {
   private cwd = ".";
   private browseCwd = false;
@@ -89,18 +91,18 @@ export class CaffoldTaskCreate extends LitElement {
     this,
   );
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
     this.draw();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
@@ -211,7 +213,7 @@ export class CaffoldTaskCreate extends LitElement {
 
   // The directory above the Composer: a field to choose it where the surface
   // lets you, and the fixed path where it does not.
-  render() {
+  override render() {
     const shown = directoryPathDisplay(this.selectedContextPath(), this.server);
     return html`
       <div class="task-create-directory">${
@@ -376,4 +378,8 @@ function normalizeComposerSettings(
   };
 }
 
-customElements.define("caffold-task-create", CaffoldTaskCreate);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-create": CaffoldTaskCreate;
+  }
+}

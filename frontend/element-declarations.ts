@@ -106,7 +106,7 @@ class DeclarationDirective extends AsyncDirective {
     return nothing;
   }
 
-  update(
+  override update(
     part: ElementPart,
     [declarations, value]: Parameters<DeclarationDirective["render"]>,
   ) {
@@ -121,11 +121,11 @@ class DeclarationDirective extends AsyncDirective {
     return nothing;
   }
 
-  protected disconnected() {
+  protected override disconnected() {
     this.declarations?.remove(this);
   }
 
-  protected reconnected() {
+  protected override reconnected() {
     if (this.declarations && this.entry) {
       this.declarations.add(this, this.entry);
     }

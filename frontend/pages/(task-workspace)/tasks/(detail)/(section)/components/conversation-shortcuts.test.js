@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../../../../../../tests/support/custom-element-unit.js";
 import { templateHtml } from "../../../../../../tests/support/lit-template.js";
@@ -16,14 +17,14 @@ const shortcuts = registry.element("caffold-section-conversation-shortcuts").pro
 after(() => registry.restore());
 
 test("shows the Fork opener only once Codex is known to be installed", () => {
-  const owner = Object.create(shortcuts, Object.getOwnPropertyDescriptors({
+  const owner = elementStandIn(shortcuts, {
     active: true,
     hidden: false,
     context: { sectionId: "section-a" },
     transportAvailable: true,
     taskStoreStatusSnapshot: null,
     codexReadiness: createCodexStatusSnapshot(),
-  }));
+  });
   owner.hints = new ActionHints(owner);
   const drawn = () => {
     shortcuts.updated.call(owner);
@@ -138,7 +139,7 @@ test("a failed question is shown as the reason the Fork opener is unavailable", 
 });
 
 function shortcutsOwner() {
-  return Object.assign(Object.create(shortcuts), {
+  return elementStandIn(shortcuts, {
     active: false,
     context: { key: "section-a\0/repo", sectionId: "section-a", path: "/repo" },
     transportAvailable: true,

@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -43,20 +44,19 @@ let currentPlanInstanceId = 0;
  * progress, each opening its file, and a status that explains a plan that
  * cannot be read. It reads the plan again whenever its files change.
  */
+@customElement("caffold-task-current-plan")
 export class CaffoldTaskCurrentPlan extends LitElement {
-  static properties = {
-    node: { state: true },
-    context: { state: true },
-    projection: { state: true },
-    readError: { state: true },
-    watchError: { state: true },
-  };
+  @state()
+  private accessor node: CurrentPlanNode = CURRENT_PLAN_NODE.INACTIVE;
+  @state()
+  private accessor context: CurrentPlanContext | null = null;
+  @state()
+  private accessor projection: CurrentPlanProjection | null = null;
+  @state()
+  private accessor readError: Error | null = null;
+  @state()
+  private accessor watchError: Error | null = null;
 
-  declare private node: CurrentPlanNode;
-  declare private context: CurrentPlanContext | null;
-  declare private projection: CurrentPlanProjection | null;
-  declare private readError: Error | null;
-  declare private watchError: Error | null;
   private readonly statusPopoverId =
     `task-current-plan-status-${++currentPlanInstanceId}`;
   private contextGeneration = 0;
@@ -79,21 +79,16 @@ export class CaffoldTaskCurrentPlan extends LitElement {
 
   constructor() {
     super();
-    this.node = CURRENT_PLAN_NODE.INACTIVE;
-    this.context = null;
-    this.projection = null;
-    this.readError = null;
-    this.watchError = null;
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
       this.handleDismiss(event),
     );
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
@@ -102,7 +97,7 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     }
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.deactivate();
@@ -170,7 +165,7 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     );
   }
 
-  render() {
+  override render() {
     const presentation = currentPlanPresentation({
       projection: this.projection,
       readError: this.readError,
@@ -336,7 +331,7 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     `;
   }
 
-  willUpdate() {
+  override willUpdate() {
     const focused = document.activeElement;
     this.statusHadFocus = Boolean(
       focused &&
@@ -348,7 +343,7 @@ export class CaffoldTaskCurrentPlan extends LitElement {
   // A plan with nothing to explain closes its status. Only a ready plan has
   // no issues, so its title segment takes focus from the status controls the
   // drawing just hid.
-  updated() {
+  override updated() {
     if (this.dataset.lifecycle !== this.node) {
       this.dataset.lifecycle = this.node;
     }
@@ -574,4 +569,8 @@ function progressText(
     : `${plan.completed} / ${plan.total}`;
 }
 
-customElements.define("caffold-task-current-plan", CaffoldTaskCurrentPlan);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-current-plan": CaffoldTaskCurrentPlan;
+  }
+}

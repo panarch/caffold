@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   ActionHints,
@@ -53,12 +54,23 @@ interface Chrome {
   parentKey: string;
 }
 
+await compactIconButton.register(
+  "caffold-task-github-layout",
+  "> .task-github-surface > .task-domain-header > .task-domain-back",
+);
+
+@customElement("caffold-task-github-layout")
 export class CaffoldTaskGithubLayout extends LitElement {
-  static properties = {
-    chrome: { state: true },
+  @state()
+  private accessor chrome: Chrome = {
+    mode: null,
+    title: "GitHub",
+    subtitle: "",
+    backLabel: "Back",
+    backShown: false,
+    parentKey: "",
   };
 
-  declare private chrome: Chrome;
   // Whether Detail has this layout on screen for a repository.
   active = false;
   private activationGeneration = 0;
@@ -77,36 +89,24 @@ export class CaffoldTaskGithubLayout extends LitElement {
     this,
   );
 
-  constructor() {
-    super();
-    this.chrome = {
-      mode: null,
-      title: "GitHub",
-      subtitle: "",
-      backLabel: "Back",
-      backShown: false,
-      parentKey: "",
-    };
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.performUpdate();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  render() {
+  override render() {
     const chrome = this.chrome;
     const backIcon = inlineIcon(
       "ArrowLeft",
@@ -640,13 +640,6 @@ export class CaffoldTaskGithubLayout extends LitElement {
   }
 }
 
-await compactIconButton.register(
-  "caffold-task-github-layout",
-  "> .task-github-surface > .task-domain-header > .task-domain-back",
-);
-
-customElements.define("caffold-task-github-layout", CaffoldTaskGithubLayout);
-
 function githubParentKey(route: GithubRoute | null) {
   if (!route?.kind) {
     return "";
@@ -655,4 +648,10 @@ function githubParentKey(route: GithubRoute | null) {
     return `pull:${encodeURIComponent(route.number)}`;
   }
   return route.kind;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-github-layout": CaffoldTaskGithubLayout;
+  }
 }

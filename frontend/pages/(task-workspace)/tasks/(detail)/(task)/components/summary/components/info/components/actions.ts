@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -52,20 +53,14 @@ export interface TaskInfoActionIntent {
  * prompts settled, fork it, and archive it, each with why it cannot be done
  * now.
  */
+@customElement("caffold-task-detail-info-actions")
 export class CaffoldTaskDetailInfoActions extends LitElement {
-  static properties = {
-    snapshot: { attribute: false },
-  };
+  @property({ attribute: false })
+  accessor snapshot: TaskInfoActionsSnapshot | null = null;
 
-  declare snapshot: TaskInfoActionsSnapshot | null;
   private readonly hints = new ActionHints(this);
 
-  constructor() {
-    super();
-    this.snapshot = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
@@ -73,7 +68,7 @@ export class CaffoldTaskDetailInfoActions extends LitElement {
     return this.hints.scope(pull);
   }
 
-  render() {
+  override render() {
     const snapshot = this.snapshot;
     if (!snapshot?.task) {
       return nothing;
@@ -182,11 +177,6 @@ export class CaffoldTaskDetailInfoActions extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-task-detail-info-actions",
-  CaffoldTaskDetailInfoActions,
-);
-
 function actionErrorMessage(error: Error | null) {
   return error ? `${error.message ?? error}` : "";
 }
@@ -208,4 +198,10 @@ function forkDisabledReason(snapshot: TaskInfoActionsSnapshot) {
     return "Fork is available when the Codex Task is idle.";
   }
   return "";
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-detail-info-actions": CaffoldTaskDetailInfoActions;
+  }
 }

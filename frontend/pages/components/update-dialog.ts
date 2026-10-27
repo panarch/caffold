@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "../../action-hints.js";
 import { DrawnRef, drawn } from "../../components/drawn-refs.js";
 import { KeyboardContexts } from "../../keyboard-navigation.js";
@@ -7,17 +8,18 @@ import "../../keyboard-navigation/components/presentation.js";
 export const CAFFOLD_UPDATE_LATER_EVENT = "caffold:update-later";
 export const CAFFOLD_UPDATE_RELOAD_EVENT = "caffold:update-reload";
 
+@customElement("caffold-update-dialog")
 export class CaffoldUpdateDialog extends LitElement {
   private ownerClosed = false;
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return html`
       <dialog
         ${drawn(this.dialog)}
@@ -101,4 +103,8 @@ export class CaffoldUpdateDialog extends LitElement {
   }
 }
 
-customElements.define("caffold-update-dialog", CaffoldUpdateDialog);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-update-dialog": CaffoldUpdateDialog;
+  }
+}

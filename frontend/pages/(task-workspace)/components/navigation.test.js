@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../../../tests/support/custom-element-unit.js";
 import { templateHtml } from "../../../tests/support/lit-template.js";
@@ -13,10 +14,7 @@ const { ActionHints } = await import("#app/action-hints.js");
 after(() => registry.restore());
 
 test("marks exactly the chosen workspace mode as current", () => {
-  const owner = Object.create(
-    Navigation.prototype,
-    Object.getOwnPropertyDescriptors({ mode: "tasks", draw() {} }),
-  );
+  const owner = elementStandIn(Navigation.prototype, { mode: "tasks", draw() {} });
 
   for (const mode of ["notes", "settings", "tasks"]) {
     owner.setMode(mode);
@@ -29,15 +27,12 @@ test("marks exactly the chosen workspace mode as current", () => {
 });
 
 test("marks the Settings button and its name while a newer Caffold exists", () => {
-  const owner = Object.create(
-    Navigation.prototype,
-    Object.getOwnPropertyDescriptors({
-      mode: "tasks",
-      updateAvailable: false,
-      reloadReady: false,
-      draw() {},
-    }),
-  );
+  const owner = elementStandIn(Navigation.prototype, {
+    mode: "tasks",
+    updateAvailable: false,
+    reloadReady: false,
+    draw() {},
+  });
 
   owner.setCaffoldUpdate({ checking: false, status: { updateAvailable: true } });
   assert.deepEqual(settingsButton(owner), {

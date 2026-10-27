@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { ActionHintSessionTarget } from "../../action-hints.js";
 import { DrawnRef, DrawnRefs, drawn } from "../../components/drawn-refs.js";
@@ -18,6 +19,7 @@ let actionHintDialogInstanceId = 0;
  * person types or the targets move. A badge keeps its element while its code
  * stays, so focus and measurements carry over.
  */
+@customElement("caffold-action-hint-dialog")
 export class CaffoldActionHintDialog extends LitElement {
   private readonly titleId: string;
   private readonly descriptionId: string;
@@ -61,11 +63,11 @@ export class CaffoldActionHintDialog extends LitElement {
     this.descriptionId = `action-hint-description-${actionHintDialogInstanceId}`;
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     const dialog = this.dialog.value;
     if (dialog?.open) {
@@ -73,7 +75,7 @@ export class CaffoldActionHintDialog extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const { buffer, status } = this.progress;
     const matching = new Set(this.progress.matches);
     return html`<dialog
@@ -269,4 +271,8 @@ export class CaffoldActionHintDialog extends LitElement {
   }
 }
 
-customElements.define("caffold-action-hint-dialog", CaffoldActionHintDialog);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-action-hint-dialog": CaffoldActionHintDialog;
+  }
+}

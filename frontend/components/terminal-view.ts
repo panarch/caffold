@@ -5,6 +5,7 @@
 // the first time a terminal opens.
 
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
 
 const XTERM_VERSION = "6.0.0";
@@ -74,6 +75,7 @@ let libraryPromise: Promise<TerminalLibrary> | null = null;
 // page, so each later attempt imports it under a new fragment.
 let libraryFailures = 0;
 
+@customElement("caffold-terminal-view")
 export class CaffoldTerminalView extends LitElement {
   size: TerminalSize | null = null;
   private terminal: Terminal | null = null;
@@ -86,18 +88,18 @@ export class CaffoldTerminalView extends LitElement {
 
   private readonly screen = new DrawnRef<HTMLDivElement>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:theme-change", this.appearanceChanged);
     window.addEventListener("caffold:settings-change", this.appearanceChanged);
     this.resizeObserver.observe(this);
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:theme-change", this.appearanceChanged);
     window.removeEventListener(
@@ -112,7 +114,7 @@ export class CaffoldTerminalView extends LitElement {
   }
 
   // xterm.js draws everything inside the screen.
-  render() {
+  override render() {
     return html`<div ${drawn(this.screen)} class="terminal-view-screen"></div>`;
   }
 
@@ -145,7 +147,7 @@ export class CaffoldTerminalView extends LitElement {
     this.terminal?.write(bytes);
   }
 
-  focus() {
+  override focus() {
     this.terminal?.focus();
   }
 
@@ -268,8 +270,6 @@ export class CaffoldTerminalView extends LitElement {
   }
 }
 
-customElements.define("caffold-terminal-view", CaffoldTerminalView);
-
 /** Bytes for input xterm.js reported; binary input is one byte per character. */
 export function terminalInputBytes(
   { data, binary }: { data: string; binary: boolean },
@@ -372,4 +372,10 @@ function scrollOnTouch(terminal: Terminal) {
     },
     { passive: false },
   );
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-terminal-view": CaffoldTerminalView;
+  }
 }

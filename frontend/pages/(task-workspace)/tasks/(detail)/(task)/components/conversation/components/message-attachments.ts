@@ -1,4 +1,5 @@
 import { html, LitElement, type PropertyValues } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import {
   ACTION_HINT_ACTION,
@@ -54,16 +55,15 @@ interface FetchedPicture {
  * and drawn from that copy; a picture carried in the message itself is drawn
  * as it is. Other pictures are new nodes, so each starts from loading.
  */
+@customElement("caffold-task-message-attachments")
 export class CaffoldTaskMessageAttachments extends LitElement {
-  static properties = {
-    attachments: {
-      attribute: false,
-      hasChanged: (next: MessageAttachment[], previous?: MessageAttachment[]) =>
-        JSON.stringify(next) !== JSON.stringify(previous),
-    },
-  };
+  @property({
+    attribute: false,
+    hasChanged: (next: MessageAttachment[], previous?: MessageAttachment[]) =>
+      JSON.stringify(next) !== JSON.stringify(previous),
+  })
+  accessor attachments: MessageAttachment[] = [];
 
-  declare attachments: MessageAttachment[];
   private fetchedPictures = new Map<HTMLImageElement, FetchedPicture>();
   private pictureObserver: IntersectionObserver | null = null;
   // The box each watched picture is observed through.
@@ -74,16 +74,11 @@ export class CaffoldTaskMessageAttachments extends LitElement {
   });
   private readonly pictures = new DrawnRefs<HTMLImageElement>(this);
 
-  constructor() {
-    super();
-    this.attachments = [];
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     if (!this.hasAttribute("aria-label")) {
       this.setAttribute("aria-label", "Attached images");
@@ -95,19 +90,19 @@ export class CaffoldTaskMessageAttachments extends LitElement {
     }
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.releasePictures();
   }
 
-  willUpdate(changed: PropertyValues<this>) {
+  override willUpdate(changed: PropertyValues<this>) {
     if (changed.has("attachments")) {
       this.releasePictures();
     }
   }
 
-  render() {
+  override render() {
     return keyed(
       this.attachments,
       this.attachments.map(
@@ -158,7 +153,7 @@ export class CaffoldTaskMessageAttachments extends LitElement {
     );
   }
 
-  updated(changed: PropertyValues<this>) {
+  override updated(changed: PropertyValues<this>) {
     if (changed.has("attachments") && this.isConnected) {
       this.watchPictures();
     }
@@ -290,7 +285,8 @@ function attachmentIcon(kind: keyof typeof ATTACHMENT_ICONS) {
   return inlineIcon(name, label, className);
 }
 
-customElements.define(
-  "caffold-task-message-attachments",
-  CaffoldTaskMessageAttachments,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-message-attachments": CaffoldTaskMessageAttachments;
+  }
+}

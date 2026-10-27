@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -17,42 +18,31 @@ interface TaskRef {
   kind: string;
 }
 
+@customElement("caffold-github-issue-task-source")
 export class CaffoldGithubIssueTaskSource extends LitElement {
-  static properties = {
-    payload: { state: true },
-    refs: { state: true },
-    baseRef: { state: true },
-    refsLoading: { state: true },
-    refsError: { state: true },
-    locked: { state: true },
-  };
+  @state()
+  private accessor payload: GitHubIssue | null = null;
+  @state()
+  private accessor refs: TaskRef[] = [];
+  @state()
+  private accessor baseRef = "";
+  @state()
+  private accessor refsLoading = false;
+  @state()
+  private accessor refsError: Error | null = null;
+  @state()
+  private accessor locked = false;
 
-  declare private payload: GitHubIssue | null;
-  declare private refs: TaskRef[];
-  declare private baseRef: string;
-  declare private refsLoading: boolean;
-  declare private refsError: Error | null;
-  declare private locked: boolean;
   private repository: GitRepository | null = null;
   private refsRequestId = 0;
   private readonly hints = new ActionHints(this);
   private readonly baseRefSelect = new DrawnRef<HTMLSelectElement>(this);
 
-  constructor() {
-    super();
-    this.payload = null;
-    this.refs = [];
-    this.baseRef = "";
-    this.refsLoading = false;
-    this.refsError = null;
-    this.locked = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const placeholder = this.refsLoading
       ? "Loading branches…"
       : this.refsError
@@ -121,7 +111,7 @@ export class CaffoldGithubIssueTaskSource extends LitElement {
   }
 
   // A `.value` binding would land before the options it names.
-  updated() {
+  override updated() {
     const select = this.baseRefSelect.value;
     if (select && this.baseRef && select.value !== this.baseRef) {
       select.value = this.baseRef;
@@ -268,11 +258,6 @@ export class CaffoldGithubIssueTaskSource extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-github-issue-task-source",
-  CaffoldGithubIssueTaskSource,
-);
-
 // The same ask reaches each agent through its provider-facing tool names. Codex
 // uses unqualified names; Claude's in-process MCP tools are qualified; Grok
 // reaches Caffold's HTTP MCP server under the server's prefix.
@@ -356,4 +341,10 @@ function refKindLabel(kind: string) {
     return "Current";
   }
   return kind === "remote" ? "Remote" : "Local";
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-github-issue-task-source": CaffoldGithubIssueTaskSource;
+  }
 }

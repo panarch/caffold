@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   ACTION_HINT_ACTION,
@@ -20,14 +21,13 @@ type LogState =
   | { status: "ready"; log: GitLog }
   | { status: "error"; error: Error };
 
+@customElement("caffold-git-log-list-page")
 export class CaffoldGitLogListPage extends LitElement {
-  static properties = {
-    state: { state: true },
-    expandedShas: { state: true },
-  };
+  @state()
+  private accessor state: LogState = { status: "idle" };
+  @state()
+  private accessor expandedShas: ReadonlySet<string> = new Set();
 
-  declare private state: LogState;
-  declare private expandedShas: ReadonlySet<string>;
   // A new log starts at its top; a refreshed one keeps its place.
   private scrollToTop = false;
   private readonly iconsReady = () => this.requestUpdate();
@@ -38,28 +38,22 @@ export class CaffoldGitLogListPage extends LitElement {
   });
   private readonly surfaces = new ScrollSurfaces(this);
 
-  constructor() {
-    super();
-    this.state = { status: "idle" };
-    this.expandedShas = new Set();
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  render() {
+  override render() {
     const state = this.state;
     if (state.status === "idle") {
       return html`
@@ -181,7 +175,7 @@ export class CaffoldGitLogListPage extends LitElement {
     `;
   }
 
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     if (!changed.has("state") || !this.scrollToTop) {
       return;
     }
@@ -276,8 +270,6 @@ export class CaffoldGitLogListPage extends LitElement {
   }
 }
 
-customElements.define("caffold-git-log-list-page", CaffoldGitLogListPage);
-
 function formatDate(ms: number) {
   if (!ms) {
     return "";
@@ -287,4 +279,10 @@ function formatDate(ms: number) {
     return "";
   }
   return date.toISOString().slice(0, 10);
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-git-log-list-page": CaffoldGitLogListPage;
+  }
 }

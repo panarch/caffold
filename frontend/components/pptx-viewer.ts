@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import {
   type ActionHintScope,
   emptyActionHintScope,
@@ -89,46 +90,38 @@ type RenderState = "empty" | "loading" | "error" | "pptx";
 
 let libraryPromise: Promise<PptxRenderer> | undefined;
 
+@customElement("caffold-pptx-viewer")
 class CaffoldPptxViewer extends LitElement {
-  static properties = {
-    file: { attribute: false },
-    renderState: { state: true },
-    mount: { state: true },
-  };
+  @property({ attribute: false })
+  accessor file: DocumentPreviewFile | null = null;
+  @state()
+  private accessor renderState: RenderState = "empty";
+  @state()
+  private accessor mount: HTMLElement | null = null;
 
-  declare file: DocumentPreviewFile | null;
-  declare private renderState: RenderState;
-  declare private mount: HTMLElement | null;
   private generation = 0;
   private slideObserver: MutationObserver | null = null;
   private viewer: PptxViewer | null = null;
 
-  constructor() {
-    super();
-    this.file = null;
-    this.renderState = "empty";
-    this.mount = null;
-  }
-
   private readonly surfaces = new ScrollSurfaces(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "PowerPoint preview");
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.release();
   }
 
   // The deck is drawn into its mount while it still says it is loading.
-  render() {
+  override render() {
     const message =
       this.renderState === "loading"
         ? html`<caffold-loading-text>Loading document...</caffold-loading-text>`
@@ -152,7 +145,7 @@ class CaffoldPptxViewer extends LitElement {
   }
 
   // A file handed over again before it is drawn replaces the one before it.
-  willUpdate(changed: PropertyValues) {
+  override willUpdate(changed: PropertyValues) {
     if (changed.has("file") && this.file) {
       this.release();
       this.renderState = "loading";
@@ -160,7 +153,7 @@ class CaffoldPptxViewer extends LitElement {
     }
   }
 
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     if (changed.has("renderState")) {
       this.dataset.renderState = this.renderState;
     }
@@ -375,4 +368,8 @@ function loadLibrary() {
   return libraryPromise;
 }
 
-customElements.define("caffold-pptx-viewer", CaffoldPptxViewer);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-pptx-viewer": CaffoldPptxViewer;
+  }
+}

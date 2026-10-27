@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -20,16 +21,20 @@ export interface GitMenuIntent {
 
 let taskDetailGitInstanceId = 0;
 
+await compactIconButton.register(
+  "caffold-task-detail-git",
+  "> .task-git-button",
+);
+
 /**
  * The Detail header's Git button, and the popover of Git work it opens:
  * Compare and Log.
  */
+@customElement("caffold-task-detail-git")
 export class CaffoldTaskDetailGit extends LitElement {
-  static properties = {
-    available: { state: true },
-  };
+  @state()
+  private accessor available = false;
 
-  declare private available: boolean;
   private readonly popoverId = `task-git-actions-${++taskDetailGitInstanceId}`;
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
@@ -37,17 +42,16 @@ export class CaffoldTaskDetailGit extends LitElement {
 
   constructor() {
     super();
-    this.available = false;
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
       this.handleDismiss(event),
     );
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
   }
@@ -86,7 +90,7 @@ export class CaffoldTaskDetailGit extends LitElement {
     });
   }
 
-  render() {
+  override render() {
     return html`
       <button
         ${this.hints.button({
@@ -173,9 +177,8 @@ export class CaffoldTaskDetailGit extends LitElement {
   }
 }
 
-await compactIconButton.register(
-  "caffold-task-detail-git",
-  "> .task-git-button",
-);
-
-customElements.define("caffold-task-detail-git", CaffoldTaskDetailGit);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-detail-git": CaffoldTaskDetailGit;
+  }
+}

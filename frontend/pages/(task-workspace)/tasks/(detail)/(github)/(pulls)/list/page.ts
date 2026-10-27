@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   ACTION_HINT_ACTION,
@@ -23,14 +24,13 @@ type PullsState =
   | { status: "ready"; payload: GitHubPulls }
   | { status: "error"; error: Error };
 
+@customElement("caffold-github-pulls-list-page")
 export class CaffoldGithubPullsListPage extends LitElement {
-  static properties = {
-    state: { state: true },
-    selectedPullNumber: { state: true },
-  };
+  @state()
+  private accessor state: PullsState = { status: "idle" };
+  @state()
+  private accessor selectedPullNumber: number | null = null;
 
-  declare private state: PullsState;
-  declare private selectedPullNumber: number | null;
   private readonly list = new DrawnRef<HTMLOListElement>(this);
   private readonly pagination = new DrawnRef<CaffoldPagination>(this);
   private readonly hints: ActionHints = new ActionHints(this, {
@@ -39,28 +39,22 @@ export class CaffoldGithubPullsListPage extends LitElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly iconsReady = () => this.requestUpdate();
 
-  constructor() {
-    super();
-    this.state = { status: "idle" };
-    this.selectedPullNumber = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  render() {
+  override render() {
     const state = this.state;
     if (state.status === "idle") {
       return html`
@@ -261,11 +255,6 @@ export class CaffoldGithubPullsListPage extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-github-pulls-list-page",
-  CaffoldGithubPullsListPage,
-);
-
 function loadingPayload(payload: GitHubPulls | null, page: number | null) {
   if (!payload) {
     return null;
@@ -280,4 +269,10 @@ function loadingPayload(payload: GitHubPulls | null, page: number | null) {
     hasNext:
       payload.totalPages > 0 ? nextPage < payload.totalPages : payload.hasNext,
   };
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-github-pulls-list-page": CaffoldGithubPullsListPage;
+  }
 }

@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
   emptyActionHintScope,
@@ -23,26 +24,20 @@ type CommitState =
   | { status: "ready"; commitPayload: GitCommit }
   | { status: "error"; error: Error };
 
+@customElement("caffold-commit-changes-tree")
 export class CaffoldCommitChangesTree extends LitElement {
-  static properties = {
-    state: { state: true },
-  };
+  @state()
+  private accessor state: CommitState = { status: "idle" };
 
-  declare private state: CommitState;
   private readonly treeElement = new DrawnRef<CaffoldFileTree>(this);
   selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
 
-  constructor() {
-    super();
-    this.state = { status: "idle" };
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const state = this.state;
     const payload = state.status === "ready" ? state.commitPayload : null;
     const files = payload?.files ?? [];
@@ -93,7 +88,7 @@ export class CaffoldCommitChangesTree extends LitElement {
   }
 
   // The tree is handed the commit's files once it is drawn.
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     const state = this.state;
     if (!changed.has("state") || state.status !== "ready") {
       return;
@@ -192,8 +187,6 @@ export class CaffoldCommitChangesTree extends LitElement {
   }
 }
 
-customElements.define("caffold-commit-changes-tree", CaffoldCommitChangesTree);
-
 function commitFile(node: FileTreeNode) {
   return node.source as GitCommitFile | undefined;
 }
@@ -242,4 +235,10 @@ function commitEntityKey(payload: GitCommit) {
       "",
     payload.commit.sha,
   ].join("\u0000");
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-commit-changes-tree": CaffoldCommitChangesTree;
+  }
 }

@@ -27,6 +27,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "lit/async-directive.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit/async-directive.js"
         ))),
+        "lit/decorators.js" => Some(js(include_str!(
+            "../../frontend/node_modules/lit/decorators.js"
+        ))),
         "lit/directives/keyed.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit/directives/keyed.js"
         ))),
@@ -74,6 +77,39 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "@lit/reactive-element/css-tag.js" => Some(js(include_str!(
             "../../frontend/node_modules/@lit/reactive-element/css-tag.js"
+        ))),
+        "@lit/reactive-element/decorators/base.js" => Some(js(include_str!(
+            "../../frontend/node_modules/@lit/reactive-element/decorators/base.js"
+        ))),
+        "@lit/reactive-element/decorators/custom-element.js" => Some(js(include_str!(
+            "../../frontend/node_modules/@lit/reactive-element/decorators/custom-element.js"
+        ))),
+        "@lit/reactive-element/decorators/event-options.js" => Some(js(include_str!(
+            "../../frontend/node_modules/@lit/reactive-element/decorators/event-options.js"
+        ))),
+        "@lit/reactive-element/decorators/property.js" => Some(js(include_str!(
+            "../../frontend/node_modules/@lit/reactive-element/decorators/property.js"
+        ))),
+        "@lit/reactive-element/decorators/query-all.js" => Some(js(include_str!(
+            "../../frontend/node_modules/@lit/reactive-element/decorators/query-all.js"
+        ))),
+        "@lit/reactive-element/decorators/query-assigned-elements.js" => Some(js(include_str!(
+            "../../frontend/node_modules/@lit/reactive-element/decorators/query-assigned-elements.js"
+        ))),
+        "@lit/reactive-element/decorators/query-assigned-nodes.js" => Some(js(include_str!(
+            "../../frontend/node_modules/@lit/reactive-element/decorators/query-assigned-nodes.js"
+        ))),
+        "@lit/reactive-element/decorators/query-async.js" => Some(js(include_str!(
+            "../../frontend/node_modules/@lit/reactive-element/decorators/query-async.js"
+        ))),
+        "@lit/reactive-element/decorators/query.js" => Some(js(include_str!(
+            "../../frontend/node_modules/@lit/reactive-element/decorators/query.js"
+        ))),
+        "@lit/reactive-element/decorators/state.js" => Some(js(include_str!(
+            "../../frontend/node_modules/@lit/reactive-element/decorators/state.js"
+        ))),
+        "tslib/tslib.es6.mjs" => Some(js(include_str!(
+            "../../frontend/node_modules/tslib/tslib.es6.mjs"
         ))),
         "api.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
@@ -2073,6 +2109,7 @@ mod tests {
             "lit/directives/live.js",
             "lit/directives/repeat.js",
             "lit/directives/unsafe-html.js",
+            "lit/decorators.js",
             "lit-html/lit-html.js",
             "lit-html/async-directive.js",
             "lit-html/directive.js",
@@ -2085,6 +2122,16 @@ mod tests {
             "lit-element/lit-element.js",
             "@lit/reactive-element/reactive-element.js",
             "@lit/reactive-element/css-tag.js",
+            "@lit/reactive-element/decorators/base.js",
+            "@lit/reactive-element/decorators/custom-element.js",
+            "@lit/reactive-element/decorators/event-options.js",
+            "@lit/reactive-element/decorators/property.js",
+            "@lit/reactive-element/decorators/query-all.js",
+            "@lit/reactive-element/decorators/query-assigned-elements.js",
+            "@lit/reactive-element/decorators/query-assigned-nodes.js",
+            "@lit/reactive-element/decorators/query-async.js",
+            "@lit/reactive-element/decorators/query.js",
+            "@lit/reactive-element/decorators/state.js",
         ] {
             let asset = get(path).unwrap_or_else(|| panic!("missing Lit asset {path}"));
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
@@ -2100,21 +2147,25 @@ mod tests {
 
     #[test]
     fn serves_typescript_modules_as_the_javascript_and_source_maps_tsc_writes() {
-        for (path, class) in [
+        for (path, registration) in [
             (
                 "components/pagination.js",
-                "class CaffoldPagination extends LitElement",
+                r#"customElement("caffold-pagination")"#,
             ),
             (
                 "components/pagination/components/button.js",
-                "class CaffoldPaginationButton extends LitElement",
+                r#"customElement("caffold-pagination-button")"#,
             ),
         ] {
             let module = get(path).unwrap_or_else(|| panic!("missing TypeScript module {path}"));
             assert_eq!(module.content_type, "text/javascript; charset=utf-8");
             let source = std::str::from_utf8(module.body).expect("UTF-8 module");
-            assert!(source.contains(class));
-            assert!(!source.contains("declare page: number"));
+            assert!(source.contains(registration));
+            // tsc writes the decorators as calls of the helpers tslib holds.
+            assert!(!source.contains("@property("));
+            assert!(
+                source.starts_with(r#"import { __esDecorate, __runInitializers } from "tslib";"#)
+            );
             let map_name = format!("{}.map", path.rsplit('/').next().unwrap());
             assert!(source.ends_with(&format!("//# sourceMappingURL={map_name}")));
 
@@ -2128,12 +2179,21 @@ mod tests {
                 map["sourcesContent"][0]
                     .as_str()
                     .unwrap()
-                    .contains("declare page")
+                    .contains("@property(")
             );
         }
         assert!(get("components/pagination.ts").is_none());
         assert!(get("action-hint-scope.d.ts").is_none());
         assert!(get("service-worker.js.map").is_none());
+    }
+
+    #[test]
+    fn serves_the_tslib_helpers_compiled_modules_import() {
+        let tslib = get("tslib/tslib.es6.mjs").expect("tslib asset");
+        assert_eq!(tslib.content_type, "text/javascript; charset=utf-8");
+        let source = std::str::from_utf8(tslib.body).expect("UTF-8 module");
+        assert!(source.contains("export function __esDecorate("));
+        assert!(source.contains("export function __runInitializers("));
     }
 
     #[test]

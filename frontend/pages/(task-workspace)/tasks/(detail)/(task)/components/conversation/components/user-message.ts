@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
 import type { TaskUploadLine } from "#app/api.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
@@ -31,42 +32,31 @@ export interface UploadProgress {
  * each line of its file list carries that file's progress, drawn over the line
  * so the text sits exactly where it will once sent.
  */
+@customElement("caffold-task-user-message")
 export class CaffoldTaskUserMessage extends LitElement {
-  static properties = {
-    text: { attribute: false },
-    attachments: { attribute: false },
-    deliveryState: { attribute: false },
-    time: { attribute: false },
-    uploadLines: { attribute: false },
-    uploadProgress: { attribute: false },
-  };
-
-  declare text: string;
-  declare attachments: MessageAttachment[];
+  @property({ attribute: false })
+  accessor text = "";
+  @property({ attribute: false })
+  accessor attachments: MessageAttachment[] = [];
   // `null` once the agent's history holds the message.
-  declare deliveryState: PromptSubmissionState | null;
-  declare time: string;
-  declare uploadLines: TaskUploadLine[];
-  declare uploadProgress: UploadProgress | null;
+  @property({ attribute: false })
+  accessor deliveryState: PromptSubmissionState | null = null;
+  @property({ attribute: false })
+  accessor time = "";
+  @property({ attribute: false })
+  accessor uploadLines: TaskUploadLine[] = [];
+  @property({ attribute: false })
+  accessor uploadProgress: UploadProgress | null = null;
+
   private readonly attachmentList = new DrawnRef<CaffoldTaskMessageAttachments>(
     this,
   );
 
-  constructor() {
-    super();
-    this.text = "";
-    this.attachments = [];
-    this.deliveryState = null;
-    this.time = "";
-    this.uploadLines = [];
-    this.uploadProgress = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const lines = this.deliveryState === UPLOADING ? this.uploadLines : [];
     return html`
       <div class="task-user-message-header">
@@ -92,7 +82,7 @@ export class CaffoldTaskUserMessage extends LitElement {
     `;
   }
 
-  updated(changed: PropertyValues<this>) {
+  override updated(changed: PropertyValues<this>) {
     if (changed.has("deliveryState")) {
       if (this.deliveryState) {
         this.dataset.deliveryState = this.deliveryState;
@@ -156,4 +146,8 @@ function messageText(
   )}`;
 }
 
-customElements.define("caffold-task-user-message", CaffoldTaskUserMessage);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-user-message": CaffoldTaskUserMessage;
+  }
+}

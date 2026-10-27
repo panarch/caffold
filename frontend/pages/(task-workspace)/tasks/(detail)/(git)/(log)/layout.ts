@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
 import {
   fetchGitRemote,
@@ -35,6 +36,7 @@ type FetchEvent =
   | { type: "resolve"; pending: FetchState; result: GitFetchResult }
   | { type: "reject"; pending: FetchState; error: Error };
 
+@customElement("caffold-git-log-layout")
 export class CaffoldGitLogLayout extends LitElement {
   // What the Git layout reads back.
   repository: GitRepository | null = null;
@@ -48,11 +50,11 @@ export class CaffoldGitLogLayout extends LitElement {
   private readonly listPage = new DrawnRef<CaffoldGitLogListPage>(this);
   private readonly detailPage = new DrawnRef<CaffoldGitLogCommitPage>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return html`
       <caffold-git-log-list-page
         ${drawn(this.listPage)}
@@ -392,8 +394,6 @@ export class CaffoldGitLogLayout extends LitElement {
   }
 }
 
-customElements.define("caffold-git-log-layout", CaffoldGitLogLayout);
-
 function normalizePage(page: number | string | null | undefined) {
   const value = Number.parseInt(`${page ?? 1}`, 10);
   return Number.isFinite(value) && value > 0 ? value : 1;
@@ -453,4 +453,10 @@ function transitionFetchState(
   return event.type === "resolve"
     ? { status: "ready", result: event.result }
     : { status: "error", error: event.error };
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-git-log-layout": CaffoldGitLogLayout;
+  }
 }

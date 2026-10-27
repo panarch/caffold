@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -36,6 +37,7 @@ const LOADING_DELAY_MS = 180;
 
 type DetailView = "list" | "viewer";
 
+@customElement("caffold-github-pull-files-page")
 export class CaffoldGithubPullFilesPage extends LitElement {
   // What the Pull Requests layout reads back.
   detailView: DetailView = "list";
@@ -51,11 +53,11 @@ export class CaffoldGithubPullFilesPage extends LitElement {
   private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
   private readonly viewer = new DrawnRef<CaffoldReviewFileViewer>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return html`
       <caffold-github-pull-files-tree
         ${drawn(this.filesList)}
@@ -73,7 +75,7 @@ export class CaffoldGithubPullFilesPage extends LitElement {
     `;
   }
 
-  firstUpdated() {
+  override firstUpdated() {
     this.fileViewer.setCloseLabel("Back to PR files");
     this.applyPanelWidth();
   }
@@ -511,7 +513,8 @@ export class CaffoldGithubPullFilesPage extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-github-pull-files-page",
-  CaffoldGithubPullFilesPage,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-github-pull-files-page": CaffoldGithubPullFilesPage;
+  }
+}

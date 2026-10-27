@@ -1,4 +1,5 @@
 import { html, LitElement, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import {
   captureLinkActionHintBinding,
   emptyActionHintScope,
@@ -74,48 +75,37 @@ let parserPromise: Promise<MarkedParser> | null = null;
 // What an agent wrote, drawn from its Markdown. The Task's file references
 // become links into the Task's files, and with `code-block-controls` each
 // fenced block gets its name and actions.
+@customElement("caffold-task-markdown")
 export class CaffoldTaskMarkdown extends LitElement {
-  static properties = {
-    markdown: { attribute: false },
-    threadId: {
-      attribute: "thread-id",
-      converter: (value: string | null) => value ?? "",
-    },
-    fileLinks: { attribute: false, hasChanged: changedFileLinks },
-    codeBlockControls: { type: Boolean, attribute: "code-block-controls" },
-    renderState: { state: true },
-    renderedContent: { state: true },
-  };
+  @property({ attribute: false })
+  accessor markdown = "";
+  @property({
+    attribute: "thread-id",
+    converter: (value: string | null) => value ?? "",
+  })
+  accessor threadId = "";
+  @property({ attribute: false, hasChanged: changedFileLinks })
+  accessor fileLinks: TaskFileLink[] = [];
+  @property({ type: Boolean, attribute: "code-block-controls" })
+  accessor codeBlockControls = false;
+  @state()
+  accessor renderState: RenderState = "loading";
+  @state()
+  private accessor renderedContent: DocumentFragment | null = null;
 
-  declare markdown: string;
-  declare threadId: string;
-  declare fileLinks: TaskFileLink[];
-  declare codeBlockControls: boolean;
-  declare renderState: RenderState;
-  declare private renderedContent: DocumentFragment | null;
   private renderToken: symbol | null = null;
   private actionHintLinks: LinkRecord[] = [];
   private scrollSurfaceRecords: ScrollSurfaceRecord[] = [];
   private scrollCodeBlocks: CaffoldTaskMarkdownCodeBlock[] = [];
   private readonly bodyElement = new DrawnRef<HTMLElement>(this);
 
-  constructor() {
-    super();
-    this.markdown = "";
-    this.threadId = "";
-    this.fileLinks = [];
-    this.codeBlockControls = false;
-    this.renderState = "loading";
-    this.renderedContent = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
   // Parsing reads all four, so a change to any of them reads the Markdown
   // again, and the same values leave it as drawn.
-  willUpdate(changed: PropertyValues<this>) {
+  override willUpdate(changed: PropertyValues<this>) {
     if (
       changed.has("markdown") ||
       changed.has("threadId") ||
@@ -126,7 +116,7 @@ export class CaffoldTaskMarkdown extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const content =
       this.renderState === "markdown"
         ? this.renderedContent
@@ -142,7 +132,7 @@ export class CaffoldTaskMarkdown extends LitElement {
     >${content}</article>`;
   }
 
-  updated(changed: PropertyValues<this>) {
+  override updated(changed: PropertyValues<this>) {
     if (changed.has("renderState")) {
       this.dataset.renderState = this.renderState;
     }
@@ -154,9 +144,7 @@ export class CaffoldTaskMarkdown extends LitElement {
       return emptyActionHintScope();
     }
     const blocks = Array.from(
-      body.querySelectorAll<CaffoldTaskMarkdownCodeBlock>(
-        "caffold-task-markdown-code-block",
-      ),
+      body.querySelectorAll("caffold-task-markdown-code-block"),
     );
     const tableScrollRoots: Element[] = [];
     const linkTargets = this.actionHintLinks.flatMap(
@@ -699,4 +687,8 @@ const FORBIDDEN_ELEMENTS = new Set([
 
 const VALID_INTEGER = /^-?[0-9]+$/;
 
-customElements.define("caffold-task-markdown", CaffoldTaskMarkdown);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-markdown": CaffoldTaskMarkdown;
+  }
+}

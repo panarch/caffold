@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type TemplateResult } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   type ActionHintPull,
   ActionHints,
@@ -164,6 +165,7 @@ interface SectionDrag {
  * `moveBefore()`, so a Section, its rows, and a gesture in progress survive
  * any reordering.
  */
+@customElement("caffold-active-task-list")
 export class CaffoldActiveTaskList extends LitElement {
   private sections: HeldSection[] = [];
   private unsectioned: ListedTask[] = [];
@@ -206,11 +208,11 @@ export class CaffoldActiveTaskList extends LitElement {
     onStateChange: (state) => this.announceTransport(state),
   });
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.classList.add("task-list-section");
     this.dataset.taskSection = "managed";
@@ -219,7 +221,7 @@ export class CaffoldActiveTaskList extends LitElement {
     this.draw();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.taskListRequestId += 1;
     this.taskListLoadPromise = null;
@@ -593,7 +595,7 @@ export class CaffoldActiveTaskList extends LitElement {
     };
   }
 
-  render() {
+  override render() {
     const empty = this.allTasks().length === 0;
     const error = this.taskListError;
     let content: TemplateResult;
@@ -1757,4 +1759,8 @@ function sameOrder(left: string[], right: string[]) {
   return left.join("\u0000") === right.join("\u0000");
 }
 
-customElements.define("caffold-active-task-list", CaffoldActiveTaskList);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-active-task-list": CaffoldActiveTaskList;
+  }
+}

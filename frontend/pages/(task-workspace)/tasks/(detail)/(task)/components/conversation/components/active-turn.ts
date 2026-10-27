@@ -1,54 +1,51 @@
 import { html, LitElement, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import { busySpin } from "#app/component-styles.js";
 import { activeTurnDuration } from "../active-turn.js";
 
+await busySpin.register(
+  "caffold-task-active-turn",
+  "> .task-active-turn-spinner",
+);
+
 // The turn in progress: how long it has run and what it is doing. Its clock
 // ticks only while the conversation is on screen.
+@customElement("caffold-task-active-turn")
 export class CaffoldTaskActiveTurn extends LitElement {
-  static properties = {
-    startedMs: { attribute: false },
-    state: { attribute: false },
-    active: { attribute: false },
-    nowMs: { state: true },
-  };
+  @property({ attribute: false })
+  accessor startedMs: number | null = null;
+  @property({ attribute: false })
+  accessor state = "Thinking";
+  @property({ attribute: false })
+  accessor active = true;
+  @state()
+  private accessor nowMs: number = Date.now();
 
-  declare startedMs: number | null;
-  declare state: string;
-  declare active: boolean;
-  declare private nowMs: number;
   private clockTimer: number | null = null;
 
-  constructor() {
-    super();
-    this.startedMs = null;
-    this.state = "Thinking";
-    this.active = true;
-    this.nowMs = Date.now();
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     if (this.hasUpdated) {
       this.syncClock();
     }
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.stopClock();
   }
 
-  willUpdate(changed: PropertyValues<this>) {
+  override willUpdate(changed: PropertyValues<this>) {
     if (changed.has("startedMs") || changed.has("active")) {
       this.syncClock();
     }
   }
 
-  render() {
+  override render() {
     return html`
       <span class="task-active-turn-spinner" aria-hidden="true"></span>
       <span class="task-turn-active-duration">${activeTurnDuration(
@@ -84,9 +81,8 @@ export class CaffoldTaskActiveTurn extends LitElement {
   }
 }
 
-await busySpin.register(
-  "caffold-task-active-turn",
-  "> .task-active-turn-spinner",
-);
-
-customElements.define("caffold-task-active-turn", CaffoldTaskActiveTurn);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-active-turn": CaffoldTaskActiveTurn;
+  }
+}

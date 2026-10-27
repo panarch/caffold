@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -65,6 +66,7 @@ interface FolderListView {
  * this element draws them and runs their effects. Each accepted event draws
  * the field at once, because an effect can move focus into what it drew.
  */
+@customElement("caffold-task-directory-field")
 export class CaffoldTaskDirectoryField extends LitElement {
   private state = initialDirectoryFieldState();
   private folderList: FolderListView = {
@@ -94,17 +96,17 @@ export class CaffoldTaskDirectoryField extends LitElement {
     }, 0);
   };
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     window.clearTimeout(this.loadingTimer);
@@ -167,11 +169,11 @@ export class CaffoldTaskDirectoryField extends LitElement {
     );
   }
 
-  willUpdate() {
+  override willUpdate() {
     this.folderList = this.nextFolderList();
   }
 
-  render() {
+  override render() {
     const { node, path, server, locked, error } = this.state;
     const open = node !== CLOSED;
     const editing = node === EDITING;
@@ -280,7 +282,7 @@ export class CaffoldTaskDirectoryField extends LitElement {
 
   // The typed path, the rows handed to the folder list, and which row the
   // input points at depend on what was just drawn.
-  updated() {
+  override updated() {
     const { node, text, highlight } = this.state;
     const editing = node === EDITING;
     if (this.dataset.node !== node) {
@@ -609,7 +611,8 @@ function rowKey(key: string) {
     : `directory-field:folder:${key}`;
 }
 
-customElements.define(
-  "caffold-task-directory-field",
-  CaffoldTaskDirectoryField,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-directory-field": CaffoldTaskDirectoryField;
+  }
+}

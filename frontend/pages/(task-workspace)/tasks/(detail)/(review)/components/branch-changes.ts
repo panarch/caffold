@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
 import {
   type GitCompare,
@@ -14,6 +15,7 @@ import type { CaffoldGitCompareTree } from "#components/git-compare-tree.js";
 import { ChangesReading } from "../changes-reading.js";
 import type { ReviewChange } from "./selected-file/content.js";
 
+@customElement("caffold-review-branch-changes")
 export class CaffoldReviewBranchChanges extends LitElement {
   private rootPath = "";
   private branch: string | null = null;
@@ -28,16 +30,16 @@ export class CaffoldReviewBranchChanges extends LitElement {
   private generation = 0;
   private selectedPath = "";
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.generation += 1;
   }
 
-  render() {
+  override render() {
     return html`<caffold-git-compare-tree
       ${drawn(this.treeElement)}
       @caffold:select-compare-base=${this.chooseBase}
@@ -301,11 +303,6 @@ export class CaffoldReviewBranchChanges extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-review-branch-changes",
-  CaffoldReviewBranchChanges,
-);
-
 function selectedCompareBaseRef(preferredRef: string, refsPayload: GitRefs) {
   const refs = Array.isArray(refsPayload.refs) ? refsPayload.refs : [];
   const hasRef = (candidate: string | null | undefined) =>
@@ -317,4 +314,10 @@ function selectedCompareBaseRef(preferredRef: string, refsPayload: GitRefs) {
     return `${refsPayload.defaultBaseRef}`;
   }
   return refs[0]?.name || refsPayload.defaultBaseRef || "";
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-review-branch-changes": CaffoldReviewBranchChanges;
+  }
 }

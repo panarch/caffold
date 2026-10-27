@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
   ActionHints,
@@ -52,16 +53,20 @@ interface TreeState {
   pendingExpandedPaths: Set<string>;
 }
 
-export class CaffoldFileList extends LitElement {
-  static properties = {
-    state: { state: true },
-    refreshState: { state: true },
-    refreshVisible: { state: true },
-  };
+await compactIconButton.register(
+  "caffold-file-list",
+  "> .file-list-panel > header > .file-list-title-row > .file-list-actions > .file-refresh-button",
+);
 
-  declare private state: ListState;
-  declare private refreshState: RefreshButtonState;
-  declare private refreshVisible: boolean;
+@customElement("caffold-file-list")
+export class CaffoldFileList extends LitElement {
+  @state()
+  private accessor state: ListState = { status: "idle" };
+  @state()
+  private accessor refreshState: RefreshButtonState = "idle";
+  @state()
+  private accessor refreshVisible = true;
+
   private selectedPath = "";
   private keyByPath = new Map<string, string>();
   private treeState: TreeState | null = null;
@@ -74,30 +79,23 @@ export class CaffoldFileList extends LitElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly tree = new DrawnRef<CaffoldFileTree>(this);
 
-  constructor() {
-    super();
-    this.state = { status: "idle" };
-    this.refreshState = "idle";
-    this.refreshVisible = true;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.clearTreeLoadingTimers();
   }
 
-  render() {
+  override render() {
     const state = this.state;
     const tree = html`<caffold-file-tree
       ${drawn(this.tree)}
@@ -193,7 +191,7 @@ export class CaffoldFileList extends LitElement {
     `;
   }
 
-  updated() {
+  override updated() {
     if (!this.modelPending) {
       return;
     }
@@ -510,13 +508,6 @@ export class CaffoldFileList extends LitElement {
   }
 }
 
-await compactIconButton.register(
-  "caffold-file-list",
-  "> .file-list-panel > header > .file-list-title-row > .file-list-actions > .file-refresh-button",
-);
-
-customElements.define("caffold-file-list", CaffoldFileList);
-
 function listedEntry(node: FileTreeNode) {
   return node.source as DirectoryEntry | undefined;
 }
@@ -726,4 +717,10 @@ function sameDirectoryPresentation(
       Boolean(entry.gitIgnored) === Boolean(other.gitIgnored)
     );
   });
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-file-list": CaffoldFileList;
+  }
 }

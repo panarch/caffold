@@ -98,6 +98,41 @@ test("Lit loads by its package name, one module per package, served and precache
   expect(errors).toEqual([]);
 });
 
+test("compiled modules take their helpers from tslib, served and precached by Caffold", { tag: "@viewport-independent" }, async ({ page }) => {
+  const errors = [];
+  const tslibRequests = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/assets/tslib/")) {
+      tslibRequests.push(new URL(request.url()));
+    }
+  });
+  await installBrowserDefaults(page);
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+
+  const result = await page.evaluate(async () => {
+    const [named, direct] = await Promise.all([
+      import("tslib"),
+      import("/assets/tslib/tslib.es6.mjs"),
+    ]);
+    await navigator.serviceWorker.ready;
+    const shell = (await caches.keys()).find((name) => name.startsWith("caffold-shell-"));
+    const cache = await caches.open(shell);
+    return {
+      sameModule: named === direct,
+      helper: typeof named.__esDecorate,
+      precached: Boolean(await cache.match("/assets/tslib/tslib.es6.mjs")),
+    };
+  });
+
+  expect(result).toEqual({ sameModule: true, helper: "function", precached: true });
+  const origin = new URL(page.url()).origin;
+  expect(tslibRequests.length).toBeGreaterThan(0);
+  expect(tslibRequests.every((url) => url.origin === origin)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
 test("TypeScript modules are served as the JavaScript tsc writes, with source maps outside the shell cache", { tag: "@viewport-independent" }, async ({ page }) => {
   await installBrowserDefaults(page);
   await page.goto("/");
@@ -116,15 +151,15 @@ test("TypeScript modules are served as the JavaScript tsc writes, with source ma
     return {
       status: response.status,
       contentType: response.headers.get("content-type"),
-      defined: source.includes("class CaffoldPagination extends LitElement"),
-      typed: /declare page: number|: PageButton\)/.test(source),
+      defined: source.includes('customElement("caffold-pagination")'),
+      typed: /@property\(|firstLabel: string/.test(source),
       mapUrl: source.endsWith("//# sourceMappingURL=pagination.js.map"),
       registered: Boolean(customElements.get("caffold-pagination")),
       map: {
         status: mapResponse.status,
         contentType: mapResponse.headers.get("content-type"),
         source: `${map.sourceRoot}${map.sources[0]}`,
-        typed: /declare page: number/.test(map.sourcesContent[0]),
+        typed: /@property\(/.test(map.sourcesContent[0]),
         precached: Boolean(await caches.match("/assets/components/pagination.js.map")),
       },
       sourcePathStatus: sourcePath.status,

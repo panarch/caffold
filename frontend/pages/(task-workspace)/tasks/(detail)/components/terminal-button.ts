@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -10,35 +11,33 @@ import { inlineIcon } from "#components/icons.js";
 export const TERMINAL_BUTTON_INTENT_EVENT =
   "caffold:task-detail-terminal-intent";
 
+await compactIconButton.register(
+  "caffold-task-detail-terminal",
+  "> .task-terminal-button",
+);
+
 // The Detail header's terminal toggle. It only reports the press; the Detail
 // layout decides whether that enters the terminal or returns from it.
+@customElement("caffold-task-detail-terminal")
 export class CaffoldTaskDetailTerminal extends LitElement {
-  static properties = {
-    available: { state: true },
-    pressed: { state: true },
-  };
+  @state()
+  private accessor available = false;
+  @state()
+  private accessor pressed = false;
 
-  declare private available: boolean;
-  declare private pressed: boolean;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
 
-  constructor() {
-    super();
-    this.available = false;
-    this.pressed = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
@@ -58,7 +57,7 @@ export class CaffoldTaskDetailTerminal extends LitElement {
     return this.hints.scope(pull);
   }
 
-  render() {
+  override render() {
     return html`<button
       ${this.hints.button({
         id: "terminal",
@@ -94,12 +93,8 @@ export class CaffoldTaskDetailTerminal extends LitElement {
   }
 }
 
-await compactIconButton.register(
-  "caffold-task-detail-terminal",
-  "> .task-terminal-button",
-);
-
-customElements.define(
-  "caffold-task-detail-terminal",
-  CaffoldTaskDetailTerminal,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-detail-terminal": CaffoldTaskDetailTerminal;
+  }
+}

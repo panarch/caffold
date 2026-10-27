@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -167,6 +168,11 @@ const IMAGE_INPUT_TYPES = new Set([
   "image/webp",
 ]);
 
+await busySpin.register(
+  "caffold-task-composer",
+  "> .task-composer > .task-composer-panel > .task-composer-toolbar > .task-composer-actions > .task-composer-render-region > .task-voice-button.is-busy > .task-voice-icon",
+);
+
 /**
  * The prompt field, its attachments, voice input, the turn options, and the
  * action that sends or stops.
@@ -177,13 +183,12 @@ const IMAGE_INPUT_TYPES = new Set([
  * The prompt field holds what the person typed, so the Composer writes it only
  * when its draft says otherwise, and not while an input method is composing.
  */
+@customElement("caffold-task-composer")
 export class CaffoldTaskComposer extends LitElement {
-  static properties = {
-    dropTarget: { state: true },
-  };
-
   // Whether files are being dragged over the Composer.
-  declare private dropTarget: boolean;
+  @state()
+  private accessor dropTarget = false;
+
   context: ComposerContext = {
     mode: "create",
     threadId: "",
@@ -251,17 +256,12 @@ export class CaffoldTaskComposer extends LitElement {
     void this.handleDrop(event);
   };
 
-  constructor() {
-    super();
-    this.dropTarget = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
   // A drop anywhere on the Composer, its padding included, attaches.
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.addEventListener("dragover", this.dragOver);
     this.addEventListener("dragleave", this.dragLeave);
@@ -276,7 +276,7 @@ export class CaffoldTaskComposer extends LitElement {
     void this.loadVoiceStatus();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.captureCurrentState();
     this.removeEventListener("dragover", this.dragOver);
@@ -500,7 +500,7 @@ export class CaffoldTaskComposer extends LitElement {
     );
   }
 
-  focus() {
+  override focus() {
     const textarea = this.promptField.value;
     textarea?.focus();
     textarea?.setSelectionRange(
@@ -618,7 +618,7 @@ export class CaffoldTaskComposer extends LitElement {
     return send({ disabled: true });
   }
 
-  render() {
+  override render() {
     const { context, state, voice } = this;
     const submitting = Boolean(this.activeSubmissionFor());
     const voiceBusy = VOICE_BUSY_PHASES.has(voice.phase);
@@ -895,7 +895,7 @@ export class CaffoldTaskComposer extends LitElement {
   }
 
   // After each drawing the attachments and the prompt field catch up.
-  updated() {
+  override updated() {
     if (this.dataset.composerMode !== this.context.mode) {
       this.dataset.composerMode = this.context.mode;
     }
@@ -1713,9 +1713,8 @@ function adoptedSubmission(
   };
 }
 
-await busySpin.register(
-  "caffold-task-composer",
-  "> .task-composer > .task-composer-panel > .task-composer-toolbar > .task-composer-actions > .task-composer-render-region > .task-voice-button.is-busy > .task-voice-icon",
-);
-
-customElements.define("caffold-task-composer", CaffoldTaskComposer);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-composer": CaffoldTaskComposer;
+  }
+}

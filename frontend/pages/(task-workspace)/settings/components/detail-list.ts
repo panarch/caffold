@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 
 export interface SettingsDetailRow {
@@ -18,23 +19,16 @@ const UNKNOWN_VALUE = "—";
  * key, so a list that already holds the right rows rewrites only what changed.
  * A row whose value is not known yet keeps its place and shows a placeholder.
  */
+@customElement("caffold-settings-detail-list")
 export class CaffoldSettingsDetailList extends LitElement {
-  static properties = {
-    rows: { attribute: false },
-  };
+  @property({ attribute: false })
+  accessor rows: readonly SettingsDetailRow[] = [];
 
-  declare rows: readonly SettingsDetailRow[];
-
-  constructor() {
-    super();
-    this.rows = [];
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const busy = this.rows.some((row) => !known(row.value));
     return html`<dl aria-busy=${busy ? "true" : nothing}>${repeat(
       this.rows,
@@ -68,7 +62,8 @@ function rowValue(row: SettingsDetailRow) {
   return value;
 }
 
-customElements.define(
-  "caffold-settings-detail-list",
-  CaffoldSettingsDetailList,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-detail-list": CaffoldSettingsDetailList;
+  }
+}

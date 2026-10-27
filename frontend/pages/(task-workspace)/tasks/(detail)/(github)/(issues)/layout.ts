@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
 import {
   type GitHubIssues,
@@ -26,6 +27,7 @@ interface GithubContext {
   githubStatus?: GitHubStatus | null;
 }
 
+@customElement("caffold-github-issues-layout")
 export class CaffoldGithubIssuesLayout extends LitElement {
   // What the GitHub layout reads back.
   page = 1;
@@ -41,18 +43,18 @@ export class CaffoldGithubIssuesLayout extends LitElement {
   private readonly list = new DrawnRef<CaffoldGithubIssuesListPage>(this);
   private readonly detail = new DrawnRef<CaffoldGithubIssueDetailPage>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     if (!this.dataset.issuesView) {
       this.setView("list");
     }
   }
 
-  render() {
+  override render() {
     return html`
       <caffold-github-issues-list-page
         ${drawn(this.list)}
@@ -338,12 +340,13 @@ export class CaffoldGithubIssuesLayout extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-github-issues-layout",
-  CaffoldGithubIssuesLayout,
-);
-
 function normalizePage(page: number | string | null | undefined) {
   const value = Number.parseInt(`${page ?? 1}`, 10);
   return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-github-issues-layout": CaffoldGithubIssuesLayout;
+  }
 }

@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -55,14 +56,19 @@ const STATE_COPY: Readonly<
   },
 });
 
+@customElement("caffold-settings-remote-access-page")
 export class CaffoldSettingsRemoteAccessPage extends LitElement {
-  static properties = {
-    snapshot: { state: true },
-    copyState: { state: true },
+  @state()
+  private accessor snapshot: TailscaleSnapshot = {
+    status: null,
+    statusFresh: false,
+    busy: false,
+    message: "",
+    retryIntent: null,
   };
+  @state()
+  private accessor copyState: "idle" | "copied" | "failed" = "idle";
 
-  declare private snapshot: TailscaleSnapshot;
-  declare private copyState: "idle" | "copied" | "failed";
   private active = false;
   readonly lifecycle = new TailscaleLifecycle({
     onChange: (snapshot) => {
@@ -79,23 +85,11 @@ export class CaffoldSettingsRemoteAccessPage extends LitElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
 
-  constructor() {
-    super();
-    this.snapshot = {
-      status: null,
-      statusFresh: false,
-      busy: false,
-      message: "",
-      retryIntent: null,
-    };
-    this.copyState = "idle";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
   }
@@ -111,7 +105,7 @@ export class CaffoldSettingsRemoteAccessPage extends LitElement {
     this.lifecycle.deactivate();
   }
 
-  render() {
+  override render() {
     const { status, statusFresh, busy, message, retryIntent } = this.snapshot;
     const state = status?.state ?? null;
     const copy = status
@@ -358,7 +352,8 @@ export class CaffoldSettingsRemoteAccessPage extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-settings-remote-access-page",
-  CaffoldSettingsRemoteAccessPage,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-remote-access-page": CaffoldSettingsRemoteAccessPage;
+  }
+}

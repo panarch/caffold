@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import {
@@ -37,22 +38,24 @@ const STALE_SOURCE_CODES = [
  * Starts a Task in a Section from a Codex thread: the person names the
  * thread, previews it, and forks it.
  */
+@customElement("caffold-conversation-fork-dialog")
 export class CaffoldConversationForkDialog extends LitElement {
-  static properties = {
-    context: { state: true },
-    threadIdText: { state: true },
-    preview: { state: true },
-    previewPending: { state: true },
-    forkPending: { state: true },
-    error: { state: true },
+  @state()
+  private accessor context: { sectionId: string; sectionPath: string } = {
+    sectionId: "",
+    sectionPath: "",
   };
+  @state()
+  private accessor threadIdText = "";
+  @state()
+  private accessor preview: TaskForkSourcePreview | null = null;
+  @state()
+  private accessor previewPending = false;
+  @state()
+  private accessor forkPending = false;
+  @state()
+  private accessor error: TaskResponseError | null = null;
 
-  declare private context: { sectionId: string; sectionPath: string };
-  declare private threadIdText: string;
-  declare private preview: TaskForkSourcePreview | null;
-  declare private previewPending: boolean;
-  declare private forkPending: boolean;
-  declare private error: TaskResponseError | null;
   private opener: HTMLElement | null = null;
   private previewRequestId = 0;
   private forkRequestId = 0;
@@ -66,21 +69,11 @@ export class CaffoldConversationForkDialog extends LitElement {
   private readonly threadIdInput = new DrawnRef<HTMLInputElement>(this);
   private readonly cancelButton = new DrawnRef<HTMLButtonElement>(this);
 
-  constructor() {
-    super();
-    this.context = { sectionId: "", sectionPath: "" };
-    this.threadIdText = "";
-    this.preview = null;
-    this.previewPending = false;
-    this.forkPending = false;
-    this.error = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
   }
@@ -146,7 +139,7 @@ export class CaffoldConversationForkDialog extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const busy = this.previewPending || this.forkPending;
     // While no preview is shown its section is hidden and reads as empty.
     const preview = this.preview;
@@ -493,11 +486,6 @@ export class CaffoldConversationForkDialog extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-conversation-fork-dialog",
-  CaffoldConversationForkDialog,
-);
-
 function normalizeCodexThreadId(value: string | null | undefined) {
   const input = `${value ?? ""}`.trim();
   return input.startsWith(CODEX_THREAD_URI_PREFIX)
@@ -580,4 +568,10 @@ function forkUnavailableReason(status: TaskThreadStatus) {
 
 function canForkThreadStatus(status: TaskThreadStatus) {
   return status?.type === "idle" || status?.type === "notLoaded";
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-conversation-fork-dialog": CaffoldConversationForkDialog;
+  }
 }

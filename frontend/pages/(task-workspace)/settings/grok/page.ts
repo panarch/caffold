@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -41,14 +42,14 @@ const CONNECTION_ROWS = Object.freeze([
   Object.freeze({ key: "auth-methods", label: "Sign-in methods" }),
 ]);
 
+@customElement("caffold-settings-grok-page")
 export class CaffoldSettingsGrokPage extends LitElement {
-  static properties = {
-    status: { state: true },
-    statusState: { state: true },
-  };
+  @state()
+  private accessor status: GrokStatus | null = null;
+  @state()
+  private accessor statusState: "idle" | "loading" | "loaded" | "unavailable" =
+    "idle";
 
-  declare private status: GrokStatus | null;
-  declare private statusState: "idle" | "loading" | "loaded" | "unavailable";
   private operation = 0;
   private active = false;
   private readonly hints: ActionHints = new ActionHints(this, {
@@ -60,13 +61,7 @@ export class CaffoldSettingsGrokPage extends LitElement {
     this,
   );
 
-  constructor() {
-    super();
-    this.status = null;
-    this.statusState = "idle";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
@@ -98,7 +93,7 @@ export class CaffoldSettingsGrokPage extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const unanswered = this.unansweredRows();
     return html`
       <div
@@ -430,4 +425,8 @@ function unavailableValue(problem: string) {
   return { value: `Unavailable — ${problem}`, state: "negative" };
 }
 
-customElements.define("caffold-settings-grok-page", CaffoldSettingsGrokPage);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-grok-page": CaffoldSettingsGrokPage;
+  }
+}

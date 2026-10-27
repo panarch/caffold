@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -48,33 +49,27 @@ const COPY: Readonly<
  * Caffold cannot find, laid out like Task Recovery. An archived Task offers
  * Restore; its owner sends the request and hands back how it went.
  */
+@customElement("caffold-task-absence")
 export class CaffoldTaskAbsence extends LitElement {
-  static properties = {
-    snapshot: { state: true },
-  };
+  @state()
+  private accessor snapshot: TaskAbsenceSnapshot | null = null;
 
-  declare private snapshot: TaskAbsenceSnapshot | null;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
 
-  constructor() {
-    super();
-    this.snapshot = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
@@ -87,7 +82,7 @@ export class CaffoldTaskAbsence extends LitElement {
     return this.hints.scope(pull);
   }
 
-  render() {
+  override render() {
     const snapshot = this.snapshot;
     const copy = snapshot ? COPY[snapshot.absence] : null;
     const restoring = Boolean(snapshot?.restoring);
@@ -160,4 +155,8 @@ export class CaffoldTaskAbsence extends LitElement {
   }
 }
 
-customElements.define("caffold-task-absence", CaffoldTaskAbsence);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-absence": CaffoldTaskAbsence;
+  }
+}

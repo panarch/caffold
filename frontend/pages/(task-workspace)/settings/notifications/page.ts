@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   ACTION_HINT_ACTION,
@@ -63,16 +64,15 @@ const STATE_COPY: Readonly<
   },
 });
 
+@customElement("caffold-settings-notifications-page")
 export class CaffoldSettingsNotificationsPage extends LitElement {
-  static properties = {
-    installations: { state: true },
-    state: { state: true },
-    message: { state: true },
-  };
+  @state()
+  private accessor installations: PushInstallation[] = [];
+  @state()
+  private accessor state: NotificationState = "disabled";
+  @state()
+  private accessor message = "";
 
-  declare private installations: PushInstallation[];
-  declare private state: NotificationState;
-  declare private message: string;
   private active = false;
   private operation = 0;
   private readonly clientId = safeClientId();
@@ -84,14 +84,7 @@ export class CaffoldSettingsNotificationsPage extends LitElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
 
-  constructor() {
-    super();
-    this.installations = [];
-    this.state = "disabled";
-    this.message = "";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
@@ -165,7 +158,7 @@ export class CaffoldSettingsNotificationsPage extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const copy = STATE_COPY[this.state] ?? STATE_COPY.disabled;
     const busy = this.state === "syncing";
     const canEnable = ["disabled", "granted-not-subscribed"].includes(
@@ -483,7 +476,8 @@ function formatTimestamp(timestamp: number | undefined) {
   }).format(new Date(timestamp ?? 0));
 }
 
-customElements.define(
-  "caffold-settings-notifications-page",
-  CaffoldSettingsNotificationsPage,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-notifications-page": CaffoldSettingsNotificationsPage;
+  }
+}

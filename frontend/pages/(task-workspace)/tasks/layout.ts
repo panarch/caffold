@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   type ActionHintScope,
   hasActionHintLayoutBox,
@@ -116,6 +117,7 @@ interface ForegroundProgress {
  * The workspace routes here and reads it right after, so it draws at once.
  * It owns a Task being created until that Task's Detail holds it.
  */
+@customElement("caffold-tasks-page")
 export class CaffoldTasksPage extends LitElement {
   selectedThreadId = "";
   private view: TasksView = "home";
@@ -219,12 +221,12 @@ export class CaffoldTasksPage extends LitElement {
     });
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
   // The first drawing also tells the workspace what Tasks shows.
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     if (!this.hasUpdated) {
       this.draw();
@@ -649,7 +651,7 @@ export class CaffoldTasksPage extends LitElement {
     return this.detail.value ?? null;
   }
 
-  protected updated() {
+  protected override updated() {
     const takeover = this.taskStoreRecoveryVisible();
     const attributes = {
       tasksView: this.view,
@@ -683,7 +685,7 @@ export class CaffoldTasksPage extends LitElement {
     );
   }
 
-  render() {
+  override render() {
     // Only the store may take the Task surface over — it gates every agent.
     const takeover = this.taskStoreRecoveryVisible();
     return html`
@@ -1046,8 +1048,6 @@ export class CaffoldTasksPage extends LitElement {
   }
 }
 
-customElements.define("caffold-tasks-page", CaffoldTasksPage);
-
 function reportForegroundValidationStage(
   progress: ForegroundProgress | undefined,
   targets: Iterable<string>,
@@ -1073,4 +1073,10 @@ function taskRoutePresentation(route: TasksRoute) {
     target === "terminal"
     ? "code"
     : "reading";
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-tasks-page": CaffoldTasksPage;
+  }
 }

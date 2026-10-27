@@ -1,26 +1,20 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { TaskFilePath } from "#tasks/task-format.js";
 
 // The files a change touched, one row each, kept by identity as the list
 // grows.
+@customElement("caffold-task-changed-files")
 export class CaffoldTaskChangedFiles extends LitElement {
-  static properties = {
-    files: { attribute: false, hasChanged: changedFileList },
-  };
+  @property({ attribute: false, hasChanged: changedFileList })
+  accessor files: TaskFilePath[] = [];
 
-  declare files: TaskFilePath[];
-
-  constructor() {
-    super();
-    this.files = [];
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return html`<ul aria-label="Changed files">${repeat(
       this.files,
       (file) => file.fileIdentity,
@@ -35,7 +29,7 @@ export class CaffoldTaskChangedFiles extends LitElement {
     )}</ul>`;
   }
 
-  updated() {
+  override updated() {
     const hidden = this.files.length === 0;
     if (this.hidden !== hidden) {
       this.hidden = hidden;
@@ -58,4 +52,8 @@ function changedFileList(next: TaskFilePath[], previous?: TaskFilePath[]) {
   );
 }
 
-customElements.define("caffold-task-changed-files", CaffoldTaskChangedFiles);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-changed-files": CaffoldTaskChangedFiles;
+  }
+}

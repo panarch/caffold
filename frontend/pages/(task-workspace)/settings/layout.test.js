@@ -3,6 +3,7 @@ import { registerHooks } from "node:module";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../../../tests/support/custom-element-unit.js";
 
@@ -38,7 +39,7 @@ test("merges its own Back with only the presented page, clipped by the detail pa
     },
   };
   const detailPane = {};
-  const owner = Object.assign(Object.create(workspace), {
+  const owner = elementStandIn(workspace, {
     section: "appearance",
     wide: true,
     hints: { scope: () => ({ targets: [{ id: "settings:parent:list" }] }) },

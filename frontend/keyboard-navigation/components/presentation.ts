@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import "../../action-hints/components/dialog.js";
 import type { CaffoldActionHintDialog } from "../../action-hints/components/dialog.js";
 import { DrawnRef, drawn } from "../../components/drawn-refs.js";
@@ -12,16 +13,17 @@ import type { CaffoldScrollSurfaceSelector } from "./selector.js";
  * the Scroll HUD, and the Scroll surface selector. Each context draws its
  * own, so a modal or popover keeps them in its top layer.
  */
+@customElement("caffold-keyboard-navigation-presentation")
 export class CaffoldKeyboardNavigationPresentation extends LitElement {
   private readonly dialog = new DrawnRef<CaffoldActionHintDialog>(this);
   private readonly hud = new DrawnRef<CaffoldScrollModeHud>(this);
   private readonly selector = new DrawnRef<CaffoldScrollSurfaceSelector>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return html`
       <caffold-action-hint-dialog
         ${drawn(this.dialog)}
@@ -46,7 +48,8 @@ export class CaffoldKeyboardNavigationPresentation extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-keyboard-navigation-presentation",
-  CaffoldKeyboardNavigationPresentation,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-keyboard-navigation-presentation": CaffoldKeyboardNavigationPresentation;
+  }
+}

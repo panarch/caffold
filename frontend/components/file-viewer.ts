@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type TemplateResult } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import type { ActionHintScope } from "../action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
@@ -218,25 +219,33 @@ interface RetainedContent {
 
 let viewerInstanceId = 0;
 
-export class CaffoldReviewFileViewer extends LitElement {
-  static properties = {
-    state: { state: true },
-    closeLabel: { state: true },
-    closeMode: { state: true },
-    imageDrawn: { state: true },
-    imageSource: { state: true },
-    documentFile: { state: true },
-  };
+await compactIconButton.register(
+  "caffold-review-file-viewer",
+  "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-actions > .viewer-refresh-button",
+);
+await compactIconButton.register(
+  "caffold-review-file-viewer",
+  "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-close-button",
+);
 
-  declare private state: ViewerState;
-  declare private closeLabel: string;
-  declare private closeMode: "back" | "close";
+@customElement("caffold-review-file-viewer")
+export class CaffoldReviewFileViewer extends LitElement {
+  @state()
+  private accessor state: ViewerState = { status: "empty" };
+  @state()
+  private accessor closeLabel = "Back to files";
+  @state()
+  private accessor closeMode: "back" | "close" = "close";
   // Until the picture is drawn, its place says it is loading rather than
   // showing an empty image the browser would draw as broken.
-  declare private imageDrawn: boolean;
+  @state()
+  private accessor imageDrawn = false;
   // The fetched copy of the previewed file the image or document draws from.
-  declare private imageSource: string;
-  declare private documentFile: DocumentPreviewFile | null;
+  @state()
+  private accessor imageSource = "";
+  @state()
+  private accessor documentFile: DocumentPreviewFile | null = null;
+
   private readonly detailsPopoverId: string;
   private previewFile: PreviewFile | null = null;
   private retainedContent: RetainedContent | null = null;
@@ -254,12 +263,6 @@ export class CaffoldReviewFileViewer extends LitElement {
 
   constructor() {
     super();
-    this.state = { status: "empty" };
-    this.closeLabel = "Back to files";
-    this.closeMode = "close";
-    this.imageDrawn = false;
-    this.imageSource = "";
-    this.documentFile = null;
     viewerInstanceId += 1;
     this.detailsPopoverId = `caffold-viewer-details-${viewerInstanceId}`;
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) => {
@@ -269,23 +272,23 @@ export class CaffoldReviewFileViewer extends LitElement {
     });
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  render() {
+  override render() {
     const state = this.state;
     if (state.status === "empty") {
       return html`
@@ -1079,14 +1082,8 @@ export class CaffoldReviewFileViewer extends LitElement {
   }
 }
 
-await compactIconButton.register(
-  "caffold-review-file-viewer",
-  "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-actions > .viewer-refresh-button",
-);
-
-await compactIconButton.register(
-  "caffold-review-file-viewer",
-  "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-close-button",
-);
-
-customElements.define("caffold-review-file-viewer", CaffoldReviewFileViewer);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-review-file-viewer": CaffoldReviewFileViewer;
+  }
+}

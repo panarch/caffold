@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import {
   type ActionHintPull,
   ActionHints,
@@ -14,55 +15,45 @@ import type {
 
 const PAGE_KINDS: readonly PageKind[] = ["first", "previous", "next", "last"];
 
+@customElement("caffold-pagination")
 export class CaffoldPagination extends LitElement {
-  static properties = {
-    page: { type: Number },
-    totalPages: { type: Number, attribute: "total-pages" },
-    hasPrevious: { type: Boolean, attribute: "has-previous" },
-    hasNext: { type: Boolean, attribute: "has-next" },
-    firstLabel: { attribute: "first-label" },
-    previousLabel: { attribute: "previous-label" },
-    nextLabel: { attribute: "next-label" },
-    lastLabel: { attribute: "last-label" },
-  };
-
-  declare page: number;
-  declare totalPages: number;
-  declare hasPrevious: boolean;
-  declare hasNext: boolean;
-  declare firstLabel: string | null | undefined;
-  declare previousLabel: string | null | undefined;
-  declare nextLabel: string | null | undefined;
-  declare lastLabel: string | null | undefined;
+  @property({ type: Number })
+  accessor page = 1;
+  @property({ type: Number, attribute: "total-pages" })
+  accessor totalPages = 0;
+  @property({ type: Boolean, attribute: "has-previous" })
+  accessor hasPrevious = false;
+  @property({ type: Boolean, attribute: "has-next" })
+  accessor hasNext = false;
+  @property({ attribute: "first-label" })
+  accessor firstLabel: string | null | undefined;
+  @property({ attribute: "previous-label" })
+  accessor previousLabel: string | null | undefined;
+  @property({ attribute: "next-label" })
+  accessor nextLabel: string | null | undefined;
+  @property({ attribute: "last-label" })
+  accessor lastLabel: string | null | undefined;
 
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
   private readonly pageButtons = new DrawnRefs<CaffoldPaginationButton>(this);
 
-  constructor() {
-    super();
-    this.page = 1;
-    this.totalPages = 0;
-    this.hasPrevious = false;
-    this.hasNext = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  render() {
+  override render() {
     const page = finiteOr(this.page, 1);
     const totalPages = finiteOr(this.totalPages, 0);
     if (totalPages <= 1) {
@@ -130,4 +121,8 @@ function finiteOr(value: number, fallback: number) {
   return Number.isFinite(value) ? value : fallback;
 }
 
-customElements.define("caffold-pagination", CaffoldPagination);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-pagination": CaffoldPagination;
+  }
+}

@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import {
   forgetTaskPermissionInstructions,
@@ -36,14 +37,17 @@ interface RecordState {
  * Task details popover it opens from: a popover is for the facts that fit
  * beside it, and this is a page of the person's own sentences.
  */
+@customElement("caffold-task-permission-instructions-dialog")
 export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
-  static properties = {
-    threadId: { state: true },
-    state: { state: true },
+  @state()
+  private accessor threadId = "";
+  @state()
+  private accessor state: RecordState = {
+    loading: false,
+    instructions: null,
+    error: "",
   };
 
-  declare private threadId: string;
-  declare private state: RecordState;
   private opener: HTMLElement | null = null;
   private request = 0;
   private readonly iconsReady = () => this.requestUpdate();
@@ -51,23 +55,17 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
-  constructor() {
-    super();
-    this.threadId = "";
-    this.state = { loading: false, instructions: null, error: "" };
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.request += 1;
@@ -110,7 +108,7 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
     });
   }
 
-  render() {
+  override render() {
     const { loading, error } = this.state;
     const instructions = loading
       ? ""
@@ -322,7 +320,8 @@ function messageOf(error: unknown, fallback: string) {
   return (error as { message?: string } | null)?.message ?? fallback;
 }
 
-customElements.define(
-  "caffold-task-permission-instructions-dialog",
-  CaffoldTaskPermissionInstructionsDialog,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-permission-instructions-dialog": CaffoldTaskPermissionInstructionsDialog;
+  }
+}

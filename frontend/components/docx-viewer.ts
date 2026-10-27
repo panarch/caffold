@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
 import type { DocumentPreviewFile } from "./dom.js";
 import "./loading-text.js";
@@ -69,45 +70,37 @@ type RenderState = "empty" | "loading" | "error" | "docx";
 
 let libraryPromise: Promise<DocxPreview> | undefined;
 
+@customElement("caffold-docx-viewer")
 class CaffoldDocxViewer extends LitElement {
-  static properties = {
-    file: { attribute: false },
-    renderState: { state: true },
-    mount: { state: true },
-  };
+  @property({ attribute: false })
+  accessor file: DocumentPreviewFile | null = null;
+  @state()
+  private accessor renderState: RenderState = "empty";
+  @state()
+  private accessor mount: HTMLElement | null = null;
 
-  declare file: DocumentPreviewFile | null;
-  declare private renderState: RenderState;
-  declare private mount: HTMLElement | null;
   private generation = 0;
   private pages: PageRecord[] | null = null;
   private widthObserver: ResizeObserver | null = null;
 
-  constructor() {
-    super();
-    this.file = null;
-    this.renderState = "empty";
-    this.mount = null;
-  }
-
   private readonly surfaces = new ScrollSurfaces(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "Word document preview");
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.release();
   }
 
-  render() {
+  override render() {
     const message =
       this.renderState === "loading"
         ? html`<caffold-loading-text>Loading document...</caffold-loading-text>`
@@ -132,7 +125,7 @@ class CaffoldDocxViewer extends LitElement {
   }
 
   // A file handed over again before it is drawn replaces the one before it.
-  willUpdate(changed: PropertyValues) {
+  override willUpdate(changed: PropertyValues) {
     if (changed.has("file") && this.file) {
       this.release();
       this.renderState = "loading";
@@ -140,7 +133,7 @@ class CaffoldDocxViewer extends LitElement {
     }
   }
 
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     if (changed.has("renderState")) {
       this.dataset.renderState = this.renderState;
     }
@@ -287,4 +280,8 @@ function loadLibrary() {
   return libraryPromise;
 }
 
-customElements.define("caffold-docx-viewer", CaffoldDocxViewer);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-docx-viewer": CaffoldDocxViewer;
+  }
+}

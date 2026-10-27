@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintScope,
   captureLinkActionHintBinding,
@@ -82,16 +83,15 @@ type MarkedParser = ParseMarkdown & { parse?: ParseMarkdown };
 
 let parserPromise: Promise<MarkedParser> | null = null;
 
+@customElement("caffold-markdown-preview")
 export class CaffoldMarkdownPreview extends LitElement {
-  static properties = {
-    renderState: { state: true },
-    markdown: { state: true },
-    renderedContent: { state: true },
-  };
+  @state()
+  private accessor renderState: RenderState | null = null;
+  @state()
+  private accessor markdown: string | undefined;
+  @state()
+  private accessor renderedContent: DocumentFragment | null = null;
 
-  declare private renderState: RenderState | null;
-  declare private markdown: string | undefined;
-  declare private renderedContent: DocumentFragment | null;
   private images: MarkdownImages | null = null;
   private pendingScroll: ScrollPosition | null = null;
   private renderToken: symbol | null = null;
@@ -102,17 +102,11 @@ export class CaffoldMarkdownPreview extends LitElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly body = new DrawnRef<HTMLElement>(this);
 
-  constructor() {
-    super();
-    this.renderState = null;
-    this.renderedContent = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "Markdown preview");
@@ -123,13 +117,13 @@ export class CaffoldMarkdownPreview extends LitElement {
     }
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.renderToken = null;
     this.releaseImages();
   }
 
-  render() {
+  override render() {
     const content =
       this.renderState === "markdown"
         ? this.renderedContent
@@ -153,7 +147,7 @@ export class CaffoldMarkdownPreview extends LitElement {
     >${content}</article>`;
   }
 
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     if (changed.has("renderState") && this.renderState) {
       this.dataset.renderState = this.renderState;
     }
@@ -469,8 +463,6 @@ function collectScrollSurfaceRecords(root: Element): ScrollSurfaceRecord[] {
   });
 }
 
-customElements.define("caffold-markdown-preview", CaffoldMarkdownPreview);
-
 async function markdownContent(
   markdown: string | undefined,
   images: MarkdownImages | null,
@@ -738,3 +730,9 @@ const FORBIDDEN_ELEMENTS = new Set([
   "style",
   "textarea",
 ]);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-markdown-preview": CaffoldMarkdownPreview;
+  }
+}

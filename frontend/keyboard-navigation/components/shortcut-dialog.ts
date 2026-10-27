@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "../../action-hints.js";
 import { DrawnRef, drawn } from "../../components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "../../components/icons.js";
@@ -14,6 +15,7 @@ const CLOSE_LABEL = "Close keyboard shortcuts";
  * The keyboard shortcut help, over the whole app. It asks the keyboard
  * navigation to close it, so the shortcut that opened it also closes it.
  */
+@customElement("caffold-keyboard-shortcut-dialog")
 export class CaffoldKeyboardShortcutDialog extends LitElement {
   // Whether the dialog is closing because the controller asked, which needs
   // no request back.
@@ -26,17 +28,17 @@ export class CaffoldKeyboardShortcutDialog extends LitElement {
   private readonly closeButton = new DrawnRef<HTMLButtonElement>(this);
   private readonly list = new DrawnRef<HTMLElement>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     const dialog = this.dialog.value;
@@ -45,7 +47,7 @@ export class CaffoldKeyboardShortcutDialog extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     return html`<dialog
       ${drawn(this.dialog)}
       ${this.keyboard.modal({ id: "app:keyboard-shortcuts" })}
@@ -150,7 +152,8 @@ export class CaffoldKeyboardShortcutDialog extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-keyboard-shortcut-dialog",
-  CaffoldKeyboardShortcutDialog,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-keyboard-shortcut-dialog": CaffoldKeyboardShortcutDialog;
+  }
+}

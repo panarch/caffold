@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -67,12 +68,11 @@ const RANGES = Object.keys(APPEARANCE_RANGE_SETTINGS) as AppearanceRangeName[];
 
 // The controls stay in place while settings change, so a range being dragged
 // keeps its element and focus while its value and preview follow it.
+@customElement("caffold-settings-appearance-page")
 export class CaffoldSettingsAppearancePage extends LitElement {
-  static properties = {
-    settings: { state: true },
-  };
+  @state()
+  private accessor settings: Settings = getSettings();
 
-  declare private settings: Settings;
   private readonly settingsChanged = (event: Event) => {
     this.settings =
       (event as CustomEvent<{ settings?: Settings }>).detail?.settings ??
@@ -87,16 +87,11 @@ export class CaffoldSettingsAppearancePage extends LitElement {
   private readonly themeLabels = new DrawnRefs<HTMLLabelElement>(this);
   private readonly typefaceSelects = new DrawnRefs<HTMLSelectElement>(this);
 
-  constructor() {
-    super();
-    this.settings = getSettings();
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:settings-change", this.settingsChanged);
     window.addEventListener("caffold:icons-ready", this.iconsReady);
@@ -104,7 +99,7 @@ export class CaffoldSettingsAppearancePage extends LitElement {
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:settings-change", this.settingsChanged);
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
@@ -114,7 +109,7 @@ export class CaffoldSettingsAppearancePage extends LitElement {
     this.settings = getSettings();
   }
 
-  render() {
+  override render() {
     const settings = this.settings;
     const allDefault =
       settings.themeMode === DEFAULT_APPEARANCE_SETTINGS.themeMode &&
@@ -165,7 +160,7 @@ export class CaffoldSettingsAppearancePage extends LitElement {
   }
 
   // A `.value` binding would land before the options it names.
-  updated() {
+  override updated() {
     for (const setting of TYPEFACES) {
       const select = this.typefaceSelects.get(setting);
       if (select && select.value !== this.settings[setting]) {
@@ -464,7 +459,8 @@ function toKebabCase(value: string) {
   return value.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`);
 }
 
-customElements.define(
-  "caffold-settings-appearance-page",
-  CaffoldSettingsAppearancePage,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-appearance-page": CaffoldSettingsAppearancePage;
+  }
+}

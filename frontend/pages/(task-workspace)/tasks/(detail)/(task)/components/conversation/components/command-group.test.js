@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../../../../../../../../tests/support/custom-element-unit.js";
 import { templateHtml } from "../../../../../../../../tests/support/lit-template.js";
@@ -18,7 +19,7 @@ test("offers its commands' actions only while it is open", () => {
   const pulls = [];
   const list = {};
   const details = { open: false };
-  const owner = Object.assign(Object.create(commandGroup), {
+  const owner = elementStandIn(commandGroup, {
     identity: "command-group:a",
     events: [
       { id: "a", type: "command_execution", payload: {} },
@@ -71,7 +72,7 @@ test("the same events again change nothing", () => {
   const first = { id: "a", type: "command_execution" };
   const second = { id: "b", type: "command_execution" };
   const third = { id: "c", type: "command_execution" };
-  const { hasChanged } = CommandGroup.properties.events;
+  const { hasChanged } = CommandGroup.getPropertyOptions("events");
 
   assert.equal(hasChanged([first, second], [first, second]), false);
   assert.equal(hasChanged([first, second, third], [first, second]), true);
@@ -79,13 +80,13 @@ test("the same events again change nothing", () => {
 });
 
 test("draws each command as a row of the group, so the group draws the frame", () => {
-  const owner = Object.create(commandGroup, Object.getOwnPropertyDescriptors({
+  const owner = elementStandIn(commandGroup, {
     identity: "command-group:a",
     events: [
       { id: "a", type: "command_execution", payload: { status: "completed" } },
       { id: "b", type: "reasoning", payload: { summary: [] } },
     ],
-  }));
+  });
   owner.hints = new ActionHints(owner);
   owner.commands = new DrawnRefs(owner);
 

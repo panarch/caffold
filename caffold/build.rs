@@ -13,7 +13,7 @@ fn main() {
 
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("Cargo OUT_DIR must be set"));
 
-    for package in ["lit", "typescript"] {
+    for package in ["lit", "tslib", "typescript"] {
         if let Err(problem) = check_installed_package(package) {
             println!("cargo::error={problem}; run `npm ci` in frontend/ before building");
             return;
@@ -53,8 +53,8 @@ fn main() {
     println!("cargo:rustc-env=CAFFOLD_BUILD_NUMBER={build_number}");
 }
 
-// The static asset table embeds Lit from frontend/node_modules, and the
-// TypeScript there compiles the frontend modules; each must be the version
+// The static asset table embeds Lit and tslib from frontend/node_modules, and
+// the TypeScript there compiles the frontend modules; each must be the version
 // frontend/package.json names.
 fn check_installed_package(name: &str) -> Result<(), String> {
     let wanted = read_json("../frontend/package.json")

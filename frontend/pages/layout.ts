@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   ActionHints,
@@ -91,12 +92,21 @@ interface PwaUpdateStatus {
   diagnostics: ReturnType<typeof normalizePwaUpdateDiagnostics>;
 }
 
+/** Which failed update this browser has told, so it tells each one once. */
+const SEEN_UPDATE_RESULT_KEY = "caffold:update-result-seen";
+
+await busySpin.register(
+  "caffold-app-shell",
+  "> .app-foreground-recovery > .app-foreground-recovery-spinner",
+);
+
 /**
  * The application: the workspace, the bootstrap failure that stands in for
  * it, the foreground recovery notice, the Caffold update and build mismatch
  * notices, and the keyboard navigation over all of it. It owns the browser
  * history and routes every navigation into the workspace.
  */
+@customElement("caffold-app-shell")
 export class CaffoldAppShell extends LitElement {
   pwaUpdateLifecycle!: PwaUpdateLifecycle;
   foregroundRecoveryLifecycle!: ForegroundRecoveryLifecycle;
@@ -142,11 +152,11 @@ export class CaffoldAppShell extends LitElement {
     void this.foregroundRecoveryLifecycle.reportOriginReachable();
   };
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     if (this.started) {
@@ -288,7 +298,7 @@ export class CaffoldAppShell extends LitElement {
     void this.bootstrap();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     window.removeEventListener(
@@ -372,14 +382,14 @@ export class CaffoldAppShell extends LitElement {
     );
   }
 
-  protected updated() {
+  protected override updated() {
     const trigger = this.foregroundRecoverySnapshot?.lastTrigger ?? "";
     if (this.dataset.foregroundRecoveryTrigger !== trigger) {
       this.dataset.foregroundRecoveryTrigger = trigger;
     }
   }
 
-  render() {
+  override render() {
     const error = this.bootstrapError;
     const recovery =
       this.foregroundRecoverySnapshot?.presentation ??
@@ -896,9 +906,6 @@ export class CaffoldAppShell extends LitElement {
   }
 }
 
-/** Which failed update this browser has told, so it tells each one once. */
-const SEEN_UPDATE_RESULT_KEY = "caffold:update-result-seen";
-
 function seenUpdateResult() {
   try {
     return window.localStorage.getItem(SEEN_UPDATE_RESULT_KEY);
@@ -961,9 +968,8 @@ function notificationActivationRoute(value: unknown) {
   return route;
 }
 
-await busySpin.register(
-  "caffold-app-shell",
-  "> .app-foreground-recovery > .app-foreground-recovery-spinner",
-);
-
-customElements.define("caffold-app-shell", CaffoldAppShell);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-app-shell": CaffoldAppShell;
+  }
+}

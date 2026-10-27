@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -19,21 +20,15 @@ let contextUsageInstanceId = 0;
  * behind the pie one press away. A pie rather than a ring, because a partly
  * drawn ring beside the microphone reads as its busy spinner.
  */
+@customElement("caffold-task-context-usage")
 export class CaffoldTaskContextUsage extends LitElement {
-  static properties = {
-    usage: { state: true },
-  };
+  @state()
+  private accessor usage: ContextUsage | null = null;
 
-  declare private usage: ContextUsage | null;
   private readonly popoverId = `task-context-usage-${++contextUsageInstanceId}`;
   private readonly hints = new ActionHints(this);
 
-  constructor() {
-    super();
-    this.usage = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
@@ -49,7 +44,7 @@ export class CaffoldTaskContextUsage extends LitElement {
     this.usage = next;
   }
 
-  render() {
+  override render() {
     const view = contextView(this.usage);
     return html`
       <button
@@ -175,4 +170,8 @@ function sameContext(left: ContextUsage | null, right: ContextUsage | null) {
   );
 }
 
-customElements.define("caffold-task-context-usage", CaffoldTaskContextUsage);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-context-usage": CaffoldTaskContextUsage;
+  }
+}

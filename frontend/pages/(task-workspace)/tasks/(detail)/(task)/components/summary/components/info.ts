@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -60,18 +61,22 @@ export function taskInfoSnapshot(
   };
 }
 
+await compactIconButton.register(
+  "caffold-task-detail-info",
+  "> .task-detail-info-button",
+);
+
 /**
  * The Task's details button in the summary: its status, and a popover with
  * the Task's thread, directory, and worktree above its actions.
  *
  * The popover closes when another Task takes this one's place.
  */
+@customElement("caffold-task-detail-info")
 export class CaffoldTaskDetailInfo extends LitElement {
-  static properties = {
-    snapshot: { attribute: false },
-  };
+  @property({ attribute: false })
+  accessor snapshot: TaskInfoSnapshot = taskInfoSnapshot();
 
-  declare snapshot: TaskInfoSnapshot;
   private readonly popoverId = `task-detail-info-${++taskInfoInstanceId}`;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
@@ -82,29 +87,28 @@ export class CaffoldTaskDetailInfo extends LitElement {
 
   constructor() {
     super();
-    this.snapshot = taskInfoSnapshot();
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
       this.handleDismiss(event),
     );
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.deactivate();
   }
 
-  protected willUpdate(changed: PropertyValues<this>) {
+  protected override willUpdate(changed: PropertyValues<this>) {
     if (
       changed.has("snapshot") &&
       taskThreadId(changed.get("snapshot")?.task) !==
@@ -114,7 +118,7 @@ export class CaffoldTaskDetailInfo extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const task = this.snapshot.task;
     if (!task) {
       return nothing;
@@ -255,14 +259,13 @@ export class CaffoldTaskDetailInfo extends LitElement {
   }
 }
 
-await compactIconButton.register(
-  "caffold-task-detail-info",
-  "> .task-detail-info-button",
-);
-
-customElements.define("caffold-task-detail-info", CaffoldTaskDetailInfo);
-
 function worktreeRef(worktree: TaskWorktree | null) {
   const branch = `${worktree?.branch ?? ""}`.trim();
   return branch || shortId(worktree?.headSha ?? "");
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-detail-info": CaffoldTaskDetailInfo;
+  }
 }

@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import { fetchInChunks } from "#app/chunked-fetch.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
@@ -41,16 +42,15 @@ export function requestTaskImagePreview(
 type PictureView = "image" | "loading" | "unavailable";
 
 /** One picture from a Task, larger, in a dialog over the Tasks screen. */
+@customElement("caffold-task-image-preview-dialog")
 export class CaffoldTaskImagePreviewDialog extends LitElement {
-  static properties = {
-    name: { state: true },
-    src: { state: true },
-    view: { state: true },
-  };
+  @state()
+  private accessor name = "";
+  @state()
+  private accessor src = "";
+  @state()
+  private accessor view: PictureView = "image";
 
-  declare private name: string;
-  declare private src: string;
-  declare private view: PictureView;
   private picture: { fetching: AbortController; objectUrl: string } | null =
     null;
   private readonly iconsReady = () => this.requestUpdate();
@@ -58,24 +58,17 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
-  constructor() {
-    super();
-    this.name = "";
-    this.src = "";
-    this.view = "image";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
@@ -115,7 +108,7 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     return html`
       <dialog
         ${drawn(this.dialog)}
@@ -231,7 +224,8 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-task-image-preview-dialog",
-  CaffoldTaskImagePreviewDialog,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-image-preview-dialog": CaffoldTaskImagePreviewDialog;
+  }
+}

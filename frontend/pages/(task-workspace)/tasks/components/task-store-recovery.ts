@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -25,24 +26,19 @@ const FAILED_INSTRUCTION =
  * What the Tasks screen shows instead of Tasks while the Task store is being
  * upgraded, or after its upgrade failed and can be retried.
  */
+@customElement("caffold-task-store-recovery")
 export class CaffoldTaskStoreRecovery extends LitElement {
-  static properties = {
-    snapshot: { state: true },
-  };
+  @state()
+  private accessor snapshot: TaskStoreStatusSnapshot =
+    INITIAL_TASK_STORE_STATUS_SNAPSHOT;
 
-  declare private snapshot: TaskStoreStatusSnapshot;
   private readonly surface = new DrawnRef<HTMLElement>(this);
   private readonly hints: ActionHints = new ActionHints(this, {
     clipRoots: () => [this, this.surface.value],
   });
   private readonly surfaces = new ScrollSurfaces(this);
 
-  constructor() {
-    super();
-    this.snapshot = INITIAL_TASK_STORE_STATUS_SNAPSHOT;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
@@ -69,7 +65,7 @@ export class CaffoldTaskStoreRecovery extends LitElement {
     return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
-  render() {
+  override render() {
     const readiness = this.snapshot.readiness;
     const failed = readiness?.state === "failed";
     const diagnostic = readiness?.diagnosticMessage ?? "";
@@ -126,4 +122,8 @@ export class CaffoldTaskStoreRecovery extends LitElement {
   }
 }
 
-customElements.define("caffold-task-store-recovery", CaffoldTaskStoreRecovery);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-store-recovery": CaffoldTaskStoreRecovery;
+  }
+}

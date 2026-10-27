@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -34,18 +35,18 @@ const AGENT_ROWS: readonly SettingsDetailRow[] = Object.freeze([
 
 type UsageWindow = NonNullable<ClaudeStatus["usage"]>["windows"][number];
 
+@customElement("caffold-settings-claude-page")
 export class CaffoldSettingsClaudePage extends LitElement {
-  static properties = {
-    restartState: { state: true },
-    restartMessage: { state: true },
-    status: { state: true },
-    statusState: { state: true },
-  };
+  @state()
+  private accessor restartState = "idle";
+  @state()
+  private accessor restartMessage = "";
+  @state()
+  private accessor status: ClaudeStatus | null = null;
+  @state()
+  private accessor statusState: "idle" | "loading" | "loaded" | "unavailable" =
+    "idle";
 
-  declare private restartState: string;
-  declare private restartMessage: string;
-  declare private status: ClaudeStatus | null;
-  declare private statusState: "idle" | "loading" | "loaded" | "unavailable";
   private operation = 0;
   private active = false;
   private readonly hints: ActionHints = new ActionHints(this, {
@@ -57,15 +58,7 @@ export class CaffoldSettingsClaudePage extends LitElement {
     this,
   );
 
-  constructor() {
-    super();
-    this.restartState = "idle";
-    this.restartMessage = "";
-    this.status = null;
-    this.statusState = "idle";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
@@ -107,7 +100,7 @@ export class CaffoldSettingsClaudePage extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const unanswered = this.unansweredRows();
     const restarting = this.restartState === "restarting";
     return html`
@@ -363,7 +356,8 @@ function unavailableValue(problem: string) {
   return { value: `Unavailable — ${problem}`, state: "negative" };
 }
 
-customElements.define(
-  "caffold-settings-claude-page",
-  CaffoldSettingsClaudePage,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-claude-page": CaffoldSettingsClaudePage;
+  }
+}

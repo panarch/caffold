@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   ACTION_HINT_ACTION,
@@ -77,32 +78,32 @@ const IDLE_RESET_CREDIT: ResetCreditState = {
   retryPending: false,
 };
 
+@customElement("caffold-settings-codex-page")
 export class CaffoldSettingsCodexPage extends LitElement {
-  static properties = {
-    snapshot: { attribute: false },
-    runtimeAction: { attribute: false },
-    resetCreditState: { attribute: false },
-    restartState: { state: true },
-    restartMessage: { state: true },
-    updateState: { state: true },
-    updateMessage: { state: true },
-    updates: { state: true },
-    updatesState: { state: true },
-    updatesProblem: { state: true },
-    copyState: { state: true },
-  };
+  @property({ attribute: false })
+  accessor snapshot: CodexStatusSnapshot | null = null;
+  @property({ attribute: false })
+  accessor runtimeAction = "idle";
+  @property({ attribute: false })
+  accessor resetCreditState: ResetCreditState | null = null;
+  @state()
+  private accessor restartState = "idle";
+  @state()
+  private accessor restartMessage = "";
+  @state()
+  private accessor updateState = "idle";
+  @state()
+  private accessor updateMessage = "";
+  @state()
+  private accessor updates: CodexUpdates | null = null;
+  @state()
+  private accessor updatesState: "idle" | "loading" | "loaded" | "unavailable" =
+    "idle";
+  @state()
+  private accessor updatesProblem = "";
+  @state()
+  private accessor copyState: "idle" | "copied" | "failed" = "idle";
 
-  declare snapshot: CodexStatusSnapshot | null;
-  declare runtimeAction: string;
-  declare resetCreditState: ResetCreditState | null;
-  declare private restartState: string;
-  declare private restartMessage: string;
-  declare private updateState: string;
-  declare private updateMessage: string;
-  declare private updates: CodexUpdates | null;
-  declare private updatesState: "idle" | "loading" | "loaded" | "unavailable";
-  declare private updatesProblem: string;
-  declare private copyState: "idle" | "copied" | "failed";
   private active = false;
   private updatesOperation = 0;
   private readonly hints: ActionHints = new ActionHints(this, {
@@ -114,26 +115,11 @@ export class CaffoldSettingsCodexPage extends LitElement {
     this,
   );
 
-  constructor() {
-    super();
-    this.snapshot = null;
-    this.runtimeAction = "idle";
-    this.resetCreditState = null;
-    this.restartState = "idle";
-    this.restartMessage = "";
-    this.updateState = "idle";
-    this.updateMessage = "";
-    this.updates = null;
-    this.updatesState = "idle";
-    this.updatesProblem = "";
-    this.copyState = "idle";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
   }
@@ -197,13 +183,13 @@ export class CaffoldSettingsCodexPage extends LitElement {
   }
 
   // A new report puts the install command's Copy back to its label.
-  willUpdate(changed: PropertyValues<this>) {
+  override willUpdate(changed: PropertyValues<this>) {
     if (changed.has("snapshot")) {
       this.copyState = "idle";
     }
   }
 
-  render() {
+  override render() {
     const snapshot = this.snapshot;
     const status = snapshot?.status;
     const readiness = status?.readiness;
@@ -848,4 +834,8 @@ function repairDescription(readiness: CodexReadiness | null | undefined) {
   );
 }
 
-customElements.define("caffold-settings-codex-page", CaffoldSettingsCodexPage);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-codex-page": CaffoldSettingsCodexPage;
+  }
+}

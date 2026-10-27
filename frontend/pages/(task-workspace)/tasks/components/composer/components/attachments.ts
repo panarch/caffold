@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   ACTION_HINT_ACTION,
@@ -35,33 +36,27 @@ const THUMBNAIL_SHORT_SIDE = 216;
  * keeps one node per attachment, so a picture already shown stays as it is.
  * A thumbnail draws a reduced copy of its picture, never the whole photo.
  */
+@customElement("caffold-task-composer-attachments")
 export class CaffoldTaskComposerAttachments extends LitElement {
-  static properties = {
-    thumbnails: { state: true },
-  };
-
   // The reduced copy drawn for each picture, by attachment id, once made.
-  declare private thumbnails: ReadonlyMap<string, string>;
+  @state()
+  private accessor thumbnails: ReadonlyMap<string, string> = new Map();
+
   private attachments: ComposerAttachment[] = [];
   private thumbnailQueue = Promise.resolve();
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
 
-  constructor() {
-    super();
-    this.thumbnails = new Map();
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
@@ -88,7 +83,7 @@ export class CaffoldTaskComposerAttachments extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const pictures = this.attachments.filter(({ imageInput }) => imageInput);
     const files = this.attachments.filter(({ imageInput }) => !imageInput);
     return html`
@@ -282,7 +277,8 @@ function splitFileName(name: string) {
     : { stem: name, extension: "" };
 }
 
-customElements.define(
-  "caffold-task-composer-attachments",
-  CaffoldTaskComposerAttachments,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-composer-attachments": CaffoldTaskComposerAttachments;
+  }
+}

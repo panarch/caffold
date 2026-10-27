@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
 import {
   type GitHubPulls,
@@ -27,6 +28,7 @@ interface GithubContext {
   githubStatus?: GitHubStatus | null;
 }
 
+@customElement("caffold-github-pulls-layout")
 export class CaffoldGithubPullsLayout extends LitElement {
   // What the GitHub layout reads back.
   page = 1;
@@ -42,18 +44,18 @@ export class CaffoldGithubPullsLayout extends LitElement {
   private readonly detail = new DrawnRef<CaffoldGithubPullDetailPage>(this);
   private readonly files = new DrawnRef<CaffoldGithubPullFilesPage>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     if (!this.dataset.pullsView) {
       this.setView("list");
     }
   }
 
-  render() {
+  override render() {
     return html`
       <caffold-github-pulls-list-page
         ${drawn(this.list)}
@@ -488,9 +490,13 @@ export class CaffoldGithubPullsLayout extends LitElement {
   }
 }
 
-customElements.define("caffold-github-pulls-layout", CaffoldGithubPullsLayout);
-
 function normalizePage(page: number | string | null | undefined) {
   const value = Number.parseInt(`${page ?? 1}`, 10);
   return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-github-pulls-layout": CaffoldGithubPullsLayout;
+  }
 }

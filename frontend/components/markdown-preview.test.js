@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../tests/support/custom-element-unit.js";
 
@@ -18,7 +19,7 @@ test("adds the code blocks and tables drawn from the Markdown to its own surface
   };
   const viewer = { id: "viewer" };
   const pulls = [];
-  const owner = Object.assign(Object.create(markdownPreview), {
+  const owner = elementStandIn(markdownPreview, {
     renderState: "markdown",
     body: { value: body },
     scrollSurfaceRecords: [

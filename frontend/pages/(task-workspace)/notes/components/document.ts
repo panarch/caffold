@@ -1,4 +1,5 @@
 import { html, LitElement, type PropertyValues } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import { hasActionHintLayoutBox } from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
@@ -60,14 +61,22 @@ const ICON = "note-document-icon";
 
 let documentInstanceId = 0;
 
+await Promise.all(
+  ["split", "close"].map((action) =>
+    compactIconButton.register(
+      "caffold-note-document",
+      `> .notes-workspace-detail-pane > .notes-workspace-detail-header > .note-document-actions > .note-document-${action}`,
+    ),
+  ),
+);
+
 // A retained document view. Notes Workspace owns reads and selection; this
 // owns the header, preview, Info, focus and scroll across placement changes.
+@customElement("caffold-note-document")
 export class CaffoldNoteDocument extends LitElement {
-  static properties = {
-    snapshot: { attribute: false },
-  };
+  @property({ attribute: false })
+  accessor snapshot: NoteDocumentSnapshot = IDLE_DOCUMENT;
 
-  declare snapshot: NoteDocumentSnapshot;
   private readonly titleId = `notes-document-title-${++documentInstanceId}`;
   // The Markdown the preview was last given.
   private renderedMarkdown: { noteId: string; content: string } | null = null;
@@ -82,28 +91,23 @@ export class CaffoldNoteDocument extends LitElement {
   private readonly info = new DrawnRef<CaffoldNotesInfo>(this);
   private readonly preview = new DrawnRef<CaffoldMarkdownPreview>(this);
 
-  constructor() {
-    super();
-    this.snapshot = IDLE_DOCUMENT;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.deactivate();
   }
 
-  render() {
+  override render() {
     const { noteId, result, side, split, paired, readable } = this.snapshot;
     const { state, note, message } = result;
     const title = state === "missing" ? "Note not found" : note?.name || "";
@@ -234,7 +238,7 @@ export class CaffoldNoteDocument extends LitElement {
 
   // The preview keeps its reading position while the same Note is read again
   // and opens another Note at its top.
-  updated(changed: PropertyValues<this>) {
+  override updated(changed: PropertyValues<this>) {
     if (!changed.has("snapshot")) {
       return;
     }
@@ -352,12 +356,8 @@ export class CaffoldNoteDocument extends LitElement {
   }
 }
 
-await Promise.all(
-  ["split", "close"].map((action) =>
-    compactIconButton.register(
-      "caffold-note-document",
-      `> .notes-workspace-detail-pane > .notes-workspace-detail-header > .note-document-actions > .note-document-${action}`,
-    ),
-  ),
-);
-customElements.define("caffold-note-document", CaffoldNoteDocument);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-note-document": CaffoldNoteDocument;
+  }
+}

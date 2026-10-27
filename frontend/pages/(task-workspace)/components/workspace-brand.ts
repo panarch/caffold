@@ -1,11 +1,13 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 
+@customElement("caffold-workspace-brand")
 class CaffoldWorkspaceBrand extends LitElement {
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return html`
       <img
         class="workspace-brand-icon"
@@ -17,4 +19,8 @@ class CaffoldWorkspaceBrand extends LitElement {
   }
 }
 
-customElements.define("caffold-workspace-brand", CaffoldWorkspaceBrand);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-workspace-brand": CaffoldWorkspaceBrand;
+  }
+}

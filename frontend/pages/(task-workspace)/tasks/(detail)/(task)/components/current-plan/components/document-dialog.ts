@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   ActionHints,
@@ -40,6 +41,7 @@ type ReadPhase = "idle" | "loading" | "refreshing" | "failed" | "shown";
  * One of a Task's plan files, read and drawn as Markdown over the Task screen.
  * It reads the file again when the Current Plan reports that it changed.
  */
+@customElement("caffold-current-plan-document-dialog")
 export class CaffoldCurrentPlanDocumentDialog extends LitElement {
   private requestId = 0;
   private requestController: AbortController | null = null;
@@ -54,17 +56,17 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
   private readonly preview = new DrawnRef<CaffoldMarkdownPreview>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.deactivate();
@@ -138,7 +140,7 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
     });
   }
 
-  render() {
+  override render() {
     const current = this.current;
     const phase = this.phase;
     const closeIcon = inlineIcon(
@@ -310,7 +312,8 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-current-plan-document-dialog",
-  CaffoldCurrentPlanDocumentDialog,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-current-plan-document-dialog": CaffoldCurrentPlanDocumentDialog;
+  }
+}

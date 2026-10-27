@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import type { ActionHintScope } from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
@@ -71,28 +72,27 @@ interface SettingsPage extends HTMLElement {
   scrollSurfaceScope?: (pull: ScrollSurfacePull) => ScrollSurfaceScope;
 }
 
+@customElement("caffold-settings-workspace")
 export class CaffoldSettingsWorkspace extends LitElement {
-  static properties = {
-    section: { state: true },
-    wide: { state: true },
-    codexStatus: { state: true },
-    codexRuntimeAction: { state: true },
-    codexResetCredit: { state: true },
-    health: { state: true },
-    caffoldUpdate: { state: true },
-    updateStatus: { state: true },
-  };
-
-  declare private section: string;
+  @state()
+  private accessor section = "";
   // Whether the list and a section sit side by side, which opens Appearance
   // when no section is named.
-  declare private wide: boolean;
-  declare private codexStatus: CodexStatusSnapshot | null;
-  declare private codexRuntimeAction: string;
-  declare private codexResetCredit: ResetCreditState | null;
-  declare private health: Health | null;
-  declare private caffoldUpdate: CaffoldUpdateSnapshot | null;
-  declare private updateStatus: unknown;
+  @state()
+  private accessor wide: boolean;
+  @state()
+  private accessor codexStatus: CodexStatusSnapshot | null = null;
+  @state()
+  private accessor codexRuntimeAction = "idle";
+  @state()
+  private accessor codexResetCredit: ResetCreditState | null = null;
+  @state()
+  private accessor health: Health | null = null;
+  @state()
+  private accessor caffoldUpdate: CaffoldUpdateSnapshot | null = null;
+  @state()
+  private accessor updateStatus: unknown = null;
+
   private readonly masterDetailMedia = window.matchMedia(
     SETTINGS_MASTER_DETAIL_MEDIA_QUERY,
   );
@@ -115,21 +115,14 @@ export class CaffoldSettingsWorkspace extends LitElement {
 
   constructor() {
     super();
-    this.section = "";
     this.wide = this.masterDetailMedia.matches;
-    this.codexStatus = null;
-    this.codexRuntimeAction = "idle";
-    this.codexResetCredit = null;
-    this.health = null;
-    this.caffoldUpdate = null;
-    this.updateStatus = null;
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     this.masterDetailMedia.addEventListener("change", this.responsiveChange);
@@ -138,7 +131,7 @@ export class CaffoldSettingsWorkspace extends LitElement {
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.masterDetailMedia.removeEventListener("change", this.responsiveChange);
@@ -147,7 +140,7 @@ export class CaffoldSettingsWorkspace extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const presented = this.presentedSection();
     const backIcon = inlineIcon(
       "ArrowLeft",
@@ -245,7 +238,7 @@ export class CaffoldSettingsWorkspace extends LitElement {
 
   // The navigator is not part of this element's template, so it takes the
   // presented section here.
-  updated() {
+  override updated() {
     const presented = this.presentedSection();
     const view = presented ? "detail" : "list";
     if (this.dataset.settingsView !== view) {
@@ -433,4 +426,8 @@ export class CaffoldSettingsWorkspace extends LitElement {
   }
 }
 
-customElements.define("caffold-settings-workspace", CaffoldSettingsWorkspace);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-workspace": CaffoldSettingsWorkspace;
+  }
+}

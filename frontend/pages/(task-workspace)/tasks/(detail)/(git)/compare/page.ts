@@ -1,27 +1,29 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, type ActionHintPull } from "#app/action-hints.js";
 import type { ScrollSurfacePull } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/git-compare-browser.js";
 import type { CaffoldGitCompareBrowser } from "#components/git-compare-browser.js";
 
+@customElement("caffold-git-compare-page")
 export class CaffoldGitComparePage extends LitElement {
   private readonly browserElement = new DrawnRef<CaffoldGitCompareBrowser>(
     this,
   );
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return html`<caffold-git-compare-browser
       ${drawn(this.browserElement)}
       @caffold:git-compare-state-change=${this.followBrowser}
     ></caffold-git-compare-browser>`;
   }
 
-  firstUpdated() {
+  override firstUpdated() {
     this.dataset.detailView = this.browser.detailView;
   }
 
@@ -139,4 +141,8 @@ export class CaffoldGitComparePage extends LitElement {
   }
 }
 
-customElements.define("caffold-git-compare-page", CaffoldGitComparePage);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-git-compare-page": CaffoldGitComparePage;
+  }
+}

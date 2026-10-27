@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -11,44 +12,42 @@ export const SETTINGS_REFRESH_INTENT_EVENT = "caffold:settings-refresh-intent";
 
 const LABEL = "Refresh";
 
+await busySpin.register(
+  "caffold-settings-refresh-button",
+  "> button.is-refreshing > span > .settings-refresh-icon",
+);
+
 /**
  * The Refresh action beside a Settings page description. The page says when
  * its report is being read and decides what a Refresh request does.
  */
+@customElement("caffold-settings-refresh-button")
 export class CaffoldSettingsRefreshButton extends LitElement {
-  static properties = {
-    refreshing: { attribute: false },
-    disabled: { attribute: false },
-  };
-
   // While refreshing, the action is disabled and its icon turns.
-  declare refreshing: boolean;
-  declare disabled: boolean;
+  @property({ attribute: false })
+  accessor refreshing = false;
+  @property({ attribute: false })
+  accessor disabled = false;
+
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
 
-  constructor() {
-    super();
-    this.refreshing = false;
-    this.disabled = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  render() {
+  override render() {
     return html`
       <button
         ${this.hints.button({
@@ -82,12 +81,8 @@ export class CaffoldSettingsRefreshButton extends LitElement {
   }
 }
 
-await busySpin.register(
-  "caffold-settings-refresh-button",
-  "> button.is-refreshing > span > .settings-refresh-icon",
-);
-
-customElements.define(
-  "caffold-settings-refresh-button",
-  CaffoldSettingsRefreshButton,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-refresh-button": CaffoldSettingsRefreshButton;
+  }
+}

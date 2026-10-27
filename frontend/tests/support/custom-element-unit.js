@@ -39,6 +39,9 @@ export function installCustomElementUnitRegistry() {
       if (definitions.has(name)) {
         throw new Error(`Custom element already defined: ${name}`);
       }
+      // A browser reads the attributes an element observes when it is
+      // defined, which is when Lit finalizes the element's reactive properties.
+      void constructor.observedAttributes;
       definitions.set(name, constructor);
     },
     get(name) {
@@ -62,6 +65,17 @@ export function installCustomElementUnitRegistry() {
       restoreGlobal("CSSStyleSheet", previousStyleSheet);
     },
   };
+}
+
+// An element a test calls methods on without constructing it. Its reactive
+// properties are plain properties of its own, since a decorated accessor keeps
+// its value where only a constructed element has room for it.
+export function elementStandIn(prototype, values = {}) {
+  const descriptors = Object.getOwnPropertyDescriptors(values);
+  for (const name of prototype.constructor.elementProperties.keys()) {
+    descriptors[name] ??= { value: undefined, writable: true, enumerable: true, configurable: true };
+  }
+  return Object.create(prototype, descriptors);
 }
 
 function restoreGlobal(name, value) {

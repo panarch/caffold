@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import type { ActionHintScope } from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
@@ -109,6 +110,7 @@ type SubjectKind = "" | "task" | "section";
  * Git and GitHub are made once into theirs; the header and the slots show
  * what the subject and its route say.
  */
+@customElement("caffold-detail-layout")
 export class CaffoldDetailLayout extends LitElement {
   subjectKind: SubjectKind = "";
   private section: DetailSection | null = null;
@@ -152,16 +154,16 @@ export class CaffoldDetailLayout extends LitElement {
   private readonly githubSlot = new DrawnRef<HTMLDivElement>(this);
   private readonly terminalPage = new DrawnRef<CaffoldTerminalPage>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.performUpdate();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
     this.disposeReviews();
@@ -629,18 +631,18 @@ export class CaffoldDetailLayout extends LitElement {
     return this.hasAttribute("data-header-hidden");
   }
 
-  protected firstUpdated() {
+  protected override firstUpdated() {
     this.taskDetail.value?.setLiveUpdates(this.liveUpdates);
   }
 
-  protected updated() {
+  protected override updated() {
     const kind = this.subjectKind;
     if (kind && this.dataset.detailSubject !== kind) {
       this.dataset.detailSubject = kind;
     }
   }
 
-  render() {
+  override render() {
     const kind = this.subjectKind;
     const surface = kind ? this.presentedSurface() : "";
     const canonicalTask = kind === "task" ? this.canonicalTask() : null;
@@ -1551,9 +1553,7 @@ export class CaffoldDetailLayout extends LitElement {
     }
     let review = this.reviewComponents.get(key);
     if (!review) {
-      review = document.createElement(
-        "caffold-task-review",
-      ) as CaffoldTaskReview;
+      review = document.createElement("caffold-task-review");
       review.setLiveUpdates(this.liveUpdates);
       this.reviewComponents.set(key, review);
     }
@@ -1619,9 +1619,7 @@ export class CaffoldDetailLayout extends LitElement {
   private ensureGitLayout() {
     let layout = this.gitLayout();
     if (!layout) {
-      layout = document.createElement(
-        "caffold-task-git-layout",
-      ) as CaffoldTaskGitLayout;
+      layout = document.createElement("caffold-task-git-layout");
       layout.setLiveUpdates(this.liveUpdates);
       this.gitSlot.value?.replaceChildren(layout);
     }
@@ -1631,9 +1629,7 @@ export class CaffoldDetailLayout extends LitElement {
   private ensureGithubLayout() {
     let layout = this.githubLayout();
     if (!layout) {
-      layout = document.createElement(
-        "caffold-task-github-layout",
-      ) as CaffoldTaskGithubLayout;
+      layout = document.createElement("caffold-task-github-layout");
       this.githubSlot.value?.replaceChildren(layout);
     }
     return layout;
@@ -1662,8 +1658,6 @@ export class CaffoldDetailLayout extends LitElement {
     );
   }
 }
-
-customElements.define("caffold-detail-layout", CaffoldDetailLayout);
 
 function reviewFields(route: Partial<TaskRoute> | null | undefined) {
   const viewer = route?.reviewViewer;
@@ -1723,4 +1717,10 @@ function taskRelativePath(rootPath: string, path: string) {
   }
   const prefix = `${root}/`;
   return target.startsWith(prefix) ? target.slice(prefix.length) : target;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-detail-layout": CaffoldDetailLayout;
+  }
 }

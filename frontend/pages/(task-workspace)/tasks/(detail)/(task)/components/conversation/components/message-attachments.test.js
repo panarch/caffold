@@ -46,7 +46,7 @@ test("asks for a preview of the picture that was clicked", () => {
 });
 
 test("keeps its pictures when the same ones are reported again", () => {
-  const { hasChanged } = Attachments.properties.attachments;
+  const { hasChanged } = Attachments.getPropertyOptions("attachments");
   const pictures = [{ src: "data:image/png;base64,AAAA", name: "shot.png" }];
 
   assert.equal(hasChanged([{ ...pictures[0] }], pictures), false);

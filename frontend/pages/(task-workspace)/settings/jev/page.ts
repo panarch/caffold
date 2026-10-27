@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -13,12 +14,17 @@ import {
   type JevSettingsSnapshot,
 } from "./lifecycle.js";
 
+@customElement("caffold-settings-jev-page")
 export class CaffoldSettingsJevPage extends LitElement {
-  static properties = {
-    snapshot: { state: true },
+  @state()
+  private accessor snapshot: JevSettingsSnapshot = {
+    settings: null,
+    fresh: false,
+    busy: false,
+    retry: false,
+    message: "",
   };
 
-  declare private snapshot: JevSettingsSnapshot;
   private active = false;
   // A half-written rule is the person's, not the server's. While one is being
   // typed the saved value stops being written back over it.
@@ -38,22 +44,11 @@ export class CaffoldSettingsJevPage extends LitElement {
   private readonly criteria = new DrawnRef<HTMLTextAreaElement>(this);
   private readonly key = new DrawnRef<HTMLInputElement>(this);
 
-  constructor() {
-    super();
-    this.snapshot = {
-      settings: null,
-      fresh: false,
-      busy: false,
-      retry: false,
-      message: "",
-    };
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
   }
@@ -69,7 +64,7 @@ export class CaffoldSettingsJevPage extends LitElement {
     this.lifecycle.deactivate();
   }
 
-  render() {
+  override render() {
     const { settings, fresh, busy, retry, message } = this.snapshot;
     const locked = busy || !fresh || !settings;
     const saved = Boolean(settings?.keyConfigured);
@@ -216,7 +211,7 @@ export class CaffoldSettingsJevPage extends LitElement {
     `;
   }
 
-  updated() {
+  override updated() {
     const settings = this.snapshot.settings;
     const textarea = this.criteria.value;
     if (!this.editing && settings && textarea) {
@@ -292,4 +287,8 @@ function lastCheckSummary(settings: JevSettings | null) {
     : (check.message ?? "The key did not work.");
 }
 
-customElements.define("caffold-settings-jev-page", CaffoldSettingsJevPage);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-jev-page": CaffoldSettingsJevPage;
+  }
+}

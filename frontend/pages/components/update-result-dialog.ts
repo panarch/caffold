@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "../../action-hints.js";
 import type { CaffoldUpdateAttempt } from "../../api.js";
 import { DrawnRef, drawn } from "../../components/drawn-refs.js";
@@ -11,26 +12,20 @@ type UpdateResultNotice = { title: string; description: string };
  * Tells this browser that an update of Caffold did not stick. It only
  * informs, so its one button closes it.
  */
+@customElement("caffold-update-result-dialog")
 export class CaffoldUpdateResultDialog extends LitElement {
-  static properties = {
-    notice: { state: true },
-  };
+  @state()
+  private accessor notice: UpdateResultNotice | null = null;
 
-  declare private notice: UpdateResultNotice | null;
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
-  constructor() {
-    super();
-    this.notice = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return html`
       <dialog
         ${drawn(this.dialog)}
@@ -110,7 +105,8 @@ export function updateResultNotice(
   return null;
 }
 
-customElements.define(
-  "caffold-update-result-dialog",
-  CaffoldUpdateResultDialog,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-update-result-dialog": CaffoldUpdateResultDialog;
+  }
+}

@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import {
@@ -40,6 +41,7 @@ export interface TaskSwitcherSnapshot {
  * open. Rows keep receiving status changes, because the reason to come here
  * is usually that something finished.
  */
+@customElement("caffold-task-switcher-dialog")
 export class CaffoldTaskSwitcherDialog extends LitElement {
   private tasksLoaded = true;
   // Thread IDs in the order taken when the dialog opened.
@@ -60,17 +62,17 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
     );
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
@@ -131,7 +133,7 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
     });
   }
 
-  render() {
+  override render() {
     const rows = this.order.flatMap((threadId) => {
       const entry = this.entries.get(threadId);
       return entry ? [entry] : [];
@@ -323,7 +325,8 @@ function rowMeta(task: ListedTask) {
   >${age.text}</time>`;
 }
 
-customElements.define(
-  "caffold-task-switcher-dialog",
-  CaffoldTaskSwitcherDialog,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-switcher-dialog": CaffoldTaskSwitcherDialog;
+  }
+}

@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
   emptyActionHintScope,
@@ -25,26 +26,20 @@ type FilesState =
   | { status: "ready"; payload: GitHubPullFiles }
   | { status: "error"; error: Error };
 
+@customElement("caffold-github-pull-files-tree")
 export class CaffoldGithubPullFilesTree extends LitElement {
-  static properties = {
-    state: { state: true },
-  };
+  @state()
+  private accessor state: FilesState = { status: "idle" };
 
-  declare private state: FilesState;
   private readonly treeElement = new DrawnRef<CaffoldFileTree>(this);
   private selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
 
-  constructor() {
-    super();
-    this.state = { status: "idle" };
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const state = this.state;
     const payload = state.status === "ready" ? state.payload : null;
     const files = payload?.files ?? [];
@@ -86,7 +81,7 @@ export class CaffoldGithubPullFilesTree extends LitElement {
   }
 
   // The tree is handed the pull request's files once it is drawn.
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     const state = this.state;
     if (!changed.has("state") || state.status !== "ready") {
       return;
@@ -177,11 +172,6 @@ export class CaffoldGithubPullFilesTree extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-github-pull-files-tree",
-  CaffoldGithubPullFilesTree,
-);
-
 function pullFile(node: FileTreeNode) {
   return node.source as GitHubPullFile | undefined;
 }
@@ -218,4 +208,10 @@ function pullEntityKey(payload: GitHubPullFiles) {
       "",
     payload.number,
   ].join("\u0000");
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-github-pull-files-tree": CaffoldGithubPullFilesTree;
+  }
 }

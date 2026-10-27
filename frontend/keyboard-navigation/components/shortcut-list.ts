@@ -1,13 +1,15 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement } from "lit/decorators.js";
 import { KEYBOARD_SHORTCUT_HELP_SECTIONS } from "../shortcuts.js";
 
 /** Every keyboard shortcut, in the sections the help dialog shows. */
+@customElement("caffold-keyboard-shortcut-list")
 export class CaffoldKeyboardShortcutList extends LitElement {
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return KEYBOARD_SHORTCUT_HELP_SECTIONS.map(
       (section) => html`<section>
         <h3>${section.title}</h3>
@@ -33,7 +35,8 @@ export class CaffoldKeyboardShortcutList extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-keyboard-shortcut-list",
-  CaffoldKeyboardShortcutList,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-keyboard-shortcut-list": CaffoldKeyboardShortcutList;
+  }
+}

@@ -1,4 +1,5 @@
 import { html, LitElement, type PropertyValues } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -29,12 +30,11 @@ export interface CommandDisclosureIntentDetail {
 // output; once it ends, a summary row offers the whole output in a dialog.
 // Inside a group of commands the group draws the frame, and the row keeps
 // everything else.
+@customElement("caffold-task-command")
 export class CaffoldTaskCommand extends LitElement {
-  static properties = {
-    event: { attribute: false },
-  };
+  @property({ attribute: false })
+  accessor event: TaskEvent | null = null;
 
-  declare event: TaskEvent | null;
   private presentation: CommandPresentation = commandPresentation(null);
   // Whether the person left the running command's output open. The summary
   // toggles the native disclosure; drawing again keeps what they chose.
@@ -48,29 +48,24 @@ export class CaffoldTaskCommand extends LitElement {
   private readonly summary = new DrawnRef<HTMLElement>(this);
   private readonly chevron = new DrawnRef<HTMLElement>(this);
 
-  constructor() {
-    super();
-    this.event = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
   // A different command starts from its own default; the same command keeps
   // the disclosure as it was left.
-  willUpdate(changed: PropertyValues<this>) {
+  override willUpdate(changed: PropertyValues<this>) {
     if (!changed.has("event")) {
       return;
     }
@@ -83,7 +78,7 @@ export class CaffoldTaskCommand extends LitElement {
     this.presentation = next;
   }
 
-  render() {
+  override render() {
     const presentation = this.presentation;
     if (presentation.mode === "terminal") {
       return html`
@@ -169,7 +164,7 @@ export class CaffoldTaskCommand extends LitElement {
     `;
   }
 
-  updated() {
+  override updated() {
     const { status, tone, mode } = this.presentation;
     if (this.dataset.commandStatus !== status) {
       this.dataset.commandStatus = status;
@@ -259,4 +254,8 @@ function activeCommandText(presentation: CommandPresentation) {
     .join("\n");
 }
 
-customElements.define("caffold-task-command", CaffoldTaskCommand);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-command": CaffoldTaskCommand;
+  }
+}

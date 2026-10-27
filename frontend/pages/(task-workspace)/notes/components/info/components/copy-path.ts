@@ -1,4 +1,5 @@
 import { html, LitElement, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -13,36 +14,29 @@ type CopyState = "idle" | "copying" | "copied" | "failed";
 // Copy path in the Note details popover. It puts the names of the directories
 // that hold the Note, the Note's own name, and its id on the clipboard, so a
 // person can tell an agent exactly which Note they mean.
+@customElement("caffold-notes-info-copy-path")
 export class CaffoldNotesInfoCopyPath extends LitElement {
-  static properties = {
-    note: { attribute: false },
-    copyState: { state: true },
-  };
+  @property({ attribute: false })
+  accessor note: Note | null = null;
+  @state()
+  accessor copyState: CopyState = "idle";
 
-  declare note: Note | null;
-  declare copyState: CopyState;
   private path = "";
   private generation = 0;
   private feedbackTimer: number | undefined;
   private readonly hints = new ActionHints(this);
 
-  constructor() {
-    super();
-    this.note = null;
-    this.copyState = "idle";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.invalidatePendingCopy();
   }
 
   // A copy in flight is of the earlier path, so its outcome is not this one's.
-  willUpdate(changed: PropertyValues<this>) {
+  override willUpdate(changed: PropertyValues<this>) {
     if (!changed.has("note")) {
       return;
     }
@@ -53,7 +47,7 @@ export class CaffoldNotesInfoCopyPath extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const feedback = copyFeedback(this.copyState);
     return html`
       <button
@@ -149,4 +143,8 @@ function copyFeedback(state: CopyState) {
   return "";
 }
 
-customElements.define("caffold-notes-info-copy-path", CaffoldNotesInfoCopyPath);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-notes-info-copy-path": CaffoldNotesInfoCopyPath;
+  }
+}

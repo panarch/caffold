@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -18,14 +19,13 @@ type CopyState = "idle" | "copying" | "copied" | "failed";
  * live here, so a message redrawing its Markdown cannot disturb a copy in
  * flight, and text arriving for a different message retires one.
  */
+@customElement("caffold-task-assistant-message-copy-button")
 export class CaffoldTaskAssistantMessageCopyButton extends LitElement {
-  static properties = {
-    text: { attribute: false },
-    copyState: { state: true },
-  };
+  @property({ attribute: false })
+  accessor text = "";
+  @state()
+  accessor copyState: CopyState = "idle";
 
-  declare text: string;
-  declare copyState: CopyState;
   private generation = 0;
   private feedbackTimer: number | undefined;
   private readonly iconsReady = () => this.requestUpdate();
@@ -33,36 +33,30 @@ export class CaffoldTaskAssistantMessageCopyButton extends LitElement {
     clipRoots: () => [this],
   });
 
-  constructor() {
-    super();
-    this.text = "";
-    this.copyState = "idle";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.invalidatePendingCopy();
   }
 
   // A copy in flight is of the earlier text, so its outcome is not this one's.
-  willUpdate(changed: PropertyValues<this>) {
+  override willUpdate(changed: PropertyValues<this>) {
     if (changed.has("text")) {
       this.invalidatePendingCopy();
     }
   }
 
-  render() {
+  override render() {
     const presentation = copyPresentation(this.copyState);
     return html`
       <button
@@ -173,7 +167,8 @@ function copyIcon(state: CopyState) {
   return "Copy";
 }
 
-customElements.define(
-  "caffold-task-assistant-message-copy-button",
-  CaffoldTaskAssistantMessageCopyButton,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-assistant-message-copy-button": CaffoldTaskAssistantMessageCopyButton;
+  }
+}

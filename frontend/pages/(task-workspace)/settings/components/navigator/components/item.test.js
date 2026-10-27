@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../../../../../../tests/support/custom-element-unit.js";
 
@@ -23,7 +24,8 @@ function control() {
 }
 
 function itemHost(entry, button = control()) {
-  return Object.assign(Object.create(item, { button: { value: button } }), {
+  return elementStandIn(item, {
+    button,
     entry,
     selected: false,
     updateAvailable: false,

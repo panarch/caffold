@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   ActionHints,
@@ -23,12 +24,11 @@ export interface MarkdownPreviewRequest {
  * Markdown an agent wrote, drawn over the Task screen. The dialog belongs to
  * one Task and closes when another Task opens.
  */
+@customElement("caffold-task-markdown-preview-dialog")
 export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
-  static properties = {
-    threadId: { state: true },
-  };
+  @state()
+  private accessor threadId = "";
 
-  declare private threadId: string;
   private opener: HTMLElement | null = null;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
@@ -36,22 +36,17 @@ export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
   private readonly preview = new DrawnRef<CaffoldMarkdownPreview>(this);
 
-  constructor() {
-    super();
-    this.threadId = "";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
@@ -102,7 +97,7 @@ export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
     });
   }
 
-  render() {
+  override render() {
     const closeLabel = "Close Markdown preview";
     const closeIcon = inlineIcon(
       "X",
@@ -162,7 +157,8 @@ export class CaffoldTaskMarkdownPreviewDialog extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-task-markdown-preview-dialog",
-  CaffoldTaskMarkdownPreviewDialog,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-markdown-preview-dialog": CaffoldTaskMarkdownPreviewDialog;
+  }
+}

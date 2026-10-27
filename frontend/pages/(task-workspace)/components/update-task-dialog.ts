@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -40,6 +41,7 @@ export interface UpdateTask {
  *
  * The workspace opens it and shows it at once, so it draws in place.
  */
+@customElement("caffold-update-task-dialog")
 export class CaffoldUpdateTaskDialog extends LitElement {
   private updateTask: UpdateTask | null = null;
   // Turn options load the agents' models as soon as they connect, so they
@@ -57,7 +59,7 @@ export class CaffoldUpdateTaskDialog extends LitElement {
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly turnOptions = new DrawnRef<CaffoldTaskTurnOptions>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
@@ -130,7 +132,7 @@ export class CaffoldUpdateTaskDialog extends LitElement {
     );
   }
 
-  render() {
+  override render() {
     const update = this.updateTask;
     const outcome = update
       ? `An agent runs the update in a new Task. If ${update.to} does not start, the previous version is restored.`
@@ -326,8 +328,6 @@ export class CaffoldUpdateTaskDialog extends LitElement {
   }
 }
 
-customElements.define("caffold-update-task-dialog", CaffoldUpdateTaskDialog);
-
 /** What an update Task needs from the server's update status. */
 export function updateTaskFrom(
   status: CaffoldUpdateStatus | null | undefined,
@@ -378,4 +378,10 @@ function normalizeComposerSettings(
     fastMode: Boolean(fastMode),
     permissionMode: `${permissionMode ?? ""}`,
   };
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-update-task-dialog": CaffoldUpdateTaskDialog;
+  }
 }

@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -15,39 +16,29 @@ export interface OlderHistoryIntentDetail {
 // The row above a conversation's earliest message. The conversation supplies
 // whether older messages exist and how reading them is going; this row owns
 // its controls, and loading or retrying never starts a request here.
+@customElement("caffold-task-older-history")
 export class CaffoldTaskOlderHistory extends LitElement {
-  static properties = {
-    threadId: { attribute: false },
-    hasOlder: { attribute: false },
-    loading: { attribute: false },
-    error: { attribute: false },
-    active: { attribute: false },
-  };
-
-  declare threadId: string;
-  declare hasOlder: boolean;
-  declare loading: boolean;
+  @property({ attribute: false })
+  accessor threadId = "";
+  @property({ attribute: false })
+  accessor hasOlder = false;
+  @property({ attribute: false })
+  accessor loading = false;
   // Why older messages could not be read, or `null` when nothing failed.
-  declare error: string | null;
-  declare active: boolean;
+  @property({ attribute: false })
+  accessor error: string | null = null;
+  @property({ attribute: false })
+  accessor active = true;
+
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
 
-  constructor() {
-    super();
-    this.threadId = "";
-    this.hasOlder = false;
-    this.loading = false;
-    this.error = null;
-    this.active = true;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     if (this.empty) {
       return nothing;
     }
@@ -88,7 +79,7 @@ export class CaffoldTaskOlderHistory extends LitElement {
     }</div>`;
   }
 
-  updated() {
+  override updated() {
     const hidden = this.empty;
     if (this.hidden !== hidden) {
       this.hidden = hidden;
@@ -134,4 +125,8 @@ export class CaffoldTaskOlderHistory extends LitElement {
   }
 }
 
-customElements.define("caffold-task-older-history", CaffoldTaskOlderHistory);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-older-history": CaffoldTaskOlderHistory;
+  }
+}

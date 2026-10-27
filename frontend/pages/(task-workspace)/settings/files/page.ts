@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -26,12 +27,11 @@ const SORT_OPTIONS = Object.freeze([
   }),
 ]);
 
+@customElement("caffold-settings-files-page")
 export class CaffoldSettingsFilesPage extends LitElement {
-  static properties = {
-    settings: { state: true },
-  };
+  @state()
+  private accessor settings: Settings = getSettings();
 
-  declare private settings: Settings;
   private readonly settingsChanged = (event: Event) => {
     this.settings =
       (event as CustomEvent<{ settings?: Settings }>).detail?.settings ??
@@ -44,22 +44,17 @@ export class CaffoldSettingsFilesPage extends LitElement {
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly optionLabels = new DrawnRefs<HTMLLabelElement>(this);
 
-  constructor() {
-    super();
-    this.settings = getSettings();
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:settings-change", this.settingsChanged);
     this.settings = getSettings();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:settings-change", this.settingsChanged);
   }
@@ -68,7 +63,7 @@ export class CaffoldSettingsFilesPage extends LitElement {
     this.settings = getSettings();
   }
 
-  render() {
+  override render() {
     const options = SORT_OPTIONS.map(
       (option) => html`
         <label ${drawn(this.optionLabels.of(option.value))}>
@@ -137,4 +132,8 @@ export class CaffoldSettingsFilesPage extends LitElement {
   }
 }
 
-customElements.define("caffold-settings-files-page", CaffoldSettingsFilesPage);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-files-page": CaffoldSettingsFilesPage;
+  }
+}

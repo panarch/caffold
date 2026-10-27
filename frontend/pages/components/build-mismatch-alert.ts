@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -12,23 +13,17 @@ export const CAFFOLD_BUILD_MISMATCH_RELOAD_EVENT =
  * Says the server runs another Caffold build than this window loaded, with
  * Reload. It shows only while the app shell names that build.
  */
+@customElement("caffold-build-mismatch-alert")
 export class CaffoldBuildMismatchAlert extends LitElement {
-  static properties = {
-    serverLabel: { attribute: false },
-  };
-
   // The server's build while it differs from this window's, or empty.
-  declare serverLabel: string;
+  @property({ attribute: false })
+  accessor serverLabel = "";
+
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
 
-  constructor() {
-    super();
-    this.serverLabel = "";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
@@ -39,14 +34,14 @@ export class CaffoldBuildMismatchAlert extends LitElement {
     return this.hints.scope({ ...pull, scopeId });
   }
 
-  protected updated() {
+  protected override updated() {
     const hidden = !this.serverLabel;
     if (this.hidden !== hidden) {
       this.hidden = hidden;
     }
   }
 
-  render() {
+  override render() {
     return html`
       <div class="build-mismatch-alert" role="status" aria-live="polite">
         <span data-build-mismatch-message>${
@@ -77,7 +72,8 @@ export class CaffoldBuildMismatchAlert extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-build-mismatch-alert",
-  CaffoldBuildMismatchAlert,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-build-mismatch-alert": CaffoldBuildMismatchAlert;
+  }
+}

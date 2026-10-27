@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   emptyActionHintScope,
   mergeActionHintScopes,
@@ -64,20 +65,27 @@ interface PaneScopeOptions {
 // opens, and the directories that hold the open Note. Every level and the
 // two documents are independent reads, each with its own generation, so a late
 // answer that is no longer wanted is dropped without touching the others.
+@customElement("caffold-notes-workspace")
 export class CaffoldNotesWorkspace extends LitElement {
-  static properties = {
-    noteId: { state: true },
-    secondaryNoteId: { state: true },
-    levels: { state: true },
-    noteState: { state: true },
-    secondaryState: { state: true },
+  @state()
+  private accessor noteId = "";
+  @state()
+  private accessor secondaryNoteId = "";
+  @state()
+  private accessor levels: NotesLevels = new Map();
+  @state()
+  private accessor noteState: NoteRead = {
+    state: "idle",
+    note: null,
+    message: "",
+  };
+  @state()
+  private accessor secondaryState: NoteRead = {
+    state: "idle",
+    note: null,
+    message: "",
   };
 
-  declare private noteId: string;
-  declare private secondaryNoteId: string;
-  declare private levels: NotesLevels;
-  declare private noteState: NoteRead;
-  declare private secondaryState: NoteRead;
   // Changes of the selection are followed by a requested update.
   private readonly selection = new NotesSelection();
   private active = false;
@@ -101,30 +109,21 @@ export class CaffoldNotesWorkspace extends LitElement {
     );
   };
 
-  constructor() {
-    super();
-    this.noteId = "";
-    this.secondaryNoteId = "";
-    this.levels = new Map();
-    this.noteState = { state: "idle", note: null, message: "" };
-    this.secondaryState = { state: "idle", note: null, message: "" };
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.performUpdate();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
   }
 
-  render() {
+  override render() {
     const top = this.levels.get("")?.listing;
     const split = this.selection.split;
     const primary: NoteDocumentSnapshot = {
@@ -162,7 +161,7 @@ export class CaffoldNotesWorkspace extends LitElement {
     `;
   }
 
-  firstUpdated() {
+  override firstUpdated() {
     this.documents = {
       primary: this.primaryDocument.value as CaffoldNoteDocument,
       secondary: this.secondaryDocument.value as CaffoldNoteDocument,
@@ -172,7 +171,7 @@ export class CaffoldNotesWorkspace extends LitElement {
   // The navigator is not part of this element's template, so it takes its
   // snapshot here, and the documents and navigator go to the panes the
   // selection puts them in.
-  updated() {
+  override updated() {
     const navigator = this.connectedNotesNavigator;
     if (navigator) {
       navigator.snapshot = this.navigatorSnapshot();
@@ -645,4 +644,8 @@ export class CaffoldNotesWorkspace extends LitElement {
   }
 }
 
-customElements.define("caffold-notes-workspace", CaffoldNotesWorkspace);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-notes-workspace": CaffoldNotesWorkspace;
+  }
+}

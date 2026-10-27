@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import { mergeActionHintScopes } from "#app/action-hints.js";
 import type { ActiveTaskSection } from "#app/api.js";
@@ -35,6 +36,7 @@ export type DetailSection = Pick<
  * surface of its own, so no draft follows it from the last one. The layout
  * reads it right after each change, so it draws at once.
  */
+@customElement("caffold-section-detail")
 export class CaffoldSectionDetail extends LitElement {
   private section: DetailSection | null = null;
   private server: { root?: string; homePath?: string | null } = {};
@@ -46,7 +48,7 @@ export class CaffoldSectionDetail extends LitElement {
     new DrawnRef<CaffoldSectionConversationShortcuts>(this);
   private readonly github = new DrawnRef<CaffoldSectionGithubShortcuts>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
@@ -174,7 +176,7 @@ export class CaffoldSectionDetail extends LitElement {
       : [];
   }
 
-  render() {
+  override render() {
     if (!this.drawn) {
       return nothing;
     }
@@ -262,11 +264,15 @@ export class CaffoldSectionDetail extends LitElement {
   }
 }
 
-customElements.define("caffold-section-detail", CaffoldSectionDetail);
-
 function sectionContextKey(section: DetailSection | null) {
   return JSON.stringify([
     `${section?.id ?? ""}`,
     cleanLogicalPath(section?.name),
   ]);
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-section-detail": CaffoldSectionDetail;
+  }
 }

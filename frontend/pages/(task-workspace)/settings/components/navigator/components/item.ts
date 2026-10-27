@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -17,50 +18,41 @@ export interface SettingsNavigatorEntry {
 // One Settings section in the Settings navigator. A late icon, the selection,
 // and an update notice change this entry's own button, so the list around it
 // keeps its scroll position and focus.
+@customElement("caffold-settings-navigator-item")
 export class CaffoldSettingsNavigatorItem extends LitElement {
-  static properties = {
-    entry: { attribute: false },
-    selected: { attribute: false },
-    updateAvailable: { attribute: false },
-    reloadReady: { attribute: false },
-  };
-
-  declare entry: SettingsNavigatorEntry | null;
-  declare selected: boolean;
+  @property({ attribute: false })
+  accessor entry: SettingsNavigatorEntry | null = null;
+  @property({ attribute: false })
+  accessor selected = false;
   // A newer release exists, or this window has a new build to load.
-  declare updateAvailable: boolean;
-  declare reloadReady: boolean;
+  @property({ attribute: false })
+  accessor updateAvailable = false;
+  @property({ attribute: false })
+  accessor reloadReady = false;
+
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
-
-  constructor() {
-    super();
-    this.entry = null;
-    this.selected = false;
-    this.updateAvailable = false;
-    this.reloadReady = false;
-  }
 
   get section() {
     return this.entry?.section ?? "";
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  render() {
+  override render() {
     const entry = this.entry;
     if (!entry) {
       return nothing;
@@ -117,7 +109,8 @@ export class CaffoldSettingsNavigatorItem extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-settings-navigator-item",
-  CaffoldSettingsNavigatorItem,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-settings-navigator-item": CaffoldSettingsNavigatorItem;
+  }
+}

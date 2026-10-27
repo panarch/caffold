@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
@@ -7,16 +8,17 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 export const CLAUDE_RUNTIME_RESTART_CONFIRMED_EVENT =
   "caffold:claude-runtime-restart-confirmed";
 
+@customElement("caffold-claude-runtime-restart-dialog")
 export class CaffoldClaudeRuntimeRestartDialog extends LitElement {
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return html`
       <dialog
         ${drawn(this.dialog)}
@@ -93,7 +95,8 @@ export class CaffoldClaudeRuntimeRestartDialog extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-claude-runtime-restart-dialog",
-  CaffoldClaudeRuntimeRestartDialog,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-claude-runtime-restart-dialog": CaffoldClaudeRuntimeRestartDialog;
+  }
+}

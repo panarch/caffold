@@ -1,23 +1,17 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { sectionLabel } from "#tasks/task-format.js";
 
 /**
  * The heading of a Section's Detail: the last part of its directory, with the
  * whole directory as its title.
  */
+@customElement("caffold-section-detail-summary")
 export class CaffoldSectionDetailSummary extends LitElement {
-  static properties = {
-    section: { state: true },
-  };
+  @state()
+  private accessor section: { id: string; name: string } | null = null;
 
-  declare private section: { id: string; name: string } | null;
-
-  constructor() {
-    super();
-    this.section = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
@@ -29,7 +23,7 @@ export class CaffoldSectionDetailSummary extends LitElement {
     this.section = section;
   }
 
-  render() {
+  override render() {
     if (!this.section) {
       return nothing;
     }
@@ -40,7 +34,8 @@ export class CaffoldSectionDetailSummary extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-section-detail-summary",
-  CaffoldSectionDetailSummary,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-section-detail-summary": CaffoldSectionDetailSummary;
+  }
+}

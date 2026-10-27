@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
 import { type GitDiff, readFile } from "#app/api.js";
 import { fileStatusPresentation } from "#app/file-status.js";
@@ -23,6 +24,7 @@ interface ViewPosition {
   line: number | null;
 }
 
+@customElement("caffold-review-selected-file")
 export class CaffoldReviewSelectedFile extends LitElement {
   private rootPath = "";
   private worktreeRootPath = "";
@@ -33,16 +35,16 @@ export class CaffoldReviewSelectedFile extends LitElement {
   private readonly viewerElement = new DrawnRef<CaffoldReviewFileViewer>(this);
   private readonly pendingLines = new Map<string, number>();
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.generation += 1;
   }
 
-  render() {
+  override render() {
     return html`<caffold-review-file-viewer
       ${drawn(this.viewerElement)}
       compact-chrome
@@ -50,7 +52,7 @@ export class CaffoldReviewSelectedFile extends LitElement {
     ></caffold-review-file-viewer>`;
   }
 
-  firstUpdated() {
+  override firstUpdated() {
     this.viewer.setCloseLabel("Back to navigator");
     this.viewer.setCloseMode("back");
   }
@@ -327,7 +329,8 @@ export class CaffoldReviewSelectedFile extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-review-selected-file",
-  CaffoldReviewSelectedFile,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-review-selected-file": CaffoldReviewSelectedFile;
+  }
+}

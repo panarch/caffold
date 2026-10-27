@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -48,6 +49,7 @@ interface CommitContext {
   sha?: string;
 }
 
+@customElement("caffold-git-log-commit-page")
 export class CaffoldGitLogCommitPage extends LitElement {
   // What the Log layout reads back.
   detailView: DetailView = "list";
@@ -63,11 +65,11 @@ export class CaffoldGitLogCommitPage extends LitElement {
   private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
   private readonly viewer = new DrawnRef<CaffoldReviewFileViewer>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     return html`
       <caffold-commit-changes-tree
         ${drawn(this.filesList)}
@@ -86,7 +88,7 @@ export class CaffoldGitLogCommitPage extends LitElement {
     `;
   }
 
-  firstUpdated() {
+  override firstUpdated() {
     this.fileViewer.setCloseLabel("Back to commit");
     this.applyPanelWidth();
   }
@@ -597,4 +599,8 @@ export class CaffoldGitLogCommitPage extends LitElement {
   }
 }
 
-customElements.define("caffold-git-log-commit-page", CaffoldGitLogCommitPage);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-git-log-commit-page": CaffoldGitLogCommitPage;
+  }
+}

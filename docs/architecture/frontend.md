@@ -80,11 +80,13 @@ resolve aliases to the same files, and that those files are served and cached.
 Worker and AudioWorklet modules do not inherit the document's import map;
 their imports and asset URLs remain relative or explicit URLs.
 
-Lit is imported through its `lit` package, as `lit` and `lit/…`. The import
-map sends those, and the `lit-html`, `lit-element`, and `@lit/reactive-element`
-modules they import, to `/assets/`, which the server answers with the release
-`frontend/package.json` pins as a runtime dependency, embedded from
-`frontend/node_modules` when the server is built. A build therefore needs
+Lit is imported through its `lit` package, as `lit` and `lit/…`, its standard
+decorators included (`lit/decorators.js`). The import map sends those, and the
+`lit-html`, `lit-element`, and `@lit/reactive-element` modules they import, to
+`/assets/`, which the server answers with the release `frontend/package.json`
+pins as a runtime dependency, embedded from `frontend/node_modules` when the
+server is built. tsc writes the decorators as calls of helpers it imports from
+`tslib`, which reaches `/assets/` the same way. A build therefore needs
 `npm ci` in `frontend/` first and Node.js on `PATH` for the TypeScript modules.
 Each package's modules reach its core through paths that resolve to one URL, so
 a page loads one module per package. Node unit tests resolve the same
@@ -94,12 +96,13 @@ for the browser globals Node lacks.
 ## Rendering
 
 A component that renders through Lit extends `LitElement` and renders into its
-own Light DOM. The state it shows lives in reactive properties, and an owner
-hands a child what it shows through property bindings in its template. When
-one changes, Lit calls `render()` once the code that changed it has finished,
-so the DOM changes then rather than at the assignment. Work that reads the
-rendered DOM, such as scroll restoration, focus, or measurement, runs in
-`updated()`, or, in a flow that is already asynchronous, after
+own Light DOM; `@customElement()` registers it. The state it shows lives in
+reactive properties, `accessor` fields that `@property()` or `@state()`
+declares, and an owner hands a child what it shows through property bindings in
+its template. When one changes, Lit calls `render()` once the code that changed
+it has finished, so the DOM changes then rather than at the assignment. Work
+that reads the rendered DOM, such as scroll restoration, focus, or measurement,
+runs in `updated()`, or, in a flow that is already asynchronous, after
 `updateComplete` once it has checked that its request is still current. An
 owner that needs a child's rendered DOM awaits the child's `updateComplete`.
 A component that calls methods on a child its own template draws renders its
@@ -2114,7 +2117,8 @@ size or hide a child host, but descendant styling belongs to the child.
 
 `frontend/component-styles.ts` exports two shared styles, `compactIconButton`
 and `busySpin`. Components await `register(owner, target)` on each style they
-use before defining their element, declaring the explicit child path from the
+use before defining their element, so the await stands above the class
+`@customElement()` registers, declaring the explicit child path from the
 owner to their own local class; a step in that path may add the owner's state
 classes. Each style fetches its stylesheet
 (`component-styles/compact-icon-button.css`, `component-styles/busy-spin.css`)

@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -22,19 +23,20 @@ import type { CaffoldNotesInfoCopyPath } from "./info/components/copy-path.js";
 
 let notesInfoInstanceId = 0;
 
+await compactIconButton.register("caffold-notes-info", "> .notes-info-button");
+
 // The details button at the end of the Note header. Its popover shows when the
 // open Note changed and was created and the Tasks that wrote it, and copies the
 // Note's path or its Markdown.
+@customElement("caffold-notes-info")
 export class CaffoldNotesInfo extends LitElement {
-  static properties = {
-    note: { attribute: false },
-    shownNote: { state: true },
-  };
-
   // The Note shown in the header, or null while none is.
-  declare note: Note | null;
+  @property({ attribute: false })
+  accessor note: Note | null = null;
   // While no Note is shown, the hidden popover keeps the last one.
-  declare private shownNote: Note | null;
+  @state()
+  private accessor shownNote: Note | null = null;
+
   private readonly popoverId = `notes-info-${++notesInfoInstanceId}`;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
@@ -47,24 +49,22 @@ export class CaffoldNotesInfo extends LitElement {
 
   constructor() {
     super();
-    this.note = null;
-    this.shownNote = null;
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
       this.handleDismiss(event),
     );
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.deactivate();
@@ -72,7 +72,7 @@ export class CaffoldNotesInfo extends LitElement {
 
   // The popover closes when a different Note takes its place and stays open
   // while the same Note is read again.
-  willUpdate(changed: PropertyValues<this>) {
+  override willUpdate(changed: PropertyValues<this>) {
     if (!changed.has("note")) {
       return;
     }
@@ -85,7 +85,7 @@ export class CaffoldNotesInfo extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const note = this.shownNote;
     const changedByAnotherTask =
       note !== null && note.updatedBy.threadId !== note.createdBy.threadId;
@@ -215,12 +215,14 @@ export class CaffoldNotesInfo extends LitElement {
   }
 }
 
-await compactIconButton.register("caffold-notes-info", "> .notes-info-button");
-
-customElements.define("caffold-notes-info", CaffoldNotesInfo);
-
 function timeValue(ms: number) {
   return html`<time datetime=${new Date(ms).toISOString()}>${formatModified(
     ms,
   )}</time>`;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-notes-info": CaffoldNotesInfo;
+  }
 }

@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { type ActionHintPull, ActionHints } from "../action-hints.js";
 import {
@@ -85,27 +86,28 @@ interface TreeRow {
   lastSibling: boolean;
 }
 
+@customElement("caffold-file-tree")
 export class CaffoldFileTree extends LitElement {
-  static properties = {
-    nodes: { state: true },
-    expandedKeys: { state: true },
-    selectedKey: { state: true },
-    hiddenEntriesLast: { state: true },
-    listboxLabel: { state: true },
-    statusColumn: { state: true },
-    globalFileSortMode: { state: true },
-  };
-
-  declare private nodes: FileTreeNode[];
-  declare private expandedKeys: Set<string>;
-  declare private selectedKey: string;
-  declare private hiddenEntriesLast: boolean;
+  @state()
+  private accessor nodes: FileTreeNode[] = [];
+  @state()
+  private accessor expandedKeys: Set<string> = new Set();
+  @state()
+  private accessor selectedKey = "";
+  @state()
+  private accessor hiddenEntriesLast = false;
   // With a label the rows are the options of a listbox whose owner keeps
   // focus in a text field, so they leave the Tab order. An owner keeps one
   // way for the tree's whole life.
-  declare private listboxLabel: string;
-  declare private statusColumn: boolean;
-  declare private globalFileSortMode: FileSortMode;
+  @state()
+  private accessor listboxLabel = "";
+  @state()
+  private accessor statusColumn = false;
+  @state()
+  private accessor globalFileSortMode: FileSortMode = normalizeFileSortMode(
+    getSettings().fileSortMode,
+  );
+
   private entityKey: string | null = null;
   private nodeByKey = new Map<string, FileTreeNode>();
   private knownDirectoryKeys = new Set<string>();
@@ -123,22 +125,11 @@ export class CaffoldFileTree extends LitElement {
     );
   };
 
-  constructor() {
-    super();
-    this.nodes = [];
-    this.expandedKeys = new Set();
-    this.selectedKey = "";
-    this.hiddenEntriesLast = false;
-    this.listboxLabel = "";
-    this.statusColumn = false;
-    this.globalFileSortMode = normalizeFileSortMode(getSettings().fileSortMode);
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     window.addEventListener("caffold:settings-change", this.settingsChanged);
@@ -146,7 +137,7 @@ export class CaffoldFileTree extends LitElement {
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     window.removeEventListener("caffold:settings-change", this.settingsChanged);
@@ -155,7 +146,7 @@ export class CaffoldFileTree extends LitElement {
   // Rows declare their Action Hints: an expandable directory toggles, any
   // other entry opens, except the one already open (an owner's actions for
   // `disclosure` and `file`).
-  render() {
+  override render() {
     const listbox = Boolean(this.listboxLabel);
     return html`
       <div
@@ -323,7 +314,7 @@ export class CaffoldFileTree extends LitElement {
     `;
   }
 
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     if (changed.has("statusColumn")) {
       this.dataset.statusColumn = this.statusColumn ? "true" : "false";
     }
@@ -579,8 +570,6 @@ export class CaffoldFileTree extends LitElement {
     return this.rowsByKey.get(`${key ?? ""}`);
   }
 }
-
-customElements.define("caffold-file-tree", CaffoldFileTree);
 
 export function buildFileTreeNodes(
   leaves: Iterable<FileTreeNode> | null | undefined,
@@ -866,4 +855,10 @@ function optionId(tree: Element, key: string) {
 
 function nextAnimationFrame() {
   return new Promise((resolve) => requestAnimationFrame(resolve));
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-file-tree": CaffoldFileTree;
+  }
 }

@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
 import type { DocumentPreviewFile } from "./dom.js";
 import "./loading-text.js";
@@ -58,47 +59,39 @@ type RenderState = "empty" | "loading" | "error" | "pdf";
 
 let libraryPromise: Promise<PdfJs> | undefined;
 
+@customElement("caffold-pdf-viewer")
 class CaffoldPdfViewer extends LitElement {
-  static properties = {
-    file: { attribute: false },
-    renderState: { state: true },
-    pages: { state: true },
-  };
+  @property({ attribute: false })
+  accessor file: DocumentPreviewFile | null = null;
+  @state()
+  private accessor renderState: RenderState = "empty";
+  @state()
+  private accessor pages: PageRecord[] | null = null;
 
-  declare file: DocumentPreviewFile | null;
-  declare private renderState: RenderState;
-  declare private pages: PageRecord[] | null;
   private generation = 0;
   private visiblePages: Set<PageRecord> | null = null;
   private pageObserver: IntersectionObserver | null = null;
   private widthObserver: ResizeObserver | null = null;
   private loadingTask: PdfLoadingTask | null = null;
 
-  constructor() {
-    super();
-    this.file = null;
-    this.renderState = "empty";
-    this.pages = null;
-  }
-
   private readonly surfaces = new ScrollSurfaces(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "PDF preview");
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.release();
   }
 
-  render() {
+  override render() {
     const message =
       this.renderState === "loading"
         ? html`<caffold-loading-text>Loading PDF...</caffold-loading-text>`
@@ -123,7 +116,7 @@ class CaffoldPdfViewer extends LitElement {
   }
 
   // A file handed over again before it is drawn replaces the one before it.
-  willUpdate(changed: PropertyValues) {
+  override willUpdate(changed: PropertyValues) {
     if (changed.has("file") && this.file) {
       this.release();
       this.renderState = "loading";
@@ -131,7 +124,7 @@ class CaffoldPdfViewer extends LitElement {
     }
   }
 
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     if (changed.has("renderState")) {
       this.dataset.renderState = this.renderState;
     }
@@ -349,4 +342,8 @@ function loadLibrary() {
   return libraryPromise;
 }
 
-customElements.define("caffold-pdf-viewer", CaffoldPdfViewer);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-pdf-viewer": CaffoldPdfViewer;
+  }
+}

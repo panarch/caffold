@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
   emptyActionHintScope,
@@ -20,24 +21,18 @@ export type TaskSummaryIntent = TaskInfoIntent;
 /**
  * The open Task's heading: its title, and Task Info beside it.
  */
+@customElement("caffold-task-detail-summary")
 export class CaffoldTaskDetailSummary extends LitElement {
-  static properties = {
-    snapshot: { state: true },
-  };
+  @state()
+  private accessor snapshot: TaskInfoSnapshot = taskInfoSnapshot();
 
-  declare private snapshot: TaskInfoSnapshot;
   private readonly info = new DrawnRef<CaffoldTaskDetailInfo>(this);
 
-  constructor() {
-    super();
-    this.snapshot = taskInfoSnapshot();
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
   }
@@ -62,7 +57,7 @@ export class CaffoldTaskDetailSummary extends LitElement {
     return this.info.value?.keyboardNavigationContexts(options) ?? [];
   }
 
-  render() {
+  override render() {
     const task = this.snapshot.task;
     if (!task) {
       return nothing;
@@ -93,4 +88,8 @@ export class CaffoldTaskDetailSummary extends LitElement {
   }
 }
 
-customElements.define("caffold-task-detail-summary", CaffoldTaskDetailSummary);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-detail-summary": CaffoldTaskDetailSummary;
+  }
+}

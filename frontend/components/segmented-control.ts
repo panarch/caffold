@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { type ActionHintPull, ActionHints } from "../action-hints.js";
 
@@ -16,35 +17,27 @@ interface SegmentedSnapshot {
   actionVerb: string;
 }
 
+@customElement("caffold-segmented-control")
 export class CaffoldSegmentedControl extends LitElement {
-  static properties = {
-    // An equivalent snapshot leaves the control as it is.
-    snapshot: {
-      state: true,
-      hasChanged: (next: unknown, previous: unknown) =>
-        JSON.stringify(next) !== JSON.stringify(previous),
-    },
+  // An equivalent snapshot leaves the control as it is.
+  @state({
+    hasChanged: (next: unknown, previous: unknown) =>
+      JSON.stringify(next) !== JSON.stringify(previous),
+  })
+  private accessor snapshot: SegmentedSnapshot = {
+    label: "Options",
+    selected: "",
+    choices: [],
+    actionVerb: "Select",
   };
-
-  declare private snapshot: SegmentedSnapshot;
 
   private readonly hints = new ActionHints(this);
 
-  constructor() {
-    super();
-    this.snapshot = {
-      label: "Options",
-      selected: "",
-      choices: [],
-      actionVerb: "Select",
-    };
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     const { selected, choices, actionVerb } = this.snapshot;
     return repeat(
       choices,
@@ -65,7 +58,7 @@ export class CaffoldSegmentedControl extends LitElement {
     );
   }
 
-  updated() {
+  override updated() {
     this.setAttribute("role", "group");
     this.setAttribute("aria-label", this.snapshot.label);
     this.toggleAttribute("data-empty", this.snapshot.choices.length === 0);
@@ -118,4 +111,8 @@ export class CaffoldSegmentedControl extends LitElement {
   }
 }
 
-customElements.define("caffold-segmented-control", CaffoldSegmentedControl);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-segmented-control": CaffoldSegmentedControl;
+  }
+}

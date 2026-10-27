@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -17,16 +18,15 @@ type CopyState = "idle" | "copying" | "copied" | "failed";
 // A fenced code block of an agent's Markdown, with its name and the actions on
 // it. The Markdown places the block where the `<pre>` it parsed stood and hands
 // that `<pre>` over; the block keeps it in a slot its template does not draw.
+@customElement("caffold-task-markdown-code-block")
 export class CaffoldTaskMarkdownCodeBlock extends LitElement {
-  static properties = {
-    label: { attribute: false },
-    copyState: { state: true },
-    wrapped: { state: true },
-  };
+  @property({ attribute: false })
+  accessor label = "Plain text";
+  @state()
+  private accessor copyState: CopyState = "idle";
+  @state()
+  private accessor wrapped = false;
 
-  declare label: string;
-  declare private copyState: CopyState;
-  declare private wrapped: boolean;
   private pre: HTMLPreElement | null = null;
   // Wraps a change to the block's height so the conversation keeps its place.
   private preserveLayout: (mutation: () => void) => void = (mutation) =>
@@ -42,30 +42,23 @@ export class CaffoldTaskMarkdownCodeBlock extends LitElement {
   private readonly content = new DrawnRef<HTMLDivElement>(this);
   private readonly previewButton = new DrawnRef<HTMLButtonElement>(this);
 
-  constructor() {
-    super();
-    this.label = "Plain text";
-    this.copyState = "idle";
-    this.wrapped = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.invalidatePendingCopy();
   }
 
-  render() {
+  override render() {
     const copy = copyPresentation(this.copyState);
     const name = copy.feedback || this.label;
     const wrapLabel = this.wrapped
@@ -160,7 +153,7 @@ export class CaffoldTaskMarkdownCodeBlock extends LitElement {
     this.performUpdate();
   }
 
-  firstUpdated() {
+  override firstUpdated() {
     this.dataset.codeWrap = "off";
     if (this.pre) {
       this.content.value?.append(this.pre);
@@ -298,7 +291,8 @@ function copyIcon(state: CopyState) {
   return "Copy";
 }
 
-customElements.define(
-  "caffold-task-markdown-code-block",
-  CaffoldTaskMarkdownCodeBlock,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-markdown-code-block": CaffoldTaskMarkdownCodeBlock;
+  }
+}

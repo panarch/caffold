@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   ACTION_HINT_ACTION,
@@ -31,14 +32,13 @@ export interface CommandGroupDisclosureIntentDetail {
 // Finished commands that ran one after another, folded into one entry that
 // opens to a row for each. Each row keeps its element while the group grows,
 // so a row someone is looking at or has focused is not drawn again under them.
+@customElement("caffold-task-command-group")
 export class CaffoldTaskCommandGroup extends LitElement {
-  static properties = {
-    identity: { attribute: false },
-    events: { attribute: false, hasChanged: changedEventList },
-  };
+  @property({ attribute: false })
+  accessor identity = "";
+  @property({ attribute: false, hasChanged: changedEventList })
+  accessor events: TaskEvent[] = [];
 
-  declare identity: string;
-  declare events: TaskEvent[];
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
@@ -49,30 +49,24 @@ export class CaffoldTaskCommandGroup extends LitElement {
   private readonly list = new DrawnRef<HTMLOListElement>(this);
   private readonly commands = new DrawnRefs<CaffoldTaskCommand>(this);
 
-  constructor() {
-    super();
-    this.identity = "";
-    this.events = [];
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
   // The summary toggles the native disclosure; drawing again keeps what the
   // person chose.
-  render() {
+  override render() {
     const presentation = commandGroupPresentation(this.events);
     const open = this.rememberedOpen();
     return html`
@@ -257,4 +251,8 @@ function changedEventList(next: TaskEvent[], previous?: TaskEvent[]) {
   );
 }
 
-customElements.define("caffold-task-command-group", CaffoldTaskCommandGroup);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-command-group": CaffoldTaskCommandGroup;
+  }
+}

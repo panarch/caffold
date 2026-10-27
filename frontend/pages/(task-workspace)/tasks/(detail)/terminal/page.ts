@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -55,6 +56,11 @@ const SPECIAL_KEYS_STORAGE_KEY = "caffold:terminal-special-keys";
 const HEADER_STORAGE_KEY = "caffold:terminal-header-hidden";
 const FALLBACK_SIZE: TerminalSize = Object.freeze({ cols: 80, rows: 24 });
 
+await compactIconButton.register(
+  "caffold-terminal-page",
+  "> .terminal-page-bar > .terminal-page-button",
+);
+
 /**
  * The terminal of one Task or Section, shown in place of the Detail body.
  *
@@ -62,6 +68,7 @@ const FALLBACK_SIZE: TerminalSize = Object.freeze({ cols: 80, rows: 24 });
  * the control model in `page/model.ts`, whose single transition authority is
  * `apply`. The backend owns whether a terminal exists and who sees it.
  */
+@customElement("caffold-terminal-page")
 export class CaffoldTerminalPage extends LitElement {
   private state: TerminalState = initialTerminalState();
   private subject: TerminalSubject | null = null;
@@ -81,17 +88,17 @@ export class CaffoldTerminalPage extends LitElement {
   private readonly terminalView = new DrawnRef<CaffoldTerminalView>(this);
   private readonly specialKeys = new DrawnRef<CaffoldTerminalSpecialKeys>(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.ensureRendered();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
     this.deactivate();
@@ -168,7 +175,7 @@ export class CaffoldTerminalPage extends LitElement {
       : scope;
   }
 
-  protected updated() {
+  protected override updated() {
     if (this.dataset.terminalNode !== this.state.node) {
       this.dataset.terminalNode = this.state.node;
     }
@@ -177,7 +184,7 @@ export class CaffoldTerminalPage extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const { node, error } = this.state;
     const showsTerminal =
       node === TERMINAL_NODE.CONNECTING || node === TERMINAL_NODE.LIVE;
@@ -565,13 +572,6 @@ export class CaffoldTerminalPage extends LitElement {
   }
 }
 
-await compactIconButton.register(
-  "caffold-terminal-page",
-  "> .terminal-page-bar > .terminal-page-button",
-);
-
-customElements.define("caffold-terminal-page", CaffoldTerminalPage);
-
 function noticeContent(node: TerminalNode) {
   switch (node) {
     case TERMINAL_NODE.EMPTY:
@@ -620,5 +620,11 @@ function writePreference(key: string, value: boolean) {
     window.localStorage.setItem(key, `${value}`);
   } catch {
     // The choice then lasts only for this page.
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-terminal-page": CaffoldTerminalPage;
   }
 }

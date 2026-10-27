@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 
 // The keys a phone keyboard lacks. Ctrl waits for the next key, from this row
 // or the keyboard, and applies to that one key only.
@@ -21,16 +22,13 @@ const KEYS = Object.freeze([
   { key: "right", label: "→", name: "Right arrow" },
 ]);
 
+@customElement("caffold-terminal-special-keys")
 export class CaffoldTerminalSpecialKeys extends LitElement {
-  static properties = {
-    controlPending: { state: true },
-  };
-
-  declare private controlPending: boolean;
+  @state()
+  private accessor controlPending = false;
 
   constructor() {
     super();
-    this.controlPending = false;
     // The keys must not take focus from the terminal, or a phone would close
     // its keyboard on every press.
     this.addEventListener("pointerdown", (event) => {
@@ -40,11 +38,11 @@ export class CaffoldTerminalSpecialKeys extends LitElement {
     });
   }
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     setAttribute(this, "role", "toolbar");
     setAttribute(this, "aria-label", "Special keys");
@@ -57,7 +55,7 @@ export class CaffoldTerminalSpecialKeys extends LitElement {
     return pending;
   }
 
-  render() {
+  override render() {
     return KEYS.map(
       ({ key, label, name }) => html`<button
         type="button"
@@ -87,13 +85,14 @@ export class CaffoldTerminalSpecialKeys extends LitElement {
   }
 }
 
-customElements.define(
-  "caffold-terminal-special-keys",
-  CaffoldTerminalSpecialKeys,
-);
-
 function setAttribute(element: Element, name: string, value: string) {
   if (element.getAttribute(name) !== value) {
     element.setAttribute(name, value);
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-terminal-special-keys": CaffoldTerminalSpecialKeys;
   }
 }

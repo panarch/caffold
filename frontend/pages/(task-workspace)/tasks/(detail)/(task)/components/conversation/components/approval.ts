@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
   ACTION_HINT_ACTION,
@@ -29,35 +30,25 @@ interface DefinitionRow {
 // conversation hands over the request and receives the chosen decision as
 // intent; the Task API owner reports a request error, which the card shows
 // until it is handed a different approval.
+@customElement("caffold-task-approval")
 export class CaffoldTaskApproval extends LitElement {
-  static properties = {
-    threadId: { attribute: false },
-    request: { attribute: false },
-    disabled: { attribute: false },
-    active: { attribute: false },
-    errorMessage: { state: true },
-  };
+  @property({ attribute: false })
+  accessor threadId = "";
+  @property({ attribute: false })
+  accessor request: TaskEventPayload = {};
+  @property({ attribute: false })
+  accessor disabled = false;
+  @property({ attribute: false })
+  accessor active = true;
+  @state()
+  accessor errorMessage = "";
 
-  declare threadId: string;
-  declare request: TaskEventPayload;
-  declare disabled: boolean;
-  declare active: boolean;
-  declare errorMessage: string;
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
   private readonly surfaces = new ScrollSurfaces(this);
 
-  constructor() {
-    super();
-    this.threadId = "";
-    this.request = {};
-    this.disabled = false;
-    this.active = true;
-    this.errorMessage = "";
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
@@ -69,7 +60,7 @@ export class CaffoldTaskApproval extends LitElement {
     this.errorMessage = error?.message ?? "";
   }
 
-  willUpdate(changed: PropertyValues<this>) {
+  override willUpdate(changed: PropertyValues<this>) {
     const threadId = changed.has("threadId")
       ? changed.get("threadId")
       : this.threadId;
@@ -81,7 +72,7 @@ export class CaffoldTaskApproval extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const { request, approvalId } = this;
     const offered = Array.isArray(request.decisions) ? request.decisions : [];
     return html`
@@ -319,4 +310,8 @@ function breakableCode(value: string) {
     .map((part, index) => (index ? html`<wbr>${part}` : part));
 }
 
-customElements.define("caffold-task-approval", CaffoldTaskApproval);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-approval": CaffoldTaskApproval;
+  }
+}

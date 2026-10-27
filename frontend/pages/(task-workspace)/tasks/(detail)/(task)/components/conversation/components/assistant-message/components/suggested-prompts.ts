@@ -1,4 +1,5 @@
 import { html, LitElement, type PropertyValues } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import {
   ACTION_HINT_ACTION,
@@ -26,47 +27,39 @@ interface SuggestedPrompt {
  * the writing to whoever owns it. The requests cannot be chosen while the
  * Composer they would go to is out of reach.
  */
+@customElement("caffold-task-assistant-message-suggested-prompts")
 export class CaffoldTaskAssistantMessageSuggestedPrompts extends LitElement {
-  static properties = {
-    threadId: { attribute: false },
-    prompts: { attribute: false },
-    disabled: { attribute: false },
-  };
+  @property({ attribute: false })
+  accessor threadId = "";
+  @property({ attribute: false })
+  accessor prompts: TaskEventPayload["suggestedPrompts"] = [];
+  @property({ attribute: false })
+  accessor disabled = false;
 
-  declare threadId: string;
-  declare prompts: TaskEventPayload["suggestedPrompts"];
-  declare disabled: boolean;
   private offered: SuggestedPrompt[] = [];
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
 
-  constructor() {
-    super();
-    this.threadId = "";
-    this.prompts = [];
-    this.disabled = false;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
   // Different requests get new buttons; the same ones arriving again keep the
   // buttons already drawn.
-  willUpdate(changed: PropertyValues<this>) {
+  override willUpdate(changed: PropertyValues<this>) {
     if (!changed.has("prompts")) {
       return;
     }
@@ -76,7 +69,7 @@ export class CaffoldTaskAssistantMessageSuggestedPrompts extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const icon = inlineIcon(
       "CornerDownRight",
       "",
@@ -103,7 +96,7 @@ export class CaffoldTaskAssistantMessageSuggestedPrompts extends LitElement {
     );
   }
 
-  updated() {
+  override updated() {
     const hidden = this.offered.length === 0;
     if (this.hidden !== hidden) {
       this.hidden = hidden;
@@ -151,7 +144,8 @@ function sameRequests(left: SuggestedPrompt[], right: SuggestedPrompt[]) {
   );
 }
 
-customElements.define(
-  "caffold-task-assistant-message-suggested-prompts",
-  CaffoldTaskAssistantMessageSuggestedPrompts,
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-assistant-message-suggested-prompts": CaffoldTaskAssistantMessageSuggestedPrompts;
+  }
+}

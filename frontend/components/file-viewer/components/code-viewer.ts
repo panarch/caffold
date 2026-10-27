@@ -1,4 +1,5 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { customElement, property } from "lit/decorators.js";
 import type { SyntaxSpan } from "#app/api.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
@@ -28,30 +29,22 @@ export interface ViewerPosition {
   line?: number | string | null;
 }
 
+@customElement("caffold-code-viewer")
 export class CaffoldCodeViewer extends LitElement {
-  static properties = {
-    file: { attribute: false },
-    position: { attribute: false },
-  };
-
-  declare file: CodeFile | null;
-  declare position: ViewerPosition | null;
+  @property({ attribute: false })
+  accessor file: CodeFile | null = null;
+  @property({ attribute: false })
+  accessor position: ViewerPosition | null = null;
 
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly table = new DrawnRef<HTMLDivElement>(this);
 
-  constructor() {
-    super();
-    this.file = null;
-    this.position = null;
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  render() {
+  override render() {
     if (!this.file) {
       return nothing;
     }
@@ -97,7 +90,7 @@ export class CaffoldCodeViewer extends LitElement {
 
   // The lines stay in place from one file to the next, so a file that keeps
   // no position starts from the top again.
-  updated(changed: PropertyValues) {
+  override updated(changed: PropertyValues) {
     if (changed.has("file") || changed.has("position")) {
       this.restorePosition(this.position);
     }
@@ -203,4 +196,8 @@ function monospaceColumns(text: string) {
   return columns;
 }
 
-customElements.define("caffold-code-viewer", CaffoldCodeViewer);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-code-viewer": CaffoldCodeViewer;
+  }
+}

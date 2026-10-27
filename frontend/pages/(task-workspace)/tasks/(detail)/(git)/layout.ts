@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   ActionHints,
@@ -52,12 +53,24 @@ interface Chrome {
   controls: GitControlsSnapshot;
 }
 
+await compactIconButton.register(
+  "caffold-task-git-layout",
+  "> .task-git-surface > .task-domain-header > .task-domain-back",
+);
+
+@customElement("caffold-task-git-layout")
 export class CaffoldTaskGitLayout extends LitElement {
-  static properties = {
-    chrome: { state: true },
+  @state()
+  private accessor chrome: Chrome = {
+    mode: null,
+    title: "Git",
+    count: "",
+    primaryMeta: "",
+    secondaryMeta: "",
+    backShown: false,
+    controls: IDLE_CONTROLS,
   };
 
-  declare private chrome: Chrome;
   // Whether Detail has this layout on screen for a repository.
   active = false;
   private activationGeneration = 0;
@@ -83,24 +96,11 @@ export class CaffoldTaskGitLayout extends LitElement {
   private readonly compare = new DrawnRef<CaffoldGitComparePage>(this);
   private readonly log = new DrawnRef<CaffoldGitLogLayout>(this);
 
-  constructor() {
-    super();
-    this.chrome = {
-      mode: null,
-      title: "Git",
-      count: "",
-      primaryMeta: "",
-      secondaryMeta: "",
-      backShown: false,
-      controls: IDLE_CONTROLS,
-    };
-  }
-
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this.performUpdate();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
@@ -110,13 +110,13 @@ export class CaffoldTaskGitLayout extends LitElement {
     }
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     this.deactivate();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
 
-  render() {
+  override render() {
     const chrome = this.chrome;
     const backIcon = inlineIcon(
       "ArrowLeft",
@@ -730,9 +730,8 @@ export class CaffoldTaskGitLayout extends LitElement {
   }
 }
 
-await compactIconButton.register(
-  "caffold-task-git-layout",
-  "> .task-git-surface > .task-domain-header > .task-domain-back",
-);
-
-customElements.define("caffold-task-git-layout", CaffoldTaskGitLayout);
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-git-layout": CaffoldTaskGitLayout;
+  }
+}

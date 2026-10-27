@@ -1,4 +1,5 @@
 import { html, LitElement, nothing } from "lit";
+import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
@@ -65,6 +66,7 @@ export type TaskRecoveryIntent =
  * It draws at once wherever its state changes, since it hands the notice it
  * draws what to show right after drawing it.
  */
+@customElement("caffold-task-recovery")
 export class CaffoldTaskRecovery extends LitElement {
   private recovery: ActiveTaskRecovery | null = null;
   // Why the Task is no longer one to recover here: archived elsewhere, or
@@ -81,17 +83,17 @@ export class CaffoldTaskRecovery extends LitElement {
   });
   private readonly surfaces = new ScrollSurfaces(this);
 
-  createRenderRoot() {
+  override createRenderRoot() {
     return this;
   }
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("caffold:icons-ready", this.iconsReady);
   }
@@ -156,7 +158,7 @@ export class CaffoldTaskRecovery extends LitElement {
     });
   }
 
-  render() {
+  override render() {
     const recovery = this.recovery;
     if (recovery && this.absence) {
       return html`<caffold-task-absence
@@ -524,8 +526,6 @@ export class CaffoldTaskRecovery extends LitElement {
   }
 }
 
-customElements.define("caffold-task-recovery", CaffoldTaskRecovery);
-
 function actionIcon(key: string, name: string, label: string) {
   return html`<span
     class="task-recovery-action-icon-slot"
@@ -587,4 +587,10 @@ function recoveryCopy(reason: string) {
       ],
     }
   );
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "caffold-task-recovery": CaffoldTaskRecovery;
+  }
 }
