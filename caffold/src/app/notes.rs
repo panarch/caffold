@@ -5,7 +5,11 @@
 //! browser only reads. Directories and Notes live in two tables, so each rule
 //! that spans both is checked here inside one store transaction.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    path::{Path as FilePath, PathBuf},
+    sync::Arc,
+};
 
 use axum::{
     Json, Router,
@@ -20,11 +24,14 @@ use uuid::Uuid;
 use super::error::ApiError;
 use crate::{
     agent::notes_tools::NotesToolCall,
+    fs::RootedFs,
     task_store::{
         Note, NoteContentUpdate, NoteDirectory, NoteSummary, TaskStore, TaskStoreError,
         TaskStoreTables,
     },
 };
+
+mod content;
 
 pub(in crate::app) fn router(store: TaskStore) -> Router {
     Router::new()
@@ -39,10 +46,21 @@ pub(in crate::app) async fn execute_tool(
     store: TaskStore,
     thread_id: String,
     call: NotesToolCall,
+    fs: Option<Arc<RootedFs>>,
+    task_cwd: Option<PathBuf>,
 ) -> Result<String, String> {
-    tokio::task::spawn_blocking(move || apply_tool(&store, &thread_id, call, now_ms()))
-        .await
-        .map_err(|error| format!("Caffold's Notes worker failed: {error}"))?
+    tokio::task::spawn_blocking(move || {
+        apply_tool(
+            &store,
+            &thread_id,
+            call,
+            now_ms(),
+            fs.as_deref(),
+            task_cwd.as_deref(),
+        )
+    })
+    .await
+    .map_err(|error| format!("Caffold's Notes worker failed: {error}"))?
 }
 
 #[derive(Clone)]
@@ -342,6 +360,8 @@ fn apply_tool(
     thread_id: &str,
     call: NotesToolCall,
     now_ms: u64,
+    fs: Option<&RootedFs>,
+    task_cwd: Option<&FilePath>,
 ) -> Result<String, String> {
     match call {
         NotesToolCall::ListNotes { directory_id } => list_notes(store, directory_id.as_deref()),
@@ -356,7 +376,7 @@ fn apply_tool(
                 note_id: Uuid::new_v4().to_string(),
                 directory_id,
                 name,
-                content,
+                content: content::resolve(content, fs, task_cwd)?,
                 content_version: 1,
                 created_by_thread_id: thread_id.to_string(),
                 updated_by_thread_id: thread_id.to_string(),
@@ -371,7 +391,7 @@ fn apply_tool(
         } => update_note_content(
             store,
             &note_id,
-            &content,
+            &content::resolve(content, fs, task_cwd)?,
             expected_content_version,
             thread_id,
             now_ms,
@@ -723,8 +743,179 @@ mod tests {
     };
     use tower::ServiceExt;
 
-    use super::*;
+    use super::{apply_tool as apply_with_context, *};
+    use crate::agent::notes_tools::{MAX_NOTE_FILE_BYTES, NoteContent, notes_tool_call};
     use crate::task_store::{ManagedThread, RunBy};
+    use std::fs;
+
+    fn apply_tool(
+        store: &TaskStore,
+        thread_id: &str,
+        call: NotesToolCall,
+        now_ms: u64,
+    ) -> Result<String, String> {
+        apply_with_context(store, thread_id, call, now_ms, None, None)
+    }
+
+    #[tokio::test]
+    async fn file_input_round_trips_through_the_store_and_failures_preserve_persisted_notes() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        fs::create_dir_all(root.join("backend")).unwrap();
+        fs::create_dir(root.join("shared")).unwrap();
+        let fs = Arc::new(RootedFs::new(&root).unwrap());
+        let cwd = fs.root().join("backend");
+        let path = fs.root().join("shared/result.md");
+        let original = "\u{feff}# 결과\r\n\0 spaces  \r\n";
+        fs::write(&path, original).unwrap();
+        let store_path = temp.path().join("notes.redb");
+        let store = TaskStore::redb(&store_path).unwrap();
+        let parse = |tool: &str, args: Value| notes_tool_call(tool, &args).unwrap().unwrap();
+        let created = execute_tool(
+            store.clone(),
+            "writer".to_string(),
+            parse(
+                "create_note",
+                json!({"name": "Result", "contentPath": "../shared/result.md"}),
+            ),
+            Some(fs.clone()),
+            Some(cwd.clone()),
+        )
+        .await
+        .unwrap();
+        let created: Value = serde_json::from_str(&created).unwrap();
+        assert!(created.get("content").is_none());
+        let note_id = created["noteId"].as_str().unwrap();
+        let initial = store.read(|tables| tables.note(note_id)).unwrap().unwrap();
+        assert_eq!(initial.content.as_bytes(), original.as_bytes());
+        assert_eq!(initial.content_version, 1);
+        assert_eq!(initial.created_by_thread_id, "writer");
+
+        fs::write(&path, "# Updated\n").unwrap();
+        let updated = execute_tool(
+            store.clone(),
+            "editor".to_string(),
+            parse(
+                "update_note_content",
+                json!({"noteId": note_id, "contentPath": path, "expectedContentVersion": 1}),
+            ),
+            Some(fs.clone()),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&updated).unwrap()["contentVersion"],
+            2
+        );
+        let expected = store.read(|tables| tables.note(note_id)).unwrap().unwrap();
+        assert_eq!(expected.content, "# Updated\n");
+        assert_eq!(expected.updated_by_thread_id, "editor");
+        let stale = execute_tool(
+            store.clone(),
+            "stale".to_string(),
+            parse(
+                "update_note_content",
+                json!({"noteId": note_id, "contentPath": path, "expectedContentVersion": 1}),
+            ),
+            Some(fs.clone()),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(stale.contains("contentVersion is now 2"), "{stale}");
+
+        fs::write(root.join("invalid.md"), [0xff]).unwrap();
+        fs::write(
+            root.join("large.md"),
+            vec![b'a'; MAX_NOTE_FILE_BYTES as usize + 1],
+        )
+        .unwrap();
+        fs::write(temp.path().join("outside.md"), "outside").unwrap();
+        for path in [
+            root.join("missing.md"),
+            root.join("invalid.md"),
+            root.join("large.md"),
+            root.join("backend"),
+            temp.path().join("outside.md"),
+        ] {
+            for (tool, arguments) in [
+                (
+                    "create_note",
+                    json!({"name": "Rejected", "contentPath": path}),
+                ),
+                (
+                    "update_note_content",
+                    json!({"noteId": note_id, "contentPath": path, "expectedContentVersion": 2}),
+                ),
+            ] {
+                assert!(
+                    execute_tool(
+                        store.clone(),
+                        "rejected".to_string(),
+                        parse(tool, arguments),
+                        Some(fs.clone()),
+                        None
+                    )
+                    .await
+                    .is_err()
+                );
+                assert_eq!(
+                    store.read(|tables| tables.note_summaries()).unwrap().len(),
+                    1
+                );
+                assert_eq!(
+                    store.read(|tables| tables.note(note_id)).unwrap().unwrap(),
+                    expected
+                );
+            }
+        }
+        drop(store);
+        let reopened = TaskStore::redb(&store_path).unwrap();
+        assert_eq!(
+            reopened
+                .read(|tables| tables.note(note_id))
+                .unwrap()
+                .unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn content_read_from_a_file_cannot_overwrite_a_note_changed_before_the_write() {
+        let temp = tempfile::tempdir().unwrap();
+        let fs = RootedFs::new(temp.path()).unwrap();
+        fs::write(temp.path().join("file.md"), "from file").unwrap();
+        let store = TaskStore::memory().unwrap();
+        let created = apply(
+            &store,
+            "writer",
+            NotesToolCall::CreateNote {
+                name: "Result".to_string(),
+                content: "original".to_string().into(),
+                directory_id: None,
+            },
+            1,
+        );
+        let note_id = created["noteId"].as_str().unwrap();
+        let prepared = content::resolve(
+            NoteContent::File("file.md".to_string()),
+            Some(&fs),
+            Some(fs.root()),
+        )
+        .unwrap();
+        update_note_content(&store, note_id, "other writer", 1, "other", 2).unwrap();
+        let before = store.read(|tables| tables.note(note_id)).unwrap().unwrap();
+        assert!(
+            update_note_content(&store, note_id, &prepared, 1, "late writer", 3)
+                .unwrap_err()
+                .contains("contentVersion is now 2")
+        );
+        assert_eq!(
+            store.read(|tables| tables.note(note_id)).unwrap().unwrap(),
+            before
+        );
+    }
 
     fn apply(store: &TaskStore, thread_id: &str, call: NotesToolCall, now_ms: u64) -> Value {
         let answer = apply_tool(store, thread_id, call, now_ms).unwrap();
@@ -763,7 +954,7 @@ mod tests {
             "task-a",
             NotesToolCall::CreateNote {
                 name: "Storage".to_string(),
-                content: "# Storage\n".to_string(),
+                content: "# Storage\n".to_string().into(),
                 directory_id: Some(decisions.clone()),
             },
             2_000,
@@ -814,7 +1005,7 @@ mod tests {
             "task-b",
             NotesToolCall::UpdateNoteContent {
                 note_id: note_id.clone(),
-                content: "# Storage\n\nUse redb.\n".to_string(),
+                content: "# Storage\n\nUse redb.\n".to_string().into(),
                 expected_content_version: 1,
             },
             4_000,
@@ -825,7 +1016,7 @@ mod tests {
             "task-c",
             NotesToolCall::UpdateNoteContent {
                 note_id: note_id.clone(),
-                content: "lost".to_string(),
+                content: "lost".to_string().into(),
                 expected_content_version: 1,
             },
             5_000,
@@ -926,7 +1117,7 @@ mod tests {
                 "task",
                 NotesToolCall::CreateNote {
                     name: name.to_string(),
-                    content: String::new(),
+                    content: String::new().into(),
                     directory_id: directory.map(str::to_string),
                 },
                 1_000,
@@ -973,7 +1164,7 @@ mod tests {
                 "task",
                 NotesToolCall::CreateNote {
                     name: name.to_string(),
-                    content: String::new(),
+                    content: String::new().into(),
                     directory_id: None,
                 },
                 1_000,
@@ -1017,7 +1208,7 @@ mod tests {
             "task",
             NotesToolCall::CreateNote {
                 name: "Loose".to_string(),
-                content: String::new(),
+                content: String::new().into(),
                 directory_id: None,
             },
             1_000,
@@ -1088,7 +1279,7 @@ mod tests {
             },
             NotesToolCall::UpdateNoteContent {
                 note_id: "gone".to_string(),
-                content: "x".to_string(),
+                content: "x".to_string().into(),
                 expected_content_version: 1,
             },
             NotesToolCall::RenameNote {
@@ -1113,7 +1304,7 @@ mod tests {
         let calls = [
             NotesToolCall::CreateNote {
                 name: "Orphan".to_string(),
-                content: String::new(),
+                content: String::new().into(),
                 directory_id: Some("gone".to_string()),
             },
             create_directory_call("Orphan", Some("gone")),
@@ -1224,7 +1415,7 @@ mod tests {
             "task-writer",
             NotesToolCall::CreateNote {
                 name: "Storage".to_string(),
-                content: "# Storage\n".to_string(),
+                content: "# Storage\n".to_string().into(),
                 directory_id: Some(directory.clone()),
             },
             2_000,

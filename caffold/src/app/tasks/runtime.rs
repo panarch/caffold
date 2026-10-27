@@ -23,6 +23,7 @@ use crate::{
     agent::{Driver, TokenUsage},
     app::jev::PermissionReviewer,
     app::tasks::sessions::{SessionSnapshot, TaskSessions},
+    fs::RootedFs,
     task_store::{ManagedThread, RunBy, TaskStore},
 };
 
@@ -61,6 +62,7 @@ pub(in crate::app::tasks) struct TaskRuntime {
     sessions: TaskSessions,
     events: TaskEvents,
     task_store: TaskStore,
+    notes_fs: Option<Arc<RootedFs>>,
     lifecycle: Option<TaskLifecycle>,
     push: Option<PushService>,
     /// Who answers a permission request before a person is asked to.
@@ -217,6 +219,7 @@ impl TaskRuntime {
             sessions,
             events,
             task_store,
+            notes_fs: None,
             lifecycle: None,
             push: None,
             approvals: Arc::new(Mutex::new(HashMap::new())),
@@ -229,6 +232,11 @@ impl TaskRuntime {
 
     pub(super) fn with_codex_mcp(mut self, bindings: CodexMcpBindings) -> Self {
         self.codex = self.codex.with_mcp(bindings);
+        self
+    }
+
+    pub(super) fn with_notes_fs(mut self, fs: Arc<RootedFs>) -> Self {
+        self.notes_fs = Some(fs);
         self
     }
 

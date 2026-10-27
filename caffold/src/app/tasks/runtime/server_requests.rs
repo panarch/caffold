@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, fmt::Display, path::PathBuf, sync::Arc};
 
 use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
@@ -25,9 +25,9 @@ use crate::app::tasks::{
         TaskEventPosition, TaskEventRecord, approval_requested_event, approval_resolved_event,
         now_ms,
     },
-    worktrees::IsolateOutcome,
+    worktrees::{IsolateOutcome, inspect_ready_worktree},
 };
-use crate::task_store::{ManagedThread, RunBy, TaskStoreError};
+use crate::task_store::{ManagedThread, ManagedWorktreeState, RunBy, TaskStoreError};
 
 /// An approval waiting for an answer.
 ///
@@ -1133,10 +1133,83 @@ impl TaskRuntime {
         thread_id: &str,
         call: NotesToolCall,
     ) -> Result<String, String> {
-        if self.managed_thread(thread_id).await?.is_none() {
+        let Some(managed) = self.managed_thread(thread_id).await? else {
             return Err("Caffold only serves Notes to a task that it manages.".to_string());
+        };
+        let cwd = if call.needs_working_directory() {
+            Some(self.notes_working_directory(&managed).await?)
+        } else {
+            None
+        };
+        notes::execute_tool(
+            self.task_store.clone(),
+            thread_id.to_string(),
+            call,
+            self.notes_fs.clone(),
+            cwd,
+        )
+        .await
+    }
+
+    /// Relative Note input follows the Task's effective cwd, while RootedFs
+    /// separately owns the server-wide file access boundary.
+    async fn notes_working_directory(&self, managed: &ManagedThread) -> Result<PathBuf, String> {
+        let store = self.task_store.clone();
+        let thread_id = managed.thread_id.clone();
+        let worktree = tokio::task::spawn_blocking(move || {
+            let Some(worktree) = store
+                .worktree_for_thread(&thread_id)
+                .map_err(|error| error.to_string())?
+            else {
+                return Ok(None);
+            };
+            if worktree.state != ManagedWorktreeState::Ready {
+                return Err("the managed worktree is not ready".to_string());
+            }
+            inspect_ready_worktree(&worktree)
+                .map(|checkout| Some(checkout.path))
+                .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(notes_cwd_unavailable)?
+        .map_err(notes_cwd_unavailable)?;
+        if let Some(path) = worktree {
+            return Ok(path);
         }
-        notes::execute_tool(self.task_store.clone(), thread_id.to_string(), call).await
+        let cwd = match &managed.run_by {
+            RunBy::Codex => {
+                let connection = self.connection().await.map_err(notes_cwd_unavailable)?;
+                connection
+                    .client
+                    .read_thread(&managed.thread_id)
+                    .await
+                    .map(|thread| thread.cwd)
+                    .map_err(|error| error.to_string())
+            }
+            RunBy::Claude { .. } => self
+                .claude
+                .working_directory(&managed.thread_id)
+                .await
+                .ok_or_else(|| "the Claude session's directory is unavailable".to_string()),
+            RunBy::Grok { .. } => self
+                .grok
+                .working_directory(&managed.thread_id)
+                .await
+                .map_err(|error| error.to_string()),
+        }
+        .map_err(notes_cwd_unavailable)?;
+        let cwd = PathBuf::from(cwd);
+        tokio::task::spawn_blocking(move || {
+            if cwd.is_absolute() && cwd.is_dir() {
+                Ok(cwd)
+            } else {
+                Err(notes_cwd_unavailable(
+                    "the Task directory is not an available absolute directory",
+                ))
+            }
+        })
+        .await
+        .map_err(notes_cwd_unavailable)?
     }
 
     async fn managed_thread(&self, thread_id: &str) -> Result<Option<ManagedThread>, String> {
@@ -1185,6 +1258,12 @@ impl TaskRuntime {
             } else { true }
         });
     }
+}
+
+fn notes_cwd_unavailable(reason: impl Display) -> String {
+    format!(
+        "Caffold could not determine this Task's working directory for `contentPath`: {reason}. Restore the Task directory or use an absolute path inside the server's filesystem root."
+    )
 }
 
 /// Why an approval stopped being answerable, when nobody answered it here.
@@ -1247,7 +1326,7 @@ fn approval_id_from_request(request_id: &JsonValue, params: &JsonValue) -> Strin
 
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, process::Command, sync::Arc, sync::Mutex as StdMutex};
+    use std::{fs, path::Path, process::Command, sync::Arc, sync::Mutex as StdMutex};
 
     use tokio::sync::broadcast;
 
@@ -1265,7 +1344,9 @@ mod tests {
         },
         app::terminal::TaskTerminals,
         fs::RootedFs,
-        task_store::{ManagedThread, PushSubscriptionInput, RunBy, TaskStore},
+        task_store::{
+            CheckoutAnchor, ManagedThread, ManagedWorktree, PushSubscriptionInput, RunBy, TaskStore,
+        },
     };
 
     fn initialize_repository(path: &Path) {
@@ -1407,6 +1488,147 @@ mod tests {
             store,
             shutdown,
         )
+    }
+
+    #[tokio::test]
+    async fn notes_relative_paths_use_the_codex_task_cwd_and_allow_server_root_siblings() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        initialize_repository(&project);
+        let cwd = project.join("backend");
+        fs::create_dir(&cwd).unwrap();
+        fs::write(project.join("result.md"), "wrong Git root").unwrap();
+        fs::write(cwd.join("result.md"), "Task cwd").unwrap();
+        fs::write(root.path().join("shared.md"), "server sibling").unwrap();
+        let store = TaskStore::memory().unwrap();
+        store
+            .claim(
+                ManagedThread::new("notes-codex", RunBy::Codex, None, None, None),
+                1,
+            )
+            .unwrap();
+        let thread = json!({"thread": {"id": "notes-codex", "preview": "Notes", "status": {"type": "idle"}, "cwd": cwd, "createdAt": 1.0, "updatedAt": 1.0, "turns": []}});
+        let mut missing_cwd = thread.clone();
+        missing_cwd["thread"]["cwd"] = json!(root.path().join("missing-directory"));
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/read", thread.clone()),
+            MockCodexResponse::ok("thread/read", thread),
+            MockCodexResponse::ok("thread/read", missing_cwd),
+        ]);
+        let runtime = test_runtime(store.clone())
+            .with_notes_fs(Arc::new(RootedFs::new(root.path()).unwrap()));
+        runtime.install_test_client(1, client.clone()).await;
+        for (path, expected) in [
+            ("result.md", "Task cwd"),
+            ("../../shared.md", "server sibling"),
+        ] {
+            let answer = runtime
+                .execute_mcp_tool(
+                    "notes-codex",
+                    "create_note",
+                    json!({"name": "Result", "contentPath": path}),
+                )
+                .await
+                .unwrap();
+            let answer: JsonValue = serde_json::from_str(&answer).unwrap();
+            let note = store
+                .read(|tables| tables.note(answer["noteId"].as_str().unwrap()))
+                .unwrap()
+                .unwrap();
+            assert_eq!(note.content, expected);
+        }
+        let refused = runtime
+            .execute_mcp_tool(
+                "notes-codex",
+                "create_note",
+                json!({"name": "Unavailable cwd", "contentPath": "shared.md"}),
+            )
+            .await
+            .unwrap_err();
+        assert!(refused.contains("working directory"), "{refused}");
+        assert_eq!(
+            store.read(|tables| tables.note_summaries()).unwrap().len(),
+            2
+        );
+        assert_eq!(client.mock_requests().await.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn notes_refuse_an_unknown_relative_cwd_but_absolute_input_needs_no_session() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("result.md");
+        fs::write(&file, "absolute file").unwrap();
+        let store = TaskStore::memory().unwrap();
+        store
+            .claim(
+                ManagedThread::new(
+                    "notes-claude",
+                    RunBy::Claude {
+                        cwd: root.path().display().to_string(),
+                    },
+                    None,
+                    None,
+                    None,
+                ),
+                1,
+            )
+            .unwrap();
+        let runtime = test_runtime(store.clone())
+            .with_notes_fs(Arc::new(RootedFs::new(root.path()).unwrap()));
+        let error = runtime
+            .execute_mcp_tool(
+                "notes-claude",
+                "create_note",
+                json!({"name": "Relative", "contentPath": "result.md"}),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.contains("working directory"), "{error}");
+        assert!(
+            store
+                .read(|tables| tables.note_summaries())
+                .unwrap()
+                .is_empty()
+        );
+        store
+            .create_worktree(ManagedWorktree {
+                worktree_id: "not-ready".to_string(),
+                thread_id: Some("notes-claude".to_string()),
+                repository_git_dir: root.path().join(".git").display().to_string(),
+                worktree_path: root.path().join("worktree").display().to_string(),
+                state: ManagedWorktreeState::Creating,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: "feat/notes".to_string(),
+                    head_sha: "fixture-head".to_string(),
+                }),
+                created_at_ms: 1,
+                updated_at_ms: 1,
+            })
+            .unwrap();
+        let refused = runtime
+            .execute_mcp_tool(
+                "notes-claude",
+                "create_note",
+                json!({"name": "Not ready", "contentPath": "result.md"}),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            refused.contains("managed worktree is not ready"),
+            "{refused}"
+        );
+        runtime
+            .execute_mcp_tool(
+                "notes-claude",
+                "create_note",
+                json!({"name": "Absolute", "contentPath": file}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            store.read(|tables| tables.note_summaries()).unwrap().len(),
+            1
+        );
     }
 
     #[tokio::test]
@@ -2858,7 +3080,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn isolate_tool_prepares_the_same_task_without_requesting_source_changes() {
+    async fn isolate_tool_prepares_the_same_task_and_notes_follow_its_worktree() {
         let root = tempfile::tempdir().unwrap();
         let source = root.path().join("source");
         initialize_repository(&source);
@@ -2905,7 +3127,8 @@ mod tests {
             store.clone(),
             shutdown,
         )
-        .with_lifecycle(lifecycle);
+        .with_lifecycle(lifecycle)
+        .with_notes_fs(fs.clone());
         let thread_read = json!({
             "thread": {
                 "id": "thread_source",
@@ -2955,6 +3178,27 @@ mod tests {
             )
         );
 
+        fs::write(source.join("result.md"), "old source cwd").unwrap();
+        fs::write(
+            Path::new(&records[0].worktree_path).join("result.md"),
+            "managed worktree",
+        )
+        .unwrap();
+        let created = runtime
+            .execute_mcp_tool(
+                "thread_source",
+                "create_note",
+                json!({"name": "Worktree", "contentPath": "result.md"}),
+            )
+            .await
+            .unwrap();
+        let created: JsonValue = serde_json::from_str(&created).unwrap();
+        let note = store
+            .read(|tables| tables.note(created["noteId"].as_str().unwrap()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(note.content, "managed worktree");
+
         let stored_before_switch = records[0].clone();
         let switched = Command::new("git")
             .arg("-C")
@@ -2987,6 +3231,20 @@ mod tests {
         assert_eq!(
             store.worktree(&records[0].worktree_id).unwrap().unwrap(),
             stored_before_switch
+        );
+        fs::rename(&records[0].worktree_path, root.path().join("held-worktree")).unwrap();
+        let refused = runtime
+            .execute_mcp_tool(
+                "thread_source",
+                "create_note",
+                json!({"name": "Missing worktree", "contentPath": "result.md"}),
+            )
+            .await
+            .unwrap_err();
+        assert!(refused.contains("managed worktree"), "{refused}");
+        assert_eq!(
+            store.read(|tables| tables.note_summaries()).unwrap().len(),
+            1
         );
     }
 

@@ -5,8 +5,25 @@
 //! its in-process server; all three list them from this one catalog, and a
 //! call's arguments are checked here once, whichever agent made it.
 
+use std::path::Path;
+
 use serde::Deserialize;
 use serde_json::{Value, json};
+
+pub(crate) const MAX_NOTE_FILE_BYTES: u64 = 1024 * 1024;
+
+/// The supplied Markdown, or a file the calling Task asks Caffold to read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum NoteContent {
+    Text(String),
+    File(String),
+}
+
+impl From<String> for NoteContent {
+    fn from(content: String) -> Self {
+        Self::Text(content)
+    }
+}
 
 /// A Notes tool call whose arguments have been checked.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,12 +36,12 @@ pub(crate) enum NotesToolCall {
     },
     CreateNote {
         name: String,
-        content: String,
+        content: NoteContent,
         directory_id: Option<String>,
     },
     UpdateNoteContent {
         note_id: String,
-        content: String,
+        content: NoteContent,
         expected_content_version: i64,
     },
     RenameNote {
@@ -55,6 +72,17 @@ pub(crate) enum NotesToolCall {
     },
 }
 
+impl NotesToolCall {
+    pub(crate) fn needs_working_directory(&self) -> bool {
+        match self {
+            Self::CreateNote { content, .. } | Self::UpdateNoteContent { content, .. } => {
+                matches!(content, NoteContent::File(path) if !Path::new(path).is_absolute())
+            }
+            _ => false,
+        }
+    }
+}
+
 pub(crate) struct NotesToolSpec {
     pub(crate) name: &'static str,
     pub(crate) description: &'static str,
@@ -81,7 +109,7 @@ pub(crate) fn notes_tool_call(
         CREATE_NOTE => parse::<CreateNoteArguments>(tool, arguments).and_then(|arguments| {
             Ok(NotesToolCall::CreateNote {
                 name: required_text("name", arguments.name)?,
-                content: arguments.content,
+                content: note_content(arguments.content, arguments.content_path)?,
                 directory_id: optional_text("directoryId", arguments.directory_id)?,
             })
         }),
@@ -95,7 +123,7 @@ pub(crate) fn notes_tool_call(
                 }
                 Ok(NotesToolCall::UpdateNoteContent {
                     note_id: required_text("noteId", arguments.note_id)?,
-                    content: arguments.content,
+                    content: note_content(arguments.content, arguments.content_path)?,
                     expected_content_version: arguments.expected_content_version,
                 })
             })
@@ -161,7 +189,17 @@ pub(crate) fn notes_tool_specs() -> [NotesToolSpec; 11] {
     [
         NotesToolSpec {
             name: LIST_NOTES,
-            description: "List what one Caffold Note directory directly holds: its directories, each with how many directories and Notes it directly holds, and its Notes, with ids, names, and last change times but no Note content. Omit directoryId for the top of the Notes tree, and pass a listed directory's id to look one level down. Caffold Notes are durable records shared by every Caffold task and kept after a task ends; they are not the current task's plan documents under .caffold/plans/current. Find and read Caffold Notes only through these Notes tools, not in the Caffold app, a browser, or on screen.",
+            description: concat!(
+                "List what one Caffold Note directory directly holds: its directories, ",
+                "each with how many directories and Notes it directly holds, ",
+                "and its Notes, with ids, names, and last change times but no Note content. ",
+                "Omit directoryId for the top of the Notes tree, ",
+                "and pass a listed directory's id to look one level down. ",
+                "Caffold Notes are durable records shared by every Caffold task and kept after a task ends; ",
+                "they are not the current task's plan documents under .caffold/plans/current. ",
+                "Find and read Caffold Notes only through these Notes tools, ",
+                "not in the Caffold app, a browser, or on screen.",
+            ),
             input_schema: object_schema(
                 json!({
                     "directoryId": text_schema("The Note directory to list. Omit it for the top of the Notes tree."),
@@ -171,7 +209,12 @@ pub(crate) fn notes_tool_specs() -> [NotesToolSpec; 11] {
         },
         NotesToolSpec {
             name: READ_NOTE,
-            description: "Read one Caffold Note: its name, directory, Markdown content, and contentVersion. Pass that contentVersion to update_note_content. Find and read Caffold Notes only through these Notes tools, not in the Caffold app, a browser, or on screen.",
+            description: concat!(
+                "Read one Caffold Note: its name, directory, Markdown content, and contentVersion. ",
+                "Pass that contentVersion to update_note_content. ",
+                "Find and read Caffold Notes only through these Notes tools, ",
+                "not in the Caffold app, a browser, or on screen.",
+            ),
             input_schema: object_schema(
                 json!({ "noteId": text_schema("The id of the Note to read.") }),
                 &["noteId"],
@@ -179,30 +222,71 @@ pub(crate) fn notes_tool_specs() -> [NotesToolSpec; 11] {
         },
         NotesToolSpec {
             name: CREATE_NOTE,
-            description: "Create a Caffold Note only when the user explicitly asks to save something as a note. Notes are durable records shared by every Caffold task; keep the current task's own plan in .caffold/plans/current instead. Omit directoryId to place the Note at the top of the Notes tree.",
-            input_schema: object_schema(
+            description: concat!(
+                "Create a Caffold Note only when the user explicitly asks to save something as a note. ",
+                "Notes are durable records shared by every Caffold task; ",
+                "keep the current task's own plan in .caffold/plans/current instead. ",
+                "Omit directoryId to place the Note at the top of the Notes tree. ",
+                "Supply exactly one of content or contentPath. ",
+                "Use contentPath when the content is an existing file, such as a finished plan. ",
+                "Relative paths start in this Task's working directory; absolute paths are accepted. ",
+                "After following symlinks, the file must be inside the server's filesystem root, ",
+                "which may include files outside this Task's directory. ",
+                "The file must be regular, UTF-8, and at most 1 MiB (1,048,576 bytes); ",
+                "its content is stored unchanged.",
+            ),
+            input_schema: note_content_schema(
                 json!({
                     "name": text_schema("The Note's name."),
                     "content": content_schema("The Note's Markdown content."),
+                    "contentPath": text_schema(concat!(
+                        "An existing UTF-8 file to use as the Note's content. ",
+                        "Relative to this Task's working directory, ",
+                        "or an absolute path within the server's filesystem root. ",
+                        "Maximum 1 MiB. ",
+                        "Supply this or content, exactly one.",
+                    )),
                     "directoryId": text_schema("The Note directory to create the Note in. Omit it for the top of the Notes tree."),
                 }),
-                &["name", "content"],
+                &["name"],
             ),
         },
         NotesToolSpec {
             name: UPDATE_NOTE_CONTENT,
-            description: "Replace a Caffold Note's entire Markdown content only when the user explicitly asks to change that Note. Caffold keeps no history, so the replaced content cannot be recovered. Pass the contentVersion read_note returned: if the Note changed since then nothing is written and the result gives the current contentVersion, so read the Note again, reapply the change, and retry.",
-            input_schema: object_schema(
+            description: concat!(
+                "Replace a Caffold Note's entire Markdown content ",
+                "only when the user explicitly asks to change that Note. ",
+                "Caffold keeps no history, so the replaced content cannot be recovered. ",
+                "Pass the contentVersion read_note returned: ",
+                "if the Note changed since then nothing is written ",
+                "and the result gives the current contentVersion, ",
+                "so read the Note again, reapply the change, and retry. ",
+                "Supply exactly one of content or contentPath. ",
+                "Use contentPath when the complete new content is an existing file. ",
+                "Relative paths start in this Task's working directory; absolute paths are accepted. ",
+                "After following symlinks, the file must be inside the server's filesystem root, ",
+                "which may include files outside this Task's directory. ",
+                "The file must be regular, UTF-8, and at most 1 MiB (1,048,576 bytes); ",
+                "its content is stored unchanged.",
+            ),
+            input_schema: note_content_schema(
                 json!({
                     "noteId": text_schema("The id of the Note to change."),
                     "content": content_schema("The Note's complete new Markdown content."),
+                    "contentPath": text_schema(concat!(
+                        "An existing UTF-8 file containing the Note's complete new content. ",
+                        "Relative to this Task's working directory, ",
+                        "or an absolute path within the server's filesystem root. ",
+                        "Maximum 1 MiB. ",
+                        "Supply this or content, exactly one.",
+                    )),
                     "expectedContentVersion": {
                         "type": "integer",
                         "minimum": 1,
                         "description": "The contentVersion read_note returned for the content this change starts from.",
                     },
                 }),
-                &["noteId", "content", "expectedContentVersion"],
+                &["noteId", "expectedContentVersion"],
             ),
         },
         NotesToolSpec {
@@ -218,7 +302,10 @@ pub(crate) fn notes_tool_specs() -> [NotesToolSpec; 11] {
         },
         NotesToolSpec {
             name: MOVE_NOTE,
-            description: "Move a Caffold Note into another Note directory only when the user explicitly asks. Omit directoryId to move it to the top of the Notes tree.",
+            description: concat!(
+                "Move a Caffold Note into another Note directory only when the user explicitly asks. ",
+                "Omit directoryId to move it to the top of the Notes tree.",
+            ),
             input_schema: object_schema(
                 json!({
                     "noteId": text_schema("The id of the Note to move."),
@@ -229,7 +316,10 @@ pub(crate) fn notes_tool_specs() -> [NotesToolSpec; 11] {
         },
         NotesToolSpec {
             name: DELETE_NOTE,
-            description: "Delete a Caffold Note only when the user explicitly asks. Caffold keeps no history, so a deleted Note cannot be recovered.",
+            description: concat!(
+                "Delete a Caffold Note only when the user explicitly asks. ",
+                "Caffold keeps no history, so a deleted Note cannot be recovered.",
+            ),
             input_schema: object_schema(
                 json!({ "noteId": text_schema("The id of the Note to delete.") }),
                 &["noteId"],
@@ -237,7 +327,11 @@ pub(crate) fn notes_tool_specs() -> [NotesToolSpec; 11] {
         },
         NotesToolSpec {
             name: CREATE_NOTE_DIRECTORY,
-            description: "Create a directory in the Caffold Notes tree only when the user explicitly asks to create or organize Notes. Omit parentDirectoryId to create it at the top of the Notes tree.",
+            description: concat!(
+                "Create a directory in the Caffold Notes tree ",
+                "only when the user explicitly asks to create or organize Notes. ",
+                "Omit parentDirectoryId to create it at the top of the Notes tree.",
+            ),
             input_schema: object_schema(
                 json!({
                     "name": text_schema("The directory's name."),
@@ -259,7 +353,12 @@ pub(crate) fn notes_tool_specs() -> [NotesToolSpec; 11] {
         },
         NotesToolSpec {
             name: MOVE_NOTE_DIRECTORY,
-            description: "Move a directory in the Caffold Notes tree, with everything in it, only when the user explicitly asks. A directory cannot move into itself or one of its subdirectories. Omit parentDirectoryId to move it to the top of the Notes tree.",
+            description: concat!(
+                "Move a directory in the Caffold Notes tree, with everything in it, ",
+                "only when the user explicitly asks. ",
+                "A directory cannot move into itself or one of its subdirectories. ",
+                "Omit parentDirectoryId to move it to the top of the Notes tree.",
+            ),
             input_schema: object_schema(
                 json!({
                     "directoryId": text_schema("The id of the Note directory to move."),
@@ -270,7 +369,13 @@ pub(crate) fn notes_tool_specs() -> [NotesToolSpec; 11] {
         },
         NotesToolSpec {
             name: DELETE_NOTE_DIRECTORY,
-            description: "Delete an empty directory from the Caffold Notes tree only when the user explicitly asks. A directory that still holds Notes or directories is not deleted; delete or move what it holds first. Caffold keeps no history, so a deleted directory cannot be recovered.",
+            description: concat!(
+                "Delete an empty directory from the Caffold Notes tree ",
+                "only when the user explicitly asks. ",
+                "A directory that still holds Notes or directories is not deleted; ",
+                "delete or move what it holds first. ",
+                "Caffold keeps no history, so a deleted directory cannot be recovered.",
+            ),
             input_schema: object_schema(
                 json!({ "directoryId": text_schema("The id of the empty Note directory to delete.") }),
                 &["directoryId"],
@@ -307,7 +412,10 @@ struct NoteArguments {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct CreateNoteArguments {
     name: String,
-    content: String,
+    #[serde(default, deserialize_with = "present_string")]
+    content: Option<String>,
+    #[serde(default, deserialize_with = "present_string")]
+    content_path: Option<String>,
     directory_id: Option<String>,
 }
 
@@ -315,7 +423,10 @@ struct CreateNoteArguments {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UpdateNoteContentArguments {
     note_id: String,
-    content: String,
+    #[serde(default, deserialize_with = "present_string")]
+    content: Option<String>,
+    #[serde(default, deserialize_with = "present_string")]
+    content_path: Option<String>,
     expected_content_version: i64,
 }
 
@@ -382,6 +493,33 @@ fn required_text(field: &str, value: String) -> Result<String, String> {
 
 fn optional_text(field: &str, value: Option<String>) -> Result<Option<String>, String> {
     value.map(|value| required_text(field, value)).transpose()
+}
+
+fn present_string<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    String::deserialize(deserializer).map(Some)
+}
+
+fn note_content(
+    content: Option<String>,
+    content_path: Option<String>,
+) -> Result<NoteContent, String> {
+    match (content, content_path) {
+        (Some(content), None) => Ok(NoteContent::Text(content)),
+        (None, Some(path)) if !path.is_empty() => Ok(NoteContent::File(path)),
+        (None, Some(_)) => Err("`contentPath` must be a non-empty file path.".to_string()),
+        _ => Err("Supply exactly one of `content` or `contentPath`.".to_string()),
+    }
+}
+
+fn note_content_schema(properties: Value, required: &[&str]) -> Value {
+    let mut schema = object_schema(properties, required);
+    schema["oneOf"] = json!([
+        { "required": ["content"] },
+        { "required": ["contentPath"] },
+    ]);
+    schema
 }
 
 fn object_schema(properties: Value, required: &[&str]) -> Value {
@@ -493,6 +631,102 @@ mod tests {
     }
 
     #[test]
+    fn content_input_requires_exactly_one_string_and_keeps_file_paths_verbatim() {
+        for (tool, base) in [
+            ("create_note", json!({"name": "File"})),
+            (
+                "update_note_content",
+                json!({"noteId": "note", "expectedContentVersion": 1}),
+            ),
+        ] {
+            for invalid in [
+                json!({}),
+                json!({"content": "", "contentPath": "file.md"}),
+                json!({"content": null}),
+                json!({"contentPath": null}),
+                json!({"content": "x", "contentPath": null}),
+                json!({"content": null, "contentPath": "file.md"}),
+                json!({"contentPath": ""}),
+                json!({"contentPath": 1}),
+                json!({"content": []}),
+            ] {
+                let mut arguments = base.clone();
+                arguments
+                    .as_object_mut()
+                    .unwrap()
+                    .extend(invalid.as_object().unwrap().clone());
+                assert!(
+                    call(tool, arguments.clone()).is_err(),
+                    "{tool}: {arguments}"
+                );
+            }
+            for (input, expected, needs_cwd) in [
+                (
+                    json!({"content": ""}),
+                    NoteContent::Text(String::new()),
+                    false,
+                ),
+                (
+                    json!({"contentPath": " ../shared/file.md "}),
+                    NoteContent::File(" ../shared/file.md ".to_string()),
+                    true,
+                ),
+                (
+                    json!({"contentPath": "/workspace/file.md"}),
+                    NoteContent::File("/workspace/file.md".to_string()),
+                    false,
+                ),
+            ] {
+                let mut arguments = base.clone();
+                arguments
+                    .as_object_mut()
+                    .unwrap()
+                    .extend(input.as_object().unwrap().clone());
+                let parsed = call(tool, arguments).unwrap();
+                assert_eq!(parsed.needs_working_directory(), needs_cwd);
+                match parsed {
+                    NotesToolCall::CreateNote { content, .. }
+                    | NotesToolCall::UpdateNoteContent { content, .. } => {
+                        assert_eq!(content, expected)
+                    }
+                    _ => panic!("expected a writing tool"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn writing_schemas_offer_exclusive_content_sources_and_document_the_file_boundary() {
+        for spec in notes_tool_specs()
+            .into_iter()
+            .filter(|spec| matches!(spec.name, "create_note" | "update_note_content"))
+        {
+            assert_eq!(
+                spec.input_schema["oneOf"],
+                json!([{"required": ["content"]}, {"required": ["contentPath"]}])
+            );
+            assert!(
+                !spec.input_schema["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("content"))
+            );
+            assert_eq!(
+                spec.input_schema["properties"]["contentPath"]["minLength"],
+                1
+            );
+            for phrase in [
+                "Use contentPath",
+                "Task's working directory",
+                "server's filesystem root",
+                "1,048,576 bytes",
+            ] {
+                assert!(spec.description.contains(phrase), "{}: {phrase}", spec.name);
+            }
+        }
+    }
+
+    #[test]
     fn arguments_become_trimmed_calls() {
         assert_eq!(
             call("list_notes", Value::Null),
@@ -515,7 +749,7 @@ mod tests {
             ),
             Ok(NotesToolCall::CreateNote {
                 name: "Decisions".to_string(),
-                content: String::new(),
+                content: String::new().into(),
                 directory_id: Some("dir".to_string()),
             })
         );
@@ -526,7 +760,7 @@ mod tests {
             ),
             Ok(NotesToolCall::UpdateNoteContent {
                 note_id: "note".to_string(),
-                content: "  kept as written  ".to_string(),
+                content: "  kept as written  ".to_string().into(),
                 expected_content_version: 3,
             })
         );

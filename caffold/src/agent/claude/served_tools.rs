@@ -203,6 +203,7 @@ fn tool_ask(message: &Value, request_id: &str, mcp_id: &Value) -> Result<ToolAsk
 
 #[cfg(test)]
 mod tests {
+    use crate::agent::notes_tools::NoteContent;
 
     use serde_json::json;
 
@@ -326,7 +327,7 @@ mod tests {
         assert!(matches!(
             ask.asked,
             AskedTool::Notes(NotesToolCall::CreateNote { ref name, ref content, directory_id: None })
-                if name == "Decisions" && content == "# Decisions\n"
+                if name == "Decisions" && content == &NoteContent::Text("# Decisions\n".to_string())
         ));
     }
 

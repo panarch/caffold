@@ -562,6 +562,50 @@ async fn restarting_the_claude_runtime_ends_its_sessions_and_tasks_resume() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn the_agent_saves_and_updates_a_note_from_existing_files() {
+    let backend = Backend::start().await;
+    let task = backend
+        .start_task(
+            "Save the existing file one.txt as a Caffold Note named 'Live file import'. \
+         Call mcp__caffold__create_note with contentPath set to one.txt. \
+         Do not read or copy the file content into the tool arguments. Do not modify files. \
+         After the tool succeeds, reply with done.",
+            MODEL,
+        )
+        .await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(180))
+        .await;
+    let tree = backend.get("/api/notes").await.expect("Notes tree");
+    let note = tree["notes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|note| note["name"] == "Live file import")
+        .expect("the agent created the Note through file input");
+    let note_id = note["id"].as_str().unwrap();
+    let route = format!("/api/notes/{note_id}");
+    assert_eq!(
+        backend.get(&route).await.unwrap()["content"],
+        "the first note"
+    );
+    task.say(
+        "Replace the Caffold Note 'Live file import' with the contents of two.txt. \
+        Read the Note with read_note for its contentVersion, then call update_note_content \
+        with contentPath set to two.txt and expectedContentVersion from that read. \
+        Do not read or copy the source file into arguments. Do not modify files. \
+        After the tool succeeds, reply with done.",
+    )
+    .await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(180))
+        .await;
+    assert_eq!(
+        backend.get(&route).await.unwrap()["content"],
+        "the second note"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
 async fn the_agent_renames_its_task_when_asked_to_in_the_conversation() {
     // The one tool Caffold serves the agent, driven the only way it is meant
     // to be driven: a person asks in the conversation, the model calls

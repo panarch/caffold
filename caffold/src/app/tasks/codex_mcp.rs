@@ -179,11 +179,13 @@ async fn serve_mcp(State(host): State<CodexMcpHost>, headers: HeaderMap, body: B
 
 #[cfg(test)]
 mod tests {
+    use crate::fs::RootedFs;
     use anyhow::Context;
     use axum::{
         body::{Body, to_bytes},
         http::Request,
     };
+    use std::{fs, net::SocketAddr};
     use tower::ServiceExt;
 
     use super::*;
@@ -998,6 +1000,9 @@ mod tests {
 
     #[tokio::test]
     async fn a_bound_connection_keeps_notes_for_its_task_without_asking_codex() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("findings.md");
+        fs::write(&file, "# Findings from file\n").unwrap();
         let host = memory_host("http://127.0.0.1:5177".to_string());
         let store = TaskStore::memory().unwrap();
         store
@@ -1015,7 +1020,8 @@ mod tests {
             TaskEvents::default(),
             store.clone(),
             shutdown,
-        );
+        )
+        .with_notes_fs(Arc::new(RootedFs::new(root.path()).unwrap()));
         runtime.install_test_client(1, client.clone()).await;
         host.attach_runtime(runtime);
         let managed = bind_thread(&host, "thread_1").await;
@@ -1042,7 +1048,23 @@ mod tests {
             .expect("the Note is stored");
         assert_eq!(note.created_by_thread_id, "thread_1");
 
-        let refused = response_json(bound_request(&host, &unmanaged, create_note).await).await;
+        let from_file = json!({
+            "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+            "params": {"name": "create_note", "arguments": {"name": "File", "contentPath": file}},
+        });
+        let created = response_json(bound_request(&host, &managed, from_file.clone()).await).await;
+        assert_eq!(created["result"]["isError"], false, "{created}");
+        let answer: Value =
+            serde_json::from_str(created["result"]["content"][0]["text"].as_str().unwrap())
+                .unwrap();
+        let note = store
+            .read(|tables| tables.note(answer["noteId"].as_str().unwrap()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(note.content, "# Findings from file\n");
+        assert_eq!(note.created_by_thread_id, "thread_1");
+
+        let refused = response_json(bound_request(&host, &unmanaged, from_file).await).await;
         assert_eq!(refused["result"]["isError"], true);
         assert_eq!(
             refused["result"]["content"][0]["text"],
@@ -1050,7 +1072,7 @@ mod tests {
         );
         assert_eq!(
             store.read(|tables| tables.note_summaries()).unwrap().len(),
-            1
+            2
         );
         assert!(client.mock_requests().await.is_empty());
     }
@@ -1289,6 +1311,67 @@ mod tests {
                 .contains("only isolate a task that it manages")
         );
         assert!(client.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "requires an installed authenticated Codex CLI; no model turn is submitted"]
+    async fn live_codex_mcp_accepts_note_file_input_through_the_installed_cli() {
+        use anyhow::{Result, ensure};
+
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().join("task");
+        fs::create_dir(&cwd).unwrap();
+        fs::write(root.path().join("result.md"), "\u{feff}# File\r\n").unwrap();
+        let (host, _, shutdown, server) = start_live_mcp_host(
+            SocketAddr::from(([127, 0, 0, 1], 0)),
+            &root.path().join("mcp"),
+        )
+        .await
+        .unwrap();
+        let store = TaskStore::memory().unwrap();
+        let (runtime_shutdown, _) = broadcast::channel(1);
+        let runtime = TaskRuntime::new(
+            ClaudeClient::mock().0,
+            GrokClient::unreachable(),
+            TaskSessions::default(),
+            TaskEvents::default(),
+            store.clone(),
+            runtime_shutdown,
+        )
+        .with_notes_fs(Arc::new(RootedFs::new(root.path()).unwrap()));
+        host.attach_runtime(runtime.clone());
+        let installation = inspect_codex_installation().await.unwrap();
+        let client =
+            CodexThreadClient::start_with_installation_and_mcp(&installation, host.bindings())
+                .await
+                .unwrap();
+        runtime.install_test_client(1, client.clone()).await;
+        let mut thread_id = None;
+        let result: Result<()> = async {
+            let started = client.start_thread(cwd.to_str().unwrap(), None, NORMAL_SERVICE_TIER_ID).await?;
+            thread_id = Some(started.thread_id.clone());
+            store.claim(ManagedThread::new(&started.thread_id, RunBy::Codex, None, None, None), 1)?;
+            let created = client.call_mcp_tool_for_test(&started.thread_id, "create_note", json!({"name": "Live file", "contentPath": "../result.md"})).await?;
+            ensure!(created["isError"] != true, "{created}");
+            let answer: Value = serde_json::from_str(created["content"][0]["text"].as_str().context("Note result text")?)?;
+            let note_id = answer["noteId"].as_str().context("created Note id")?;
+            let note = store.read(|tables| tables.note(note_id))?.context("stored Note")?;
+            ensure!(note.content == "\u{feff}# File\r\n");
+            let updated = client.call_mcp_tool_for_test(&started.thread_id, "update_note_content", json!({"noteId": note_id, "contentPath": root.path().join("result.md"), "expectedContentVersion": 1})).await?;
+            ensure!(updated["isError"] != true, "{updated}");
+            let stale = client.call_mcp_tool_for_test(&started.thread_id, "update_note_content", json!({"noteId": note_id, "contentPath": root.path().join("result.md"), "expectedContentVersion": 1})).await?;
+            ensure!(stale["isError"] == true, "{stale}");
+            ensure!(store.read(|tables| tables.note(note_id))?.context("updated Note")?.content_version == 2);
+            Ok(())
+        }.await;
+        let cleanup = match thread_id {
+            Some(thread_id) => client.delete_thread(&thread_id).await,
+            None => Ok(()),
+        };
+        client.shutdown().await;
+        stop_live_mcp_host(shutdown, server).await;
+        result.expect("real Codex CLI forwards file input and version conflicts");
+        cleanup.expect("delete the isolated live test thread");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

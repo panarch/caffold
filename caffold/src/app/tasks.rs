@@ -140,6 +140,7 @@ impl TaskState {
             task_store.clone(),
             shutdown.clone(),
         );
+        let task_runtime = task_runtime.with_notes_fs(fs.clone());
         let task_runtime = match codex_mcp {
             Some(bindings) => task_runtime.with_codex_mcp(bindings),
             None => task_runtime,

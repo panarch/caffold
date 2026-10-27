@@ -628,9 +628,27 @@ names, descriptions, input schemas, and argument checks to Codex's and Grok's
 addresses and to Claude's in-process server. A Notes call does the same thing
 whichever agent makes it: it runs only for a Task Caffold manages, reads or
 changes Caffold-owned Notes through the application, and records that Task on
-a Note it creates or changes. It never touches the agent's conversation or
-process. The pre-MCP Codex
-dynamic-tool path serves no Notes tools.
+a Note it creates or changes. The pre-MCP Codex dynamic-tool path serves no
+Notes tools.
+
+`create_note` and `update_note_content` accept exactly one of `content` or
+`contentPath`. Existing files use `contentPath` so the agent need not send their
+text back through the tool. Relative paths start in the calling Task's effective
+working directory: its ready managed worktree, or the current directory owned
+by its agent. An unavailable relative-path base fails without a fallback.
+Absolute filesystem paths require no Task cwd lookup. Both forms allow files
+outside the Task directory when their resolved targets remain inside the
+server's configured `RootedFs` root, including the default `/` root.
+
+File input accepts regular UTF-8 files up to 1 MiB (1,048,576 bytes), including
+empty files, and preserves their bytes. The reader resolves symlinks against
+the server boundary and opens the resolved components through directory handles
+without following replacement symlinks. It checks the opened file and bounds
+the read even if the file grows. File reads finish outside the Notes store
+transaction; the update's `expectedContentVersion` is checked inside the write
+transaction. A failed read or version conflict leaves the Note unchanged.
+Inline content keeps its existing size behavior. Success returns the Note id
+and content version without echoing the content.
 
 The application handles both requests through the same Task and Git lifecycle.
 Only delivery and cwd movement differ. Codex accepts a new cwd for the next
