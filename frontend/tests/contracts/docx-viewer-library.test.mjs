@@ -38,7 +38,7 @@ test("the browser suite answers docx-preview's jsDelivr module from the installe
 });
 
 test("docx-preview stays a runtime CDN import rather than a shipped asset", () => {
-  const serviceWorker = read("service-worker.js");
+  const serviceWorker = read("service-worker.ts");
   const staticAssets = readFileSync(
     new URL("../caffold/src/static_assets.rs", frontendUrl),
     "utf8",
@@ -47,6 +47,6 @@ test("docx-preview stays a runtime CDN import rather than a shipped asset", () =
   for (const manifest of [serviceWorker, staticAssets]) {
     assert.doesNotMatch(manifest, /docx-preview|jszip/);
   }
-  assert.match(serviceWorker, /"\/assets\/components\/docx-viewer\.ts"/);
-  assert.match(staticAssets, /"components\/docx-viewer\.ts"/);
+  assert.match(serviceWorker, /"\/assets\/components\/docx-viewer\.js"/);
+  assert.match(staticAssets, /"components\/docx-viewer\.js"/);
 });

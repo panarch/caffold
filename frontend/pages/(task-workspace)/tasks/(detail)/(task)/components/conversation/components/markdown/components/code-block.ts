@@ -3,10 +3,10 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
+} from "#app/action-hints.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 const MARKDOWN_FENCE_LABELS = new Set(["markdown", "md"]);

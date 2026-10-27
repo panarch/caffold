@@ -1,4 +1,4 @@
-import type { TaskStoreReadiness } from "#app/api.ts";
+import type { TaskStoreReadiness } from "#app/api.js";
 
 // What the Task store last said about whether it can take Task operations.
 export interface TaskStoreStatusSnapshot {

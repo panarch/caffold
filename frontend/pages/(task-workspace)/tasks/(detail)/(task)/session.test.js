@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { TaskDetailSession } from "./session.ts";
-import { TASK_TRANSPORT_STATE } from "../../runtime-state.ts";
+import { TaskDetailSession } from "./session.js";
+import { TASK_TRANSPORT_STATE } from "../../runtime-state.js";
 
 const originalBrowserGlobals = {
   document: globalThis.document,

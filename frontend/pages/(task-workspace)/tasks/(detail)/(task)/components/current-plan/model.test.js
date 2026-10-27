@@ -8,7 +8,7 @@ import {
   currentPlanPresentation,
   currentPlanTransitionAllowed,
   normalizeCurrentPlanProjection,
-} from "./model.ts";
+} from "./model.js";
 
 test("current-plan document labels are relative only inside the Task project root", () => {
   assert.equal(

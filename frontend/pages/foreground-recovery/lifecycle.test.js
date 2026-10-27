@@ -3,17 +3,17 @@ import test from "node:test";
 
 import {
   FOREGROUND_RECOVERY_PRESENTATION,
-} from "../foreground-recovery.ts";
+} from "../foreground-recovery.js";
 import {
   ForegroundRecoveryRuntime,
   NOTIFICATION_ACTIVATION_MESSAGE,
-} from "./lifecycle.ts";
+} from "./lifecycle.js";
 import {
   FOREGROUND_RECOVERY_INTENT,
   FOREGROUND_RECOVERY_NODE,
   FOREGROUND_RECOVERY_TRIGGER,
   selectForegroundRecoveryPresentation,
-} from "./machine.ts";
+} from "./machine.js";
 
 function deferred() {
   let resolve;

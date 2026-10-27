@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./copy-markdown.ts");
+await import("./copy-markdown.js");
 const copyMarkdown = registry.element("caffold-notes-info-copy-markdown").prototype;
 after(() => registry.restore());
 

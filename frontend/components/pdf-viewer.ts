@@ -1,7 +1,7 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
-import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.ts";
-import type { DocumentPreviewFile } from "./dom.ts";
-import "./loading-text.ts";
+import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
+import type { DocumentPreviewFile } from "./dom.js";
+import "./loading-text.js";
 
 const PDFJS_VERSION = "6.3.289";
 const PDFJS_BASE = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}`;

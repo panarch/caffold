@@ -2,33 +2,33 @@ import { html, LitElement } from "lit";
 import {
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.ts";
-import { getNote, getNotes } from "#app/api.ts";
+} from "#app/action-hint-scope.js";
+import { getNote, getNotes } from "#app/api.js";
 import {
   emptyScrollSurfaceScope,
   mergeScrollSurfaceScopes,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "./components/document.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "./components/document.js";
 import type {
   CaffoldNoteDocument,
   NoteDocumentIntent,
   NoteDocumentSnapshot,
   NoteRead,
   NoteSide,
-} from "./components/document.ts";
+} from "./components/document.js";
 import {
   type CaffoldNotesNavigator,
   NOTES_NAVIGATOR_INTENT_EVENT,
   type NotesNavigatorIntent,
   type NotesNavigatorSnapshot,
-} from "./components/navigator.ts";
-import { NotesSelection } from "./layout/selection.ts";
+} from "./components/navigator.js";
+import { NotesSelection } from "./layout/selection.js";
 import {
   type NotesLevelRead,
   type NotesLevels,
   noteDirectoryKey,
-} from "./tree.ts";
+} from "./tree.js";
 
 // A level with nothing to show yet is marked loading only once its read
 // outlasts this wait, so a quick read never flashes a loading row.

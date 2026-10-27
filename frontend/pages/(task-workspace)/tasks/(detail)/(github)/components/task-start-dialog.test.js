@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./task-start-dialog.ts");
+await import("./task-start-dialog.js");
 const taskStart = registry.element("caffold-github-task-start-dialog").prototype;
 after(() => registry.restore());
 

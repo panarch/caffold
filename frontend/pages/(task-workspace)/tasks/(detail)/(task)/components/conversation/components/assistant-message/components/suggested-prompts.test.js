@@ -7,8 +7,8 @@ import {
 import { templateHtml } from "../../../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./suggested-prompts.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
+await import("./suggested-prompts.js");
+const { ActionHints } = await import("#app/action-hints.js");
 const suggestedPrompts = registry
   .element("caffold-task-assistant-message-suggested-prompts")
   .prototype;

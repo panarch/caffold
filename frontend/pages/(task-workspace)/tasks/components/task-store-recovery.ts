@@ -3,14 +3,14 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   INITIAL_TASK_STORE_STATUS_SNAPSHOT,
   TASK_STORE_RETRY_REQUEST_EVENT,
   type TaskStoreStatusSnapshot,
-} from "#app/pages/(task-workspace)/task-store-status.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+} from "#app/pages/(task-workspace)/task-store-status.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 
 const PREPARING_MESSAGE =
   "Caffold is preparing the local Task navigator before Tasks start.";

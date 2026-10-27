@@ -1,11 +1,11 @@
 import { html, LitElement } from "lit";
-import "../../action-hints/components/dialog.ts";
-import type { CaffoldActionHintDialog } from "../../action-hints/components/dialog.ts";
-import { DrawnRef, drawn } from "../../components/drawn-refs.ts";
-import "./hud.ts";
-import type { CaffoldScrollModeHud } from "./hud.ts";
-import "./selector.ts";
-import type { CaffoldScrollSurfaceSelector } from "./selector.ts";
+import "../../action-hints/components/dialog.js";
+import type { CaffoldActionHintDialog } from "../../action-hints/components/dialog.js";
+import { DrawnRef, drawn } from "../../components/drawn-refs.js";
+import "./hud.js";
+import type { CaffoldScrollModeHud } from "./hud.js";
+import "./selector.js";
+import type { CaffoldScrollSurfaceSelector } from "./selector.js";
 
 /**
  * What one keyboard context shows its modes with: the Action Hint badges,

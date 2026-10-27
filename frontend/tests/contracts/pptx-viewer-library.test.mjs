@@ -33,7 +33,7 @@ test("the browser suite serves pptx-renderer from the installed package", () => 
 });
 
 test("pptx-renderer stays a runtime CDN import rather than a shipped asset", () => {
-  const serviceWorker = read("service-worker.js");
+  const serviceWorker = read("service-worker.ts");
   const staticAssets = readFileSync(
     new URL("../caffold/src/static_assets.rs", frontendUrl),
     "utf8",
@@ -42,6 +42,6 @@ test("pptx-renderer stays a runtime CDN import rather than a shipped asset", () 
   for (const manifest of [serviceWorker, staticAssets]) {
     assert.doesNotMatch(manifest, /pptx-renderer/);
   }
-  assert.match(serviceWorker, /"\/assets\/components\/pptx-viewer\.ts"/);
-  assert.match(staticAssets, /"components\/pptx-viewer\.ts"/);
+  assert.match(serviceWorker, /"\/assets\/components\/pptx-viewer\.js"/);
+  assert.match(staticAssets, /"components\/pptx-viewer\.js"/);
 });

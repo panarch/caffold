@@ -1,9 +1,9 @@
 import { html, LitElement } from "lit";
-import { ACTION_HINT_ACTION, type ActionHintPull } from "#app/action-hints.ts";
-import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "#components/git-compare-browser.ts";
-import type { CaffoldGitCompareBrowser } from "#components/git-compare-browser.ts";
+import { ACTION_HINT_ACTION, type ActionHintPull } from "#app/action-hints.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "#components/git-compare-browser.js";
+import type { CaffoldGitCompareBrowser } from "#components/git-compare-browser.js";
 
 export class CaffoldGitComparePage extends LitElement {
   private readonly browserElement = new DrawnRef<CaffoldGitCompareBrowser>(

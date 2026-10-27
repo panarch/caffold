@@ -9,7 +9,7 @@ const previousWindow = globalThis.window;
 let singlePane = false;
 globalThis.window = { matchMedia: () => ({ matches: singlePane }) };
 const registry = installCustomElementUnitRegistry();
-await import("./page.ts");
+await import("./page.js");
 const page = registry.element("caffold-git-log-commit-page").prototype;
 after(() => {
   registry.restore();

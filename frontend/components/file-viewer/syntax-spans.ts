@@ -1,5 +1,5 @@
 import { html, type TemplateResult } from "lit";
-import type { SyntaxSpan } from "#app/api.ts";
+import type { SyntaxSpan } from "#app/api.js";
 
 // The class for each color number, in the order `SyntaxColor` lists them.
 const SYNTAX_CLASSES = [

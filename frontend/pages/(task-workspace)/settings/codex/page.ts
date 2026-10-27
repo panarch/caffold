@@ -5,7 +5,7 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   type CodexRateWindow,
   type CodexReadiness,
@@ -13,10 +13,10 @@ import {
   type CodexStatus,
   type CodexUpdates,
   getCodexUpdates,
-} from "#app/api.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "#components/loading-text.ts";
+} from "#app/api.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "#components/loading-text.js";
 import {
   CODEX_RESET_CREDIT_REQUEST_EVENT,
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
@@ -35,11 +35,11 @@ import {
   formatResetCredits,
   formatUsedPercent,
   resetCreditExpiry,
-} from "../../codex-status.ts";
-import "../components/detail-list.ts";
-import type { SettingsDetailRow } from "../components/detail-list.ts";
-import "../components/refresh-button.ts";
-import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.ts";
+} from "../../codex-status.js";
+import "../components/detail-list.js";
+import type { SettingsDetailRow } from "../components/detail-list.js";
+import "../components/refresh-button.js";
+import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.js";
 
 const CODEX_INSTALL_COMMAND =
   "curl -fsSL https://chatgpt.com/codex/install.sh | sh";

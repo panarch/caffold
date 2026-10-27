@@ -12,7 +12,7 @@ import {
 import { captureReviewScreenshot } from "./support/task-fixtures.js";
 
 const serviceWorkerSource = readFileSync(
-  new URL("../../service-worker.js", import.meta.url),
+  new URL("../../service-worker.ts", import.meta.url),
   "utf8",
 );
 const appShellAssets = JSON.parse(
@@ -2103,6 +2103,10 @@ function activationGateDiagnostic(snapshot) {
 }
 
 async function startBuildLifecycleServer(upstreamOrigin) {
+  // The worker runtime the server under test serves, as tsc compiled it.
+  const servedWorker = await (
+    await fetch(new URL("/service-worker.js", upstreamOrigin))
+  ).text();
   let currentBuild = {
     id: "browser-build-a",
     number: 1,
@@ -2113,15 +2117,19 @@ async function startBuildLifecycleServer(upstreamOrigin) {
     try {
       const url = new URL(request.url, "http://caffold.test");
       if (url.pathname === "/service-worker.js") {
-        let body = serviceWorkerSource.replace(
-          '"caffold-shell-__CAFFOLD_BUILD_ID__"',
-          JSON.stringify(`caffold-shell-${currentBuild.id}`),
+        const servedCacheName = /^const CACHE_NAME = "caffold-shell-[^"\n]*";$/m;
+        if (!servedCacheName.test(servedWorker)) {
+          throw new Error("PWA lifecycle fixture cache name hook is stale");
+        }
+        let body = servedWorker.replace(
+          servedCacheName,
+          `const CACHE_NAME = ${JSON.stringify(`caffold-shell-${currentBuild.id}`)};`,
         );
         const productionActivationHandler = [
-          "  if (event.data?.type === ACTIVATE_PREPARED_BUILD_MESSAGE) {",
-          "    event.waitUntil(self.skipWaiting());",
-          "    return;",
-          "  }",
+          "    if (event.data?.type === ACTIVATE_PREPARED_BUILD_MESSAGE) {",
+          "        event.waitUntil(worker.skipWaiting());",
+          "        return;",
+          "    }",
         ].join("\n");
         if (!body.includes(productionActivationHandler)) {
           throw new Error("PWA lifecycle fixture activation hook is stale");
@@ -2129,11 +2137,11 @@ async function startBuildLifecycleServer(upstreamOrigin) {
         body = body.replace(
           productionActivationHandler,
           [
-            "  if (event.data?.type === ACTIVATE_PREPARED_BUILD_MESSAGE) {",
-            `    event.source?.postMessage({ type: ${JSON.stringify(TEST_ACTIVATION_REQUEST_OBSERVED_MESSAGE)}, buildId: BUILD_ID });`,
-            "    // The lifecycle fixture releases this edge through the exact worker runtime.",
-            "    return;",
-            "  }",
+            "    if (event.data?.type === ACTIVATE_PREPARED_BUILD_MESSAGE) {",
+            `        event.source?.postMessage({ type: ${JSON.stringify(TEST_ACTIVATION_REQUEST_OBSERVED_MESSAGE)}, buildId: BUILD_ID });`,
+            "        // The lifecycle fixture releases this edge through the exact worker runtime.",
+            "        return;",
+            "    }",
           ].join("\n"),
         );
         body += `\nself.addEventListener("message", (event) => {
@@ -2154,9 +2162,14 @@ async function startBuildLifecycleServer(upstreamOrigin) {
   }
 });\n`;
         if (currentBuild.omitControlledAck) {
+          const controlledAck =
+            "    client?.postMessage({ type: UPDATE_CONTROLLED_MESSAGE, buildId: BUILD_ID });";
+          if (!body.includes(controlledAck)) {
+            throw new Error("PWA lifecycle fixture acknowledgement hook is stale");
+          }
           body = body.replace(
-            "  client?.postMessage({ type: UPDATE_CONTROLLED_MESSAGE, buildId: BUILD_ID });",
-            "  // Lifecycle fixture intentionally omits the custom acknowledgement.",
+            controlledAck,
+            "    // Lifecycle fixture intentionally omits the custom acknowledgement.",
           );
         }
         response.writeHead(200, {

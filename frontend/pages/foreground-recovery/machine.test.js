@@ -3,7 +3,7 @@ import test from "node:test";
 
 import {
   FOREGROUND_RECOVERY_PRESENTATION,
-} from "../foreground-recovery.ts";
+} from "../foreground-recovery.js";
 import {
   FOREGROUND_RECOVERY_EVENT,
   FOREGROUND_RECOVERY_INTENT,
@@ -13,7 +13,7 @@ import {
   createForegroundRecoveryState,
   selectForegroundRecoveryPresentation,
   transitionForegroundRecovery,
-} from "./machine.ts";
+} from "./machine.js";
 
 const VISIBLE = Object.freeze({
   focused: true,

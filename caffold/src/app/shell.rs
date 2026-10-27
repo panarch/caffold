@@ -276,8 +276,12 @@ mod tests {
         let first = render_service_worker(source, "first-build").unwrap();
         let second = render_service_worker(source, "second\"\\\nbuild").unwrap();
 
-        assert!(first.starts_with("const CACHE_NAME = \"caffold-shell-first-build\";"));
-        assert!(second.starts_with("const CACHE_NAME = \"caffold-shell-second\\\"\\\\\\nbuild\";"));
+        assert!(
+            first.starts_with("\"use strict\";\nconst CACHE_NAME = \"caffold-shell-first-build\";")
+        );
+        assert!(second.starts_with(
+            "\"use strict\";\nconst CACHE_NAME = \"caffold-shell-second\\\"\\\\\\nbuild\";"
+        ));
         assert_ne!(first, second);
         assert!(!first.contains("__CAFFOLD_BUILD_ID__"));
         assert!(!second.contains("__CAFFOLD_BUILD_ID__"));
@@ -304,9 +308,9 @@ mod tests {
     #[tokio::test]
     async fn assets_are_tagged_by_their_contents_and_revalidated_before_use() {
         let (_root, router) = shell_router();
-        let script = static_assets::get("app.ts").unwrap();
+        let script = static_assets::get("app.js").unwrap();
 
-        let response = get_asset(&router, "app.ts", None).await;
+        let response = get_asset(&router, "app.js", None).await;
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
@@ -326,7 +330,7 @@ mod tests {
             )
         );
         assert_eq!(body(response).await, script.body);
-        let again = get_asset(&router, "app.ts", None).await;
+        let again = get_asset(&router, "app.js", None).await;
         assert_eq!(again.headers()[header::ETAG], tag.as_str());
         let font = get_asset(&router, "fonts/GeistSans-Variable.woff2", None).await;
         assert_ne!(font.headers()[header::ETAG], tag.as_str());
@@ -335,7 +339,7 @@ mod tests {
     #[tokio::test]
     async fn an_asset_the_browser_already_holds_is_answered_without_its_body() {
         let (_root, router) = shell_router();
-        let tag = get_asset(&router, "app.ts", None).await.headers()[header::ETAG]
+        let tag = get_asset(&router, "app.js", None).await.headers()[header::ETAG]
             .to_str()
             .unwrap()
             .to_string();
@@ -346,18 +350,18 @@ mod tests {
             format!("\"elsewhere,1\", {tag}"),
             "*".to_string(),
         ] {
-            let response = get_asset(&router, "app.ts", Some(&held)).await;
+            let response = get_asset(&router, "app.js", Some(&held)).await;
             assert_eq!(response.status(), StatusCode::NOT_MODIFIED, "{held}");
             assert_eq!(response.headers()[header::ETAG], tag.as_str());
             assert_eq!(response.headers()[header::CACHE_CONTROL], "no-cache");
             assert!(body(response).await.is_empty());
         }
 
-        let changed = get_asset(&router, "app.ts", Some("\"an-older-build\"")).await;
+        let changed = get_asset(&router, "app.js", Some("\"an-older-build\"")).await;
         assert_eq!(changed.status(), StatusCode::OK);
         assert_eq!(
             body(changed).await,
-            static_assets::get("app.ts").unwrap().body
+            static_assets::get("app.js").unwrap().body
         );
     }
 

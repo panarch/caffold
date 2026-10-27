@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./pagination.ts");
+await import("./pagination.js");
 const pagination = registry.element("caffold-pagination").prototype;
 after(() => registry.restore());
 

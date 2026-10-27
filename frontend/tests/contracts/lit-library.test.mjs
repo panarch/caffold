@@ -16,7 +16,7 @@ test("Caffold builds in the Lit release the frontend package pins", () => {
   assert.equal(
     manifest.devDependencies?.lit,
     undefined,
-    "a build installs runtime dependencies only, so Lit cannot be a development package",
+    "a build installs `dependencies` only, so Lit cannot be a development package",
   );
   assert.equal(JSON.parse(read(nodeModulesUrl, "lit/package.json")).version, pinned);
 });
@@ -31,7 +31,7 @@ test("frontend modules reach Lit through the lit package alone", () => {
 
 test("every Lit module a page reaches is its package's browser build, served and precached once", () => {
   const staticAssets = readFileSync(new URL("../caffold/src/static_assets.rs", frontendUrl), "utf8");
-  const serviceWorker = read(frontendUrl, "service-worker.js");
+  const serviceWorker = read(frontendUrl, "service-worker.ts");
   const reached = new Set();
   const specifiers = productionModules().flatMap(([, source]) => litSpecifiers(source));
   assert.ok(specifiers.includes("lit"), "the frontend renders with Lit");

@@ -6,7 +6,7 @@ import {
 } from "../../../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./markdown.ts");
+await import("./markdown.js");
 const markdown = registry.element("caffold-task-markdown").prototype;
 after(() => registry.restore());
 

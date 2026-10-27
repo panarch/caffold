@@ -6,7 +6,7 @@ import {
   commandResult,
   groupFinishedCommands,
   isFinishedCommand,
-} from "./command-runs.ts";
+} from "./command-runs.js";
 
 test("folds two or more finished commands in a row and leaves one alone", () => {
   const first = command("a", "completed");

@@ -1,20 +1,20 @@
 import { html, LitElement } from "lit";
-import type { ActionHintPull } from "#app/action-hints.ts";
+import type { ActionHintPull } from "#app/action-hints.js";
 import {
   type GitHubPulls,
   type GitHubStatus,
   type GitRepository,
   getGitHubPull,
   getGitHubPulls,
-} from "#app/api.ts";
-import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "./detail/page.ts";
-import type { CaffoldGithubPullDetailPage } from "./detail/page.ts";
-import "./files/page.ts";
-import type { CaffoldGithubPullFilesPage } from "./files/page.ts";
-import "./list/page.ts";
-import type { CaffoldGithubPullsListPage } from "./list/page.ts";
+} from "#app/api.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "./detail/page.js";
+import type { CaffoldGithubPullDetailPage } from "./detail/page.js";
+import "./files/page.js";
+import type { CaffoldGithubPullFilesPage } from "./files/page.js";
+import "./list/page.js";
+import type { CaffoldGithubPullsListPage } from "./list/page.js";
 
 const GITHUB_PULLS_PER_PAGE = 50;
 const LOADING_DELAY_MS = 180;

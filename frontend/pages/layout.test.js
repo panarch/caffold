@@ -5,7 +5,7 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../tests/support/custom-element-unit.js";
-import { NavigationHistory } from "./navigation-history.ts";
+import { NavigationHistory } from "./navigation-history.js";
 
 const previousDocument = globalThis.document;
 const previousWindow = globalThis.window;
@@ -35,9 +35,9 @@ const buildInfoHook = registerHooks({
   },
 });
 const registry = installCustomElementUnitRegistry();
-await import("./layout.ts");
+await import("./layout.js");
 const appShell = registry.element("caffold-app-shell").prototype;
-const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
 
 after(() => {
   registry.restore();

@@ -8,11 +8,11 @@ import {
 const registry = installCustomElementUnitRegistry();
 const previousElement = globalThis.Element;
 globalThis.Element = globalThis.HTMLElement;
-const { KeyboardNavigationController } = await import("./keyboard-navigation.ts");
+const { KeyboardNavigationController } = await import("./keyboard-navigation.js");
 const {
   KEYBOARD_NAVIGATION_EVENT,
   KEYBOARD_NAVIGATION_NODE,
-} = await import("./keyboard-navigation/control.ts");
+} = await import("./keyboard-navigation/control.js");
 after(() => {
   restoreGlobal("Element", previousElement);
   registry.restore();

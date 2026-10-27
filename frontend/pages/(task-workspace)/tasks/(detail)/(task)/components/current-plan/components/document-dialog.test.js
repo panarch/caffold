@@ -6,7 +6,7 @@ import {
 } from "../../../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./document-dialog.ts");
+await import("./document-dialog.js");
 const DocumentDialog = registry.element("caffold-current-plan-document-dialog");
 after(() => registry.restore());
 

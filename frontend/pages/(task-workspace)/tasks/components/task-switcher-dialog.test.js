@@ -7,11 +7,11 @@ import {
 import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-const { TASK_SWITCHER_SELECT_EVENT } = await import("./task-switcher-dialog.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
-const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
-const { ScrollSurfaces } = await import("#app/scroll-scope.ts");
-const { DrawnRefs } = await import("#components/drawn-refs.ts");
+const { TASK_SWITCHER_SELECT_EVENT } = await import("./task-switcher-dialog.js");
+const { ActionHints } = await import("#app/action-hints.js");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
+const { ScrollSurfaces } = await import("#app/scroll-scope.js");
+const { DrawnRefs } = await import("#components/drawn-refs.js");
 const Switcher = registry.element("caffold-task-switcher-dialog");
 after(() => registry.restore());
 

@@ -4,8 +4,8 @@ import { installCustomElementUnitRegistry } from "../../../../../../../../tests/
 import { templateHtml } from "../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./older-history.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
+await import("./older-history.js");
+const { ActionHints } = await import("#app/action-hints.js");
 const olderHistory = registry.element("caffold-task-older-history").prototype;
 after(() => registry.restore());
 

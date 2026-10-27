@@ -4,9 +4,9 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import { inlineIcon } from "#components/icons.ts";
-import { requestTaskImagePreview } from "../../image-preview-dialog.ts";
+} from "#app/action-hints.js";
+import { inlineIcon } from "#components/icons.js";
+import { requestTaskImagePreview } from "../../image-preview-dialog.js";
 
 // A file a draft will send. A picture every agent can be shown also carries
 // its contents as a data URL.

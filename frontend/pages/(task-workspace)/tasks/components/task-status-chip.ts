@@ -1,8 +1,8 @@
 import { html, LitElement, nothing } from "lit";
-import type { TaskThreadStatus } from "#app/api.ts";
-import { busySpin } from "#app/component-styles.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import { taskStatusView } from "../runtime-state.ts";
+import type { TaskThreadStatus } from "#app/api.js";
+import { busySpin } from "#app/component-styles.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import { taskStatusView } from "../runtime-state.js";
 
 // A spinner turns once in this long; a staggered one starts somewhere along
 // the turn.

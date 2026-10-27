@@ -142,12 +142,10 @@ Apply the common [Source Module Ownership](policy.md#source-module-ownership)
 rules when deciding whether frontend implementation remains private to its
 current owner or moves to a shared boundary.
 
-A module may be written in TypeScript as `name.ts` instead of `name.js`; the
-rules below apply to it the same way. A module moves to TypeScript whole, not
-partly to publish its types. A type belongs to the module that owns the
-contract it describes, and other modules import it rather than declaring it
-again. While a JavaScript module has TypeScript callers, a same-stem
-`name.d.ts` declares the part they use until the module becomes `name.ts`.
+Frontend modules are TypeScript files, `name.ts`, imported as `name.js`, the
+file tsc writes for them; the paths below are those import paths. A type
+belongs to the module that owns the contract it describes, and other modules
+import it rather than declaring it again.
 
 When one frontend module grows beyond a single file, use an adjacent same-stem
 directory: `name.js` and `name/` form one ownership boundary. `name.js` is the

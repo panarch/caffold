@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./pdf-viewer.ts");
+await import("./pdf-viewer.js");
 const pdfViewer = registry.element("caffold-pdf-viewer").prototype;
 after(() => registry.restore());
 

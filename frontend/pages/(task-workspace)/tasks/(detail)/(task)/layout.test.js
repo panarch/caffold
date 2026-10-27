@@ -7,10 +7,10 @@ import {
 import { templateHtml } from "../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./layout.ts");
+await import("./layout.js");
 const TaskDetail = registry.element("caffold-task-detail");
 const taskDetail = TaskDetail.prototype;
-const { ActionHints } = await import("#app/action-hints.ts");
+const { ActionHints } = await import("#app/action-hints.js");
 after(() => registry.restore());
 
 // A Task screen with only the state its drawing reads, and no conversation.

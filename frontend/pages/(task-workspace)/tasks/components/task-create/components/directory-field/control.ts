@@ -1,4 +1,4 @@
-import type { DirectoryEntry, DirectoryListing } from "#app/api.ts";
+import type { DirectoryEntry, DirectoryListing } from "#app/api.js";
 import {
   completeTypedDirectoryPath,
   directoryPathEditingText,
@@ -6,7 +6,7 @@ import {
   readTypedDirectoryPath,
   type ServerPaths,
   type TypedDirectoryPath,
-} from "../../directory-path.ts";
+} from "../../directory-path.js";
 
 // The directory field's control model.
 //

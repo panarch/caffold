@@ -6,41 +6,41 @@ import {
   ActionHints,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import type { TaskEvent } from "#app/api.ts";
+} from "#app/action-hints.js";
+import type { TaskEvent } from "#app/api.js";
 import {
   emptyScrollSurfaceScope,
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   ScrollSurfaces,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
 import {
   eventIdentityKey,
   fileChangePathPresentations,
   sortEventsChronologically,
   taskEventAnchorMs,
   taskEventPositionIndex,
-} from "#tasks/task-events.ts";
+} from "#tasks/task-events.js";
 import {
   formatDate,
   formatStatus,
   type TaskFilePath,
   taskEventObservedMs,
   toolCallPresentation,
-} from "#tasks/task-format.ts";
+} from "#tasks/task-format.js";
 import {
   commandGroupIdentity,
   groupFinishedCommands,
-} from "../command-runs.ts";
-import "./assistant-message.ts";
-import type { CaffoldTaskAssistantMessage } from "./assistant-message.ts";
-import "./changed-files.ts";
-import "./command.ts";
-import type { CaffoldTaskCommand } from "./command.ts";
-import "./command-group.ts";
-import type { CaffoldTaskCommandGroup } from "./command-group.ts";
+} from "../command-runs.js";
+import "./assistant-message.js";
+import type { CaffoldTaskAssistantMessage } from "./assistant-message.js";
+import "./changed-files.js";
+import "./command.js";
+import type { CaffoldTaskCommand } from "./command.js";
+import "./command-group.js";
+import type { CaffoldTaskCommandGroup } from "./command-group.js";
 
 const CHEVRON = "task-work-details-chevron-icon";
 

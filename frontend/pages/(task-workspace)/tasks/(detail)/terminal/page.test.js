@@ -5,15 +5,15 @@ import {
   installCustomElementUnitRegistry,
 } from "../../../../../tests/support/custom-element-unit.js";
 import { templateHtml } from "../../../../../tests/support/lit-template.js";
-import { TERMINAL_EFFECT, TERMINAL_EVENT, TERMINAL_NODE } from "./page/model.ts";
+import { TERMINAL_EFFECT, TERMINAL_EVENT, TERMINAL_NODE } from "./page/model.js";
 
 const registry = installCustomElementUnitRegistry();
 const {
   TERMINAL_PAGE_HEADER_EVENT,
   TERMINAL_PAGE_LEAVE_EVENT,
-} = await import("./page.ts");
+} = await import("./page.js");
 const terminalPage = registry.element("caffold-terminal-page").prototype;
-const { ActionHints } = await import("#app/action-hints.ts");
+const { ActionHints } = await import("#app/action-hints.js");
 after(() => registry.restore());
 
 test("input reaches the shell only from the live screen", () => {

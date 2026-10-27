@@ -9,7 +9,7 @@ async function placePhrases(page) {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await page.evaluate(async () => {
-    await import("/assets/components/loading-text.ts");
+    await import("/assets/components/loading-text.js");
     const delayed = document.createElement("caffold-loading-text");
     delayed.id = "delayed-phrase";
     delayed.textContent = "Loading files...";

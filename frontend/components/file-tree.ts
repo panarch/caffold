@@ -1,24 +1,24 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
 import { repeat } from "lit/directives/repeat.js";
-import { type ActionHintPull, ActionHints } from "../action-hints.ts";
+import { type ActionHintPull, ActionHints } from "../action-hints.js";
 import {
   type FileStatusContext,
   fileStatusPresentation,
-} from "../file-status.ts";
+} from "../file-status.js";
 import {
   type ScrollSurfacePull,
   ScrollSurfaces,
   scrollBackToTop,
-} from "../scroll-scope.ts";
+} from "../scroll-scope.js";
 import {
   FILE_SORT_MODES,
   type FileSortMode,
   getSettings,
   normalizeFileSortMode,
-} from "../settings.ts";
-import { entryIcon, warmIcons } from "./icons.ts";
-import "./loading-text.ts";
-import { DrawnRef, DrawnRefs, drawn } from "./drawn-refs.ts";
+} from "../settings.js";
+import { entryIcon, warmIcons } from "./icons.js";
+import "./loading-text.js";
+import { DrawnRef, DrawnRefs, drawn } from "./drawn-refs.js";
 
 export const FILE_TREE_SELECT_EVENT = "caffold:file-tree-select";
 export const FILE_TREE_LOAD_EVENT = "caffold:file-tree-load-children";

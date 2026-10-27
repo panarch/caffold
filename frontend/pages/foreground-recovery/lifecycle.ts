@@ -4,7 +4,7 @@ import {
   FOREGROUND_RECOVERY_BROWSER_SIGNAL,
   type ForegroundRecoveryBrowserSignal,
   ForegroundRecoveryBrowserSignals,
-} from "./browser-signals.ts";
+} from "./browser-signals.js";
 
 import {
   createForegroundRecoveryState,
@@ -23,7 +23,7 @@ import {
   normalizeRecoveryRequest,
   type RecoveryRequest,
   transitionForegroundRecovery,
-} from "./machine.ts";
+} from "./machine.js";
 
 export const NOTIFICATION_ACTIVATION_MESSAGE =
   "caffold:notification-activation";

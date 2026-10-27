@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./layout.ts");
+await import("./layout.js");
 const layout = registry.element("caffold-github-pulls-layout").prototype;
 after(() => registry.restore());
 

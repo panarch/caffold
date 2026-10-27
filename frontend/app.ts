@@ -1,2 +1,2 @@
-import "./settings.ts";
-import "./pages/layout.ts";
+import "./settings.js";
+import "./pages/layout.js";

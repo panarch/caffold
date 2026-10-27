@@ -1,9 +1,9 @@
 import { html, LitElement } from "lit";
-import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
-import { deleteTask, getTask, type TaskResponseError } from "#app/api.ts";
-import { KeyboardContexts } from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
+import { deleteTask, getTask, type TaskResponseError } from "#app/api.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 
 // The Task a broken worktree keeps from opening, as its Task screen holds it.
 export interface BrokenTaskContext {

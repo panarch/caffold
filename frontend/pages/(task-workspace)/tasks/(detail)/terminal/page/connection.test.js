@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { TerminalConnection } from "./connection.ts";
+import { TerminalConnection } from "./connection.js";
 
 const originalGlobals = {
   window: globalThis.window,

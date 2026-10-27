@@ -6,7 +6,7 @@ import {
 } from "../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./page.ts");
+await import("./page.js");
 const taskNew = registry.element("caffold-task-new").prototype;
 after(() => registry.restore());
 

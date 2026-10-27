@@ -3,7 +3,7 @@ import type {
   CodexRateWindow,
   CodexResetCredit,
   CodexStatus,
-} from "#app/api.ts";
+} from "#app/api.js";
 
 type Status = CodexStatus | null | undefined;
 

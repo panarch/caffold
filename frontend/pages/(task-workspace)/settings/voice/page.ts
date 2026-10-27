@@ -4,10 +4,10 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
-import "../components/detail-list.ts";
+} from "#app/action-hints.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
+import "../components/detail-list.js";
 import {
   VOICE_KEY_PROVIDERS,
   type VoiceKeyProvider,
@@ -15,7 +15,7 @@ import {
   VoiceSettingsLifecycle,
   type VoiceSettingsSnapshot,
   voiceReadinessKey,
-} from "./lifecycle.ts";
+} from "./lifecycle.js";
 
 const PROVIDER_CHOICES = Object.freeze([
   {

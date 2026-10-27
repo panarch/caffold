@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { controlCharacter, specialKeySequence } from "./keys.ts";
+import { controlCharacter, specialKeySequence } from "./keys.js";
 
 test("Esc and Tab send their own characters", () => {
   assert.equal(specialKeySequence("escape"), "\x1b");

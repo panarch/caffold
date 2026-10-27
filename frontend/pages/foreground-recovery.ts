@@ -1,21 +1,21 @@
-import type { LiveConnectionReport } from "./(task-workspace)/live-updates.ts";
+import type { LiveConnectionReport } from "./(task-workspace)/live-updates.js";
 import {
   ForegroundRecoveryDiagnostics,
   type ForegroundRecoveryDiagnosticsOptions,
-} from "./foreground-recovery/diagnostics.ts";
+} from "./foreground-recovery/diagnostics.js";
 import {
   ForegroundRecoveryRuntime,
   type ForegroundRecoveryRuntimeOptions,
   type ForegroundRecoveryRuntimeSnapshot,
   type RecoveryAttempt,
-} from "./foreground-recovery/lifecycle.ts";
+} from "./foreground-recovery/lifecycle.js";
 import {
   FOREGROUND_RECOVERY_INTENT,
   FOREGROUND_RECOVERY_NODE,
   FOREGROUND_RECOVERY_TRIGGER,
   type ForegroundRecoveryNode,
   selectForegroundRecoveryPresentation,
-} from "./foreground-recovery/machine.ts";
+} from "./foreground-recovery/machine.js";
 
 // Public presentation contract consumed by the App Shell notice.
 export const FOREGROUND_RECOVERY_PRESENTATION = Object.freeze({

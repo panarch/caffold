@@ -1,9 +1,9 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
-import type { SyntaxSpan } from "#app/api.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "../../drawn-refs.ts";
-import { syntaxLine } from "../syntax-spans.ts";
-import type { ScrollPosition, ViewerPosition } from "./code-viewer.ts";
+import type { SyntaxSpan } from "#app/api.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "../../drawn-refs.js";
+import { syntaxLine } from "../syntax-spans.js";
+import type { ScrollPosition, ViewerPosition } from "./code-viewer.js";
 
 export interface FileDiff {
   diff?: string;

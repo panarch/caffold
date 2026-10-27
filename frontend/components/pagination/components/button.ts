@@ -1,7 +1,7 @@
 import { html, LitElement } from "lit";
-import { type ActionHintPull, ActionHints } from "#app/action-hints.ts";
-import { compactIconButton } from "#app/component-styles.ts";
-import { inlineIcon } from "../../icons.ts";
+import { type ActionHintPull, ActionHints } from "#app/action-hints.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { inlineIcon } from "../../icons.js";
 
 export type PageKind = "first" | "previous" | "next" | "last";
 

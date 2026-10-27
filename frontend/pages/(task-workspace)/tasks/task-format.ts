@@ -1,4 +1,4 @@
-import type { Task, TaskEventPayload } from "#app/api.ts";
+import type { Task, TaskEventPayload } from "#app/api.js";
 
 export function normalizeTaskPath(path: unknown) {
   return `${path ?? ""}`

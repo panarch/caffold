@@ -7,7 +7,7 @@ import {
   directoryPathEditingText,
   matchesTypedName,
   readTypedDirectoryPath,
-} from "./directory-path.ts";
+} from "./directory-path.js";
 
 const MAC = { root: "/", homePath: "Users/taehoon" };
 const ROOTED = { root: "/srv/work", homePath: null };

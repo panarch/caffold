@@ -4,19 +4,19 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import { type ClaudeStatus, getClaudeStatus } from "#app/api.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "../components/detail-list.ts";
-import type { SettingsDetailRow } from "../components/detail-list.ts";
-import "../components/refresh-button.ts";
-import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.ts";
+} from "#app/action-hints.js";
+import { type ClaudeStatus, getClaudeStatus } from "#app/api.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "../components/detail-list.js";
+import type { SettingsDetailRow } from "../components/detail-list.js";
+import "../components/refresh-button.js";
+import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.js";
 import {
   idleTimeoutValue,
   usageWindowLabel,
   usageWindowValue,
-} from "./display.ts";
+} from "./display.js";
 
 export const CLAUDE_RUNTIME_RESTART_REQUEST_EVENT =
   "caffold:request-claude-runtime-restart";

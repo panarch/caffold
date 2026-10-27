@@ -7,8 +7,8 @@ import {
 import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./archived-task-list.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
+await import("./archived-task-list.js");
+const { ActionHints } = await import("#app/action-hints.js");
 const Archived = registry.element("caffold-archived-task-list");
 after(() => registry.restore());
 

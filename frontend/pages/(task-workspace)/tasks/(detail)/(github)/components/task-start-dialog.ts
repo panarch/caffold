@@ -4,33 +4,33 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   createTask,
   type GitHubIssue,
   type GitHubPull,
   type GitRepository,
-} from "#app/api.ts";
+} from "#app/api.js";
 import {
   KeyboardContexts,
   mergeKeyboardNavigationContexts,
-} from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   ScrollSurfaces,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "#tasks/components/task-turn-options.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "#tasks/components/task-turn-options.js";
 import type {
   CaffoldTaskTurnOptions,
   TurnOptionsSelection,
-} from "#tasks/components/task-turn-options.ts";
-import "./task-start-dialog/components/github-issue.ts";
-import type { CaffoldGithubIssueTaskSource } from "./task-start-dialog/components/github-issue.ts";
-import "./task-start-dialog/components/github-pull.ts";
-import type { CaffoldGithubPullTaskSource } from "./task-start-dialog/components/github-pull.ts";
+} from "#tasks/components/task-turn-options.js";
+import "./task-start-dialog/components/github-issue.js";
+import type { CaffoldGithubIssueTaskSource } from "./task-start-dialog/components/github-issue.js";
+import "./task-start-dialog/components/github-pull.js";
+import type { CaffoldGithubPullTaskSource } from "./task-start-dialog/components/github-pull.js";
 
 // The issue or pull request a Task is started for.
 export type TaskStartSource =

@@ -7,7 +7,7 @@ import {
 import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./layout.ts");
+await import("./layout.js");
 const detailLayout = registry.element("caffold-detail-layout").prototype;
 after(() => registry.restore());
 

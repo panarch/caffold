@@ -3,8 +3,8 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import type { Note } from "#app/api.ts";
+} from "#app/action-hints.js";
+import type { Note } from "#app/api.js";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 

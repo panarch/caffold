@@ -1,8 +1,8 @@
-import type { TaskAbsence } from "#app/api.ts";
+import type { TaskAbsence } from "#app/api.js";
 import {
   TASK_TRANSPORT_STATE,
   type TaskTransportState,
-} from "../runtime-state.ts";
+} from "../runtime-state.js";
 
 // The control graph of one Task stream: the logical subscription a Task List or
 // Task Detail owner keeps on the workspace gateway, from choosing a context

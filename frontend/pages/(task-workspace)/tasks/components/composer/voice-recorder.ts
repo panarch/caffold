@@ -175,7 +175,7 @@ export class VoiceRecorder {
         throw new Error("This browser does not support AudioWorklet capture.");
       }
       await context.audioWorklet.addModule(
-        new URL("./voice-worklet.ts", import.meta.url),
+        new URL("./voice-worklet.js", import.meta.url),
       );
       await context.resume();
       this.source = context.createMediaStreamSource(this.stream);

@@ -1,25 +1,25 @@
 import { html, LitElement, type PropertyValues } from "lit";
-import { hasActionHintLayoutBox } from "#app/action-hint-scope.ts";
+import { hasActionHintLayoutBox } from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import type { Note } from "#app/api.ts";
-import { compactIconButton } from "#app/component-styles.ts";
+} from "#app/action-hints.js";
+import type { Note } from "#app/api.js";
+import { compactIconButton } from "#app/component-styles.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   ScrollSurfaces,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "#components/loading-text.ts";
-import "#components/markdown-preview.ts";
-import type { CaffoldMarkdownPreview } from "#components/markdown-preview.ts";
-import "./info.ts";
-import type { CaffoldNotesInfo } from "./info.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
+import "#components/markdown-preview.js";
+import type { CaffoldMarkdownPreview } from "#components/markdown-preview.js";
+import "./info.js";
+import type { CaffoldNotesInfo } from "./info.js";
 
 export const NOTE_DOCUMENT_INTENT_EVENT = "caffold:note-document-intent";
 

@@ -1,7 +1,7 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
-import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.ts";
-import type { DocumentPreviewFile } from "./dom.ts";
-import "./loading-text.ts";
+import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
+import type { DocumentPreviewFile } from "./dom.js";
+import "./loading-text.js";
 
 const DOCX_PREVIEW_VERSION = "0.4.1";
 const DOCX_PREVIEW_IMPORT = `https://cdn.jsdelivr.net/npm/docx-preview@${DOCX_PREVIEW_VERSION}/+esm`;

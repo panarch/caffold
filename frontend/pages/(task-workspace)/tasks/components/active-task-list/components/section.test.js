@@ -7,8 +7,8 @@ import {
 import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./section.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
+await import("./section.js");
+const { ActionHints } = await import("#app/action-hints.js");
 const Section = registry.element("caffold-active-task-section");
 after(() => registry.restore());
 

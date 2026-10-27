@@ -1,16 +1,16 @@
 import { html, LitElement, nothing } from "lit";
-import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
-import type { TaskEvent } from "#app/api.ts";
-import { KeyboardContexts } from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
+import type { TaskEvent } from "#app/api.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
 import {
   formatDate,
   formatDuration,
   taskEventObservedMs,
-} from "#tasks/task-format.ts";
+} from "#tasks/task-format.js";
 
 // One finished command as the dialog shows it.
 interface CommandView {

@@ -6,21 +6,21 @@ import {
   hasActionHintLayoutBox,
   mergeActionHintScopes,
   withActionHintOcclusionRoots,
-} from "#app/action-hints.ts";
-import { type Health, restartClaudeRuntime } from "#app/api.ts";
-import { compactIconButton } from "#app/component-styles.ts";
-import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.ts";
-import { routeDomain, routeTab, routeTarget } from "#app/navigation-routes.ts";
+} from "#app/action-hints.js";
+import { type Health, restartClaudeRuntime } from "#app/api.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
+import { routeDomain, routeTab, routeTarget } from "#app/navigation-routes.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
   type ScrollSurfaceScope,
-} from "#app/scroll-scope.ts";
-import { DrawnRefs, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "#components/pane-resizer.ts";
-import type { CaffoldPaneResizer } from "#components/pane-resizer.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRefs, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#components/pane-resizer.js";
+import type { CaffoldPaneResizer } from "#components/pane-resizer.js";
 import {
   CODEX_RESET_CREDIT_REQUEST_EVENT,
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
@@ -33,57 +33,57 @@ import {
   codexRuntimeUpdateAvailable,
   createCodexStatusLifecycle,
   resetCreditExpiry,
-} from "./codex-status.ts";
-import "./codex-status/components/reset-credit-dialog.ts";
-import type { CaffoldCodexResetCreditDialog } from "./codex-status/components/reset-credit-dialog.ts";
-import "./codex-status/components/runtime-restart-dialog.ts";
-import type { CaffoldCodexRuntimeRestartDialog } from "./codex-status/components/runtime-restart-dialog.ts";
-import "./codex-status/components/runtime-update-dialog.ts";
-import type { CaffoldCodexRuntimeUpdateDialog } from "./codex-status/components/runtime-update-dialog.ts";
-import "./components/navigation.ts";
-import type { CaffoldTaskWorkspaceNavigation } from "./components/navigation.ts";
-import "./components/update-task-dialog.ts";
-import type { CaffoldUpdateTaskDialog } from "./components/update-task-dialog.ts";
+} from "./codex-status.js";
+import "./codex-status/components/reset-credit-dialog.js";
+import type { CaffoldCodexResetCreditDialog } from "./codex-status/components/reset-credit-dialog.js";
+import "./codex-status/components/runtime-restart-dialog.js";
+import type { CaffoldCodexRuntimeRestartDialog } from "./codex-status/components/runtime-restart-dialog.js";
+import "./codex-status/components/runtime-update-dialog.js";
+import type { CaffoldCodexRuntimeUpdateDialog } from "./codex-status/components/runtime-update-dialog.js";
+import "./components/navigation.js";
+import type { CaffoldTaskWorkspaceNavigation } from "./components/navigation.js";
+import "./components/update-task-dialog.js";
+import type { CaffoldUpdateTaskDialog } from "./components/update-task-dialog.js";
 import {
   LIVE_CONNECTION_REPORT_EVENT,
   WorkspaceLiveUpdates,
-} from "./live-updates.ts";
-import "./notes/components/navigator.ts";
-import type { CaffoldNotesNavigator } from "./notes/components/navigator.ts";
-import "./notes/layout.ts";
-import type { CaffoldNotesWorkspace } from "./notes/layout.ts";
+} from "./live-updates.js";
+import "./notes/components/navigator.js";
+import type { CaffoldNotesNavigator } from "./notes/components/navigator.js";
+import "./notes/layout.js";
+import type { CaffoldNotesWorkspace } from "./notes/layout.js";
 import {
   CAFFOLD_UPDATE_TASK_REQUEST_EVENT,
   type CaffoldUpdateSnapshot,
-} from "./settings/about/page.ts";
-import "./settings/claude/components/runtime-restart-dialog.ts";
-import type { CaffoldClaudeRuntimeRestartDialog } from "./settings/claude/components/runtime-restart-dialog.ts";
-import { CLAUDE_RUNTIME_RESTART_REQUEST_EVENT } from "./settings/claude/page.ts";
-import "./settings/components/navigator.ts";
-import type { CaffoldSettingsNavigator } from "./settings/components/navigator.ts";
-import "./settings/layout.ts";
-import type { CaffoldSettingsWorkspace } from "./settings/layout.ts";
+} from "./settings/about/page.js";
+import "./settings/claude/components/runtime-restart-dialog.js";
+import type { CaffoldClaudeRuntimeRestartDialog } from "./settings/claude/components/runtime-restart-dialog.js";
+import { CLAUDE_RUNTIME_RESTART_REQUEST_EVENT } from "./settings/claude/page.js";
+import "./settings/components/navigator.js";
+import type { CaffoldSettingsNavigator } from "./settings/components/navigator.js";
+import "./settings/layout.js";
+import type { CaffoldSettingsWorkspace } from "./settings/layout.js";
 import {
   createTaskStoreStatusLifecycle,
   TASK_STORE_RETRY_REQUEST_EVENT,
   type TaskStoreStatusSnapshot,
-} from "./task-store-status.ts";
-import "./tasks/components/archived-delete-dialog.ts";
-import type { CaffoldTaskArchivedDeleteDialog } from "./tasks/components/archived-delete-dialog.ts";
-import type { ArchivedTaskListIntent } from "./tasks/components/archived-task-list.ts";
-import "./tasks/components/navigator.ts";
+} from "./task-store-status.js";
+import "./tasks/components/archived-delete-dialog.js";
+import type { CaffoldTaskArchivedDeleteDialog } from "./tasks/components/archived-delete-dialog.js";
+import type { ArchivedTaskListIntent } from "./tasks/components/archived-task-list.js";
+import "./tasks/components/navigator.js";
 import type {
   CaffoldTaskNavigator,
   TaskNavigatorIntent,
-} from "./tasks/components/navigator.ts";
-import type { TaskStartIntent } from "./tasks/components/task-create.ts";
-import "./tasks/components/task-switcher-dialog.ts";
+} from "./tasks/components/navigator.js";
+import type { TaskStartIntent } from "./tasks/components/task-create.js";
+import "./tasks/components/task-switcher-dialog.js";
 import type {
   CaffoldTaskSwitcherDialog,
   TaskSwitcherSelectDetail,
-} from "./tasks/components/task-switcher-dialog.ts";
-import "./tasks/layout.ts";
-import type { CaffoldTasksPage } from "./tasks/layout.ts";
+} from "./tasks/components/task-switcher-dialog.js";
+import "./tasks/layout.js";
+import type { CaffoldTasksPage } from "./tasks/layout.js";
 
 const WORKSPACE_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
 const ROUTE_CONTROL_ICON = "task-workspace-route-control-icon";

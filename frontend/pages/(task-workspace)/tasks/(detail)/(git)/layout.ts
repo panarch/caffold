@@ -4,24 +4,24 @@ import {
   ActionHints,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import type { GitRepository } from "#app/api.ts";
-import { compactIconButton } from "#app/component-styles.ts";
-import { routeMode } from "#app/navigation-routes.ts";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.ts";
-import { createRefreshCoordinator, subscribeToWatch } from "#app/watch.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "./(log)/layout.ts";
-import type { CaffoldGitLogLayout } from "./(log)/layout.ts";
-import "./compare/page.ts";
-import type { CaffoldGitComparePage } from "./compare/page.ts";
-import "./components/controls.ts";
+} from "#app/action-hints.js";
+import type { GitRepository } from "#app/api.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { routeMode } from "#app/navigation-routes.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { createRefreshCoordinator, subscribeToWatch } from "#app/watch.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "./(log)/layout.js";
+import type { CaffoldGitLogLayout } from "./(log)/layout.js";
+import "./compare/page.js";
+import type { CaffoldGitComparePage } from "./compare/page.js";
+import "./components/controls.js";
 import {
   type CaffoldGitReviewControls,
   type GitControlsSnapshot,
   IDLE_CONTROLS,
-} from "./components/controls.ts";
+} from "./components/controls.js";
 
 type GitMode = "compare" | "log";
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { activeTurnDuration, activeTurnPresentation } from "./active-turn.ts";
+import { activeTurnDuration, activeTurnPresentation } from "./active-turn.js";
 
 test("work Caffold has no surface for says what it is while it runs", () => {
   const task = activeTask();

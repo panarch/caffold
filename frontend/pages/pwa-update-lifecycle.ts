@@ -1,7 +1,7 @@
 import {
   type PwaUpdateOptions,
   PwaUpdateRuntime,
-} from "./pwa-update-lifecycle/runtime.ts";
+} from "./pwa-update-lifecycle/runtime.js";
 
 // Public feature owner. Registration details and the handoff graph remain private.
 export class PwaUpdateLifecycle {

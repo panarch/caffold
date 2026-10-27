@@ -7,11 +7,11 @@ import {
 import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 import {
   createCodexStatusSnapshot,
-} from "#app/pages/(task-workspace)/codex-status.ts";
+} from "#app/pages/(task-workspace)/codex-status.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./conversation-shortcuts.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
+await import("./conversation-shortcuts.js");
+const { ActionHints } = await import("#app/action-hints.js");
 const shortcuts = registry.element("caffold-section-conversation-shortcuts").prototype;
 after(() => registry.restore());
 

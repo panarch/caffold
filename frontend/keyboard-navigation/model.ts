@@ -7,9 +7,9 @@ import {
   sortByVisualOrder,
   TASK_HINT_ALPHABET,
   taskHintSuffix,
-} from "../action-hints/model.ts";
-import type { ScrollAxis } from "../scroll-scope.ts";
-import { KEYBOARD_NAVIGATION_KEY } from "./shortcuts.ts";
+} from "../action-hints.js";
+import type { ScrollAxis } from "../scroll-scope.js";
+import { KEYBOARD_NAVIGATION_KEY } from "./shortcuts.js";
 
 interface ScrollCommand {
   axis: ScrollAxis;

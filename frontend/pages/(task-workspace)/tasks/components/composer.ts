@@ -4,33 +4,33 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import { getVoiceStatus, transcribeVoice, type VoiceStatus } from "#app/api.ts";
-import { busySpin } from "#app/component-styles.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import { cleanLogicalPath } from "../task-format.ts";
-import "./composer/components/attachments.ts";
+} from "#app/action-hints.js";
+import { getVoiceStatus, transcribeVoice, type VoiceStatus } from "#app/api.js";
+import { busySpin } from "#app/component-styles.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import { cleanLogicalPath } from "../task-format.js";
+import "./composer/components/attachments.js";
 import type {
   AttachmentRemoveDetail,
   CaffoldTaskComposerAttachments,
   ComposerAttachment,
-} from "./composer/components/attachments.ts";
-import "./composer/components/context-usage.ts";
-import type { CaffoldTaskContextUsage } from "./composer/components/context-usage.ts";
-import "./composer/components/voice-level-meter.ts";
-import type { CaffoldVoiceLevelMeter } from "./composer/components/voice-level-meter.ts";
+} from "./composer/components/attachments.js";
+import "./composer/components/context-usage.js";
+import type { CaffoldTaskContextUsage } from "./composer/components/context-usage.js";
+import "./composer/components/voice-level-meter.js";
+import type { CaffoldVoiceLevelMeter } from "./composer/components/voice-level-meter.js";
 import {
   formatRecordingDuration,
   VoiceRecorder,
   voiceCaptureSupport,
-} from "./composer/voice-recorder.ts";
-import "./task-turn-options.ts";
+} from "./composer/voice-recorder.js";
+import "./task-turn-options.js";
 import type {
   CaffoldTaskTurnOptions,
   TurnOptionsContext,
   TurnSubmissionOptions,
-} from "./task-turn-options.ts";
+} from "./task-turn-options.js";
 
 // Where the Composer sends and how it reads. A follow-up Composer belongs to
 // one Task; `provider` through `permissionMode` are what that Task or the

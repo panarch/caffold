@@ -1,6 +1,6 @@
-import type { TaskDetail, TaskEvent, TaskEventPosition } from "#app/api.ts";
-import { eventIdentityKey, taskEventPosition } from "#tasks/task-events.ts";
-import { comparePositions, projectionRevision } from "./conversation.ts";
+import type { TaskDetail, TaskEvent, TaskEventPosition } from "#app/api.js";
+import { eventIdentityKey, taskEventPosition } from "#tasks/task-events.js";
+import { comparePositions, projectionRevision } from "./conversation.js";
 
 type HistoryState = "inactive" | "ready" | "loading" | "blocked";
 type HistoryEvent = "activate" | "deactivate" | "request" | "resolve" | "block";

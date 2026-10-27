@@ -1,10 +1,10 @@
-import type { LiveConnectionReport } from "../(task-workspace)/live-updates.ts";
-import type { ForegroundRecoveryRuntimeSnapshot } from "./lifecycle.ts";
+import type { LiveConnectionReport } from "../(task-workspace)/live-updates.js";
+import type { ForegroundRecoveryRuntimeSnapshot } from "./lifecycle.js";
 import {
   FOREGROUND_RECOVERY_NODE,
   type ForegroundRecoveryTarget,
   type ForegroundRecoveryTargets,
-} from "./machine.ts";
+} from "./machine.js";
 
 // Diagnostics of each foreground recovery that follows a return to the page,
 // timed in this browser as each thing happened and sent to the server log once

@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { TASK_TRANSPORT_STATE } from "../runtime-state.ts";
+import { TASK_TRANSPORT_STATE } from "../runtime-state.js";
 import {
   TASK_STREAM_EDGES,
   TASK_STREAM_EVENT,
   TASK_STREAM_NODE,
   presentTaskStream,
   transitionTaskStream,
-} from "./machine.ts";
+} from "./machine.js";
 
 const NODE = TASK_STREAM_NODE;
 const EVENT = TASK_STREAM_EVENT;

@@ -3,13 +3,13 @@ import type {
   TaskEvent,
   TaskEventPosition,
   TaskEventsRange,
-} from "#app/api.ts";
+} from "#app/api.js";
 import {
   applyDetailRange,
   applyProjectionDelta,
   eventIdentityKey,
   taskEventPosition,
-} from "#tasks/task-events.ts";
+} from "#tasks/task-events.js";
 
 interface RevisedRange extends TaskEventsRange {
   revision: number;

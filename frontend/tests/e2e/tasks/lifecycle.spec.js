@@ -1016,7 +1016,7 @@ test("fresh origin reachability recovers a foreground offline pause without an o
       configurable: true,
       get: () => true,
     });
-    const { getHealth } = await import("/assets/api.ts");
+    const { getHealth } = await import("/assets/api.js");
     await getHealth();
   });
   await expect(notice).toBeHidden();

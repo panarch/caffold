@@ -4,8 +4,8 @@ import {
   normalizeRect,
   type Rect,
   type RectLike,
-} from "../../action-hints/model.ts";
-import { DrawnRef, drawn } from "../../components/drawn-refs.ts";
+} from "../../action-hints.js";
+import { DrawnRef, drawn } from "../../components/drawn-refs.js";
 
 /**
  * The outline around the surface Scroll mode moves, and the status at its

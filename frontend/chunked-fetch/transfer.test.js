@@ -6,7 +6,7 @@ import {
   TRANSFER_EVENT,
   TRANSFER_NODE,
   Transfer,
-} from "./transfer.ts";
+} from "./transfer.js";
 
 const URL_ASKED = "https://caffold.test/api/image?path=photo.png";
 

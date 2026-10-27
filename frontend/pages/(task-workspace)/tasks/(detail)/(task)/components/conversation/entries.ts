@@ -5,12 +5,12 @@ import type {
   TaskFileLink,
   TaskMessageContent,
   TaskUploadLine,
-} from "#app/api.ts";
+} from "#app/api.js";
 import {
   isTaskActivelyWorking,
   type PromptSubmissionState,
   promptSubmissionState,
-} from "#tasks/runtime-state.ts";
+} from "#tasks/runtime-state.js";
 import {
   type AssistantMessagePhase,
   assistantMessagePhase,
@@ -26,7 +26,7 @@ import {
   sortEventsChronologically,
   taskEventAnchorMs,
   taskEventPositionIndex,
-} from "#tasks/task-events.ts";
+} from "#tasks/task-events.js";
 import {
   effectiveTaskFileRoot,
   formatDate,
@@ -35,14 +35,14 @@ import {
   type TaskFilePath,
   taskEventObservedMs,
   toolCallPresentation,
-} from "#tasks/task-format.ts";
-import { activeTurnPresentation } from "./active-turn.ts";
+} from "#tasks/task-format.js";
+import { activeTurnPresentation } from "./active-turn.js";
 import {
   type CommandRunSegment,
   commandGroupIdentity,
   groupFinishedCommands,
-} from "./command-runs.ts";
-import type { MessageAttachment } from "./components/message-attachments.ts";
+} from "./command-runs.js";
+import type { MessageAttachment } from "./components/message-attachments.js";
 
 // The entries a conversation shows, in order, each with what it draws. An
 // entry's `identity`, which comes from the backend's event identity, keeps its

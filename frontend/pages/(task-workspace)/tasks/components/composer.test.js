@@ -7,8 +7,8 @@ import {
 import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./composer.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
+await import("./composer.js");
+const { ActionHints } = await import("#app/action-hints.js");
 const Composer = registry.element("caffold-task-composer");
 after(() => registry.restore());
 

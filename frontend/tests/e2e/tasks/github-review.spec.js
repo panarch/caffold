@@ -1565,7 +1565,7 @@ test("applies the global ordering to GitHub PR Files without refetching", { tag:
   expect(fixture.counts.pullFiles).toBe(1);
 
   await page.evaluate(async () => {
-    const { setFileSortMode } = await import("/assets/settings.ts");
+    const { setFileSortMode } = await import("/assets/settings.js");
     setFileSortMode("name");
   });
   expect(await rootPullTreeNames(tree)).toEqual(["README.md", "src"]);

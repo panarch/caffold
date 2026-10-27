@@ -1,6 +1,6 @@
 import { html, LitElement, type PropertyValues } from "lit";
-import { busySpin } from "#app/component-styles.ts";
-import { activeTurnDuration } from "../active-turn.ts";
+import { busySpin } from "#app/component-styles.js";
+import { activeTurnDuration } from "../active-turn.js";
 
 // The turn in progress: how long it has run and what it is doing. Its clock
 // ticks only while the conversation is on screen.

@@ -3,22 +3,22 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "../action-hints.ts";
-import type { GitCompare, GitCompareFile, GitRepository } from "../api.ts";
+} from "../action-hints.js";
+import type { GitCompare, GitCompareFile, GitRepository } from "../api.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   ScrollSurfaces,
-} from "../scroll-scope.ts";
-import { formatLineStats } from "./dom.ts";
+} from "../scroll-scope.js";
+import { formatLineStats } from "./dom.js";
 import {
   buildFileTreeNodes,
   type CaffoldFileTree,
   type FileTreeNode,
   type FileTreeSelectDetail,
-} from "./file-tree.ts";
-import "./loading-text.ts";
-import { DrawnRef, drawn } from "./drawn-refs.ts";
+} from "./file-tree.js";
+import "./loading-text.js";
+import { DrawnRef, drawn } from "./drawn-refs.js";
 
 type CompareState =
   | { status: "idle" }

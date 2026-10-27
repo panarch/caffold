@@ -3,7 +3,7 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   type GitHubPull,
   type GitHubPullDetail,
@@ -11,9 +11,9 @@ import {
   type GitRepository,
   getGitHubPull,
   prepareGitHubPullHead,
-} from "#app/api.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+} from "#app/api.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 
 export class CaffoldGithubPullTaskSource extends LitElement {
   static properties = {

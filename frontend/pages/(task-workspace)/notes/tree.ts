@@ -1,4 +1,4 @@
-import type { NoteDirectorySummary, NotesLevel } from "#app/api.ts";
+import type { NoteDirectorySummary, NotesLevel } from "#app/api.js";
 import {
   errorFileTreeChildren,
   type FileTreeChildren,
@@ -6,7 +6,7 @@ import {
   loadingFileTreeChildren,
   readyFileTreeChildren,
   unloadedFileTreeChildren,
-} from "#components/file-tree.ts";
+} from "#components/file-tree.js";
 
 // The latest read of one level: the `listing` that arrived last, and the
 // read's `state` and `message`.

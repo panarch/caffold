@@ -3,31 +3,31 @@ import {
   hasActionHintLayoutBox,
   linkActionHintLabel,
   linkActionHintTarget,
-} from "../action-hint-scope.ts";
+} from "../action-hint-scope.js";
 import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "../action-hints.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.ts";
-import type { DocumentPreviewFile } from "./dom.ts";
-import "./loading-text.ts";
-import "./segmented-control.ts";
-import { DrawnRef, drawn } from "./drawn-refs.ts";
-import type { CaffoldSegmentedControl } from "./segmented-control.ts";
+} from "../action-hints.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
+import type { DocumentPreviewFile } from "./dom.js";
+import "./loading-text.js";
+import "./segmented-control.js";
+import { DrawnRef, drawn } from "./drawn-refs.js";
+import type { CaffoldSegmentedControl } from "./segmented-control.js";
 import {
   containsRange,
   coverMerges,
   type TrackRange,
   trackOffsets,
   visibleTracks,
-} from "./xlsx-viewer/window.ts";
+} from "./xlsx-viewer/window.js";
 import {
   readWorkbook,
   type SheetJs,
   type SheetModel,
   type WorkbookModel,
-} from "./xlsx-viewer/workbook.ts";
+} from "./xlsx-viewer/workbook.js";
 
 const SHEETJS_VERSION = "0.20.3";
 const SHEETJS_IMPORT = `https://cdn.sheetjs.com/xlsx-${SHEETJS_VERSION}/package/xlsx.mjs`;

@@ -7,7 +7,7 @@ import {
 import { templateHtml } from "../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./hud.ts");
+await import("./hud.js");
 const hud = registry.element("caffold-scroll-mode-hud").prototype;
 after(() => registry.restore());
 

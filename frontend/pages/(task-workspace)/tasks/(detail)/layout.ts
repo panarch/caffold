@@ -1,68 +1,68 @@
 import { html, LitElement } from "lit";
-import type { ActionHintScope } from "#app/action-hint-scope.ts";
+import type { ActionHintScope } from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import type { TaskDetail } from "#app/api.ts";
-import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.ts";
+} from "#app/action-hints.js";
+import type { TaskDetail } from "#app/api.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
 import {
   routeDomain,
   routeMode,
   type SectionDetailRoute,
   sectionDetailRoute,
-} from "#app/navigation-routes.ts";
-import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.ts";
-import type { TaskStoreStatusSnapshot } from "#app/pages/(task-workspace)/task-store-status.ts";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.ts";
-import "#components/segmented-control.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import type { CaffoldSegmentedControl } from "#components/segmented-control.ts";
-import type { ComposerSubmission } from "../components/composer.ts";
+} from "#app/navigation-routes.js";
+import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.js";
+import type { TaskStoreStatusSnapshot } from "#app/pages/(task-workspace)/task-store-status.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import "#components/segmented-control.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import type { CaffoldSegmentedControl } from "#components/segmented-control.js";
+import type { ComposerSubmission } from "../components/composer.js";
 import {
   type TaskTransportState,
   taskThreadStatusType,
-} from "../runtime-state.ts";
-import { cleanLogicalPath } from "../task-format.ts";
-import { type ListedTask, taskThreadId } from "../task-list-model.ts";
-import "./(git)/layout.ts";
-import type { CaffoldTaskGitLayout } from "./(git)/layout.ts";
-import "./(github)/layout.ts";
-import type { CaffoldTaskGithubLayout } from "./(github)/layout.ts";
-import "./(review)/layout.ts";
-import type { CaffoldTaskReview } from "./(review)/layout.ts";
-import "./(section)/components/summary.ts";
-import type { CaffoldSectionDetailSummary } from "./(section)/components/summary.ts";
-import "./(section)/layout.ts";
+} from "../runtime-state.js";
+import { cleanLogicalPath } from "../task-format.js";
+import { type ListedTask, taskThreadId } from "../task-list-model.js";
+import "./(git)/layout.js";
+import type { CaffoldTaskGitLayout } from "./(git)/layout.js";
+import "./(github)/layout.js";
+import type { CaffoldTaskGithubLayout } from "./(github)/layout.js";
+import "./(review)/layout.js";
+import type { CaffoldTaskReview } from "./(review)/layout.js";
+import "./(section)/components/summary.js";
+import type { CaffoldSectionDetailSummary } from "./(section)/components/summary.js";
+import "./(section)/layout.js";
 import type {
   CaffoldSectionDetail,
   DetailSection,
-} from "./(section)/layout.ts";
-import "./(task)/components/summary.ts";
+} from "./(section)/layout.js";
+import "./(task)/components/summary.js";
 import type {
   CaffoldTaskDetailSummary,
   TaskSummaryIntent,
-} from "./(task)/components/summary.ts";
-import "./(task)/layout.ts";
+} from "./(task)/components/summary.js";
+import "./(task)/layout.js";
 import type {
   CaffoldTaskDetail,
   TaskSubjectSnapshot,
-} from "./(task)/layout.ts";
-import "./components/git-menu.ts";
+} from "./(task)/layout.js";
+import "./components/git-menu.js";
 import type {
   CaffoldTaskDetailGit,
   GitMenuIntent,
-} from "./components/git-menu.ts";
-import "./components/github-menu.ts";
+} from "./components/git-menu.js";
+import "./components/github-menu.js";
 import type {
   CaffoldTaskDetailGithub,
   GitHubMenuIntent,
-} from "./components/github-menu.ts";
-import "./components/terminal-button.ts";
-import type { CaffoldTaskDetailTerminal } from "./components/terminal-button.ts";
-import "./terminal/page.ts";
-import type { CaffoldTerminalPage } from "./terminal/page.ts";
+} from "./components/github-menu.js";
+import "./components/terminal-button.js";
+import type { CaffoldTaskDetailTerminal } from "./components/terminal-button.js";
+import "./terminal/page.js";
+import type { CaffoldTerminalPage } from "./terminal/page.js";
 
 const CLEAN_REVIEW_CACHE_LIMIT = 6;
 

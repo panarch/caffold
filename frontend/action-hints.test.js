@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   ActionHintController,
   normalizeMutationRootList,
-} from "./action-hints.ts";
+} from "./action-hints.js";
 
 test("normalizes Action Hint mutation roots at the public boundary", () => {
   const restoreGlobals = installDomGlobals();

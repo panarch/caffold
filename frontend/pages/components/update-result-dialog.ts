@@ -1,9 +1,9 @@
 import { html, LitElement } from "lit";
-import { ACTION_HINT_ACTION, ActionHints } from "../../action-hints.ts";
-import type { CaffoldUpdateAttempt } from "../../api.ts";
-import { DrawnRef, drawn } from "../../components/drawn-refs.ts";
-import { KeyboardContexts } from "../../keyboard-navigation.ts";
-import "../../keyboard-navigation/components/presentation.ts";
+import { ACTION_HINT_ACTION, ActionHints } from "../../action-hints.js";
+import type { CaffoldUpdateAttempt } from "../../api.js";
+import { DrawnRef, drawn } from "../../components/drawn-refs.js";
+import { KeyboardContexts } from "../../keyboard-navigation.js";
+import "../../keyboard-navigation/components/presentation.js";
 
 type UpdateResultNotice = { title: string; description: string };
 

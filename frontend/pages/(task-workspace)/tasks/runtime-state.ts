@@ -1,4 +1,4 @@
-import type { TaskEvent, TaskThreadStatus } from "#app/api.ts";
+import type { TaskEvent, TaskThreadStatus } from "#app/api.js";
 
 export const TASK_TRANSPORT_STATE = Object.freeze({
   IDLE: "idle",

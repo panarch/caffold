@@ -3,7 +3,7 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   type ActiveTask,
   type ActiveTaskRecovery,
@@ -17,17 +17,17 @@ import {
   type TaskAbsence,
   taskAbsence,
   taskAlreadyActive,
-} from "#app/api.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "#components/loading-text.ts";
-import "../components/task-absence.ts";
+} from "#app/api.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
+import "../components/task-absence.js";
 import type {
   CaffoldTaskAbsence,
   TaskAbsenceIntent,
-} from "../components/task-absence.ts";
-import { taskThreadId } from "../task-list-model.ts";
+} from "../components/task-absence.js";
+import { taskThreadId } from "../task-list-model.js";
 
 const REMOVAL_WARNING =
   "The Codex Thread could not be found. Caffold will remove its membership and managed Task resources. This cannot be undone.";

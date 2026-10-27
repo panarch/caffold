@@ -1,5 +1,5 @@
-import { liveUpdatesUrl, updateLiveSubscriptions } from "../../api.ts";
-import { reportOriginReachable } from "../../origin-reachability.ts";
+import { liveUpdatesUrl, updateLiveSubscriptions } from "../../api.js";
+import { reportOriginReachable } from "../../origin-reachability.js";
 import {
   LIVE_CONNECTION_EFFECT,
   LIVE_CONNECTION_EVENT,
@@ -8,7 +8,7 @@ import {
   type LiveConnectionEvent,
   type LiveConnectionNode,
   transitionLiveConnection,
-} from "./live-updates/lifecycle.ts";
+} from "./live-updates/lifecycle.js";
 
 // What the workspace raises for each connection report, for the App Shell's
 // foreground recovery diagnostics.

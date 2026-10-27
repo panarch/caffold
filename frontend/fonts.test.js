@@ -3,7 +3,9 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const moduleUrl = new URL("./fonts.ts", import.meta.url);
+import { sourceUrl } from "./tests/support/source-url.js";
+
+const moduleUrl = new URL("./fonts.js", import.meta.url);
 
 async function importFreshFonts(label) {
   const url = new URL(moduleUrl);
@@ -13,7 +15,7 @@ async function importFreshFonts(label) {
 
 async function readFontFaces() {
   const stylesheet = await readFile(
-    new URL("./styles.css", import.meta.url),
+    sourceUrl(new URL("./styles.css", import.meta.url)),
     "utf8",
   );
   return [...stylesheet.matchAll(/@font-face\s*\{([^}]*)\}/g)].map(
@@ -29,7 +31,7 @@ function bundledFamily(preset) {
 function assertBundledFile(face, family) {
   const [, file] = face.match(/url\("\.\/fonts\/([^"]+)"\)/);
   assert.ok(
-    existsSync(new URL(`./assets/fonts/${file}`, import.meta.url)),
+    existsSync(sourceUrl(new URL(`./assets/fonts/${file}`, import.meta.url))),
     `${family} names ${file}, which is not bundled`,
   );
 }
@@ -153,6 +155,39 @@ test("backs every bundled code preset with static regular and bold faces", async
       assertBundledFile(face, family);
     }
   }
+});
+
+test("the index preloads exactly the faces the default presets name", async () => {
+  const {
+    CODE_TYPEFACE_PRESETS,
+    DEFAULT_CODE_TYPEFACE_PRESET,
+    DEFAULT_UI_TYPEFACE_PRESET,
+    UI_TYPEFACE_PRESETS,
+  } = await importFreshFonts("preloads");
+  const index = await readFile(
+    sourceUrl(new URL("./index.html", import.meta.url)),
+    "utf8",
+  );
+  const faces = new Map();
+  for (const body of await readFontFaces()) {
+    const family = body.match(/font-family:\s*("[^"]+")/)?.[1];
+    const file = body.match(/url\("\.\/fonts\/([^"]+)"\)/)?.[1];
+    if (family && file) {
+      faces.set(family, [...(faces.get(family) ?? []), file]);
+    }
+  }
+  const expected = [
+    UI_TYPEFACE_PRESETS[DEFAULT_UI_TYPEFACE_PRESET],
+    CODE_TYPEFACE_PRESETS[DEFAULT_CODE_TYPEFACE_PRESET],
+  ].flatMap((preset) => faces.get(preset.stack.split(", ")[0]) ?? []);
+
+  assert.ok(expected.length > 0, "default presets must name bundled faces");
+  assert.deepEqual(
+    [...index.matchAll(/href="\/assets\/fonts\/([^"]+)"/g)].map(
+      ([, name]) => name,
+    ),
+    expected,
+  );
 });
 
 test("applies each axis to its own token without touching the other", async () => {

@@ -7,16 +7,16 @@ import {
   normalizeCodeTypefacePreset,
   normalizeUiTypefacePreset,
   UI_TYPEFACE_PRESETS,
-} from "./fonts.ts";
+} from "./fonts.js";
 import {
   applyThemeMode,
   DEFAULT_THEME_MODE,
   normalizeThemeMode,
   THEME_MODES,
   type ThemeMode,
-} from "./theme.ts";
+} from "./theme.js";
 
-export type { TypefacePreset } from "./fonts.ts";
+export type { TypefacePreset } from "./fonts.js";
 
 const STORAGE_KEY = "caffold:settings";
 

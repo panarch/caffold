@@ -1,4 +1,4 @@
-import type { CaffoldActionHintDialog } from "./action-hints/components/dialog.ts";
+import type { CaffoldActionHintDialog } from "./action-hints/components/dialog.js";
 import {
   type ActionHintBinding,
   ActionHintController,
@@ -10,27 +10,27 @@ import {
   normalizeRect,
   type Rect,
   rectsEqual,
-} from "./action-hints.ts";
-import type { CaffoldScrollModeHud } from "./keyboard-navigation/components/hud.ts";
+} from "./action-hints.js";
+import type { CaffoldScrollModeHud } from "./keyboard-navigation/components/hud.js";
 import {
   type CaffoldScrollSurfaceSelector,
   SCROLL_SURFACE_CANCEL_EVENT,
   SCROLL_SURFACE_SELECT_EVENT,
-} from "./keyboard-navigation/components/selector.ts";
-import type { CaffoldKeyboardShortcutDialog } from "./keyboard-navigation/components/shortcut-dialog.ts";
+} from "./keyboard-navigation/components/selector.js";
+import type { CaffoldKeyboardShortcutDialog } from "./keyboard-navigation/components/shortcut-dialog.js";
 import {
   type ContextScrollSurface,
   type KeyboardNavigationContext,
   type NormalizedKeyboardNavigationContext,
   normalizeKeyboardNavigationContexts,
-} from "./keyboard-navigation/context.ts";
+} from "./keyboard-navigation/context.js";
 import {
   KEYBOARD_NAVIGATION_EVENT,
   KEYBOARD_NAVIGATION_NODE,
   type KeyboardNavigationEvent,
   type KeyboardNavigationNode,
   transitionKeyboardNavigation,
-} from "./keyboard-navigation/control.ts";
+} from "./keyboard-navigation/control.js";
 import {
   allocateScrollSurfaceCodes,
   normalizedContextRect,
@@ -40,21 +40,21 @@ import {
   sameScrollSelectionSnapshot,
   scrollCommandPosition,
   visibleScrollSurfaceRect,
-} from "./keyboard-navigation/model.ts";
+} from "./keyboard-navigation/model.js";
 import {
   KEY_COMBINATION_ACTION,
   KEYBOARD_NAVIGATION_KEY,
   KEYBOARD_SHORTCUT_CLOSE_EVENT,
   keyCombinationAction,
   matchesKeyboardNavigationKey,
-} from "./keyboard-navigation/shortcuts.ts";
-import { availableScrollAxes, type ScrollAxis } from "./scroll-scope.ts";
+} from "./keyboard-navigation/shortcuts.js";
+import { availableScrollAxes, type ScrollAxis } from "./scroll-scope.js";
 
 export {
   KeyboardContexts,
   type KeyboardNavigationContext,
   mergeKeyboardNavigationContexts,
-} from "./keyboard-navigation/context.ts";
+} from "./keyboard-navigation/context.js";
 
 export const KEYBOARD_SESSION_DISMISS_EVENT =
   "caffold:keyboard-session-dismiss";

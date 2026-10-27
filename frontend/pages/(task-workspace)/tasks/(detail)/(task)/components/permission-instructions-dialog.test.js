@@ -7,10 +7,10 @@ import {
 import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./permission-instructions-dialog.ts");
+await import("./permission-instructions-dialog.js");
 const Dialog = registry.element("caffold-task-permission-instructions-dialog");
-const { ActionHints } = await import("#app/action-hints.ts");
-const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
+const { ActionHints } = await import("#app/action-hints.js");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
 after(() => registry.restore());
 
 function draw(state) {

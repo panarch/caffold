@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CodexRuntimeUpdateLifecycle } from "./runtime-update-lifecycle.ts";
+import { CodexRuntimeUpdateLifecycle } from "./runtime-update-lifecycle.js";
 
 const RESTARTED =
   "The managed installation is ready and the running daemon was restarted. Active or queued work may have been interrupted.";

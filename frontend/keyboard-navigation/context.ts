@@ -1,12 +1,12 @@
 import {
   type ActionHintScope,
   mergeActionHintScopes,
-} from "../action-hint-scope.ts";
+} from "../action-hint-scope.js";
 import {
   type ActionHintPull,
   normalizeMutationRootList,
-} from "../action-hints.ts";
-import { ElementDeclarations } from "../element-declarations.ts";
+} from "../action-hints.js";
+import { ElementDeclarations } from "../element-declarations.js";
 import {
   mergeScrollSurfaceScopes,
   normalizeScrollAxes,
@@ -14,8 +14,8 @@ import {
   type ScrollSurface,
   type ScrollSurfacePull,
   type ScrollSurfaceScope,
-} from "../scroll-scope.ts";
-import type { CaffoldKeyboardNavigationPresentation } from "./components/presentation.ts";
+} from "../scroll-scope.js";
+import type { CaffoldKeyboardNavigationPresentation } from "./components/presentation.js";
 
 export type KeyboardNavigationContextKind = "workspace" | "modal" | "popover";
 

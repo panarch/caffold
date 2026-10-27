@@ -3,15 +3,15 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+} from "#app/action-hints.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import {
   TailscaleLifecycle,
   type TailscaleSnapshot,
   type TailscaleState,
   tailscaleQrCodeUrl,
-} from "./tailscale.ts";
+} from "./tailscale.js";
 
 const STATE_COPY: Readonly<
   Record<TailscaleState, { label: string; detail: string }>

@@ -37,9 +37,9 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # The server embeds Lit from frontend/node_modules and builds its
-      # TypeScript modules with Node.js.
-      - name: Install frontend runtime dependencies
+      # The server embeds Lit from frontend/node_modules and compiles its
+      # TypeScript modules with the TypeScript installed there.
+      - name: Install frontend build dependencies
         run: npm ci --omit=dev
         working-directory: frontend
 

@@ -11,7 +11,7 @@ globalThis.window = {
   matchMedia: () => ({ matches: singlePane }),
 };
 const registry = installCustomElementUnitRegistry();
-await import("./page.ts");
+await import("./page.js");
 const page = registry.element("caffold-github-pull-files-page").prototype;
 after(() => {
   registry.restore();

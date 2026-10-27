@@ -1,19 +1,19 @@
 import { html, LitElement, nothing } from "lit";
 import { live } from "lit/directives/live.js";
-import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import {
   createTaskFork,
   previewTaskForkSource,
   type TaskForkSourcePreview,
   type TaskResponseError,
   type TaskThreadStatus,
-} from "#app/api.ts";
-import { KeyboardContexts } from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "#components/loading-text.ts";
-import { formatDate } from "#tasks/task-format.ts";
+} from "#app/api.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "#components/loading-text.js";
+import { formatDate } from "#tasks/task-format.js";
 
 const CODEX_THREAD_URI_PREFIX = "codex://threads/";
 const DESCRIPTION =

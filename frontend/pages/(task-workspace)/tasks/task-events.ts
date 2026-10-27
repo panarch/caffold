@@ -2,13 +2,13 @@ import type {
   TaskEvent,
   TaskEventPosition,
   TaskEventsRange,
-} from "#app/api.ts";
-import { PROMPT_SUBMISSION_STATE } from "./runtime-state.ts";
+} from "#app/api.js";
+import { PROMPT_SUBMISSION_STATE } from "./runtime-state.js";
 import {
   presentTaskFilePath,
   type TaskFilePath,
   taskEventObservedMs,
-} from "./task-format.ts";
+} from "./task-format.js";
 
 // A turn's events in conversation order, or an event outside any turn.
 export type ConversationGroup =

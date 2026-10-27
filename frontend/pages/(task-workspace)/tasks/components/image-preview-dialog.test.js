@@ -7,9 +7,9 @@ import {
 import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./image-preview-dialog.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
-const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
+await import("./image-preview-dialog.js");
+const { ActionHints } = await import("#app/action-hints.js");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
 const ImageDialog = registry.element("caffold-task-image-preview-dialog");
 after(() => registry.restore());
 

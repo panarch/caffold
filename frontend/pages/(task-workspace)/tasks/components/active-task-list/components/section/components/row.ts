@@ -3,18 +3,18 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import type { ActiveTaskRecovery } from "#app/api.ts";
+} from "#app/action-hints.js";
+import type { ActiveTaskRecovery } from "#app/api.js";
 import {
   type TaskOperationsPresentation,
   taskStoreOperationsPresentation,
-} from "#app/pages/(task-workspace)/task-store-status.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "#tasks/components/task-status-chip.ts";
-import { taskStatusView, taskThreadStatusType } from "#tasks/runtime-state.ts";
-import { formatRelativeAgePresentation } from "#tasks/task-format.ts";
-import { type ListedTask, taskThreadId } from "#tasks/task-list-model.ts";
+} from "#app/pages/(task-workspace)/task-store-status.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#tasks/components/task-status-chip.js";
+import { taskStatusView, taskThreadStatusType } from "#tasks/runtime-state.js";
+import { formatRelativeAgePresentation } from "#tasks/task-format.js";
+import { type ListedTask, taskThreadId } from "#tasks/task-list-model.js";
 
 export const ACTIVE_TASK_ROW_INTENT_EVENT = "caffold:active-task-row-intent";
 

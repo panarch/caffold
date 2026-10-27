@@ -3,19 +3,19 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   type ScrollSurfacePull,
   ScrollSurfaces,
   scrollBackToTop,
-} from "#app/scroll-scope.ts";
-import "../../components/workspace-brand.ts";
-import "./navigator/components/item.ts";
-import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
+} from "#app/scroll-scope.js";
+import "../../components/workspace-brand.js";
+import "./navigator/components/item.js";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
 import type {
   CaffoldSettingsNavigatorItem,
   SettingsNavigatorEntry,
-} from "./navigator/components/item.ts";
+} from "./navigator/components/item.js";
 
 // Each brand mark is published in a single color so it can be tinted, and the
 // theme tints it through --brand-monochrome-filter.

@@ -4,7 +4,7 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   type ActiveTask,
   type ActiveTaskTopPlacement,
@@ -12,21 +12,21 @@ import {
   getArchivedTasks,
   restoreTask,
   type Task,
-} from "#app/api.ts";
-import { busySpin } from "#app/component-styles.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "#components/loading-text.ts";
+} from "#app/api.js";
+import { busySpin } from "#app/component-styles.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
 import {
   type TaskOperationsPresentation,
   taskStoreOperationsPresentation,
-} from "../../task-store-status.ts";
+} from "../../task-store-status.js";
 import {
   isTaskTransportStale,
   TASK_TRANSPORT_STATE,
   type TaskTransportState,
   taskStatusView,
-} from "../runtime-state.ts";
-import { formatRelativeAgePresentation } from "../task-format.ts";
+} from "../runtime-state.js";
+import { formatRelativeAgePresentation } from "../task-format.js";
 import {
   groupTasksByRepository,
   mergeTaskListPage,
@@ -35,8 +35,8 @@ import {
   taskThreadId,
   taskWorktreeLabel,
   upsertTask,
-} from "../task-list-model.ts";
-import "./task-status-chip.ts";
+} from "../task-list-model.js";
+import "./task-status-chip.js";
 
 export const ARCHIVED_TASK_LIST_INITIAL_SETTLED_EVENT =
   "caffold:archived-task-list-initial-settled";

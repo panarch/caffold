@@ -1,5 +1,5 @@
-import type { TaskEvent } from "#app/api.ts";
-import { commandResult, isCommandEvent } from "../../command-runs.ts";
+import type { TaskEvent } from "#app/api.js";
+import { commandResult, isCommandEvent } from "../../command-runs.js";
 
 // The one line a folded group shows: how many commands ran, and how many of
 // them did not succeed, since those are what a reader opens the group for.

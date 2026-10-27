@@ -1,61 +1,61 @@
 import { html, LitElement, nothing, type TemplateResult } from "lit";
-import type { ActionHintScope } from "../action-hint-scope.ts";
+import type { ActionHintScope } from "../action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "../action-hints.ts";
-import { documentUrl, downloadUrl, imageUrl } from "../api.ts";
-import { type FetchedFile, fetchInChunks } from "../chunked-fetch.ts";
-import { compactIconButton } from "../component-styles.ts";
+} from "../action-hints.js";
+import { documentUrl, downloadUrl, imageUrl } from "../api.js";
+import { type FetchedFile, fetchInChunks } from "../chunked-fetch.js";
+import { compactIconButton } from "../component-styles.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
-} from "../keyboard-navigation.ts";
-import "../keyboard-navigation/components/presentation.ts";
+} from "../keyboard-navigation.js";
+import "../keyboard-navigation/components/presentation.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   type ScrollSurfaceScope,
   ScrollSurfaces,
-} from "../scroll-scope.ts";
-import "./docx-viewer.ts";
+} from "../scroll-scope.js";
+import "./docx-viewer.js";
 import {
   type DocumentPreviewFile,
   type DocumentPreviewKind,
   formatBytes,
   formatLineStats,
   formatModified,
-} from "./dom.ts";
-import "./file-viewer/components/code-viewer.ts";
+} from "./dom.js";
+import "./file-viewer/components/code-viewer.js";
 import type {
   CaffoldCodeViewer,
   CodeFile,
   ScrollPosition,
   ViewerPosition,
   ViewerPositionOptions,
-} from "./file-viewer/components/code-viewer.ts";
-import "./file-viewer/components/diff-viewer.ts";
+} from "./file-viewer/components/code-viewer.js";
+import "./file-viewer/components/diff-viewer.js";
 import type {
   CaffoldDiffViewer,
   FileDiff,
-} from "./file-viewer/components/diff-viewer.ts";
+} from "./file-viewer/components/diff-viewer.js";
 import {
   diffViewerPresentation,
   sourceViewerPresentation,
   type ViewerDiff,
   type ViewerPresentation,
   type ViewerSource,
-} from "./file-viewer-presentation.ts";
-import { inlineIcon, warmIcons } from "./icons.ts";
-import "./loading-text.ts";
-import "./markdown-preview.ts";
-import type { CaffoldMarkdownPreview } from "./markdown-preview.ts";
-import "./pdf-viewer.ts";
-import "./pptx-viewer.ts";
-import "./xlsx-viewer.ts";
-import { DrawnRef, drawn } from "./drawn-refs.ts";
+} from "./file-viewer-presentation.js";
+import { inlineIcon, warmIcons } from "./icons.js";
+import "./loading-text.js";
+import "./markdown-preview.js";
+import type { CaffoldMarkdownPreview } from "./markdown-preview.js";
+import "./pdf-viewer.js";
+import "./pptx-viewer.js";
+import "./xlsx-viewer.js";
+import { DrawnRef, drawn } from "./drawn-refs.js";
 
 // How long switching to another file keeps showing the previous one before
 // the loading state replaces it.

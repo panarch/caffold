@@ -3,34 +3,34 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfacePull,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
 import {
   type TaskStoreStatusSnapshot,
   taskStoreBlocksTaskOperations,
-} from "../../task-store-status.ts";
-import { cleanLogicalPath } from "../task-format.ts";
-import "./composer.ts";
+} from "../../task-store-status.js";
+import { cleanLogicalPath } from "../task-format.js";
+import "./composer.js";
 import type {
   CaffoldTaskComposer,
   ComposerSubmission,
   ComposerSubmitDetail,
-} from "./composer.ts";
-import "./task-create/components/directory-field.ts";
+} from "./composer.js";
+import "./task-create/components/directory-field.js";
 import type {
   CaffoldTaskDirectoryField,
   DirectoryChosenDetail,
-} from "./task-create/components/directory-field.ts";
+} from "./task-create/components/directory-field.js";
 import {
   directoryPathDisplay,
   type ServerPaths,
-} from "./task-create/directory-path.ts";
-import type { TurnSubmissionOptions } from "./task-turn-options.ts";
+} from "./task-create/directory-path.js";
+import type { TurnSubmissionOptions } from "./task-turn-options.js";
 
 // What a New Task surface last ran under, which a new Task starts from.
 export interface ComposerSettings {

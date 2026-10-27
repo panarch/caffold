@@ -18,10 +18,11 @@ npm ci
 npx playwright install chromium
 ```
 
-`npm ci` also installs the Lit release the server embeds, so it comes before
-the Rust checks as well as the browser suites. Cargo builds run Node.js to
-remove the type syntax of the frontend's TypeScript modules, and Node runs
-those modules directly in unit tests.
+`npm ci` also installs the Lit release the server embeds and the TypeScript
+compiler, so it comes before the Rust checks as well as the browser suites.
+Cargo builds run tsc on Node.js to compile the frontend's TypeScript modules
+and stop on a type error, and `npm run test:unit` runs the unit tests from
+tsc's output.
 
 Rust checks use the 1.96 toolchain pinned by `rust-toolchain.toml` and bounded by
 `Cargo.toml`'s minimum supported version.

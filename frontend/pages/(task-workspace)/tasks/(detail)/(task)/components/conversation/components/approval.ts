@@ -4,14 +4,14 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import type { ApprovalTool, TaskEventPayload } from "#app/api.ts";
+} from "#app/action-hints.js";
+import type { ApprovalTool, TaskEventPayload } from "#app/api.js";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfacePull,
   ScrollSurfaces,
-} from "#app/scroll-scope.ts";
-import { formatDecision } from "#tasks/task-format.ts";
+} from "#app/scroll-scope.js";
+import { formatDecision } from "#tasks/task-format.js";
 
 export interface ApprovalIntentDetail {
   threadId: string;

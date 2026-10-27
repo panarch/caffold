@@ -125,7 +125,7 @@ test("browses source through the shared Files navigator and one root watch", { t
   );
   const listRequestsBeforeOrderChange = listRequests;
   await page.evaluate(async () => {
-    const { setFileSortMode } = await import("/assets/settings.ts");
+    const { setFileSortMode } = await import("/assets/settings.js");
     setFileSortMode("name");
   });
   expect((await rootFile.boundingBox()).y).toBeLessThan(
@@ -1416,7 +1416,7 @@ test("the file viewer offers a notice's representation button, and details only 
   await page.goto("/settings/files");
 
   const result = await page.evaluate(async () => {
-    await import("/assets/components/file-viewer.ts");
+    await import("/assets/components/file-viewer.js");
     const viewer = document.createElement("caffold-review-file-viewer");
     document.body.append(viewer);
     const drawn = () => new Promise(requestAnimationFrame);
@@ -1487,7 +1487,7 @@ test("each document preview scrolls as one vertical surface named after its file
   await page.goto("/settings/files");
 
   const surfaces = await page.evaluate(async () => {
-    await import("/assets/components/file-viewer.ts");
+    await import("/assets/components/file-viewer.js");
     const described = [];
     for (const kind of ["pdf", "docx", "pptx"]) {
       const element = document.createElement(`caffold-${kind}-viewer`);
@@ -1529,7 +1529,7 @@ test("the file viewer scrolls a source file and a notice under the names it show
   await page.goto("/settings/files");
 
   const surfaces = await page.evaluate(async () => {
-    await import("/assets/components/file-viewer.ts");
+    await import("/assets/components/file-viewer.js");
     const viewer = document.createElement("caffold-review-file-viewer");
     viewer.style.cssText = "display: block; height: 300px;";
     document.body.append(viewer);

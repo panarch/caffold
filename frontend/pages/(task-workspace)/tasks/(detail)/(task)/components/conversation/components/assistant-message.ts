@@ -2,23 +2,23 @@ import { html, LitElement, nothing } from "lit";
 import {
   type ActionHintPull,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import type { TaskEvent } from "#app/api.ts";
-import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+} from "#app/action-hints.js";
+import type { TaskEvent } from "#app/api.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import {
   type AssistantMessagePhase,
   assistantMessagePhase,
-} from "#tasks/task-events.ts";
-import { formatDate, taskEventObservedMs } from "#tasks/task-format.ts";
-import "./assistant-message/components/copy-button.ts";
-import type { CaffoldTaskAssistantMessageCopyButton } from "./assistant-message/components/copy-button.ts";
-import "./assistant-message/components/suggested-prompts.ts";
-import type { CaffoldTaskAssistantMessageSuggestedPrompts } from "./assistant-message/components/suggested-prompts.ts";
-import "./markdown.ts";
-import type { CaffoldTaskMarkdown } from "./markdown.ts";
+} from "#tasks/task-events.js";
+import { formatDate, taskEventObservedMs } from "#tasks/task-format.js";
+import "./assistant-message/components/copy-button.js";
+import type { CaffoldTaskAssistantMessageCopyButton } from "./assistant-message/components/copy-button.js";
+import "./assistant-message/components/suggested-prompts.js";
+import type { CaffoldTaskAssistantMessageSuggestedPrompts } from "./assistant-message/components/suggested-prompts.js";
+import "./markdown.js";
+import type { CaffoldTaskMarkdown } from "./markdown.js";
 
-export type { SuggestedPromptIntentDetail } from "./assistant-message/components/suggested-prompts.ts";
+export type { SuggestedPromptIntentDetail } from "./assistant-message/components/suggested-prompts.js";
 
 /**
  * What the agent said, drawn the same way wherever the conversation shows it.

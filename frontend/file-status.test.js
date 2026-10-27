@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fileStatusPresentation } from "./file-status.ts";
+import { fileStatusPresentation } from "./file-status.js";
 
 test("normalizes Working Tree porcelain status by its owning section", () => {
   const cases = [

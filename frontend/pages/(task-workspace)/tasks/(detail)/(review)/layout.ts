@@ -3,40 +3,40 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.ts";
-import { ACTION_HINT_ACTION } from "#app/action-hints.ts";
+} from "#app/action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "#app/action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "#app/scroll-scope.ts";
-import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "#components/file-navigator.ts";
-import type { CaffoldFileNavigator } from "#components/file-navigator.ts";
-import "#components/pane-resizer.ts";
-import type { CaffoldPaneResizer } from "#components/pane-resizer.ts";
-import "#components/segmented-control.ts";
-import type { CaffoldSegmentedControl } from "#components/segmented-control.ts";
-import { cleanLogicalPath } from "#tasks/task-format.ts";
-import { taskThreadId } from "#tasks/task-list-model.ts";
-import "./components/branch-changes.ts";
-import type { CaffoldReviewBranchChanges } from "./components/branch-changes.ts";
-import "./components/selected-file.ts";
+} from "#app/scroll-scope.js";
+import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "#components/file-navigator.js";
+import type { CaffoldFileNavigator } from "#components/file-navigator.js";
+import "#components/pane-resizer.js";
+import type { CaffoldPaneResizer } from "#components/pane-resizer.js";
+import "#components/segmented-control.js";
+import type { CaffoldSegmentedControl } from "#components/segmented-control.js";
+import { cleanLogicalPath } from "#tasks/task-format.js";
+import { taskThreadId } from "#tasks/task-list-model.js";
+import "./components/branch-changes.js";
+import type { CaffoldReviewBranchChanges } from "./components/branch-changes.js";
+import "./components/selected-file.js";
 import type {
   ReviewChanges,
   ReviewView,
-} from "./components/selected-file/content.ts";
-import type { CaffoldReviewSelectedFile } from "./components/selected-file.ts";
-import "./components/working-tree-changes.ts";
-import type { CaffoldReviewWorkingTreeChanges } from "./components/working-tree-changes.ts";
+} from "./components/selected-file/content.js";
+import type { CaffoldReviewSelectedFile } from "./components/selected-file.js";
+import "./components/working-tree-changes.js";
+import type { CaffoldReviewWorkingTreeChanges } from "./components/working-tree-changes.js";
 import {
   joinLogicalPath,
   type ReviewTask,
   relativeTaskPath,
   taskRootPath,
   taskWorktreeRootPath,
-} from "./layout/paths.ts";
+} from "./layout/paths.js";
 import {
   normalizeForTask,
   normalizeReviewRoute,
@@ -47,11 +47,11 @@ import {
   routeForSelectedFile,
   taskRouteForReview,
   viewerStateKey,
-} from "./layout/route.ts";
+} from "./layout/route.js";
 import {
   fileRepresentationCapabilities,
   isFileRepresentation,
-} from "./representations.ts";
+} from "./representations.js";
 
 // Matches the width where layout.css stops showing one pane at a time.
 const REVIEW_SPLIT_MEDIA_QUERY = "(min-width: 561px)";

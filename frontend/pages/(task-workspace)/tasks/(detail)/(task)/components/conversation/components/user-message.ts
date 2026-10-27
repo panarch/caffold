@@ -1,16 +1,16 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
-import type { ActionHintPull } from "#app/action-hints.ts";
-import type { TaskUploadLine } from "#app/api.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+import type { ActionHintPull } from "#app/action-hints.js";
+import type { TaskUploadLine } from "#app/api.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import {
   PROMPT_SUBMISSION_STATE,
   type PromptSubmissionState,
-} from "#tasks/runtime-state.ts";
-import "./message-attachments.ts";
+} from "#tasks/runtime-state.js";
+import "./message-attachments.js";
 import type {
   CaffoldTaskMessageAttachments,
   MessageAttachment,
-} from "./message-attachments.ts";
+} from "./message-attachments.js";
 
 const { UPLOADING, SENDING, ACCEPTED, OUTCOME_UNKNOWN } =
   PROMPT_SUBMISSION_STATE;

@@ -14,12 +14,12 @@ import {
   separatorActionHintTarget,
   switchActionHintTarget,
   textboxActionHintTarget,
-} from "../action-hint-scope.ts";
+} from "../action-hint-scope.js";
 import {
   type DeclaredElement,
   ElementDeclarations,
-} from "../element-declarations.ts";
-import type { ActionFor } from "./model.ts";
+} from "../element-declarations.js";
+import type { ActionFor } from "./model.js";
 
 // One target as its owner's template declares it, on the control itself. A
 // link may leave its label out and be named from what it shows and where it

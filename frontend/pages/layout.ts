@@ -3,64 +3,64 @@ import {
   ACTION_HINT_ACTION,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   checkCaffoldUpdate,
   getCaffoldUpdate,
   getHealth,
   type Health,
   sendForegroundRecoveryDiagnostics,
-} from "#app/api.ts";
+} from "#app/api.js";
 import { BUILD_INFO } from "#app/build-info.js";
-import { busySpin } from "#app/component-styles.ts";
+import { busySpin } from "#app/component-styles.js";
 import {
   KeyboardContexts,
   KeyboardNavigationController,
   mergeKeyboardNavigationContexts,
-} from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import "#app/keyboard-navigation/components/shortcut-dialog.ts";
-import type { CaffoldKeyboardShortcutDialog } from "#app/keyboard-navigation/components/shortcut-dialog.ts";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import "#app/keyboard-navigation/components/shortcut-dialog.js";
+import type { CaffoldKeyboardShortcutDialog } from "#app/keyboard-navigation/components/shortcut-dialog.js";
 import {
   type ParsedRoute,
   parseRoute,
   routeEquals,
   routeUrl,
-} from "#app/navigation-routes.ts";
-import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.ts";
-import { getSettings } from "#app/settings.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "./(task-workspace)/layout.ts";
-import type { CaffoldTaskWorkspace } from "./(task-workspace)/layout.ts";
-import { LIVE_CONNECTION_REPORT_EVENT } from "./(task-workspace)/live-updates.ts";
+} from "#app/navigation-routes.js";
+import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.js";
+import { getSettings } from "#app/settings.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "./(task-workspace)/layout.js";
+import type { CaffoldTaskWorkspace } from "./(task-workspace)/layout.js";
+import { LIVE_CONNECTION_REPORT_EVENT } from "./(task-workspace)/live-updates.js";
 import {
   CAFFOLD_UPDATE_CHECK_REQUEST_EVENT,
   type CaffoldUpdateSnapshot,
-} from "./(task-workspace)/settings/about/page.ts";
+} from "./(task-workspace)/settings/about/page.js";
 import {
   CAFFOLD_BUILD_MISMATCH_RELOAD_EVENT,
   type CaffoldBuildMismatchAlert,
-} from "./components/build-mismatch-alert.ts";
+} from "./components/build-mismatch-alert.js";
 import {
   CAFFOLD_UPDATE_LATER_EVENT,
   CAFFOLD_UPDATE_RELOAD_EVENT,
   type CaffoldUpdateDialog,
-} from "./components/update-dialog.ts";
-import "./components/update-result-dialog.ts";
-import type { CaffoldUpdateResultDialog } from "./components/update-result-dialog.ts";
+} from "./components/update-dialog.js";
+import "./components/update-result-dialog.js";
+import type { CaffoldUpdateResultDialog } from "./components/update-result-dialog.js";
 import {
   FOREGROUND_RECOVERY_PRESENTATION,
   ForegroundRecoveryLifecycle,
   type ForegroundRecoveryRequest,
   type ForegroundRecoverySnapshot,
-} from "./foreground-recovery.ts";
+} from "./foreground-recovery.js";
 import {
   type HistoryEntry,
   NAVIGATION_HISTORY_ACTION,
   NavigationHistory,
-} from "./navigation-history.ts";
-import { PwaUpdateLifecycle } from "./pwa-update-lifecycle.ts";
+} from "./navigation-history.js";
+import { PwaUpdateLifecycle } from "./pwa-update-lifecycle.js";
 
 // The Navigation API as far as the shell and the workspace use it; TypeScript's
 // DOM types do not have it yet.

@@ -3,8 +3,8 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
+} from "#app/action-hints.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import {
   APPEARANCE_RANGE_SETTINGS,
   type AppearanceRangeName,
@@ -22,9 +22,9 @@ import {
   THEME_MODES,
   type TypefacePreset,
   UI_TYPEFACE_PRESETS,
-} from "#app/settings.ts";
-import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
+} from "#app/settings.js";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
 
 type TypefaceSetting = "uiTypefacePreset" | "codeTypefacePreset";
 

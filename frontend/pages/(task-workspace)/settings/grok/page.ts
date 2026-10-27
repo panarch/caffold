@@ -4,20 +4,20 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import { type GrokStatus, getGrokStatus } from "#app/api.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "../components/detail-list.ts";
-import type { SettingsDetailRow } from "../components/detail-list.ts";
-import "../components/refresh-button.ts";
-import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.ts";
+} from "#app/action-hints.js";
+import { type GrokStatus, getGrokStatus } from "#app/api.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "../components/detail-list.js";
+import type { SettingsDetailRow } from "../components/detail-list.js";
+import "../components/refresh-button.js";
+import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.js";
 import {
   onDemandValue,
   prepaidValue,
   usagePeriodLabel,
   usagePeriodValue,
-} from "./display.ts";
+} from "./display.js";
 
 const GROK_SERVICE_STATUS_URL = "https://status.x.ai";
 

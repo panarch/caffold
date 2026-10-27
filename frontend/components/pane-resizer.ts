@@ -1,5 +1,5 @@
 import { html, LitElement } from "lit";
-import { type ActionHintPull, ActionHints } from "../action-hints.ts";
+import { type ActionHintPull, ActionHints } from "../action-hints.js";
 
 const START_DEFAULT_WIDTH = 320;
 const START_MIN_WIDTH = 180;

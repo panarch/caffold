@@ -11,7 +11,7 @@ import {
   mergeScrollSurfaceScopes,
   normalizeScrollAxes,
   scrollBackToTop,
-} from "./scroll-scope.ts";
+} from "./scroll-scope.js";
 
 test("Scroll surface scopes compose direct owners in declaration order", () => {
   const first = { id: "first" };

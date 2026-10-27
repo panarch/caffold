@@ -89,7 +89,7 @@ test("theme-sensitive component assets follow app theme roles, not OS media", ()
       /prefers-color-scheme/,
       `${path} must consume the resolved app theme instead of OS preference`,
     );
-    if (/\.(?:js|ts)$/.test(path) && path !== "service-worker.js") {
+    if (/\.(?:js|ts)$/.test(path) && path !== "service-worker.ts") {
       assert.doesNotMatch(
         source,
         /(?:git-logomark|github-invertocat)-(?:light|dark)\.svg/,

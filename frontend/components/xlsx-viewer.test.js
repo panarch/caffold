@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./xlsx-viewer.ts");
+await import("./xlsx-viewer.js");
 const xlsxViewer = registry.element("caffold-xlsx-viewer").prototype;
 after(() => registry.restore());
 

@@ -4,21 +4,21 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import type { Note, NoteTask } from "#app/api.ts";
-import { compactIconButton } from "#app/component-styles.ts";
+} from "#app/action-hints.js";
+import type { Note, NoteTask } from "#app/api.js";
+import { compactIconButton } from "#app/component-styles.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
-} from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { formatModified } from "#components/dom.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "./info/components/copy-markdown.ts";
-import type { CaffoldNotesInfoCopyMarkdown } from "./info/components/copy-markdown.ts";
-import "./info/components/copy-path.ts";
-import type { CaffoldNotesInfoCopyPath } from "./info/components/copy-path.ts";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { formatModified } from "#components/dom.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "./info/components/copy-markdown.js";
+import type { CaffoldNotesInfoCopyMarkdown } from "./info/components/copy-markdown.js";
+import "./info/components/copy-path.js";
+import type { CaffoldNotesInfoCopyPath } from "./info/components/copy-path.js";
 
 let notesInfoInstanceId = 0;
 

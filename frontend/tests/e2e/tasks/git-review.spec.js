@@ -878,7 +878,7 @@ test("applies the global ordering to Compare and Commit without refetching", { t
   expect(counts.compare).toBe(1);
 
   await page.evaluate(async () => {
-    const { setFileSortMode } = await import("/assets/settings.ts");
+    const { setFileSortMode } = await import("/assets/settings.js");
     setFileSortMode("name");
   });
   await expect
@@ -895,7 +895,7 @@ test("applies the global ordering to Compare and Commit without refetching", { t
   expect(counts.commit).toBe(1);
 
   await page.evaluate(async () => {
-    const { setFileSortMode } = await import("/assets/settings.ts");
+    const { setFileSortMode } = await import("/assets/settings.js");
     setFileSortMode("folders-first");
   });
   await expect

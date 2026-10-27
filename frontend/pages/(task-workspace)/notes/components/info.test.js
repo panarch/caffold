@@ -6,7 +6,7 @@ import {
 } from "../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./info.ts");
+await import("./info.js");
 const info = registry.element("caffold-notes-info").prototype;
 after(() => registry.restore());
 

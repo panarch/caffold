@@ -4,7 +4,7 @@ import {
   ActionHints,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   archiveTask,
   discardTaskUploads,
@@ -24,29 +24,29 @@ import {
   taskAlreadyActive,
   taskResponseError,
   uploadTaskFile,
-} from "#app/api.ts";
-import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.ts";
-import { routeDomain } from "#app/navigation-routes.ts";
-import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.ts";
-import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.ts";
+} from "#app/api.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
+import { routeDomain } from "#app/navigation-routes.js";
+import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.js";
+import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "#components/loading-text.ts";
-import "../../components/composer.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "#components/loading-text.js";
+import "../../components/composer.js";
 import type {
   CaffoldTaskComposer,
   ComposerIntentDetail,
   ComposerSubmission,
   ComposerSubmitDetail,
-} from "../../components/composer.ts";
-import "../../components/task-absence.ts";
+} from "../../components/composer.js";
+import "../../components/task-absence.js";
 import type {
   CaffoldTaskAbsence,
   TaskAbsenceIntent,
-} from "../../components/task-absence.ts";
+} from "../../components/task-absence.js";
 import {
   classifyPromptFailure,
   isTaskActivelyWorking,
@@ -57,70 +57,70 @@ import {
   type TaskTransportState,
   taskThreadStatusType,
   withPromptSubmissionState,
-} from "../../runtime-state.ts";
+} from "../../runtime-state.js";
 import {
   appendOptimisticEvent,
   eventIdentityKey,
   handoffOptimisticSubmission,
   optimisticUserMessageEvent,
-} from "../../task-events.ts";
-import { cleanLogicalPath } from "../../task-format.ts";
+} from "../../task-events.js";
+import { cleanLogicalPath } from "../../task-format.js";
 import {
   taskDetailThreadId,
   taskRepositoryPath,
   taskThreadId,
-} from "../../task-list-model.ts";
-import "./components/broken-delete-dialog.ts";
+} from "../../task-list-model.js";
+import "./components/broken-delete-dialog.js";
 import type {
   BrokenTaskDeleteIntent,
   CaffoldBrokenTaskDeleteDialog,
-} from "./components/broken-delete-dialog.ts";
-import "./components/command-dialog.ts";
-import type { CaffoldTaskCommandDialog } from "./components/command-dialog.ts";
-import "./components/conversation.ts";
+} from "./components/broken-delete-dialog.js";
+import "./components/command-dialog.js";
+import type { CaffoldTaskCommandDialog } from "./components/command-dialog.js";
+import "./components/conversation.js";
 import type {
   CaffoldTaskConversation,
   ConversationIntent,
   ConversationSnapshot,
-} from "./components/conversation.ts";
-import "./components/current-plan.ts";
-import type { CaffoldTaskCurrentPlan } from "./components/current-plan.ts";
-import "./components/markdown-preview-dialog.ts";
+} from "./components/conversation.js";
+import "./components/current-plan.js";
+import type { CaffoldTaskCurrentPlan } from "./components/current-plan.js";
+import "./components/markdown-preview-dialog.js";
 import type {
   CaffoldTaskMarkdownPreviewDialog,
   MarkdownPreviewRequest,
-} from "./components/markdown-preview-dialog.ts";
-import "./components/permission-instructions-dialog.ts";
+} from "./components/markdown-preview-dialog.js";
+import "./components/permission-instructions-dialog.js";
 import type {
   CaffoldTaskPermissionInstructionsDialog,
   TaskRequestFailedIntent,
-} from "./components/permission-instructions-dialog.ts";
+} from "./components/permission-instructions-dialog.js";
 import {
   ConversationProjection,
   projectionRevision,
-} from "./layout/conversation.ts";
-import { ConversationHistory } from "./layout/history.ts";
+} from "./layout/conversation.js";
+import { ConversationHistory } from "./layout/history.js";
 import {
   promptWithAttachedFiles,
   uploadFileNames,
   uploadFolderName,
   uploadPath,
-} from "./layout/prompt-attachments.ts";
+} from "./layout/prompt-attachments.js";
 import {
   nextPromptSubmissionNode,
   PROMPT_SUBMISSION_EVENT,
   PROMPT_SUBMISSION_NODE,
   type PromptSubmissionEvent,
   type PromptSubmissionNode,
-} from "./layout/prompt-submission.ts";
-import { UploadDiscards } from "./layout/upload-discards.ts";
+} from "./layout/prompt-submission.js";
+import { UploadDiscards } from "./layout/upload-discards.js";
 import {
   type TaskDetailOutcome,
   TaskDetailSession,
   type TaskEventMessage,
   type TaskStateMessage,
   type TaskSyncMessage,
-} from "./session.ts";
+} from "./session.js";
 
 const CLEAN_COMPOSER_CACHE_LIMIT = 6;
 

@@ -7,7 +7,7 @@ import {
   sameTaskStoreStatusSnapshot,
   taskStoreBlocksTaskOperations,
   taskStoreOperationsPresentation,
-} from "./model.ts";
+} from "./model.js";
 
 function snapshot(state, diagnosticMessage = "") {
   return createTaskStoreStatusSnapshot({

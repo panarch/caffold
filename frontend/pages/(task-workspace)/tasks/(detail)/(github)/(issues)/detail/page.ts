@@ -4,18 +4,18 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import type { GitHubIssue } from "#app/api.ts";
+} from "#app/action-hints.js";
+import type { GitHubIssue } from "#app/api.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   ScrollSurfaces,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "#components/loading-text.ts";
-import "../../components/markdown.ts";
-import type { CaffoldGithubMarkdown } from "../../components/markdown.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
+import "../../components/markdown.js";
+import type { CaffoldGithubMarkdown } from "../../components/markdown.js";
 
 type IssueState =
   | { status: "empty" }

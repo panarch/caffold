@@ -3,11 +3,11 @@ import {
   getCodexStatus,
   restartCodexRuntime,
   updateCodexRuntime,
-} from "../../api.ts";
+} from "../../api.js";
 import {
   CodexStatusLifecycle,
   type CodexStatusLifecycleOptions,
-} from "./codex-status/lifecycle.ts";
+} from "./codex-status/lifecycle.js";
 import {
   codexBlocksTaskOperations,
   codexRateWindows,
@@ -25,13 +25,13 @@ import {
   formatUsedPercent,
   INITIAL_CODEX_STATUS_SNAPSHOT,
   resetCreditExpiry,
-} from "./codex-status/model.ts";
+} from "./codex-status/model.js";
 
-export type { CodexResetCreditRequestState } from "./codex-status/lifecycle.ts";
+export type { CodexResetCreditRequestState } from "./codex-status/lifecycle.js";
 export type {
   CodexRuntimeRequestState,
   CodexStatusSnapshot,
-} from "./codex-status/model.ts";
+} from "./codex-status/model.js";
 
 export const CODEX_STATUS_REFRESH_REQUEST_EVENT =
   "caffold:refresh-codex-status";

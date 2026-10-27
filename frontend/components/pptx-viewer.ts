@@ -5,11 +5,11 @@ import {
   hasActionHintLayoutBox,
   linkActionHintLabel,
   linkActionHintTarget,
-} from "../action-hint-scope.ts";
-import type { ActionHintPull } from "../action-hints.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.ts";
-import type { DocumentPreviewFile } from "./dom.ts";
-import "./loading-text.ts";
+} from "../action-hint-scope.js";
+import type { ActionHintPull } from "../action-hints.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
+import type { DocumentPreviewFile } from "./dom.js";
+import "./loading-text.js";
 
 const PPTX_RENDERER_VERSION = "1.3.0";
 const PPTX_RENDERER_IMPORT =

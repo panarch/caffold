@@ -17,19 +17,19 @@ test("native import aliases share module identity with asset URLs and register t
 
   const result = await page.evaluate(async () => {
     const modules = [
-      ["#app/api.ts", "/assets/api.ts"],
-      ["#app/component-styles.ts", "/assets/component-styles.ts"],
-      ["#components/dom.ts", "/assets/components/dom.ts"],
-      ["#tasks/task-format.ts", "/assets/pages/(task-workspace)/tasks/task-format.ts"],
+      ["#app/api.js", "/assets/api.js"],
+      ["#app/component-styles.js", "/assets/component-styles.js"],
+      ["#components/dom.js", "/assets/components/dom.js"],
+      ["#tasks/task-format.js", "/assets/pages/(task-workspace)/tasks/task-format.js"],
     ];
     const identities = await Promise.all(modules.map(async ([alias, url]) => {
       const [aliased, direct] = await Promise.all([import(alias), import(url)]);
       return { alias, sameModule: aliased === direct };
     }));
     const consumers = [
-      ["#tasks/components/task-create/components/directory-field.ts", "caffold-task-directory-field"],
-      ["#tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.ts", "caffold-conversation-fork-dialog"],
-      ["#tasks/(detail)/(github)/components/task-start-dialog.ts", "caffold-github-task-start-dialog"],
+      ["#tasks/components/task-create/components/directory-field.js", "caffold-task-directory-field"],
+      ["#tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js", "caffold-conversation-fork-dialog"],
+      ["#tasks/(detail)/(github)/components/task-start-dialog.js", "caffold-github-task-start-dialog"],
     ];
     const registrations = await Promise.all(consumers.map(async ([alias, tag]) => {
       await import(alias);
@@ -39,10 +39,10 @@ test("native import aliases share module identity with asset URLs and register t
   });
 
   expect(result.identities).toEqual([
-    { alias: "#app/api.ts", sameModule: true },
-    { alias: "#app/component-styles.ts", sameModule: true },
-    { alias: "#components/dom.ts", sameModule: true },
-    { alias: "#tasks/task-format.ts", sameModule: true },
+    { alias: "#app/api.js", sameModule: true },
+    { alias: "#app/component-styles.js", sameModule: true },
+    { alias: "#components/dom.js", sameModule: true },
+    { alias: "#tasks/task-format.js", sameModule: true },
   ]);
   expect(result.registrations.every(({ registered }) => registered)).toBe(true);
   expect(errors).toEqual([]);
@@ -98,21 +98,36 @@ test("Lit loads by its package name, one module per package, served and precache
   expect(errors).toEqual([]);
 });
 
-test("TypeScript modules are served at their source path as JavaScript without their types", { tag: "@viewport-independent" }, async ({ page }) => {
+test("TypeScript modules are served as the JavaScript tsc writes, with source maps outside the shell cache", { tag: "@viewport-independent" }, async ({ page }) => {
   await installBrowserDefaults(page);
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
 
   const result = await page.evaluate(async () => {
-    const response = await fetch("/assets/components/pagination.ts");
+    const [response, mapResponse, sourcePath] = await Promise.all([
+      fetch("/assets/components/pagination.js"),
+      fetch("/assets/components/pagination.js.map"),
+      fetch("/assets/components/pagination.ts"),
+    ]);
     const source = await response.text();
+    const map = await mapResponse.json();
     await customElements.whenDefined("caffold-pagination");
+    await navigator.serviceWorker.ready;
     return {
       status: response.status,
       contentType: response.headers.get("content-type"),
       defined: source.includes("class CaffoldPagination extends LitElement"),
       typed: /declare page: number|: PageButton\)/.test(source),
+      mapUrl: source.endsWith("//# sourceMappingURL=pagination.js.map"),
       registered: Boolean(customElements.get("caffold-pagination")),
+      map: {
+        status: mapResponse.status,
+        contentType: mapResponse.headers.get("content-type"),
+        source: `${map.sourceRoot}${map.sources[0]}`,
+        typed: /declare page: number/.test(map.sourcesContent[0]),
+        precached: Boolean(await caches.match("/assets/components/pagination.js.map")),
+      },
+      sourcePathStatus: sourcePath.status,
     };
   });
 
@@ -121,6 +136,15 @@ test("TypeScript modules are served at their source path as JavaScript without t
     contentType: "text/javascript; charset=utf-8",
     defined: true,
     typed: false,
+    mapUrl: true,
     registered: true,
+    map: {
+      status: 200,
+      contentType: "application/json; charset=utf-8",
+      source: "/assets/components/pagination.ts",
+      typed: true,
+      precached: false,
+    },
+    sourcePathStatus: 404,
   });
 });

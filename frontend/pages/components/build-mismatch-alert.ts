@@ -3,7 +3,7 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 
 export const CAFFOLD_BUILD_MISMATCH_RELOAD_EVENT =
   "caffold:build-mismatch-reload";

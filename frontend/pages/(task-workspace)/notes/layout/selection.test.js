@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { NotesSelection } from "./selection.ts";
+import { NotesSelection } from "./selection.js";
 
 test("only a readable primary document can start a companion picker; cancel restores single", () => {
   const selection = new NotesSelection();

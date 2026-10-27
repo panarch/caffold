@@ -1,15 +1,15 @@
 import { html, LitElement } from "lit";
-import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import {
   forgetTaskPermissionInstructions,
   getTaskPermissionInstructions,
-} from "#app/api.ts";
-import { KeyboardContexts } from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import { formatDate } from "#tasks/task-format.ts";
+} from "#app/api.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import { formatDate } from "#tasks/task-format.js";
 
 const EMPTY_MESSAGE =
   "Nothing yet. A prompt that says what this Task may or may not do is kept here while it runs under Ask Jev first.";

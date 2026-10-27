@@ -1,20 +1,20 @@
 import { html, LitElement } from "lit";
-import type { ActionHintPull } from "../action-hints.ts";
-import { type DirectoryListing, listDirectory } from "../api.ts";
-import type { ScrollSurfacePull } from "../scroll-scope.ts";
+import type { ActionHintPull } from "../action-hints.js";
+import { type DirectoryListing, listDirectory } from "../api.js";
+import type { ScrollSurfacePull } from "../scroll-scope.js";
 import {
   createRefreshCoordinator,
   type RefreshCoordinator,
   type RefreshState,
   subscribeToWatch,
   type WatchChange,
-} from "../watch.ts";
-import "./file-navigator/components/list.ts";
-import { DrawnRef, drawn } from "./drawn-refs.ts";
+} from "../watch.js";
+import "./file-navigator/components/list.js";
+import { DrawnRef, drawn } from "./drawn-refs.js";
 import type {
   CaffoldFileList,
   RefreshButtonState,
-} from "./file-navigator/components/list.ts";
+} from "./file-navigator/components/list.js";
 
 const LOADING_DELAY_MS = 180;
 

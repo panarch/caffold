@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./loading-text.ts");
+await import("./loading-text.js");
 const loadingText = registry.element("caffold-loading-text").prototype;
 after(() => registry.restore());
 

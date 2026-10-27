@@ -1,7 +1,7 @@
 import {
   type DeclaredElement,
   ElementDeclarations,
-} from "./element-declarations.ts";
+} from "./element-declarations.js";
 
 export type ScrollAxis = "vertical" | "horizontal";
 

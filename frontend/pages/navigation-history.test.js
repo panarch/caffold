@@ -5,9 +5,9 @@ globalThis.window = {
   location: { origin: "http://caffold.test" },
 };
 
-const { parseRoute, routeUrl } = await import("../navigation-routes.ts");
+const { parseRoute, routeUrl } = await import("../navigation-routes.js");
 const { NAVIGATION_HISTORY_ACTION, NavigationHistory } = await import(
-  "./navigation-history.ts"
+  "./navigation-history.js"
 );
 
 // Walks a person's route requests through the history and reports what the

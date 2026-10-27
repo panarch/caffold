@@ -1,7 +1,7 @@
 import type {
   LiveSubscription,
   WorkspaceLiveUpdates,
-} from "./pages/(task-workspace)/live-updates.ts";
+} from "./pages/(task-workspace)/live-updates.js";
 
 export type RefreshState = "refreshing" | "idle" | "error";
 

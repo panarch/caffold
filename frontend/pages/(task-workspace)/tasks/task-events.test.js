@@ -12,7 +12,7 @@ import {
   optimisticUserMessageEvent,
   sortEventsChronologically,
   taskEventPosition,
-} from "./task-events.ts";
+} from "./task-events.js";
 
 const WHOLE_PROJECTION = { from: null, to: null };
 

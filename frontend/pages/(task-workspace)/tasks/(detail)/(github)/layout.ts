@@ -4,27 +4,27 @@ import {
   ActionHints,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   type GitHubStatus,
   type GitRepository,
   getGitHubStatus,
-} from "#app/api.ts";
-import { compactIconButton } from "#app/component-styles.ts";
-import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.ts";
-import { routeMode } from "#app/navigation-routes.ts";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "./(issues)/layout.ts";
-import type { CaffoldGithubIssuesLayout } from "./(issues)/layout.ts";
-import "./(pulls)/layout.ts";
-import type { CaffoldGithubPullsLayout } from "./(pulls)/layout.ts";
-import "./components/task-start-dialog.ts";
+} from "#app/api.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
+import { routeMode } from "#app/navigation-routes.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "./(issues)/layout.js";
+import type { CaffoldGithubIssuesLayout } from "./(issues)/layout.js";
+import "./(pulls)/layout.js";
+import type { CaffoldGithubPullsLayout } from "./(pulls)/layout.js";
+import "./components/task-start-dialog.js";
 import type {
   CaffoldGithubTaskStartDialog,
   TaskStartSource,
-} from "./components/task-start-dialog.ts";
+} from "./components/task-start-dialog.js";
 
 type GithubMode = "issues" | "pulls";
 

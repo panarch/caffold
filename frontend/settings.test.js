@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const settingsModuleUrl = new URL("./settings.ts", import.meta.url);
+const settingsModuleUrl = new URL("./settings.js", import.meta.url);
 
 async function importFreshSettings(label) {
   const url = new URL(settingsModuleUrl);

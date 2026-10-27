@@ -3,14 +3,14 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import { compactIconButton } from "#app/component-styles.ts";
+} from "#app/action-hints.js";
+import { compactIconButton } from "#app/component-styles.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
-} from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 
 // What the menu asks the Detail layout to open.
 export interface GitMenuIntent {

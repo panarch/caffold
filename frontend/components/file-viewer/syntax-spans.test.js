@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { syntaxLine } from "./syntax-spans.ts";
+import { syntaxLine } from "./syntax-spans.js";
 
 test("wraps each span in its color class between the plain text around it", () => {
   assert.deepEqual(

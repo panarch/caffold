@@ -7,7 +7,7 @@ import {
 import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./task-status-chip.ts");
+await import("./task-status-chip.js");
 const Chip = registry.element("caffold-task-status-chip");
 after(() => registry.restore());
 

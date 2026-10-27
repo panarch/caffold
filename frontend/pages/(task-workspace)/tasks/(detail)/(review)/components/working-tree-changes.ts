@@ -3,14 +3,14 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import { type GitStatus, getGitDiff, getGitStatus } from "#app/api.ts";
-import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { ChangesReading } from "../changes-reading.ts";
-import type { ReviewChange } from "./selected-file/content.ts";
-import "./working-tree-changes/components/changes-tree.ts";
-import type { CaffoldGitDiffChangesTree } from "./working-tree-changes/components/changes-tree.ts";
+} from "#app/action-hints.js";
+import { type GitStatus, getGitDiff, getGitStatus } from "#app/api.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { ChangesReading } from "../changes-reading.js";
+import type { ReviewChange } from "./selected-file/content.js";
+import "./working-tree-changes/components/changes-tree.js";
+import type { CaffoldGitDiffChangesTree } from "./working-tree-changes/components/changes-tree.js";
 
 export class CaffoldReviewWorkingTreeChanges extends LitElement {
   static properties = {

@@ -2,7 +2,7 @@ import type {
   CodexResetCreditOutcome,
   CodexStatus,
   CodexUpdateOutcome,
-} from "#app/api.ts";
+} from "#app/api.js";
 import {
   type CodexRuntimeRequestState,
   type CodexStatusSnapshot,
@@ -12,9 +12,9 @@ import {
   createCodexStatusSnapshot,
   INITIAL_CODEX_STATUS_SNAPSHOT,
   sameCodexStatusSnapshot,
-} from "./model.ts";
-import { CodexRuntimeRestartLifecycle } from "./runtime-restart-lifecycle.ts";
-import { CodexRuntimeUpdateLifecycle } from "./runtime-update-lifecycle.ts";
+} from "./model.js";
+import { CodexRuntimeRestartLifecycle } from "./runtime-restart-lifecycle.js";
+import { CodexRuntimeUpdateLifecycle } from "./runtime-update-lifecycle.js";
 
 /**
  * Restarting and updating both replace the shared Codex runtime, so at most

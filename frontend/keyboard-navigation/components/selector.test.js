@@ -11,10 +11,10 @@ const previousElement = globalThis.Element;
 const previousButton = globalThis.HTMLButtonElement;
 globalThis.Element = globalThis.HTMLElement;
 globalThis.HTMLButtonElement = class TestButton extends globalThis.HTMLElement {};
-await import("./selector.ts");
+await import("./selector.js");
 const Selector = registry.element("caffold-scroll-surface-selector");
 const selector = Selector.prototype;
-const { DrawnRefs } = await import("../../components/drawn-refs.ts");
+const { DrawnRefs } = await import("../../components/drawn-refs.js");
 after(() => {
   restoreGlobal("Element", previousElement);
   restoreGlobal("HTMLButtonElement", previousButton);

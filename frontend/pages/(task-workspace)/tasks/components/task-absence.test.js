@@ -7,8 +7,8 @@ import {
 import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./task-absence.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
+await import("./task-absence.js");
+const { ActionHints } = await import("#app/action-hints.js");
 const Absence = registry.element("caffold-task-absence");
 after(() => registry.restore());
 

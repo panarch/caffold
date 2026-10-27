@@ -1,22 +1,22 @@
 import { html, LitElement } from "lit";
-import type { ActionHintPull } from "#app/action-hints.ts";
-import { type GitDiff, readFile } from "#app/api.ts";
-import { fileStatusPresentation } from "#app/file-status.ts";
-import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
-import { fileNameFromPath, imageTypeLabel } from "#components/dom.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "#components/file-viewer.ts";
-import type { ScrollPosition } from "#components/file-viewer/components/code-viewer.ts";
-import type { CaffoldReviewFileViewer } from "#components/file-viewer.ts";
+import type { ActionHintPull } from "#app/action-hints.js";
+import { type GitDiff, readFile } from "#app/api.js";
+import { fileStatusPresentation } from "#app/file-status.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.js";
+import { fileNameFromPath, imageTypeLabel } from "#components/dom.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "#components/file-viewer.js";
+import type { ScrollPosition } from "#components/file-viewer/components/code-viewer.js";
+import type { CaffoldReviewFileViewer } from "#components/file-viewer.js";
 import {
   diffViewerPresentation,
   sourceViewerPresentation,
-} from "#components/file-viewer-presentation.ts";
+} from "#components/file-viewer-presentation.js";
 import {
   contentFor,
   type ReviewChange,
   type ReviewView,
-} from "./selected-file/content.ts";
+} from "./selected-file/content.js";
 
 interface ViewPosition {
   scroll: ScrollPosition | null;

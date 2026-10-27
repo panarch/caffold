@@ -7,10 +7,10 @@ import {
 import { templateHtml } from "../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./dialog.ts");
+await import("./dialog.js");
 const ActionHintDialog = registry.element("caffold-action-hint-dialog");
 const dialog = ActionHintDialog.prototype;
-const { DrawnRefs } = await import("../../components/drawn-refs.ts");
+const { DrawnRefs } = await import("../../components/drawn-refs.js");
 after(() => registry.restore());
 
 // A badge dialog with the given state, which draws only when a test asks.

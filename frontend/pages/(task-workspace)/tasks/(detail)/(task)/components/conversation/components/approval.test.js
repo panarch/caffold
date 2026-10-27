@@ -4,9 +4,9 @@ import { installCustomElementUnitRegistry } from "../../../../../../../../tests/
 import { templateHtml } from "../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./approval.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
-const { ScrollSurfaces } = await import("#app/scroll-scope.ts");
+await import("./approval.js");
+const { ActionHints } = await import("#app/action-hints.js");
+const { ScrollSurfaces } = await import("#app/scroll-scope.js");
 const Approval = registry.element("caffold-task-approval");
 after(() => registry.restore());
 

@@ -8,16 +8,16 @@ import {
   type TaskFileLink,
   taskAbsence,
   taskResponseError,
-} from "#app/api.ts";
+} from "#app/api.js";
 import type {
   LiveSubscription,
   LiveSubscriptionListener,
-} from "#app/pages/(task-workspace)/live-updates.ts";
+} from "#app/pages/(task-workspace)/live-updates.js";
 import {
   TASK_TRANSPORT_STATE,
   type TaskTransportState,
-} from "../../runtime-state.ts";
-import { TaskStreamLifecycle } from "../../stream.ts";
+} from "../../runtime-state.js";
+import { TaskStreamLifecycle } from "../../stream.js";
 
 // From a channel's opening to its first bootstrap, which the server keeps small
 // whatever the conversation's size. What follows has no limit here: the server

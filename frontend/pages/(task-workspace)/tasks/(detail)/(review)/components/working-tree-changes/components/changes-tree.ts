@@ -2,23 +2,23 @@ import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
   type ActionHintPull,
   emptyActionHintScope,
-} from "#app/action-hints.ts";
-import type { GitChangedFile, GitStatus } from "#app/api.ts";
-import { fileStatusPresentation } from "#app/file-status.ts";
+} from "#app/action-hints.js";
+import type { GitChangedFile, GitStatus } from "#app/api.js";
+import { fileStatusPresentation } from "#app/file-status.js";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfacePull,
-} from "#app/scroll-scope.ts";
-import { formatLineStats } from "#components/dom.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+} from "#app/scroll-scope.js";
+import { formatLineStats } from "#components/dom.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import {
   buildFileTreeNodes,
   type CaffoldFileTree,
   type FileTreeNode,
   type FileTreeSelectDetail,
   readyFileTreeChildren,
-} from "#components/file-tree.ts";
-import "#components/loading-text.ts";
+} from "#components/file-tree.js";
+import "#components/loading-text.js";
 
 const SECTIONS = [
   ["unstaged", "Unstaged"],

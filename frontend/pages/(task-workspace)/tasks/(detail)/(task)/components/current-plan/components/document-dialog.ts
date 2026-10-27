@@ -3,17 +3,17 @@ import {
   ACTION_HINT_ACTION,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import { readFile } from "#app/api.ts";
-import { KeyboardContexts } from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "#components/loading-text.ts";
-import "#components/markdown-preview.ts";
-import type { CaffoldMarkdownPreview } from "#components/markdown-preview.ts";
-import type { CurrentPlanDocument } from "../model.ts";
+} from "#app/action-hints.js";
+import { readFile } from "#app/api.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
+import "#components/markdown-preview.js";
+import type { CaffoldMarkdownPreview } from "#components/markdown-preview.js";
+import type { CurrentPlanDocument } from "../model.js";
 
 // What the Current Plan asks the dialog to show. `rootPath` is the Task root
 // that an image address starting with "/" is read from.

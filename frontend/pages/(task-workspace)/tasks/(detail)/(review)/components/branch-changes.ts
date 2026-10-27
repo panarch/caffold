@@ -1,18 +1,18 @@
 import { html, LitElement } from "lit";
-import type { ActionHintPull } from "#app/action-hints.ts";
+import type { ActionHintPull } from "#app/action-hints.js";
 import {
   type GitCompare,
   type GitRefs,
   getGitCompare,
   getGitCompareDiff,
   getGitRefs,
-} from "#app/api.ts";
-import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "#components/git-compare-tree.ts";
-import type { CaffoldGitCompareTree } from "#components/git-compare-tree.ts";
-import { ChangesReading } from "../changes-reading.ts";
-import type { ReviewChange } from "./selected-file/content.ts";
+} from "#app/api.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "#components/git-compare-tree.js";
+import type { CaffoldGitCompareTree } from "#components/git-compare-tree.js";
+import { ChangesReading } from "../changes-reading.js";
+import type { ReviewChange } from "./selected-file/content.js";
 
 export class CaffoldReviewBranchChanges extends LitElement {
   private rootPath = "";

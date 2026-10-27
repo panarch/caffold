@@ -1,6 +1,6 @@
 import { html, LitElement, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
-import type { TaskFilePath } from "#tasks/task-format.ts";
+import type { TaskFilePath } from "#tasks/task-format.js";
 
 // The files a change touched, one row each, kept by identity as the list
 // grows.

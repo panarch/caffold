@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./markdown-preview-dialog.ts");
+await import("./markdown-preview-dialog.js");
 const PreviewDialog = registry.element("caffold-task-markdown-preview-dialog");
 after(() => registry.restore());
 

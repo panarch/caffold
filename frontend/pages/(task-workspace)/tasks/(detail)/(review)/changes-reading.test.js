@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ChangesReading } from "./changes-reading.ts";
+import { ChangesReading } from "./changes-reading.js";
 
 const facts = {
   empty: { hasData: false, fromBeforeReturn: false, reading: false, failed: false },

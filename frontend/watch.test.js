@@ -50,7 +50,7 @@ const {
   subscribeToWatch,
   watchChangeAffectsPath,
 } = await import(
-  "./watch.ts"
+  "./watch.js"
 );
 
 test("shares one gateway Watch binding until the final scope subscriber leaves", async () => {

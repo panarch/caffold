@@ -3,14 +3,14 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   type GitHubIssue,
   type GitRef,
   type GitRepository,
   getGitRefs,
-} from "#app/api.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+} from "#app/api.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 
 interface TaskRef {
   name: string;

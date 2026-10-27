@@ -1,5 +1,5 @@
 import { html, LitElement } from "lit";
-import { type ActionHintPull, mergeActionHintScopes } from "../action-hints.ts";
+import { type ActionHintPull, mergeActionHintScopes } from "../action-hints.js";
 import {
   type GitCompare,
   type GitDiff,
@@ -9,20 +9,20 @@ import {
   getGitCompare,
   getGitCompareDiff,
   getGitRefs,
-} from "../api.ts";
+} from "../api.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
-} from "../scroll-scope.ts";
-import "./file-viewer.ts";
-import type { CaffoldReviewFileViewer } from "./file-viewer.ts";
-import { diffViewerPresentation } from "./file-viewer-presentation.ts";
-import "./git-compare-tree.ts";
-import type { CaffoldGitCompareTree } from "./git-compare-tree.ts";
-import "./pane-resizer.ts";
-import { DrawnRef, drawn } from "./drawn-refs.ts";
-import type { CaffoldPaneResizer } from "./pane-resizer.ts";
-import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.ts";
+} from "../scroll-scope.js";
+import "./file-viewer.js";
+import type { CaffoldReviewFileViewer } from "./file-viewer.js";
+import { diffViewerPresentation } from "./file-viewer-presentation.js";
+import "./git-compare-tree.js";
+import type { CaffoldGitCompareTree } from "./git-compare-tree.js";
+import "./pane-resizer.js";
+import { DrawnRef, drawn } from "./drawn-refs.js";
+import type { CaffoldPaneResizer } from "./pane-resizer.js";
+import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.js";
 
 const LOADING_DELAY_MS = 180;
 

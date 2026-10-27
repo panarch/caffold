@@ -18,7 +18,7 @@ const buildInfoHook = registerHooks({
   },
 });
 const registry = installCustomElementUnitRegistry();
-await import("./layout.ts");
+await import("./layout.js");
 const workspace = registry.element("caffold-settings-workspace").prototype;
 after(() => {
   registry.restore();

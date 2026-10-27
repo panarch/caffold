@@ -407,7 +407,7 @@ test("shares navigation pane resizing across Tasks and Settings", { tag: "@all-v
 
   for (const interfaceScalePercent of [90, 120]) {
     await page.evaluate(async (value) => {
-      const { setAppearanceRangeSetting } = await import("/assets/settings.ts");
+      const { setAppearanceRangeSetting } = await import("/assets/settings.js");
       setAppearanceRangeSetting("interfaceScalePercent", value);
     }, interfaceScalePercent);
     const geometry = await taskWorkspace.evaluate((element) => {

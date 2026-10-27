@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./docx-viewer.ts");
+await import("./docx-viewer.js");
 const docxViewer = registry.element("caffold-docx-viewer").prototype;
 after(() => registry.restore());
 

@@ -38,7 +38,7 @@ test("the browser suite answers SheetJS's CDN from the installed package", () =>
 });
 
 test("SheetJS stays a runtime CDN import rather than a shipped asset", () => {
-  const serviceWorker = read("service-worker.js");
+  const serviceWorker = read("service-worker.ts");
   const staticAssets = readFileSync(
     new URL("../caffold/src/static_assets.rs", frontendUrl),
     "utf8",
@@ -47,6 +47,6 @@ test("SheetJS stays a runtime CDN import rather than a shipped asset", () => {
   for (const manifest of [serviceWorker, staticAssets]) {
     assert.doesNotMatch(manifest, /sheetjs|xlsx\.(?:mjs|full|core|mini)/i);
   }
-  assert.match(serviceWorker, /"\/assets\/components\/xlsx-viewer\.ts"/);
-  assert.match(staticAssets, /"components\/xlsx-viewer\.ts"/);
+  assert.match(serviceWorker, /"\/assets\/components\/xlsx-viewer\.js"/);
+  assert.match(staticAssets, /"components\/xlsx-viewer\.js"/);
 });

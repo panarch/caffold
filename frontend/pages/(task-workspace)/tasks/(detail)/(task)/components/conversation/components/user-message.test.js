@@ -7,7 +7,7 @@ import {
 import { templateHtml } from "../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./user-message.ts");
+await import("./user-message.js");
 const message = registry.element("caffold-task-user-message").prototype;
 after(() => registry.restore());
 

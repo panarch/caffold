@@ -4,33 +4,33 @@ import {
   type ActionHintPull,
   ActionHints,
   emptyActionHintScope,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   killTerminal,
   openTerminal,
   type TaskResponseError,
   type TerminalSubject,
-} from "#app/api.ts";
-import { compactIconButton } from "#app/component-styles.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon } from "#components/icons.ts";
+} from "#app/api.js";
+import { compactIconButton } from "#app/component-styles.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon } from "#components/icons.js";
 import {
   type CaffoldTerminalView,
   type TerminalSize,
   terminalInputBytes,
-} from "#components/terminal-view.ts";
+} from "#components/terminal-view.js";
 import {
   TASK_TRANSPORT_STATE,
   type TaskTransportState,
-} from "../../runtime-state.ts";
-import "./components/special-keys.ts";
+} from "../../runtime-state.js";
+import "./components/special-keys.js";
 import type {
   CaffoldTerminalSpecialKeys,
   TerminalSpecialKeyDetail,
-} from "./components/special-keys.ts";
-import { TerminalConnection } from "./page/connection.ts";
-import { watchKeyboardInset } from "./page/keyboard-inset.ts";
-import { controlCharacter, specialKeySequence } from "./page/keys.ts";
+} from "./components/special-keys.js";
+import { TerminalConnection } from "./page/connection.js";
+import { watchKeyboardInset } from "./page/keyboard-inset.js";
+import { controlCharacter, specialKeySequence } from "./page/keys.js";
 import {
   initialTerminalState,
   TERMINAL_EFFECT,
@@ -43,7 +43,7 @@ import {
   type TerminalNode,
   type TerminalState,
   terminalTransition,
-} from "./page/model.ts";
+} from "./page/model.js";
 
 export const TERMINAL_PAGE_STATE_EVENT = "caffold:terminal-page-state";
 export const TERMINAL_PAGE_FOCUS_RELEASE_EVENT =

@@ -1,5 +1,5 @@
-import type { CodexStatus, CodexUpdateOutcome } from "#app/api.ts";
-import type { CodexRuntimeRequestState } from "./model.ts";
+import type { CodexStatus, CodexUpdateOutcome } from "#app/api.js";
+import type { CodexRuntimeRequestState } from "./model.js";
 
 const IDLE_UPDATE_STATE = Object.freeze({
   state: "idle",

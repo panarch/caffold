@@ -1,8 +1,8 @@
 import { html, LitElement, nothing, type PropertyValues } from "lit";
-import type { SyntaxSpan } from "#app/api.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "../../drawn-refs.ts";
-import { syntaxLine } from "../syntax-spans.ts";
+import type { SyntaxSpan } from "#app/api.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "../../drawn-refs.js";
+import { syntaxLine } from "../syntax-spans.js";
 
 export interface CodeFile {
   content: string;

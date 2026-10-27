@@ -1,11 +1,11 @@
-import { InFlightLimit } from "./in-flight-limit.ts";
+import { InFlightLimit } from "./in-flight-limit.js";
 import {
   abortError,
   type Cell,
   type CellAnswer,
   type FetchedFile,
   Transfer,
-} from "./transfer.ts";
+} from "./transfer.js";
 
 type FetchCell = (url: string, init: RequestInit) => Promise<Response>;
 

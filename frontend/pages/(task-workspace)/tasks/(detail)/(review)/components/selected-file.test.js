@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./selected-file.ts");
+await import("./selected-file.js");
 const selectedFile = registry.element("caffold-review-selected-file").prototype;
 after(() => registry.restore());
 

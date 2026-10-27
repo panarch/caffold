@@ -6,7 +6,7 @@ import {
 } from "../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-const { updateResultNotice } = await import("./update-result-dialog.ts");
+const { updateResultNotice } = await import("./update-result-dialog.js");
 after(() => registry.restore());
 
 test("tells a rollback with the reason the attempt recorded", () => {

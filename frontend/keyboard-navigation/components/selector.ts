@@ -1,7 +1,7 @@
 import { html, LitElement } from "lit";
 import { repeat } from "lit/directives/repeat.js";
-import { clampBadgePosition, type Rect } from "../../action-hints/model.ts";
-import { DrawnRef, DrawnRefs, drawn } from "../../components/drawn-refs.ts";
+import { clampBadgePosition, type Rect } from "../../action-hints.js";
+import { DrawnRef, DrawnRefs, drawn } from "../../components/drawn-refs.js";
 
 export const SCROLL_SURFACE_SELECT_EVENT = "caffold:scroll-surface-select";
 export const SCROLL_SURFACE_CANCEL_EVENT = "caffold:scroll-surface-cancel";

@@ -4,22 +4,22 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import { listDirectory } from "#app/api.ts";
+} from "#app/action-hints.js";
+import { listDirectory } from "#app/api.js";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfacePull,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import type {
   CaffoldFileTree,
   FileTreeModel,
   FileTreeNode,
   FileTreeSelectDetail,
-} from "#components/file-tree.ts";
-import "#components/file-tree.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import { directoryPathDisplay, type ServerPaths } from "../directory-path.ts";
+} from "#components/file-tree.js";
+import "#components/file-tree.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import { directoryPathDisplay, type ServerPaths } from "../directory-path.js";
 import {
   DIRECTORY_FIELD_NODE,
   type DirectoryFieldEffect,
@@ -29,7 +29,7 @@ import {
   initialDirectoryFieldState,
   PARENT_ROW_KEY,
   reduceDirectoryField,
-} from "./directory-field/control.ts";
+} from "./directory-field/control.js";
 
 export const DIRECTORY_CHOSEN_EVENT = "caffold:task-directory-chosen";
 

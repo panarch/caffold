@@ -4,29 +4,29 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import { compactIconButton } from "#app/component-styles.ts";
+} from "#app/action-hints.js";
+import { compactIconButton } from "#app/component-styles.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   ScrollSurfaces,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import type {
   CaffoldFileTree,
   FileTreeSelectDetail,
-} from "#components/file-tree.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "#components/loading-text.ts";
-import "../../components/workspace-brand.ts";
-import type { NotesPicker } from "../layout/selection.ts";
+} from "#components/file-tree.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
+import "../../components/workspace-brand.js";
+import type { NotesPicker } from "../layout/selection.js";
 import {
   directoryIdFromKey,
   type NotesLevels,
   noteIdOf,
   noteKey,
   notesTreeNodes,
-} from "../tree.ts";
+} from "../tree.js";
 
 export const NOTES_NAVIGATOR_INTENT_EVENT = "caffold:notes-navigator-intent";
 

@@ -1,4 +1,4 @@
-import { reportOriginReachable } from "./origin-reachability.ts";
+import { reportOriginReachable } from "./origin-reachability.js";
 
 // The limit for requests that recovery and live updates wait on. On a slow
 // link their answers queue behind a large live update; whether the link still

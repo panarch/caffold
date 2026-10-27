@@ -4,12 +4,12 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import { fetchInChunks } from "#app/chunked-fetch.ts";
-import { type DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "#components/loading-text.ts";
-import { requestTaskImagePreview } from "#tasks/components/image-preview-dialog.ts";
+} from "#app/action-hints.js";
+import { fetchInChunks } from "#app/chunked-fetch.js";
+import { type DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
+import { requestTaskImagePreview } from "#tasks/components/image-preview-dialog.js";
 
 // A picture is fetched when it comes this near view, in the viewport and in
 // the conversation that scrolls it: the distance Chrome itself keeps for a

@@ -11,7 +11,7 @@ const {
   noteDirectoryKey,
   noteKey,
   notesTreeNodes,
-} = await import("./tree.ts");
+} = await import("./tree.js");
 after(() => registry.restore());
 
 function ready(directories, notes = []) {

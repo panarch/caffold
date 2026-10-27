@@ -1,7 +1,7 @@
-import { CellScheduler } from "./chunked-fetch/cell-scheduler.ts";
-import type { FetchedFile } from "./chunked-fetch/transfer.ts";
+import { CellScheduler } from "./chunked-fetch/cell-scheduler.js";
+import type { FetchedFile } from "./chunked-fetch/transfer.js";
 
-export type { FetchedFile } from "./chunked-fetch/transfer.ts";
+export type { FetchedFile } from "./chunked-fetch/transfer.js";
 
 // A large file a viewer shows is fetched in cells of 64 KB rather than in one
 // response, so the bytes of an image or document never wait in line ahead of

@@ -18,13 +18,13 @@ const buildInfoHook = registerHooks({
   },
 });
 const registry = installCustomElementUnitRegistry();
-await import("./page.ts");
+await import("./page.js");
 after(() => {
   registry.restore();
   buildInfoHook.deregister();
 });
 
-const { caffoldUpdatesView, lastUpdateValue } = await import("./page.ts");
+const { caffoldUpdatesView, lastUpdateValue } = await import("./page.js");
 
 function answered(status) {
   return { checking: false, status, error: null };

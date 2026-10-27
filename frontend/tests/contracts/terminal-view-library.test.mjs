@@ -30,7 +30,7 @@ test("the browser suite serves xterm.js from the installed packages", () => {
 });
 
 test("xterm.js stays a runtime CDN import rather than a shipped asset", () => {
-  const serviceWorker = read("service-worker.js");
+  const serviceWorker = read("service-worker.ts");
   const staticAssets = readFileSync(
     new URL("../caffold/src/static_assets.rs", frontendUrl),
     "utf8",
@@ -38,6 +38,6 @@ test("xterm.js stays a runtime CDN import rather than a shipped asset", () => {
 
   assert.doesNotMatch(serviceWorker, /@xterm|xterm\.(?:mjs|css)/);
   assert.doesNotMatch(staticAssets, /@xterm|xterm\.(?:mjs|css)/);
-  assert.match(serviceWorker, /"\/assets\/components\/terminal-view\.ts"/);
-  assert.match(staticAssets, /"components\/terminal-view\.ts"/);
+  assert.match(serviceWorker, /"\/assets\/components\/terminal-view\.js"/);
+  assert.match(staticAssets, /"components\/terminal-view\.js"/);
 });

@@ -3,20 +3,20 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import { getCurrentPlan } from "#app/api.ts";
+} from "#app/action-hints.js";
+import { getCurrentPlan } from "#app/api.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
   mergeKeyboardNavigationContexts,
-} from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.ts";
-import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "./current-plan/components/document-dialog.ts";
-import type { CaffoldCurrentPlanDocumentDialog } from "./current-plan/components/document-dialog.ts";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import type { WorkspaceLiveUpdates } from "#app/pages/(task-workspace)/live-updates.js";
+import { subscribeToWatch, watchChangeAffectsPath } from "#app/watch.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "./current-plan/components/document-dialog.js";
+import type { CaffoldCurrentPlanDocumentDialog } from "./current-plan/components/document-dialog.js";
 import {
   CURRENT_PLAN_NODE,
   type CurrentPlanNode,
@@ -26,7 +26,7 @@ import {
   currentPlanPresentation,
   currentPlanTransitionAllowed,
   normalizeCurrentPlanProjection,
-} from "./current-plan/model.ts";
+} from "./current-plan/model.js";
 
 // The Task the plan belongs to: its thread, the folder its plan files are
 // read from, and the root its document paths are shown from.

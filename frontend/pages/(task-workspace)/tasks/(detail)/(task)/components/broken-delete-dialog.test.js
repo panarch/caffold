@@ -4,10 +4,10 @@ import { installCustomElementUnitRegistry } from "../../../../../../tests/suppor
 import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./broken-delete-dialog.ts");
+await import("./broken-delete-dialog.js");
 const Dialog = registry.element("caffold-broken-task-delete-dialog");
-const { ActionHints } = await import("#app/action-hints.ts");
-const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
+const { ActionHints } = await import("#app/action-hints.js");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
 const original = { window: globalThis.window, fetch: globalThis.fetch };
 after(() => registry.restore());
 afterEach(() => {

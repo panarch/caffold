@@ -18,11 +18,11 @@ import {
   switchActionHintTarget,
   textboxActionHintTarget,
   withActionHintOcclusionRoots,
-} from "./action-hint-scope.ts";
+} from "./action-hint-scope.js";
 import {
   ACTION_HINT_ACTIVATE_EVENT,
   ACTION_HINT_CANCEL_EVENT,
-} from "./action-hints/control.ts";
+} from "./action-hints/control.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintViewport,
@@ -44,19 +44,20 @@ import {
   TASK_HINT_ALPHABET,
   taskHintSuffix,
   visibleTargetRect,
-} from "./action-hints/model.ts";
+} from "./action-hints/model.js";
 
 export {
   type ActionHintDeclaration,
   type ActionHintPull,
   ActionHints,
-} from "./action-hints/declarations.ts";
+} from "./action-hints/declarations.js";
 export type {
   ActionFor,
   ActionHintAction,
   HintProgress,
   Rect,
-} from "./action-hints/model.ts";
+  RectLike,
+} from "./action-hints/model.js";
 
 export {
   ACTION_HINT_ACTION,

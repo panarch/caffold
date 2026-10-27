@@ -3,9 +3,9 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import type { CaffoldUpdateSnapshot } from "../settings/about/page.ts";
+} from "#app/action-hints.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import type { CaffoldUpdateSnapshot } from "../settings/about/page.js";
 
 type WorkspaceMode = "tasks" | "notes" | "settings";
 

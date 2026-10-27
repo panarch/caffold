@@ -7,10 +7,10 @@ import {
 import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./navigator.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
-const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
-const { ScrollSurfaces } = await import("#app/scroll-scope.ts");
+await import("./navigator.js");
+const { ActionHints } = await import("#app/action-hints.js");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
+const { ScrollSurfaces } = await import("#app/scroll-scope.js");
 const Navigator = registry.element("caffold-task-navigator");
 after(() => registry.restore());
 

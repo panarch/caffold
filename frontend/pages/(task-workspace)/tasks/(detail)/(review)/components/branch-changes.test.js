@@ -4,10 +4,10 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../tests/support/custom-element-unit.js";
-import { ChangesReading } from "../changes-reading.ts";
+import { ChangesReading } from "../changes-reading.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./branch-changes.ts");
+await import("./branch-changes.js");
 const branchChanges = registry.element("caffold-review-branch-changes").prototype;
 after(() => registry.restore());
 

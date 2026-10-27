@@ -5,7 +5,7 @@ import {
   selectVoiceProvider,
   startVoiceModelDownload,
   storeVoiceKey,
-} from "#app/api.ts";
+} from "#app/api.js";
 
 const VOICE_PROVIDERS = Object.freeze(["whisper", "openai", "gemini", "grok"]);
 export const VOICE_KEY_PROVIDERS = Object.freeze([

@@ -2,15 +2,15 @@ import { html, LitElement, nothing } from "lit";
 import {
   type ActionHintPull,
   emptyActionHintScope,
-} from "#app/action-hints.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "./summary/components/info.ts";
+} from "#app/action-hints.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "./summary/components/info.js";
 import {
   type CaffoldTaskDetailInfo,
   type TaskInfoIntent,
   type TaskInfoSnapshot,
   taskInfoSnapshot,
-} from "./summary/components/info.ts";
+} from "./summary/components/info.js";
 
 export type { TaskInfoSnapshot };
 

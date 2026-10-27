@@ -3,12 +3,12 @@ import type {
   GitChangedFile,
   GitCompareFile,
   GitDiff,
-} from "#app/api.ts";
-import { type DocumentPreviewKind, fileNameFromPath } from "#components/dom.ts";
+} from "#app/api.js";
+import { type DocumentPreviewKind, fileNameFromPath } from "#components/dom.js";
 import {
   fileRepresentationCapabilities,
   type ReviewViewer,
-} from "../../representations.ts";
+} from "../../representations.js";
 
 // What the shown Working Tree or Branch changes say about one file.
 export interface ReviewChange {

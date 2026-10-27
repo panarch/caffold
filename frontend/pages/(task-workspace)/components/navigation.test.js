@@ -7,9 +7,9 @@ import {
 import { templateHtml } from "../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./navigation.ts");
+await import("./navigation.js");
 const Navigation = registry.element("caffold-task-workspace-navigation");
-const { ActionHints } = await import("#app/action-hints.ts");
+const { ActionHints } = await import("#app/action-hints.js");
 after(() => registry.restore());
 
 test("marks exactly the chosen workspace mode as current", () => {

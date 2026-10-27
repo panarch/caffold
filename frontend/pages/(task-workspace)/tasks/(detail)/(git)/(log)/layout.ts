@@ -1,18 +1,18 @@
 import { html, LitElement } from "lit";
-import type { ActionHintPull } from "#app/action-hints.ts";
+import type { ActionHintPull } from "#app/action-hints.js";
 import {
   fetchGitRemote,
   type GitFetchResult,
   type GitLog,
   type GitRepository,
   getGitLog,
-} from "#app/api.ts";
-import type { ScrollSurfacePull } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "./commit/page.ts";
-import type { CaffoldGitLogCommitPage } from "./commit/page.ts";
-import "./list/page.ts";
-import type { CaffoldGitLogListPage } from "./list/page.ts";
+} from "#app/api.js";
+import type { ScrollSurfacePull } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "./commit/page.js";
+import type { CaffoldGitLogCommitPage } from "./commit/page.js";
+import "./list/page.js";
+import type { CaffoldGitLogListPage } from "./list/page.js";
 
 const LOADING_DELAY_MS = 180;
 

@@ -24,8 +24,8 @@ import {
   terminalSocketUrl,
   updateLiveSubscriptions,
   uploadTaskFile,
-} from "./api.ts";
-import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "./origin-reachability.ts";
+} from "./api.js";
+import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "./origin-reachability.js";
 
 const originalBrowserGlobals = {
   fetch: globalThis.fetch,

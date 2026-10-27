@@ -635,7 +635,7 @@ test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports"
     { interfaceScalePercent: 120, conversationTextPx: 20, codeTextPx: 20 },
   ]) {
     await page.evaluate(async (appearance) => {
-      const { setAppearanceRangeSetting } = await import("/assets/settings.ts");
+      const { setAppearanceRangeSetting } = await import("/assets/settings.js");
       for (const [name, value] of Object.entries(appearance)) {
         setAppearanceRangeSetting(name, value);
       }
@@ -712,7 +712,7 @@ test("keeps compact Task segments pixel-aligned on Retina displays", { tag: "@al
 
     for (const interfaceScalePercent of [90, 100, 105, 120]) {
       await page.evaluate(async (value) => {
-        const { setAppearanceRangeSetting } = await import("/assets/settings.ts");
+        const { setAppearanceRangeSetting } = await import("/assets/settings.js");
         setAppearanceRangeSetting("interfaceScalePercent", value);
       }, interfaceScalePercent);
       const { devicePixelRatio, segments } = await page.evaluate(() => ({

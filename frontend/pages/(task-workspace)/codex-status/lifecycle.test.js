@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CodexStatusLifecycle } from "./lifecycle.ts";
+import { CodexStatusLifecycle } from "./lifecycle.js";
 import {
   codexBlocksTaskOperations,
   createCodexStatusSnapshot,
-} from "./model.ts";
+} from "./model.js";
 
 function deferred() {
   let resolve;

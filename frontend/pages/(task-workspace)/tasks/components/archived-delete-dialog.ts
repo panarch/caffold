@@ -1,9 +1,9 @@
 import { html, LitElement } from "lit";
-import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
-import { KeyboardContexts } from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { taskThreadId } from "../task-list-model.ts";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { taskThreadId } from "../task-list-model.js";
 
 export const TASK_ARCHIVED_DELETE_CONFIRMED_EVENT =
   "caffold:task-archived-delete-confirmed";

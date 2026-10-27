@@ -27,7 +27,7 @@ export const FOREGROUND_RECOVERY_BROWSER_SIGNAL = Object.freeze({
   NOTIFICATION_ACTIVATED: "notification-activated",
 });
 
-import type { ForegroundRecoveryObservation } from "./machine.ts";
+import type { ForegroundRecoveryObservation } from "./machine.js";
 
 export type ForegroundRecoveryBrowserSignal =
   (typeof FOREGROUND_RECOVERY_BROWSER_SIGNAL)[keyof typeof FOREGROUND_RECOVERY_BROWSER_SIGNAL];

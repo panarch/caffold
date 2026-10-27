@@ -10,7 +10,7 @@ import {
   type PwaUpdateHandoffState,
   type PwaUpdateTargetPhase,
   transitionPwaUpdateHandoff,
-} from "./machine.ts";
+} from "./machine.js";
 
 const ACTIVATE_PREPARED_BUILD_MESSAGE = "caffold:activate-prepared-build";
 const CLAIM_PREPARED_BUILD_MESSAGE = "caffold:claim-prepared-build";

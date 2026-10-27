@@ -161,7 +161,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     shortcutDialog,
     /customElements\.define\(\s*"caffold-keyboard-shortcut-dialog"/,
   );
-  assert.match(settingsWorkspace, /import "\.\/keyboard\/page\.ts"/);
+  assert.match(settingsWorkspace, /import "\.\/keyboard\/page\.js"/);
   assert.equal(
     [...settingsWorkspace.matchAll(/<caffold-settings-keyboard-page/g)].length,
     1,
@@ -350,8 +350,8 @@ test("Git and GitHub detail components independently own their native auto popov
     "pages/(task-workspace)/tasks/(detail)/components/github-menu.ts",
   );
 
-  assert.match(detailLayout, /import "\.\/components\/git-menu\.ts"/);
-  assert.match(detailLayout, /import "\.\/components\/github-menu\.ts"/);
+  assert.match(detailLayout, /import "\.\/components\/git-menu\.js"/);
+  assert.match(detailLayout, /import "\.\/components\/github-menu\.js"/);
   assert.match(
     detailLayout,
     /<caffold-task-detail-git\b/,
@@ -440,7 +440,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   );
 
   for (const child of ["(review)", "(git)", "(github)"]) {
-    assert.ok(detailLayout.includes(`import "./${child}/layout.ts"`));
+    assert.ok(detailLayout.includes(`import "./${child}/layout.js"`));
   }
   assert.match(
     detailLayout,
@@ -460,9 +460,9 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(tasksLayout, /reconcileSelectedSection/);
   assert.match(activeTaskList, /selectedSection: this\.sectionFor/);
 
-  assert.match(taskLayout, /import "\.\/components\/conversation\.ts"/);
-  assert.match(taskLayout, /import "\.\/components\/command-dialog\.ts"/);
-  assert.match(taskLayout, /import "\.\/components\/markdown-preview-dialog\.ts"/);
+  assert.match(taskLayout, /import "\.\/components\/conversation\.js"/);
+  assert.match(taskLayout, /import "\.\/components\/command-dialog\.js"/);
+  assert.match(taskLayout, /import "\.\/components\/markdown-preview-dialog\.js"/);
   assert.match(taskLayout, /<caffold-task-conversation\b/);
   assert.match(taskLayout, /<caffold-task-command-dialog\b/);
   assert.match(taskLayout, /<caffold-task-markdown-preview-dialog\b/);
@@ -472,9 +472,9 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
     /<caffold-task-review|<caffold-task-git-layout|<caffold-task-github-layout|<caffold-task-detail-summary/,
   );
 
-  assert.match(sectionLayout, /import "\.\.\/\.\.\/components\/task-create\.ts"/);
-  assert.match(sectionLayout, /import "\.\/components\/github-shortcuts\.ts"/);
-  assert.match(sectionLayout, /import "\.\/components\/conversation-shortcuts\.ts"/);
+  assert.match(sectionLayout, /import "\.\.\/\.\.\/components\/task-create\.js"/);
+  assert.match(sectionLayout, /import "\.\/components\/github-shortcuts\.js"/);
+  assert.match(sectionLayout, /import "\.\/components\/conversation-shortcuts\.js"/);
   assert.match(sectionLayout, /<caffold-task-create\b/);
   assert.match(
     sectionLayout,
@@ -497,7 +497,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(conversationForkDialog, /createTaskFork/);
   assert.match(conversationForkDialog, /caffold:task-created/);
   assert.match(sectionLayout, /browseCwd: false/);
-  assert.match(globalNew, /import "\.\.\/components\/task-create\.ts"/);
+  assert.match(globalNew, /import "\.\.\/components\/task-create\.js"/);
   assert.match(globalNew, /browseCwd: true/);
   assert.match(taskCreate, /class CaffoldTaskCreate/);
   assert.match(taskCreate, /caffold:task-create-intent/);
@@ -530,7 +530,7 @@ test("Task Info keeps action presentation in its private leaf", () => {
     "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.ts",
   );
 
-  assert.match(info, /import "\.\/info\/components\/actions\.ts"/);
+  assert.match(info, /import "\.\/info\/components\/actions\.js"/);
   assert.match(info, /<caffold-task-detail-info-actions\b/);
   assert.match(info, /caffold:task-detail-info-action-intent/);
   assert.doesNotMatch(info, /data-task-info-action|forkDisabledReason/);
@@ -658,7 +658,7 @@ test("PWA update lifecycle keeps one public non-visual owner and private graph",
   const lifecycle = readFrontend("pages/pwa-update-lifecycle.ts");
   const machine = readFrontend("pages/pwa-update-lifecycle/machine.ts");
   const runtime = readFrontend("pages/pwa-update-lifecycle/runtime.ts");
-  const serviceWorker = readFrontend("service-worker.js");
+  const serviceWorker = readFrontend("service-worker.ts");
   const exportedNames = [...lifecycle.matchAll(
     /^export (?:class|const|function)\s+([A-Za-z0-9_]+)/gm,
   )].map((match) => match[1]);
@@ -674,19 +674,19 @@ test("PWA update lifecycle keeps one public non-visual owner and private graph",
   const positions = declarations.map((declaration) => machine.indexOf(declaration));
 
   assert.deepEqual(exportedNames, ["PwaUpdateLifecycle"]);
-  assert.match(appShell, /from "\.\/pwa-update-lifecycle\.ts"/);
-  assert.doesNotMatch(appShell, /pwa-update-lifecycle\/(?:machine|runtime)\.ts/);
-  assert.doesNotMatch(appShell, /components\/pwa-update-lifecycle\.ts/);
+  assert.match(appShell, /from "\.\/pwa-update-lifecycle\.js"/);
+  assert.doesNotMatch(appShell, /pwa-update-lifecycle\/(?:machine|runtime)\.js/);
+  assert.doesNotMatch(appShell, /components\/pwa-update-lifecycle\.js/);
   assert.ok(positions.every((position) => position >= 0));
   assert.deepEqual(positions, [...positions].sort((left, right) => left - right));
-  assert.match(runtime, /from "\.\/machine\.ts"/);
+  assert.match(runtime, /from "\.\/machine\.js"/);
   assert.match(runtime, /"controllerchange"/);
   assert.match(runtime, /transitionPwaUpdateHandoff\(this\.handoffState, event\)/);
   assert.doesNotMatch(lifecycle, /addEventListener|postMessage|controllerchange/);
   for (const path of [
-    "/assets/pages/pwa-update-lifecycle.ts",
-    "/assets/pages/pwa-update-lifecycle/machine.ts",
-    "/assets/pages/pwa-update-lifecycle/runtime.ts",
+    "/assets/pages/pwa-update-lifecycle.js",
+    "/assets/pages/pwa-update-lifecycle/machine.js",
+    "/assets/pages/pwa-update-lifecycle/runtime.js",
   ]) {
     assert.match(serviceWorker, new RegExp(path.replaceAll("/", "\\/")));
   }
@@ -710,7 +710,7 @@ test("App Shell solely coordinates foreground recovery through public owners", (
     "pages/(task-workspace)/tasks/(detail)/(task)/layout.ts",
   );
   const stream = readFrontend("pages/(task-workspace)/tasks/stream.ts");
-  const serviceWorker = readFrontend("service-worker.js");
+  const serviceWorker = readFrontend("service-worker.ts");
 
   assert.match(appShell, /new ForegroundRecoveryLifecycle\(/);
   assert.match(appShell, /onRecover: \(request\) => this\.recoverForeground\(request\)/);
@@ -740,11 +740,11 @@ test("App Shell solely coordinates foreground recovery through public owners", (
   );
   assert.match(
     foregroundLifecycle,
-    /from "\.\/browser-signals\.ts"/,
+    /from "\.\/browser-signals\.js"/,
   );
   assert.doesNotMatch(
     appShell,
-    /foreground-recovery\/(?:browser-signals|lifecycle|machine)\.ts/,
+    /foreground-recovery\/(?:browser-signals|lifecycle|machine)\.js/,
   );
   assert.match(workspace, /async recoverForeground\(/);
   assert.match(tasksPage, /async recoverForeground\(/);
@@ -828,7 +828,7 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
     /ACTIVE_TASK_ROW_INTENT_EVENT|caffold-active-task-row|li\[data-thread-id/,
   );
   assert.match(section, /new CaffoldActiveTaskRow\(\)/);
-  assert.match(section, /\.\/section\/components\/row\.ts/);
+  assert.match(section, /\.\/section\/components\/row\.js/);
   assert.match(section, /@caffold:active-task-row-intent=/);
   assert.match(section, /detail: \{ subject: "task", \.\.\.event\.detail \}/);
   assert.doesNotMatch(activeRow, /ACTIVE_TASK_SECTION_INTENT_EVENT/);
@@ -1056,10 +1056,10 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
     "pages/(task-workspace)/settings/codex/page.ts",
   );
 
-  assert.match(workspace, /from "\.\/codex-status\.ts"/);
+  assert.match(workspace, /from "\.\/codex-status\.js"/);
   assert.match(
     workspace,
-    /from "\.\/codex-status\/components\/runtime-restart-dialog\.ts"/,
+    /from "\.\/codex-status\/components\/runtime-restart-dialog\.js"/,
   );
   assert.match(
     workspace,
@@ -1067,16 +1067,16 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   );
   assert.match(
     workspace,
-    /from "\.\/codex-status\/components\/runtime-update-dialog\.ts"/,
+    /from "\.\/codex-status\/components\/runtime-update-dialog\.js"/,
   );
   assert.match(
     workspace,
     /<caffold-codex-runtime-update-dialog\b[^>]*><\/caffold-codex-runtime-update-dialog>/,
   );
-  assert.match(owner, /from "\.\/codex-status\/model\.ts"/);
+  assert.match(owner, /from "\.\/codex-status\/model\.js"/);
   assert.match(
     owner,
-    /from "\.\/codex-status\/lifecycle\.ts"/,
+    /from "\.\/codex-status\/lifecycle\.js"/,
   );
   assert.match(owner, /function createCodexStatusLifecycle/);
   assert.doesNotMatch(owner, /class CodexStatusLifecycle/);
@@ -1086,9 +1086,9 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
     assert.doesNotMatch(codexSource, /taskStore|TaskStore/);
   }
   assert.match(lifecycle, /class CodexStatusLifecycle/);
-  assert.match(workspace, /from "\.\/task-store-status\.ts"/);
-  assert.match(storeOwner, /from "\.\/task-store-status\/model\.ts"/);
-  assert.match(storeOwner, /from "\.\/task-store-status\/lifecycle\.ts"/);
+  assert.match(workspace, /from "\.\/task-store-status\.js"/);
+  assert.match(storeOwner, /from "\.\/task-store-status\/model\.js"/);
+  assert.match(storeOwner, /from "\.\/task-store-status\/lifecycle\.js"/);
   assert.match(storeOwner, /function createTaskStoreStatusLifecycle/);
   assert.doesNotMatch(storeOwner, /class TaskStoreStatusLifecycle/);
   assert.doesNotMatch(storeOwner, /export \*/);
@@ -1108,7 +1108,7 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   assert.match(updateDialog, /<dialog/);
   assert.match(updateDialog, /customElements\.define\(/);
   assert.doesNotMatch(tasks, /codex-readiness-card|CODEX_INSTALL_COMMAND/);
-  assert.match(tasks, /import "\.\/components\/task-store-recovery\.ts"/);
+  assert.match(tasks, /import "\.\/components\/task-store-recovery\.js"/);
   assert.match(
     tasks,
     /<caffold-task-store-recovery\s+\$\{drawn\(this\.taskStoreRecovery\)\}\s+\?hidden=\$\{!takeover\}/,
@@ -1117,7 +1117,7 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   assert.match(storeRecovery, /TASK_STORE_RETRY_REQUEST_EVENT/);
   assert.doesNotMatch(storeRecovery, /codex/i);
 
-  assert.match(settings, /codex-status\.ts"/);
+  assert.match(settings, /codex-status\.js"/);
   assert.doesNotMatch(settings, /codex-status\//);
   // Tasks treats Codex like any other agent: it reads no Codex status.
   assert.doesNotMatch(tasks, /codex-status/);
@@ -1128,7 +1128,7 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
     const insideOwner =
       path === "pages/(task-workspace)/codex-status.ts" ||
       path.startsWith("pages/(task-workspace)/codex-status/");
-    const assetInventory = path === "service-worker.js";
+    const assetInventory = path === "service-worker.ts";
     if (!insideOwner && !assetInventory) {
       assert.doesNotMatch(
         source,

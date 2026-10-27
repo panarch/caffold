@@ -1,14 +1,14 @@
-import { taskThreadId } from "#tasks/task-list-model.ts";
+import { taskThreadId } from "#tasks/task-list-model.js";
 import {
   type ReviewViewer,
   representationForFile,
-} from "../representations.ts";
+} from "../representations.js";
 import {
   type ReviewTask,
   reviewFilePath,
   taskRootPath,
   taskWorktreeRootPath,
-} from "./paths.ts";
+} from "./paths.js";
 
 export type ReviewScope = "working" | "branch";
 export type ReviewNavigator = "changes" | "files";

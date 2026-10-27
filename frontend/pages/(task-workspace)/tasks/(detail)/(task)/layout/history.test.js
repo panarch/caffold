@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConversationHistory } from "./history.ts";
+import { ConversationHistory } from "./history.js";
 
 const position = (anchorMs) => ({ anchorMs, index: 0 });
 function page(from, to, nextCursor = null, revision = 1) {

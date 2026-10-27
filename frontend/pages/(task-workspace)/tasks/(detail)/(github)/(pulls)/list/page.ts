@@ -5,14 +5,14 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import type { GitHubPulls, GitHubStatus } from "#app/api.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "#components/loading-text.ts";
-import "#components/pagination.ts";
-import type { CaffoldPagination } from "#components/pagination.ts";
+} from "#app/action-hints.js";
+import type { GitHubPulls, GitHubStatus } from "#app/api.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
+import "#components/pagination.js";
+import type { CaffoldPagination } from "#components/pagination.js";
 
 const LOADING_PULLS = "Loading pull requests...";
 

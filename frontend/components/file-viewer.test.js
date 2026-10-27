@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./file-viewer.ts");
+await import("./file-viewer.js");
 const fileViewer = registry.element("caffold-review-file-viewer").prototype;
 after(() => registry.restore());
 

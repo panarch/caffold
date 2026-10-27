@@ -9,7 +9,7 @@ const previousWindow = globalThis.window;
 let singlePane = false;
 globalThis.window = { matchMedia: () => ({ matches: singlePane }) };
 const registry = installCustomElementUnitRegistry();
-await import("./git-compare-browser.ts");
+await import("./git-compare-browser.js");
 const browser = registry.element("caffold-git-compare-browser").prototype;
 after(() => {
   registry.restore();

@@ -44,7 +44,7 @@ test("new consumers declare their own scope, retain local overrides and reconnec
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   const originalSheets = await page.evaluate(() => document.adoptedStyleSheets.length);
   await page.evaluate(async () => {
-    const { compactIconButton } = await import("/assets/component-styles.ts");
+    const { compactIconButton } = await import("/assets/component-styles.js");
     await compactIconButton.register("caffold-style-contract", "> header > .contract-actions > .contract-button");
     customElements.define("caffold-style-contract", class extends HTMLElement {
       connectedCallback() {
@@ -97,7 +97,7 @@ test("a busy spin turns only its owner's busy element and stops for reduced moti
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   await page.evaluate(async () => {
-    const { busySpin } = await import("/assets/component-styles.ts");
+    const { busySpin } = await import("/assets/component-styles.js");
     await busySpin.register("caffold-spin-contract", "> .contract-button.is-busy > .contract-icon");
     customElements.define("caffold-spin-contract", class extends HTMLElement {
       connectedCallback() {
@@ -183,7 +183,7 @@ test("a drawn ref keeps its element out of the document and lets go once it is n
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
   const result = await page.evaluate(async () => {
     const { html, LitElement, nothing } = await import("lit");
-    const { DrawnRef, DrawnRefs, drawn } = await import("/assets/components/drawn-refs.ts");
+    const { DrawnRef, DrawnRefs, drawn } = await import("/assets/components/drawn-refs.js");
     class DrawnRefProbe extends LitElement {
       static properties = { shown: { attribute: false }, keys: { attribute: false } };
       panel = new DrawnRef(this);

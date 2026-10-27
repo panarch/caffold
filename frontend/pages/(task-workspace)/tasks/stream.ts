@@ -1,12 +1,12 @@
-import { type TaskAbsence, taskAbsence } from "#app/api.ts";
+import { type TaskAbsence, taskAbsence } from "#app/api.js";
 import type {
   LiveSubscription,
   LiveSubscriptionListener,
-} from "../live-updates.ts";
+} from "../live-updates.js";
 import {
   TASK_TRANSPORT_STATE,
   type TaskTransportState,
-} from "./runtime-state.ts";
+} from "./runtime-state.js";
 import {
   presentTaskStream,
   TASK_STREAM_EVENT,
@@ -14,7 +14,7 @@ import {
   type TaskStreamEvent,
   type TaskStreamNode,
   transitionTaskStream,
-} from "./stream/machine.ts";
+} from "./stream/machine.js";
 
 const DEFAULT_RETRY_DELAYS_MS = Object.freeze([250, 1_000, 3_000]);
 // Once its own retry budget is spent, a stream tries again at these delays;

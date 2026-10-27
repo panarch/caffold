@@ -8,11 +8,11 @@ import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 const { TASK_STORE_RETRY_REQUEST_EVENT } = await import(
-  "../../task-store-status.ts"
+  "../../task-store-status.js"
 );
-await import("./task-store-recovery.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
-const { ScrollSurfaces } = await import("#app/scroll-scope.ts");
+await import("./task-store-recovery.js");
+const { ActionHints } = await import("#app/action-hints.js");
+const { ScrollSurfaces } = await import("#app/scroll-scope.js");
 const Recovery = registry.element("caffold-task-store-recovery");
 after(() => registry.restore());
 

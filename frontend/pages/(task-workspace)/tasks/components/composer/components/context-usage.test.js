@@ -7,8 +7,8 @@ import {
 import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./context-usage.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
+await import("./context-usage.js");
+const { ActionHints } = await import("#app/action-hints.js");
 const ContextUsage = registry.element("caffold-task-context-usage");
 after(() => registry.restore());
 

@@ -1,8 +1,8 @@
 import { html, LitElement } from "lit";
-import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
-import { KeyboardContexts } from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
+import { KeyboardContexts } from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 
 export const CODEX_RESET_CREDIT_CONFIRMED_EVENT =
   "caffold:codex-reset-credit-confirmed";

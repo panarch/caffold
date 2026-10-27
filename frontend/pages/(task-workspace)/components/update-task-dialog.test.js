@@ -7,12 +7,12 @@ import {
 import { templateHtml } from "../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-const { updateTaskFrom, updateTaskPrompt } = await import("./update-task-dialog.ts");
+const { updateTaskFrom, updateTaskPrompt } = await import("./update-task-dialog.js");
 const Dialog = registry.element("caffold-update-task-dialog");
 const dialog = Dialog.prototype;
-const { ActionHints } = await import("#app/action-hints.ts");
-const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
-const { ScrollSurfaces } = await import("#app/scroll-scope.ts");
+const { ActionHints } = await import("#app/action-hints.js");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
+const { ScrollSurfaces } = await import("#app/scroll-scope.js");
 after(() => registry.restore());
 
 const COMMAND =

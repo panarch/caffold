@@ -4,10 +4,10 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../../../tests/support/custom-element-unit.js";
-import { formatDate } from "../../../../../task-format.ts";
+import { formatDate } from "../../../../../task-format.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./assistant-message.ts");
+await import("./assistant-message.js");
 const message = registry.element("caffold-task-assistant-message").prototype;
 after(() => registry.restore());
 

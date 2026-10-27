@@ -3,8 +3,8 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
+} from "#app/action-hints.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
 
 // The section an entry opens, its label, and either an icon or a brand mark.
 export interface SettingsNavigatorEntry {

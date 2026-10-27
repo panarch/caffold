@@ -19,7 +19,7 @@ import {
   switchActionHintTarget,
   textboxActionHintTarget,
   withActionHintOcclusionRoots,
-} from "./action-hint-scope.ts";
+} from "./action-hint-scope.js";
 
 test("button Action Hint targets preserve owner state and native activation", () => {
   const calls = [];

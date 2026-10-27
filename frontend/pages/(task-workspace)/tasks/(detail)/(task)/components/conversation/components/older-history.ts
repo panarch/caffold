@@ -3,8 +3,8 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import "#components/loading-text.ts";
+} from "#app/action-hints.js";
+import "#components/loading-text.js";
 
 // `retry` says the request follows a failed one.
 export interface OlderHistoryIntentDetail {

@@ -7,7 +7,7 @@ import {
   LIVE_CONNECTION_EVENT,
   LIVE_CONNECTION_NODE,
   transitionLiveConnection,
-} from "./lifecycle.ts";
+} from "./lifecycle.js";
 
 const EXPECTED_EFFECTS = Object.freeze({
   [LIVE_CONNECTION_EVENT.CONNECT]: [LIVE_CONNECTION_EFFECT.OPEN],

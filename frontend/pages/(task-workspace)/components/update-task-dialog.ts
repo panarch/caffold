@@ -4,21 +4,21 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   KeyboardContexts,
   mergeKeyboardNavigationContexts,
-} from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import type { TaskStartIntent } from "#tasks/components/task-create.ts";
-import "#tasks/components/task-turn-options.ts";
-import type { CaffoldUpdateStatus } from "#app/api.ts";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import type { TaskStartIntent } from "#tasks/components/task-create.js";
+import "#tasks/components/task-turn-options.js";
+import type { CaffoldUpdateStatus } from "#app/api.js";
 import type {
   CaffoldTaskTurnOptions,
   TurnOptionsSelection,
-} from "#tasks/components/task-turn-options.ts";
+} from "#tasks/components/task-turn-options.js";
 
 const RESTART_NOTICE =
   "Running Tasks keep going while Caffold restarts. Claude sessions stop if it takes more than 10 minutes. Open terminals close.";

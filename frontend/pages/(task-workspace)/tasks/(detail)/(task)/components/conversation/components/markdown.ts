@@ -8,19 +8,19 @@ import {
   linkActionHintTarget,
   matchesLinkActionHintBinding,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.ts";
-import { ACTION_HINT_ACTION, type ActionHintPull } from "#app/action-hints.ts";
-import type { TaskFileLink } from "#app/api.ts";
-import { parseLinkRoute, routeUrl } from "#app/navigation-routes.ts";
+} from "#app/action-hint-scope.js";
+import { ACTION_HINT_ACTION, type ActionHintPull } from "#app/action-hints.js";
+import type { TaskFileLink } from "#app/api.js";
+import { parseLinkRoute, routeUrl } from "#app/navigation-routes.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   type ScrollSurfaceScope,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { CaffoldTaskMarkdownCodeBlock } from "./markdown/components/code-block.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { CaffoldTaskMarkdownCodeBlock } from "./markdown/components/code-block.js";
 
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 

@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   FOREGROUND_RECOVERY_PRESENTATION,
   ForegroundRecoveryLifecycle,
-} from "./foreground-recovery.ts";
+} from "./foreground-recovery.js";
 
 function eventTarget() {
   const listeners = new Map();

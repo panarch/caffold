@@ -3,9 +3,9 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import { TASK_ABSENCE, type TaskAbsence } from "#app/api.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
+} from "#app/action-hints.js";
+import { TASK_ABSENCE, type TaskAbsence } from "#app/api.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
 
 export const TASK_ABSENCE_INTENT_EVENT = "caffold:task-absence-intent";
 

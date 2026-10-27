@@ -5,16 +5,16 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import type { TaskEvent } from "#app/api.ts";
-import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import { eventIdentityKey } from "#tasks/task-events.ts";
-import { formatDate, taskEventObservedMs } from "#tasks/task-format.ts";
-import { commandGroupIdentity, isCommandEvent } from "../command-runs.ts";
-import "./command.ts";
-import type { CaffoldTaskCommand } from "./command.ts";
-import { commandGroupPresentation } from "./command-group/model.ts";
+} from "#app/action-hints.js";
+import type { TaskEvent } from "#app/api.js";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import { eventIdentityKey } from "#tasks/task-events.js";
+import { formatDate, taskEventObservedMs } from "#tasks/task-format.js";
+import { commandGroupIdentity, isCommandEvent } from "../command-runs.js";
+import "./command.js";
+import type { CaffoldTaskCommand } from "./command.js";
+import { commandGroupPresentation } from "./command-group/model.js";
 
 const CHEVRON = "task-command-group-chevron-icon";
 

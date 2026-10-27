@@ -1,10 +1,10 @@
-import type { TaskStoreReadiness } from "#app/api.ts";
+import type { TaskStoreReadiness } from "#app/api.js";
 import {
   createTaskStoreStatusSnapshot,
   normalizeTaskStoreReadiness,
   sameTaskStoreStatusSnapshot,
   type TaskStoreStatusSnapshot,
-} from "./model.ts";
+} from "./model.js";
 
 const RECHECK_DELAY_MS = 500;
 

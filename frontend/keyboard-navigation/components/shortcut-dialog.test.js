@@ -7,11 +7,11 @@ import {
 import { templateHtml } from "../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./shortcut-dialog.ts");
+await import("./shortcut-dialog.js");
 const dialog = registry.element("caffold-keyboard-shortcut-dialog").prototype;
-const { ActionHints } = await import("../../action-hints.ts");
-const { ScrollSurfaces } = await import("../../scroll-scope.ts");
-const { KeyboardContexts } = await import("../context.ts");
+const { ActionHints } = await import("../../action-hints.js");
+const { ScrollSurfaces } = await import("../../scroll-scope.js");
+const { KeyboardContexts } = await import("../context.js");
 after(() => registry.restore());
 
 test("draws the shared shortcut map in one native dialog", () => {

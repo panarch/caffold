@@ -6,16 +6,17 @@ import { fileURLToPath } from "node:url";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../tests/support/custom-element-unit.js";
+import { sourceUrl } from "../../../../tests/support/source-url.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./page.ts");
+await import("./page.js");
 const notifications = registry.element(
   "caffold-settings-notifications-page",
 ).prototype;
 after(() => registry.restore());
 
 test("notification permission is requested only by the explicit Enable action", () => {
-  const pagePath = fileURLToPath(new URL("./page.ts", import.meta.url));
+  const pagePath = fileURLToPath(sourceUrl(new URL("./page.ts", import.meta.url)));
   const source = readFileSync(pagePath, "utf8");
   const enable = source.slice(
     source.indexOf("private enable() {"),

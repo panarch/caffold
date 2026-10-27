@@ -7,7 +7,7 @@ import {
   sortTasksByRecency,
   taskDetailThreadId,
   upsertTask,
-} from "./task-list-model.ts";
+} from "./task-list-model.js";
 
 function task(threadId, recencyMs, overrides = {}) {
   return {

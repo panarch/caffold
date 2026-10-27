@@ -10,7 +10,7 @@ const {
   KeyboardContexts,
   mergeKeyboardNavigationContexts,
   normalizeKeyboardNavigationContexts,
-} = await import("./context.ts");
+} = await import("./context.js");
 const previousElement = globalThis.Element;
 const previousShadowRoot = globalThis.ShadowRoot;
 const previousNode = globalThis.Node;

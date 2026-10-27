@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { commandPresentation } from "./model.ts";
+import { commandPresentation } from "./model.js";
 
 const event = (status, payload = {}) => ({
   id: "event_command",

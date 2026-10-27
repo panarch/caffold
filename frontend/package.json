@@ -9,9 +9,10 @@
     "#tasks/*": "./pages/(task-workspace)/tasks/*"
   },
   "scripts": {
-    "test:unit": "node --test \"*.test.js\" \"action-hints/**/*.test.js\" \"chunked-fetch/**/*.test.js\" \"components/**/*.test.js\" \"keyboard-navigation/**/*.test.js\" \"pages/**/*.test.js\"",
+    "test:unit": "npm run build:unit-tests && node --test \"tests/unit-build/**/*.test.js\"",
+    "build:unit-tests": "rm -rf tests/unit-build && tsc -p tsconfig.test.json && tsc -p tsconfig.worker.json --noEmit false --outDir tests/unit-build",
     "test:contract": "node --test \"tests/contracts/*.test.mjs\"",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc && tsc -p tsconfig.worker.json",
     "lint": "biome check",
     "test:e2e": "playwright test",
     "test:codex-live": "playwright test --config=playwright.live.config.mjs"
@@ -25,10 +26,10 @@
     "docx-preview": "0.4.1",
     "pdfjs-dist": "6.3.289",
     "pptxgenjs": "4.0.1",
-    "typescript": "5.9.3",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "dependencies": {
-    "lit": "3.3.3"
+    "lit": "3.3.3",
+    "typescript": "5.9.3"
   }
 }

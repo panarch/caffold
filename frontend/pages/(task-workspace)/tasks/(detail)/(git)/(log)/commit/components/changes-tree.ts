@@ -2,20 +2,20 @@ import { html, LitElement, nothing, type PropertyValues } from "lit";
 import {
   type ActionHintPull,
   emptyActionHintScope,
-} from "#app/action-hints.ts";
-import type { GitCommit, GitCommitFile } from "#app/api.ts";
+} from "#app/action-hints.js";
+import type { GitCommit, GitCommitFile } from "#app/api.js";
 import {
   emptyScrollSurfaceScope,
   type ScrollSurfacePull,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import {
   buildFileTreeNodes,
   type CaffoldFileTree,
   type FileTreeNode,
   type FileTreeSelectDetail,
-} from "#components/file-tree.ts";
-import "#components/loading-text.ts";
+} from "#components/file-tree.js";
+import "#components/loading-text.js";
 
 type CommitState =
   | { status: "idle" }

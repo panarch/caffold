@@ -5,28 +5,18 @@ import test from "node:test";
 const frontendUrl = new URL("../../", import.meta.url);
 const sources = frontendSources();
 
-test("a module is JavaScript or TypeScript, never both", () => {
-  for (const stem of stems(".ts")) {
-    assert.ok(!sources.has(`${stem}.js`), `${stem} is both ${stem}.js and ${stem}.ts`);
-  }
+test("production modules are TypeScript", () => {
+  assert.deepEqual([...sources].filter((path) => path.endsWith(".js")), []);
 });
 
 // Rust generates build-info.js; it is served and cached with source modules.
-const GENERATED_MODULES = new Set(["build-info"]);
-
-test("a type declaration file stands beside the JavaScript module it describes", () => {
-  for (const stem of stems(".d.ts")) {
-    assert.ok(
-      sources.has(`${stem}.js`) || GENERATED_MODULES.has(stem),
-      `${stem}.d.ts describes a module that is no longer JavaScript; remove it once ${stem} moves to TypeScript`,
-    );
-  }
+test("the one type declaration file describes the module the server build writes", () => {
+  assert.deepEqual(stems(".d.ts"), ["build-info"]);
 });
 
-test("the frontend type check is strict and only removes erasable syntax", () => {
+test("the frontend type check is strict", () => {
   const { compilerOptions } = JSON.parse(readFileSync(new URL("tsconfig.json", frontendUrl), "utf8"));
   assert.equal(compilerOptions.strict, true);
-  assert.equal(compilerOptions.erasableSyntaxOnly, true);
   assert.equal(compilerOptions.verbatimModuleSyntax, true);
 });
 

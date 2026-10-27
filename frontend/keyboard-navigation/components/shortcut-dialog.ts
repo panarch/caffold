@@ -1,12 +1,12 @@
 import { html, LitElement } from "lit";
-import { ACTION_HINT_ACTION, ActionHints } from "../../action-hints.ts";
-import { DrawnRef, drawn } from "../../components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "../../components/icons.ts";
-import { ScrollSurfaces } from "../../scroll-scope.ts";
-import { KeyboardContexts } from "../context.ts";
-import { KEYBOARD_SHORTCUT_CLOSE_EVENT } from "../shortcuts.ts";
-import "./presentation.ts";
-import "./shortcut-list.ts";
+import { ACTION_HINT_ACTION, ActionHints } from "../../action-hints.js";
+import { DrawnRef, drawn } from "../../components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "../../components/icons.js";
+import { ScrollSurfaces } from "../../scroll-scope.js";
+import { KeyboardContexts } from "../context.js";
+import { KEYBOARD_SHORTCUT_CLOSE_EVENT } from "../shortcuts.js";
+import "./presentation.js";
+import "./shortcut-list.js";
 
 const CLOSE_LABEL = "Close keyboard shortcuts";
 

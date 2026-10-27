@@ -1,40 +1,40 @@
 import { html, LitElement } from "lit";
-import type { ActionHintScope } from "#app/action-hint-scope.ts";
+import type { ActionHintScope } from "#app/action-hint-scope.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   type ScrollSurfaceScope,
   ScrollSurfaces,
-} from "#app/scroll-scope.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import type { CodexStatusSnapshot } from "../codex-status.ts";
-import "./about/page.ts";
-import type { Health } from "#app/api.ts";
-import type { CaffoldUpdateSnapshot } from "./about/page.ts";
-import "./appearance/page.ts";
-import "./claude/page.ts";
-import type { CaffoldSettingsClaudePage } from "./claude/page.ts";
-import "./codex/page.ts";
+} from "#app/scroll-scope.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import type { CodexStatusSnapshot } from "../codex-status.js";
+import "./about/page.js";
+import type { Health } from "#app/api.js";
+import type { CaffoldUpdateSnapshot } from "./about/page.js";
+import "./appearance/page.js";
+import "./claude/page.js";
+import type { CaffoldSettingsClaudePage } from "./claude/page.js";
+import "./codex/page.js";
 import type {
   CaffoldSettingsCodexPage,
   ResetCreditState,
   RuntimeRequestState,
-} from "./codex/page.ts";
-import type { CaffoldSettingsNavigator } from "./components/navigator.ts";
-import "./files/page.ts";
-import "./grok/page.ts";
-import "./jev/page.ts";
-import "./keyboard/page.ts";
-import "./notifications/page.ts";
-import "./remote-access/page.ts";
-import "./voice/page.ts";
-import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
+} from "./codex/page.js";
+import type { CaffoldSettingsNavigator } from "./components/navigator.js";
+import "./files/page.js";
+import "./grok/page.js";
+import "./jev/page.js";
+import "./keyboard/page.js";
+import "./notifications/page.js";
+import "./remote-access/page.js";
+import "./voice/page.js";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
 
 const TITLES: Readonly<Record<string, string>> = {
   appearance: "Appearance",

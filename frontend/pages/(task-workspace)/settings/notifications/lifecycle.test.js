@@ -9,7 +9,7 @@ import {
   pushSupport,
   shortPushClientId,
   subscriptionPayload,
-} from "./lifecycle.ts";
+} from "./lifecycle.js";
 
 test("client ID remains stable and replaces malformed storage", () => {
   let stored = null;

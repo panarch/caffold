@@ -7,7 +7,7 @@ import {
 import { templateHtml } from "../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./presentation.ts");
+await import("./presentation.js");
 const presentation = registry.element(
   "caffold-keyboard-navigation-presentation",
 ).prototype;

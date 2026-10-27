@@ -4,26 +4,26 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import type { Task, TaskWorktree } from "#app/api.ts";
-import { compactIconButton } from "#app/component-styles.ts";
+} from "#app/action-hints.js";
+import type { Task, TaskWorktree } from "#app/api.js";
+import { compactIconButton } from "#app/component-styles.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
-} from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "#tasks/components/task-status-chip.ts";
-import { formatTaskStatus, taskStatusView } from "#tasks/runtime-state.ts";
-import { shortId } from "#tasks/task-format.ts";
-import { taskThreadId } from "#tasks/task-list-model.ts";
-import "./info/components/actions.ts";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#tasks/components/task-status-chip.js";
+import { formatTaskStatus, taskStatusView } from "#tasks/runtime-state.js";
+import { shortId } from "#tasks/task-format.js";
+import { taskThreadId } from "#tasks/task-list-model.js";
+import "./info/components/actions.js";
 import type {
   CaffoldTaskDetailInfoActions,
   TaskInfoActionIntent,
   TaskInfoActionsSnapshot,
-} from "./info/components/actions.ts";
+} from "./info/components/actions.js";
 
 let taskInfoInstanceId = 0;
 

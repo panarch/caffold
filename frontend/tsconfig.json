@@ -6,14 +6,14 @@
     "moduleResolution": "nodenext",
     "strict": true,
     "noEmit": true,
-    "allowJs": true,
-    "checkJs": false,
-    "allowImportingTsExtensions": true,
-    "erasableSyntaxOnly": true,
+    "rootDir": ".",
+    "sourceMap": true,
+    "inlineSources": true,
+    "sourceRoot": "/assets/",
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "types": []
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules", "tests"]
+  "exclude": ["node_modules", "tests", "service-worker.ts"]
 }

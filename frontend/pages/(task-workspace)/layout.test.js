@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test, { after } from "node:test";
 
-import { parseRoute } from "../../navigation-routes.ts";
+import { parseRoute } from "../../navigation-routes.js";
 import {
   installCustomElementUnitRegistry,
 } from "../../tests/support/custom-element-unit.js";
@@ -19,7 +19,7 @@ const buildInfoHook = registerHooks({
   },
 });
 const registry = installCustomElementUnitRegistry();
-await import("./layout.ts");
+await import("./layout.js");
 const workspace = registry.element("caffold-task-workspace").prototype;
 after(() => {
   registry.restore();

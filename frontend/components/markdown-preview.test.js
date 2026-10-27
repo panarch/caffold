@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./markdown-preview.ts");
+await import("./markdown-preview.js");
 const markdownPreview = registry.element("caffold-markdown-preview").prototype;
 after(() => registry.restore());
 

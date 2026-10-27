@@ -3,19 +3,19 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   type DirectoryEntry,
   type DirectoryListing,
   listDirectory,
-} from "#app/api.ts";
-import { compactIconButton } from "#app/component-styles.ts";
+} from "#app/api.js";
+import { compactIconButton } from "#app/component-styles.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   ScrollSurfaces,
-} from "#app/scroll-scope.ts";
-import { entryKindLabel } from "../../dom.ts";
+} from "#app/scroll-scope.js";
+import { entryKindLabel } from "../../dom.js";
 import {
   type CaffoldFileTree,
   errorFileTreeChildren,
@@ -25,10 +25,10 @@ import {
   loadingFileTreeChildren,
   readyFileTreeChildren,
   unloadedFileTreeChildren,
-} from "../../file-tree.ts";
-import { inlineIcon, warmIcons } from "../../icons.ts";
-import "../../loading-text.ts";
-import { DrawnRef, drawn } from "../../drawn-refs.ts";
+} from "../../file-tree.js";
+import { inlineIcon, warmIcons } from "../../icons.js";
+import "../../loading-text.js";
+import { DrawnRef, drawn } from "../../drawn-refs.js";
 
 const TREE_LOADING_DELAY_MS = 180;
 

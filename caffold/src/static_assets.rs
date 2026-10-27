@@ -10,15 +10,18 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "manifest.webmanifest" => Some(manifest(include_str!(
             "../../frontend/manifest.webmanifest"
         ))),
-        "service-worker.js" => Some(js(include_str!("../../frontend/service-worker.js"))),
+        "service-worker.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/service-worker.js"
+        )))),
         "build-info.js" => Some(js_bytes(include_bytes!(concat!(
             env!("OUT_DIR"),
             "/build-info.js"
         )))),
         "styles.css" => Some(css(include_str!("../../frontend/styles.css"))),
-        "app.ts" => Some(js(include_str!(concat!(
+        "app.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/app.ts"
+            "/frontend/app.js"
         )))),
         "lit/index.js" => Some(js(include_str!("../../frontend/node_modules/lit/index.js"))),
         "lit/async-directive.js" => Some(js(include_str!(
@@ -72,21 +75,21 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "@lit/reactive-element/css-tag.js" => Some(js(include_str!(
             "../../frontend/node_modules/@lit/reactive-element/css-tag.js"
         ))),
-        "api.ts" => Some(js(include_str!(concat!(
+        "api.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/api.ts"
+            "/frontend/api.js"
         )))),
-        "action-hint-scope.ts" => Some(js(include_str!(concat!(
+        "action-hint-scope.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/action-hint-scope.ts"
+            "/frontend/action-hint-scope.js"
         )))),
-        "element-declarations.ts" => Some(js(include_str!(concat!(
+        "element-declarations.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/element-declarations.ts"
+            "/frontend/element-declarations.js"
         )))),
-        "component-styles.ts" => Some(js(include_str!(concat!(
+        "component-styles.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/component-styles.ts"
+            "/frontend/component-styles.js"
         )))),
         "component-styles/compact-icon-button.css" => Some(css(include_str!(
             "../../frontend/component-styles/compact-icon-button.css"
@@ -94,45 +97,45 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "component-styles/busy-spin.css" => Some(css(include_str!(
             "../../frontend/component-styles/busy-spin.css"
         ))),
-        "origin-reachability.ts" => Some(js(include_str!(concat!(
+        "origin-reachability.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/origin-reachability.ts"
+            "/frontend/origin-reachability.js"
         )))),
-        "file-status.ts" => Some(js(include_str!(concat!(
+        "file-status.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/file-status.ts"
+            "/frontend/file-status.js"
         )))),
-        "chunked-fetch.ts" => Some(js(include_str!(concat!(
+        "chunked-fetch.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/chunked-fetch.ts"
+            "/frontend/chunked-fetch.js"
         )))),
-        "chunked-fetch/cell-scheduler.ts" => Some(js(include_str!(concat!(
+        "chunked-fetch/cell-scheduler.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/chunked-fetch/cell-scheduler.ts"
+            "/frontend/chunked-fetch/cell-scheduler.js"
         )))),
-        "chunked-fetch/in-flight-limit.ts" => Some(js(include_str!(concat!(
+        "chunked-fetch/in-flight-limit.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/chunked-fetch/in-flight-limit.ts"
+            "/frontend/chunked-fetch/in-flight-limit.js"
         )))),
-        "chunked-fetch/transfer.ts" => Some(js(include_str!(concat!(
+        "chunked-fetch/transfer.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/chunked-fetch/transfer.ts"
+            "/frontend/chunked-fetch/transfer.js"
         )))),
-        "fonts.ts" => Some(js(include_str!(concat!(
+        "fonts.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/fonts.ts"
+            "/frontend/fonts.js"
         )))),
-        "navigation-routes.ts" => Some(js(include_str!(concat!(
+        "navigation-routes.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/navigation-routes.ts"
+            "/frontend/navigation-routes.js"
         )))),
-        "settings.ts" => Some(js(include_str!(concat!(
+        "settings.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/settings.ts"
+            "/frontend/settings.js"
         )))),
-        "theme.ts" => Some(js(include_str!(concat!(
+        "theme.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/theme.ts"
+            "/frontend/theme.js"
         )))),
         "fonts/GeistSans-Variable.woff2" => Some(woff2(include_bytes!(
             "../../frontend/assets/fonts/GeistSans-Variable.woff2"
@@ -306,177 +309,177 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             "../../frontend/assets/brand/grok-template.png"
         ))),
         "pages/layout.css" => Some(css(include_str!("../../frontend/pages/layout.css"))),
-        "pages/layout.ts" => Some(js(include_str!(concat!(
+        "pages/layout.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/layout.ts"
+            "/frontend/pages/layout.js"
         )))),
-        "pages/navigation-history.ts" => Some(js(include_str!(concat!(
+        "pages/navigation-history.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/navigation-history.ts"
+            "/frontend/pages/navigation-history.js"
         )))),
-        "pages/foreground-recovery.ts" => Some(js(include_str!(concat!(
+        "pages/foreground-recovery.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/foreground-recovery.ts"
+            "/frontend/pages/foreground-recovery.js"
         )))),
-        "pages/foreground-recovery/browser-signals.ts" => Some(js(include_str!(concat!(
+        "pages/foreground-recovery/browser-signals.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/foreground-recovery/browser-signals.ts"
+            "/frontend/pages/foreground-recovery/browser-signals.js"
         )))),
-        "pages/foreground-recovery/lifecycle.ts" => Some(js(include_str!(concat!(
+        "pages/foreground-recovery/lifecycle.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/foreground-recovery/lifecycle.ts"
+            "/frontend/pages/foreground-recovery/lifecycle.js"
         )))),
-        "pages/foreground-recovery/machine.ts" => Some(js(include_str!(concat!(
+        "pages/foreground-recovery/machine.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/foreground-recovery/machine.ts"
+            "/frontend/pages/foreground-recovery/machine.js"
         )))),
-        "pages/foreground-recovery/diagnostics.ts" => Some(js(include_str!(concat!(
+        "pages/foreground-recovery/diagnostics.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/foreground-recovery/diagnostics.ts"
+            "/frontend/pages/foreground-recovery/diagnostics.js"
         )))),
-        "pages/pwa-update-lifecycle.ts" => Some(js(include_str!(concat!(
+        "pages/pwa-update-lifecycle.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/pwa-update-lifecycle.ts"
+            "/frontend/pages/pwa-update-lifecycle.js"
         )))),
-        "pages/pwa-update-lifecycle/machine.ts" => Some(js(include_str!(concat!(
+        "pages/pwa-update-lifecycle/machine.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/pwa-update-lifecycle/machine.ts"
+            "/frontend/pages/pwa-update-lifecycle/machine.js"
         )))),
-        "pages/pwa-update-lifecycle/runtime.ts" => Some(js(include_str!(concat!(
+        "pages/pwa-update-lifecycle/runtime.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/pwa-update-lifecycle/runtime.ts"
+            "/frontend/pages/pwa-update-lifecycle/runtime.js"
         )))),
         "pages/components/build-mismatch-alert.css" => Some(css(include_str!(
             "../../frontend/pages/components/build-mismatch-alert.css"
         ))),
-        "pages/components/build-mismatch-alert.ts" => Some(js(include_str!(concat!(
+        "pages/components/build-mismatch-alert.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/components/build-mismatch-alert.ts"
+            "/frontend/pages/components/build-mismatch-alert.js"
         )))),
         "pages/components/update-dialog.css" => Some(css(include_str!(
             "../../frontend/pages/components/update-dialog.css"
         ))),
-        "pages/components/update-dialog.ts" => Some(js(include_str!(concat!(
+        "pages/components/update-dialog.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/components/update-dialog.ts"
+            "/frontend/pages/components/update-dialog.js"
         )))),
         "pages/components/update-result-dialog.css" => Some(css(include_str!(
             "../../frontend/pages/components/update-result-dialog.css"
         ))),
-        "pages/components/update-result-dialog.ts" => Some(js(include_str!(concat!(
+        "pages/components/update-result-dialog.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/components/update-result-dialog.ts"
+            "/frontend/pages/components/update-result-dialog.js"
         )))),
         "components/file-tree.css" => {
             Some(css(include_str!("../../frontend/components/file-tree.css")))
         }
-        "components/file-tree.ts" => Some(js(include_str!(concat!(
+        "components/file-tree.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/file-tree.ts"
+            "/frontend/components/file-tree.js"
         )))),
         "components/file-navigator.css" => Some(css(include_str!(
             "../../frontend/components/file-navigator.css"
         ))),
-        "components/file-navigator.ts" => Some(js(include_str!(concat!(
+        "components/file-navigator.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/file-navigator.ts"
+            "/frontend/components/file-navigator.js"
         )))),
         "components/file-navigator/components/list.css" => Some(css(include_str!(
             "../../frontend/components/file-navigator/components/list.css"
         ))),
-        "components/file-navigator/components/list.ts" => Some(js(include_str!(concat!(
+        "components/file-navigator/components/list.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/file-navigator/components/list.ts"
+            "/frontend/components/file-navigator/components/list.js"
         )))),
         "components/pane-resizer.css" => Some(css(include_str!(
             "../../frontend/components/pane-resizer.css"
         ))),
-        "components/pane-resizer.ts" => Some(js(include_str!(concat!(
+        "components/pane-resizer.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/pane-resizer.ts"
+            "/frontend/components/pane-resizer.js"
         )))),
-        "components/review-responsive.ts" => Some(js(include_str!(concat!(
+        "components/review-responsive.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/review-responsive.ts"
+            "/frontend/components/review-responsive.js"
         )))),
-        "watch.ts" => Some(js(include_str!(concat!(
+        "watch.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/watch.ts"
+            "/frontend/watch.js"
         )))),
         "pages/(task-workspace)/settings/appearance/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/appearance/page.css"
         ))),
-        "pages/(task-workspace)/settings/appearance/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/appearance/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/appearance/page.ts"
+            "/frontend/pages/(task-workspace)/settings/appearance/page.js"
         )))),
         "pages/(task-workspace)/settings/keyboard/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/keyboard/page.css"
         ))),
-        "pages/(task-workspace)/settings/keyboard/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/keyboard/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/keyboard/page.ts"
+            "/frontend/pages/(task-workspace)/settings/keyboard/page.js"
         )))),
         "pages/(task-workspace)/settings/files/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/files/page.css"
         ))),
-        "pages/(task-workspace)/settings/files/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/files/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/files/page.ts"
+            "/frontend/pages/(task-workspace)/settings/files/page.js"
         )))),
         "pages/(task-workspace)/settings/notifications/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/notifications/page.css"
         ))),
-        "pages/(task-workspace)/settings/notifications/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/notifications/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/notifications/page.ts"
+            "/frontend/pages/(task-workspace)/settings/notifications/page.js"
         )))),
-        "pages/(task-workspace)/settings/notifications/lifecycle.ts" => {
+        "pages/(task-workspace)/settings/notifications/lifecycle.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/settings/notifications/lifecycle.ts"
+                "/frontend/pages/(task-workspace)/settings/notifications/lifecycle.js"
             ))))
         }
         "pages/(task-workspace)/settings/remote-access/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/remote-access/page.css"
         ))),
-        "pages/(task-workspace)/settings/remote-access/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/remote-access/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/remote-access/page.ts"
+            "/frontend/pages/(task-workspace)/settings/remote-access/page.js"
         )))),
-        "pages/(task-workspace)/settings/remote-access/tailscale.ts" => {
+        "pages/(task-workspace)/settings/remote-access/tailscale.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/settings/remote-access/tailscale.ts"
+                "/frontend/pages/(task-workspace)/settings/remote-access/tailscale.js"
             ))))
         }
         "pages/(task-workspace)/notes/components/document.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/notes/components/document.css"
         ))),
-        "pages/(task-workspace)/notes/components/document.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/notes/components/document.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/notes/components/document.ts"
+            "/frontend/pages/(task-workspace)/notes/components/document.js"
         )))),
-        "pages/(task-workspace)/notes/layout/selection.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/notes/layout/selection.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/notes/layout/selection.ts"
+            "/frontend/pages/(task-workspace)/notes/layout/selection.js"
         )))),
         "pages/(task-workspace)/notes/components/info.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/notes/components/info.css"
         ))),
-        "pages/(task-workspace)/notes/components/info.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/notes/components/info.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/notes/components/info.ts"
+            "/frontend/pages/(task-workspace)/notes/components/info.js"
         )))),
         "pages/(task-workspace)/notes/components/info/components/copy-markdown.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/notes/components/info/components/copy-markdown.css"
             )))
         }
-        "pages/(task-workspace)/notes/components/info/components/copy-markdown.ts" => {
+        "pages/(task-workspace)/notes/components/info/components/copy-markdown.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/notes/components/info/components/copy-markdown.ts"
+                "/frontend/pages/(task-workspace)/notes/components/info/components/copy-markdown.js"
             ))))
         }
         "pages/(task-workspace)/notes/components/info/components/copy-path.css" => {
@@ -484,44 +487,44 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/notes/components/info/components/copy-path.css"
             )))
         }
-        "pages/(task-workspace)/notes/components/info/components/copy-path.ts" => {
+        "pages/(task-workspace)/notes/components/info/components/copy-path.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/notes/components/info/components/copy-path.ts"
+                "/frontend/pages/(task-workspace)/notes/components/info/components/copy-path.js"
             ))))
         }
         "pages/(task-workspace)/notes/components/navigator.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/notes/components/navigator.css"
         ))),
-        "pages/(task-workspace)/notes/components/navigator.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/notes/components/navigator.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/notes/components/navigator.ts"
+            "/frontend/pages/(task-workspace)/notes/components/navigator.js"
         )))),
         "pages/(task-workspace)/notes/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/notes/layout.css"
         ))),
-        "pages/(task-workspace)/notes/layout.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/notes/layout.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/notes/layout.ts"
+            "/frontend/pages/(task-workspace)/notes/layout.js"
         )))),
-        "pages/(task-workspace)/notes/tree.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/notes/tree.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/notes/tree.ts"
+            "/frontend/pages/(task-workspace)/notes/tree.js"
         )))),
         "pages/(task-workspace)/settings/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/layout.css"
         ))),
-        "pages/(task-workspace)/settings/layout.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/layout.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/layout.ts"
+            "/frontend/pages/(task-workspace)/settings/layout.js"
         )))),
         "pages/(task-workspace)/settings/components/navigator.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/components/navigator.css"
         ))),
-        "pages/(task-workspace)/settings/components/navigator.ts" => {
+        "pages/(task-workspace)/settings/components/navigator.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/settings/components/navigator.ts"
+                "/frontend/pages/(task-workspace)/settings/components/navigator.js"
             ))))
         }
         "pages/(task-workspace)/settings/components/navigator/components/item.css" => {
@@ -529,247 +532,247 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/settings/components/navigator/components/item.css"
             )))
         }
-        "pages/(task-workspace)/settings/components/navigator/components/item.ts" => {
+        "pages/(task-workspace)/settings/components/navigator/components/item.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/settings/components/navigator/components/item.ts"
+                "/frontend/pages/(task-workspace)/settings/components/navigator/components/item.js"
             ))))
         }
         "pages/(task-workspace)/settings/components/detail-list.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/components/detail-list.css"
         ))),
-        "pages/(task-workspace)/settings/components/detail-list.ts" => {
+        "pages/(task-workspace)/settings/components/detail-list.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/settings/components/detail-list.ts"
+                "/frontend/pages/(task-workspace)/settings/components/detail-list.js"
             ))))
         }
         "pages/(task-workspace)/settings/components/refresh-button.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/components/refresh-button.css"
         ))),
-        "pages/(task-workspace)/settings/components/refresh-button.ts" => {
+        "pages/(task-workspace)/settings/components/refresh-button.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/settings/components/refresh-button.ts"
+                "/frontend/pages/(task-workspace)/settings/components/refresh-button.js"
             ))))
         }
         "pages/(task-workspace)/settings/codex/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/codex/page.css"
         ))),
-        "pages/(task-workspace)/settings/codex/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/codex/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/codex/page.ts"
+            "/frontend/pages/(task-workspace)/settings/codex/page.js"
         )))),
         "pages/(task-workspace)/settings/claude/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/claude/page.css"
         ))),
-        "pages/(task-workspace)/settings/claude/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/claude/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/claude/page.ts"
+            "/frontend/pages/(task-workspace)/settings/claude/page.js"
         )))),
-        "pages/(task-workspace)/settings/claude/display.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/claude/display.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/claude/display.ts"
+            "/frontend/pages/(task-workspace)/settings/claude/display.js"
         )))),
         "pages/(task-workspace)/settings/voice/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/voice/page.css"
         ))),
-        "pages/(task-workspace)/settings/voice/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/voice/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/voice/page.ts"
+            "/frontend/pages/(task-workspace)/settings/voice/page.js"
         )))),
-        "pages/(task-workspace)/settings/voice/lifecycle.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/voice/lifecycle.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/voice/lifecycle.ts"
+            "/frontend/pages/(task-workspace)/settings/voice/lifecycle.js"
         )))),
         "pages/(task-workspace)/settings/jev/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/jev/page.css"
         ))),
-        "pages/(task-workspace)/settings/jev/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/jev/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/jev/page.ts"
+            "/frontend/pages/(task-workspace)/settings/jev/page.js"
         )))),
-        "pages/(task-workspace)/settings/jev/lifecycle.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/jev/lifecycle.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/jev/lifecycle.ts"
+            "/frontend/pages/(task-workspace)/settings/jev/lifecycle.js"
         )))),
         "pages/(task-workspace)/settings/grok/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/grok/page.css"
         ))),
-        "pages/(task-workspace)/settings/grok/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/grok/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/grok/page.ts"
+            "/frontend/pages/(task-workspace)/settings/grok/page.js"
         )))),
-        "pages/(task-workspace)/settings/grok/display.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/grok/display.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/grok/display.ts"
+            "/frontend/pages/(task-workspace)/settings/grok/display.js"
         )))),
         "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css"
             )))
         }
-        "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.ts" => {
+        "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.ts"
+                "/frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js"
             ))))
         }
         "pages/(task-workspace)/settings/about/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/about/page.css"
         ))),
-        "pages/(task-workspace)/settings/about/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/settings/about/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/settings/about/page.ts"
+            "/frontend/pages/(task-workspace)/settings/about/page.js"
         )))),
         "pages/(task-workspace)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/layout.css"
         ))),
-        "pages/(task-workspace)/layout.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/layout.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/layout.ts"
+            "/frontend/pages/(task-workspace)/layout.js"
         )))),
-        "keyboard-navigation.ts" => Some(js(include_str!(concat!(
+        "keyboard-navigation.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/keyboard-navigation.ts"
+            "/frontend/keyboard-navigation.js"
         )))),
-        "scroll-scope.ts" => Some(js(include_str!(concat!(
+        "scroll-scope.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/scroll-scope.ts"
+            "/frontend/scroll-scope.js"
         )))),
-        "keyboard-navigation/control.ts" => Some(js(include_str!(concat!(
+        "keyboard-navigation/control.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/keyboard-navigation/control.ts"
+            "/frontend/keyboard-navigation/control.js"
         )))),
-        "keyboard-navigation/context.ts" => Some(js(include_str!(concat!(
+        "keyboard-navigation/context.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/keyboard-navigation/context.ts"
+            "/frontend/keyboard-navigation/context.js"
         )))),
-        "keyboard-navigation/model.ts" => Some(js(include_str!(concat!(
+        "keyboard-navigation/model.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/keyboard-navigation/model.ts"
+            "/frontend/keyboard-navigation/model.js"
         )))),
-        "keyboard-navigation/shortcuts.ts" => Some(js(include_str!(concat!(
+        "keyboard-navigation/shortcuts.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/keyboard-navigation/shortcuts.ts"
+            "/frontend/keyboard-navigation/shortcuts.js"
         )))),
         "keyboard-navigation/components/hud.css" => Some(css(include_str!(
             "../../frontend/keyboard-navigation/components/hud.css"
         ))),
-        "keyboard-navigation/components/hud.ts" => Some(js(include_str!(concat!(
+        "keyboard-navigation/components/hud.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/keyboard-navigation/components/hud.ts"
+            "/frontend/keyboard-navigation/components/hud.js"
         )))),
         "keyboard-navigation/components/selector.css" => Some(css(include_str!(
             "../../frontend/keyboard-navigation/components/selector.css"
         ))),
-        "keyboard-navigation/components/selector.ts" => Some(js(include_str!(concat!(
+        "keyboard-navigation/components/selector.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/keyboard-navigation/components/selector.ts"
+            "/frontend/keyboard-navigation/components/selector.js"
         )))),
         "keyboard-navigation/components/presentation.css" => Some(css(include_str!(
             "../../frontend/keyboard-navigation/components/presentation.css"
         ))),
-        "keyboard-navigation/components/presentation.ts" => Some(js(include_str!(concat!(
+        "keyboard-navigation/components/presentation.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/keyboard-navigation/components/presentation.ts"
+            "/frontend/keyboard-navigation/components/presentation.js"
         )))),
         "keyboard-navigation/components/shortcut-list.css" => Some(css(include_str!(
             "../../frontend/keyboard-navigation/components/shortcut-list.css"
         ))),
-        "keyboard-navigation/components/shortcut-list.ts" => Some(js(include_str!(concat!(
+        "keyboard-navigation/components/shortcut-list.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/keyboard-navigation/components/shortcut-list.ts"
+            "/frontend/keyboard-navigation/components/shortcut-list.js"
         )))),
         "keyboard-navigation/components/shortcut-dialog.css" => Some(css(include_str!(
             "../../frontend/keyboard-navigation/components/shortcut-dialog.css"
         ))),
-        "keyboard-navigation/components/shortcut-dialog.ts" => Some(js(include_str!(concat!(
+        "keyboard-navigation/components/shortcut-dialog.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/keyboard-navigation/components/shortcut-dialog.ts"
+            "/frontend/keyboard-navigation/components/shortcut-dialog.js"
         )))),
-        "action-hints.ts" => Some(js(include_str!(concat!(
+        "action-hints.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/action-hints.ts"
+            "/frontend/action-hints.js"
         )))),
-        "action-hints/control.ts" => Some(js(include_str!(concat!(
+        "action-hints/control.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/action-hints/control.ts"
+            "/frontend/action-hints/control.js"
         )))),
-        "action-hints/declarations.ts" => Some(js(include_str!(concat!(
+        "action-hints/declarations.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/action-hints/declarations.ts"
+            "/frontend/action-hints/declarations.js"
         )))),
-        "action-hints/model.ts" => Some(js(include_str!(concat!(
+        "action-hints/model.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/action-hints/model.ts"
+            "/frontend/action-hints/model.js"
         )))),
         "action-hints/components/dialog.css" => Some(css(include_str!(
             "../../frontend/action-hints/components/dialog.css"
         ))),
-        "action-hints/components/dialog.ts" => Some(js(include_str!(concat!(
+        "action-hints/components/dialog.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/action-hints/components/dialog.ts"
+            "/frontend/action-hints/components/dialog.js"
         )))),
-        "pages/(task-workspace)/live-updates.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/live-updates.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/live-updates.ts"
+            "/frontend/pages/(task-workspace)/live-updates.js"
         )))),
-        "pages/(task-workspace)/live-updates/lifecycle.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/live-updates/lifecycle.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/live-updates/lifecycle.ts"
+            "/frontend/pages/(task-workspace)/live-updates/lifecycle.js"
         )))),
         "pages/(task-workspace)/components/navigation.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/components/navigation.css"
         ))),
-        "pages/(task-workspace)/components/navigation.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/components/navigation.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/components/navigation.ts"
+            "/frontend/pages/(task-workspace)/components/navigation.js"
         )))),
         "pages/(task-workspace)/components/update-task-dialog.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/components/update-task-dialog.css"
         ))),
-        "pages/(task-workspace)/components/update-task-dialog.ts" => {
+        "pages/(task-workspace)/components/update-task-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/components/update-task-dialog.ts"
+                "/frontend/pages/(task-workspace)/components/update-task-dialog.js"
             ))))
         }
         "pages/(task-workspace)/components/workspace-brand.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/components/workspace-brand.css"
         ))),
-        "pages/(task-workspace)/components/workspace-brand.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/components/workspace-brand.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/components/workspace-brand.ts"
+            "/frontend/pages/(task-workspace)/components/workspace-brand.js"
         )))),
-        "pages/(task-workspace)/codex-status.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/codex-status.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/codex-status.ts"
+            "/frontend/pages/(task-workspace)/codex-status.js"
         )))),
-        "pages/(task-workspace)/codex-status/model.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/codex-status/model.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/codex-status/model.ts"
+            "/frontend/pages/(task-workspace)/codex-status/model.js"
         )))),
-        "pages/(task-workspace)/codex-status/lifecycle.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/codex-status/lifecycle.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/codex-status/lifecycle.ts"
+            "/frontend/pages/(task-workspace)/codex-status/lifecycle.js"
         )))),
-        "pages/(task-workspace)/task-store-status.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/task-store-status.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/task-store-status.ts"
+            "/frontend/pages/(task-workspace)/task-store-status.js"
         )))),
-        "pages/(task-workspace)/task-store-status/model.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/task-store-status/model.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/task-store-status/model.ts"
+            "/frontend/pages/(task-workspace)/task-store-status/model.js"
         )))),
-        "pages/(task-workspace)/task-store-status/lifecycle.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/task-store-status/lifecycle.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/task-store-status/lifecycle.ts"
+            "/frontend/pages/(task-workspace)/task-store-status/lifecycle.js"
         )))),
-        "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.ts" => {
+        "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/codex-status/runtime-restart-lifecycle.ts"
+                "/frontend/pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js"
             ))))
         }
         "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css" => {
@@ -777,10 +780,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css"
             )))
         }
-        "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts" => {
+        "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts"
+                "/frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js"
             ))))
         }
         "pages/(task-workspace)/codex-status/components/reset-credit-dialog.css" => {
@@ -788,16 +791,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/codex-status/components/reset-credit-dialog.css"
             )))
         }
-        "pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts" => {
+        "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts"
+                "/frontend/pages/(task-workspace)/codex-status/components/reset-credit-dialog.js"
             ))))
         }
-        "pages/(task-workspace)/codex-status/runtime-update-lifecycle.ts" => {
+        "pages/(task-workspace)/codex-status/runtime-update-lifecycle.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/codex-status/runtime-update-lifecycle.ts"
+                "/frontend/pages/(task-workspace)/codex-status/runtime-update-lifecycle.js"
             ))))
         }
         "pages/(task-workspace)/codex-status/components/runtime-update-dialog.css" => {
@@ -805,10 +808,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/codex-status/components/runtime-update-dialog.css"
             )))
         }
-        "pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts" => {
+        "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts"
+                "/frontend/pages/(task-workspace)/codex-status/components/runtime-update-dialog.js"
             ))))
         }
         "pages/(task-workspace)/tasks/layout.css" => Some(css(include_str!(
@@ -817,24 +820,24 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/controls.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/controls.css"
         ))),
-        "pages/(task-workspace)/tasks/layout.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/layout.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/layout.ts"
+            "/frontend/pages/(task-workspace)/tasks/layout.js"
         )))),
         "pages/(task-workspace)/tasks/(detail)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/layout.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/(detail)/layout.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/(detail)/layout.ts"
+            "/frontend/pages/(task-workspace)/tasks/(detail)/layout.js"
         )))),
         "pages/(task-workspace)/tasks/(detail)/(section)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(section)/layout.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(section)/layout.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.css" => {
@@ -842,10 +845,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css" => {
@@ -853,10 +856,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css" => {
@@ -864,10 +867,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css" => {
@@ -875,52 +878,52 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/runtime-state.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/runtime-state.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/runtime-state.ts"
+            "/frontend/pages/(task-workspace)/tasks/runtime-state.js"
         )))),
-        "pages/(task-workspace)/tasks/stream.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/stream.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/stream.ts"
+            "/frontend/pages/(task-workspace)/tasks/stream.js"
         )))),
-        "pages/(task-workspace)/tasks/stream/machine.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/stream/machine.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/stream/machine.ts"
+            "/frontend/pages/(task-workspace)/tasks/stream/machine.js"
         )))),
-        "pages/(task-workspace)/tasks/task-events.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/task-events.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/task-events.ts"
+            "/frontend/pages/(task-workspace)/tasks/task-events.js"
         )))),
-        "pages/(task-workspace)/tasks/task-format.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/task-format.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/task-format.ts"
+            "/frontend/pages/(task-workspace)/tasks/task-format.js"
         )))),
-        "pages/(task-workspace)/tasks/task-list-model.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/task-list-model.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/task-list-model.ts"
+            "/frontend/pages/(task-workspace)/tasks/task-list-model.js"
         )))),
         "pages/(task-workspace)/tasks/components/composer.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/composer.css"
         ))),
-        "pages/(task-workspace)/tasks/components/composer.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/components/composer.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/components/composer.ts"
+            "/frontend/pages/(task-workspace)/tasks/components/composer.js"
         )))),
         "pages/(task-workspace)/tasks/components/composer/components/attachments.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/components/composer/components/attachments.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/composer/components/attachments.ts" => {
+        "pages/(task-workspace)/tasks/components/composer/components/attachments.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/composer/components/attachments.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/composer/components/attachments.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/composer/components/context-usage.css" => {
@@ -928,19 +931,19 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/composer/components/context-usage.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/composer/components/context-usage.ts" => {
+        "pages/(task-workspace)/tasks/components/composer/components/context-usage.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/composer/components/context-usage.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/composer/components/context-usage.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/task-turn-options.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/task-turn-options.css"
         ))),
-        "pages/(task-workspace)/tasks/components/task-turn-options.ts" => {
+        "pages/(task-workspace)/tasks/components/task-turn-options.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-turn-options.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/task-turn-options.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/task-create/components/directory-field.css" => {
@@ -948,22 +951,22 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/task-create/components/directory-field.ts" => {
+        "pages/(task-workspace)/tasks/components/task-create/components/directory-field.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.ts" => {
+        "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/components/task-create/directory-path.ts" => {
+        "pages/(task-workspace)/tasks/components/task-create/directory-path.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-create/directory-path.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/task-create/directory-path.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/archived-delete-dialog.css" => {
@@ -971,10 +974,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/archived-delete-dialog.ts" => {
+        "pages/(task-workspace)/tasks/components/archived-delete-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/task-switcher-dialog.css" => {
@@ -982,10 +985,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/task-switcher-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/task-switcher-dialog.ts" => {
+        "pages/(task-workspace)/tasks/components/task-switcher-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-switcher-dialog.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/task-switcher-dialog.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/image-preview-dialog.css" => {
@@ -993,10 +996,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/image-preview-dialog.ts" => {
+        "pages/(task-workspace)/tasks/components/image-preview-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.css" => {
@@ -1004,67 +1007,67 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.ts" => {
+        "pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/components/composer/voice-recorder.ts" => {
+        "pages/(task-workspace)/tasks/components/composer/voice-recorder.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/composer/voice-recorder.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/composer/voice-recorder.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/components/composer/voice-worklet.ts" => {
+        "pages/(task-workspace)/tasks/components/composer/voice-worklet.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/composer/voice-worklet.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/composer/voice-worklet.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(task)/layout.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/layout/conversation.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout/conversation.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/conversation.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/conversation.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/layout/history.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/history.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/layout/upload-discards.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout/upload-discards.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/upload-discards.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/upload-discards.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/session.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/session.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/session.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/session.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css" => {
@@ -1072,16 +1075,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/model.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/model.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/model.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/model.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css" => {
@@ -1089,10 +1092,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css" => {
@@ -1100,19 +1103,19 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/components/git-menu.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/components/git-menu.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/components/git-menu.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/components/git-menu.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/components/git-menu.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/components/git-menu.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/components/terminal-button.css" => {
@@ -1120,43 +1123,43 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/components/terminal-button.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/components/terminal-button.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/components/terminal-button.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/components/terminal-button.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/components/terminal-button.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/terminal/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/terminal/page.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/terminal/page.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/terminal/page.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/page.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/page.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/terminal/page/connection.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/terminal/page/connection.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/page/connection.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/page/connection.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/terminal/page/keyboard-inset.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/terminal/page/keyboard-inset.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/page/keyboard-inset.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/page/keyboard-inset.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/terminal/page/keys.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/terminal/page/keys.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/page/keys.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/page/keys.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/terminal/page/model.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/terminal/page/model.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/page/model.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/page/model.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.css" => {
@@ -1164,10 +1167,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/components/github-menu.css" => {
@@ -1175,10 +1178,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/components/github-menu.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/components/github-menu.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/components/github-menu.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/components/github-menu.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/components/github-menu.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css" => {
@@ -1186,10 +1189,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css" => {
@@ -1197,10 +1200,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css" => {
@@ -1208,10 +1211,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.css" => {
@@ -1219,10 +1222,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css" => {
@@ -1230,16 +1233,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/active-turn.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/active-turn.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/active-turn.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/active-turn.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css" => {
@@ -1247,10 +1250,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.css" => {
@@ -1258,10 +1261,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css" => {
@@ -1269,10 +1272,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.css" => {
@@ -1280,10 +1283,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.css" => {
@@ -1291,10 +1294,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css" => {
@@ -1302,10 +1305,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css" => {
@@ -1313,10 +1316,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css" => {
@@ -1324,16 +1327,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.css" => {
@@ -1341,22 +1344,22 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group/model.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group/model.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group/model.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group/model.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/command-runs.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/command-runs.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/command-runs.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/command-runs.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.css" => {
@@ -1364,10 +1367,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/broken-delete-dialog.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css" => {
@@ -1375,10 +1378,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css" => {
@@ -1386,10 +1389,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css" => {
@@ -1397,16 +1400,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css" => {
@@ -1414,10 +1417,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css" => {
@@ -1425,10 +1428,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/entries.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/entries.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/entries.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/entries.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css" => {
@@ -1436,43 +1439,43 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(review)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(review)/layout.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/layout.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/layout/paths.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/layout/paths.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout/paths.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout/paths.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/layout/route.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/layout/route.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout/route.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout/route.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/changes-reading.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/changes-reading.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/changes-reading.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/changes-reading.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/representations.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/representations.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/representations.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/representations.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css" => {
@@ -1480,10 +1483,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.css" => {
@@ -1491,10 +1494,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.css" => {
@@ -1502,16 +1505,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file/content.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file/content.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file/content.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file/content.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.css" => {
@@ -1519,25 +1522,25 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/active-task-list.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/active-task-list.css"
         ))),
-        "pages/(task-workspace)/tasks/components/active-task-list.ts" => {
+        "pages/(task-workspace)/tasks/components/active-task-list.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/active-task-list.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/active-task-list.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/components/active-task-list/move-list-item.ts" => {
+        "pages/(task-workspace)/tasks/components/active-task-list/move-list-item.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/active-task-list/move-list-item.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/active-task-list/move-list-item.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/active-task-list/components/section.css" => {
@@ -1545,10 +1548,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/active-task-list/components/section.ts" => {
+        "pages/(task-workspace)/tasks/components/active-task-list/components/section.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css" => {
@@ -1556,10 +1559,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts" => {
+        "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/archived-task-list.css" => {
@@ -1567,119 +1570,119 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/components/archived-task-list.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/archived-task-list.ts" => {
+        "pages/(task-workspace)/tasks/components/archived-task-list.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/archived-task-list.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/archived-task-list.js"
             ))))
         }
         "pages/(task-workspace)/tasks/recovery/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/recovery/page.css"
         ))),
-        "pages/(task-workspace)/tasks/recovery/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/recovery/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/recovery/page.ts"
+            "/frontend/pages/(task-workspace)/tasks/recovery/page.js"
         )))),
         "pages/(task-workspace)/tasks/components/task-store-recovery.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/components/task-store-recovery.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/task-store-recovery.ts" => {
+        "pages/(task-workspace)/tasks/components/task-store-recovery.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-store-recovery.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/task-store-recovery.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/task-absence.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/task-absence.css"
         ))),
-        "pages/(task-workspace)/tasks/components/task-absence.ts" => {
+        "pages/(task-workspace)/tasks/components/task-absence.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-absence.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/task-absence.js"
             ))))
         }
         "pages/(task-workspace)/tasks/components/navigator.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/navigator.css"
         ))),
-        "pages/(task-workspace)/tasks/components/navigator.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/components/navigator.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/components/navigator.ts"
+            "/frontend/pages/(task-workspace)/tasks/components/navigator.js"
         )))),
         "pages/(task-workspace)/tasks/components/task-create.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/task-create.css"
         ))),
-        "pages/(task-workspace)/tasks/components/task-create.ts" => {
+        "pages/(task-workspace)/tasks/components/task-create.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-create.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/task-create.js"
             ))))
         }
         "pages/(task-workspace)/tasks/new/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/new/page.css"
         ))),
-        "pages/(task-workspace)/tasks/new/page.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/new/page.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/new/page.ts"
+            "/frontend/pages/(task-workspace)/tasks/new/page.js"
         )))),
         "pages/(task-workspace)/tasks/components/task-status-chip.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/task-status-chip.css"
         ))),
-        "pages/(task-workspace)/tasks/components/task-status-chip.ts" => {
+        "pages/(task-workspace)/tasks/components/task-status-chip.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/components/task-status-chip.ts"
+                "/frontend/pages/(task-workspace)/tasks/components/task-status-chip.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(git)/layout.ts" => Some(js(include_str!(concat!(
+        "pages/(task-workspace)/tasks/(detail)/(git)/layout.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.ts"
+            "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.js"
         )))),
         "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/components/controls.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/components/controls.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(git)/compare/page.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/compare/page.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js"
             ))))
         }
         "components/git-compare-browser.css" => Some(css(include_str!(
             "../../frontend/components/git-compare-browser.css"
         ))),
-        "components/git-compare-browser.ts" => Some(js(include_str!(concat!(
+        "components/git-compare-browser.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/git-compare-browser.ts"
+            "/frontend/components/git-compare-browser.js"
         )))),
         "components/git-compare-tree.css" => Some(css(include_str!(
             "../../frontend/components/git-compare-tree.css"
         ))),
-        "components/git-compare-tree.ts" => Some(js(include_str!(concat!(
+        "components/git-compare-tree.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/git-compare-tree.ts"
+            "/frontend/components/git-compare-tree.js"
         )))),
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css" => {
@@ -1687,10 +1690,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css" => {
@@ -1698,10 +1701,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css" => {
@@ -1709,25 +1712,25 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(github)/layout.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/layout.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/layout.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/layout.js"
             ))))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css" => {
@@ -1735,10 +1738,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.css" => {
@@ -1746,10 +1749,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css" => {
@@ -1757,10 +1760,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css" => {
@@ -1768,10 +1771,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css" => {
@@ -1779,10 +1782,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css" => {
@@ -1790,10 +1793,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.css" => {
@@ -1801,10 +1804,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css" => {
@@ -1812,10 +1815,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css" => {
@@ -1823,10 +1826,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css" => {
@@ -1834,10 +1837,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js"
             ))))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css" => {
@@ -1845,134 +1848,136 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css"
             )))
         }
-        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.ts" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js" => {
             Some(js(include_str!(concat!(
                 env!("OUT_DIR"),
-                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.ts"
+                "/frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js"
             ))))
         }
         "components/file-viewer/components/code-viewer.css" => Some(css(include_str!(
             "../../frontend/components/file-viewer/components/code-viewer.css"
         ))),
-        "components/file-viewer/components/code-viewer.ts" => Some(js(include_str!(concat!(
+        "components/file-viewer/components/code-viewer.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/file-viewer/components/code-viewer.ts"
+            "/frontend/components/file-viewer/components/code-viewer.js"
         )))),
         "components/file-viewer/components/diff-viewer.css" => Some(css(include_str!(
             "../../frontend/components/file-viewer/components/diff-viewer.css"
         ))),
-        "components/file-viewer/components/diff-viewer.ts" => Some(js(include_str!(concat!(
+        "components/file-viewer/components/diff-viewer.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/file-viewer/components/diff-viewer.ts"
+            "/frontend/components/file-viewer/components/diff-viewer.js"
         )))),
-        "components/file-viewer/syntax-spans.ts" => Some(js(include_str!(concat!(
+        "components/file-viewer/syntax-spans.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/file-viewer/syntax-spans.ts"
+            "/frontend/components/file-viewer/syntax-spans.js"
         )))),
-        "components/dom.ts" => Some(js(include_str!(concat!(
+        "components/dom.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/dom.ts"
+            "/frontend/components/dom.js"
         )))),
         "components/file-viewer.css" => Some(css(include_str!(
             "../../frontend/components/file-viewer.css"
         ))),
-        "components/file-viewer.ts" => Some(js(include_str!(concat!(
+        "components/file-viewer.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/file-viewer.ts"
+            "/frontend/components/file-viewer.js"
         )))),
         "components/markdown-preview.css" => Some(css(include_str!(
             "../../frontend/components/markdown-preview.css"
         ))),
-        "components/markdown-preview.ts" => Some(js(include_str!(concat!(
+        "components/markdown-preview.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/markdown-preview.ts"
+            "/frontend/components/markdown-preview.js"
         )))),
         "components/pdf-viewer.css" => Some(css(include_str!(
             "../../frontend/components/pdf-viewer.css"
         ))),
-        "components/pdf-viewer.ts" => Some(js(include_str!(concat!(
+        "components/pdf-viewer.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/pdf-viewer.ts"
+            "/frontend/components/pdf-viewer.js"
         )))),
         "components/docx-viewer.css" => Some(css(include_str!(
             "../../frontend/components/docx-viewer.css"
         ))),
-        "components/docx-viewer.ts" => Some(js(include_str!(concat!(
+        "components/docx-viewer.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/docx-viewer.ts"
+            "/frontend/components/docx-viewer.js"
         )))),
         "components/pptx-viewer.css" => Some(css(include_str!(
             "../../frontend/components/pptx-viewer.css"
         ))),
-        "components/pptx-viewer.ts" => Some(js(include_str!(concat!(
+        "components/pptx-viewer.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/pptx-viewer.ts"
+            "/frontend/components/pptx-viewer.js"
         )))),
         "components/xlsx-viewer.css" => Some(css(include_str!(
             "../../frontend/components/xlsx-viewer.css"
         ))),
-        "components/xlsx-viewer.ts" => Some(js(include_str!(concat!(
+        "components/xlsx-viewer.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/xlsx-viewer.ts"
+            "/frontend/components/xlsx-viewer.js"
         )))),
-        "components/xlsx-viewer/window.ts" => Some(js(include_str!(concat!(
+        "components/xlsx-viewer/window.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/xlsx-viewer/window.ts"
+            "/frontend/components/xlsx-viewer/window.js"
         )))),
-        "components/xlsx-viewer/workbook.ts" => Some(js(include_str!(concat!(
+        "components/xlsx-viewer/workbook.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/xlsx-viewer/workbook.ts"
+            "/frontend/components/xlsx-viewer/workbook.js"
         )))),
-        "components/file-viewer-presentation.ts" => Some(js(include_str!(concat!(
+        "components/file-viewer-presentation.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/file-viewer-presentation.ts"
+            "/frontend/components/file-viewer-presentation.js"
         )))),
-        "components/icons.ts" => Some(js(include_str!(concat!(
+        "components/icons.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/icons.ts"
+            "/frontend/components/icons.js"
         )))),
-        "components/drawn-refs.ts" => Some(js(include_str!(concat!(
+        "components/drawn-refs.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/drawn-refs.ts"
+            "/frontend/components/drawn-refs.js"
         )))),
         "components/loading-text.css" => Some(css(include_str!(
             "../../frontend/components/loading-text.css"
         ))),
-        "components/loading-text.ts" => Some(js(include_str!(concat!(
+        "components/loading-text.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/loading-text.ts"
+            "/frontend/components/loading-text.js"
         )))),
         "components/pagination.css" => Some(css(include_str!(
             "../../frontend/components/pagination.css"
         ))),
-        "components/pagination.ts" => Some(js(include_str!(concat!(
+        "components/pagination.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/pagination.ts"
+            "/frontend/components/pagination.js"
         )))),
         "components/pagination/components/button.css" => Some(css(include_str!(
             "../../frontend/components/pagination/components/button.css"
         ))),
-        "components/pagination/components/button.ts" => Some(js(include_str!(concat!(
+        "components/pagination/components/button.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/pagination/components/button.ts"
+            "/frontend/components/pagination/components/button.js"
         )))),
         "components/terminal-view.css" => Some(css(include_str!(
             "../../frontend/components/terminal-view.css"
         ))),
-        "components/terminal-view.ts" => Some(js(include_str!(concat!(
+        "components/terminal-view.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/terminal-view.ts"
+            "/frontend/components/terminal-view.js"
         )))),
         "components/segmented-control.css" => Some(css(include_str!(
             "../../frontend/components/segmented-control.css"
         ))),
-        "components/segmented-control.ts" => Some(js(include_str!(concat!(
+        "components/segmented-control.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
-            "/frontend/components/segmented-control.ts"
+            "/frontend/components/segmented-control.js"
         )))),
-        _ => None,
+        _ => compiled_source_map(path).map(source_map),
     }
 }
+
+include!(concat!(env!("OUT_DIR"), "/source_maps.rs"));
 
 fn css(body: &'static str) -> StaticAsset {
     StaticAsset {
@@ -1991,6 +1996,13 @@ fn js(body: &'static str) -> StaticAsset {
 fn js_bytes(body: &'static [u8]) -> StaticAsset {
     StaticAsset {
         content_type: "text/javascript; charset=utf-8",
+        body,
+    }
+}
+
+fn source_map(body: &'static [u8]) -> StaticAsset {
+    StaticAsset {
+        content_type: "application/json; charset=utf-8",
         body,
     }
 }
@@ -2033,11 +2045,12 @@ fn plain_text(body: &'static str) -> StaticAsset {
 #[cfg(test)]
 mod tests {
     use super::get;
+    use serde_json::Value;
 
     #[test]
     fn serves_component_style_registration_assets() {
         for (path, content_type) in [
-            ("component-styles.ts", "text/javascript; charset=utf-8"),
+            ("component-styles.js", "text/javascript; charset=utf-8"),
             (
                 "component-styles/compact-icon-button.css",
                 "text/css; charset=utf-8",
@@ -2086,14 +2099,14 @@ mod tests {
     }
 
     #[test]
-    fn serves_typescript_modules_as_javascript_without_their_types() {
+    fn serves_typescript_modules_as_the_javascript_and_source_maps_tsc_writes() {
         for (path, class) in [
             (
-                "components/pagination.ts",
+                "components/pagination.js",
                 "class CaffoldPagination extends LitElement",
             ),
             (
-                "components/pagination/components/button.ts",
+                "components/pagination/components/button.js",
                 "class CaffoldPaginationButton extends LitElement",
             ),
         ] {
@@ -2102,9 +2115,25 @@ mod tests {
             let source = std::str::from_utf8(module.body).expect("UTF-8 module");
             assert!(source.contains(class));
             assert!(!source.contains("declare page: number"));
+            let map_name = format!("{}.map", path.rsplit('/').next().unwrap());
+            assert!(source.ends_with(&format!("//# sourceMappingURL={map_name}")));
+
+            let map = get(&format!("{path}.map"))
+                .unwrap_or_else(|| panic!("missing source map for {path}"));
+            assert_eq!(map.content_type, "application/json; charset=utf-8");
+            let map: Value = serde_json::from_slice(map.body).expect("JSON source map");
+            assert_eq!(map["sourceRoot"], "/assets/");
+            assert_eq!(map["sources"][0], path.replace(".js", ".ts"));
+            assert!(
+                map["sourcesContent"][0]
+                    .as_str()
+                    .unwrap()
+                    .contains("declare page")
+            );
         }
-        assert!(get("components/pagination.js").is_none());
+        assert!(get("components/pagination.ts").is_none());
         assert!(get("action-hint-scope.d.ts").is_none());
+        assert!(get("service-worker.js.map").is_none());
     }
 
     #[test]
@@ -2121,7 +2150,11 @@ mod tests {
             service_worker.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(service_worker.body.starts_with(b"const CACHE_NAME"));
+        assert!(
+            service_worker
+                .body
+                .starts_with(b"\"use strict\";\nconst CACHE_NAME")
+        );
 
         let build_info = get("build-info.js").expect("build info asset");
         assert_eq!(build_info.content_type, "text/javascript; charset=utf-8");
@@ -2148,32 +2181,22 @@ mod tests {
         }
 
         let codex_status_model =
-            get("pages/(task-workspace)/codex-status/model.ts").expect("Codex status model asset");
+            get("pages/(task-workspace)/codex-status/model.js").expect("Codex status model asset");
         assert_eq!(
             codex_status_model.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(
-            codex_status_model
-                .body
-                .trim_ascii_start()
-                .starts_with(b"export ")
-        );
-        let codex_status_lifecycle = get("pages/(task-workspace)/codex-status/lifecycle.ts")
+        assert!(codex_status_model.body.starts_with(b"export "));
+        let codex_status_lifecycle = get("pages/(task-workspace)/codex-status/lifecycle.js")
             .expect("Codex status lifecycle asset");
         assert_eq!(
             codex_status_lifecycle.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(
-            codex_status_lifecycle
-                .body
-                .trim_ascii_start()
-                .starts_with(b"import ")
-        );
+        assert!(codex_status_lifecycle.body.starts_with(b"import "));
 
         let review_responsive_js =
-            get("components/review-responsive.ts").expect("review responsive js asset");
+            get("components/review-responsive.js").expect("review responsive js asset");
         assert_eq!(
             review_responsive_js.content_type,
             "text/javascript; charset=utf-8"
@@ -2185,10 +2208,10 @@ mod tests {
         );
 
         for path in [
-            "pages/(task-workspace)/tasks/(detail)/components/git-menu.ts",
-            "pages/(task-workspace)/tasks/(detail)/components/github-menu.ts",
-            "pages/(task-workspace)/tasks/(detail)/components/terminal-button.ts",
-            "pages/(task-workspace)/tasks/(detail)/terminal/page.ts",
+            "pages/(task-workspace)/tasks/(detail)/components/git-menu.js",
+            "pages/(task-workspace)/tasks/(detail)/components/github-menu.js",
+            "pages/(task-workspace)/tasks/(detail)/components/terminal-button.js",
+            "pages/(task-workspace)/tasks/(detail)/terminal/page.js",
         ] {
             let task_button_js = get(path).expect("Task button js asset");
             assert_eq!(
@@ -2234,7 +2257,7 @@ mod tests {
         assert!(get("pages/components/pathbar.js").is_none());
 
         let build_mismatch_alert =
-            get("pages/components/build-mismatch-alert.ts").expect("build mismatch alert js asset");
+            get("pages/components/build-mismatch-alert.js").expect("build mismatch alert js asset");
         assert_eq!(
             build_mismatch_alert.content_type,
             "text/javascript; charset=utf-8"
@@ -2242,7 +2265,7 @@ mod tests {
         assert!(build_mismatch_alert.body.starts_with(b"import "));
 
         let pwa_update_lifecycle =
-            get("pages/pwa-update-lifecycle.ts").expect("PWA update lifecycle js asset");
+            get("pages/pwa-update-lifecycle.js").expect("PWA update lifecycle js asset");
         assert_eq!(
             pwa_update_lifecycle.content_type,
             "text/javascript; charset=utf-8"
@@ -2250,21 +2273,21 @@ mod tests {
         assert!(pwa_update_lifecycle.body.starts_with(b"import "));
 
         for path in [
-            "pages/pwa-update-lifecycle/machine.ts",
-            "pages/pwa-update-lifecycle/runtime.ts",
+            "pages/pwa-update-lifecycle/machine.js",
+            "pages/pwa-update-lifecycle/runtime.js",
         ] {
             let asset = get(path).expect("PWA update private module asset");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
         }
 
         let update_dialog =
-            get("pages/components/update-dialog.ts").expect("update dialog js asset");
+            get("pages/components/update-dialog.js").expect("update dialog js asset");
         assert_eq!(update_dialog.content_type, "text/javascript; charset=utf-8");
         assert!(update_dialog.body.starts_with(b"import "));
 
         for path in [
-            "pages/components/update-result-dialog.ts",
-            "pages/(task-workspace)/components/update-task-dialog.ts",
+            "pages/components/update-result-dialog.js",
+            "pages/(task-workspace)/components/update-task-dialog.js",
         ] {
             let dialog = get(path).expect("update dialog js asset");
             assert_eq!(dialog.content_type, "text/javascript; charset=utf-8");
@@ -2280,25 +2303,20 @@ mod tests {
         assert!(get("pages/components/about-dialog.js").is_none());
         assert!(get("pages/components/about-dialog.css").is_none());
 
-        let settings_module = get("settings.ts").expect("settings module asset");
+        let settings_module = get("settings.js").expect("settings module asset");
         assert_eq!(
             settings_module.content_type,
             "text/javascript; charset=utf-8"
         );
         assert!(settings_module.body.starts_with(b"import "));
 
-        let theme_module = get("theme.ts").expect("theme module asset");
+        let theme_module = get("theme.js").expect("theme module asset");
         assert_eq!(theme_module.content_type, "text/javascript; charset=utf-8");
         assert!(theme_module.body.starts_with(b"const "));
 
-        let fonts_module = get("fonts.ts").expect("fonts module asset");
+        let fonts_module = get("fonts.js").expect("fonts module asset");
         assert_eq!(fonts_module.content_type, "text/javascript; charset=utf-8");
-        assert!(
-            fonts_module
-                .body
-                .trim_ascii_start()
-                .starts_with(b"export const")
-        );
+        assert!(fonts_module.body.starts_with(b"export const"));
 
         for family in ["GeistSans", "Inter", "Pretendard"] {
             let path = format!("fonts/{family}-Variable.woff2");
@@ -2357,73 +2375,71 @@ mod tests {
             );
         }
 
-        let settings_page = get("pages/(task-workspace)/settings/appearance/page.ts")
+        let settings_page = get("pages/(task-workspace)/settings/appearance/page.js")
             .expect("settings appearance page js asset");
         assert_eq!(settings_page.content_type, "text/javascript; charset=utf-8");
         assert!(settings_page.body.starts_with(b"import "));
 
         for path in [
-            "keyboard-navigation.ts",
-            "keyboard-navigation/control.ts",
-            "keyboard-navigation/context.ts",
-            "keyboard-navigation/model.ts",
-            "keyboard-navigation/shortcuts.ts",
-            "keyboard-navigation/components/hud.ts",
-            "keyboard-navigation/components/selector.ts",
-            "keyboard-navigation/components/presentation.ts",
-            "keyboard-navigation/components/shortcut-list.ts",
-            "keyboard-navigation/components/shortcut-dialog.ts",
-            "chunked-fetch.ts",
-            "chunked-fetch/cell-scheduler.ts",
-            "chunked-fetch/in-flight-limit.ts",
-            "chunked-fetch/transfer.ts",
-            "components/file-viewer/syntax-spans.ts",
-            "action-hints.ts",
-            "action-hints/control.ts",
-            "action-hints/declarations.ts",
-            "action-hints/model.ts",
-            "action-hints/components/dialog.ts",
-            "pages/(task-workspace)/notes/layout.ts",
-            "pages/(task-workspace)/notes/layout/selection.ts",
-            "pages/(task-workspace)/notes/components/document.ts",
-            "pages/(task-workspace)/notes/components/info.ts",
-            "pages/(task-workspace)/notes/components/info/components/copy-markdown.ts",
-            "pages/(task-workspace)/notes/components/info/components/copy-path.ts",
-            "pages/(task-workspace)/notes/components/navigator.ts",
-            "pages/(task-workspace)/notes/tree.ts",
-            "pages/(task-workspace)/settings/layout.ts",
-            "pages/(task-workspace)/settings/components/navigator.ts",
-            "pages/(task-workspace)/settings/components/navigator/components/item.ts",
-            "pages/(task-workspace)/settings/keyboard/page.ts",
-            "pages/(task-workspace)/settings/files/page.ts",
-            "pages/(task-workspace)/settings/notifications/page.ts",
-            "pages/(task-workspace)/settings/remote-access/page.ts",
-            "pages/(task-workspace)/settings/remote-access/tailscale.ts",
-            "pages/(task-workspace)/settings/voice/page.ts",
-            "pages/(task-workspace)/settings/voice/lifecycle.ts",
-            "pages/(task-workspace)/settings/jev/page.ts",
-            "pages/(task-workspace)/settings/jev/lifecycle.ts",
-            "pages/(task-workspace)/settings/codex/page.ts",
-            "pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts",
-            "pages/(task-workspace)/settings/claude/page.ts",
-            "pages/(task-workspace)/settings/claude/display.ts",
-            "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.ts",
-            "pages/(task-workspace)/settings/grok/page.ts",
-            "pages/(task-workspace)/settings/grok/display.ts",
-            "pages/(task-workspace)/settings/about/page.ts",
-            "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.ts",
-            "pages/(task-workspace)/tasks/components/task-create/directory-path.ts",
+            "keyboard-navigation.js",
+            "keyboard-navigation/control.js",
+            "keyboard-navigation/context.js",
+            "keyboard-navigation/model.js",
+            "keyboard-navigation/shortcuts.js",
+            "keyboard-navigation/components/hud.js",
+            "keyboard-navigation/components/selector.js",
+            "keyboard-navigation/components/presentation.js",
+            "keyboard-navigation/components/shortcut-list.js",
+            "keyboard-navigation/components/shortcut-dialog.js",
+            "chunked-fetch.js",
+            "chunked-fetch/cell-scheduler.js",
+            "chunked-fetch/in-flight-limit.js",
+            "chunked-fetch/transfer.js",
+            "components/file-viewer/syntax-spans.js",
+            "action-hints.js",
+            "action-hints/control.js",
+            "action-hints/declarations.js",
+            "action-hints/model.js",
+            "action-hints/components/dialog.js",
+            "pages/(task-workspace)/notes/layout.js",
+            "pages/(task-workspace)/notes/layout/selection.js",
+            "pages/(task-workspace)/notes/components/document.js",
+            "pages/(task-workspace)/notes/components/info.js",
+            "pages/(task-workspace)/notes/components/info/components/copy-markdown.js",
+            "pages/(task-workspace)/notes/components/info/components/copy-path.js",
+            "pages/(task-workspace)/notes/components/navigator.js",
+            "pages/(task-workspace)/notes/tree.js",
+            "pages/(task-workspace)/settings/layout.js",
+            "pages/(task-workspace)/settings/components/navigator.js",
+            "pages/(task-workspace)/settings/components/navigator/components/item.js",
+            "pages/(task-workspace)/settings/keyboard/page.js",
+            "pages/(task-workspace)/settings/files/page.js",
+            "pages/(task-workspace)/settings/notifications/page.js",
+            "pages/(task-workspace)/settings/remote-access/page.js",
+            "pages/(task-workspace)/settings/remote-access/tailscale.js",
+            "pages/(task-workspace)/settings/voice/page.js",
+            "pages/(task-workspace)/settings/voice/lifecycle.js",
+            "pages/(task-workspace)/settings/jev/page.js",
+            "pages/(task-workspace)/settings/jev/lifecycle.js",
+            "pages/(task-workspace)/settings/codex/page.js",
+            "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
+            "pages/(task-workspace)/settings/claude/page.js",
+            "pages/(task-workspace)/settings/claude/display.js",
+            "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
+            "pages/(task-workspace)/settings/grok/page.js",
+            "pages/(task-workspace)/settings/grok/display.js",
+            "pages/(task-workspace)/settings/about/page.js",
+            "pages/(task-workspace)/tasks/components/task-create/components/directory-field/control.js",
+            "pages/(task-workspace)/tasks/components/task-create/directory-path.js",
         ] {
             let asset = get(path).unwrap_or_else(|| panic!("missing frontend asset {path}"));
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
             // The body is the module itself, not an HTML error page. A module
-            // with no imports of its own opens with what it exports, and a
-            // TypeScript module may open with type syntax stripped to spaces.
-            let body = asset.body.trim_ascii_start();
-            assert!(body.starts_with(b"import ") || body.starts_with(b"export "));
+            // with no imports of its own opens with what it exports.
+            assert!(asset.body.starts_with(b"import ") || asset.body.starts_with(b"export "));
         }
 
-        let scroll_scope = get("scroll-scope.ts").expect("Scroll scope module asset");
+        let scroll_scope = get("scroll-scope.js").expect("Scroll scope module asset");
         assert_eq!(scroll_scope.content_type, "text/javascript; charset=utf-8");
         assert!(scroll_scope.body.starts_with(b"import {"));
 
@@ -2451,21 +2467,16 @@ mod tests {
         }
 
         let notification_lifecycle =
-            get("pages/(task-workspace)/settings/notifications/lifecycle.ts")
+            get("pages/(task-workspace)/settings/notifications/lifecycle.js")
                 .expect("settings notification lifecycle asset");
         assert_eq!(
             notification_lifecycle.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(
-            notification_lifecycle
-                .body
-                .trim_ascii_start()
-                .starts_with(b"export const")
-        );
+        assert!(notification_lifecycle.body.starts_with(b"export const"));
 
         let runtime_restart_dialog =
-            get("pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts")
+            get("pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js")
                 .expect("Codex runtime restart dialog asset");
         assert_eq!(
             runtime_restart_dialog.content_type,
@@ -2474,7 +2485,7 @@ mod tests {
         assert!(runtime_restart_dialog.body.starts_with(b"import "));
 
         let runtime_update_dialog =
-            get("pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts")
+            get("pages/(task-workspace)/codex-status/components/runtime-update-dialog.js")
                 .expect("Codex runtime update dialog asset");
         assert_eq!(
             runtime_update_dialog.content_type,
@@ -2482,7 +2493,7 @@ mod tests {
         );
         assert!(runtime_update_dialog.body.starts_with(b"import "));
 
-        let app_shell_layout = get("pages/layout.ts").expect("app shell layout js asset");
+        let app_shell_layout = get("pages/layout.js").expect("app shell layout js asset");
         assert_eq!(
             app_shell_layout.content_type,
             "text/javascript; charset=utf-8"
@@ -2491,7 +2502,7 @@ mod tests {
 
         assert!(get("pages/(review-workspace)/layout.css").is_none());
 
-        let git_review_layout = get("pages/(task-workspace)/tasks/(detail)/(git)/layout.ts")
+        let git_review_layout = get("pages/(task-workspace)/tasks/(detail)/(git)/layout.js")
             .expect("git review layout js");
         assert_eq!(
             git_review_layout.content_type,
@@ -2505,7 +2516,7 @@ mod tests {
                 .any(|window| window == b"caffold-task-git-layout")
         );
         let git_review_controls =
-            get("pages/(task-workspace)/tasks/(detail)/(git)/components/controls.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(git)/components/controls.js")
                 .expect("git review controls js");
         assert_eq!(
             git_review_controls.content_type,
@@ -2529,7 +2540,7 @@ mod tests {
                 .body
                 .starts_with(b"caffold-git-review-controls")
         );
-        let pane_resizer = get("components/pane-resizer.ts").expect("pane resizer js");
+        let pane_resizer = get("components/pane-resizer.js").expect("pane resizer js");
         assert_eq!(pane_resizer.content_type, "text/javascript; charset=utf-8");
         assert!(
             pane_resizer
@@ -2541,7 +2552,7 @@ mod tests {
         assert_eq!(pane_resizer_css.content_type, "text/css; charset=utf-8");
         assert!(pane_resizer_css.body.starts_with(b"caffold-pane-resizer"));
 
-        let compare_page = get("pages/(task-workspace)/tasks/(detail)/(git)/compare/page.ts")
+        let compare_page = get("pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js")
             .expect("compare page js");
         assert_eq!(compare_page.content_type, "text/javascript; charset=utf-8");
         assert!(compare_page.body.starts_with(b"import "));
@@ -2551,7 +2562,7 @@ mod tests {
                 .windows(b"caffold-git-compare-page".len())
                 .any(|window| window == b"caffold-git-compare-page")
         );
-        let compare_browser = get("components/git-compare-browser.ts").expect("compare browser js");
+        let compare_browser = get("components/git-compare-browser.js").expect("compare browser js");
         assert_eq!(
             compare_browser.content_type,
             "text/javascript; charset=utf-8"
@@ -2562,7 +2573,7 @@ mod tests {
                 .windows(b"caffold-git-compare-browser".len())
                 .any(|window| window == b"caffold-git-compare-browser")
         );
-        let compare_tree = get("components/git-compare-tree.ts").expect("compare tree js");
+        let compare_tree = get("components/git-compare-tree.js").expect("compare tree js");
         assert_eq!(compare_tree.content_type, "text/javascript; charset=utf-8");
         assert!(
             compare_tree
@@ -2576,7 +2587,7 @@ mod tests {
         );
 
         let task_workspace_layout =
-            get("pages/(task-workspace)/layout.ts").expect("task workspace layout js");
+            get("pages/(task-workspace)/layout.js").expect("task workspace layout js");
         assert_eq!(
             task_workspace_layout.content_type,
             "text/javascript; charset=utf-8"
@@ -2590,11 +2601,11 @@ mod tests {
         );
         for (path, marker) in [
             (
-                "pages/(task-workspace)/live-updates.ts",
+                "pages/(task-workspace)/live-updates.js",
                 b"WorkspaceLiveUpdates".as_slice(),
             ),
             (
-                "pages/(task-workspace)/live-updates/lifecycle.ts",
+                "pages/(task-workspace)/live-updates/lifecycle.js",
                 b"LIVE_CONNECTION_NODE".as_slice(),
             ),
         ] {
@@ -2618,7 +2629,7 @@ mod tests {
                 .body
                 .starts_with(b"caffold-task-workspace")
         );
-        let task_workspace_navigation = get("pages/(task-workspace)/components/navigation.ts")
+        let task_workspace_navigation = get("pages/(task-workspace)/components/navigation.js")
             .expect("task workspace navigation js");
         assert_eq!(
             task_workspace_navigation.content_type,
@@ -2641,7 +2652,7 @@ mod tests {
                 .body
                 .starts_with(b"caffold-task-workspace-navigation")
         );
-        let workspace_brand = get("pages/(task-workspace)/components/workspace-brand.ts")
+        let workspace_brand = get("pages/(task-workspace)/components/workspace-brand.js")
             .expect("workspace brand js");
         assert_eq!(
             workspace_brand.content_type,
@@ -2662,7 +2673,7 @@ mod tests {
                 .starts_with(b"caffold-workspace-brand")
         );
 
-        let tasks_page = get("pages/(task-workspace)/tasks/layout.ts").expect("tasks layout js");
+        let tasks_page = get("pages/(task-workspace)/tasks/layout.js").expect("tasks layout js");
         assert_eq!(tasks_page.content_type, "text/javascript; charset=utf-8");
         assert!(tasks_page.body.starts_with(b"import "));
         assert!(
@@ -2672,27 +2683,21 @@ mod tests {
                 .any(|window| window == b"caffold-tasks-page")
         );
         let tasks_runtime_state =
-            get("pages/(task-workspace)/tasks/runtime-state.ts").expect("tasks runtime state js");
+            get("pages/(task-workspace)/tasks/runtime-state.js").expect("tasks runtime state js");
         assert_eq!(
             tasks_runtime_state.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(
-            tasks_runtime_state
-                .body
-                .trim_ascii_start()
-                .starts_with(b"export ")
-        );
+        assert!(tasks_runtime_state.body.starts_with(b"export "));
         for path in [
-            "pages/(task-workspace)/tasks/task-events.ts",
-            "pages/(task-workspace)/tasks/task-format.ts",
-            "pages/(task-workspace)/tasks/task-list-model.ts",
-            "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/entries.ts",
+            "pages/(task-workspace)/tasks/task-events.js",
+            "pages/(task-workspace)/tasks/task-format.js",
+            "pages/(task-workspace)/tasks/task-list-model.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/entries.js",
         ] {
             let asset = get(path).expect("tasks state module");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
-            let body = asset.body.trim_ascii_start();
-            assert!(body.starts_with(b"export ") || body.starts_with(b"import "));
+            assert!(asset.body.starts_with(b"export ") || asset.body.starts_with(b"import "));
         }
         let tasks_page_css =
             get("pages/(task-workspace)/tasks/layout.css").expect("tasks layout css");
@@ -2703,7 +2708,7 @@ mod tests {
         assert_eq!(tasks_controls_css.content_type, "text/css; charset=utf-8");
         assert!(tasks_controls_css.body.starts_with(b"caffold-tasks-page"));
         let tasks_markdown =
-            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js")
                 .expect("tasks markdown component js");
         assert_eq!(
             tasks_markdown.content_type,
@@ -2725,7 +2730,7 @@ mod tests {
                 .starts_with(b"caffold-task-markdown")
         );
         let code_block =
-            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js")
                 .expect("tasks Markdown code-block component js");
         assert_eq!(code_block.content_type, "text/javascript; charset=utf-8");
         assert!(
@@ -2743,7 +2748,7 @@ mod tests {
                 .body
                 .starts_with(b"caffold-task-markdown-code-block")
         );
-        let tasks_navigator = get("pages/(task-workspace)/tasks/components/navigator.ts")
+        let tasks_navigator = get("pages/(task-workspace)/tasks/components/navigator.js")
             .expect("tasks navigator component js");
         assert_eq!(
             tasks_navigator.content_type,
@@ -2757,27 +2762,27 @@ mod tests {
         );
         for (path, marker) in [
             (
-                "pages/(task-workspace)/tasks/components/active-task-list.ts",
+                "pages/(task-workspace)/tasks/components/active-task-list.js",
                 b"caffold-active-task-list".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/active-task-list/move-list-item.ts",
+                "pages/(task-workspace)/tasks/components/active-task-list/move-list-item.js",
                 b"moveBefore".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts",
+                "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
                 b"caffold-active-task-row".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/active-task-list/components/section.ts",
+                "pages/(task-workspace)/tasks/components/active-task-list/components/section.js",
                 b"caffold-active-task-section".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/archived-task-list.ts",
+                "pages/(task-workspace)/tasks/components/archived-task-list.js",
                 b"caffold-archived-task-list".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-status-chip.ts",
+                "pages/(task-workspace)/tasks/components/task-status-chip.js",
                 b"caffold-task-status-chip".as_slice(),
             ),
         ] {
@@ -2824,16 +2829,16 @@ mod tests {
             assert!(task_list_css.body.starts_with(prefix));
         }
         for path in [
-            "pages/(task-workspace)/tasks/(detail)/(task)/layout/conversation.ts",
-            "pages/(task-workspace)/tasks/(detail)/(task)/layout/history.ts",
-            "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.ts",
-            "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.ts",
-            "pages/(task-workspace)/tasks/(detail)/(task)/layout/upload-discards.ts",
+            "pages/(task-workspace)/tasks/(detail)/(task)/layout/conversation.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-attachments.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/layout/prompt-submission.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/layout/upload-discards.js",
         ] {
             let asset = get(path).expect("task conversation owner asset");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
         }
-        let task_detail_session = get("pages/(task-workspace)/tasks/(detail)/(task)/session.ts")
+        let task_detail_session = get("pages/(task-workspace)/tasks/(detail)/(task)/session.js")
             .expect("task detail session js");
         assert_eq!(
             task_detail_session.content_type,
@@ -2847,11 +2852,11 @@ mod tests {
         );
         for (path, marker) in [
             (
-                "pages/(task-workspace)/tasks/stream.ts",
+                "pages/(task-workspace)/tasks/stream.js",
                 b"TaskStreamLifecycle".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/stream/machine.ts",
+                "pages/(task-workspace)/tasks/stream/machine.js",
                 b"TASK_STREAM_NODE".as_slice(),
             ),
         ] {
@@ -2866,171 +2871,171 @@ mod tests {
         }
         for (path, tag) in [
             (
-                "pages/(task-workspace)/tasks/components/composer.ts",
+                "pages/(task-workspace)/tasks/components/composer.js",
                 b"caffold-task-composer".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-turn-options.ts",
+                "pages/(task-workspace)/tasks/components/task-turn-options.js",
                 b"caffold-task-turn-options".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-create/components/directory-field.ts",
+                "pages/(task-workspace)/tasks/components/task-create/components/directory-field.js",
                 b"caffold-task-directory-field".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/archived-delete-dialog.ts",
+                "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
                 b"caffold-task-archived-delete-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-switcher-dialog.ts",
+                "pages/(task-workspace)/tasks/components/task-switcher-dialog.js",
                 b"caffold-task-switcher-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/image-preview-dialog.ts",
+                "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
                 b"caffold-task-image-preview-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-store-recovery.ts",
+                "pages/(task-workspace)/tasks/components/task-store-recovery.js",
                 b"caffold-task-store-recovery".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-absence.ts",
+                "pages/(task-workspace)/tasks/components/task-absence.js",
                 b"caffold-task-absence".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js",
                 b"caffold-task-conversation".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.js",
                 b"caffold-task-older-history".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js",
                 b"caffold-task-active-turn".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.js",
                 b"caffold-task-assistant-message".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.js",
                 b"caffold-task-assistant-message-copy-button".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.js",
                 b"caffold-task-assistant-message-suggested-prompts".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/message-attachments.js",
                 b"caffold-task-message-attachments".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/user-message.js",
                 b"caffold-task-user-message".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js",
                 b"caffold-task-changed-files".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js",
                 b"caffold-task-command-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js",
                 b"caffold-task-markdown-preview-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.js",
                 b"caffold-task-permission-instructions-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.js",
                 b"caffold-task-approval".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js",
                 b"caffold-task-command".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command-group.js",
                 b"caffold-task-command-group".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js",
                 b"caffold-task-work-details".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/layout.ts",
+                "pages/(task-workspace)/tasks/(detail)/layout.js",
                 b"caffold-detail-layout".as_slice(),
             ),
             (
-                "components/segmented-control.ts",
+                "components/segmented-control.js",
                 b"caffold-segmented-control".as_slice(),
             ),
             (
-                "components/loading-text.ts",
+                "components/loading-text.js",
                 b"caffold-loading-text".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(section)/layout.ts",
+                "pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
                 b"caffold-section-detail".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.ts",
+                "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.js",
                 b"caffold-section-conversation-shortcuts".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.ts",
+                "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
                 b"caffold-conversation-fork-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.ts",
+                "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js",
                 b"caffold-section-github-shortcuts".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.ts",
+                "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.js",
                 b"caffold-section-detail-summary".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-create.ts",
+                "pages/(task-workspace)/tasks/components/task-create.js",
                 b"caffold-task-create".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/new/page.ts",
+                "pages/(task-workspace)/tasks/new/page.js",
                 b"caffold-task-new".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/layout.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
                 b"caffold-task-detail".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
                 b"caffold-task-detail-summary".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js",
                 b"caffold-task-detail-info".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.ts",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.js",
                 b"caffold-task-detail-info-actions".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(review)/layout.ts",
+                "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",
                 b"caffold-task-review".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.ts",
+                "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.js",
                 b"caffold-review-working-tree-changes".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.ts",
+                "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.js",
                 b"caffold-review-branch-changes".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.ts",
+                "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.js",
                 b"caffold-review-selected-file".as_slice(),
             ),
         ] {
@@ -3040,23 +3045,23 @@ mod tests {
         }
         for (path, marker) in [
             (
-                "pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.ts",
+                "pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.js",
                 b"caffold-voice-level-meter".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/composer/components/attachments.ts",
+                "pages/(task-workspace)/tasks/components/composer/components/attachments.js",
                 b"caffold-task-composer-attachments".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/composer/components/context-usage.ts",
+                "pages/(task-workspace)/tasks/components/composer/components/context-usage.js",
                 b"caffold-task-context-usage".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/composer/voice-recorder.ts",
+                "pages/(task-workspace)/tasks/components/composer/voice-recorder.js",
                 b"VoiceRecorder".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/composer/voice-worklet.ts",
+                "pages/(task-workspace)/tasks/components/composer/voice-worklet.js",
                 b"caffold-voice-capture".as_slice(),
             ),
         ] {
@@ -3070,37 +3075,37 @@ mod tests {
             );
         }
         for path in [
-            "/assets/pages/(task-workspace)/live-updates.ts",
-            "/assets/pages/(task-workspace)/live-updates/lifecycle.ts",
-            "/assets/pages/(task-workspace)/tasks/stream.ts",
-            "/assets/pages/(task-workspace)/tasks/stream/machine.ts",
+            "/assets/pages/(task-workspace)/live-updates.js",
+            "/assets/pages/(task-workspace)/live-updates/lifecycle.js",
+            "/assets/pages/(task-workspace)/tasks/stream.js",
+            "/assets/pages/(task-workspace)/tasks/stream/machine.js",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.css",
-            "/assets/pages/(task-workspace)/tasks/components/active-task-list.ts",
-            "/assets/pages/(task-workspace)/tasks/components/active-task-list/move-list-item.ts",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list.js",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list/move-list-item.js",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section.css",
-            "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section.ts",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section.js",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
-            "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
             "/assets/pages/(task-workspace)/tasks/components/archived-task-list.css",
-            "/assets/pages/(task-workspace)/tasks/components/archived-task-list.ts",
+            "/assets/pages/(task-workspace)/tasks/components/archived-task-list.js",
             "/assets/pages/(task-workspace)/tasks/components/task-status-chip.css",
-            "/assets/pages/(task-workspace)/tasks/components/task-status-chip.ts",
+            "/assets/pages/(task-workspace)/tasks/components/task-status-chip.js",
             "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.css",
-            "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.ts",
+            "/assets/pages/(task-workspace)/tasks/components/task-store-recovery.js",
             "/assets/pages/(task-workspace)/tasks/components/task-absence.css",
-            "/assets/pages/(task-workspace)/tasks/components/task-absence.ts",
-            "/assets/pages/(task-workspace)/task-store-status.ts",
-            "/assets/pages/(task-workspace)/task-store-status/model.ts",
-            "/assets/pages/(task-workspace)/task-store-status/lifecycle.ts",
+            "/assets/pages/(task-workspace)/tasks/components/task-absence.js",
+            "/assets/pages/(task-workspace)/task-store-status.js",
+            "/assets/pages/(task-workspace)/task-store-status/model.js",
+            "/assets/pages/(task-workspace)/task-store-status/lifecycle.js",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.css",
-            "/assets/pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.ts",
+            "/assets/pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.js",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/attachments.css",
-            "/assets/pages/(task-workspace)/tasks/components/composer/components/attachments.ts",
+            "/assets/pages/(task-workspace)/tasks/components/composer/components/attachments.js",
             "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.css",
-            "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.ts",
-            "/assets/pages/(task-workspace)/codex-status/lifecycle.ts",
+            "/assets/pages/(task-workspace)/tasks/components/composer/components/context-usage.js",
+            "/assets/pages/(task-workspace)/codex-status/lifecycle.js",
             "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
-            "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts",
+            "/assets/pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
         ] {
             assert!(
                 service_worker
@@ -3288,7 +3293,7 @@ mod tests {
         assert!(get("pages/tasks/page.css").is_none());
 
         let diff_changes_tree =
-            get("pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.js")
                 .expect("integrated review changes tree js");
         assert_eq!(
             diff_changes_tree.content_type,
@@ -3303,7 +3308,7 @@ mod tests {
         assert!(get("components/git-diff-browser.js").is_none());
         assert!(get("pages/(task-workspace)/tasks/(detail)/(git)/diff/page.js").is_none());
 
-        let github_review_layout = get("pages/(task-workspace)/tasks/(detail)/(github)/layout.ts")
+        let github_review_layout = get("pages/(task-workspace)/tasks/(detail)/(github)/layout.js")
             .expect("github review layout js");
         assert_eq!(
             github_review_layout.content_type,
@@ -3317,7 +3322,7 @@ mod tests {
                 .any(|window| window == b"caffold-task-github-layout")
         );
         let github_markdown =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js")
                 .expect("github markdown component js");
         assert_eq!(
             github_markdown.content_type,
@@ -3332,7 +3337,7 @@ mod tests {
         );
 
         let issues_layout =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.js")
                 .expect("issues layout js");
         assert_eq!(issues_layout.content_type, "text/javascript; charset=utf-8");
         assert!(issues_layout.body.starts_with(b"import "));
@@ -3344,7 +3349,7 @@ mod tests {
         );
 
         let issues_list_page =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.js")
                 .expect("issues list page js");
         assert_eq!(
             issues_list_page.content_type,
@@ -3359,7 +3364,7 @@ mod tests {
         );
 
         let issue_detail_page =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.js")
                 .expect("issue detail page js");
         assert_eq!(
             issue_detail_page.content_type,
@@ -3373,7 +3378,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-issue-detail-page")
         );
         let github_task_start_dialog =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js")
                 .expect("github task start dialog js");
         assert_eq!(
             github_task_start_dialog.content_type,
@@ -3386,7 +3391,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-task-start-dialog")
         );
         let github_issue_task_source = get(
-            "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.ts",
+            "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.js",
         )
         .expect("github issue task source js");
         assert!(
@@ -3396,7 +3401,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-issue-task-source")
         );
         let github_pull_task_source = get(
-            "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.ts",
+            "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.js",
         )
         .expect("github pull task source js");
         assert!(
@@ -3409,7 +3414,7 @@ mod tests {
         assert!(get("components/github-issue-viewer.js").is_none());
         assert!(get("components/github-markdown.js").is_none());
 
-        let pulls_layout = get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.ts")
+        let pulls_layout = get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.js")
             .expect("pulls layout js");
         assert_eq!(pulls_layout.content_type, "text/javascript; charset=utf-8");
         assert!(pulls_layout.body.starts_with(b"import "));
@@ -3421,7 +3426,7 @@ mod tests {
         );
 
         let pulls_list_page =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.js")
                 .expect("pulls list page js");
         assert_eq!(
             pulls_list_page.content_type,
@@ -3436,7 +3441,7 @@ mod tests {
         );
 
         let pull_detail_page =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.js")
                 .expect("pull detail page js");
         assert_eq!(
             pull_detail_page.content_type,
@@ -3451,7 +3456,7 @@ mod tests {
         );
 
         let pull_files_page =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js")
                 .expect("pull files page js");
         assert_eq!(
             pull_files_page.content_type,
@@ -3465,7 +3470,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-pull-files-page")
         );
         let pull_files_tree =
-            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js")
                 .expect("pull files tree js");
         assert_eq!(
             pull_files_tree.content_type,
@@ -3486,7 +3491,7 @@ mod tests {
         assert!(get("components/file-browser.js").is_none());
 
         let file_navigator_component =
-            get("components/file-navigator.ts").expect("file navigator component js asset");
+            get("components/file-navigator.js").expect("file navigator component js asset");
         assert_eq!(
             file_navigator_component.content_type,
             "text/javascript; charset=utf-8"
@@ -3507,7 +3512,7 @@ mod tests {
                 .starts_with(b"@import \"./file-navigator/components/list.css\"")
         );
 
-        let file_list_component = get("components/file-navigator/components/list.ts")
+        let file_list_component = get("components/file-navigator/components/list.js")
             .expect("file navigator list component js asset");
         assert_eq!(
             file_list_component.content_type,
@@ -3521,7 +3526,7 @@ mod tests {
                 .any(|window| window == b"caffold-file-list")
         );
         let file_tree_component =
-            get("components/file-tree.ts").expect("file tree component js asset");
+            get("components/file-tree.js").expect("file tree component js asset");
         assert_eq!(
             file_tree_component.content_type,
             "text/javascript; charset=utf-8"
@@ -3533,7 +3538,7 @@ mod tests {
                 .windows(b"caffold-file-tree".len())
                 .any(|window| window == b"caffold-file-tree")
         );
-        let file_status_module = get("file-status.ts").expect("file status js asset");
+        let file_status_module = get("file-status.js").expect("file status js asset");
         assert_eq!(
             file_status_module.content_type,
             "text/javascript; charset=utf-8"
@@ -3549,7 +3554,7 @@ mod tests {
         assert!(file_tree_css.body.starts_with(b"caffold-file-tree"));
         assert!(get("pages/files/components/list.js").is_none());
         assert!(get("pages/files/components/list.css").is_none());
-        let watch_module = get("watch.ts").expect("watch js asset");
+        let watch_module = get("watch.js").expect("watch js asset");
         assert_eq!(watch_module.content_type, "text/javascript; charset=utf-8");
         assert!(
             watch_module
@@ -3561,7 +3566,7 @@ mod tests {
         assert!(get("watch.test.js").is_none());
         assert!(get("pages/(task-workspace)/codex-status/model.test.js").is_none());
         assert!(get("pages/(task-workspace)/tasks/task-format.test.js").is_none());
-        let log_layout = get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.ts")
+        let log_layout = get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.js")
             .expect("git log layout js asset");
         assert_eq!(log_layout.content_type, "text/javascript; charset=utf-8");
         assert!(log_layout.body.starts_with(b"import "));
@@ -3571,7 +3576,7 @@ mod tests {
                 .windows(b"caffold-git-log-layout".len())
                 .any(|window| window == b"caffold-git-log-layout")
         );
-        let log_list_page = get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.ts")
+        let log_list_page = get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.js")
             .expect("log list page js asset");
         assert_eq!(log_list_page.content_type, "text/javascript; charset=utf-8");
         assert!(log_list_page.body.starts_with(b"import "));
@@ -3582,7 +3587,7 @@ mod tests {
                 .any(|window| window == b"caffold-git-log-list-page")
         );
         let log_commit_page =
-            get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.ts")
+            get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js")
                 .expect("log commit page js asset");
         assert_eq!(
             log_commit_page.content_type,
@@ -3596,7 +3601,7 @@ mod tests {
                 .any(|window| window == b"caffold-git-log-commit-page")
         );
         let commit_tree_component = get(
-            "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.ts",
+            "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.js",
         )
         .expect("commit changes tree component js asset");
         assert_eq!(

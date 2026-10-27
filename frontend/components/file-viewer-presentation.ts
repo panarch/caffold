@@ -1,5 +1,5 @@
-import { fileStatusPresentation } from "../file-status.ts";
-import { fileNameFromPath, formatBytes, formatModified } from "./dom.ts";
+import { fileStatusPresentation } from "../file-status.js";
+import { fileNameFromPath, formatBytes, formatModified } from "./dom.js";
 
 export interface ViewerMetadataItem {
   field: string;

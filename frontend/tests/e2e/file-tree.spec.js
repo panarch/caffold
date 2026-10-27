@@ -11,8 +11,8 @@ test("reorders existing rows while preserving structural and reconciled state", 
   await page.goto("/settings/files");
 
   const result = await page.evaluate(async () => {
-    await import("/assets/components/file-tree.ts");
-    const { setFileSortMode } = await import("/assets/settings.ts");
+    await import("/assets/components/file-tree.js");
+    const { setFileSortMode } = await import("/assets/settings.js");
     const ready = (nodes) => ({ status: "ready", nodes });
     const tree = document.createElement("caffold-file-tree");
     tree.setAttribute("aria-label", "Ordering contract tree");
@@ -178,10 +178,10 @@ for (const themeMode of ["light", "dark"]) {
   }) => {
     await page.goto("/settings/files");
     await page.evaluate(async (mode) => {
-      await import("/assets/components/file-tree.ts");
-      const { warmIcons } = await import("/assets/components/icons.ts");
+      await import("/assets/components/file-tree.js");
+      const { warmIcons } = await import("/assets/components/icons.js");
       await warmIcons();
-      const { setThemeMode } = await import("/assets/settings.ts");
+      const { setThemeMode } = await import("/assets/settings.js");
       setThemeMode(mode);
       const ready = (nodes) => ({ status: "ready", nodes });
       const directory = (name, children) => ({
@@ -333,7 +333,7 @@ test("places a status row's message on its branch guide below its folder's name"
 }) => {
   await page.goto("/settings/files");
   const offsets = await page.evaluate(async () => {
-    await import("/assets/components/file-tree.ts");
+    await import("/assets/components/file-tree.js");
     const directory = (name, children) => ({
       key: `directory:${name}`,
       kind: "directory",
@@ -387,7 +387,7 @@ test("offers its rows as Action Hints: directories toggle, entries open, the ope
   await page.goto("/settings/files");
 
   const result = await page.evaluate(async () => {
-    await import("/assets/components/file-tree.ts");
+    await import("/assets/components/file-tree.js");
     const tree = document.createElement("caffold-file-tree");
     document.body.append(tree);
     const nodes = [
@@ -464,7 +464,7 @@ test("names its scrollport as a Scroll surface after the owner", { tag: "@viewpo
   await page.goto("/settings/files");
 
   const surfaces = await page.evaluate(async () => {
-    await import("/assets/components/file-tree.ts");
+    await import("/assets/components/file-tree.js");
     const tree = document.createElement("caffold-file-tree");
     document.body.append(tree);
     tree.setModel({ entityKey: "review", nodes: [{ key: "a.js", kind: "file", name: "a.js" }] });
@@ -497,7 +497,7 @@ test("the file list offers Refresh files while it shows the button, under the la
   await page.goto("/settings/files");
 
   const labels = await page.evaluate(async () => {
-    await import("/assets/components/file-navigator/components/list.ts");
+    await import("/assets/components/file-navigator/components/list.js");
     const list = document.createElement("caffold-file-list");
     document.body.append(list);
     list.setDirectory({

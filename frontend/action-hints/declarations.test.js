@@ -4,9 +4,9 @@ import test, { after } from "node:test";
 const previousNode = globalThis.Node;
 globalThis.Node = { DOCUMENT_POSITION_PRECEDING: 2 };
 const { ActionHints, declaredActionHintScope } = await import(
-  "./declarations.ts"
+  "./declarations.js"
 );
-const { ACTION_HINT_ACTION } = await import("./model.ts");
+const { ACTION_HINT_ACTION } = await import("./model.js");
 
 after(() => restoreGlobal("Node", previousNode));
 

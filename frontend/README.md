@@ -41,13 +41,12 @@ working directory.
 
 Browser sources are embedded by `caffold/src/static_assets.rs` at build time,
 so a new runtime asset must be added there and precached by
-`service-worker.js`. Nothing in `tests/` is part of that inventory. From
-`node_modules/`, only the Lit modules a page reaches are: the server embeds the
-Lit release `package.json` pins under `dependencies`, so a Cargo build needs
-`npm ci` here first. `npm ci --omit=dev` installs that dependency alone when the
-browser suites and type checks are not needed. To change the release, change
-the pin and run `npm install`. A `.ts` module is embedded as
-[`strip-types.mjs`](strip-types.mjs) writes it, which needs Node.js on `PATH`
-during the build; the
+`service-worker.ts`. Nothing in `tests/` is part of that inventory. From
+`node_modules/`, only the Lit modules a page reaches are. The server embeds the
+Lit release `package.json` pins under `dependencies` and compiles each `.ts`
+module with the TypeScript release pinned beside it, so a Cargo build needs
+`npm ci` here first and Node.js on `PATH`. `npm ci --omit=dev` installs those
+two alone when the browser suites and lint are not needed. To change a release,
+change its pin and run `npm install`. The
 [frontend architecture](../docs/architecture/frontend.md#native-module-imports)
-describes how pages and unit tests load both.
+describes how pages and unit tests load the compiled modules.

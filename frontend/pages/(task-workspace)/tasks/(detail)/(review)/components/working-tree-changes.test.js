@@ -4,10 +4,10 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../tests/support/custom-element-unit.js";
-import { ChangesReading } from "../changes-reading.ts";
+import { ChangesReading } from "../changes-reading.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./working-tree-changes.ts");
+await import("./working-tree-changes.js");
 const workingTreeChanges = registry
   .element("caffold-review-working-tree-changes")
   .prototype;

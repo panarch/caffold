@@ -4,8 +4,8 @@ import {
   type ActionHintPull,
   ActionHints,
   emptyActionHintScope,
-} from "#app/action-hints.ts";
-import { type GitHubStatus, getGitHubStatus } from "#app/api.ts";
+} from "#app/action-hints.js";
+import { type GitHubStatus, getGitHubStatus } from "#app/api.js";
 
 // The Section's directory, and whether it is a Git repository. `key` names
 // the Section the directory belongs to.

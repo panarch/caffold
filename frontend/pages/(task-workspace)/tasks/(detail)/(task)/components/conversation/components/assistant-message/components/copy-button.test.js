@@ -6,7 +6,7 @@ import {
 } from "../../../../../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./copy-button.ts");
+await import("./copy-button.js");
 const copyButton = registry
   .element("caffold-task-assistant-message-copy-button")
   .prototype;

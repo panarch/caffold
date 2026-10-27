@@ -1,19 +1,19 @@
 import { html, LitElement } from "lit";
 import { repeat } from "lit/directives/repeat.js";
-import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.ts";
+import { ACTION_HINT_ACTION, ActionHints } from "#app/action-hints.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
-} from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import { taskStatusKey, taskStatusView } from "../runtime-state.ts";
-import { formatRelativeAgePresentation } from "../task-format.ts";
-import { type ListedTask, taskThreadId } from "../task-list-model.ts";
-import type { TaskWithSection } from "./active-task-list.ts";
-import "./task-status-chip.ts";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import { taskStatusKey, taskStatusView } from "../runtime-state.js";
+import { formatRelativeAgePresentation } from "../task-format.js";
+import { type ListedTask, taskThreadId } from "../task-list-model.js";
+import type { TaskWithSection } from "./active-task-list.js";
+import "./task-status-chip.js";
 
 export const TASK_SWITCHER_SELECT_EVENT = "caffold:task-switcher-select";
 

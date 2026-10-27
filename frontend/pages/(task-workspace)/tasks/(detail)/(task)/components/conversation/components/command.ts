@@ -3,15 +3,15 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import type { TaskEvent } from "#app/api.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
+} from "#app/action-hints.js";
+import type { TaskEvent } from "#app/api.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
 import {
   type CommandPresentation,
   commandPresentation,
-} from "./command/model.ts";
+} from "./command/model.js";
 
 const CHEVRON = "task-command-disclosure-chevron-icon";
 

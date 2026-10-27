@@ -3,7 +3,7 @@ import {
   type ActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "#app/action-hint-scope.ts";
+} from "#app/action-hint-scope.js";
 import {
   type ActiveTask,
   type ActiveTaskRecovery,
@@ -11,46 +11,46 @@ import {
   type CreatedTask,
   createTask,
   type Task,
-} from "#app/api.ts";
-import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.ts";
-import { routeDomain, routeTarget } from "#app/navigation-routes.ts";
+} from "#app/api.js";
+import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
+import { routeDomain, routeTarget } from "#app/navigation-routes.js";
 import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
   type ScrollSurfaceScope,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import type { WorkspaceLiveUpdates } from "../live-updates.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import type { WorkspaceLiveUpdates } from "../live-updates.js";
 import {
   INITIAL_TASK_STORE_STATUS_SNAPSHOT,
   type TaskStoreStatusSnapshot,
   taskStoreBlocksTaskOperations,
-} from "../task-store-status.ts";
-import "./(detail)/layout.ts";
-import type { CaffoldDetailLayout } from "./(detail)/layout.ts";
-import { TERMINAL_PAGE_FOCUS_RELEASE_EVENT } from "./(detail)/terminal/page.ts";
-import type { ComposerSubmission } from "./components/composer.ts";
+} from "../task-store-status.js";
+import "./(detail)/layout.js";
+import type { CaffoldDetailLayout } from "./(detail)/layout.js";
+import { TERMINAL_PAGE_FOCUS_RELEASE_EVENT } from "./(detail)/terminal/page.js";
+import type { ComposerSubmission } from "./components/composer.js";
 import {
   type CaffoldTaskImagePreviewDialog,
   TASK_IMAGE_PREVIEW_EVENT,
   type TaskImagePreviewRequest,
-} from "./components/image-preview-dialog.ts";
+} from "./components/image-preview-dialog.js";
 import type {
   CaffoldTaskNavigator,
   TaskNavigatorListState,
-} from "./components/navigator.ts";
-import type { TaskStartIntent } from "./components/task-create.ts";
-import "./components/task-store-recovery.ts";
-import type { CaffoldTaskStoreRecovery } from "./components/task-store-recovery.ts";
-import "./new/page.ts";
-import type { CaffoldTaskNew } from "./new/page.ts";
-import "./recovery/page.ts";
+} from "./components/navigator.js";
+import type { TaskStartIntent } from "./components/task-create.js";
+import "./components/task-store-recovery.js";
+import type { CaffoldTaskStoreRecovery } from "./components/task-store-recovery.js";
+import "./new/page.js";
+import type { CaffoldTaskNew } from "./new/page.js";
+import "./recovery/page.js";
 import type {
   CaffoldTaskRecovery,
   TaskRecoveryIntent,
-} from "./recovery/page.ts";
-import { TASK_TRANSPORT_STATE } from "./runtime-state.ts";
-import { taskDetailThreadId } from "./task-list-model.ts";
+} from "./recovery/page.js";
+import { TASK_TRANSPORT_STATE } from "./runtime-state.js";
+import { taskDetailThreadId } from "./task-list-model.js";
 
 type TasksView = "home" | "new" | "detail" | "recovery";
 

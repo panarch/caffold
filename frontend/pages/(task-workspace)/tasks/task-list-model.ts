@@ -1,9 +1,9 @@
-import type { ActiveTask, ActiveTaskRecovery, Task } from "#app/api.ts";
+import type { ActiveTask, ActiveTaskRecovery, Task } from "#app/api.js";
 import {
   cleanLogicalPath,
   cleanRelativeTaskPath,
   shortId,
-} from "./task-format.ts";
+} from "./task-format.js";
 
 // A Task as the Task list holds it: the Active list's own listing, one the
 // person must recover, or a whole Task an owner handed in after creating,

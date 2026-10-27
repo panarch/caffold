@@ -1,19 +1,19 @@
 import { html, LitElement } from "lit";
-import { mergeActionHintScopes } from "#app/action-hints.ts";
+import { mergeActionHintScopes } from "#app/action-hints.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   ScrollSurfaces,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import type { TaskStoreStatusSnapshot } from "../../task-store-status.ts";
-import "../components/task-create.ts";
-import type { ServerPaths } from "../components/task-create/directory-path.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import type { TaskStoreStatusSnapshot } from "../../task-store-status.js";
+import "../components/task-create.js";
+import type { ServerPaths } from "../components/task-create/directory-path.js";
 import type {
   CaffoldTaskCreate,
   TaskCreateIntentDetail,
-} from "../components/task-create.ts";
-import { cleanLogicalPath } from "../task-format.ts";
+} from "../components/task-create.js";
+import { cleanLogicalPath } from "../task-format.js";
 
 const GUIDE_INTRO =
   "Start with a setup-only request when you want this task separated from your main checkout. By default, Caffold prepares a clean worktree and leaves staged, unstaged, and untracked changes in your current checkout. The same setup request also works in an existing task.";

@@ -7,10 +7,10 @@ import {
 import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./current-plan.ts");
+await import("./current-plan.js");
 const CurrentPlan = registry.element("caffold-task-current-plan");
-const { ActionHints } = await import("#app/action-hints.ts");
-const { KeyboardContexts } = await import("#app/keyboard-navigation.ts");
+const { ActionHints } = await import("#app/action-hints.js");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
 after(() => registry.restore());
 
 test("passes through the status popover and document dialog keyboard contexts", () => {

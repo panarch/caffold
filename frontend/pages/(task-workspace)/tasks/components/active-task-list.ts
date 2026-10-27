@@ -3,7 +3,7 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   type ActiveTask,
   type ActiveTaskComposerSettings,
@@ -13,32 +13,32 @@ import {
   getTasks,
   reorderSection,
   reorderTask,
-} from "#app/api.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "#components/loading-text.ts";
-import type { WorkspaceLiveUpdates } from "../../live-updates.ts";
+} from "#app/api.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "#components/loading-text.js";
+import type { WorkspaceLiveUpdates } from "../../live-updates.js";
 import {
   type TaskOperationsPresentation,
   taskStoreOperationsPresentation,
-} from "../../task-store-status.ts";
+} from "../../task-store-status.js";
 import {
   isTaskTransportStale,
   type TaskTransportState,
   taskThreadStatusType,
-} from "../runtime-state.ts";
-import { TaskStreamLifecycle, type TaskStreamRecovery } from "../stream.ts";
-import { sectionLabel } from "../task-format.ts";
-import { type ListedTask, taskThreadId } from "../task-list-model.ts";
+} from "../runtime-state.js";
+import { TaskStreamLifecycle, type TaskStreamRecovery } from "../stream.js";
+import { sectionLabel } from "../task-format.js";
+import { type ListedTask, taskThreadId } from "../task-list-model.js";
 import {
   CaffoldActiveTaskSection,
   type ListedSection,
   type ReorderMode,
   type SectionIntent,
   type SectionSnapshot,
-} from "./active-task-list/components/section.ts";
-import { moveListItemBefore } from "./active-task-list/move-list-item.ts";
+} from "./active-task-list/components/section.js";
+import { moveListItemBefore } from "./active-task-list/move-list-item.js";
 
-export type { ReorderMode } from "./active-task-list/components/section.ts";
+export type { ReorderMode } from "./active-task-list/components/section.js";
 
 // The Section component in each group the list made.
 const groupSections = new WeakMap<HTMLLIElement, CaffoldActiveTaskSection>();

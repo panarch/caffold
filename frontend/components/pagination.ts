@@ -3,14 +3,14 @@ import {
   type ActionHintPull,
   ActionHints,
   mergeActionHintScopes,
-} from "../action-hints.ts";
-import { warmIcons } from "./icons.ts";
-import "./pagination/components/button.ts";
-import { DrawnRefs, drawn } from "./drawn-refs.ts";
+} from "../action-hints.js";
+import { warmIcons } from "./icons.js";
+import "./pagination/components/button.js";
+import { DrawnRefs, drawn } from "./drawn-refs.js";
 import type {
   CaffoldPaginationButton,
   PageKind,
-} from "./pagination/components/button.ts";
+} from "./pagination/components/button.js";
 
 const PAGE_KINDS: readonly PageKind[] = ["first", "previous", "next", "last"];
 

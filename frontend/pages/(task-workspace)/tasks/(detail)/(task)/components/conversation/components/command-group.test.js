@@ -7,10 +7,10 @@ import {
 import { templateHtml } from "../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./command-group.ts");
+await import("./command-group.js");
 const CommandGroup = registry.element("caffold-task-command-group");
-const { ActionHints } = await import("#app/action-hints.ts");
-const { DrawnRefs } = await import("#components/drawn-refs.ts");
+const { ActionHints } = await import("#app/action-hints.js");
+const { DrawnRefs } = await import("#components/drawn-refs.js");
 const commandGroup = CommandGroup.prototype;
 after(() => registry.restore());
 

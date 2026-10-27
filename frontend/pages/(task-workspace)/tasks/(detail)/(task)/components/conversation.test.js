@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./conversation.ts");
+await import("./conversation.js");
 const conversation = registry.element("caffold-task-conversation").prototype;
 after(() => registry.restore());
 

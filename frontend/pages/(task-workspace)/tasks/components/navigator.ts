@@ -3,38 +3,38 @@ import {
   ACTION_HINT_ACTION,
   ActionHints,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import type { ActiveTask, ActiveTaskTopPlacement, Task } from "#app/api.ts";
-import { compactIconButton } from "#app/component-styles.ts";
+} from "#app/action-hints.js";
+import type { ActiveTask, ActiveTaskTopPlacement, Task } from "#app/api.js";
+import { compactIconButton } from "#app/component-styles.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
-} from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { ScrollSurfaces, scrollBackToTop } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "../../components/workspace-brand.ts";
-import type { WorkspaceLiveUpdates } from "../../live-updates.ts";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { ScrollSurfaces, scrollBackToTop } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "../../components/workspace-brand.js";
+import type { WorkspaceLiveUpdates } from "../../live-updates.js";
 import {
   type TaskStoreStatusSnapshot,
   taskStoreOperationsPresentation,
-} from "../../task-store-status.ts";
-import type { TaskTransportState } from "../runtime-state.ts";
-import { type ListedTask, taskThreadId } from "../task-list-model.ts";
-import "./active-task-list.ts";
+} from "../../task-store-status.js";
+import type { TaskTransportState } from "../runtime-state.js";
+import { type ListedTask, taskThreadId } from "../task-list-model.js";
+import "./active-task-list.js";
 import type {
   ActiveTaskListState,
   ArchiveSyncDetail,
   CaffoldActiveTaskList,
   ReorderMode,
   SectionSummary,
-} from "./active-task-list.ts";
-import "./archived-task-list.ts";
+} from "./active-task-list.js";
+import "./archived-task-list.js";
 import type {
   ArchivedTaskRestoredDetail,
   CaffoldArchivedTaskList,
-} from "./archived-task-list.ts";
+} from "./archived-task-list.js";
 
 const ICON = "task-action-icon";
 

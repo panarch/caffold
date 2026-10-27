@@ -11,7 +11,7 @@ const previousElement = globalThis.Element;
 const previousDocument = globalThis.document;
 globalThis.Element = globalThis.HTMLElement;
 globalThis.document = { ...previousDocument, activeElement: null };
-await import("./task-turn-options.ts");
+await import("./task-turn-options.js");
 const TurnOptions = registry.element("caffold-task-turn-options");
 const turnOptions = TurnOptions.prototype;
 after(() => {

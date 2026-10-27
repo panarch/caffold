@@ -1,7 +1,7 @@
 import {
   documentPreviewKind,
   isPreviewableImagePath,
-} from "#components/dom.ts";
+} from "#components/dom.js";
 
 export type ReviewViewer = "diff" | "source" | "preview";
 

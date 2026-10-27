@@ -7,12 +7,12 @@ import {
 import { templateHtml } from "../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-const { taskInfoSnapshot } = await import("./info.ts");
+const { taskInfoSnapshot } = await import("./info.js");
 const info = registry.element("caffold-task-detail-info").prototype;
 const actions = registry.element(
   "caffold-task-detail-info-actions",
 ).prototype;
-const { ActionHints } = await import("#app/action-hints.ts");
+const { ActionHints } = await import("#app/action-hints.js");
 after(() => registry.restore());
 
 // One of the components with the state and stand-ins a test gives it, drawn

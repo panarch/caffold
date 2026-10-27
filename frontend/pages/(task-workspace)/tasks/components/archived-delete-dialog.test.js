@@ -6,7 +6,7 @@ import {
 } from "../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./archived-delete-dialog.ts");
+await import("./archived-delete-dialog.js");
 const deleteDialog = registry.element("caffold-task-archived-delete-dialog").prototype;
 after(() => registry.restore());
 

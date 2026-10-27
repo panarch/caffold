@@ -8,7 +8,7 @@ import {
 
 const apiHook = registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier === "#app/api.ts" && context.parentURL === new URL("./layout.ts", import.meta.url).href) {
+    if (specifier === "#app/api.js" && context.parentURL === new URL("./layout.js", import.meta.url).href) {
       return {
         shortCircuit: true,
         url: "data:text/javascript,export const getNotes=(...a)=>globalThis.notesApi.getNotes(...a);export const getNote=(...a)=>globalThis.notesApi.getNote(...a);",
@@ -18,8 +18,8 @@ const apiHook = registerHooks({
   },
 });
 const registry = installCustomElementUnitRegistry();
-const { NotesSelection } = await import("./layout/selection.ts");
-await import("./layout.ts");
+const { NotesSelection } = await import("./layout/selection.js");
+await import("./layout.js");
 const workspace = registry.element("caffold-notes-workspace").prototype;
 const timers = new Map();
 let nextTimerId = 0;

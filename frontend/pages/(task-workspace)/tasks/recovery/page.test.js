@@ -7,9 +7,9 @@ import {
 import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./page.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
-const { ScrollSurfaces } = await import("#app/scroll-scope.ts");
+await import("./page.js");
+const { ActionHints } = await import("#app/action-hints.js");
+const { ScrollSurfaces } = await import("#app/scroll-scope.js");
 const Recovery = registry.element("caffold-task-recovery");
 const recovery = Recovery.prototype;
 after(() => registry.restore());

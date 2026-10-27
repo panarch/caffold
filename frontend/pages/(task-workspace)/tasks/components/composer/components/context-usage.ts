@@ -3,7 +3,7 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 
 // How full a Task's context is, as its agent last said.
 export interface ContextUsage {

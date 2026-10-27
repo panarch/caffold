@@ -6,7 +6,7 @@ import {
 } from "../../../../../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./item.ts");
+await import("./item.js");
 const item = registry.element("caffold-settings-navigator-item").prototype;
 after(() => registry.restore());
 

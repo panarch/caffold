@@ -1,4 +1,4 @@
-import type { ActionHintControlKind } from "../action-hint-scope.ts";
+import type { ActionHintControlKind } from "../action-hint-scope.js";
 
 export const TASK_HINT_ALPHABET = "ASDFGHJKLQWERTYUIOPZXCVBNM";
 

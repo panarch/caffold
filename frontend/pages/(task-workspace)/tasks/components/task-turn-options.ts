@@ -4,24 +4,24 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   type AgentModels,
   type AgentPermissionModes,
   getAgentModels,
   getAgentPermissions,
-} from "#app/api.ts";
-import { busySpin } from "#app/component-styles.ts";
+} from "#app/api.js";
+import { busySpin } from "#app/component-styles.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
-} from "#app/keyboard-navigation.ts";
-import "#app/keyboard-navigation/components/presentation.ts";
-import { emptyScrollSurfaceScope } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import "#components/loading-text.ts";
-import { cleanLogicalPath } from "../task-format.ts";
+} from "#app/keyboard-navigation.js";
+import "#app/keyboard-navigation/components/presentation.js";
+import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import "#components/loading-text.js";
+import { cleanLogicalPath } from "../task-format.js";
 
 // What the Task or Section last ran under, as far as the turn options read it.
 export interface TurnOptionsSelection {

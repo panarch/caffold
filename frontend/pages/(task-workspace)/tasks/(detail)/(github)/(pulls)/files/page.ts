@@ -5,32 +5,32 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   type GitHubPullFileDiff,
   type GitHubPullFiles,
   type GitRepository,
   getGitHubPullFile,
   getGitHubPullFiles,
-} from "#app/api.ts";
+} from "#app/api.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import "#components/file-viewer.ts";
-import type { CaffoldReviewFileViewer } from "#components/file-viewer.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import "#components/file-viewer.js";
+import type { CaffoldReviewFileViewer } from "#components/file-viewer.js";
 import {
   diffViewerPresentation,
   type ViewerPresentation,
-} from "#components/file-viewer-presentation.ts";
-import "#components/pane-resizer.ts";
-import type { CaffoldPaneResizer } from "#components/pane-resizer.ts";
-import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "#components/review-responsive.ts";
-import "./components/tree.ts";
-import type { CaffoldGithubPullFilesTree } from "./components/tree.ts";
+} from "#components/file-viewer-presentation.js";
+import "#components/pane-resizer.js";
+import type { CaffoldPaneResizer } from "#components/pane-resizer.js";
+import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "#components/review-responsive.js";
+import "./components/tree.js";
+import type { CaffoldGithubPullFilesTree } from "./components/tree.js";
 
 const LOADING_DELAY_MS = 180;
 

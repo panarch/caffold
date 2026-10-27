@@ -3,21 +3,21 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import { getCodexReadiness } from "#app/api.ts";
+} from "#app/action-hints.js";
+import { getCodexReadiness } from "#app/api.js";
 import {
   type CodexStatusSnapshot,
   codexBlocksTaskOperations,
   codexState,
   createCodexStatusSnapshot,
-} from "#app/pages/(task-workspace)/codex-status.ts";
+} from "#app/pages/(task-workspace)/codex-status.js";
 import {
   type TaskStoreStatusSnapshot,
   taskStoreBlocksTaskOperations,
-} from "#app/pages/(task-workspace)/task-store-status.ts";
-import "./conversation-shortcuts/components/fork-dialog.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import type { CaffoldConversationForkDialog } from "./conversation-shortcuts/components/fork-dialog.ts";
+} from "#app/pages/(task-workspace)/task-store-status.js";
+import "./conversation-shortcuts/components/fork-dialog.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import type { CaffoldConversationForkDialog } from "./conversation-shortcuts/components/fork-dialog.js";
 
 // The Section the shortcuts start a Task in: its identity, and the path a
 // fork is shown with.

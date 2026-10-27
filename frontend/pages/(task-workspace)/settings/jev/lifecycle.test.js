@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { JevSettingsLifecycle } from "./lifecycle.ts";
+import { JevSettingsLifecycle } from "./lifecycle.js";
 
 function settings(overrides = {}) {
   return {

@@ -5,7 +5,7 @@
 // the first time a terminal opens.
 
 import { html, LitElement } from "lit";
-import { DrawnRef, drawn } from "./drawn-refs.ts";
+import { DrawnRef, drawn } from "./drawn-refs.js";
 
 const XTERM_VERSION = "6.0.0";
 const FIT_ADDON_VERSION = "0.11.0";

@@ -7,9 +7,9 @@ import {
 
 const registry = installCustomElementUnitRegistry();
 const { TASK_IMAGE_PREVIEW_EVENT } = await import(
-  "../../../../../components/image-preview-dialog.ts"
+  "../../../../../components/image-preview-dialog.js"
 );
-await import("./message-attachments.ts");
+await import("./message-attachments.js");
 const Attachments = registry.element("caffold-task-message-attachments");
 const attachments = Attachments.prototype;
 after(() => registry.restore());

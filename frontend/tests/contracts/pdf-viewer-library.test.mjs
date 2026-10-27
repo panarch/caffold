@@ -39,7 +39,7 @@ test("the browser suite serves pdf.js from the installed package", () => {
 });
 
 test("pdf.js stays a runtime CDN import rather than a shipped asset", () => {
-  const serviceWorker = read("service-worker.js");
+  const serviceWorker = read("service-worker.ts");
   const staticAssets = readFileSync(
     new URL("../caffold/src/static_assets.rs", frontendUrl),
     "utf8",
@@ -47,6 +47,6 @@ test("pdf.js stays a runtime CDN import rather than a shipped asset", () => {
 
   assert.doesNotMatch(serviceWorker, /pdfjs/);
   assert.doesNotMatch(staticAssets, /pdfjs/);
-  assert.match(serviceWorker, /"\/assets\/components\/pdf-viewer\.ts"/);
-  assert.match(staticAssets, /"components\/pdf-viewer\.ts"/);
+  assert.match(serviceWorker, /"\/assets\/components\/pdf-viewer\.js"/);
+  assert.match(staticAssets, /"components\/pdf-viewer\.js"/);
 });

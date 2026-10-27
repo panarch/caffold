@@ -5,10 +5,10 @@ import {
   installCustomElementUnitRegistry,
 } from "../../tests/support/custom-element-unit.js";
 import { templateHtml } from "../../tests/support/lit-template.js";
-import { KEYBOARD_SHORTCUT_HELP_SECTIONS } from "../shortcuts.ts";
+import { KEYBOARD_SHORTCUT_HELP_SECTIONS } from "../shortcuts.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./shortcut-list.ts");
+await import("./shortcut-list.js");
 const shortcutList = registry.element(
   "caffold-keyboard-shortcut-list",
 ).prototype;

@@ -6,7 +6,7 @@ import {
 } from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./pptx-viewer.ts");
+await import("./pptx-viewer.js");
 const pptxViewer = registry.element("caffold-pptx-viewer").prototype;
 after(() => registry.restore());
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { conversationEntries, conversationEventEntry } from "./entries.ts";
+import { conversationEntries, conversationEventEntry } from "./entries.js";
 
 test("hands the turn in progress what it is doing and since when", () => {
   const task = activeTask();

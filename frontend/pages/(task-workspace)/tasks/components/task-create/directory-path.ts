@@ -1,4 +1,4 @@
-import { cleanLogicalPath } from "../../task-format.ts";
+import { cleanLogicalPath } from "../../task-format.js";
 
 // How a working directory reads, and how a typed one is understood.
 //

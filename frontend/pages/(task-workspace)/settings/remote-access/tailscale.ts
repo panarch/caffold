@@ -1,4 +1,4 @@
-import { getTailscaleStatus, setTailscaleServe } from "#app/api.ts";
+import { getTailscaleStatus, setTailscaleServe } from "#app/api.js";
 
 export type TailscaleState =
   | "notInstalled"

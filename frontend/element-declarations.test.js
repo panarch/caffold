@@ -3,7 +3,7 @@ import test, { after } from "node:test";
 
 const previousNode = globalThis.Node;
 globalThis.Node = { DOCUMENT_POSITION_PRECEDING: 2 };
-const { ElementDeclarations } = await import("./element-declarations.ts");
+const { ElementDeclarations } = await import("./element-declarations.js");
 
 after(() => restoreGlobal("Node", previousNode));
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { InFlightLimit } from "./in-flight-limit.ts";
+import { InFlightLimit } from "./in-flight-limit.js";
 
 function observeRounds(limit, waitMs, rounds) {
   for (let count = 0; count < rounds; count += 1) {

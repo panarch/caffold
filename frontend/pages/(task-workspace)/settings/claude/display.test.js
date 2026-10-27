@@ -5,7 +5,7 @@ import {
   idleTimeoutValue,
   usageWindowLabel,
   usageWindowValue,
-} from "./display.ts";
+} from "./display.js";
 
 test("usage windows read in this page's words, and unknown kinds in their own", () => {
   assert.equal(usageWindowLabel({ kind: "session" }), "Session");

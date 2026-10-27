@@ -4,7 +4,7 @@
 // which style each cell uses, the borders, and frozen panes come from the
 // workbook's own XML, which SheetJS hands over unparsed.
 
-import type { TrackRange } from "./window.ts";
+import type { TrackRange } from "./window.js";
 
 // The parts of SheetJS and of the workbook it reads that the viewer uses.
 export interface SheetJs {

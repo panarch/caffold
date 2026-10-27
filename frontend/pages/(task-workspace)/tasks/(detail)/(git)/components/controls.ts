@@ -3,12 +3,12 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
-import type { GitRef } from "#app/api.ts";
-import { busySpin, compactIconButton } from "#app/component-styles.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
-import { inlineIcon, warmIcons } from "#components/icons.ts";
-import type { FetchState } from "../(log)/layout.ts";
+} from "#app/action-hints.js";
+import type { GitRef } from "#app/api.js";
+import { busySpin, compactIconButton } from "#app/component-styles.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import { inlineIcon, warmIcons } from "#components/icons.js";
+import type { FetchState } from "../(log)/layout.js";
 
 // What the Git header's controls show for the open route.
 export interface GitControlsSnapshot {

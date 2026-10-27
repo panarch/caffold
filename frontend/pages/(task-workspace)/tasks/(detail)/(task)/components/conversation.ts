@@ -7,61 +7,61 @@ import {
   ActionHints,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "#app/action-hints.ts";
-import type { Task, TaskEvent } from "#app/api.ts";
+} from "#app/action-hints.js";
+import type { Task, TaskEvent } from "#app/api.js";
 import {
   emptyScrollSurfaceScope,
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   ScrollSurfaces,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
 import {
   isTaskTransportStale,
   type TaskTransportState,
-} from "#tasks/runtime-state.ts";
+} from "#tasks/runtime-state.js";
 import {
   dedupeCanonicalEvents,
   eventIdentityKey,
   pendingApprovals,
-} from "#tasks/task-events.ts";
-import "./conversation/components/active-turn.ts";
-import "./conversation/components/approval.ts";
+} from "#tasks/task-events.js";
+import "./conversation/components/active-turn.js";
+import "./conversation/components/approval.js";
 import type {
   ApprovalIntentDetail,
   CaffoldTaskApproval,
-} from "./conversation/components/approval.ts";
-import "./conversation/components/assistant-message.ts";
-import type { SuggestedPromptIntentDetail } from "./conversation/components/assistant-message.ts";
-import "./conversation/components/changed-files.ts";
+} from "./conversation/components/approval.js";
+import "./conversation/components/assistant-message.js";
+import type { SuggestedPromptIntentDetail } from "./conversation/components/assistant-message.js";
+import "./conversation/components/changed-files.js";
 import {
   CaffoldTaskCommand,
   type CommandDisclosureIntentDetail,
   type CommandIntentDetail,
-} from "./conversation/components/command.ts";
+} from "./conversation/components/command.js";
 import {
   CaffoldTaskCommandGroup,
   type CommandGroupDisclosureIntentDetail,
-} from "./conversation/components/command-group.ts";
-import "./conversation/components/markdown.ts";
-import type { MarkdownRenderedDetail } from "./conversation/components/markdown.ts";
-import "./conversation/components/message-attachments.ts";
-import "./conversation/components/older-history.ts";
+} from "./conversation/components/command-group.js";
+import "./conversation/components/markdown.js";
+import type { MarkdownRenderedDetail } from "./conversation/components/markdown.js";
+import "./conversation/components/message-attachments.js";
+import "./conversation/components/older-history.js";
 import type {
   CaffoldTaskOlderHistory,
   OlderHistoryIntentDetail,
-} from "./conversation/components/older-history.ts";
-import "./conversation/components/user-message.ts";
-import type { UploadProgress } from "./conversation/components/user-message.ts";
+} from "./conversation/components/older-history.js";
+import "./conversation/components/user-message.js";
+import type { UploadProgress } from "./conversation/components/user-message.js";
 import {
   CaffoldTaskWorkDetails,
   type WorkDetailsDisclosureIntentDetail,
-} from "./conversation/components/work-details.ts";
+} from "./conversation/components/work-details.js";
 import {
   type ConversationEntry,
   conversationEntries,
   type ThinkingEntry,
-} from "./conversation/entries.ts";
+} from "./conversation/entries.js";
 
 // What the Task screen hands the conversation: the Task, its events, how far
 // its history has been read, and how the last change arrived. `updateKind`

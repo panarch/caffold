@@ -6,7 +6,7 @@ import {
   routeEquals,
   routeRelation,
   routeTab,
-} from "../navigation-routes.ts";
+} from "../navigation-routes.js";
 
 export const NAVIGATION_HISTORY_ACTION = {
   PUSH: "push",

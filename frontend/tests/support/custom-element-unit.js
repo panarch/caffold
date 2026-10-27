@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 
+import { sourceUrl } from "./source-url.js";
+
 export function installCustomElementUnitRegistry() {
   const previousHTMLElement = globalThis.HTMLElement;
   const previousCustomElements = globalThis.customElements;
@@ -14,7 +16,7 @@ export function installCustomElementUnitRegistry() {
     const url = input instanceof URL ? input
       : typeof input === "string" && input.startsWith("file:") ? new URL(input) : null;
     return url?.protocol === "file:" && url.pathname.endsWith(".css")
-      ? readFile(url, "utf8").then((text) => new Response(text))
+      ? readFile(sourceUrl(url), "utf8").then((text) => new Response(text))
       : previousFetch(input, ...options);
   };
   // lit-html walks templates with a document tree walker it creates on import.

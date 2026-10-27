@@ -1,6 +1,6 @@
 import { html, LitElement, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
-import { type ActionHintPull, ActionHints } from "../action-hints.ts";
+import { type ActionHintPull, ActionHints } from "../action-hints.js";
 
 export interface SegmentedChoice {
   value: string;

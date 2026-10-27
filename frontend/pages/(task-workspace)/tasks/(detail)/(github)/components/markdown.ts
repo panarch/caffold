@@ -9,16 +9,16 @@ import {
   linkActionHintLabel,
   linkActionHintTarget,
   matchesLinkActionHintBinding,
-} from "#app/action-hint-scope.ts";
-import { ACTION_HINT_ACTION, type ActionHintPull } from "#app/action-hints.ts";
+} from "#app/action-hint-scope.js";
+import { ACTION_HINT_ACTION, type ActionHintPull } from "#app/action-hints.js";
 import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   type ScrollSurfaceScope,
   ScrollSurfaces,
-} from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+} from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 
 const FORBIDDEN_ELEMENTS = new Set([
   "base",

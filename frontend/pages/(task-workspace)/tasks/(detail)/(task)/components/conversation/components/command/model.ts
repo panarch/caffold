@@ -1,12 +1,12 @@
-import type { TaskEvent } from "#app/api.ts";
-import { eventIdentityKey } from "#tasks/task-events.ts";
+import type { TaskEvent } from "#app/api.js";
+import { eventIdentityKey } from "#tasks/task-events.js";
 import {
   formatDate,
   formatDuration,
   formatStatus,
   taskEventObservedMs,
-} from "#tasks/task-format.ts";
-import { commandResult, isFinishedCommand } from "../../command-runs.ts";
+} from "#tasks/task-format.js";
+import { commandResult, isFinishedCommand } from "../../command-runs.js";
 
 export type CommandPresentation = ReturnType<typeof commandPresentation>;
 

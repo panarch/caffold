@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { commandGroupPresentation } from "./model.ts";
+import { commandGroupPresentation } from "./model.js";
 
 test("says how many commands ran and how many did not succeed", () => {
   assert.deepEqual(

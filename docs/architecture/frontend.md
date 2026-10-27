@@ -28,7 +28,7 @@ their owner. A reusable component does not become a page merely because it
 occupies most of a surface.
 
 An expanded non-page module uses a same-stem file and directory pair. The root
-`name.js` is its public feature entry point; `name/` owns private model and
+`name.ts` is its public feature entry point; `name/` owns private model and
 lifecycle implementation, plus a `components/` directory for Web Components
 mounted by the feature's outside owner. Non-visual consumers import only the
 explicit public API from `name.js`. A mounting owner imports the component path
@@ -37,28 +37,29 @@ directories, an expanded module directory contains no `page.ts` or `layout.ts`.
 
 ## Native module imports
 
-Modules run in the browser without a bundler. A TypeScript module (`.ts`) loses
-only its type syntax: when the server is built, `frontend/strip-types.mjs`
-replaces that syntax with spaces, and the server serves the result at the
-module's own path as JavaScript, so its lines and columns match the source.
-Node runs the same `.ts` files directly in unit tests. Because the build only
-removes types, modules use TypeScript syntax that erases cleanly, without
-`enum`, `namespace`, or decorators.
+Modules run in the browser without a bundler, one file per module. Each is
+TypeScript, `name.ts`, under the strict check. When the server is built, tsc
+compiles it to `name.js` with a source map beside it, and the server serves
+both under `/assets/`. tsc keeps import specifiers as written, so an import
+names the `.js` file that runs, and the type check reads the `.ts` source
+beside it. The service worker is typed for its own global scope, so
+`frontend/tsconfig.worker.json` compiles it apart from the page modules. A type
+error in either stops the server build.
 
-A module moves to TypeScript whole: `name.ts` is typed throughout under the
-strict check, and `name.js` has not moved yet. While a JavaScript module has
-TypeScript callers, a same-stem `name.d.ts` beside it declares the part they
-use, and it goes when the module becomes `name.ts`. The TypeScript-modules
-contract keeps each `.d.ts` beside its `.js` and no module in both languages;
-`build-info.d.ts` alone declares a module the server build writes instead.
+A source map carries its TypeScript source, so browser developer tools show
+`/assets/name.ts` without fetching it; the service worker does not cache source
+maps. `build-info.d.ts` is the one type declaration file: it declares the
+module the server build writes. Unit tests run from tsc's output too:
+`npm run test:unit` compiles the modules and their colocated tests into
+`frontend/tests/unit-build/` and runs them there.
 
 Shared imports can use three native aliases:
 
 | Prefix | Frontend-relative directory | Example |
 | --- | --- | --- |
-| `#app/` | `./` | `#app/api.ts` |
-| `#components/` | `components/` | `#components/icons.ts` |
-| `#tasks/` | `pages/(task-workspace)/tasks/` | `#tasks/task-format.ts` |
+| `#app/` | `./` | `#app/api.js` |
+| `#components/` | `components/` | `#components/icons.js` |
+| `#tasks/` | `pages/(task-workspace)/tasks/` | `#tasks/task-format.js` |
 
 `frontend/index.html` declares the browser import map before the app module.
 `frontend/package.json` declares matching `imports` patterns for Node unit
@@ -67,7 +68,7 @@ the browser's `/assets/` URL and the frontend package directory respectively.
 
 Use relative imports within the same owner and aliases for shared dependencies.
 Use `#components/` for shared components and `#tasks/` for Task-owned shared
-modules; `#app/` covers other app-wide modules. Retain explicit `.js` or `.ts`
+modules; `#app/` covers other app-wide modules. Retain explicit `.js`
 extensions and the existing public-entry-point and private-implementation
 boundaries.
 Aliases only change path resolution, not module ownership or registration.
@@ -2210,14 +2211,14 @@ Every production JavaScript/CSS asset must be registered consistently in:
 - module imports;
 - `frontend/styles.css`, or the consuming component's explicit style declaration
   for reusable `:scope` sources;
-- `frontend/service-worker.js`;
+- `frontend/service-worker.ts`;
 - `caffold/src/static_assets.rs`;
 - static asset and CSS ownership tests.
 
 The service-worker cache and Rust static-asset table are exact manifests of the
 assets imported by the active application hierarchy. Lit's modules are part
 of both even though they come from `frontend/node_modules`, and a TypeScript
-module is listed at its `.ts` path. pdf.js,
+module is listed at the `.js` path it is served at. pdf.js,
 docx-preview, pptx-renderer, SheetJS, and xterm.js with its fit addon are the
 exceptions:
 their owners import pinned releases at first use, and the browser suite answers

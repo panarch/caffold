@@ -1,5 +1,5 @@
 import { html, LitElement, nothing } from "lit";
-import { KEYBOARD_SHORTCUT_HELP_SECTIONS } from "../shortcuts.ts";
+import { KEYBOARD_SHORTCUT_HELP_SECTIONS } from "../shortcuts.js";
 
 /** Every keyboard shortcut, in the sections the help dialog shows. */
 export class CaffoldKeyboardShortcutList extends LitElement {

@@ -7,9 +7,9 @@ import {
 import { templateHtml } from "../../../../../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
-await import("./code-block.ts");
-const { ActionHints } = await import("#app/action-hints.ts");
-const { ScrollSurfaces } = await import("#app/scroll-scope.ts");
+await import("./code-block.js");
+const { ActionHints } = await import("#app/action-hints.js");
+const { ScrollSurfaces } = await import("#app/scroll-scope.js");
 const codeBlock = registry.element("caffold-task-markdown-code-block").prototype;
 after(() => registry.restore());
 

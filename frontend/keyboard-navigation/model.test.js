@@ -8,7 +8,7 @@ import {
   sameScrollSelectionSnapshot,
   scrollCommandPosition,
   visibleScrollSurfaceRect,
-} from "./model.ts";
+} from "./model.js";
 
 test("allocates same-width prefix-free Scroll codes in ASDF order", () => {
   const surfaces = Array.from({ length: 28 }, (_, index) => ({

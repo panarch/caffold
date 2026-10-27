@@ -4,16 +4,16 @@ import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
-} from "#app/action-hints.ts";
+} from "#app/action-hints.js";
 import {
   getPushConfig,
   getPushInstallations,
   type PushInstallation,
   removePushInstallation,
   upsertPushInstallation,
-} from "#app/api.ts";
-import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.ts";
-import { DrawnRef, drawn } from "#components/drawn-refs.ts";
+} from "#app/api.js";
+import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import {
   applicationServerKey,
   getOrCreatePushClientId,
@@ -23,7 +23,7 @@ import {
   pushSupport,
   shortPushClientId,
   subscriptionPayload,
-} from "./lifecycle.ts";
+} from "./lifecycle.js";
 
 const STATE_COPY: Readonly<
   Record<NotificationState, { label: string; detail: string }>

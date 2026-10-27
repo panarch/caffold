@@ -8,20 +8,20 @@ import {
   linkActionHintLabel,
   linkActionHintTarget,
   matchesLinkActionHintBinding,
-} from "../action-hint-scope.ts";
-import type { ActionHintPull } from "../action-hints.ts";
-import { imageUrl } from "../api.ts";
-import { fetchInChunks } from "../chunked-fetch.ts";
-import { parseLinkRoute } from "../navigation-routes.ts";
+} from "../action-hint-scope.js";
+import type { ActionHintPull } from "../action-hints.js";
+import { imageUrl } from "../api.js";
+import { fetchInChunks } from "../chunked-fetch.js";
+import { parseLinkRoute } from "../navigation-routes.js";
 import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
   type ScrollSurfaceScope,
   ScrollSurfaces,
-} from "../scroll-scope.ts";
-import "./loading-text.ts";
-import { DrawnRef, drawn } from "./drawn-refs.ts";
+} from "../scroll-scope.js";
+import "./loading-text.js";
+import { DrawnRef, drawn } from "./drawn-refs.js";
 
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 

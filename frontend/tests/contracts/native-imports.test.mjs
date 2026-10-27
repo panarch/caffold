@@ -16,7 +16,7 @@ const nodeImports = JSON.parse(
   readFileSync(new URL("package.json", frontendUrl), "utf8"),
 ).imports;
 const workerEntrypoints = new Set([
-  "service-worker.js",
+  "service-worker.ts",
   "pages/(task-workspace)/tasks/components/composer/voice-worklet.ts",
 ]);
 
@@ -48,7 +48,7 @@ test("production alias imports resolve to the same served and precached files in
     "utf8",
   );
   const serviceWorker = readFileSync(
-    new URL("service-worker.js", frontendUrl),
+    new URL("service-worker.ts", frontendUrl),
     "utf8",
   );
   const usedPrefixes = new Set();
@@ -69,12 +69,12 @@ test("production alias imports resolve to the same served and precached files in
         new URL(assetPath, frontendUrl).href,
         `${path}: ${specifier} must resolve identically in both runtimes`,
       );
-      assert.ok(/\.[jt]s$/.test(assetPath) && !/\.(?:test|d)\.[jt]s$/.test(assetPath));
+      assert.ok(assetPath.endsWith(".js") && !assetPath.endsWith(".test.js"));
       assert.ok(!assetPath.split("/").includes("tests"));
       // Rust generates build-info.js; it is served and cached with source modules.
       if (assetPath !== "build-info.js") {
         assert.match(
-          readFileSync(new URL(assetPath, frontendUrl), "utf8"),
+          readFileSync(new URL(assetPath.replace(/\.js$/, ".ts"), frontendUrl), "utf8"),
           /\S/,
           `${path}: ${specifier} must refer to a production module`,
         );

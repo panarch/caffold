@@ -1,12 +1,12 @@
 import { html, LitElement } from "lit";
 import { repeat } from "lit/directives/repeat.js";
-import type { ActionHintSessionTarget } from "../../action-hints.ts";
-import { DrawnRef, DrawnRefs, drawn } from "../../components/drawn-refs.ts";
+import type { ActionHintSessionTarget } from "../../action-hints.js";
+import { DrawnRef, DrawnRefs, drawn } from "../../components/drawn-refs.js";
 import {
   ACTION_HINT_ACTIVATE_EVENT,
   ACTION_HINT_CANCEL_EVENT,
-} from "../control.ts";
-import { clampBadgePosition, type HintProgress, type Rect } from "../model.ts";
+} from "../control.js";
+import { clampBadgePosition, type HintProgress, type Rect } from "../model.js";
 
 let actionHintDialogInstanceId = 0;
 
