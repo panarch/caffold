@@ -7,7 +7,6 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import type { Task, TaskWorktree } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
@@ -25,6 +24,8 @@ import type {
   TaskInfoActionIntent,
   TaskInfoActionsSnapshot,
 } from "./info/components/actions.js";
+
+import { compactIconButton } from "#app/component-styles.js";
 
 let taskInfoInstanceId = 0;
 

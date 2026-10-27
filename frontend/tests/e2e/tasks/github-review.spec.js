@@ -2739,6 +2739,38 @@ for (const list of [
   });
 }
 
+test("Action Hints reach the issue list's page buttons in the pagination's shadow roots and leave focus where it was", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await installLinkedWorktreeGithubFixture(page);
+  await page.unroute(/\/api\/github\/issues(?:\?|$)/);
+  await page.route(/\/api\/github\/issues(?:\?|$)/, (route) => {
+    const requested = Number(new URL(route.request().url()).searchParams.get("page"));
+    return route.fulfill({
+      json: pagedGithubListResponse(githubIssuesResponse(`Issue on page ${requested}`), requested, 3),
+    });
+  });
+  await page.goto(`/tasks/${THREAD_ID}`);
+  await chooseLinkedWorktreeGithubList(page, "issues");
+  const listPage = page.locator("caffold-github-issues-list-page");
+  const firstRow = listPage.locator("button[data-issue-number]").first();
+  await expect(firstRow).toContainText("on page 1");
+
+  const older = listPage.getByRole("button", { name: "Older issue page" });
+  await waitForActionHintTarget(page, "Older issue page");
+  await older.focus();
+  await page.keyboard.press("f");
+  const dialog = actionHintDialog(page);
+  await expect(dialog.getByLabel("Older issue page")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(older).toBeFocused();
+
+  await activateActionHint(page, "Older issue page");
+  await expect(listPage.locator("caffold-pagination")).toHaveAttribute("page", "2");
+  await expect(firstRow).toContainText("on page 2");
+});
+
 function githubStatusResponse(repository, github) {
   return {
     repository,

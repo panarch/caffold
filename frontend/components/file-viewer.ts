@@ -9,7 +9,6 @@ import {
 } from "../action-hints.js";
 import { documentUrl, downloadUrl, imageUrl } from "../api.js";
 import { type FetchedFile, fetchInChunks } from "../chunked-fetch.js";
-import { compactIconButton } from "../component-styles.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
@@ -57,6 +56,8 @@ import "./pdf-viewer.js";
 import "./pptx-viewer.js";
 import "./xlsx-viewer.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
+
+import { compactIconButton } from "../component-styles.js";
 
 // How long switching to another file keeps showing the previous one before
 // the loading state replaces it.

@@ -1,9 +1,10 @@
 import { html, LitElement, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { TaskThreadStatus } from "#app/api.js";
-import { busySpin } from "#app/component-styles.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import { taskStatusView } from "../runtime-state.js";
+
+import { busySpin } from "#app/component-styles.js";
 
 // A spinner turns once in this long; a staggered one starts somewhere along
 // the turn.

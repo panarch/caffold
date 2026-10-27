@@ -6,6 +6,28 @@
   "formatter": {
     "indentStyle": "space"
   },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": {
+          "level": "on",
+          "options": {
+            "groups": [
+              [
+                ":PACKAGE:",
+                ":ALIAS:",
+                ":PATH:",
+                "!**/*.css.js",
+                "!**/component-styles.js"
+              ],
+              ":BLANK_LINE:",
+              ["**/component-styles.js", "**/*.css.js"]
+            ]
+          }
+        }
+      }
+    }
+  },
   "linter": {
     "rules": {
       "nursery": {

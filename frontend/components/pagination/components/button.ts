@@ -1,8 +1,11 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { type ActionHintPull, ActionHints } from "#app/action-hints.js";
-import { compactIconButton } from "#app/component-styles.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { inlineIcon } from "../../icons.js";
+
+import { compactIconButton } from "#app/component-styles.js";
+import styles from "./button.css.js";
 
 export interface ChangePageDetail {
   page: number;
@@ -10,13 +13,8 @@ export interface ChangePageDetail {
 
 export type PageKind = "first" | "previous" | "next" | "last";
 
-await compactIconButton.register(
-  "caffold-pagination-button",
-  "> .pagination-button",
-);
-
 @customElement("caffold-pagination-button")
-export class CaffoldPaginationButton extends LitElement {
+export class CaffoldPaginationButton extends CaffoldElement {
   @property()
   accessor kind!: PageKind;
   @property({ type: Number })
@@ -28,11 +26,9 @@ export class CaffoldPaginationButton extends LitElement {
   @property({ type: Boolean })
   accessor disabled = false;
 
-  private readonly hints = new ActionHints(this);
+  static override styles = [compactIconButton(".pagination-button"), styles];
 
-  override createRenderRoot() {
-    return this;
-  }
+  private readonly hints = new ActionHints(this);
 
   override render() {
     return html`
@@ -67,6 +63,7 @@ export class CaffoldPaginationButton extends LitElement {
     this.dispatchEvent(
       new CustomEvent<ChangePageDetail>("caffold:change-page", {
         bubbles: true,
+        composed: true,
         detail: { page: this.page },
       }),
     );

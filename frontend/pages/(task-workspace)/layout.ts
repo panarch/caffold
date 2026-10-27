@@ -9,7 +9,6 @@ import {
   withActionHintOcclusionRoots,
 } from "#app/action-hints.js";
 import { type Health, restartClaudeRuntime } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
 import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
 import { routeDomain, routeTab, routeTarget } from "#app/navigation-routes.js";
 import {
@@ -89,6 +88,8 @@ import type { TaskStartIntent } from "./task-create-intent-event.js";
 import type { TaskArchivedDeleteConfirmedDetail } from "./tasks/components/archived-delete-dialog.js";
 import type { CaffoldTasksPage } from "./tasks/layout.js";
 import type { TaskNavigatorIntentDetail } from "./tasks/task-navigator-intent-event.js";
+
+import { compactIconButton } from "#app/component-styles.js";
 
 export interface RequestWorkspaceTabDetail {
   tab: WorkspaceTab | undefined;

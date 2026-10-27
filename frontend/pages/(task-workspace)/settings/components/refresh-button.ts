@@ -5,8 +5,9 @@ import {
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
-import { busySpin } from "#app/component-styles.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
+
+import { busySpin } from "#app/component-styles.js";
 
 export const SETTINGS_REFRESH_INTENT_EVENT = "caffold:settings-refresh-intent";
 

@@ -6,10 +6,11 @@ import {
   ActionHints,
 } from "#app/action-hints.js";
 import type { GitRef } from "#app/api.js";
-import { busySpin, compactIconButton } from "#app/component-styles.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import type { FetchState } from "../(log)/layout.js";
+
+import { busySpin, compactIconButton } from "#app/component-styles.js";
 
 export interface ChangeCompareRefsDetail {
   baseRef: string;

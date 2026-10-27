@@ -14,7 +14,6 @@ import {
   restoreTask,
   type Task,
 } from "#app/api.js";
-import { busySpin } from "#app/component-styles.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import {
@@ -40,6 +39,8 @@ import {
 import "./task-status-chip.js";
 import type { ArchivedTaskListIntent } from "../task-navigator-intent-event.js";
 import { TASK_NAVIGATOR_INTENT_EVENT } from "../task-navigator-intent-event.js";
+
+import { busySpin } from "#app/component-styles.js";
 
 export const ARCHIVED_TASK_LIST_INITIAL_SETTLED_EVENT =
   "caffold:archived-task-list-initial-settled";

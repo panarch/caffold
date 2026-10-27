@@ -156,9 +156,12 @@ export function declaredActionHintScope(
 ): ActionHintScope {
   const targets: ActionHintTarget[] = [];
   const scrollRoots = new Set<Element>();
-  const mutationRoots = new Set<Element>();
+  const mutationRoots = new Set<Node>();
   for (const entry of declarations) {
-    mutationRoots.add(entry.value.declaration.owner?.() ?? owner);
+    const watched = entry.value.declaration.owner?.() ?? owner;
+    for (const root of rootsInside(watched)) {
+      mutationRoots.add(root);
+    }
     const ownClipRoots = (entry.value.declaration.clipRoots?.() ?? []).filter(
       (root): root is Element => root != null,
     );
@@ -177,9 +180,15 @@ export function declaredActionHintScope(
   return {
     blocked: false,
     targets,
-    mutationRoots: mutationRoots.size ? [...mutationRoots] : [owner],
+    mutationRoots: mutationRoots.size ? [...mutationRoots] : rootsInside(owner),
     scrollRoots: [...scrollRoots],
   };
+}
+
+// An owner that renders into a shadow root changes there, out of reach of an
+// observer on the owner alone.
+function rootsInside(owner: Element): Node[] {
+  return owner.shadowRoot ? [owner, owner.shadowRoot] : [owner];
 }
 
 function declaredTarget(

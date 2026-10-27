@@ -27,6 +27,7 @@ fn main() {
         return;
     }
     write_source_map_table(&out_dir, &frontend);
+    write_stylesheet_modules(Path::new("../frontend"), &frontend);
 
     let commit =
         git_output(&["rev-parse", "--short=8", "HEAD"]).unwrap_or_else(|| "unknown".to_string());
@@ -154,6 +155,34 @@ fn collect_source_maps(root: &Path, directory: &Path, maps: &mut Vec<String>) {
                 .strip_prefix(root)
                 .expect("map must be under the compiled frontend");
             maps.push(relative.to_string_lossy().into_owned());
+        }
+    }
+}
+
+// Each stylesheet also becomes a module at its path plus `.js` whose default
+// export is the stylesheet as a `CSSStyleSheet`, the shape a CSS module script
+// has, which Safari does not load. A component that renders into a shadow root
+// puts it in its `static styles`.
+fn write_stylesheet_modules(source: &Path, output: &Path) {
+    for entry in fs::read_dir(source).expect("frontend sources must be readable") {
+        let path = entry.expect("frontend entry must be readable").path();
+        let name = path.file_name().expect("entry must have a name");
+        if path.is_dir() {
+            if name != "node_modules" && name != "tests" {
+                write_stylesheet_modules(&path, &output.join(name));
+            }
+        } else if path.extension().is_some_and(|extension| extension == "css") {
+            let css = fs::read_to_string(&path).expect("stylesheet must be UTF-8");
+            let text = serde_json::to_string(&css).expect("stylesheet text must serialize");
+            fs::create_dir_all(output).expect("stylesheet module directory must be created");
+            let module = format!(
+                "const sheet = new CSSStyleSheet();\nsheet.replaceSync({text});\nexport default sheet;\n"
+            );
+            fs::write(
+                output.join(format!("{}.js", name.to_string_lossy())),
+                module,
+            )
+            .expect("stylesheet module must be written");
         }
     }
 }

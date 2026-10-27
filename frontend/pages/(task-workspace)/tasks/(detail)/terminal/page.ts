@@ -12,7 +12,6 @@ import {
   type TaskResponseError,
   type TerminalSubject,
 } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon } from "#components/icons.js";
 import {
@@ -46,6 +45,8 @@ import {
   type TerminalState,
   terminalTransition,
 } from "./page/model.js";
+
+import { compactIconButton } from "#app/component-styles.js";
 
 export interface TerminalPageStateDetail {
   node: TerminalNode;

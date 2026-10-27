@@ -11,7 +11,6 @@ import {
   type GitRepository,
   getGitHubStatus,
 } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
 import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
 import { routeMode } from "#app/navigation-routes.js";
 import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
@@ -36,6 +35,8 @@ import type {
   CaffoldGithubTaskStartDialog,
   TaskStartSource,
 } from "./components/task-start-dialog.js";
+
+import { compactIconButton } from "#app/component-styles.js";
 
 export interface RequestGithubRouteDetail {
   route: GithubRoute;

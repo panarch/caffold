@@ -6,7 +6,6 @@ import {
   ActionHints,
   mergeActionHintScopes,
 } from "#app/action-hints.js";
-import { compactIconButton } from "#app/component-styles.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
@@ -29,6 +28,8 @@ import {
   noteKey,
   notesTreeNodes,
 } from "../tree.js";
+
+import { compactIconButton } from "#app/component-styles.js";
 
 export const NOTES_NAVIGATOR_INTENT_EVENT = "caffold:notes-navigator-intent";
 

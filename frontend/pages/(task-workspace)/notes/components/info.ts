@@ -7,7 +7,6 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import type { Note, NoteTask } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
@@ -20,6 +19,8 @@ import "./info/components/copy-markdown.js";
 import type { CaffoldNotesInfoCopyMarkdown } from "./info/components/copy-markdown.js";
 import "./info/components/copy-path.js";
 import type { CaffoldNotesInfoCopyPath } from "./info/components/copy-path.js";
+
+import { compactIconButton } from "#app/component-styles.js";
 
 let notesInfoInstanceId = 0;
 

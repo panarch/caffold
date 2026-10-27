@@ -6,7 +6,6 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import type { ActiveTask, ActiveTaskTopPlacement, Task } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
@@ -40,6 +39,8 @@ import type {
   ArchivedTaskRestoredDetail,
   CaffoldArchivedTaskList,
 } from "./archived-task-list.js";
+
+import { compactIconButton } from "#app/component-styles.js";
 
 const ICON = "task-action-icon";
 

@@ -12,7 +12,6 @@ import {
   getAgentModels,
   getAgentPermissions,
 } from "#app/api.js";
-import { busySpin } from "#app/component-styles.js";
 import {
   KEYBOARD_SESSION_DISMISS_EVENT,
   KeyboardContexts,
@@ -23,6 +22,8 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import { cleanLogicalPath } from "../task-format.js";
+
+import { busySpin } from "#app/component-styles.js";
 
 // What the Task or Section last ran under, as far as the turn options read it.
 export interface TurnOptionsSelection {

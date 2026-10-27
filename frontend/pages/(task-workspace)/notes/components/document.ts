@@ -8,7 +8,6 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import type { Note } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
@@ -21,6 +20,8 @@ import "#components/markdown-preview.js";
 import type { CaffoldMarkdownPreview } from "#components/markdown-preview.js";
 import "./info.js";
 import type { CaffoldNotesInfo } from "./info.js";
+
+import { compactIconButton } from "#app/component-styles.js";
 
 export const NOTE_DOCUMENT_INTENT_EVENT = "caffold:note-document-intent";
 

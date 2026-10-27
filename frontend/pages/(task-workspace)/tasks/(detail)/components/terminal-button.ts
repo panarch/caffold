@@ -5,8 +5,9 @@ import {
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
-import { compactIconButton } from "#app/component-styles.js";
 import { inlineIcon } from "#components/icons.js";
+
+import { compactIconButton } from "#app/component-styles.js";
 
 export interface TaskDetailTerminalIntentDetail {
   type: "toggle";

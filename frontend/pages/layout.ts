@@ -13,7 +13,6 @@ import {
   sendForegroundRecoveryDiagnostics,
 } from "#app/api.js";
 import { BUILD_INFO } from "#app/build-info.js";
-import { busySpin } from "#app/component-styles.js";
 import {
   KeyboardContexts,
   KeyboardNavigationController,
@@ -62,6 +61,8 @@ import {
   NavigationHistory,
 } from "./navigation-history.js";
 import { PwaUpdateLifecycle } from "./pwa-update-lifecycle.js";
+
+import { busySpin } from "#app/component-styles.js";
 
 export interface RequestTasksRouteDetail {
   route: ParsedRoute;

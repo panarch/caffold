@@ -7,7 +7,6 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import { getVoiceStatus, transcribeVoice, type VoiceStatus } from "#app/api.js";
-import { busySpin } from "#app/component-styles.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
@@ -33,6 +32,8 @@ import type {
   TurnOptionsSnapshot,
   TurnSubmissionOptions,
 } from "./task-turn-options.js";
+
+import { busySpin } from "#app/component-styles.js";
 
 export interface OpenSettingsDetail {
   section: string;

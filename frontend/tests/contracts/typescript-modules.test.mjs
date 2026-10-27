@@ -9,9 +9,10 @@ test("production modules are TypeScript", () => {
   assert.deepEqual([...sources].filter((path) => path.endsWith(".js")), []);
 });
 
-// Rust generates build-info.js; it is served and cached with source modules.
-test("the one type declaration file describes the module the server build writes", () => {
-  assert.deepEqual(stems(".d.ts"), ["build-info"]);
+// Rust generates build-info.js and a module beside each stylesheet; they are
+// served and cached with source modules.
+test("type declaration files describe only the modules the server build writes", () => {
+  assert.deepEqual(stems(".d.ts").sort(), ["build-info", "stylesheet-modules"]);
 });
 
 test("the frontend type check is strict", () => {

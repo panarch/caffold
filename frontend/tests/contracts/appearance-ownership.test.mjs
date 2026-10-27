@@ -48,6 +48,7 @@ const codeOwners = new Set([
 
 const typefaceOwners = new Set([
   "action-hints/components/dialog.css",
+  "caffold-element/base.css",
   "components/file-viewer/components/code-viewer.css",
   "components/file-viewer/components/diff-viewer.css",
   "components/docx-viewer.ts",
@@ -971,7 +972,6 @@ test("compact icon controls declare shared styles at their own component boundar
     ["pages/(task-workspace)/tasks/(detail)/terminal/page", "caffold-terminal-page", "> .terminal-page-bar > .terminal-page-button"],
     ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", "caffold-git-review-controls", "> .git-review-controls > .git-review-refresh"],
     ["components/file-navigator/components/list", "caffold-file-list", "> .file-list-panel > header > .file-list-title-row > .file-list-actions > .file-refresh-button"],
-    ["components/pagination/components/button", "caffold-pagination-button", "> .pagination-button"],
     ["components/file-viewer", "caffold-review-file-viewer", "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-actions > .viewer-refresh-button"],
     ["components/file-viewer", "caffold-review-file-viewer", "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-close-button"],
   ];
@@ -979,6 +979,12 @@ test("compact icon controls declare shared styles at their own component boundar
     const javascript = readFrontendModule(path);
     const declarations = [...javascript.matchAll(/await compactIconButton\.register\(\s*"([^"]+)",\s*"([^"]+)"\s*,?\s*\)/g)];
     assert.ok(declarations.some(([, name, selector]) => name === owner && selector === target), path);
+  }
+  // Components that render into a shadow root name the target in that root.
+  for (const [path, target] of [["components/pagination/components/button", ".pagination-button"]]) {
+    const javascript = readFrontendModule(path);
+    const declarations = [...javascript.matchAll(/\bcompactIconButton\(\s*"([^"]+)"\s*\)/g)];
+    assert.ok(declarations.some(([, selector]) => selector === target), path);
   }
   const compact = readFrontend("component-styles/compact-icon-button.css");
   assert.match(compact, /width: var\(--interface-compact-hit-size\)/);

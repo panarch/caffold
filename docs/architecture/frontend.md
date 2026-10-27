@@ -48,10 +48,13 @@ error in either stops the server build.
 
 A source map carries its TypeScript source, so browser developer tools show
 `/assets/name.ts` without fetching it; the service worker does not cache source
-maps. `build-info.d.ts` is the one type declaration file: it declares the
-module the server build writes. Unit tests run from tsc's output too:
-`npm run test:unit` compiles the modules and their colocated tests into
-`frontend/tests/unit-build/` and runs them there.
+maps. The type declaration files declare the modules the server build writes:
+`build-info.d.ts`, and `stylesheet-modules.d.ts` for the module beside each
+stylesheet ([Styling and assets](#styling-and-assets)). Unit tests run from
+tsc's output too: `npm run test:unit` compiles the modules and their colocated
+tests into `frontend/tests/unit-build/` and runs them there, where
+`tests/support/stylesheet-modules.js` loads a stylesheet module as the build
+writes it from the stylesheet in `frontend/`.
 
 Shared imports can use three native aliases:
 
@@ -77,6 +80,11 @@ Production imports that ascend three or more directories use these aliases.
 Nearby relative imports remain useful within an owner. The native-import
 contract checks that long relative imports do not return, that both runtimes
 resolve aliases to the same files, and that those files are served and cached.
+
+A module's style imports, its stylesheet modules and `component-styles.js`,
+come last, after a blank line. The import organizer that `frontend/biome.json`
+configures keeps them together there; it sorts only up to a bare import such as
+`import "./child.js"`, so the style imports go below the last one.
 Worker and AudioWorklet modules do not inherit the document's import map;
 their imports and asset URLs remain relative or explicit URLs.
 
@@ -96,11 +104,13 @@ for the browser globals Node lacks.
 ## Rendering
 
 A component that renders through Lit extends `LitElement` and renders into its
-own Light DOM; `@customElement()` registers it. The state it shows lives in
-reactive properties, `accessor` fields that `@property()` or `@state()`
-declares, and an owner hands a child what it shows through property bindings in
-its template. When one changes, Lit calls `render()` once the code that changed
-it has finished, so the DOM changes then rather than at the assignment. Work
+own Light DOM, or extends `CaffoldElement` and renders into an open shadow root
+([Styling and assets](#styling-and-assets)); `@customElement()` registers it.
+The state it shows lives in reactive properties, `accessor` fields that
+`@property()` or `@state()` declares, and an owner hands a child what it shows
+through property bindings in its template. When one changes, Lit calls
+`render()` once the code that changed it has finished, so the DOM changes then
+rather than at the assignment. Work
 that reads the rendered DOM, such as scroll restoration, focus, or measurement,
 runs in `updated()`, or, in a flow that is already asynchronous, after
 `updateComplete` once it has checked that its request is still current. An
@@ -762,8 +772,8 @@ in the microtasks after it. Scroll selection and active Scroll revalidate on
 the same schedule. The observed roots are signals, not evidence from which the
 controller infers ownership. A declared scope
 watches the owners its declarations name: the component, or a narrower element
-a declaration names as its owner. If a frozen target
-disappears, becomes
+a declaration names as its owner, and the shadow root an owner renders into.
+If a frozen target disappears, becomes
 non-actionable or invisible, changes owner, or changes any native binding, the
 controller retires every frozen target with that same frozen owner. Exact
 survivors retain their original code, order, control, and activation closure;
@@ -2117,22 +2127,45 @@ finishing never starts another Hint session automatically.
 
 ## Styling and assets
 
-Components render in Light DOM, so CSS remains one cascade. Each stylesheet
-must scope internal selectors below the owning custom element. A parent may
-size or hide a child host, but descendant styling belongs to the child.
+Most components render in Light DOM, where CSS is one cascade: `styles.css`
+imports each component's stylesheet, and each stylesheet scopes internal
+selectors below the owning custom element. A parent may size or hide a child
+host, but descendant styling belongs to the child.
 
-`frontend/component-styles.ts` exports two shared styles, `compactIconButton`
-and `busySpin`. Components await `register(owner, target)` on each style they
-use before defining their element, so the await stands above the class
-`@customElement()` registers, declaring the explicit child path from the
-owner to their own local class; a step in that path may add the owner's state
-classes. Each style fetches its stylesheet
+`caffold-pagination` and its `caffold-pagination-button` extend
+`CaffoldElement` (`frontend/caffold-element.ts`) and render into open shadow
+roots instead. Their stylesheets style the host as `:host` and the rest
+by local class, and reach the component as a module: beside each stylesheet the
+server build writes `name.css.js`, whose default export is the stylesheet as a
+`CSSStyleSheet`, the shape a CSS module script has, which Safari does not load.
+The component lists that sheet in its `static styles`, and Lit adopts it into
+every instance's shadow root. The document's stylesheets do not reach inside
+those roots, and their sheets do not reach out. An event that leaves a root,
+such as `caffold:change-page`, is `composed`.
+
+`caffold-element/base.css` holds the rules every component's elements take:
+box sizing, button and code fonts, `[hidden]`, `.surface-message`, and
+`.sr-only`. `styles.css` imports it first, and `CaffoldElement` puts it before
+the `static styles` of every component that extends it, so such a component
+lists only its own. Theme tokens and inherited text properties reach a shadow
+root from the document.
+
+`frontend/component-styles.ts` exports two shared styles,
+`compactIconButton` and `busySpin`. Components in Light DOM await
+`register(owner, target)` on each style they use before defining their element,
+so the await stands above the class `@customElement()` registers, declaring the
+explicit child path from the owner to their own local class; a step in that
+path may add the owner's state classes. Each style fetches its stylesheet
 (`component-styles/compact-icon-button.css`, `component-styles/busy-spin.css`)
-once per document and adopts a native `@scope` sheet for each registration. The
-CSS uses `:scope` without naming consumers and may define its own keyframes.
-Shared defaults use the `component-styles` layer; unlayered owner rules retain
-local overrides. Registration lasts for the document, while components retain
-their native state and Action Hint providers.
+once per document and adopts a native `@scope` sheet for each registration. A
+component in a shadow root puts `compactIconButton(target)` in its
+`static styles` instead, `target` being the class path to its element in that
+root; the sheet comes from the stylesheet's module, so it needs no request, and
+every instance shares the one sheet for that target. The CSS uses `:scope`
+without naming consumers and may define its own keyframes. Shared defaults use
+the `component-styles` layer; unlayered owner rules retain local overrides.
+Registration lasts for the document, while components retain their native
+state and Action Hint providers.
 
 `compactIconButton` covers Task list/header actions, workspace and Git/GitHub
 Back controls, terminal and file refresh controls, pagination, and Task/Notes
@@ -2220,15 +2253,18 @@ Every production JavaScript/CSS asset must be registered consistently in:
 
 - module imports;
 - `frontend/styles.css`, or the consuming component's explicit style declaration
-  for reusable `:scope` sources;
+  for reusable `:scope` sources and for the stylesheets of a component in a
+  shadow root;
 - `frontend/service-worker.ts`;
 - `caffold/src/static_assets.rs`;
 - static asset and CSS ownership tests.
 
 The service-worker cache and Rust static-asset table are exact manifests of the
 assets imported by the active application hierarchy. Lit's modules are part
-of both even though they come from `frontend/node_modules`, and a TypeScript
-module is listed at the `.js` path it is served at. pdf.js,
+of both even though they come from `frontend/node_modules`, a TypeScript
+module is listed at the `.js` path it is served at, and a stylesheet a module
+imports is listed at the `.css.js` path of its module, and at its own path too
+only when the document also loads it. pdf.js,
 docx-preview, pptx-renderer, SheetJS, and xterm.js with its fit addon are the
 exceptions:
 their owners import pinned releases at first use, and the browser suite answers

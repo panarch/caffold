@@ -27,13 +27,13 @@ test("components wait for shared CSS and share one request per stylesheet", { ta
       "caffold-note-document", "caffold-notes-navigator",
       "caffold-task-navigator", "caffold-task-workspace", "caffold-task-git-layout",
       "caffold-task-github-layout", "caffold-terminal-page", "caffold-git-review-controls",
-      "caffold-file-list", "caffold-pagination", "caffold-review-file-viewer",
+      "caffold-file-list", "caffold-review-file-viewer",
     ].some((name) => Boolean(customElements.get(name))))).toBe(false);
     release.resolve();
     await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
     expect(requests.sort()).toEqual(["busy-spin.css", "compact-icon-button.css"]);
-    // 19 compact icon button scopes and 9 busy spin scopes.
-    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(28);
+    // 18 compact icon button scopes and 9 busy spin scopes.
+    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(27);
   } finally {
     release.resolve();
   }
@@ -178,6 +178,52 @@ test("pagination keeps its compact surface, disabled appearance and native activ
   await expect(pagination).toHaveAttribute("data-selected-page", "2");
 });
 
+test("pagination draws into shadow roots its styles stay inside and the document's styles do not enter", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-pagination"));
+  const result = await page.evaluate(async () => {
+    const pagination = document.createElement("caffold-pagination");
+    pagination.setAttribute("page", "1");
+    pagination.setAttribute("total-pages", "3");
+    pagination.setAttribute("has-next", "");
+    // Outside the pagination, the classes it styles inside.
+    const outside = document.createElement("div");
+    outside.innerHTML = `<nav class="pagination-panel"><button class="pagination-button">Outside</button></nav>`;
+    document.body.append(pagination, outside);
+    await pagination.updateComplete;
+    const host = pagination.shadowRoot.querySelector('caffold-pagination-button[kind="next"]');
+    await host.updateComplete;
+    const next = host.shadowRoot.querySelector(".pagination-button");
+    const documentRule = new CSSStyleSheet();
+    documentRule.replaceSync(".pagination-button { opacity: 0.25; }");
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, documentRule];
+    const outsideButton = outside.querySelector(".pagination-button");
+    return {
+      roots: [pagination.shadowRoot?.mode, host.shadowRoot?.mode],
+      lightChildren: pagination.childElementCount + host.childElementCount,
+      outsidePanel: getComputedStyle(outside.firstElementChild).display,
+      outsideSurface: getComputedStyle(outsideButton, "::before").content,
+      outsideOpacity: getComputedStyle(outsideButton).opacity,
+      insideOpacity: getComputedStyle(next).opacity,
+      insideBoxSizing: getComputedStyle(next).boxSizing,
+      insideFont: getComputedStyle(next).fontFamily === getComputedStyle(document.body).fontFamily,
+      hiddenLabel: getComputedStyle(next.querySelector(".sr-only")).position,
+    };
+  });
+  expect(result).toEqual({
+    roots: ["open", "open"],
+    lightChildren: 0,
+    outsidePanel: "block",
+    outsideSurface: "none",
+    outsideOpacity: "0.25",
+    insideOpacity: "1",
+    insideBoxSizing: "border-box",
+    insideFont: true,
+    hiddenLabel: "absolute",
+  });
+});
+
 test("a drawn ref keeps its element out of the document and lets go once it is no longer drawn", { tag: "@viewport-independent" }, async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
@@ -241,13 +287,14 @@ test("pagination offers its enabled page buttons as Action Hints from the page i
     pagination.setAttribute("has-next", "");
     document.body.append(pagination);
     const clip = document.body;
+    const pull = () => pagination.actionHintScope({
+      scopeId: "issues:page",
+      actionId: "navigation.page",
+      clipRoots: [clip],
+    });
     const targets = async () => {
       await new Promise(requestAnimationFrame);
-      return pagination.actionHintScope({
-        scopeId: "issues:page",
-        actionId: "navigation.page",
-        clipRoots: [clip],
-      }).targets.map((target) => ({
+      return pull().targets.map((target) => ({
         id: target.id,
         actionId: target.actionId,
         label: target.label,
@@ -255,16 +302,21 @@ test("pagination offers its enabled page buttons as Action Hints from the page i
       }));
     };
     const firstPage = await targets();
+    // A change inside any of the shadow roots revalidates.
+    const buttons = [...pagination.shadowRoot.querySelectorAll("caffold-pagination-button")];
+    const watchesEveryRoot = [pagination, ...buttons].every((owner) =>
+      pull().mutationRoots.includes(owner.shadowRoot));
     pagination.setAttribute("has-previous", "");
     pagination.setAttribute("page", "2");
     const secondPage = await targets();
     pagination.setAttribute("total-pages", "1");
     const onePage = await targets();
-    return { firstPage, secondPage, onePage };
+    return { firstPage, watchesEveryRoot, secondPage, onePage };
   });
   const target = (id, label) => ({ id: `issues:page:page:${id}`, actionId: "navigation.page", label, clipped: true });
   expect(result).toEqual({
     firstPage: [target("next:2", "Next page"), target("last:3", "Last page")],
+    watchesEveryRoot: true,
     secondPage: [
       target("first:1", "First page"),
       target("previous:1", "Previous page"),
@@ -316,20 +368,23 @@ test("pagination changes its page in place and leaves the same page untouched", 
     pagination.setAttribute("total-pages", "3");
     pagination.setAttribute("has-next", "");
     document.body.append(pagination);
+    const hosts = () => [...pagination.shadowRoot.querySelectorAll(
+      ".pagination-panel > caffold-pagination-button",
+    )];
     const rendered = async () => {
       await pagination.updateComplete;
-      await Promise.all([...pagination.querySelectorAll("caffold-pagination-button")].map((button) => button.updateComplete));
+      await Promise.all(hosts().map((host) => host.updateComplete));
     };
     await rendered();
-    const buttons = () => [...pagination.querySelectorAll(
-      ":scope > .pagination-panel > caffold-pagination-button > .pagination-button",
-    )];
-    const indicator = () => pagination.querySelector(":scope > .pagination-panel > .pagination-indicator");
+    const buttons = () => hosts().map((host) => host.shadowRoot.querySelector(".pagination-button"));
+    const indicator = () => pagination.shadowRoot.querySelector(".pagination-panel > .pagination-indicator");
     const firstButtons = buttons();
     const firstIndicator = indicator();
     const records = [];
     const observer = new MutationObserver((delivered) => records.push(...delivered));
-    observer.observe(pagination, { subtree: true, childList: true, attributes: true, characterData: true });
+    for (const root of [pagination, pagination.shadowRoot, ...hosts().map((host) => host.shadowRoot)]) {
+      observer.observe(root, { subtree: true, childList: true, attributes: true, characterData: true });
+    }
     const renderedChanges = () => records.splice(0).concat(observer.takeRecords())
       .filter((record) => record.target !== pagination || record.type !== "attributes");
 

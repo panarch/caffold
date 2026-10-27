@@ -10,7 +10,6 @@ import {
   type DirectoryListing,
   listDirectory,
 } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
 import {
   mergeScrollSurfaceScopes,
   type ScrollSurfacePull,
@@ -31,6 +30,8 @@ import { inlineIcon, warmIcons } from "../../icons.js";
 import "../../loading-text.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
 import type { FileTreeLoadChildrenDetail } from "../../file-tree.js";
+
+import { compactIconButton } from "#app/component-styles.js";
 
 export interface OpenEntryDetail {
   path: string;

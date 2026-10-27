@@ -1,9 +1,8 @@
+@import "./caffold-element/base.css";
 @import "./pages/layout.css";
 @import "./pages/components/build-mismatch-alert.css";
 @import "./pages/components/update-dialog.css";
 @import "./pages/components/update-result-dialog.css";
-@import "./components/pagination.css";
-@import "./components/pagination/components/button.css";
 @import "./components/file-tree.css";
 @import "./components/file-navigator.css";
 @import "./components/file-viewer.css";
@@ -686,10 +685,6 @@ html {
   -webkit-tap-highlight-color: var(--tap-highlight-color);
 }
 
-* {
-  box-sizing: border-box;
-}
-
 body {
   margin: 0;
   min-width: 320px;
@@ -698,37 +693,6 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
-}
-
-button {
-  font: inherit;
-}
-
-code,
-kbd,
-pre,
-samp {
-  font-family: var(--font-code);
-}
-
-[hidden] {
-  display: none !important;
-}
-
-.surface-message {
-  margin: 0;
-  padding: var(--interface-space-7);
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
 }
 
 @media (max-width: 520px) {

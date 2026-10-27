@@ -12,6 +12,12 @@ const registeredStyles = [
   "component-styles/compact-icon-button.css",
   "component-styles/busy-spin.css",
 ];
+const baseStyles = "caffold-element/base.css";
+// Stylesheets a component puts in the shadow root it renders into, by owner.
+const shadowRootStyles = new Map([
+  ["components/pagination.css", "caffold-pagination"],
+  ["components/pagination/components/button.css", "caffold-pagination-button"],
+]);
 const ownership = new Map([
   ["components/file-viewer/components/code-viewer.css", ["caffold-code-viewer"]],
   ["components/file-viewer/components/diff-viewer.css", ["caffold-diff-viewer"]],
@@ -51,8 +57,6 @@ const ownership = new Map([
   ["components/docx-viewer.css", ["caffold-docx-viewer"]],
   ["components/pptx-viewer.css", ["caffold-pptx-viewer"]],
   ["components/xlsx-viewer.css", ["caffold-xlsx-viewer"]],
-  ["components/pagination.css", ["caffold-pagination"]],
-  ["components/pagination/components/button.css", ["caffold-pagination-button"]],
   [
     "components/pane-resizer.css",
     ["caffold-pane-resizer"],
@@ -874,8 +878,37 @@ test("supports stylesheets shared by explicitly declared owners", () => {
 
 test("frontend CSS manifest covers every stylesheet", () => {
   const discovered = discoverCssFiles(frontendRoot);
-  const declared = [...ownership.keys(), ...registeredStyles, "styles.css"].sort();
+  const declared = [
+    ...ownership.keys(),
+    ...shadowRootStyles.keys(),
+    ...registeredStyles,
+    baseStyles,
+    "styles.css",
+  ].sort();
   assert.deepEqual(declared, discovered);
+});
+
+test("a shadow root's stylesheet is its owner's alone and names no element outside the root", () => {
+  const entrypoint = readFileSync(`${frontendRoot}styles.css`, "utf8");
+  for (const [path, owner] of shadowRootStyles) {
+    const css = readFileSync(`${frontendRoot}${path}`, "utf8");
+    const module = readFileSync(`${frontendRoot}${path.replace(/\.css$/, ".ts")}`, "utf8");
+    const name = path.split("/").pop();
+    assert.match(module, new RegExp(`customElement\\("${owner}"\\)`), path);
+    assert.match(module, new RegExp(`from "\\./${name.replace(".", "\\.")}\\.js"`), path);
+    assert.equal(entrypoint.includes(`@import "./${path}"`), false, path);
+    // A constructed stylesheet drops `@import`; the host is `:host`.
+    assert.doesNotMatch(css, /@import\b|caffold-/, path);
+    assert.ok(effectiveSelectors(css).includes(":host"), path);
+  }
+});
+
+test("the base rules every tree takes name no component and import nothing", () => {
+  const css = readFileSync(`${frontendRoot}${baseStyles}`, "utf8");
+  assert.doesNotMatch(css, /@import\b|caffold-/);
+  assert.ok(
+    readFileSync(`${frontendRoot}styles.css`, "utf8").startsWith(`@import "./${baseStyles}";`),
+  );
 });
 
 test("all component styles stay inside their ownership boundaries", () => {

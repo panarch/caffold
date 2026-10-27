@@ -1,38 +1,38 @@
-caffold-pagination-button {
+:host {
   display: block;
+}
 
-  & > .pagination-button {
-    margin-block: 0;
-    color: var(--control-fg);
-  }
+.pagination-button {
+  margin-block: 0;
+  color: var(--control-fg);
+}
 
-  & > .pagination-button:hover::before,
-  & > .pagination-button:focus-visible::before {
-    border-color: var(--control-emphasis-border);
-    background: var(--control-subtle-hover-bg);
-  }
+.pagination-button:hover::before,
+.pagination-button:focus-visible::before {
+  border-color: var(--control-emphasis-border);
+  background: var(--control-subtle-hover-bg);
+}
 
-  & > .pagination-button:disabled {
-    color: var(--disabled-text);
-    cursor: default;
-    opacity: 0.55;
-  }
+.pagination-button:disabled {
+  color: var(--disabled-text);
+  cursor: default;
+  opacity: 0.55;
+}
 
-  & > .pagination-button:disabled:hover {
-    background: transparent;
-  }
+.pagination-button:disabled:hover {
+  background: transparent;
+}
 
-  & > .pagination-button:disabled::before,
-  & > .pagination-button:disabled:hover::before {
-    border-color: var(--border);
-    background: var(--surface);
-  }
+.pagination-button:disabled::before,
+.pagination-button:disabled:hover::before {
+  border-color: var(--border);
+  background: var(--surface);
+}
 
-  & .pagination-icon {
-    position: relative;
-    display: block;
-    width: var(--interface-icon-small-size);
-    height: var(--interface-icon-small-size);
-    stroke-width: 2.2;
-  }
+.pagination-icon {
+  position: relative;
+  display: block;
+  width: var(--interface-icon-small-size);
+  height: var(--interface-icon-small-size);
+  stroke-width: 2.2;
 }

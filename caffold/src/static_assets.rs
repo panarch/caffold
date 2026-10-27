@@ -123,6 +123,17 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/element-declarations.js"
         )))),
+        "caffold-element.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/caffold-element.js"
+        )))),
+        "caffold-element/base.css" => {
+            Some(css(include_str!("../../frontend/caffold-element/base.css")))
+        }
+        "caffold-element/base.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/caffold-element/base.css.js"
+        )))),
         "component-styles.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/component-styles.js"
@@ -130,6 +141,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "component-styles/compact-icon-button.css" => Some(css(include_str!(
             "../../frontend/component-styles/compact-icon-button.css"
         ))),
+        "component-styles/compact-icon-button.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/component-styles/compact-icon-button.css.js"
+        )))),
         "component-styles/busy-spin.css" => Some(css(include_str!(
             "../../frontend/component-styles/busy-spin.css"
         ))),
@@ -2003,16 +2018,18 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/components/loading-text.js"
         )))),
-        "components/pagination.css" => Some(css(include_str!(
-            "../../frontend/components/pagination.css"
-        ))),
+        "components/pagination.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/pagination.css.js"
+        )))),
         "components/pagination.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/components/pagination.js"
         )))),
-        "components/pagination/components/button.css" => Some(css(include_str!(
-            "../../frontend/components/pagination/components/button.css"
-        ))),
+        "components/pagination/components/button.css.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/components/pagination/components/button.css.js"
+        )))),
         "components/pagination/components/button.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/components/pagination/components/button.js"
@@ -2113,6 +2130,10 @@ mod tests {
                 "component-styles/compact-icon-button.css",
                 "text/css; charset=utf-8",
             ),
+            (
+                "component-styles/compact-icon-button.css.js",
+                "text/javascript; charset=utf-8",
+            ),
             ("component-styles/busy-spin.css", "text/css; charset=utf-8"),
         ] {
             let asset = get(path).expect("component style asset");
@@ -2207,6 +2228,40 @@ mod tests {
         assert!(get("components/pagination.ts").is_none());
         assert!(get("action-hint-scope.d.ts").is_none());
         assert!(get("service-worker.js.map").is_none());
+    }
+
+    #[test]
+    fn serves_a_shadow_root_stylesheet_as_the_module_the_build_writes_beside_it() {
+        for (path, stylesheet) in [
+            (
+                "caffold-element/base.css.js",
+                include_str!("../../frontend/caffold-element/base.css"),
+            ),
+            (
+                "components/pagination.css.js",
+                include_str!("../../frontend/components/pagination.css"),
+            ),
+            (
+                "components/pagination/components/button.css.js",
+                include_str!("../../frontend/components/pagination/components/button.css"),
+            ),
+        ] {
+            let module = get(path).unwrap_or_else(|| panic!("missing stylesheet module {path}"));
+            assert_eq!(module.content_type, "text/javascript; charset=utf-8");
+            let text = serde_json::to_string(stylesheet).expect("stylesheet text");
+            assert_eq!(
+                std::str::from_utf8(module.body).expect("UTF-8 module"),
+                format!(
+                    "const sheet = new CSSStyleSheet();\nsheet.replaceSync({text});\nexport default sheet;\n"
+                )
+            );
+        }
+        // The components import their stylesheets; the document does not, but
+        // it loads the base rules too.
+        assert!(get("components/pagination.css").is_none());
+        assert!(get("components/pagination/components/button.css").is_none());
+        let base = get("caffold-element/base.css").expect("base stylesheet");
+        assert_eq!(base.content_type, "text/css; charset=utf-8");
     }
 
     #[test]
@@ -2526,7 +2581,6 @@ mod tests {
         assert!(scroll_scope.body.starts_with(b"import {"));
 
         for path in [
-            "components/pagination/components/button.css",
             "keyboard-navigation/components/hud.css",
             "keyboard-navigation/components/selector.css",
             "keyboard-navigation/components/presentation.css",

@@ -1,7 +1,8 @@
 import { html, LitElement, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { busySpin } from "#app/component-styles.js";
 import { activeTurnDuration } from "../active-turn.js";
+
+import { busySpin } from "#app/component-styles.js";
 
 await busySpin.register(
   "caffold-task-active-turn",

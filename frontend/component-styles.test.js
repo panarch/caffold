@@ -100,6 +100,32 @@ test("a child path step may carry the owner's state classes", async (t) => {
   );
 });
 
+test("a shadow root takes one scoped sheet per target and refuses anything but a local class path", async (t) => {
+  const requests = [];
+  const { compactIconButton } = await styleEnvironment(t, async (url) => {
+    requests.push(url.href);
+    return new Response(":scope {}");
+  });
+  const button = compactIconButton(".pagination-button");
+  assert.equal(compactIconButton(".pagination-button"), button);
+  assert.notEqual(compactIconButton(".is-refreshing .refresh-icon"), button);
+  assert.match(
+    button.text,
+    /^@layer component-styles \{\s*@scope \(\.pagination-button\) \{/,
+  );
+  for (const target of [
+    "> .button",
+    ".button, button",
+    ".button) {}",
+    "caffold-child .button",
+    ".panel button",
+  ])
+    assert.throws(() => compactIconButton(target), /class path/);
+  // The shadow root's sheet comes with the module; nothing is fetched.
+  assert.deepEqual(requests, []);
+  assert.equal(document.adoptedStyleSheets.length, 0);
+});
+
 async function styleEnvironment(t, fetchSource) {
   const originals = new Map(["document", "CSSStyleSheet", "fetch"].map((key) =>
     [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -112,6 +138,8 @@ async function styleEnvironment(t, fetchSource) {
   globalThis.document = { adoptedStyleSheets: [] };
   globalThis.fetch = fetchSource;
   globalThis.CSSStyleSheet = class {
+    cssRules = [];
+
     replaceSync(text) {
       this.text = text;
       this.cssRules = [{ cssRules: [{ cssRules: [{}] }] }];

@@ -7,7 +7,6 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hints.js";
 import type { GitRepository } from "#app/api.js";
-import { compactIconButton } from "#app/component-styles.js";
 import { routeMode } from "#app/navigation-routes.js";
 import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import { createRefreshCoordinator, subscribeToWatch } from "#app/watch.js";
@@ -29,6 +28,8 @@ import {
   type GitControlsSnapshot,
   IDLE_CONTROLS,
 } from "./components/controls.js";
+
+import { compactIconButton } from "#app/component-styles.js";
 
 export interface RequestGitRouteDetail {
   route: GitRoute;
