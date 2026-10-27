@@ -283,8 +283,7 @@ h2 {
 }
 
 /* The button the Task and Note details popovers give their actions, with
-its icon before the label. */
-
+   its icon before the label. */
 .viewer-download-link {
   position: relative;
   isolation: isolate;

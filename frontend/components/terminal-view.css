@@ -25,7 +25,6 @@
 }
 
 /* xterm.js paints its scroll area black; the rows below the last full one show it. */
-
 .xterm .xterm-viewport {
   background-color: var(--terminal-background);
 }

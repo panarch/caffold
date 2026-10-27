@@ -1,8 +1,7 @@
 /* The workbook fills the viewer: the sheet takes the height left after the
-tab strip, scrolls on both axes, and keeps its headers and frozen tracks in
-view. A sheet is white paper in every theme, like a document page; its
-headers and tabs are Interface. */
-
+   tab strip, scrolls on both axes, and keeps its headers and frozen tracks in
+   view. A sheet is white paper in every theme, like a document page; its
+   headers and tabs are Interface. */
 :host {
   --xlsx-column-header-height: var(--interface-compact-visual-size);
 
@@ -53,8 +52,7 @@ headers and tabs are Interface. */
 }
 
 /* The sheet sets its row-number digits on the space, which is where a
-custom property reading them has to be declared. */
-
+   custom property reading them has to be declared. */
 .xlsx-viewer-space {
   --xlsx-row-header-width: calc(var(--xlsx-row-number-digits, 2) * 1ch + 1rem);
 
@@ -117,8 +115,7 @@ custom property reading them has to be declared. */
 }
 
 /* Excel's defaults for a cell the workbook leaves unstyled: bottom-aligned
-11pt text on gridlines, clipped at the cell's edge. */
-
+   11pt text on gridlines, clipped at the cell's edge. */
 .xlsx-viewer-cell {
   display: flex;
   align-items: end;
@@ -158,8 +155,7 @@ custom property reading them has to be declared. */
 }
 
 /* The tabs take the height of their control and scroll sideways when the
-workbook has more sheets than fit. */
-
+   workbook has more sheets than fit. */
 .xlsx-viewer-tabs {
   display: flex;
   overflow-x: auto;

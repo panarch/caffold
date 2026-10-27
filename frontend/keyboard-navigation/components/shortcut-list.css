@@ -20,7 +20,6 @@ h3 {
 }
 
 /* A section's description sits under its title, and its note under its keys. */
-
 section > p {
   color: var(--muted);
   font-size: var(--interface-meta-font-size);
@@ -36,7 +35,6 @@ dl + p {
 }
 
 /* The rows of a section share one key column, as wide as its widest keys. */
-
 dl {
   display: grid;
   grid-template-columns: minmax(7rem, max-content) minmax(0, 1fr);

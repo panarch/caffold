@@ -34,8 +34,7 @@
 }
 
 /* Touch keeps :hover after a tap, so only a hover-capable pointer takes the
-hover highlight. */
-
+   hover highlight. */
 @media (hover: hover) {
   :host(:hover)::after,
   :host(:hover) > .pane-resizer-handle {

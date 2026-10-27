@@ -26,8 +26,7 @@
 }
 
 /* A page never grows past the width the document declares, and never forces
-the panel wider than the viewport. */
-
+   the panel wider than the viewport. */
 .pdf-viewer-page {
   width: min(100%, var(--pdf-page-width, 100%));
   margin-inline: auto;

@@ -5,9 +5,8 @@
   display: block;
   min-width: 0;
   min-height: 0;
-
   /* An owner whose tree grows with its rows sets the height to auto and caps
-  the scrollport instead. */
+     the scrollport instead. */
   height: var(--file-tree-height, 100%);
 }
 
@@ -255,8 +254,7 @@
 }
 
 /* A message under a folder starts below the folder's name, a short step
-past its branch guide. */
-
+   past its branch guide. */
 .file-tree-status[data-file-tree-parent-key] {
   --file-tree-status-name-depth: calc(var(--tree-depth, 0) - 1);
 }
