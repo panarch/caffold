@@ -199,16 +199,16 @@ test("copies a file the server calls unchanged from an earlier build's cache", a
   const harness = createHarness({
     cacheEntries: {
       "caffold-shell-older-build": new Map([
-        ["/assets/app.js", taggedResponse("older app", '"app-older"')],
+        ["/assets/app.ts", taggedResponse("older app", '"app-older"')],
       ]),
       "caffold-shell-current-build": new Map([
-        ["/assets/app.js", taggedResponse("current app", '"app-current"')],
+        ["/assets/app.ts", taggedResponse("current app", '"app-current"')],
       ]),
       "caffold-shell-test-build": new Map(),
     },
     fetch: async (path, init) => {
       requests.push({ path, init });
-      return path === "/assets/app.js"
+      return path === "/assets/app.ts"
         ? new Response(null, { status: 304 })
         : new Response(`network ${path}`);
     },
@@ -216,12 +216,12 @@ test("copies a file the server calls unchanged from an earlier build's cache", a
 
   await harness.dispatchExtendable("install");
 
-  assert.equal(await installedResponse(harness, "/assets/app.js").text(), "current app");
+  assert.equal(await installedResponse(harness, "/assets/app.ts").text(), "current app");
   // The worker builds the request options in its own context.
   assert.deepEqual(
-    JSON.parse(JSON.stringify(requests.filter(({ path }) => path === "/assets/app.js"))),
+    JSON.parse(JSON.stringify(requests.filter(({ path }) => path === "/assets/app.ts"))),
     [{
-      path: "/assets/app.js",
+      path: "/assets/app.ts",
       init: { cache: "no-store", headers: { "If-None-Match": '"app-current"' } },
     }],
   );
@@ -235,18 +235,18 @@ test("downloads a file the server says changed since the earlier build", async (
   const harness = createHarness({
     cacheEntries: {
       "caffold-shell-current-build": new Map([
-        ["/assets/app.js", taggedResponse("current app", '"app-current"')],
+        ["/assets/app.ts", taggedResponse("current app", '"app-current"')],
       ]),
       "caffold-shell-test-build": new Map(),
     },
     fetch: async (path) =>
-      new Response(path === "/assets/app.js" ? "replacement app" : `network ${path}`),
+      new Response(path === "/assets/app.ts" ? "replacement app" : `network ${path}`),
   });
 
   await harness.dispatchExtendable("install");
 
   assert.equal(
-    await installedResponse(harness, "/assets/app.js").text(),
+    await installedResponse(harness, "/assets/app.ts").text(),
     "replacement app",
   );
 });
@@ -257,7 +257,7 @@ test("downloads a file without asking when no earlier copy carries a tag", async
     cacheEntries: {
       "caffold-shell-current-build": new Map([["/", new Response("current shell")]]),
       "other-cache": new Map([
-        ["/assets/app.js", taggedResponse("other app", '"app-other"')],
+        ["/assets/app.ts", taggedResponse("other app", '"app-other"')],
       ]),
       "caffold-shell-test-build": new Map([
         ["/assets/styles.css", taggedResponse("partial styles", '"styles-partial"')],
@@ -271,7 +271,7 @@ test("downloads a file without asking when no earlier copy carries a tag", async
 
   await harness.dispatchExtendable("install");
 
-  for (const path of ["/", "/assets/app.js", "/assets/styles.css"]) {
+  for (const path of ["/", "/assets/app.ts", "/assets/styles.css"]) {
     assert.deepEqual(requests.filter((request) => request.path === path), [
       { path, init: undefined },
     ]);
@@ -283,7 +283,7 @@ test("discards the build's cache when any shell file cannot be fetched", async (
   const harness = createHarness({
     cacheEntries: {
       "caffold-shell-current-build": new Map([
-        ["/assets/app.js", taggedResponse("current app", '"app-current"')],
+        ["/assets/app.ts", taggedResponse("current app", '"app-current"')],
       ]),
       "caffold-shell-test-build": new Map(),
     },
@@ -291,7 +291,7 @@ test("discards the build's cache when any shell file cannot be fetched", async (
       if (path === "/assets/styles.css") {
         return new Response("unavailable", { status: 503 });
       }
-      return path === "/assets/app.js"
+      return path === "/assets/app.ts"
         ? new Response(null, { status: 304 })
         : new Response(`network ${path}`);
     },
@@ -303,7 +303,7 @@ test("discards the build's cache when any shell file cannot be fetched", async (
 
 for (const [name, url, cachePath] of [
   ["navigation", "https://caffold.test/tasks/83", "/"],
-  ["asset", "https://caffold.test/assets/app.js", "/assets/app.js"],
+  ["asset", "https://caffold.test/assets/app.ts", "/assets/app.ts"],
 ]) {
   test(`serves cached ${name} without waiting for a stalled network`, async () => {
     let fetchCalls = 0;
@@ -340,7 +340,7 @@ test("fails a missing shell request explicitly after the network bound", async (
 
   const response = await harness.dispatchFetch({
     method: "GET",
-    url: "https://caffold.test/assets/app.js",
+    url: "https://caffold.test/assets/app.ts",
   });
   assert.equal(response.status, 504);
   assert.equal(await response.text(), "Caffold app shell is unavailable.");

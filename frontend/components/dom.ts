@@ -1,11 +1,3 @@
-const HTML_ESCAPE: Readonly<Record<string, string>> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
 const IMAGE_TYPES: Readonly<Record<string, string>> = {
   avif: "AVIF image",
   gif: "GIF image",
@@ -33,13 +25,6 @@ const DOCUMENT_KINDS = new Map<string, DocumentPreviewKind>([
   ["xlsm", "xlsx"],
   ["xlsx", "xlsx"],
 ]);
-
-export function escapeHtml(value: unknown) {
-  return String(value).replace(
-    /[&<>"']/g,
-    (character) => HTML_ESCAPE[character],
-  );
-}
 
 export function formatBytes(size: number | null | undefined) {
   if (size === null || size === undefined) {

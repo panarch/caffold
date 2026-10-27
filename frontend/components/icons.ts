@@ -1,6 +1,5 @@
 import { html } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
-import { escapeHtml } from "./dom.ts";
 
 const LUCIDE_CDN = "https://esm.sh/lucide@1.22.0";
 
@@ -128,14 +127,6 @@ export function inlineIcon(
 ) {
   const svg = unsafeHTML(iconSvg(name, className));
   return html`${svg}<span class="sr-only">${label}</span>`;
-}
-
-export function renderInlineIcon(
-  name: string,
-  label: string,
-  className = "inline-icon-svg",
-) {
-  return `${iconSvg(name, className)}<span class="sr-only">${escapeHtml(label)}</span>`;
 }
 
 function iconForEntry(entry: IconEntry) {

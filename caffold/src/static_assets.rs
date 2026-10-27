@@ -16,7 +16,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             "/build-info.js"
         )))),
         "styles.css" => Some(css(include_str!("../../frontend/styles.css"))),
-        "app.js" => Some(js(include_str!("../../frontend/app.js"))),
+        "app.ts" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/app.ts"
+        )))),
         "lit/index.js" => Some(js(include_str!("../../frontend/node_modules/lit/index.js"))),
         "lit/async-directive.js" => Some(js(include_str!(
             "../../frontend/node_modules/lit/async-directive.js"

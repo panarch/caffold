@@ -18,7 +18,7 @@ const APP_SHELL_ASSETS = [
   "/",
   "/assets/manifest.webmanifest",
   "/assets/styles.css",
-  "/assets/app.js",
+  "/assets/app.ts",
   "/assets/build-info.js",
   "/assets/lit/index.js",
   "/assets/lit/async-directive.js",

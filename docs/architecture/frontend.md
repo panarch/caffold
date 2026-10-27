@@ -103,10 +103,10 @@ rendered DOM, such as scroll restoration, focus, or measurement, runs in
 owner that needs a child's rendered DOM awaits the child's `updateComplete`.
 A component that calls methods on a child its own template draws renders its
 pending update, with `performUpdate()`, before it looks the child up, so the
-child is there even before the component is in the document. While the owners
-that command a component are still JavaScript, the component also renders at
-once when it connects and when one of its public methods changes what it
-shows, so those owners can read its DOM right after mounting or calling it.
+child is there even before the component is in the document. A component also
+renders at once when it connects and when one of its public methods changes
+what it shows, so the owner that mounts or calls it can read its DOM right
+away.
 The Task conversation renders the components its entries mount at once in the
 same way, because Task Detail reads the whole transcript right after it
 changes.

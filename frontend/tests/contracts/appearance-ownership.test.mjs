@@ -837,7 +837,7 @@ test("control paint layers do not pull screen-reader text into layout", () => {
 test("the browser fixture renders every shared inline icon used by production", () => {
   const usedNames = new Set(
     frontendSources().flatMap(([, source]) =>
-      [...source.matchAll(/renderInlineIcon\("([A-Za-z0-9]+)"/g)].map(
+      [...source.matchAll(/\binlineIcon\("([A-Za-z0-9]+)"/g)].map(
         (match) => match[1],
       ),
     ),
