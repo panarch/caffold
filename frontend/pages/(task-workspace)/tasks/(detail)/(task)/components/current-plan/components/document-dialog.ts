@@ -62,7 +62,6 @@ export class CaffoldCurrentPlanDocumentDialog extends LitElement {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
-    this.performUpdate();
   }
 
   disconnectedCallback() {

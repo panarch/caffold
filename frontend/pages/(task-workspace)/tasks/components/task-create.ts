@@ -70,7 +70,8 @@ export type TaskCreateIntentDetail =
  *
  * The surface that mounts it hands it the directory, the server's paths, and
  * whether Tasks can be made now, and starts the Task it asks for. It draws at
- * once wherever its state changes, since that surface reads it right after.
+ * once wherever its state changes, since it hands its directory field and
+ * Composer their context right after drawing them.
  */
 export class CaffoldTaskCreate extends LitElement {
   private cwd = ".";

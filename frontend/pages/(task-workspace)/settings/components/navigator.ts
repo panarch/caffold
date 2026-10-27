@@ -61,11 +61,6 @@ export class CaffoldSettingsNavigator extends LitElement {
     return this;
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
-  }
-
   render() {
     const items = ITEMS.map((entry) => {
       const about = entry.section === "about";

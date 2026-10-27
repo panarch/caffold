@@ -17,11 +17,6 @@ export class CaffoldUpdateDialog extends LitElement {
     return this;
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
-  }
-
   render() {
     return html`
       <dialog

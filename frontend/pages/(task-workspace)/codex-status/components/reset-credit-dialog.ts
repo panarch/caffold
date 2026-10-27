@@ -33,11 +33,6 @@ export class CaffoldCodexResetCreditDialog extends LitElement {
     return this;
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
-  }
-
   render() {
     const { creditId, title, expiry, retry = false } = this.request;
     const heading = retry
@@ -94,7 +89,6 @@ export class CaffoldCodexResetCreditDialog extends LitElement {
 
   open(request: ResetCreditRequest = {}) {
     this.request = request;
-    this.performUpdate();
     const dialog = this.dialog.value;
     if (!dialog || dialog.open) {
       return;

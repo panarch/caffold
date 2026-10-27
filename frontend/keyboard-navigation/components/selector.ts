@@ -55,11 +55,6 @@ export class CaffoldScrollSurfaceSelector extends LitElement {
     return this;
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
-  }
-
   disconnectedCallback() {
     super.disconnectedCallback();
     this.close();
@@ -118,7 +113,6 @@ export class CaffoldScrollSurfaceSelector extends LitElement {
     surfaces: readonly SelectableScrollSurface[],
     viewportRect: Rect | null,
   ) {
-    this.performUpdate();
     const dialog = this.dialog.value;
     if (!dialog) {
       return;

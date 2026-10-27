@@ -23,12 +23,13 @@ let taskDetailGithubInstanceId = 0;
 /**
  * The Detail header's GitHub button, and the popover of GitHub work it
  * opens: Pull Requests and Issues.
- *
- * The Detail layout hands it whether GitHub is available and reads it right
- * after, so it draws at once.
  */
 export class CaffoldTaskDetailGithub extends LitElement {
-  private available = false;
+  static properties = {
+    available: { state: true },
+  };
+
+  declare private available: boolean;
   private readonly popoverId =
     `task-github-actions-${++taskDetailGithubInstanceId}`;
   private readonly hints = new ActionHints(this);
@@ -37,6 +38,7 @@ export class CaffoldTaskDetailGithub extends LitElement {
 
   constructor() {
     super();
+    this.available = false;
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
       this.handleDismiss(event),
     );
@@ -53,8 +55,6 @@ export class CaffoldTaskDetailGithub extends LitElement {
 
   setSnapshot({ available = false }: { available?: boolean } = {}) {
     this.available = Boolean(available);
-    this.requestUpdate();
-    this.performUpdate();
     if (!this.available) {
       this.deactivate();
     }

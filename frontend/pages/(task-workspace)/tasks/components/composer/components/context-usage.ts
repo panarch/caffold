@@ -47,7 +47,6 @@ export class CaffoldTaskContextUsage extends LitElement {
       return;
     }
     this.usage = next;
-    this.performUpdate();
   }
 
   render() {

@@ -44,19 +44,27 @@ let currentPlanInstanceId = 0;
  * cannot be read. It reads the plan again whenever its files change.
  */
 export class CaffoldTaskCurrentPlan extends LitElement {
+  static properties = {
+    node: { state: true },
+    context: { state: true },
+    projection: { state: true },
+    readError: { state: true },
+    watchError: { state: true },
+  };
+
+  declare private node: CurrentPlanNode;
+  declare private context: CurrentPlanContext | null;
+  declare private projection: CurrentPlanProjection | null;
+  declare private readError: Error | null;
+  declare private watchError: Error | null;
   private readonly statusPopoverId =
     `task-current-plan-status-${++currentPlanInstanceId}`;
-  private node: CurrentPlanNode = CURRENT_PLAN_NODE.INACTIVE;
-  private context: CurrentPlanContext | null = null;
   private contextGeneration = 0;
   private requestId = 0;
   private requestController: AbortController | null = null;
   private liveUpdates: WorkspaceLiveUpdates | null = null;
   private watchPath = "";
   private watchUnsubscribe: (() => void) | null = null;
-  private projection: CurrentPlanProjection | null = null;
-  private readError: Error | null = null;
-  private watchError: Error | null = null;
   // Whether focus sat on the status controls before a drawing hid them.
   private statusHadFocus = false;
   private readonly iconsReady = () => this.requestUpdate();
@@ -71,6 +79,11 @@ export class CaffoldTaskCurrentPlan extends LitElement {
 
   constructor() {
     super();
+    this.node = CURRENT_PLAN_NODE.INACTIVE;
+    this.context = null;
+    this.projection = null;
+    this.readError = null;
+    this.watchError = null;
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
       this.handleDismiss(event),
     );
@@ -84,7 +97,6 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
-    this.performUpdate();
     if (this.context) {
       this.requestRead();
     }
@@ -128,12 +140,10 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     this.clearActivation();
     this.context = next;
     if (this.node !== CURRENT_PLAN_NODE.INACTIVE) {
-      this.transition(CURRENT_PLAN_NODE.INACTIVE, { draw: false });
+      this.transition(CURRENT_PLAN_NODE.INACTIVE);
     }
     if (this.isConnected) {
       this.requestRead();
-    } else {
-      this.draw();
     }
   }
 
@@ -142,8 +152,6 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     this.context = null;
     if (this.node !== CURRENT_PLAN_NODE.INACTIVE) {
       this.transition(CURRENT_PLAN_NODE.INACTIVE);
-    } else {
-      this.draw();
     }
   }
 
@@ -354,11 +362,6 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     }
   }
 
-  private draw() {
-    this.requestUpdate();
-    this.performUpdate();
-  }
-
   private clearActivation() {
     this.contextGeneration += 1;
     this.invalidateRequest();
@@ -484,7 +487,6 @@ export class CaffoldTaskCurrentPlan extends LitElement {
         }
         this.watchError =
           error instanceof Error ? error : new Error(`${error}`);
-        this.draw();
       },
     });
   }
@@ -509,14 +511,11 @@ export class CaffoldTaskCurrentPlan extends LitElement {
     this.requestController = null;
   }
 
-  private transition(next: CurrentPlanNode, { draw = true } = {}) {
+  private transition(next: CurrentPlanNode) {
     if (!currentPlanTransitionAllowed(this.node, next)) {
       return false;
     }
     this.node = next;
-    if (draw) {
-      this.draw();
-    }
     return true;
   }
 

@@ -30,11 +30,6 @@ export class CaffoldUpdateResultDialog extends LitElement {
     return this;
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
-  }
-
   render() {
     return html`
       <dialog
@@ -76,7 +71,6 @@ export class CaffoldUpdateResultDialog extends LitElement {
       return;
     }
     this.notice = notice;
-    this.performUpdate();
     const dialog = this.dialog.value;
     if (!dialog || dialog.open) {
       return;

@@ -16,14 +16,13 @@ afterEach(() => {
   }
 });
 
-// A dialog whose drawing is kept as markup, with a native dialog stand-in.
+// A dialog with a native dialog stand-in.
 function dialogFixture() {
   const dialog = { open: false, showModal() { this.open = true; }, close() { this.open = false; } };
   const owner = Object.create(Dialog.prototype, Object.getOwnPropertyDescriptors({
     phase: "idle", generation: 0, context: null, target: null, failure: null,
-    isConnected: true, intents: [], drawn: "",
+    isConnected: true, intents: [],
     dialog: { value: dialog },
-    draw() { this.drawn = templateHtml(this.render()).replace(/\s+/g, " "); },
     intent(detail) { this.intents.push(detail); },
   }));
   owner.hints = new ActionHints(owner);
@@ -43,13 +42,12 @@ test("all declared deletion edges and rejected events use one phase authority", 
     for (const event of ["open", "cancel", "confirm", "success", "failure", "refused", "reset", "stale"]) {
       const { owner } = dialogFixture();
       owner.phase = phase;
-      owner.drawn = "";
       assert.equal(owner.transition(event), event in allowed, `${phase}/${event}`);
       assert.equal(owner.phase, allowed[event] ?? phase);
       if (event in allowed) {
         const deleting = owner.phase === "deleting";
-        assert.match(owner.drawn, new RegExp(`closedby="${deleting ? "none" : "any"}"`));
-        assert.equal((owner.drawn.match(/\?disabled="true"/g) ?? []).length, deleting ? 2 : 0);
+        assert.match(drawn(owner), new RegExp(`closedby="${deleting ? "none" : "any"}"`));
+        assert.equal((drawn(owner).match(/\?disabled="true"/g) ?? []).length, deleting ? 2 : 0);
       }
     }
   }
@@ -58,8 +56,8 @@ test("all declared deletion edges and rejected events use one phase authority", 
 test("cancel and revoked confirmation have no mutation and invalidate the captured target", () => {
   const { owner, dialog } = dialogFixture();
   assert.equal(owner.openTask(), true);
-  assert.match(owner.drawn, /Delete task and remaining worktree files\?/);
-  assert.match(owner.drawn, /data-broken-delete-path >\/managed\/uuid</);
+  assert.match(drawn(owner), /Delete task and remaining worktree files\?/);
+  assert.match(drawn(owner), /data-broken-delete-path >\/managed\/uuid</);
   owner.cancel();
   assert.equal(owner.phase, "idle");
   assert.equal(dialog.open, false);
@@ -86,7 +84,7 @@ test("duplicate confirm and cancel cannot interrupt deletion, and stale completi
   assert.equal(requests, 1);
   assert.equal(owner.phase, "deleting");
   assert.equal(dialog.open, true);
-  assert.match(owner.drawn, />Deleting…<\/button>/);
+  assert.match(drawn(owner), />Deleting…<\/button>/);
   owner.setContext({ threadId: "other", error: { allowedActions: ["deleteTask"], worktreeId: "other-uuid" } });
   release();
   await request;
@@ -114,6 +112,10 @@ test("current success publishes deletion, while a partial failure requires a fre
     assert.equal(owner.phase, eligible ? "confirming" : "idle");
     assert.equal(dialog.open, eligible);
     assert.equal(owner.intents.at(-1).type, "broken-delete-error");
-    if (eligible) assert.match(owner.drawn, /role="alert" \?hidden="false"\s*>native delete failed</);
+    if (eligible) assert.match(drawn(owner), /role="alert" \?hidden="false"\s*>native delete failed</);
   }
 });
+
+function drawn(owner) {
+  return templateHtml(owner.render()).replace(/\s+/g, " ");
+}

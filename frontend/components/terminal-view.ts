@@ -92,7 +92,6 @@ export class CaffoldTerminalView extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    this.performUpdate();
     window.addEventListener("caffold:theme-change", this.appearanceChanged);
     window.addEventListener("caffold:settings-change", this.appearanceChanged);
     this.resizeObserver.observe(this);
@@ -119,7 +118,7 @@ export class CaffoldTerminalView extends LitElement {
 
   /** Opens a terminal unless one is open. Resolves with its size once it has a box. */
   async open() {
-    this.performUpdate();
+    await this.updateComplete;
     if (!this.terminal) {
       await this.createTerminal();
     }

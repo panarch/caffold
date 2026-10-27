@@ -32,26 +32,36 @@ export interface ConversationShortcutsContext {
  * that already exists elsewhere: today, a Codex thread.
  *
  * It shows only while active and once Codex is known to be installed, and
- * asks Codex each time it is shown. The Section screen hands it its context
- * and reads it right after, so it draws at once wherever its state changes.
+ * asks Codex each time it is shown.
  */
 export class CaffoldSectionConversationShortcuts extends LitElement {
-  private active = false;
-  private context: ConversationShortcutsContext = {
-    key: "",
-    sectionId: "",
-    path: "",
+  static properties = {
+    context: { state: true },
+    transportAvailable: { state: true },
+    codexReadiness: { state: true },
+    taskStoreStatusSnapshot: { state: true },
   };
-  private transportAvailable = true;
+
+  declare private context: ConversationShortcutsContext;
+  declare private transportAvailable: boolean;
+  declare private codexReadiness: CodexStatusSnapshot;
+  declare private taskStoreStatusSnapshot: TaskStoreStatusSnapshot | null;
+  private active = false;
   // Asked for whenever the row is shown: whether Codex is installed, and why
   // it is blocked. The previous answer stays on show while the next is asked.
-  private codexReadiness: CodexStatusSnapshot = createCodexStatusSnapshot();
   private codexReadinessRequest = 0;
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
   private readonly dialog = new DrawnRef<CaffoldConversationForkDialog>(this);
-  private taskStoreStatusSnapshot: TaskStoreStatusSnapshot | null = null;
+
+  constructor() {
+    super();
+    this.context = { key: "", sectionId: "", path: "" };
+    this.transportAvailable = true;
+    this.codexReadiness = createCodexStatusSnapshot();
+    this.taskStoreStatusSnapshot = null;
+  }
 
   createRenderRoot() {
     return this;
@@ -61,7 +71,6 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
     super.connectedCallback();
     setAttribute(this, "role", "complementary");
     setAttribute(this, "aria-label", "Existing conversations");
-    this.draw();
   }
 
   disconnectedCallback() {
@@ -86,7 +95,6 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
         void this.askCodexReadiness();
       }
     }
-    this.draw();
   }
 
   setTransportAvailable(available: boolean) {
@@ -97,12 +105,10 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
     if (regained && this.active && this.codexReadiness.phase === "failed") {
       void this.askCodexReadiness();
     }
-    this.draw();
   }
 
   setTaskStoreStatusSnapshot(snapshot: TaskStoreStatusSnapshot | null) {
     this.taskStoreStatusSnapshot = snapshot ?? null;
-    this.draw();
   }
 
   activate() {
@@ -111,14 +117,12 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
     if (shown) {
       void this.askCodexReadiness();
     }
-    this.draw();
   }
 
   deactivate() {
     this.active = false;
     this.codexReadinessRequest += 1;
     this.forkDialog()?.deactivate();
-    this.draw();
   }
 
   actionHintScope({ scopeId = "section", ...pull }: ActionHintPull = {}) {
@@ -197,7 +201,6 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
       return;
     }
     this.codexReadiness = answer;
-    this.draw();
   }
 
   private disabledReason() {
@@ -238,11 +241,6 @@ export class CaffoldSectionConversationShortcuts extends LitElement {
 
   private forkDialog() {
     return this.dialog.value;
-  }
-
-  private draw() {
-    this.requestUpdate();
-    this.performUpdate();
   }
 }
 

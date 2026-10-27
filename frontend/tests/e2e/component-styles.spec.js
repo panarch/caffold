@@ -279,21 +279,25 @@ test("segmented control offers the choices other than the current one as Action 
   await page.goto("/");
   await expect(page.locator("caffold-task-workspace")).toBeVisible();
   await page.evaluate(() => customElements.whenDefined("caffold-segmented-control"));
-  const result = await page.evaluate(() => {
+  // Each pull waits for the next frame, as keyboard navigation does.
+  const result = await page.evaluate(async () => {
     const control = document.createElement("caffold-segmented-control");
     document.body.append(control);
     const choices = [
       { value: "changes", label: "Changes" },
       { value: "file path", label: "Files" },
     ];
-    const targets = () => control.actionHintScope({
-      scopeId: "review:navigator-axis",
-      actionId: "navigation.review.axis",
-    }).targets.map((target) => [target.id, target.label]);
+    const targets = async () => {
+      await new Promise(requestAnimationFrame);
+      return control.actionHintScope({
+        scopeId: "review:navigator-axis",
+        actionId: "navigation.review.axis",
+      }).targets.map((target) => [target.id, target.label]);
+    };
     control.setSnapshot({ label: "Review navigator", selected: "changes", choices, actionVerb: "Show" });
-    const onChanges = targets();
+    const onChanges = await targets();
     control.setSnapshot({ label: "Review navigator", selected: "file path", choices });
-    const onFiles = targets();
+    const onFiles = await targets();
     return { onChanges, onFiles };
   });
   expect(result).toEqual({

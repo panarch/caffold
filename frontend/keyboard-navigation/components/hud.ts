@@ -25,7 +25,6 @@ export class CaffoldScrollModeHud extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.hidden = !this.surfaceRect;
-    this.performUpdate();
   }
 
   render() {

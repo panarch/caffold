@@ -22,10 +22,15 @@ const KEYS = Object.freeze([
 ]);
 
 export class CaffoldTerminalSpecialKeys extends LitElement {
-  private controlPending = false;
+  static properties = {
+    controlPending: { state: true },
+  };
+
+  declare private controlPending: boolean;
 
   constructor() {
     super();
+    this.controlPending = false;
     // The keys must not take focus from the terminal, or a phone would close
     // its keyboard on every press.
     this.addEventListener("pointerdown", (event) => {
@@ -48,7 +53,7 @@ export class CaffoldTerminalSpecialKeys extends LitElement {
   /** Whether Ctrl was waiting for this key; it stops waiting either way. */
   consumeControl() {
     const pending = this.controlPending;
-    this.setControlPending(false);
+    this.controlPending = false;
     return pending;
   }
 
@@ -70,7 +75,7 @@ export class CaffoldTerminalSpecialKeys extends LitElement {
   private pressKey(event: Event) {
     const key = `${(event.currentTarget as HTMLButtonElement).dataset.terminalSpecialKey}`;
     if (key === "control") {
-      this.setControlPending(!this.controlPending);
+      this.controlPending = !this.controlPending;
       return;
     }
     this.dispatchEvent(
@@ -79,12 +84,6 @@ export class CaffoldTerminalSpecialKeys extends LitElement {
         detail: { key, control: this.consumeControl() },
       }),
     );
-  }
-
-  private setControlPending(pending: boolean) {
-    this.controlPending = pending;
-    this.requestUpdate();
-    this.performUpdate();
   }
 }
 

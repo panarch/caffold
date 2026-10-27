@@ -107,7 +107,6 @@ export class CaffoldNotesNavigator extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    this.performUpdate();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
   }

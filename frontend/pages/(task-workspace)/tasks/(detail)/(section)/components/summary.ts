@@ -6,7 +6,16 @@ import { sectionLabel } from "#tasks/task-format.ts";
  * whole directory as its title.
  */
 export class CaffoldSectionDetailSummary extends LitElement {
-  private section: { id: string; name: string } | null = null;
+  static properties = {
+    section: { state: true },
+  };
+
+  declare private section: { id: string; name: string } | null;
+
+  constructor() {
+    super();
+    this.section = null;
+  }
 
   createRenderRoot() {
     return this;
@@ -18,8 +27,6 @@ export class CaffoldSectionDetailSummary extends LitElement {
     section?: { id: string; name: string } | null;
   } = {}) {
     this.section = section;
-    this.requestUpdate();
-    this.performUpdate();
   }
 
   render() {

@@ -49,11 +49,20 @@ const COPY: Readonly<
  * Restore; its owner sends the request and hands back how it went.
  */
 export class CaffoldTaskAbsence extends LitElement {
-  private snapshot: TaskAbsenceSnapshot | null = null;
+  static properties = {
+    snapshot: { state: true },
+  };
+
+  declare private snapshot: TaskAbsenceSnapshot | null;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
     clipRoots: () => [this],
   });
+
+  constructor() {
+    super();
+    this.snapshot = null;
+  }
 
   createRenderRoot() {
     return this;
@@ -63,7 +72,6 @@ export class CaffoldTaskAbsence extends LitElement {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
-    this.performUpdate();
   }
 
   disconnectedCallback() {
@@ -73,8 +81,6 @@ export class CaffoldTaskAbsence extends LitElement {
 
   setSnapshot(snapshot: TaskAbsenceSnapshot) {
     this.snapshot = snapshot;
-    this.requestUpdate();
-    this.performUpdate();
   }
 
   actionHintScope(pull: ActionHintPull = {}) {

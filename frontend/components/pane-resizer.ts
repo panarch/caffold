@@ -47,7 +47,6 @@ export class CaffoldPaneResizer extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    this.performUpdate();
     this.setAttribute("role", "separator");
     this.setAttribute("aria-orientation", "vertical");
     if (!this.hasAttribute("aria-label")) {

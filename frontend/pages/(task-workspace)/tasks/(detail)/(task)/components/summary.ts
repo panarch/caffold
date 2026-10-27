@@ -19,13 +19,19 @@ export type TaskSummaryIntent = TaskInfoIntent;
 
 /**
  * The open Task's heading: its title, and Task Info beside it.
- *
- * The Tasks Detail layout hands it the Task's snapshot and reads its Action
- * Hints and keyboard context right after, so it draws at once.
  */
 export class CaffoldTaskDetailSummary extends LitElement {
-  private snapshot: TaskInfoSnapshot = taskInfoSnapshot();
+  static properties = {
+    snapshot: { state: true },
+  };
+
+  declare private snapshot: TaskInfoSnapshot;
   private readonly info = new DrawnRef<CaffoldTaskDetailInfo>(this);
+
+  constructor() {
+    super();
+    this.snapshot = taskInfoSnapshot();
+  }
 
   createRenderRoot() {
     return this;
@@ -38,8 +44,6 @@ export class CaffoldTaskDetailSummary extends LitElement {
 
   setSnapshot(snapshot: Partial<TaskInfoSnapshot> = {}) {
     this.snapshot = taskInfoSnapshot(snapshot);
-    this.requestUpdate();
-    this.performUpdate();
   }
 
   deactivate() {

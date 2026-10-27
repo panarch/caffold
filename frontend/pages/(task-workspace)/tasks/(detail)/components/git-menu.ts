@@ -23,12 +23,13 @@ let taskDetailGitInstanceId = 0;
 /**
  * The Detail header's Git button, and the popover of Git work it opens:
  * Compare and Log.
- *
- * The Detail layout hands it whether Git is available and reads it right
- * after, so it draws at once.
  */
 export class CaffoldTaskDetailGit extends LitElement {
-  private available = false;
+  static properties = {
+    available: { state: true },
+  };
+
+  declare private available: boolean;
   private readonly popoverId = `task-git-actions-${++taskDetailGitInstanceId}`;
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
@@ -36,6 +37,7 @@ export class CaffoldTaskDetailGit extends LitElement {
 
   constructor() {
     super();
+    this.available = false;
     this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, (event) =>
       this.handleDismiss(event),
     );
@@ -52,8 +54,6 @@ export class CaffoldTaskDetailGit extends LitElement {
 
   setSnapshot({ available = false }: { available?: boolean } = {}) {
     this.available = Boolean(available);
-    this.requestUpdate();
-    this.performUpdate();
     if (!this.available) {
       this.deactivate();
     }

@@ -79,7 +79,7 @@ test("fills clockwise from twelve o'clock, the long way round past half", () => 
   }
 });
 
-test("a new count is drawn at once, and the same count draws nothing", () => {
+test("a new count is drawn, and the same count leaves the pie as it is", () => {
   const owner = pie();
   owner.setSnapshot({ usedTokens: 32_147, windowTokens: 200_000 });
   assert.equal(owner.updates, 1);
@@ -111,13 +111,19 @@ function wedge(d) {
 
 // A pie whose drawing is its `render()` alone; each drawing it asks for is
 // counted.
+// A pie that counts how often its reactive usage is set, each a request to
+// draw it again.
 function pie(properties = {}) {
+  let usage = null;
   const owner = Object.create(ContextUsage.prototype, {
     ...Object.getOwnPropertyDescriptors({
-      usage: null,
       popoverId: "task-context-usage-1",
       updates: 0,
-      performUpdate() {
+      get usage() {
+        return usage;
+      },
+      set usage(next) {
+        usage = next;
         this.updates += 1;
       },
     }),

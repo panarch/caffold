@@ -116,7 +116,6 @@ export class CaffoldMarkdownPreview extends LitElement {
     super.connectedCallback();
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "Markdown preview");
-    this.performUpdate();
     if (this.markdown !== undefined && this.renderState === "loading") {
       this.startRender();
     } else if (this.renderState === "markdown") {

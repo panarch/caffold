@@ -143,7 +143,6 @@ export class CaffoldFileTree extends LitElement {
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     window.addEventListener("caffold:settings-change", this.settingsChanged);
     this.globalFileSortMode = normalizeFileSortMode(getSettings().fileSortMode);
-    this.performUpdate();
     void warmIcons();
   }
 

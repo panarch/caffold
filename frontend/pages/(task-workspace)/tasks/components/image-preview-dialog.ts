@@ -40,21 +40,30 @@ export function requestTaskImagePreview(
 // cannot be shown.
 type PictureView = "image" | "loading" | "unavailable";
 
-/**
- * One picture from a Task, larger, in a dialog over the Tasks screen.
- *
- * The Tasks screen opens it and shows it at once, so it draws in place.
- */
+/** One picture from a Task, larger, in a dialog over the Tasks screen. */
 export class CaffoldTaskImagePreviewDialog extends LitElement {
-  private name = "";
-  private src = "";
-  private view: PictureView = "image";
+  static properties = {
+    name: { state: true },
+    src: { state: true },
+    view: { state: true },
+  };
+
+  declare private name: string;
+  declare private src: string;
+  declare private view: PictureView;
   private picture: { fetching: AbortController; objectUrl: string } | null =
     null;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
+
+  constructor() {
+    super();
+    this.name = "";
+    this.src = "";
+    this.view = "image";
+  }
 
   createRenderRoot() {
     return this;
@@ -89,7 +98,6 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
     // showing an empty image the browser would draw as broken.
     this.src = inline ? src : "";
     this.view = inline ? "image" : "loading";
-    this.draw();
     if (!inline) {
       this.showFetchedPicture(src);
     }
@@ -183,7 +191,6 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
         }
         picture.objectUrl = URL.createObjectURL(file);
         this.src = picture.objectUrl;
-        this.draw();
       },
       (error) => {
         if (
@@ -210,12 +217,10 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
 
   private showLoaded() {
     this.view = "image";
-    this.draw();
   }
 
   private showUnavailable() {
     this.view = "unavailable";
-    this.draw();
   }
 
   private reset() {
@@ -223,12 +228,6 @@ export class CaffoldTaskImagePreviewDialog extends LitElement {
     this.name = "";
     this.src = "";
     this.view = "image";
-    this.draw();
-  }
-
-  private draw() {
-    this.requestUpdate();
-    this.performUpdate();
   }
 }
 

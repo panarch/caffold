@@ -62,8 +62,8 @@ export type TaskRecoveryIntent =
  * A listed Task Caffold cannot open as it is: why, and what can be done with
  * it, each action answered by the server.
  *
- * The Tasks screen opens it for a Task and reads its Action Hints and scroll
- * surface right after, so it draws at once.
+ * It draws at once wherever its state changes, since it hands the notice it
+ * draws what to show right after drawing it.
  */
 export class CaffoldTaskRecovery extends LitElement {
   private recovery: ActiveTaskRecovery | null = null;

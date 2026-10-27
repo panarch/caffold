@@ -101,7 +101,6 @@ export class CaffoldSegmentedControl extends LitElement {
       choices,
       actionVerb: `${snapshot.actionVerb ?? "Select"}`,
     };
-    this.performUpdate();
   }
 
   actionHintScope(pull: ActionHintPull = {}) {

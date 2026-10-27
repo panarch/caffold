@@ -34,7 +34,6 @@ export class CaffoldKeyboardShortcutDialog extends LitElement {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
-    this.performUpdate();
   }
 
   disconnectedCallback() {
@@ -94,7 +93,6 @@ export class CaffoldKeyboardShortcutDialog extends LitElement {
   }
 
   open() {
-    this.performUpdate();
     const dialog = this.dialog.value;
     if (!dialog || dialog.open) {
       return false;

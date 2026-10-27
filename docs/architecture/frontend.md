@@ -103,10 +103,14 @@ rendered DOM, such as scroll restoration, focus, or measurement, runs in
 owner that needs a child's rendered DOM awaits the child's `updateComplete`.
 A component that calls methods on a child its own template draws renders its
 pending update, with `performUpdate()`, before it looks the child up, so the
-child is there even before the component is in the document. A component also
-renders at once when it connects and when one of its public methods changes
-what it shows, so the owner that mounts or calls it can read its DOM right
-away.
+child is there even before the component is in the document. A public method
+renders at once in the same way where the same call goes on to use what it
+drew, to measure or place it, to open or focus an element the change drew, or
+to hand values to the children it draws, and where a component changes its
+state in place rather than through reactive properties. The routed layouts
+render at once whenever they change what they show, because each hands the
+next layout or page its route right after drawing it. Other components,
+including when they connect, render on Lit's update.
 The Task conversation renders the components its entries mount at once in the
 same way, because Task Detail reads the whole transcript right after it
 changes.

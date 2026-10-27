@@ -20,11 +20,24 @@ const MODES: readonly { mode: WorkspaceMode; label: string; icon: string }[] = [
  * marked current and Settings marked while an update waits.
  */
 export class CaffoldTaskWorkspaceNavigation extends LitElement {
-  private mode: WorkspaceMode = "tasks";
-  private updateAvailable = false;
-  private reloadReady = false;
+  static properties = {
+    mode: { state: true },
+    updateAvailable: { state: true },
+    reloadReady: { state: true },
+  };
+
+  declare private mode: WorkspaceMode;
+  declare private updateAvailable: boolean;
+  declare private reloadReady: boolean;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
+
+  constructor() {
+    super();
+    this.mode = "tasks";
+    this.updateAvailable = false;
+    this.reloadReady = false;
+  }
 
   createRenderRoot() {
     return this;
@@ -43,12 +56,10 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
 
   setMode(mode: string | null | undefined) {
     this.mode = MODES.find((entry) => entry.mode === mode)?.mode ?? "tasks";
-    this.draw();
   }
 
   setCaffoldUpdate(snapshot: CaffoldUpdateSnapshot | null | undefined) {
     this.updateAvailable = snapshot?.status?.updateAvailable === true;
-    this.draw();
   }
 
   /** Whether this window has a new build ready to load. */
@@ -56,7 +67,6 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
     status: { preparedUpdate?: { ready?: boolean } | null } | null | undefined,
   ) {
     this.reloadReady = status?.preparedUpdate?.ready === true;
-    this.draw();
   }
 
   actionHintScope({ scopeId = "workspace", ...pull }: ActionHintPull = {}) {
@@ -109,11 +119,6 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
         detail: { mode: button.dataset.workspaceMode },
       }),
     );
-  }
-
-  private draw() {
-    this.requestUpdate();
-    this.performUpdate();
   }
 }
 

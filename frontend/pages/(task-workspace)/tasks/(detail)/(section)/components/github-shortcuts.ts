@@ -28,20 +28,27 @@ type GitHubKind = "issues" | "pulls";
  * shown only while the repository is on GitHub.
  *
  * It asks GitHub about the repository while active, once for each directory.
- * The Section screen hands it its context and reads it right after, so it
- * draws at once wherever its state changes.
  */
 export class CaffoldSectionGithubShortcuts extends LitElement {
+  static properties = {
+    githubStatus: { state: true },
+  };
+
+  declare private githubStatus: GitHubStatus | null;
   private active = false;
   private context: GitHubShortcutsContext = {
     key: "",
     path: "",
     repository: false,
   };
-  private githubStatus: GitHubStatus | null = null;
   private statusContextKey = "";
   private statusRequestId = 0;
   private readonly hints = new ActionHints(this);
+
+  constructor() {
+    super();
+    this.githubStatus = null;
+  }
 
   createRenderRoot() {
     return this;
@@ -51,14 +58,12 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
     super.connectedCallback();
     setAttribute(this, "role", "complementary");
     setAttribute(this, "aria-label", "GitHub shortcuts");
-    this.draw();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.active = false;
     this.invalidateStatus();
-    this.draw();
   }
 
   setContext({
@@ -143,17 +148,14 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
     const contextKey = this.requestContextKey();
     if (!this.context.repository) {
       this.invalidateStatus();
-      this.draw();
       return;
     }
     if (!this.active || this.statusContextKey === contextKey) {
-      this.draw();
       return;
     }
 
     this.githubStatus = null;
     this.statusContextKey = contextKey;
-    this.draw();
     const requestId = ++this.statusRequestId;
     void this.loadStatus(contextKey, this.context.path, requestId);
   }
@@ -176,7 +178,6 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
       this.githubStatus = null;
       this.statusContextKey = "";
     }
-    this.draw();
   }
 
   private isCurrentRequest(contextKey: string, requestId: number) {
@@ -205,11 +206,6 @@ export class CaffoldSectionGithubShortcuts extends LitElement {
         detail: { type: "open-github", kind },
       }),
     );
-  }
-
-  private draw() {
-    this.requestUpdate();
-    this.performUpdate();
   }
 }
 

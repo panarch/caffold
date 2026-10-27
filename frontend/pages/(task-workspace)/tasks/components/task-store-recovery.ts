@@ -24,18 +24,23 @@ const FAILED_INSTRUCTION =
 /**
  * What the Tasks screen shows instead of Tasks while the Task store is being
  * upgraded, or after its upgrade failed and can be retried.
- *
- * The Tasks screen hands it each store snapshot and reads its Action Hints
- * and scroll surface right after, so it draws at once.
  */
 export class CaffoldTaskStoreRecovery extends LitElement {
-  private snapshot: TaskStoreStatusSnapshot =
-    INITIAL_TASK_STORE_STATUS_SNAPSHOT;
+  static properties = {
+    snapshot: { state: true },
+  };
+
+  declare private snapshot: TaskStoreStatusSnapshot;
   private readonly surface = new DrawnRef<HTMLElement>(this);
   private readonly hints: ActionHints = new ActionHints(this, {
     clipRoots: () => [this, this.surface.value],
   });
   private readonly surfaces = new ScrollSurfaces(this);
+
+  constructor() {
+    super();
+    this.snapshot = INITIAL_TASK_STORE_STATUS_SNAPSHOT;
+  }
 
   createRenderRoot() {
     return this;
@@ -47,8 +52,6 @@ export class CaffoldTaskStoreRecovery extends LitElement {
       return;
     }
     this.snapshot = next;
-    this.requestUpdate();
-    this.performUpdate();
   }
 
   actionHintScope({

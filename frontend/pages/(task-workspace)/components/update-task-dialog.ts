@@ -61,11 +61,6 @@ export class CaffoldUpdateTaskDialog extends LitElement {
     return this;
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
-  }
-
   /**
    * Opens for an update the server offers: `status` is its update status with
    * an `updateTask`, and `composerSettings` are the update Section's last

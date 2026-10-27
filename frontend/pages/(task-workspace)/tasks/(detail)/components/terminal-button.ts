@@ -13,10 +13,21 @@ export const TERMINAL_BUTTON_INTENT_EVENT =
 // The Detail header's terminal toggle. It only reports the press; the Detail
 // layout decides whether that enters the terminal or returns from it.
 export class CaffoldTaskDetailTerminal extends LitElement {
-  private available = false;
-  private pressed = false;
+  static properties = {
+    available: { state: true },
+    pressed: { state: true },
+  };
+
+  declare private available: boolean;
+  declare private pressed: boolean;
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
+
+  constructor() {
+    super();
+    this.available = false;
+    this.pressed = false;
+  }
 
   createRenderRoot() {
     return this;
@@ -41,8 +52,6 @@ export class CaffoldTaskDetailTerminal extends LitElement {
   } = {}) {
     this.available = Boolean(available);
     this.pressed = Boolean(pressed);
-    this.requestUpdate();
-    this.performUpdate();
   }
 
   actionHintScope(pull: ActionHintPull = {}) {

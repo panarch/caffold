@@ -30,11 +30,6 @@ export class CaffoldTaskArchivedDeleteDialog extends LitElement {
     return this;
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
-  }
-
   render() {
     return html`
       <dialog
@@ -108,7 +103,6 @@ export class CaffoldTaskArchivedDeleteDialog extends LitElement {
     }
     this.pendingThreadId = threadId;
     this.taskTitle = task?.title ?? threadId;
-    this.performUpdate();
     const dialog = this.dialog.value;
     if (!dialog || dialog.open) {
       return;

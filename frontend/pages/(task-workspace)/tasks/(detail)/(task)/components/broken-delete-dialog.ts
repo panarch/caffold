@@ -46,22 +46,30 @@ const EDGES: Readonly<Record<Phase, Partial<Record<PhaseEvent, Phase>>>> = {
  * deletes it with the worktree its diagnosis named.
  */
 export class CaffoldBrokenTaskDeleteDialog extends LitElement {
-  private phase: Phase = "idle";
+  static properties = {
+    phase: { state: true },
+    target: { state: true },
+    failure: { state: true },
+  };
+
+  declare private phase: Phase;
+  declare private target: BrokenTaskContext | null;
+  declare private failure: Error | null;
   private generation = 0;
   private context: BrokenTaskContext | null = null;
-  private target: BrokenTaskContext | null = null;
-  private failure: Error | null = null;
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
 
-  createRenderRoot() {
-    return this;
+  constructor() {
+    super();
+    this.phase = "idle";
+    this.target = null;
+    this.failure = null;
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
+  createRenderRoot() {
+    return this;
   }
 
   disconnectedCallback() {
@@ -84,7 +92,6 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
     this.context = next;
     if (this.phase === "confirming" && next) {
       this.target = { ...next };
-      this.draw();
     }
   }
 
@@ -94,7 +101,6 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
     }
     this.target = { ...this.context };
     this.failure = null;
-    this.draw();
     this.dialog.value?.showModal();
     return true;
   }
@@ -187,18 +193,12 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
     </dialog>`;
   }
 
-  private draw() {
-    this.requestUpdate();
-    this.performUpdate();
-  }
-
   private transition(event: PhaseEvent) {
     const next = EDGES[this.phase][event];
     if (!next) {
       return false;
     }
     this.phase = next;
-    this.draw();
     return true;
   }
 
@@ -233,7 +233,6 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
     }
     const generation = ++this.generation;
     this.failure = null;
-    this.draw();
     const current = () =>
       this.isConnected &&
       this.generation === generation &&
@@ -270,7 +269,6 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
       if (eligible) {
         this.transition("failure");
         this.failure = error instanceof Error ? error : new Error(`${error}`);
-        this.draw();
         this.intent({ type: "broken-delete-error", error: diagnostic });
       } else {
         this.transition("refused");

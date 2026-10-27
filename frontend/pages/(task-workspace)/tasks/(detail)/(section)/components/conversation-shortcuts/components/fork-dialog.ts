@@ -36,18 +36,24 @@ const STALE_SOURCE_CODES = [
 /**
  * Starts a Task in a Section from a Codex thread: the person names the
  * thread, previews it, and forks it.
- *
- * The Section's conversation shortcuts open it and read its keyboard context
- * right after, so it draws at once wherever its state changes.
  */
 export class CaffoldConversationForkDialog extends LitElement {
-  private context = { sectionId: "", sectionPath: "" };
+  static properties = {
+    context: { state: true },
+    threadIdText: { state: true },
+    preview: { state: true },
+    previewPending: { state: true },
+    forkPending: { state: true },
+    error: { state: true },
+  };
+
+  declare private context: { sectionId: string; sectionPath: string };
+  declare private threadIdText: string;
+  declare private preview: TaskForkSourcePreview | null;
+  declare private previewPending: boolean;
+  declare private forkPending: boolean;
+  declare private error: TaskResponseError | null;
   private opener: HTMLElement | null = null;
-  private threadIdText = "";
-  private preview: TaskForkSourcePreview | null = null;
-  private previewPending = false;
-  private forkPending = false;
-  private error: TaskResponseError | null = null;
   private previewRequestId = 0;
   private forkRequestId = 0;
   private previewController: AbortController | null = null;
@@ -59,6 +65,16 @@ export class CaffoldConversationForkDialog extends LitElement {
   private readonly body = new DrawnRef<HTMLDivElement>(this);
   private readonly threadIdInput = new DrawnRef<HTMLInputElement>(this);
   private readonly cancelButton = new DrawnRef<HTMLButtonElement>(this);
+
+  constructor() {
+    super();
+    this.context = { sectionId: "", sectionPath: "" };
+    this.threadIdText = "";
+    this.preview = null;
+    this.previewPending = false;
+    this.forkPending = false;
+    this.error = null;
+  }
 
   createRenderRoot() {
     return this;
@@ -107,7 +123,6 @@ export class CaffoldConversationForkDialog extends LitElement {
     this.error = null;
     this.restoreFocus = true;
     this.threadIdText = "";
-    this.draw();
 
     const dialog = this.dialog;
     if (!dialog) {
@@ -323,7 +338,6 @@ export class CaffoldConversationForkDialog extends LitElement {
     if (!sourceId) {
       this.preview = null;
       this.error = new Error("Enter a Codex Thread ID.");
-      this.draw();
       this.threadIdInput.value?.focus();
       return;
     }
@@ -335,7 +349,6 @@ export class CaffoldConversationForkDialog extends LitElement {
     this.preview = null;
     this.previewPending = true;
     this.error = null;
-    this.draw();
     try {
       const preview = await previewTaskForkSource(
         { provider: "codex", sourceId },
@@ -347,7 +360,6 @@ export class CaffoldConversationForkDialog extends LitElement {
       this.preview = normalizePreview(preview, sourceId);
       this.previewPending = false;
       this.previewController = null;
-      this.draw();
     } catch (error) {
       if (requestId !== this.previewRequestId) {
         return;
@@ -357,7 +369,6 @@ export class CaffoldConversationForkDialog extends LitElement {
       if ((error as Error | null)?.name !== "AbortError") {
         this.error = error instanceof Error ? error : new Error(`${error}`);
       }
-      this.draw();
     }
   }
 
@@ -372,7 +383,6 @@ export class CaffoldConversationForkDialog extends LitElement {
     this.abortPreview();
     this.forkPending = true;
     this.error = null;
-    this.draw();
     try {
       const created = await createTaskFork({
         provider: "codex",
@@ -419,7 +429,6 @@ export class CaffoldConversationForkDialog extends LitElement {
       if (STALE_SOURCE_CODES.includes(`${failure.code}`)) {
         this.preview = null;
       }
-      this.draw();
     }
   }
 
@@ -428,7 +437,6 @@ export class CaffoldConversationForkDialog extends LitElement {
     this.abortPreview();
     this.preview = null;
     this.error = null;
-    this.draw();
   }
 
   private handleSubmit(event: Event) {
@@ -478,11 +486,6 @@ export class CaffoldConversationForkDialog extends LitElement {
     if (restoreFocus && opener?.isConnected) {
       window.requestAnimationFrame(() => opener.focus());
     }
-  }
-
-  private draw() {
-    this.requestUpdate();
-    this.performUpdate();
   }
 
   private get dialog() {

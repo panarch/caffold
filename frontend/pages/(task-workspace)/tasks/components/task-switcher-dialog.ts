@@ -78,7 +78,7 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
   /** Show the given Tasks, most recently finished first. */
   open({ rows = [], loaded = true }: TaskSwitcherSnapshot = {}) {
     const dialog = this.dialog;
-    if (dialog.open) {
+    if (!dialog || dialog.open) {
       return false;
     }
     this.tasksLoaded = loaded;
@@ -93,7 +93,7 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
 
   close() {
     const dialog = this.dialog;
-    if (!dialog.open) {
+    if (!dialog?.open) {
       return false;
     }
     dialog.close();
@@ -109,7 +109,7 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
    * Task list arrived has no order to protect yet.
    */
   updateTasks({ rows = [], loaded = true }: TaskSwitcherSnapshot = {}) {
-    if (!this.dialog.open) {
+    if (!this.dialog?.open) {
       return false;
     }
     const wasLoaded = this.tasksLoaded;
@@ -260,11 +260,8 @@ export class CaffoldTaskSwitcherDialog extends LitElement {
       .map(({ task }) => taskThreadId(task));
   }
 
-  // The dialog is drawn the first time it is needed, which is when the
-  // workspace first opens it or asks for its keyboard contexts.
   private get dialog() {
-    this.performUpdate();
-    return this.modal.value as HTMLDialogElement;
+    return this.modal.value ?? null;
   }
 }
 

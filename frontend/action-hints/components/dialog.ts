@@ -65,11 +65,6 @@ export class CaffoldActionHintDialog extends LitElement {
     return this;
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    this.performUpdate();
-  }
-
   disconnectedCallback() {
     super.disconnectedCallback();
     const dialog = this.dialog.value;
@@ -118,7 +113,6 @@ export class CaffoldActionHintDialog extends LitElement {
   }
 
   open(targets: readonly ActionHintSessionTarget[], viewportRect: Rect | null) {
-    this.performUpdate();
     const dialog = this.dialog.value;
     if (!dialog) {
       return;

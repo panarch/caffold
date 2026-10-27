@@ -39,16 +39,13 @@ interface RecordState {
 export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
   static properties = {
     threadId: { state: true },
+    state: { state: true },
   };
 
   declare private threadId: string;
+  declare private state: RecordState;
   private opener: HTMLElement | null = null;
   private request = 0;
-  private state: RecordState = {
-    loading: false,
-    instructions: null,
-    error: "",
-  };
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
   private readonly keyboard = new KeyboardContexts(this);
@@ -57,6 +54,7 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
   constructor() {
     super();
     this.threadId = "";
+    this.state = { loading: false, instructions: null, error: "" };
   }
 
   createRenderRoot() {
@@ -67,7 +65,6 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
     super.connectedCallback();
     window.addEventListener("caffold:icons-ready", this.iconsReady);
     void warmIcons();
-    this.performUpdate();
   }
 
   disconnectedCallback() {
@@ -206,26 +203,26 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
       return;
     }
     const request = ++this.request;
-    this.show({ loading: true, instructions: null, error: "" });
+    this.state = { loading: true, instructions: null, error: "" };
     try {
       const payload = await getTaskPermissionInstructions(threadId);
       if (this.isCurrent(request, threadId)) {
-        this.show({
+        this.state = {
           loading: false,
           instructions: instructionsOf(payload),
           error: "",
-        });
+        };
       }
     } catch (error) {
       if (this.isCurrent(request, threadId)) {
-        this.show({
+        this.state = {
           loading: false,
           instructions: null,
           error: messageOf(
             error,
             "Caffold could not read what this Task settled.",
           ),
-        });
+        };
         this.reportRequestFailure(threadId, error);
       }
     }
@@ -237,35 +234,29 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
       return;
     }
     const request = ++this.request;
-    this.show({ ...this.state, loading: true, error: "" });
+    this.state = { ...this.state, loading: true, error: "" };
     try {
       const payload = await forgetTaskPermissionInstructions(threadId);
       if (this.isCurrent(request, threadId)) {
-        this.show({
+        this.state = {
           loading: false,
           instructions: instructionsOf(payload),
           error: "",
-        });
+        };
       }
     } catch (error) {
       if (this.isCurrent(request, threadId)) {
-        this.show({
+        this.state = {
           ...this.state,
           loading: false,
           error: messageOf(
             error,
             "Caffold could not forget what this Task settled.",
           ),
-        });
+        };
         this.reportRequestFailure(threadId, error);
       }
     }
-  }
-
-  private show(state: RecordState) {
-    this.state = state;
-    this.requestUpdate();
-    this.performUpdate();
   }
 
   private reportRequestFailure(threadId: string, error: unknown) {
