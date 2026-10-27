@@ -17,6 +17,7 @@ import {
   mergeScrollSurfaceScopes,
   type ScrollSurfaceScope,
 } from "#app/scroll-scope.js";
+import { containsAcrossShadowRoots } from "#app/shadow-roots.js";
 import { DrawnRefs, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/pane-resizer.js";
@@ -578,10 +579,10 @@ export class CaffoldTaskWorkspace extends LitElement {
     ) {
       return null;
     }
-    if (this.tasksPage.contains(editable)) {
+    if (containsAcrossShadowRoots(this.tasksPage, editable)) {
       return this.tasksPage.editingEscapeTarget();
     }
-    if (this.settingsWorkspace.contains(editable)) {
+    if (containsAcrossShadowRoots(this.settingsWorkspace, editable)) {
       return this.settingsWorkspace.editingEscapeTarget();
     }
     return this.workspaceSurface;

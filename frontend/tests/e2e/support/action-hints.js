@@ -68,9 +68,8 @@ export function workspaceTargets(page, prefix) {
 
 // Independently classify the owner-declared controls from their actual painted
 // rectangles, so browser expectations do not call the production visibility model.
-export async function workspaceOcclusionTargets(page, ownerSelector) {
-  return page.evaluate((selector) => {
-    const owner = document.querySelector(selector);
+export async function workspaceOcclusionTargets(owner) {
+  return owner.evaluate((owner) => {
     const panel = document.querySelector("caffold-task-workspace-navigation").getBoundingClientRect();
     const viewport = window.visualViewport;
     const bounds = { left: viewport?.offsetLeft ?? 0, top: viewport?.offsetTop ?? 0,
@@ -97,7 +96,7 @@ export async function workspaceOcclusionTargets(page, ownerSelector) {
       result[covered ? "covered" : "clear"].push(target.label);
     }
     return result;
-  }, ownerSelector);
+  });
 }
 
 export async function activateActionHint(page, accessibleName) {

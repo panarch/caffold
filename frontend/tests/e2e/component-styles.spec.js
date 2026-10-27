@@ -23,16 +23,15 @@ test("components wait for shared CSS and share one request per stylesheet", { ta
     await started.promise;
     expect(await page.evaluate(() => [
       "caffold-task-detail-terminal", "caffold-task-detail-git",
-      "caffold-task-detail-github", "caffold-task-detail-info", "caffold-notes-info",
-      "caffold-note-document", "caffold-notes-navigator",
+      "caffold-task-detail-github", "caffold-task-detail-info",
       "caffold-task-navigator", "caffold-task-workspace", "caffold-task-git-layout",
       "caffold-task-github-layout", "caffold-terminal-page", "caffold-git-review-controls",
     ].some((name) => Boolean(customElements.get(name))))).toBe(false);
     release.resolve();
     await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
     expect(requests.sort()).toEqual(["busy-spin.css", "compact-icon-button.css"]);
-    // 15 compact icon button scopes and 9 busy spin scopes.
-    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(24);
+    // 10 compact icon button scopes and 8 busy spin scopes.
+    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(18);
   } finally {
     release.resolve();
   }
@@ -394,6 +393,32 @@ test("segmented control keeps its button rule inside its shadow root and the doc
     inside: ["grid", "pointer"],
     insideOpacity: "1",
   });
+});
+
+test("the Settings refresh button turns its icon inside its shadow root and nothing outside it", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-settings-refresh-button"));
+  await page.evaluate(() => {
+    const button = document.createElement("caffold-settings-refresh-button");
+    button.id = "refresh-contract";
+    // Outside the button's root, the markup its spin names inside it.
+    const outside = document.createElement("div");
+    outside.id = "refresh-outside";
+    outside.innerHTML = `<button class="is-refreshing"><span><span class="settings-refresh-icon"></span></span></button>`;
+    document.body.append(button, outside);
+  });
+  const icon = page.locator("#refresh-contract .settings-refresh-icon");
+  const outside = page.locator("#refresh-outside .settings-refresh-icon");
+  await expect(icon).toHaveCSS("animation-name", "none");
+  await page.locator("#refresh-contract").evaluate((button) => {
+    button.refreshing = true;
+  });
+  await expect(icon).toHaveCSS("animation-name", "caffold-busy-spin");
+  await expect(outside).toHaveCSS("animation-name", "none");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(icon).toHaveCSS("animation-name", "none");
 });
 
 test("pagination changes its page in place and leaves the same page untouched", { tag: "@viewport-independent" }, async ({ page }) => {

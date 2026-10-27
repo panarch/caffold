@@ -767,7 +767,11 @@ export class KeyboardNavigationController {
   private resolveEditingEscapeTarget(editable: Element) {
     const context = this.resolveInteractionContext();
     const escapeTarget = context?.editing?.escapeTarget;
-    if (!context || !escapeTarget || !context.root.contains(editable)) {
+    if (
+      !context ||
+      !escapeTarget ||
+      !containsAcrossShadowRoots(context.root, editable)
+    ) {
       return null;
     }
     let target: Element | null;
@@ -776,7 +780,8 @@ export class KeyboardNavigationController {
     } catch {
       return null;
     }
-    return context.root.contains(target) && focusableTarget(target)
+    return containsAcrossShadowRoots(context.root, target) &&
+      focusableTarget(target)
       ? target
       : null;
   }

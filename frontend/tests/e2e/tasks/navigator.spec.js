@@ -1671,13 +1671,12 @@ test("archives and restores an idle Caffold task through the grouped Archived se
     const rootFontSize = Number.parseFloat(
       getComputedStyle(document.documentElement).fontSize,
     );
-    const navigatorTitle = document.querySelector(
-      "caffold-task-navigator .workspace-brand-title",
-    );
+    const brand = document.querySelector(
+      "caffold-task-navigator caffold-workspace-brand",
+    ).shadowRoot;
+    const navigatorTitle = brand.querySelector(".workspace-brand-title");
     const detailTitle = document.querySelector(".task-detail-heading > h2");
-    const brandIcon = document.querySelector(
-      "caffold-task-navigator .workspace-brand-icon",
-    );
+    const brandIcon = brand.querySelector(".workspace-brand-icon");
     return {
       rootFontSize,
       navigatorTitleSize: Number.parseFloat(
@@ -2668,7 +2667,9 @@ test("keeps the brand beside the corner toggle and header actions in the narrowe
     .toBeVisible();
 
   const layout = await header.evaluate((element) => {
-    const title = element.querySelector(".workspace-brand-title");
+    const title = element
+      .querySelector("caffold-workspace-brand")
+      .shadowRoot.querySelector(".workspace-brand-title");
     const actions = [
       ...element.querySelectorAll(".task-list-header-action"),
     ].map((action) => action.getBoundingClientRect());
@@ -2717,14 +2718,15 @@ test("keeps the brand beside the corner toggle and header actions in the narrowe
     const pane = element
       .closest(".task-workspace-master-pane")
       .getBoundingClientRect();
-    const title = element.querySelector(".workspace-brand-title");
+    const brand = element.querySelector("caffold-workspace-brand").shadowRoot;
+    const title = brand.querySelector(".workspace-brand-title");
     const actions = [
       ...element.querySelectorAll(".task-list-header-action"),
     ].map((action) => action.getBoundingClientRect());
     return {
       titleText: title.textContent,
       titleVisibleWidth: title.getBoundingClientRect().width,
-      iconWidth: element
+      iconWidth: brand
         .querySelector(".workspace-brand-icon")
         .getBoundingClientRect().width,
       brandRight: element

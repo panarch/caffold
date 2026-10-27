@@ -428,7 +428,6 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn", "caffold-task-active-turn", "> .task-active-turn-spinner"],
     ["pages/(task-workspace)/tasks/components/composer", "caffold-task-composer", "> .task-composer > .task-composer-panel > .task-composer-toolbar > .task-composer-actions > .task-composer-render-region > .task-voice-button.is-busy > .task-voice-icon"],
     ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", "caffold-git-review-controls", "> .git-review-controls > .git-review-refresh.is-refreshing > .git-review-refresh-icon"],
-    ["pages/(task-workspace)/settings/components/refresh-button", "caffold-settings-refresh-button", "> button.is-refreshing > span > .settings-refresh-icon"],
   ];
   const declarations = [];
   for (const [path, source] of frontendSources()) {
@@ -438,6 +437,17 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
     }
   }
   assert.deepEqual(declarations.map((entry) => entry.join(" ")).sort(), consumers.map((entry) => entry.join(" ")).sort());
+  // Components that render into a shadow root name the target in that root.
+  const shadowDeclarations = [];
+  for (const [path, source] of frontendSources()) {
+    if (!/\.(?:js|ts)$/.test(path)) continue;
+    for (const [, target] of source.matchAll(/\bbusySpin\(\s*"([^"]+)"\s*\)/g)) {
+      shadowDeclarations.push([path.replace(/\.(?:js|ts)$/, ""), target]);
+    }
+  }
+  assert.deepEqual(shadowDeclarations.map((entry) => entry.join(" ")), [
+    "pages/(task-workspace)/settings/components/refresh-button button.is-refreshing > span > .settings-refresh-icon",
+  ]);
 
   for (const [path, source] of frontendSources()) {
     if (!path.endsWith(".css") || path === "component-styles/busy-spin.css") continue;
@@ -507,7 +517,7 @@ test("workspace header identity and titles share semantic ownership", () => {
   );
 
   assert.match(tokens, /--workspace-header-title-size: 0\.8125rem/);
-  cssBlockMatching(brand, "caffold-workspace-brand", [
+  cssBlockMatching(brand, ":host", [
     /gap: var\(--interface-space-3\)/,
     /color: var\(--muted\)/,
   ]);
@@ -708,7 +718,7 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
 
   cssBlockMatching(
     readFrontend("pages/(task-workspace)/settings/components/detail-list.css"),
-    "& dd",
+    "dd {",
     [/font-size: var\(--settings-detail-value-size\)/],
   );
 });
@@ -964,7 +974,6 @@ test("compact icon controls declare shared styles at their own component boundar
     ["pages/(task-workspace)/tasks/(detail)/components/git-menu", "caffold-task-detail-git", "> .task-git-button"],
     ["pages/(task-workspace)/tasks/(detail)/components/github-menu", "caffold-task-detail-github", "> .task-github-button"],
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info", "caffold-task-detail-info", "> .task-detail-info-button"],
-    ["pages/(task-workspace)/notes/components/info", "caffold-notes-info", "> .notes-info-button"],
     ["pages/(task-workspace)/tasks/components/navigator", "caffold-task-navigator", "> .task-list-primary-header > .task-list-primary-actions > .task-list-header-action"],
     ["pages/(task-workspace)/layout", "caffold-task-workspace", "> .task-workspace-route-controls > .task-workspace-route-control"],
     ["pages/(task-workspace)/tasks/(detail)/(git)/layout", "caffold-task-git-layout", "> .task-git-surface > .task-domain-header > .task-domain-back"],
@@ -983,6 +992,11 @@ test("compact icon controls declare shared styles at their own component boundar
     ["components/file-navigator/components/list", ".file-refresh-button"],
     ["components/file-viewer", ".viewer-refresh-button"],
     ["components/file-viewer", ".viewer-close-button"],
+    ["pages/(task-workspace)/notes/components/info", ".notes-info-button"],
+    ["pages/(task-workspace)/notes/components/document", ".note-document-split"],
+    ["pages/(task-workspace)/notes/components/document", ".note-document-close"],
+    ["pages/(task-workspace)/notes/components/navigator", ".notes-picker-back"],
+    ["pages/(task-workspace)/notes/components/navigator", ".notes-picker-close"],
   ]) {
     const javascript = readFrontendModule(path);
     const declarations = [...javascript.matchAll(/\bcompactIconButton\(\s*"([^"]+)"\s*\)/g)];
@@ -1101,7 +1115,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/suggested-prompts.css", ".task-suggested-prompt::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-reset-all::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-inline-reset::before", "--interface-compact-hit-outset"],
-    ["pages/(task-workspace)/settings/components/refresh-button.css", "& > button::before", "--interface-control-hit-outset"],
+    ["pages/(task-workspace)/settings/components/refresh-button.css", "button::before {", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/codex/page.css", ".settings-runtime-control button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/codex/page.css", ".settings-codex-updates button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/about/page.css", ".settings-about-actions button::before", "--interface-control-hit-outset"],
@@ -1190,7 +1204,7 @@ test("contextual and inline actions stay compact while page and primary actions 
     ],
     [
       "pages/(task-workspace)/settings/components/refresh-button.css",
-      "& > button",
+      "button {",
     ],
     [
       "pages/(task-workspace)/settings/codex/page.css",

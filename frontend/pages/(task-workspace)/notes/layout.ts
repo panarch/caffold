@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   emptyActionHintScope,
@@ -11,6 +11,7 @@ import {
 } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "./components/document.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { ParsedRoute } from "#app/navigation-routes.js";
 import type {
   CaffoldNoteDocument,
@@ -31,6 +32,8 @@ import {
   type NotesLevels,
   noteDirectoryKey,
 } from "./tree.js";
+
+import styles from "./layout.css.js";
 
 export interface RequestWorkspaceRouteDetail {
   route: ParsedRoute;
@@ -71,7 +74,7 @@ interface PaneScopeOptions {
 // two documents are independent reads, each with its own generation, so a late
 // answer that is no longer wanted is dropped without touching the others.
 @customElement("caffold-notes-workspace")
-export class CaffoldNotesWorkspace extends LitElement {
+export class CaffoldNotesWorkspace extends CaffoldElement {
   @state()
   private accessor noteId = "";
   @state()
@@ -90,6 +93,8 @@ export class CaffoldNotesWorkspace extends LitElement {
     note: null,
     message: "",
   };
+
+  static override styles = styles;
 
   // Changes of the selection are followed by a requested update.
   private readonly selection = new NotesSelection();
@@ -113,10 +118,6 @@ export class CaffoldNotesWorkspace extends LitElement {
     event.stopPropagation();
     this.handleNavigatorIntent(event.detail);
   };
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -185,12 +186,12 @@ export class CaffoldNotesWorkspace extends LitElement {
     if (documents && navigator && this.primarySlot && this.navigatorHome) {
       const split = this.selection.split;
       documents.primary.place(
-        split ? this.primarySlot : this,
+        split ? this.primarySlot : this.renderRoot,
         documents.secondary,
       );
       const rightPicker = this.selection.picker === "secondary";
       navigator.place(
-        rightPicker ? this : this.navigatorHome,
+        rightPicker ? this.renderRoot : this.navigatorHome,
         rightPicker ? documents.secondary : this.primarySlot,
       );
     }

@@ -43,18 +43,14 @@ test("navigates Settings as responsive master-detail pages with browser history"
     "/assets/icons/favicon-32.png",
   );
   await expect(taskWorkspace.getByText("Local to this browser")).toHaveCount(0);
-  const settingsHeaderTypography = await taskWorkspace.evaluate((element) => {
+  // The brand and the Settings header sit in the shadow roots of their owners.
+  const settingsHeaderTypography = await taskWorkspace.evaluate((element, [
+    brandTitle,
+    brandIcon,
+    detailTitle,
+  ]) => {
     const rootFontSize = Number.parseFloat(
       getComputedStyle(document.documentElement).fontSize,
-    );
-    const brandTitle = element.querySelector(
-      "caffold-settings-navigator .workspace-brand-title",
-    );
-    const brandIcon = element.querySelector(
-      "caffold-settings-navigator .workspace-brand-icon",
-    );
-    const detailTitle = element.querySelector(
-      ".settings-workspace-detail-header h1",
     );
     return {
       rootFontSize,
@@ -65,7 +61,11 @@ test("navigates Settings as responsive master-detail pages with browser history"
       ).m42,
       detailTitleSize: Number.parseFloat(getComputedStyle(detailTitle).fontSize),
     };
-  });
+  }, [
+    await taskWorkspace.locator("caffold-settings-navigator .workspace-brand-title").elementHandle(),
+    await taskWorkspace.locator("caffold-settings-navigator .workspace-brand-icon").elementHandle(),
+    await taskWorkspace.locator(".settings-workspace-detail-header h1").elementHandle(),
+  ]);
   expect(settingsHeaderTypography.brandTitleSize).toBeCloseTo(
     settingsHeaderTypography.rootFontSize * 0.8125,
     2,
@@ -82,7 +82,10 @@ test("navigates Settings as responsive master-detail pages with browser history"
     settingsHeaderTypography.rootFontSize * -0.0625,
     2,
   );
-  const rootGeometry = await taskWorkspace.evaluate((element) => {
+  const rootGeometry = await taskWorkspace.evaluate((element, [
+    navigatorHeader,
+    detailHeader,
+  ]) => {
     const list = element.querySelector(".task-workspace-master-pane");
     const navigator = element.querySelector("caffold-settings-navigator");
     const navigationHost = element.querySelector(
@@ -90,12 +93,6 @@ test("navigates Settings as responsive master-detail pages with browser history"
     );
     const navigation = element.querySelector(".task-workspace-navigation");
     const detail = element.querySelector(".task-workspace-detail-pane");
-    const navigatorHeader = element.querySelector(
-      ".settings-navigator-header",
-    );
-    const detailHeader = element.querySelector(
-      ".settings-workspace-detail-header",
-    );
     const masterDetail = element.querySelector(".task-workspace-master-detail");
     const listRect = list.getBoundingClientRect();
     const navigatorRect = navigator.getBoundingClientRect();
@@ -118,7 +115,10 @@ test("navigates Settings as responsive master-detail pages with browser history"
         detailHeader.hidden ||
         Math.abs(navigatorHeaderRect.height - detailHeaderRect.height) <= 1,
     };
-  });
+  }, [
+    await taskWorkspace.locator(".settings-navigator-header").elementHandle(),
+    await taskWorkspace.locator(".settings-workspace-detail-header").elementHandle(),
+  ]);
   expect(rootGeometry).toEqual({
     ownedByList: true,
     position: testInfo.project.name === "phone" ? "static" : "absolute",
@@ -892,7 +892,7 @@ test("preserves Tasks and Settings DOM while hidden task updates arrive", { tag:
   );
   await appearancePage.evaluate((element) => {
     element.dataset.identityMarker = "settings-stable";
-    element.querySelector('.settings-scroll').scrollTop = 96;
+    element.shadowRoot.querySelector(".settings-scroll").scrollTop = 96;
   });
   await interfaceRange.evaluate((element) => {
     element.dataset.identityMarker = "range-stable";

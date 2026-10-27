@@ -1,4 +1,4 @@
-import { html, LitElement, type PropertyValues } from "lit";
+import { html, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -19,8 +19,10 @@ import type {
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "../../components/workspace-brand.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { FileTreeLoadChildrenDetail } from "#components/file-tree.js";
 import type { NotesPicker } from "../layout/selection.js";
+import { moveIntoPane } from "../move-into-pane.js";
 import {
   directoryIdFromKey,
   type NotesLevels,
@@ -30,6 +32,7 @@ import {
 } from "../tree.js";
 
 import { compactIconButton } from "#app/component-styles.js";
+import styles from "./navigator.css.js";
 
 export const NOTES_NAVIGATOR_INTENT_EVENT = "caffold:notes-navigator-intent";
 
@@ -54,20 +57,11 @@ const LOADING_MESSAGE = "Loading notes…";
 const EMPTY_MESSAGE = "No notes yet. Ask an agent in a Task to save one.";
 const ICON = "notes-picker-icon";
 
-await Promise.all(
-  ["back", "close"].map((action) =>
-    compactIconButton.register(
-      "caffold-notes-navigator",
-      `> .notes-navigator-header > .notes-picker-${action}`,
-    ),
-  ),
-);
-
 // The Notes tree in the workspace's navigation pane. The Notes workspace owns
 // what is read and which Note is open; this shows that snapshot and says which
 // Note a person picked and which directory they opened.
 @customElement("caffold-notes-navigator")
-export class CaffoldNotesNavigator extends LitElement {
+export class CaffoldNotesNavigator extends CaffoldElement {
   @property({ attribute: false })
   accessor snapshot: NotesNavigatorSnapshot = {
     levels: new Map(),
@@ -77,6 +71,12 @@ export class CaffoldNotesNavigator extends LitElement {
     disabledNoteId: "",
     reveal: { noteId: "", keys: [] },
   };
+
+  static override styles = [
+    compactIconButton(".notes-picker-back"),
+    compactIconButton(".notes-picker-close"),
+    styles,
+  ];
 
   private revealSignature = "";
   private pendingRevealKeys: string[] = [];
@@ -101,18 +101,18 @@ export class CaffoldNotesNavigator extends LitElement {
       ) {
         return;
       }
-      const target = event.target as Element;
-      if (target.closest("input, textarea, [contenteditable]")) {
+      // A listener on the host sees the host as the target.
+      const [target] = event.composedPath();
+      if (
+        target instanceof Element &&
+        target.closest("input, textarea, [contenteditable]")
+      ) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
       this.dispatchIntent({ type: "cancel" });
     });
-  }
-
-  override createRenderRoot() {
-    return this;
   }
 
   override connectedCallback() {
@@ -271,27 +271,8 @@ export class CaffoldNotesNavigator extends LitElement {
   }
 
   // Moves the tree into another pane and keeps where it was scrolled.
-  place(parent: Element, before: Element | null = null) {
-    if (this.parentElement === parent) {
-      return;
-    }
-    const target = before?.parentElement === parent ? before : null;
-    const scrollport = this.fileTree.scroller();
-    const scroll = scrollport
-      ? { top: scrollport.scrollTop, left: scrollport.scrollLeft }
-      : null;
-    const movable = parent as Element & {
-      moveBefore?: (node: Node, child: Node | null) => void;
-    };
-    if (movable.moveBefore && this.isConnected) {
-      movable.moveBefore(this, target);
-    } else {
-      parent.insertBefore(this, target);
-    }
-    if (scrollport && scroll) {
-      scrollport.scrollTop = scroll.top;
-      scrollport.scrollLeft = scroll.left;
-    }
+  place(parent: ParentNode, before: Element | null = null) {
+    moveIntoPane(this, parent, before, () => this.fileTree.scroller());
   }
 
   // Opens each directory that holds the open Note once its row exists. Each is

@@ -1,29 +1,31 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 
 import { busySpin } from "#app/component-styles.js";
+import styles from "./refresh-button.css.js";
 
 export const SETTINGS_REFRESH_INTENT_EVENT = "caffold:settings-refresh-intent";
 
 const LABEL = "Refresh";
-
-await busySpin.register(
-  "caffold-settings-refresh-button",
-  "> button.is-refreshing > span > .settings-refresh-icon",
-);
 
 /**
  * The Refresh action beside a Settings page description. The page says when
  * its report is being read and decides what a Refresh request does.
  */
 @customElement("caffold-settings-refresh-button")
-export class CaffoldSettingsRefreshButton extends LitElement {
+export class CaffoldSettingsRefreshButton extends CaffoldElement {
+  static override styles = [
+    busySpin("button.is-refreshing > span > .settings-refresh-icon"),
+    styles,
+  ];
+
   // While refreshing, the action is disabled and its icon turns.
   @property({ attribute: false })
   accessor refreshing = false;
@@ -32,10 +34,6 @@ export class CaffoldSettingsRefreshButton extends LitElement {
 
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

@@ -1,4 +1,4 @@
-import { html, LitElement, type PropertyValues } from "lit";
+import { html, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { hasActionHintLayoutBox } from "#app/action-hint-scope.js";
 import {
@@ -19,9 +19,12 @@ import "#components/loading-text.js";
 import "#components/markdown-preview.js";
 import type { CaffoldMarkdownPreview } from "#components/markdown-preview.js";
 import "./info.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+import { moveIntoPane } from "../move-into-pane.js";
 import type { CaffoldNotesInfo } from "./info.js";
 
 import { compactIconButton } from "#app/component-styles.js";
+import styles from "./document.css.js";
 
 export const NOTE_DOCUMENT_INTENT_EVENT = "caffold:note-document-intent";
 
@@ -62,21 +65,18 @@ const ICON = "note-document-icon";
 
 let documentInstanceId = 0;
 
-await Promise.all(
-  ["split", "close"].map((action) =>
-    compactIconButton.register(
-      "caffold-note-document",
-      `> .notes-workspace-detail-pane > .notes-workspace-detail-header > .note-document-actions > .note-document-${action}`,
-    ),
-  ),
-);
-
 // A retained document view. Notes Workspace owns reads and selection; this
 // owns the header, preview, Info, focus and scroll across placement changes.
 @customElement("caffold-note-document")
-export class CaffoldNoteDocument extends LitElement {
+export class CaffoldNoteDocument extends CaffoldElement {
   @property({ attribute: false })
   accessor snapshot: NoteDocumentSnapshot = IDLE_DOCUMENT;
+
+  static override styles = [
+    compactIconButton(".note-document-split"),
+    compactIconButton(".note-document-close"),
+    styles,
+  ];
 
   private readonly titleId = `notes-document-title-${++documentInstanceId}`;
   // The Markdown the preview was last given.
@@ -91,10 +91,6 @@ export class CaffoldNoteDocument extends LitElement {
   private readonly split = new DrawnRef<HTMLButtonElement>(this);
   private readonly info = new DrawnRef<CaffoldNotesInfo>(this);
   private readonly preview = new DrawnRef<CaffoldMarkdownPreview>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -287,25 +283,8 @@ export class CaffoldNoteDocument extends LitElement {
   }
 
   // Moves this document into another pane and keeps where it was read.
-  place(parent: Element, before: Element | null = null) {
-    const target = before?.parentElement === parent ? before : null;
-    if (this.parentElement === parent) {
-      return;
-    }
-    const preview = this.preview.value;
-    const scroll = preview?.getScrollState();
-    const movable = parent as Element & {
-      moveBefore?: (node: Node, child: Node | null) => void;
-    };
-    if (movable.moveBefore && this.isConnected) {
-      movable.moveBefore(this, target);
-    } else {
-      parent.insertBefore(this, target);
-    }
-    if (preview && scroll) {
-      preview.scrollTop = scroll.top;
-      preview.scrollLeft = scroll.left;
-    }
+  place(parent: ParentNode, before: Element | null = null) {
+    moveIntoPane(this, parent, before, () => this.preview.value);
   }
 
   // Closes the details popover, as leaving Notes does.

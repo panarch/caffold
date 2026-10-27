@@ -1,6 +1,9 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./detail-list.css.js";
 
 export interface SettingsDetailRow {
   key: string;
@@ -20,13 +23,11 @@ const UNKNOWN_VALUE = "—";
  * A row whose value is not known yet keeps its place and shows a placeholder.
  */
 @customElement("caffold-settings-detail-list")
-export class CaffoldSettingsDetailList extends LitElement {
+export class CaffoldSettingsDetailList extends CaffoldElement {
   @property({ attribute: false })
   accessor rows: readonly SettingsDetailRow[] = [];
 
-  override createRenderRoot() {
-    return this;
-  }
+  static override styles = styles;
 
   override render() {
     const busy = this.rows.some((row) => !known(row.value));

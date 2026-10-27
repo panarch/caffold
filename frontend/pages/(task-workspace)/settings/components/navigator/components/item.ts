@@ -1,11 +1,14 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
+
+import styles from "./item.css.js";
 
 export interface SettingsNavigatorIntentDetail {
   section: string;
@@ -23,7 +26,7 @@ export interface SettingsNavigatorEntry {
 // and an update notice change this entry's own button, so the list around it
 // keeps its scroll position and focus.
 @customElement("caffold-settings-navigator-item")
-export class CaffoldSettingsNavigatorItem extends LitElement {
+export class CaffoldSettingsNavigatorItem extends CaffoldElement {
   @property({ attribute: false })
   accessor entry: SettingsNavigatorEntry | null = null;
   @property({ attribute: false })
@@ -34,15 +37,13 @@ export class CaffoldSettingsNavigatorItem extends LitElement {
   @property({ attribute: false })
   accessor reloadReady = false;
 
+  static override styles = styles;
+
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
 
   get section() {
     return this.entry?.section ?? "";
-  }
-
-  override createRenderRoot() {
-    return this;
   }
 
   override connectedCallback() {
@@ -109,6 +110,7 @@ export class CaffoldSettingsNavigatorItem extends LitElement {
         "caffold:settings-navigator-intent",
         {
           bubbles: true,
+          composed: true,
           detail: { section: this.section },
         },
       ),

@@ -41,6 +41,34 @@ const shadowRootStyles = new Map([
   ["keyboard-navigation/components/selector.css", "caffold-scroll-surface-selector"],
   ["keyboard-navigation/components/shortcut-dialog.css", "caffold-keyboard-shortcut-dialog"],
   ["keyboard-navigation/components/shortcut-list.css", "caffold-keyboard-shortcut-list"],
+  ["pages/(task-workspace)/components/workspace-brand.css", "caffold-workspace-brand"],
+  ["pages/(task-workspace)/notes/components/document.css", "caffold-note-document"],
+  ["pages/(task-workspace)/notes/components/info.css", "caffold-notes-info"],
+  ["pages/(task-workspace)/notes/components/info/components/copy-markdown.css", "caffold-notes-info-copy-markdown"],
+  ["pages/(task-workspace)/notes/components/info/components/copy-path.css", "caffold-notes-info-copy-path"],
+  ["pages/(task-workspace)/notes/components/navigator.css", "caffold-notes-navigator"],
+  ["pages/(task-workspace)/notes/layout.css", "caffold-notes-workspace"],
+  ["pages/(task-workspace)/settings/about/page.css", "caffold-settings-about-page"],
+  ["pages/(task-workspace)/settings/appearance/page.css", "caffold-settings-appearance-page"],
+  ["pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css", "caffold-claude-runtime-restart-dialog"],
+  ["pages/(task-workspace)/settings/claude/page.css", "caffold-settings-claude-page"],
+  ["pages/(task-workspace)/settings/codex/page.css", "caffold-settings-codex-page"],
+  ["pages/(task-workspace)/settings/components/detail-list.css", "caffold-settings-detail-list"],
+  ["pages/(task-workspace)/settings/components/navigator.css", "caffold-settings-navigator"],
+  ["pages/(task-workspace)/settings/components/navigator/components/item.css", "caffold-settings-navigator-item"],
+  ["pages/(task-workspace)/settings/components/refresh-button.css", "caffold-settings-refresh-button"],
+  ["pages/(task-workspace)/settings/files/page.css", "caffold-settings-files-page"],
+  ["pages/(task-workspace)/settings/grok/page.css", "caffold-settings-grok-page"],
+  ["pages/(task-workspace)/settings/jev/page.css", "caffold-settings-jev-page"],
+  ["pages/(task-workspace)/settings/keyboard/page.css", "caffold-settings-keyboard-page"],
+  ["pages/(task-workspace)/settings/layout.css", "caffold-settings-workspace"],
+  ["pages/(task-workspace)/settings/notifications/page.css", "caffold-settings-notifications-page"],
+  ["pages/(task-workspace)/settings/remote-access/page.css", "caffold-settings-remote-access-page"],
+  ["pages/(task-workspace)/settings/voice/page.css", "caffold-settings-voice-page"],
+]);
+// Child hosts another owner draws that an owner places in its shadow root.
+const placedChildren = new Map([
+  ["caffold-notes-workspace", ["caffold-notes-navigator"]],
 ]);
 const ownership = new Map([
   [
@@ -67,10 +95,6 @@ const ownership = new Map([
   [
     "pages/(task-workspace)/components/update-task-dialog.css",
     ["caffold-update-task-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/components/workspace-brand.css",
-    ["caffold-workspace-brand"],
   ],
   [
     "pages/(task-workspace)/tasks/components/composer.css",
@@ -373,94 +397,6 @@ const ownership = new Map([
     ["caffold-task-github-layout"],
   ],
   [
-    "pages/(task-workspace)/notes/layout.css",
-    ["caffold-notes-workspace"],
-  ],
-  [
-    "pages/(task-workspace)/notes/components/document.css",
-    ["caffold-note-document"],
-  ],
-  [
-    "pages/(task-workspace)/notes/components/info.css",
-    ["caffold-notes-info"],
-  ],
-  [
-    "pages/(task-workspace)/notes/components/info/components/copy-markdown.css",
-    ["caffold-notes-info-copy-markdown"],
-  ],
-  [
-    "pages/(task-workspace)/notes/components/info/components/copy-path.css",
-    ["caffold-notes-info-copy-path"],
-  ],
-  [
-    "pages/(task-workspace)/notes/components/navigator.css",
-    ["caffold-notes-navigator"],
-  ],
-  [
-    "pages/(task-workspace)/settings/layout.css",
-    ["caffold-settings-workspace"],
-  ],
-  [
-    "pages/(task-workspace)/settings/components/navigator.css",
-    ["caffold-settings-navigator"],
-  ],
-  [
-    "pages/(task-workspace)/settings/components/navigator/components/item.css",
-    ["caffold-settings-navigator-item"],
-  ],
-  [
-    "pages/(task-workspace)/settings/appearance/page.css",
-    ["caffold-settings-appearance-page"],
-  ],
-  [
-    "pages/(task-workspace)/settings/keyboard/page.css",
-    ["caffold-settings-keyboard-page"],
-  ],
-  [
-    "pages/(task-workspace)/settings/files/page.css",
-    ["caffold-settings-files-page"],
-  ],
-  [
-    "pages/(task-workspace)/settings/notifications/page.css",
-    ["caffold-settings-notifications-page"],
-  ],
-  [
-    "pages/(task-workspace)/settings/remote-access/page.css",
-    ["caffold-settings-remote-access-page"],
-  ],
-  [
-    "pages/(task-workspace)/settings/codex/page.css",
-    ["caffold-settings-codex-page"],
-  ],
-  [
-    "pages/(task-workspace)/settings/claude/page.css",
-    ["caffold-settings-claude-page"],
-  ],
-  [
-    "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css",
-    ["caffold-claude-runtime-restart-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/settings/voice/page.css",
-    ["caffold-settings-voice-page"],
-  ],
-  [
-    "pages/(task-workspace)/settings/grok/page.css",
-    ["caffold-settings-grok-page"],
-  ],
-  [
-    "pages/(task-workspace)/settings/jev/page.css",
-    ["caffold-settings-jev-page"],
-  ],
-  [
-    "pages/(task-workspace)/settings/components/detail-list.css",
-    ["caffold-settings-detail-list"],
-  ],
-  [
-    "pages/(task-workspace)/settings/components/refresh-button.css",
-    ["caffold-settings-refresh-button"],
-  ],
-  [
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css",
     ["caffold-codex-runtime-restart-dialog"],
   ],
@@ -471,10 +407,6 @@ const ownership = new Map([
   [
     "pages/(task-workspace)/codex-status/components/reset-credit-dialog.css",
     ["caffold-codex-reset-credit-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/settings/about/page.css",
-    ["caffold-settings-about-page"],
   ],
   [
     "pages/components/build-mismatch-alert.css",
@@ -878,7 +810,9 @@ test("a shadow root's stylesheet is its owner's alone and names no element outsi
     for (const selector of selectors) {
       for (const [element] of selector.matchAll(/caffold-[a-z0-9-]+/g)) {
         assert.ok(
-          module.includes(`<${element}`) || module.includes(`createElement("${element}")`),
+          module.includes(`<${element}`) ||
+            module.includes(`createElement("${element}")`) ||
+            placedChildren.get(owner)?.includes(element),
           `${path} names ${element}, which ${owner} does not draw`,
         );
         // The element ends the selector, or an argument of a closing `:is()`.

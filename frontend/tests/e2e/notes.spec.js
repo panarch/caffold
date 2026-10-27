@@ -282,13 +282,11 @@ test("the tree opens one directory at a time, directories first, beside the open
   const title = notesTitle(page);
   await expect(title).toHaveText(LONG_NOTE_NAME);
   await expect(title).toHaveAttribute("title", LONG_NOTE_NAME);
-  const headers = await page.evaluate(() => {
-    const bottom = (selector) => document.querySelector(selector).getBoundingClientRect().bottom;
-    return {
-      navigator: bottom("caffold-notes-navigator > .notes-navigator-header"),
-      notes: bottom("caffold-notes-workspace .notes-workspace-detail-header"),
-    };
-  });
+  const bottom = (locator) => locator.evaluate((element) => element.getBoundingClientRect().bottom);
+  const headers = {
+    navigator: await bottom(notesNavigator(page).locator(".notes-navigator-header")),
+    notes: await bottom(primaryDocument(page).locator(".notes-workspace-detail-header")),
+  };
   expect(headers.notes).toBe(headers.navigator);
   await captureReviewScreenshot(page, testInfo, "notes-long-names");
 });
@@ -406,8 +404,7 @@ test("Action Hints copy the Note path from inside Note details", { tag: "@viewpo
 test("Note details actions measure the same as the Task details actions", { tag: "@all-viewports" }, async ({
   page,
 }) => {
-  const actionGeometry = (section, button) => section.evaluate((element, buttonSelector) => {
-    const control = element.querySelector(buttonSelector);
+  const actionGeometry = async (section, button) => section.evaluate((element, control) => {
     const style = getComputedStyle(control);
     const frame = getComputedStyle(control, "::before");
     const sectionStyle = getComputedStyle(element);
@@ -420,14 +417,14 @@ test("Note details actions measure the same as the Task details actions", { tag:
       frame: [frame.top, frame.bottom, frame.borderTopWidth, frame.borderTopLeftRadius],
       section: [sectionStyle.marginTop, sectionStyle.paddingTop, sectionStyle.borderTopWidth],
     };
-  }, button);
+  }, await button.elementHandle());
 
   await mockAgentModels(page);
   await openCompletedTaskForReview(page);
   await page.locator("caffold-task-detail-info .task-detail-info-button").click();
   const taskSection = page.locator(".task-detail-popover .task-detail-fork-action");
   await expect(taskSection).toBeVisible();
-  const task = await actionGeometry(taskSection, ':scope > button[data-task-info-action="fork"]');
+  const task = await actionGeometry(taskSection, taskSection.locator(':scope > button[data-task-info-action="fork"]'));
 
   await stubNotes(page);
   await page.goto("/notes/storage");
@@ -438,11 +435,11 @@ test("Note details actions measure the same as the Task details actions", { tag:
   await expect(notesSection).toBeVisible();
   const copyPath = await actionGeometry(
     notesSection,
-    ":scope > caffold-notes-info-copy-path > button",
+    notesSection.locator(":scope > caffold-notes-info-copy-path > button"),
   );
   const copyMarkdown = await actionGeometry(
     notesSection,
-    ":scope > caffold-notes-info-copy-markdown > button",
+    notesSection.locator(":scope > caffold-notes-info-copy-markdown > button"),
   );
 
   expect(copyPath).toEqual(task);
@@ -546,8 +543,7 @@ test("the Note header measures the same as the Settings header it follows", { ta
   page,
 }) => {
   await stubNotes(page);
-  const headerGeometry = (headerSelector) => page.evaluate((selector) => {
-    const header = document.querySelector(selector);
+  const headerGeometry = (header) => header.evaluate((header) => {
     const box = (element) => {
       const rect = element.getBoundingClientRect();
       return rect.width === 0
@@ -561,15 +557,15 @@ test("the Note header measures the same as the Settings header it follows", { ta
       titleLeft: title.left,
       titleCenter: title.top + title.height / 2,
     };
-  }, headerSelector);
+  });
 
   await page.goto("/settings/appearance");
   await expect(page.locator("caffold-settings-workspace .settings-workspace-detail-header")).toBeVisible();
-  const settings = await headerGeometry("caffold-settings-workspace .settings-workspace-detail-header");
+  const settings = await headerGeometry(page.locator("caffold-settings-workspace .settings-workspace-detail-header"));
 
   await page.goto("/notes/inbox");
   await expect(notesTitle(page)).toHaveText("Inbox");
-  const notes = await headerGeometry("caffold-notes-workspace .notes-workspace-detail-header");
+  const notes = await headerGeometry(primaryDocument(page).locator(".notes-workspace-detail-header"));
 
   expect(notes).toEqual(settings);
 });
@@ -579,11 +575,10 @@ test("the Note details button sits where the Task details button does", { tag: "
 }) => {
   // Task Detail stacks its view switch under the title row on a phone, so the
   // button is placed against the title it shares a row with.
-  const buttonGeometry = (button, { header, title }) => button.evaluate((element, selectors) => {
+  const buttonGeometry = async (button, { header, title }) => button.evaluate((element, [headerElement, titleSelector]) => {
     const round = (value) => Math.round(value * 100) / 100;
-    const headerElement = element.closest(selectors.header);
     const headerBox = headerElement.getBoundingClientRect();
-    const titleBox = headerElement.querySelector(selectors.title).getBoundingClientRect();
+    const titleBox = headerElement.querySelector(titleSelector).getBoundingClientRect();
     const box = element.getBoundingClientRect();
     return {
       width: round(box.width),
@@ -593,14 +588,14 @@ test("the Note details button sits where the Task details button does", { tag: "
         box.top + box.height / 2 - (titleBox.top + titleBox.height / 2),
       ),
     };
-  }, { header, title });
+  }, [await header.elementHandle(), title]);
 
   await mockAgentModels(page);
   await openCompletedTaskForReview(page);
   const taskButton = page.locator("caffold-task-detail-info .task-detail-info-button");
   await expect(taskButton).toBeVisible();
   const task = await buttonGeometry(taskButton, {
-    header: ".detail-layout-summary",
+    header: page.locator("caffold-detail-layout .detail-layout-summary").first(),
     title: ".task-detail-heading > h2",
   });
 
@@ -610,7 +605,7 @@ test("the Note details button sits where the Task details button does", { tag: "
   const notesButton = primaryDocument(page).getByRole("button", { name: "Note details" });
   await expect(notesButton).toBeVisible();
   const notes = await buttonGeometry(notesButton, {
-    header: ".notes-workspace-detail-header",
+    header: primaryDocument(page).locator(".notes-workspace-detail-header"),
     title: ":scope > h1",
   });
 
@@ -661,28 +656,28 @@ test("opens a Note by address with the tree it sits under beneath it", { tag: "@
   await expect(notesTitle(page)).toHaveText("Inbox");
 });
 
-test("a phone places Note details where it places Task details", { tag: "@phone" }, async ({
+test("a phone spreads Note details across the screen under its Info button, as Task details spreads under its header", { tag: "@phone" }, async ({
   page,
 }, testInfo) => {
-  const popoverPlacement = (popover, headerSelector) => popover.evaluate((element, selector) => {
-    const header = document.querySelector(selector).getBoundingClientRect();
+  const popoverPlacement = async (popover, anchor) => popover.evaluate((element, anchorElement) => {
+    const anchor = anchorElement.getBoundingClientRect();
     const box = element.getBoundingClientRect();
     const label = element.querySelector("dt").getBoundingClientRect();
     const value = element.querySelector("dd").getBoundingClientRect();
     return {
       left: box.left,
       rightGap: document.documentElement.clientWidth - box.right,
-      gapBelowHeader: box.top - header.bottom,
+      gapBelowAnchor: box.top - anchor.bottom,
       valueUnderLabel: value.top >= label.bottom,
     };
-  }, headerSelector);
+  }, await anchor.elementHandle());
 
   await mockAgentModels(page);
   await openCompletedTaskForReview(page);
   await page.locator("caffold-task-detail-info .task-detail-info-button").click();
   const taskDetails = page.locator(".task-detail-popover");
   await expect(taskDetails).toBeVisible();
-  const task = await popoverPlacement(taskDetails, "caffold-detail-layout .detail-layout-summary");
+  const task = await popoverPlacement(taskDetails, page.locator("caffold-detail-layout .detail-layout-summary").first());
 
   await stubNotes(page);
   await page.goto("/notes/storage");
@@ -693,7 +688,7 @@ test("a phone places Note details where it places Task details", { tag: "@phone"
   await expect(noteDetails).toBeVisible();
   const notes = await popoverPlacement(
     noteDetails,
-    "caffold-notes-workspace .notes-workspace-detail-header",
+    workspace.getByRole("button", { name: "Note details" }),
   );
 
   expect(notes).toEqual({ ...task, valueUnderLabel: true });
@@ -1181,9 +1176,9 @@ test("constrained pairs keep long headings and horizontal code inside their pane
     }, { scale, theme });
     for (const pane of [primary, secondary]) {
       const metrics = await pane.evaluate((element) => {
-        const header = element.querySelector("header").getBoundingClientRect();
-        const title = element.querySelector("h1").getBoundingClientRect();
-        const actions = element.querySelector(".note-document-actions").getBoundingClientRect();
+        const header = element.shadowRoot.querySelector("header").getBoundingClientRect();
+        const title = element.shadowRoot.querySelector("h1").getBoundingClientRect();
+        const actions = element.shadowRoot.querySelector(".note-document-actions").getBoundingClientRect();
         return { header: header.height, titleEnd: title.right, actionsStart: actions.left,
           width: element.clientWidth, scrollWidth: element.scrollWidth };
       });
@@ -1220,13 +1215,13 @@ test("paired Notes size three equal floating tabs from the selected font and kee
       for (const width of [641, 736, 761, 763, 933, 1280, 1920]) {
         await page.setViewportSize({ width, height: 704 });
         await expect(footer).toBeVisible();
-        const geometry = await footer.evaluate((element) => {
+        const geometry = await footer.evaluate((element, secondaryDocument) => {
           const buttons = [...element.querySelectorAll("button")];
           const box = element.getBoundingClientRect();
           const pane = element.parentElement;
           const paneBox = pane.getBoundingClientRect();
           const primary = pane.querySelector("caffold-note-document").getBoundingClientRect();
-          const secondary = document.querySelector('caffold-note-document[data-note-side="secondary"]').getBoundingClientRect();
+          const secondary = secondaryDocument.getBoundingClientRect();
           const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
           const hostStyle = getComputedStyle(element);
           const frameWidth = ["paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"]
@@ -1252,7 +1247,7 @@ test("paired Notes size three equal floating tabs from the selected font and kee
             }),
             pageWidth: document.documentElement.scrollWidth,
           };
-        });
+        }, await documentPane(page, "secondary").elementHandle());
         expect(geometry.paneWidth).toBeCloseTo((width - 1) / 2, 1);
         expect(geometry.width).toBeCloseTo(Math.min(geometry.paneWidth - 2 * geometry.inset, naturalWidth), 1);
         if (width === 1920) expect(geometry.width).toBeCloseTo(geometry.neededWidth, 0);
@@ -1386,7 +1381,7 @@ test("floating navigation excludes covered Notes tree and picker rows while leav
     if (side !== "list") await documentPane(page, side).locator(".note-document-title-picker").click();
     const selector = side === "secondary" ? "caffold-notes-workspace > caffold-notes-navigator" : ".task-workspace-master-pane > caffold-notes-navigator";
     await expect(page.locator(selector).getByRole("button", { name: "Occlusion Note 39", exact: true })).toBeAttached();
-    const initial = await workspaceOcclusionTargets(page, selector);
+    const initial = await workspaceOcclusionTargets(page.locator(selector));
     expect(initial.covered.length > 0).toBe(side !== "secondary");
     expect(initial.clear.length).toBeGreaterThan(0);
     const dialog = await enterActionHints(page);
@@ -1414,8 +1409,8 @@ test("covered Markdown links are excluded and companion frozen hints survive pri
   await page.goto("/notes/storage?beside=inbox");
   const selector = (side) => `caffold-note-document[data-note-side="${side}"] caffold-markdown-preview`;
   await expect(page.locator(selector("secondary")).getByRole("link", { name: "Companion 00" })).toBeVisible();
-  const initial = await workspaceOcclusionTargets(page, selector("primary"));
-  const companion = await workspaceOcclusionTargets(page, selector("secondary"));
+  const initial = await workspaceOcclusionTargets(page.locator(selector("primary")));
+  const companion = await workspaceOcclusionTargets(page.locator(selector("secondary")));
   expect(initial.covered.length).toBeGreaterThan(0);
   expect(companion.covered).toEqual([]);
   const dialog = await enterActionHints(page);
@@ -1442,7 +1437,10 @@ test("Notes action paint gaps match the compact toolbar while floating shadows s
   await page.setViewportSize({ width: 736, height: 440 });
   await page.goto("/notes/storage");
   const actionGeometry = async (selector) => page.locator(selector).evaluate((element) => {
-    const buttons = [...element.querySelectorAll("button")].filter((button) => button.getBoundingClientRect().width > 0);
+    // A button may sit in the shadow root of a component among the actions.
+    const collect = (root) => [...root.children].flatMap((child) =>
+      child.localName === "button" ? [child] : collect(child.shadowRoot ?? child));
+    const buttons = collect(element).filter((button) => button.getBoundingClientRect().width > 0);
     const [first, second] = buttons;
     const a = first.getBoundingClientRect(), b = second.getBoundingClientRect();
     const aPaint = getComputedStyle(first, "::before"), bPaint = getComputedStyle(second, "::before");

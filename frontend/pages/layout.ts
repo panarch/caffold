@@ -29,6 +29,7 @@ import {
 } from "#app/navigation-routes.js";
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "#app/origin-reachability.js";
 import { getSettings } from "#app/settings.js";
+import { containsAcrossShadowRoots } from "#app/shadow-roots.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "./(task-workspace)/layout.js";
@@ -363,7 +364,7 @@ export class CaffoldAppShell extends LitElement {
         scroll: () => this.taskWorkspace.scrollSurfaceScope(),
         editing: {
           escapeTarget: (editable: Element | null) =>
-            this.taskWorkspace.contains(editable)
+            containsAcrossShadowRoots(this.taskWorkspace, editable)
               ? this.taskWorkspace.actionHintEditingEscapeTarget(editable)
               : null,
         },

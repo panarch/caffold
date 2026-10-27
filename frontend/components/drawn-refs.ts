@@ -5,6 +5,7 @@ import {
   type PartInfo,
   PartType,
 } from "lit/async-directive.js";
+import { containsAcrossShadowRoots } from "../shadow-roots.js";
 
 const drawnElements = new WeakMap<DrawnRef<Element>, Element>();
 
@@ -14,7 +15,7 @@ const drawnElements = new WeakMap<DrawnRef<Element>, Element>();
  * Lit's `ref` empties while the owner is out of the document, but an owner
  * drawn before it is attached, or still tidying up as it leaves, needs its
  * elements then. This one answers while the element is still inside its
- * owner or the owner's shadow root, wherever the owner is.
+ * owner, through any shadow roots, wherever the owner is.
  */
 export class DrawnRef<T extends Element> {
   private readonly owner: Element;
@@ -25,11 +26,9 @@ export class DrawnRef<T extends Element> {
 
   get value(): T | undefined {
     const element = drawnElements.get(this);
-    const inside =
-      element &&
-      (this.owner.contains(element) ||
-        this.owner.shadowRoot?.contains(element));
-    return inside ? (element as T) : undefined;
+    return element && containsAcrossShadowRoots(this.owner, element)
+      ? (element as T)
+      : undefined;
   }
 }
 

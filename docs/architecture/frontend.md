@@ -1804,10 +1804,14 @@ owns reloadable ids as described in [Notes routes](navigation.md#notes-routes).
 instance owns its header, Markdown Preview, Info, focus, and public keyboard,
 Action Hint, and Scroll providers. The primary instance moves between its
 ordinary detail location and a left slot above the workspace tabs. The
-navigator moves into the right pane for companion selection. Moving either
-uses the browser's state-preserving move when available and restores scroll
-through the child's public API otherwise. Replacing a document resets only
-its preview; refreshing the same document preserves its reading position.
+navigator moves into the right pane for companion selection. Both moves cross
+owners: the primary leaves the Notes workspace's shadow root for the slot Task
+Workspace draws, and the navigator Task Workspace draws enters that shadow
+root, whose stylesheet sizes it there. `notes/move-into-pane.ts` inserts either
+view in its new pane and returns its scroll position once its scroller is
+shown, since the pane may still be hidden as the view arrives. Replacing a
+document resets only its preview; refreshing the same document preserves its
+reading position.
 
 `notes/components/navigator.ts` defines `caffold-notes-navigator`. It renders
 the brand or selection header and the shared File Tree from workspace
@@ -2134,16 +2138,18 @@ finishing never starts another Hint session automatically.
 
 The shared components in `frontend/components/`, the keyboard mode's
 presentation, Scroll selector, Scroll HUD, and shortcut help in
-`keyboard-navigation/components/`, the Action Hint dialog, and pagination with
-its page button extend `CaffoldElement` (`frontend/caffold-element.ts`) and
-render into open shadow roots. Their stylesheets style the host as `:host` and
-the rest by local class, and reach the component as a module: beside each
-stylesheet the server build writes `name.css.js`, whose default export is the
-stylesheet as a `CSSStyleSheet`, the shape a CSS module script has, which
-Safari does not load. The component lists that sheet in its `static styles`,
-and Lit adopts it into every instance's shadow root. The document's stylesheets
-do not reach inside those roots, and their sheets do not reach out. A parent
-names a child it draws only to place, size, or hide its host.
+`keyboard-navigation/components/`, the Action Hint dialog, pagination with
+its page button, Settings and Notes, and the Caffold mark at the head of the
+left pane (`caffold-workspace-brand`) extend `CaffoldElement`
+(`frontend/caffold-element.ts`) and render into open shadow roots. Their
+stylesheets style the host as `:host` and the rest by local class, and reach
+the component as a module: beside each stylesheet the server build writes
+`name.css.js`, whose default export is the stylesheet as a `CSSStyleSheet`,
+the shape a CSS module script has, which Safari does not load. The component
+lists that sheet in its `static styles`, and Lit adopts it into every
+instance's shadow root. The document's stylesheets do not reach inside those
+roots, and their sheets do not reach out. A parent names a child it draws only
+to place, size, or hide its host.
 
 An event heard outside the root it starts in is `composed`, such as
 `caffold:change-page`, the Scroll selector's choice, and the File Viewer's
@@ -2155,7 +2161,8 @@ owner listens on that element. Code that needs the whole page goes through
 there when it connects and removes it when it disconnects, so the keyboard mode
 can run its document queries, observers, and capturing listeners on every
 listed root as well, and resolve the focused element inside the roots that hold
-it.
+it. An owner asks whether an element sits inside it across those roots, as Task
+Workspace does to find which surface holds a field being edited.
 
 The other components render in Light DOM, where CSS is one cascade:
 `styles.css` imports each component's stylesheet, and each stylesheet scopes
@@ -2170,23 +2177,23 @@ lists only its own. Theme tokens and inherited text properties reach a shadow
 root from the document.
 
 `frontend/component-styles.ts` exports three shared styles:
-`compactIconButton`, `secondaryButton`, and `busySpin`.
-Components in Light DOM await
-`register(owner, target)` on each style they use before defining their element,
-so the await stands above the class `@customElement()` registers, declaring the
-explicit child path from the owner to their own local class; a step in that
-path may add the owner's state classes. Each style fetches its stylesheet
-(`component-styles/compact-icon-button.css`, `component-styles/busy-spin.css`)
-once per document and adopts a native `@scope` sheet for each registration. A
-component in a shadow root puts `compactIconButton(target)` in its
-`static styles` instead, `target` being the class path to its element in that
-root; the sheet comes from the stylesheet's module, so it needs no request, and
-every instance shares the one sheet for that target. `secondaryButton`, the
-bordered text button, has only that form, for the File Viewer's notice action;
-components in Light DOM below Tasks still take the same look from
-`tasks/controls.css`. The CSS uses `:scope`
-without naming consumers and may define its own keyframes. Shared defaults use
-the `component-styles` layer; unlayered owner rules retain local overrides.
+`compactIconButton`, `secondaryButton`, and `busySpin`. Components in Light DOM
+await `register(owner, target)` on each style they use before defining their
+element, so the await stands above the class `@customElement()` registers,
+declaring the explicit child path from the owner to their own local class; a
+step in that path may add the owner's state classes. Each style fetches its
+stylesheet (`component-styles/compact-icon-button.css`,
+`component-styles/busy-spin.css`) once per document and adopts a native
+`@scope` sheet for each registration. A component in a shadow root puts
+`compactIconButton(target)` or `busySpin(target)` in its `static styles`
+instead, `target` being the class path to its element in that root; the sheet
+comes from the stylesheet's module, so it needs no request, and every instance
+shares the one sheet for that target. `secondaryButton`, the bordered text
+button, has only that form, for the File Viewer's notice action; components in
+Light DOM below Tasks still take the same look from `tasks/controls.css`. The
+CSS uses `:scope` without naming consumers and may define its own keyframes.
+Shared defaults use the `component-styles` layer; unlayered owner rules retain
+local overrides.
 Registration lasts for the document, while components retain their native
 state and Action Hint providers.
 

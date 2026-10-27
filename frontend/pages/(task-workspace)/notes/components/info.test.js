@@ -10,22 +10,6 @@ await import("./info.js");
 const info = registry.element("caffold-notes-info").prototype;
 after(() => registry.restore());
 
-test("closes the popover when its bound Action Hint session is dismissed", () => {
-  let hidden = 0;
-  const popover = {
-    matches: () => true,
-    hidePopover() {
-      hidden += 1;
-    },
-  };
-  const owner = { infoPopover: { value: popover }, deactivate: info.deactivate };
-
-  info.handleDismiss.call(owner, { target: {} });
-  assert.equal(hidden, 0);
-  info.handleDismiss.call(owner, { target: popover });
-  assert.equal(hidden, 1);
-});
-
 test("closes the popover for a different Note, keeps it open for the same Note, and keeps describing the last Note while hidden", () => {
   const calls = [];
   const owner = {

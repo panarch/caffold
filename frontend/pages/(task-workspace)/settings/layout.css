@@ -1,4 +1,4 @@
-caffold-settings-workspace {
+:host {
   --settings-content-max-width: 48rem;
   --settings-content-padding-block:
     var(--interface-space-14)
@@ -20,99 +20,97 @@ caffold-settings-workspace {
   min-height: 0;
   overflow: hidden;
   background: var(--surface);
+}
 
-  & .settings-workspace-surface,
-  & .settings-workspace-detail-pane {
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-  }
+.settings-workspace-surface,
+.settings-workspace-detail-pane {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
 
-  & .settings-workspace-detail-pane {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    overflow: hidden;
-  }
+.settings-workspace-detail-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
 
-  & .settings-workspace-detail-header {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    min-height: var(--task-workspace-header-size);
-    border-bottom: 1px solid var(--border);
-    padding: var(--interface-space-5) var(--interface-space-7);
-    padding-left: calc(
-      var(--interface-space-7) + var(--task-header-leading-space, 0rem)
-    );
-    box-shadow: var(--structural-shadow-block-end);
-  }
+.settings-workspace-detail-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-height: var(--task-workspace-header-size);
+  border-bottom: 1px solid var(--border);
+  padding: var(--interface-space-5) var(--interface-space-7);
+  padding-left: calc(
+    var(--interface-space-7) + var(--task-header-leading-space, 0rem)
+  );
+  box-shadow: var(--structural-shadow-block-end);
+}
 
-  & .settings-workspace-detail-header[hidden] {
-    display: none;
-  }
+.settings-workspace-detail-header[hidden] {
+  display: none;
+}
 
-  & .settings-workspace-detail-header button {
-    display: none;
-  }
+.settings-workspace-detail-header button {
+  display: none;
+}
 
-  & .settings-workspace-detail-header h1 {
-    margin: 0;
-    font-size: var(--settings-page-title-size);
-    line-height: var(--interface-line-height);
-  }
+.settings-workspace-detail-header h1 {
+  margin: 0;
+  font-size: var(--settings-page-title-size);
+  line-height: var(--interface-line-height);
 }
 
 @media (max-width: 899px) {
-  caffold-settings-workspace {
-    & .settings-workspace-detail-header {
-      column-gap: var(--interface-space-3);
-    }
+  .settings-workspace-detail-header {
+    column-gap: var(--interface-space-3);
+  }
 
-    & .settings-workspace-detail-header button {
-      position: relative;
-      display: grid;
-      place-items: center;
-      width: var(--interface-control-hit-size);
-      height: var(--interface-control-hit-size);
-      border: 0;
-      background: transparent;
-      color: var(--control-fg);
-      padding: 0;
-      cursor: pointer;
-    }
+  .settings-workspace-detail-header button {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--interface-control-hit-size);
+    height: var(--interface-control-hit-size);
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    padding: 0;
+    cursor: pointer;
+  }
 
-    & .settings-workspace-detail-header button::before {
-      position: absolute;
-      inset: var(--interface-control-hit-outset);
-      border: 1px solid var(--border);
-      border-radius: 0.25rem;
-      background: var(--surface);
-      content: "";
-    }
+  .settings-workspace-detail-header button::before {
+    position: absolute;
+    inset: var(--interface-control-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: var(--surface);
+    content: "";
+  }
 
-    & .settings-workspace-detail-header button:hover,
-    & .settings-workspace-detail-header button:focus-visible {
-      outline: none;
-    }
+  .settings-workspace-detail-header button:hover,
+  .settings-workspace-detail-header button:focus-visible {
+    outline: none;
+  }
 
-    & .settings-workspace-detail-header button:hover::before,
-    & .settings-workspace-detail-header button:focus-visible::before {
-      border-color: var(--border-strong);
-      background: var(--control-hover-bg);
-    }
+  .settings-workspace-detail-header button:hover::before,
+  .settings-workspace-detail-header button:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
 
-    & .settings-workspace-back-icon {
-      position: relative;
-      display: block;
-      width: var(--interface-icon-size);
-      height: var(--interface-icon-size);
-      stroke-width: 2;
-    }
+  .settings-workspace-back-icon {
+    position: relative;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 2;
   }
 }
 
 @media (max-width: 700px) {
-  caffold-settings-workspace {
+  :host {
     --settings-content-padding-block:
       var(--interface-space-10)
       calc(var(--interface-space-14) + var(--interface-space-4));
@@ -121,11 +119,11 @@ caffold-settings-workspace {
 }
 
 @media (max-width: 520px) {
-  caffold-settings-workspace {
+  :host {
     --settings-content-padding-inline: var(--interface-space-5);
+  }
 
-    & .settings-workspace-detail-header {
-      padding-inline: var(--interface-space-5);
-    }
+  .settings-workspace-detail-header {
+    padding-inline: var(--interface-space-5);
   }
 }

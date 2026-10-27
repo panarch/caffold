@@ -1,4 +1,4 @@
-caffold-settings-codex-page {
+:host {
   container: settings-codex / inline-size;
   display: block;
   width: 100%;
@@ -7,431 +7,429 @@ caffold-settings-codex-page {
   min-height: 0;
   font-size: var(--interface-font-size);
   line-height: var(--interface-line-height);
+}
 
-  & .settings-content-scroll {
-    height: 100%;
-    min-height: 0;
-    overflow: auto;
-    padding-block: var(--settings-content-padding-block);
-    padding-inline: var(--settings-content-padding-inline);
-  }
+.settings-content-scroll {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding-block: var(--settings-content-padding-block);
+  padding-inline: var(--settings-content-padding-inline);
+}
 
-  & .settings-content-section {
-    display: grid;
-    width: min(100%, var(--settings-content-max-width));
-    min-width: 0;
-    margin: 0 auto;
-  }
+.settings-content-section {
+  display: grid;
+  width: min(100%, var(--settings-content-max-width));
+  min-width: 0;
+  margin: 0 auto;
+}
 
-  & .settings-content-section > header {
-    display: flex;
-    align-items: end;
-    justify-content: space-between;
-    gap: var(--interface-space-7);
-    border-bottom: 1px solid var(--border);
-    padding-bottom: var(--interface-space-6);
-  }
+.settings-content-section > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--interface-space-7);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--interface-space-6);
+}
 
-  & .settings-content-section > header > div {
-    display: grid;
-    gap: var(--interface-space-2);
-    min-width: 0;
-  }
+.settings-content-section > header > div {
+  display: grid;
+  gap: var(--interface-space-2);
+  min-width: 0;
+}
 
-  & .settings-content-section > header p {
-    margin: 0;
-    color: var(--muted);
-    font-size: var(--settings-page-description-size);
-    line-height: var(--interface-line-height);
-  }
+.settings-content-section > header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--settings-page-description-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .settings-service-status {
-    width: fit-content;
-    max-width: 100%;
-    color: var(--muted);
-    font-size: var(--settings-page-description-size);
-    line-height: var(--interface-line-height);
-    text-decoration: underline;
-    text-underline-offset: 0.15em;
-  }
+.settings-service-status {
+  width: fit-content;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: var(--settings-page-description-size);
+  line-height: var(--interface-line-height);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
 
-  & .settings-content-section > section {
-    margin-top: var(--interface-space-10);
-  }
+.settings-content-section > section {
+  margin-top: var(--interface-space-10);
+}
 
-  & .settings-content-section > section > h3 {
-    margin: 0;
-    font-size: var(--settings-field-label-size);
-    line-height: var(--interface-line-height);
-  }
+.settings-content-section > section > h3 {
+  margin: 0;
+  font-size: var(--settings-field-label-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .settings-runtime-control button,
-  & .settings-codex-updates button {
-    position: relative;
-    isolation: isolate;
-    height: var(--settings-page-action-size);
-    min-height: var(--settings-page-action-size);
-    padding: 0 var(--interface-control-padding-inline);
-    border: 0;
-    background: transparent;
-    color: var(--control-fg);
-    font: inherit;
-    font-size: var(--settings-small-text-size);
-    line-height: 1;
-    white-space: nowrap;
-    cursor: pointer;
-  }
+.settings-runtime-control button,
+.settings-codex-updates button {
+  position: relative;
+  isolation: isolate;
+  height: var(--settings-page-action-size);
+  min-height: var(--settings-page-action-size);
+  padding: 0 var(--interface-control-padding-inline);
+  border: 0;
+  background: transparent;
+  color: var(--control-fg);
+  font: inherit;
+  font-size: var(--settings-small-text-size);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
 
-  & .settings-runtime-control button::before,
-  & .settings-codex-updates button::before {
-    position: absolute;
-    z-index: -1;
-    inset: var(--interface-control-hit-outset) 0;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface);
-    content: "";
-  }
+.settings-runtime-control button::before,
+.settings-codex-updates button::before {
+  position: absolute;
+  z-index: -1;
+  inset: var(--interface-control-hit-outset) 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  content: "";
+}
 
-  & .settings-runtime-control button:hover:not(:disabled),
-  & .settings-runtime-control button:focus-visible,
-  & .settings-codex-updates button:hover:not(:disabled),
-  & .settings-codex-updates button:focus-visible {
-    outline: none;
-  }
+.settings-runtime-control button:hover:not(:disabled),
+.settings-runtime-control button:focus-visible,
+.settings-codex-updates button:hover:not(:disabled),
+.settings-codex-updates button:focus-visible {
+  outline: none;
+}
 
-  & .settings-runtime-control button:hover:not(:disabled)::before,
-  & .settings-runtime-control button:focus-visible::before,
-  & .settings-codex-updates button:hover:not(:disabled)::before,
-  & .settings-codex-updates button:focus-visible::before {
-    border-color: var(--border-strong);
-    background: var(--control-hover-bg);
-  }
+.settings-runtime-control button:hover:not(:disabled)::before,
+.settings-runtime-control button:focus-visible::before,
+.settings-codex-updates button:hover:not(:disabled)::before,
+.settings-codex-updates button:focus-visible::before {
+  border-color: var(--border-strong);
+  background: var(--control-hover-bg);
+}
 
-  & .settings-runtime-control button:disabled,
-  & .settings-codex-updates button:disabled {
-    color: var(--disabled-text);
-    cursor: default;
-  }
+.settings-runtime-control button:disabled,
+.settings-codex-updates button:disabled {
+  color: var(--disabled-text);
+  cursor: default;
+}
 
-  & .settings-runtime-control[data-restart-emphasis="attention"] button:not(:disabled) {
-    color: var(--primary-action-fg);
-  }
+.settings-runtime-control[data-restart-emphasis="attention"] button:not(:disabled) {
+  color: var(--primary-action-fg);
+}
 
-  & .settings-runtime-control[data-restart-emphasis="attention"] button:not(:disabled)::before {
-    border-color: var(--primary-action-border);
-    background: var(--primary-action-bg);
-  }
+.settings-runtime-control[data-restart-emphasis="attention"] button:not(:disabled)::before {
+  border-color: var(--primary-action-border);
+  background: var(--primary-action-bg);
+}
 
-  & .settings-runtime-control[data-restart-emphasis="attention"] button:hover:not(:disabled)::before,
-  & .settings-runtime-control[data-restart-emphasis="attention"] button:focus-visible::before {
-    border-color: var(--border-strong);
-    background: var(--primary-action-bg);
-  }
+.settings-runtime-control[data-restart-emphasis="attention"] button:hover:not(:disabled)::before,
+.settings-runtime-control[data-restart-emphasis="attention"] button:focus-visible::before {
+  border-color: var(--border-strong);
+  background: var(--primary-action-bg);
+}
 
-  & .settings-codex-repair,
-  & .settings-codex-diagnostic {
-    display: grid;
-    gap: var(--interface-space-5);
-    min-width: 0;
-    padding: var(--interface-space-8);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    background: var(--surface-subtle);
-  }
+.settings-codex-repair,
+.settings-codex-diagnostic {
+  display: grid;
+  gap: var(--interface-space-5);
+  min-width: 0;
+  padding: var(--interface-space-8);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
 
-  & .settings-codex-repair > div:first-child {
-    display: grid;
-    gap: var(--interface-space-2);
-  }
+.settings-codex-repair > div:first-child {
+  display: grid;
+  gap: var(--interface-space-2);
+}
 
-  & .settings-codex-repair h3,
-  & .settings-codex-repair p,
-  & .settings-codex-diagnostic dl,
-  & .settings-codex-updates dl {
-    margin: 0;
-  }
+.settings-codex-repair h3,
+.settings-codex-repair p,
+.settings-codex-diagnostic dl,
+.settings-codex-updates dl {
+  margin: 0;
+}
 
-  & .settings-codex-repair h3 {
-    font-size: var(--settings-field-label-size);
-    line-height: var(--interface-line-height);
-  }
+.settings-codex-repair h3 {
+  font-size: var(--settings-field-label-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .settings-codex-repair p {
-    color: var(--muted);
-    font-size: var(--settings-small-text-size);
-    line-height: var(--interface-line-height);
-  }
+.settings-codex-repair p {
+  color: var(--muted);
+  font-size: var(--settings-small-text-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .settings-codex-repair a {
-    width: fit-content;
-    color: var(--link-fg);
-    font-size: var(--settings-small-text-size);
-  }
+.settings-codex-repair a {
+  width: fit-content;
+  color: var(--link-fg);
+  font-size: var(--settings-small-text-size);
+}
 
-  & .settings-codex-command {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: var(--interface-space-4);
-    min-width: 0;
-    padding: var(--interface-space-5);
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    background: var(--surface);
-  }
+.settings-codex-command {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--interface-space-4);
+  min-width: 0;
+  padding: var(--interface-space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface);
+}
 
-  & .settings-codex-command code {
-    min-width: 0;
-    font-size: var(--settings-small-text-size);
-    overflow-wrap: anywhere;
-  }
+.settings-codex-command code {
+  min-width: 0;
+  font-size: var(--settings-small-text-size);
+  overflow-wrap: anywhere;
+}
 
-  & .settings-codex-command strong {
-    grid-column: 1 / -1;
-    font-size: var(--settings-small-text-size);
-    line-height: var(--interface-line-height);
-  }
+.settings-codex-command strong {
+  grid-column: 1 / -1;
+  font-size: var(--settings-small-text-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .settings-codex-command button {
-    min-height: var(--settings-page-action-size);
-    padding: 0 var(--interface-control-padding-inline);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface);
-    color: var(--control-fg);
-    font: inherit;
-    font-size: var(--settings-small-text-size);
-    cursor: pointer;
-  }
+.settings-codex-command button {
+  min-height: var(--settings-page-action-size);
+  padding: 0 var(--interface-control-padding-inline);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--control-fg);
+  font: inherit;
+  font-size: var(--settings-small-text-size);
+  cursor: pointer;
+}
 
-  & .settings-codex-command button:hover,
-  & .settings-codex-command button:focus-visible {
-    border-color: var(--border-strong);
-    outline: none;
-    background: var(--control-hover-bg);
-  }
+.settings-codex-command button:hover,
+.settings-codex-command button:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+  background: var(--control-hover-bg);
+}
 
-  & .settings-codex-sign-in code {
-    padding: var(--interface-space-2) var(--interface-space-4);
-    border: 1px solid var(--border-subtle);
-    border-radius: 4px;
-    background: var(--surface);
-    color: var(--text);
-  }
+.settings-codex-sign-in code {
+  padding: var(--interface-space-2) var(--interface-space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+}
 
-  & .settings-codex-diagnostic dl,
-  & .settings-codex-updates dl {
-    display: grid;
-  }
+.settings-codex-diagnostic dl,
+.settings-codex-updates dl {
+  display: grid;
+}
 
-  & .settings-codex-diagnostic dl > div,
-  & .settings-codex-updates dl > div {
-    display: grid;
-    grid-template-columns: minmax(8rem, 0.55fr) minmax(0, 1fr);
-    gap: var(--interface-space-7);
-    padding: var(--interface-space-4) 0;
-    border-top: 1px solid var(--border-subtle);
-  }
+.settings-codex-diagnostic dl > div,
+.settings-codex-updates dl > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.55fr) minmax(0, 1fr);
+  gap: var(--interface-space-7);
+  padding: var(--interface-space-4) 0;
+  border-top: 1px solid var(--border-subtle);
+}
 
-  & .settings-codex-diagnostic dt,
-  & .settings-codex-diagnostic dd,
-  & .settings-codex-updates dt,
-  & .settings-codex-updates dd {
-    font-size: var(--settings-small-text-size);
-    line-height: var(--interface-line-height);
-  }
+.settings-codex-diagnostic dt,
+.settings-codex-diagnostic dd,
+.settings-codex-updates dt,
+.settings-codex-updates dd {
+  font-size: var(--settings-small-text-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .settings-codex-diagnostic dt,
-  & .settings-codex-updates dt {
-    color: var(--muted);
-  }
+.settings-codex-diagnostic dt,
+.settings-codex-updates dt {
+  color: var(--muted);
+}
 
-  & .settings-codex-diagnostic dd,
-  & .settings-codex-updates dd {
-    min-width: 0;
-    margin: 0;
-    overflow-wrap: anywhere;
-  }
+.settings-codex-diagnostic dd,
+.settings-codex-updates dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 
-  & .settings-runtime-control,
-  & .settings-codex-updates {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--interface-space-8);
-    padding: var(--interface-space-8);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    background: var(--surface-subtle);
-  }
+.settings-runtime-control,
+.settings-codex-updates {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--interface-space-8);
+  padding: var(--interface-space-8);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
 
-  & .settings-runtime-control > div,
-  & .settings-codex-updates > div {
-    display: grid;
-    flex: auto;
-    gap: var(--interface-space-2);
-    min-width: 0;
-  }
+.settings-runtime-control > div,
+.settings-codex-updates > div {
+  display: grid;
+  flex: auto;
+  gap: var(--interface-space-2);
+  min-width: 0;
+}
 
-  & .settings-runtime-control h3,
-  & .settings-runtime-control p,
-  & .settings-codex-updates h3,
-  & .settings-codex-updates p,
-  & .settings-runtime-message {
-    margin: 0;
-  }
+.settings-runtime-control h3,
+.settings-runtime-control p,
+.settings-codex-updates h3,
+.settings-codex-updates p,
+.settings-runtime-message {
+  margin: 0;
+}
 
-  & .settings-runtime-control h3,
-  & .settings-codex-updates h3 {
-    font-size: var(--settings-field-label-size);
-    line-height: var(--interface-line-height);
-  }
+.settings-runtime-control h3,
+.settings-codex-updates h3 {
+  font-size: var(--settings-field-label-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .settings-runtime-control p,
-  & .settings-codex-updates p {
-    color: var(--muted);
-    font-size: var(--settings-small-text-size);
-    line-height: var(--interface-line-height);
-    white-space: pre-line;
-  }
+.settings-runtime-control p,
+.settings-codex-updates p {
+  color: var(--muted);
+  font-size: var(--settings-small-text-size);
+  line-height: var(--interface-line-height);
+  white-space: pre-line;
+}
 
-  & .settings-runtime-message {
-    margin-top: var(--interface-space-5);
-    color: var(--success);
-    font-size: var(--settings-small-text-size);
-  }
+.settings-runtime-message {
+  margin-top: var(--interface-space-5);
+  color: var(--success);
+  font-size: var(--settings-small-text-size);
+}
 
-  & .settings-runtime-message[data-state="failed"] {
-    color: var(--danger);
-  }
+.settings-runtime-message[data-state="failed"] {
+  color: var(--danger);
+}
 
-  & .settings-codex-reset-credits {
-    display: grid;
-    gap: var(--interface-space-5);
-    margin-top: var(--interface-space-8);
-  }
+.settings-codex-reset-credits {
+  display: grid;
+  gap: var(--interface-space-5);
+  margin-top: var(--interface-space-8);
+}
 
-  & .settings-codex-reset-heading {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--interface-space-5);
-  }
+.settings-codex-reset-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--interface-space-5);
+}
 
-  & .settings-codex-reset-heading h4,
-  & .settings-codex-reset-credit h5,
-  & .settings-codex-reset-credit p,
-  & .settings-codex-reset-credits > p:not(.settings-runtime-message) {
-    margin: 0;
-  }
+.settings-codex-reset-heading h4,
+.settings-codex-reset-credit h5,
+.settings-codex-reset-credit p,
+.settings-codex-reset-credits > p:not(.settings-runtime-message) {
+  margin: 0;
+}
 
-  & .settings-codex-reset-heading h4 {
-    font-size: var(--settings-field-label-size);
-  }
+.settings-codex-reset-heading h4 {
+  font-size: var(--settings-field-label-size);
+}
 
-  & .settings-codex-reset-heading span,
-  & .settings-codex-reset-credit h5 {
-    font-size: var(--settings-small-text-size);
-  }
+.settings-codex-reset-heading span,
+.settings-codex-reset-credit h5 {
+  font-size: var(--settings-small-text-size);
+}
 
-  & .settings-codex-reset-credits > p:not(.settings-runtime-message),
-  & .settings-codex-reset-credit p {
-    color: var(--muted);
-    font-size: var(--settings-small-text-size);
-    line-height: var(--interface-line-height);
-  }
+.settings-codex-reset-credits > p:not(.settings-runtime-message),
+.settings-codex-reset-credit p {
+  color: var(--muted);
+  font-size: var(--settings-small-text-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .settings-codex-reset-credit {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--interface-space-7);
-    min-width: 0;
-    padding: var(--interface-space-6) 0;
-    border-top: 1px solid var(--border-subtle);
-  }
+.settings-codex-reset-credit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--interface-space-7);
+  min-width: 0;
+  padding: var(--interface-space-6) 0;
+  border-top: 1px solid var(--border-subtle);
+}
 
-  & .settings-codex-reset-credit > div {
-    display: grid;
-    gap: var(--interface-space-2);
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
+.settings-codex-reset-credit > div {
+  display: grid;
+  gap: var(--interface-space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 
-  & .settings-codex-reset-credit time {
-    color: var(--text);
-  }
+.settings-codex-reset-credit time {
+  color: var(--text);
+}
 
-  & .settings-codex-reset-credits button {
-    width: fit-content;
-    min-height: var(--settings-page-action-size);
-    flex: none;
-    padding: 0 var(--interface-control-padding-inline);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface);
-    color: var(--control-fg);
-    font: inherit;
-    font-size: var(--settings-small-text-size);
-    cursor: pointer;
-  }
+.settings-codex-reset-credits button {
+  width: fit-content;
+  min-height: var(--settings-page-action-size);
+  flex: none;
+  padding: 0 var(--interface-control-padding-inline);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--control-fg);
+  font: inherit;
+  font-size: var(--settings-small-text-size);
+  cursor: pointer;
+}
 
-  & .settings-codex-reset-credits button:hover:not(:disabled),
-  & .settings-codex-reset-credits button:focus-visible {
-    border-color: var(--border-strong);
-    outline: none;
-  }
+.settings-codex-reset-credits button:hover:not(:disabled),
+.settings-codex-reset-credits button:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+}
 
-  & .settings-codex-reset-credits button:disabled {
-    color: var(--disabled-text);
-    cursor: default;
-  }
+.settings-codex-reset-credits button:disabled {
+  color: var(--disabled-text);
+  cursor: default;
+}
 
-  & .settings-status-message {
-    margin: var(--interface-space-8) 0 0;
-    color: var(--muted);
-    font-size: var(--settings-field-description-size);
-    line-height: var(--interface-line-height);
-    overflow-wrap: anywhere;
-  }
+.settings-status-message {
+  margin: var(--interface-space-8) 0 0;
+  color: var(--muted);
+  font-size: var(--settings-field-description-size);
+  line-height: var(--interface-line-height);
+  overflow-wrap: anywhere;
 }
 
 @container settings-codex (max-width: 34rem) {
-  caffold-settings-codex-page {
-    & .settings-content-section > header {
-      align-items: start;
-      flex-direction: column;
-    }
+  .settings-content-section > header {
+    align-items: start;
+    flex-direction: column;
+  }
 
-    & .settings-content-section > header > caffold-settings-refresh-button {
-      align-self: start;
-    }
+  .settings-content-section > header > caffold-settings-refresh-button {
+    align-self: start;
+  }
 
-    & .settings-runtime-control,
-    & .settings-codex-updates {
-      align-items: stretch;
-      flex-direction: column;
-    }
+  .settings-runtime-control,
+  .settings-codex-updates {
+    align-items: stretch;
+    flex-direction: column;
+  }
 
-    & .settings-runtime-control button,
-    & .settings-codex-updates button {
-      align-self: start;
-    }
+  .settings-runtime-control button,
+  .settings-codex-updates button {
+    align-self: start;
+  }
 
-    & .settings-codex-command,
-    & .settings-codex-diagnostic dl > div,
-    & .settings-codex-updates dl > div {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .settings-codex-command,
+  .settings-codex-diagnostic dl > div,
+  .settings-codex-updates dl > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-    & .settings-codex-command button {
-      justify-self: start;
-    }
+  .settings-codex-command button {
+    justify-self: start;
+  }
 
-    & .settings-codex-reset-credit {
-      align-items: start;
-      flex-direction: column;
-    }
+  .settings-codex-reset-credit {
+    align-items: start;
+    flex-direction: column;
   }
 }

@@ -1,10 +1,11 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
   type ActionHintPull,
   ActionHints,
 } from "#app/action-hints.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import {
@@ -13,6 +14,8 @@ import {
   type TailscaleState,
   tailscaleQrCodeUrl,
 } from "./tailscale.js";
+
+import styles from "./page.css.js";
 
 const STATE_COPY: Readonly<
   Record<TailscaleState, { label: string; detail: string }>
@@ -57,7 +60,7 @@ const STATE_COPY: Readonly<
 });
 
 @customElement("caffold-settings-remote-access-page")
-export class CaffoldSettingsRemoteAccessPage extends LitElement {
+export class CaffoldSettingsRemoteAccessPage extends CaffoldElement {
   @state()
   private accessor snapshot: TailscaleSnapshot = {
     status: null,
@@ -68,6 +71,8 @@ export class CaffoldSettingsRemoteAccessPage extends LitElement {
   };
   @state()
   private accessor copyState: "idle" | "copied" | "failed" = "idle";
+
+  static override styles = styles;
 
   private active = false;
   readonly lifecycle = new TailscaleLifecycle({
@@ -84,10 +89,6 @@ export class CaffoldSettingsRemoteAccessPage extends LitElement {
   });
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();

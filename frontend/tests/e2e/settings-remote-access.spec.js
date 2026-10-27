@@ -207,10 +207,10 @@ test("hands off one exact private URL while remote management stays read-only", 
   expect(serveUpdates).toBe(0);
 
   const geometry = await remoteAccess.evaluate((element) => {
-    const content = element.querySelector(".settings-remote-handoff > div:first-child")
+    const content = element.shadowRoot.querySelector(".settings-remote-handoff > div:first-child")
       .getBoundingClientRect();
-    const figure = element.querySelector("figure").getBoundingClientRect();
-    const scroller = element.querySelector(".settings-content-scroll");
+    const figure = element.shadowRoot.querySelector("figure").getBoundingClientRect();
+    const scroller = element.shadowRoot.querySelector(".settings-content-scroll");
     return {
       sideBySide: figure.left >= content.right - 1,
       stacked: figure.top >= content.bottom - 1,

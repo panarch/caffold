@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import type { ActionHintScope } from "#app/action-hint-scope.js";
 import {
@@ -35,9 +35,12 @@ import "./keyboard/page.js";
 import "./notifications/page.js";
 import "./remote-access/page.js";
 import "./voice/page.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { ParsedRoute } from "#app/navigation-routes.js";
 import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
 import type { SettingsNavigatorIntentDetail } from "./components/navigator/components/item.js";
+
+import styles from "./layout.css.js";
 
 export interface RequestSettingsRouteDetail {
   route: ParsedRoute;
@@ -79,7 +82,7 @@ interface SettingsPage extends HTMLElement {
 }
 
 @customElement("caffold-settings-workspace")
-export class CaffoldSettingsWorkspace extends LitElement {
+export class CaffoldSettingsWorkspace extends CaffoldElement {
   @state()
   private accessor section = "";
   // Whether the list and a section sit side by side, which opens Appearance
@@ -98,6 +101,8 @@ export class CaffoldSettingsWorkspace extends LitElement {
   private accessor caffoldUpdate: CaffoldUpdateSnapshot | null = null;
   @state()
   private accessor updateStatus: unknown = null;
+
+  static override styles = styles;
 
   private readonly masterDetailMedia = window.matchMedia(
     SETTINGS_MASTER_DETAIL_MEDIA_QUERY,
@@ -122,10 +127,6 @@ export class CaffoldSettingsWorkspace extends LitElement {
   constructor() {
     super();
     this.wide = this.masterDetailMedia.matches;
-  }
-
-  override createRenderRoot() {
-    return this;
   }
 
   override connectedCallback() {

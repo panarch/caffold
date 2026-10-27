@@ -1,3 +1,4 @@
+import busySpinSource from "./component-styles/busy-spin.css.js";
 import compactIconButtonSource from "./component-styles/compact-icon-button.css.js";
 import secondaryButtonSource from "./component-styles/secondary-button.css.js";
 
@@ -9,7 +10,8 @@ export interface SharedStyle {
 
 // Components register their own elements before defining the custom element.
 // One that renders into a shadow root instead puts `compactIconButton(target)`
-// in its `static styles`, `target` being the element's class path in that root.
+// or `busySpin(target)` in its `static styles`, `target` being the element's
+// class path in that root.
 export const compactIconButton = Object.assign(
   scopedStyle("Compact icon buttons", compactIconButtonSource),
   sharedStyle(
@@ -26,9 +28,9 @@ export const secondaryButton = scopedStyle(
 );
 
 // An element that stays while idle names its busy state class in the path.
-export const busySpin = sharedStyle(
-  "Busy spins",
-  "./component-styles/busy-spin.css",
+export const busySpin = Object.assign(
+  scopedStyle("Busy spins", busySpinSource),
+  sharedStyle("Busy spins", "./component-styles/busy-spin.css"),
 );
 
 function sharedStyle(name: string, path: string): SharedStyle {

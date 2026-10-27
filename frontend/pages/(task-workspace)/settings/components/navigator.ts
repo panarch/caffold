@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
   type ActionHintPull,
@@ -12,11 +12,14 @@ import {
 } from "#app/scroll-scope.js";
 import "../../components/workspace-brand.js";
 import "./navigator/components/item.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
 import type {
   CaffoldSettingsNavigatorItem,
   SettingsNavigatorEntry,
 } from "./navigator/components/item.js";
+
+import styles from "./navigator.css.js";
 
 // Each brand mark is published in a single color so it can be tinted, and the
 // theme tints it through --brand-monochrome-filter.
@@ -35,7 +38,7 @@ const ITEMS: readonly SettingsNavigatorEntry[] = [
 ];
 
 @customElement("caffold-settings-navigator")
-export class CaffoldSettingsNavigator extends LitElement {
+export class CaffoldSettingsNavigator extends CaffoldElement {
   @property({ attribute: false })
   accessor selectedSection = "";
   // Whether a newer Caffold exists, and whether this window has a new build
@@ -45,14 +48,12 @@ export class CaffoldSettingsNavigator extends LitElement {
   @property({ attribute: false })
   accessor reloadReady = false;
 
+  static override styles = styles;
+
   private readonly hints = new ActionHints(this);
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly list = new DrawnRef<HTMLElement>(this);
   private readonly items = new DrawnRefs<CaffoldSettingsNavigatorItem>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const items = ITEMS.map((entry) => {

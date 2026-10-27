@@ -131,7 +131,7 @@ test("retires newly covered Task rows on panel resize without reallocating froze
   await page.setViewportSize({ width: 933, height: 440 });
   await page.goto("/tasks");
   await expect(page.locator("caffold-active-task-row")).toHaveCount(48);
-  const initial = await workspaceOcclusionTargets(page, "caffold-task-navigator");
+  const initial = await workspaceOcclusionTargets(page.locator("caffold-task-navigator"));
   expect(initial.covered.length).toBeGreaterThan(0);
   const dialog = await enterActionHints(page);
   for (const label of initial.covered) await expect(dialog.getByLabel(new RegExp(` — ${label}$`))).toHaveCount(0);
@@ -140,7 +140,7 @@ test("retires newly covered Task rows on panel resize without reallocating froze
   })));
   const panel = page.locator("caffold-task-workspace-navigation");
   await panel.evaluate((element) => { element.style.height = `${element.getBoundingClientRect().height + 80}px`; });
-  const expanded = await workspaceOcclusionTargets(page, "caffold-task-navigator");
+  const expanded = await workspaceOcclusionTargets(page.locator("caffold-task-navigator"));
   const retired = frozen.filter(({ label }) => expanded.covered.includes(label));
   const surviving = frozen.filter(({ label }) => expanded.clear.includes(label));
   expect(retired.length).toBeGreaterThan(0);

@@ -102,7 +102,7 @@ test("a child path step may carry the owner's state classes", async (t) => {
 
 test("a shadow root takes one scoped sheet per target and refuses anything but a local class path", async (t) => {
   const requests = [];
-  const { compactIconButton } = await styleEnvironment(t, async (url) => {
+  const { busySpin, compactIconButton } = await styleEnvironment(t, async (url) => {
     requests.push(url.href);
     return new Response(":scope {}");
   });
@@ -112,6 +112,10 @@ test("a shadow root takes one scoped sheet per target and refuses anything but a
   assert.match(
     button.text,
     /^@layer component-styles \{\s*@scope \(\.pagination-button\) \{/,
+  );
+  assert.match(
+    busySpin("button.is-refreshing > span > .refresh-icon").text,
+    /^@layer component-styles \{\s*@scope \(button\.is-refreshing > span > \.refresh-icon\) \{/,
   );
   for (const target of [
     "> .button",

@@ -1,27 +1,27 @@
-caffold-workspace-brand {
+:host {
   display: flex;
   align-items: center;
   gap: var(--interface-space-3);
   min-width: 0;
   color: var(--muted);
+}
 
-  & .workspace-brand-icon {
-    display: block;
-    flex: 0 0 1.25rem;
-    width: 1.25rem;
-    height: 1.25rem;
-    transform: translateY(-0.0625rem);
-  }
+.workspace-brand-icon {
+  display: block;
+  flex: 0 0 1.25rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  transform: translateY(-0.0625rem);
+}
 
-  & .workspace-brand-title {
-    min-width: 0;
-    overflow: hidden;
-    font-size: var(--workspace-header-title-size);
-    font-weight: 700;
-    line-height: var(--interface-line-height);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.workspace-brand-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--workspace-header-title-size);
+  font-weight: 700;
+  line-height: var(--interface-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The navigation pane's header also holds the side pane toggle and the Task
@@ -29,7 +29,7 @@ caffold-workspace-brand {
    bundled face. The pane gets that narrow only at larger interface sizes, and
    there the mark stands alone. */
 @container task-workspace-navigation (max-width: 15.75rem) {
-  caffold-workspace-brand .workspace-brand-title {
+  .workspace-brand-title {
     position: absolute;
     width: 1px;
     height: 1px;
