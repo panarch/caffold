@@ -770,7 +770,7 @@ export class CaffoldAppShell extends LitElement {
         this.navigateToRoute({ kind: "tasks" });
       }
       this.foregroundRecoveryLifecycle.connect();
-      return await this.foregroundRecoveryLifecycle.requestInitialActivation({
+      await this.foregroundRecoveryLifecycle.requestInitialActivation({
         discarded: Boolean(
           (document as Document & { wasDiscarded?: boolean }).wasDiscarded,
         ),
