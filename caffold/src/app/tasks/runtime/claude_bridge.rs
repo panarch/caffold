@@ -955,7 +955,10 @@ mod tests {
 
     #[tokio::test]
     async fn the_agent_keeps_a_note_that_records_its_task() {
+        use std::fs;
+
         let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("findings.md"), "# Findings\n").unwrap();
         let (state, runner) = watched(root.path()).await;
         state
             .task_store
@@ -968,7 +971,7 @@ mod tests {
                 notes_call(
                     5,
                     "create_note",
-                    json!({ "name": "Findings", "content": "# Findings\n" }),
+                    json!({ "name": "Findings", "contentPath": "findings.md" }),
                 ),
             )
             .await;
@@ -984,6 +987,7 @@ mod tests {
             .unwrap()
             .expect("the Note is stored");
         assert_eq!(note.name, "Findings");
+        assert_eq!(note.content, "# Findings\n");
         assert_eq!(note.created_by_thread_id, SESSION);
     }
 

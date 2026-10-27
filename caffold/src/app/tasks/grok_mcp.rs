@@ -572,7 +572,10 @@ mod tests {
     /// which Task wrote them.
     #[tokio::test]
     async fn a_grok_task_keeps_notes_through_its_own_address() {
+        use std::fs;
+
         let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("bridge.md"), "# Bridge\n").unwrap();
         let (state, leader, _memory, host) = task_state_with_grok(
             RootedFs::new(root.path()).unwrap(),
             CodexThreadClient::mock(Vec::new()),
@@ -617,7 +620,7 @@ mod tests {
                 call(
                     2,
                     "create_note",
-                    json!({ "name": "Bridge", "content": "# Bridge\n" }),
+                    json!({ "name": "Bridge", "contentPath": "bridge.md" }),
                 ),
             )
             .await,
