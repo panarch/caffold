@@ -508,6 +508,10 @@ record, then clears Caffold's ephemeral per-thread resources. The operation
 does not remove a Git branch or an external worktree. These steps are
 intentionally not an atomic cross-system transaction; a failed request keeps
 any remaining local archived record visible so the user can retry.
+App-server refuses `thread/delete` while a fork still reads the thread's
+history, and marks that refusal only in its message wording. The driver
+recognizes the wording and reports that the fork must be deleted first; any
+other `thread/delete` refusal shows app-server's own message.
 
 ## Browser Status Projection
 
