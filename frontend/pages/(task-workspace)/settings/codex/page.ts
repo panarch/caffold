@@ -42,6 +42,11 @@ import type { SettingsDetailRow } from "../components/detail-list.js";
 import "../components/refresh-button.js";
 import type { CaffoldSettingsRefreshButton } from "../components/refresh-button.js";
 
+export interface RequestCodexResetCreditDetail {
+  creditId: string | null;
+  retry: boolean;
+}
+
 const CODEX_INSTALL_COMMAND =
   "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
 const CODEX_SERVICE_STATUS_URL = "https://status.openai.com";
@@ -643,13 +648,16 @@ export class CaffoldSettingsCodexPage extends LitElement {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent(CODEX_RESET_CREDIT_REQUEST_EVENT, {
-        bubbles: true,
-        detail: {
-          creditId: control.dataset.creditId || null,
-          retry: control.dataset.retry === "true",
+      new CustomEvent<RequestCodexResetCreditDetail>(
+        CODEX_RESET_CREDIT_REQUEST_EVENT,
+        {
+          bubbles: true,
+          detail: {
+            creditId: control.dataset.creditId || null,
+            retry: control.dataset.retry === "true",
+          },
         },
-      }),
+      ),
     );
   }
 
@@ -837,5 +845,9 @@ function repairDescription(readiness: CodexReadiness | null | undefined) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-settings-codex-page": CaffoldSettingsCodexPage;
+  }
+
+  interface HTMLElementEventMap {
+    [CODEX_RESET_CREDIT_REQUEST_EVENT]: CustomEvent<RequestCodexResetCreditDetail>;
   }
 }

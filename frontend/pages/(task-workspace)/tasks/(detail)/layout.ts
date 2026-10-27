@@ -63,12 +63,26 @@ import type {
 import "./components/terminal-button.js";
 import type { CaffoldTaskDetailTerminal } from "./components/terminal-button.js";
 import "./terminal/page.js";
-import type { CaffoldTerminalPage } from "./terminal/page.js";
+import type { SegmentedControlIntentDetail } from "#components/segmented-control.js";
+import type { ChangeCompareRefsDetail } from "./(git)/components/controls.js";
+import type { RequestGitRouteDetail } from "./(git)/layout.js";
+import type { RequestGithubRouteDetail } from "./(github)/layout.js";
+import type { TaskReviewRouteIntentDetail } from "./(review)/layout.js";
+import type { GitHubShortcutIntent } from "./(section)/components/github-shortcuts.js";
+import type { TaskDetailTerminalIntentDetail } from "./components/terminal-button.js";
+import type { TaskDetailIntent } from "./task-detail-intent-event.js";
+import { TASK_DETAIL_INTENT_EVENT } from "./task-detail-intent-event.js";
+import type { TaskDetailTransportChangeDetail } from "./task-detail-transport-change-event.js";
+import { TASK_DETAIL_TRANSPORT_CHANGE_EVENT } from "./task-detail-transport-change-event.js";
+import type {
+  CaffoldTerminalPage,
+  TerminalPageStateDetail,
+} from "./terminal/page.js";
 
 const CLEAN_REVIEW_CACHE_LIMIT = 6;
 
 // A route a Task's Detail shows, with the fields its surfaces read.
-interface TaskRoute {
+type TaskRoute = {
   kind: string;
   threadId?: string;
   review?: boolean;
@@ -77,14 +91,14 @@ interface TaskRoute {
   reviewNavigator?: string;
   reviewViewer?: string;
   path?: string;
-  line?: number | string | null;
+  line?: number | null;
   baseRef?: string;
   headRef?: string;
   page?: number;
   sha?: string;
   number?: number | null;
   files?: boolean;
-}
+};
 
 // The fields a Section route request names; the Section route builder reads
 // each and fills in the rest.
@@ -1174,17 +1188,22 @@ export class CaffoldDetailLayout extends LitElement {
     }
   }
 
-  private taskTransportChange(event: CustomEvent) {
+  private taskTransportChange(
+    event: CustomEvent<TaskDetailTransportChangeDetail>,
+  ) {
     if (event.target !== this.taskDetail.value) {
       return;
     }
     event.stopPropagation();
     this.dispatchEvent(
-      new CustomEvent("caffold:task-detail-transport-change", {
-        bubbles: true,
-        composed: true,
-        detail: event.detail,
-      }),
+      new CustomEvent<TaskDetailTransportChangeDetail>(
+        TASK_DETAIL_TRANSPORT_CHANGE_EVENT,
+        {
+          bubbles: true,
+          composed: true,
+          detail: event.detail,
+        },
+      ),
     );
   }
 
@@ -1206,7 +1225,7 @@ export class CaffoldDetailLayout extends LitElement {
     }
   }
 
-  private handleViewIntent(event: CustomEvent<{ value?: string }>) {
+  private handleViewIntent(event: CustomEvent<SegmentedControlIntentDetail>) {
     if (event.target !== this.viewSwitch.value) {
       return;
     }
@@ -1300,7 +1319,9 @@ export class CaffoldDetailLayout extends LitElement {
     }
   }
 
-  private handleReviewRouteIntent(event: CustomEvent<{ route?: TaskRoute }>) {
+  private handleReviewRouteIntent(
+    event: CustomEvent<TaskReviewRouteIntentDetail>,
+  ) {
     if (event.target !== this.review()) {
       return;
     }
@@ -1316,9 +1337,7 @@ export class CaffoldDetailLayout extends LitElement {
     }
   }
 
-  private changeCompareRefs(
-    event: CustomEvent<{ baseRef?: string; headRef?: string }>,
-  ) {
+  private changeCompareRefs(event: CustomEvent<ChangeCompareRefsDetail>) {
     if (!this.gitLayout()?.contains(event.target as Node)) {
       return;
     }
@@ -1351,7 +1370,7 @@ export class CaffoldDetailLayout extends LitElement {
     void this.gitLayout()?.refresh();
   }
 
-  private handleGitRouteIntent(event: CustomEvent<{ route?: TaskRoute }>) {
+  private handleGitRouteIntent(event: CustomEvent<RequestGitRouteDetail>) {
     if (!this.gitLayout()?.contains(event.target as Node)) {
       return;
     }
@@ -1368,7 +1387,9 @@ export class CaffoldDetailLayout extends LitElement {
     }
   }
 
-  private handleGithubRouteIntent(event: CustomEvent<{ route?: TaskRoute }>) {
+  private handleGithubRouteIntent(
+    event: CustomEvent<RequestGithubRouteDetail>,
+  ) {
     if (!this.githubLayout()?.contains(event.target as Node)) {
       return;
     }
@@ -1385,9 +1406,7 @@ export class CaffoldDetailLayout extends LitElement {
     }
   }
 
-  private handleSectionDetailIntent(
-    event: CustomEvent<{ type?: string; kind?: string }>,
-  ) {
+  private handleSectionDetailIntent(event: CustomEvent<GitHubShortcutIntent>) {
     const kind = event.detail?.kind;
     if (
       !this.sectionDetail.value?.contains(event.target as Node) ||
@@ -1404,7 +1423,9 @@ export class CaffoldDetailLayout extends LitElement {
     });
   }
 
-  private terminalButtonIntent(event: Event) {
+  private terminalButtonIntent(
+    event: CustomEvent<TaskDetailTerminalIntentDetail>,
+  ) {
     if (event.target !== this.terminalButton.value) {
       return;
     }
@@ -1428,18 +1449,21 @@ export class CaffoldDetailLayout extends LitElement {
     this.syncHeaderVisibility(this.presentedSurface());
   }
 
-  private terminalStateChange(event: Event) {
+  private terminalStateChange(event: CustomEvent<TerminalPageStateDetail>) {
     if (event.target !== this.terminalPage.value) {
       return;
     }
     event.stopPropagation();
     // A lost terminal socket is recovered like a lost Task stream.
     this.dispatchEvent(
-      new CustomEvent("caffold:task-detail-transport-change", {
-        bubbles: true,
-        composed: true,
-        detail: {},
-      }),
+      new CustomEvent<TaskDetailTransportChangeDetail>(
+        TASK_DETAIL_TRANSPORT_CHANGE_EVENT,
+        {
+          bubbles: true,
+          composed: true,
+          detail: {},
+        },
+      ),
     );
   }
 
@@ -1513,7 +1537,7 @@ export class CaffoldDetailLayout extends LitElement {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent("caffold:task-detail-intent", {
+      new CustomEvent<TaskDetailIntent>(TASK_DETAIL_INTENT_EVENT, {
         bubbles: true,
         composed: true,
         detail: {
@@ -1530,7 +1554,7 @@ export class CaffoldDetailLayout extends LitElement {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent("caffold:task-detail-intent", {
+      new CustomEvent<TaskDetailIntent>(TASK_DETAIL_INTENT_EVENT, {
         bubbles: true,
         composed: true,
         detail: {

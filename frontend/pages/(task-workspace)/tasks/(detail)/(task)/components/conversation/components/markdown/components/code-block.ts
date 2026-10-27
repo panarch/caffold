@@ -8,6 +8,7 @@ import {
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
+import type { MarkdownPreviewRequest } from "#tasks/(detail)/(task)/components/markdown-preview-dialog.js";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 const MARKDOWN_FENCE_LABELS = new Set(["markdown", "md"]);
@@ -178,11 +179,14 @@ export class CaffoldTaskMarkdownCodeBlock extends LitElement {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent("caffold:task-markdown-preview-intent", {
-        bubbles: true,
-        composed: true,
-        detail: { markdown: code.textContent ?? "", opener },
-      }),
+      new CustomEvent<MarkdownPreviewRequest>(
+        "caffold:task-markdown-preview-intent",
+        {
+          bubbles: true,
+          composed: true,
+          detail: { markdown: code.textContent ?? "", opener },
+        },
+      ),
     );
   }
 
@@ -294,5 +298,9 @@ function copyIcon(state: CopyState) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-markdown-code-block": CaffoldTaskMarkdownCodeBlock;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:task-markdown-preview-intent": CustomEvent<MarkdownPreviewRequest>;
   }
 }

@@ -32,7 +32,11 @@ import type {
   SectionSummary,
 } from "./active-task-list.js";
 import "./archived-task-list.js";
+import type { TaskNavigatorIntent } from "../task-navigator-intent-event.js";
+import { TASK_NAVIGATOR_INTENT_EVENT } from "../task-navigator-intent-event.js";
+import type { TaskNavigatorTransportChangeDetail } from "./active-task-list.js";
 import type {
+  ArchivedTaskListState,
   ArchivedTaskRestoredDetail,
   CaffoldArchivedTaskList,
 } from "./archived-task-list.js";
@@ -40,11 +44,6 @@ import type {
 const ICON = "task-action-icon";
 
 let taskNavigatorInstanceId = 0;
-
-// What the navigator asks of its owner beside what its lists ask.
-export type TaskNavigatorIntent =
-  | { type: "open-task-switcher" }
-  | { type: "new-task" };
 
 // Both lists together, as `caffold:task-navigator-list-state` says them.
 export interface TaskNavigatorListState {
@@ -537,7 +536,7 @@ export class CaffoldTaskNavigator extends LitElement {
     this.publishListState();
   }
 
-  private archivedListChanged(event: Event) {
+  private archivedListChanged(event: CustomEvent<ArchivedTaskListState>) {
     event.stopPropagation();
     this.publishListState();
   }
@@ -570,7 +569,9 @@ export class CaffoldTaskNavigator extends LitElement {
     );
   }
 
-  private transportChanged(event: CustomEvent<{ state: TaskTransportState }>) {
+  private transportChanged(
+    event: CustomEvent<TaskNavigatorTransportChangeDetail>,
+  ) {
     this.archivedTaskList.setTransportState(event.detail.state);
   }
 
@@ -596,7 +597,7 @@ export class CaffoldTaskNavigator extends LitElement {
 
   private dispatchIntent(detail: TaskNavigatorIntent) {
     this.dispatchEvent(
-      new CustomEvent<TaskNavigatorIntent>("caffold:task-navigator-intent", {
+      new CustomEvent<TaskNavigatorIntent>(TASK_NAVIGATOR_INTENT_EVENT, {
         bubbles: true,
         composed: true,
         detail,
@@ -633,5 +634,9 @@ export class CaffoldTaskNavigator extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-navigator": CaffoldTaskNavigator;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:task-navigator-list-state": CustomEvent<TaskNavigatorListState>;
   }
 }

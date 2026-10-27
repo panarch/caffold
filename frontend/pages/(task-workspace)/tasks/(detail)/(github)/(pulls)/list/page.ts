@@ -13,7 +13,16 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "#components/pagination.js";
+import type { ChangePageDetail } from "#components/pagination/components/button.js";
 import type { CaffoldPagination } from "#components/pagination.js";
+
+export interface OpenGithubPullDetail {
+  number: number;
+}
+
+export interface ChangeGithubPullsPageDetail {
+  page: number;
+}
 
 const LOADING_PULLS = "Loading pull requests...";
 
@@ -237,20 +246,23 @@ export class CaffoldGithubPullsListPage extends LitElement {
 
   private openPull(number: number) {
     this.dispatchEvent(
-      new CustomEvent("caffold:open-github-pull", {
+      new CustomEvent<OpenGithubPullDetail>("caffold:open-github-pull", {
         bubbles: true,
         detail: { number },
       }),
     );
   }
 
-  private changePage(event: CustomEvent<{ page: number }>) {
+  private changePage(event: CustomEvent<ChangePageDetail>) {
     event.stopPropagation();
     this.dispatchEvent(
-      new CustomEvent("caffold:change-github-pulls-page", {
-        bubbles: true,
-        detail: { page: event.detail.page },
-      }),
+      new CustomEvent<ChangeGithubPullsPageDetail>(
+        "caffold:change-github-pulls-page",
+        {
+          bubbles: true,
+          detail: { page: event.detail.page },
+        },
+      ),
     );
   }
 }
@@ -274,5 +286,10 @@ function loadingPayload(payload: GitHubPulls | null, page: number | null) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-github-pulls-list-page": CaffoldGithubPullsListPage;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:change-github-pulls-page": CustomEvent<ChangeGithubPullsPageDetail>;
+    "caffold:open-github-pull": CustomEvent<OpenGithubPullDetail>;
   }
 }

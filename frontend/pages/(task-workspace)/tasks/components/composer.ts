@@ -30,8 +30,13 @@ import "./task-turn-options.js";
 import type {
   CaffoldTaskTurnOptions,
   TurnOptionsContext,
+  TurnOptionsSnapshot,
   TurnSubmissionOptions,
 } from "./task-turn-options.js";
+
+export interface OpenSettingsDetail {
+  section: string;
+}
 
 // Where the Composer sends and how it reads. A follow-up Composer belongs to
 // one Task; `provider` through `permissionMode` are what that Task or the
@@ -965,7 +970,7 @@ export class CaffoldTaskComposer extends LitElement {
     this.turnOptions()?.reset(this.turnOptionsContext());
   }
 
-  private turnOptionsChanged(event: Event) {
+  private turnOptionsChanged(event: CustomEvent<TurnOptionsSnapshot>) {
     if (event.target === this.turnOptions()) {
       this.draw();
     }
@@ -1191,7 +1196,7 @@ export class CaffoldTaskComposer extends LitElement {
     }
     if (phase === "notReady" || (phase === "error" && !this.voice.ready)) {
       this.dispatchEvent(
-        new CustomEvent("caffold:open-settings", {
+        new CustomEvent<OpenSettingsDetail>("caffold:open-settings", {
           bubbles: true,
           composed: true,
           detail: { section: "voice" },
@@ -1716,5 +1721,11 @@ function adoptedSubmission(
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-composer": CaffoldTaskComposer;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:task-composer-intent": CustomEvent<ComposerIntentDetail>;
+    "caffold:task-composer-submit": CustomEvent<ComposerSubmitDetail>;
+    "caffold:open-settings": CustomEvent<OpenSettingsDetail>;
   }
 }

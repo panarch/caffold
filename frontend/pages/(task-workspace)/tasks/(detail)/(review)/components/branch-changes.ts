@@ -11,9 +11,17 @@ import {
 import type { ScrollSurfacePull } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/git-compare-tree.js";
-import type { CaffoldGitCompareTree } from "#components/git-compare-tree.js";
+import type {
+  CaffoldGitCompareTree,
+  SelectCompareBaseDetail,
+} from "#components/git-compare-tree.js";
 import { ChangesReading } from "../changes-reading.js";
+import type { ChangesRead } from "../layout.js";
 import type { ReviewChange } from "./selected-file/content.js";
+
+export interface ReviewBaseIntentDetail {
+  baseRef: string;
+}
 
 @customElement("caffold-review-branch-changes")
 export class CaffoldReviewBranchChanges extends LitElement {
@@ -218,7 +226,7 @@ export class CaffoldReviewBranchChanges extends LitElement {
     return this.tree.scrollSurfaceScope(pull);
   }
 
-  private chooseBase(event: CustomEvent<{ baseRef?: string }>) {
+  private chooseBase(event: CustomEvent<SelectCompareBaseDetail>) {
     event.stopPropagation();
     const next = `${event.detail?.baseRef ?? ""}`;
     if (
@@ -233,7 +241,7 @@ export class CaffoldReviewBranchChanges extends LitElement {
 
   private requestBase(baseRef: string) {
     this.dispatchEvent(
-      new CustomEvent("caffold:review-base-intent", {
+      new CustomEvent<ReviewBaseIntentDetail>("caffold:review-base-intent", {
         bubbles: true,
         detail: { baseRef },
       }),
@@ -253,9 +261,12 @@ export class CaffoldReviewBranchChanges extends LitElement {
     );
   }
 
-  private announceRead(detail: Record<string, unknown>) {
+  private announceRead(detail: ChangesRead) {
     this.dispatchEvent(
-      new CustomEvent("caffold:review-changes-read", { bubbles: true, detail }),
+      new CustomEvent<ChangesRead>("caffold:review-changes-read", {
+        bubbles: true,
+        detail,
+      }),
     );
   }
 
@@ -319,5 +330,9 @@ function selectedCompareBaseRef(preferredRef: string, refsPayload: GitRefs) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-review-branch-changes": CaffoldReviewBranchChanges;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:review-base-intent": CustomEvent<ReviewBaseIntentDetail>;
   }
 }

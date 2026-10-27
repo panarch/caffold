@@ -7,6 +7,10 @@ import {
 } from "#app/action-hints.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 
+export interface SettingsNavigatorIntentDetail {
+  section: string;
+}
+
 // The section an entry opens, its label, and either an icon or a brand mark.
 export interface SettingsNavigatorEntry {
   section: string;
@@ -101,10 +105,13 @@ export class CaffoldSettingsNavigatorItem extends LitElement {
 
   private open() {
     this.dispatchEvent(
-      new CustomEvent("caffold:settings-navigator-intent", {
-        bubbles: true,
-        detail: { section: this.section },
-      }),
+      new CustomEvent<SettingsNavigatorIntentDetail>(
+        "caffold:settings-navigator-intent",
+        {
+          bubbles: true,
+          detail: { section: this.section },
+        },
+      ),
     );
   }
 }
@@ -112,5 +119,9 @@ export class CaffoldSettingsNavigatorItem extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-settings-navigator-item": CaffoldSettingsNavigatorItem;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:settings-navigator-intent": CustomEvent<SettingsNavigatorIntentDetail>;
   }
 }

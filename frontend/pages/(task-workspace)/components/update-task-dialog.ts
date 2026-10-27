@@ -13,13 +13,14 @@ import {
 import "#app/keyboard-navigation/components/presentation.js";
 import { ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
-import type { TaskStartIntent } from "#tasks/components/task-create.js";
 import "#tasks/components/task-turn-options.js";
 import type { CaffoldUpdateStatus } from "#app/api.js";
 import type {
   CaffoldTaskTurnOptions,
   TurnOptionsSelection,
 } from "#tasks/components/task-turn-options.js";
+import type { TaskStartIntent } from "../task-create-intent-event.js";
+import { TASK_CREATE_INTENT_EVENT } from "../task-create-intent-event.js";
 
 const RESTART_NOTICE =
   "Running Tasks keep going while Caffold restarts. Claude sessions stop if it takes more than 10 minutes. Open terminals close.";
@@ -249,7 +250,7 @@ export class CaffoldUpdateTaskDialog extends LitElement {
     this.updateSetup();
     try {
       this.dispatchEvent(
-        new CustomEvent<TaskStartIntent>("caffold:task-create-intent", {
+        new CustomEvent<TaskStartIntent>(TASK_CREATE_INTENT_EVENT, {
           bubbles: true,
           composed: true,
           detail: intent,

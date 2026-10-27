@@ -18,6 +18,12 @@ import {
 } from "#components/file-tree.js";
 import "#components/loading-text.js";
 
+export interface OpenCommitDiffDetail {
+  sha: string;
+  path: string;
+  status: string;
+}
+
 type CommitState =
   | { status: "idle" }
   | { status: "loading" }
@@ -167,7 +173,7 @@ export class CaffoldCommitChangesTree extends LitElement {
     }
     this.selectedPath = file.path;
     this.dispatchEvent(
-      new CustomEvent("caffold:open-commit-diff", {
+      new CustomEvent<OpenCommitDiffDetail>("caffold:open-commit-diff", {
         bubbles: true,
         detail: {
           sha: this.state.commitPayload.commit.sha,
@@ -240,5 +246,9 @@ function commitEntityKey(payload: GitCommit) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-commit-changes-tree": CaffoldCommitChangesTree;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:open-commit-diff": CustomEvent<OpenCommitDiffDetail>;
   }
 }

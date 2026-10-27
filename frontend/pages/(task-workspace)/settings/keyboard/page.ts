@@ -8,6 +8,7 @@ import {
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#app/keyboard-navigation/components/shortcut-list.js";
+import type { SettingsChangeDetail } from "#app/settings.js";
 import {
   getSettings,
   type Settings,
@@ -19,10 +20,10 @@ export class CaffoldSettingsKeyboardPage extends LitElement {
   @state()
   private accessor settings: Settings = getSettings();
 
-  private readonly settingsChanged = (event: Event) => {
-    this.settings =
-      (event as CustomEvent<{ settings?: Settings }>).detail?.settings ??
-      getSettings();
+  private readonly settingsChanged = (
+    event: CustomEvent<SettingsChangeDetail>,
+  ) => {
+    this.settings = event.detail?.settings ?? getSettings();
   };
   private readonly hints: ActionHints = new ActionHints(this, {
     clipRoots: () => [this, this.scrollport.value],

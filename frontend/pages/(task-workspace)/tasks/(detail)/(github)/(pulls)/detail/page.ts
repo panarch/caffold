@@ -18,6 +18,11 @@ import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "../../components/markdown.js";
 import type { CaffoldGithubMarkdown } from "../../components/markdown.js";
+import type { StartGithubTaskDetail } from "../../layout.js";
+
+export interface OpenGithubPullFilesDetail {
+  number: number;
+}
 
 type PullState =
   | { status: "empty" }
@@ -391,7 +396,7 @@ export class CaffoldGithubPullDetailPage extends LitElement {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent("caffold:start-github-task", {
+      new CustomEvent<StartGithubTaskDetail>("caffold:start-github-task", {
         bubbles: true,
         composed: true,
         detail: {
@@ -408,10 +413,13 @@ export class CaffoldGithubPullDetailPage extends LitElement {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent("caffold:open-github-pull-files", {
-        bubbles: true,
-        detail: { number: this.state.payload.pull.number },
-      }),
+      new CustomEvent<OpenGithubPullFilesDetail>(
+        "caffold:open-github-pull-files",
+        {
+          bubbles: true,
+          detail: { number: this.state.payload.pull.number },
+        },
+      ),
     );
   }
 }
@@ -419,5 +427,9 @@ export class CaffoldGithubPullDetailPage extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-github-pull-detail-page": CaffoldGithubPullDetailPage;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:open-github-pull-files": CustomEvent<OpenGithubPullFilesDetail>;
   }
 }

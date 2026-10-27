@@ -4,6 +4,10 @@ import { type ActionHintPull, ActionHints } from "#app/action-hints.js";
 import { compactIconButton } from "#app/component-styles.js";
 import { inlineIcon } from "../../icons.js";
 
+export interface ChangePageDetail {
+  page: number;
+}
+
 export type PageKind = "first" | "previous" | "next" | "last";
 
 await compactIconButton.register(
@@ -61,7 +65,7 @@ export class CaffoldPaginationButton extends LitElement {
     }
 
     this.dispatchEvent(
-      new CustomEvent("caffold:change-page", {
+      new CustomEvent<ChangePageDetail>("caffold:change-page", {
         bubbles: true,
         detail: { page: this.page },
       }),
@@ -72,5 +76,9 @@ export class CaffoldPaginationButton extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-pagination-button": CaffoldPaginationButton;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:change-page": CustomEvent<ChangePageDetail>;
   }
 }

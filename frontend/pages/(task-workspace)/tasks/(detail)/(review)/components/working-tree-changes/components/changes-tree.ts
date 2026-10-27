@@ -21,6 +21,12 @@ import {
 } from "#components/file-tree.js";
 import "#components/loading-text.js";
 
+export interface OpenGitDiffDetail {
+  path: string;
+  kind: "untracked" | "staged" | "unstaged";
+  status: string;
+}
+
 const SECTIONS = [
   ["unstaged", "Unstaged"],
   ["staged", "Staged"],
@@ -210,7 +216,7 @@ export class CaffoldGitDiffChangesTree extends LitElement {
     }
     this.selectedPath = file.path;
     this.dispatchEvent(
-      new CustomEvent("caffold:open-git-diff", {
+      new CustomEvent<OpenGitDiffDetail>("caffold:open-git-diff", {
         bubbles: true,
         detail: {
           path: file.path,
@@ -287,5 +293,9 @@ function normalizeRepoPath(path: string) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-git-diff-changes-tree": CaffoldGitDiffChangesTree;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:open-git-diff": CustomEvent<OpenGitDiffDetail>;
   }
 }

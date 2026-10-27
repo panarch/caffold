@@ -71,20 +71,29 @@ import {
 } from "./task-store-status.js";
 import "./tasks/components/archived-delete-dialog.js";
 import type { CaffoldTaskArchivedDeleteDialog } from "./tasks/components/archived-delete-dialog.js";
-import type { ArchivedTaskListIntent } from "./tasks/components/archived-task-list.js";
 import "./tasks/components/navigator.js";
-import type {
-  CaffoldTaskNavigator,
-  TaskNavigatorIntent,
-} from "./tasks/components/navigator.js";
-import type { TaskStartIntent } from "./tasks/components/task-create.js";
+import type { CaffoldTaskNavigator } from "./tasks/components/navigator.js";
 import "./tasks/components/task-switcher-dialog.js";
 import type {
   CaffoldTaskSwitcherDialog,
   TaskSwitcherSelectDetail,
 } from "./tasks/components/task-switcher-dialog.js";
 import "./tasks/layout.js";
+import type { PaneResizeDetail } from "../../components/pane-resizer.js";
+import type { ParsedRoute } from "../../navigation-routes.js";
+import type { RequestTasksRouteDetail } from "../layout.js";
+import type { CodexResetCreditConfirmedDetail } from "./codex-status/components/reset-credit-dialog.js";
+import type { WorkspaceNavigationIntentDetail } from "./components/navigation.js";
+import type { LiveConnectionReport } from "./live-updates.js";
+import type { TaskStartIntent } from "./task-create-intent-event.js";
+import type { TaskArchivedDeleteConfirmedDetail } from "./tasks/components/archived-delete-dialog.js";
 import type { CaffoldTasksPage } from "./tasks/layout.js";
+import type { TaskNavigatorIntentDetail } from "./tasks/task-navigator-intent-event.js";
+
+export interface RequestWorkspaceTabDetail {
+  tab: WorkspaceTab | undefined;
+  fallbackRoute: ParsedRoute;
+}
 
 const WORKSPACE_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
 const ROUTE_CONTROL_ICON = "task-workspace-route-control-icon";
@@ -158,7 +167,7 @@ export class CaffoldTaskWorkspace extends LitElement {
   readonly liveUpdates = new WorkspaceLiveUpdates({
     onConnectionReport: (report) => {
       this.dispatchEvent(
-        new CustomEvent(LIVE_CONNECTION_REPORT_EVENT, {
+        new CustomEvent<LiveConnectionReport>(LIVE_CONNECTION_REPORT_EVENT, {
           bubbles: true,
           detail: report,
         }),
@@ -225,7 +234,7 @@ export class CaffoldTaskWorkspace extends LitElement {
         composerSettings:
           this.taskNavigator.sectionForDirectory(status?.updateTask?.cwd ?? "")
             ?.composerSettings ?? null,
-        opener: (event as CustomEvent<{ opener?: unknown }>).detail?.opener,
+        opener: event.detail?.opener,
       });
     });
     this.addEventListener(CODEX_STATUS_REFRESH_REQUEST_EVENT, (event) => {
@@ -250,9 +259,7 @@ export class CaffoldTaskWorkspace extends LitElement {
     });
     this.addEventListener(CODEX_RESET_CREDIT_REQUEST_EVENT, (event) => {
       event.stopPropagation();
-      const request = (
-        event as CustomEvent<{ creditId?: string | null; retry?: boolean }>
-      ).detail;
+      const request = event.detail;
       const creditId = request?.creditId ?? null;
       if (!this.codexStatusLifecycle.canConsumeResetCredit(creditId)) {
         return;
@@ -866,16 +873,14 @@ export class CaffoldTaskWorkspace extends LitElement {
 
   private requestTasksHome() {
     this.dispatchEvent(
-      new CustomEvent("caffold:request-tasks-route", {
+      new CustomEvent<RequestTasksRouteDetail>("caffold:request-tasks-route", {
         bubbles: true,
         detail: { route: { kind: "tasks" } },
       }),
     );
   }
 
-  private taskNavigatorIntent(
-    event: CustomEvent<TaskNavigatorIntent | ArchivedTaskListIntent>,
-  ) {
+  private taskNavigatorIntent(event: CustomEvent<TaskNavigatorIntentDetail>) {
     const intent = event.detail;
     if (intent?.type === "delete-archived-task") {
       this.archivedDeleteDialog.openTask(intent.task);
@@ -890,7 +895,7 @@ export class CaffoldTaskWorkspace extends LitElement {
     );
   }
 
-  private chooseTab(event: CustomEvent<{ mode?: WorkspaceTab }>) {
+  private chooseTab(event: CustomEvent<WorkspaceNavigationIntentDetail>) {
     event.stopPropagation();
     const tab = event.detail?.mode;
     // Choosing the tab already shown keeps its route, an open Task included,
@@ -917,10 +922,13 @@ export class CaffoldTaskWorkspace extends LitElement {
           ? { kind: "settings", section: "" }
           : { kind: "tasks" };
     this.dispatchEvent(
-      new CustomEvent("caffold:request-workspace-tab", {
-        bubbles: true,
-        detail: { tab, fallbackRoute },
-      }),
+      new CustomEvent<RequestWorkspaceTabDetail>(
+        "caffold:request-workspace-tab",
+        {
+          bubbles: true,
+          detail: { tab, fallbackRoute },
+        },
+      ),
     );
   }
 
@@ -932,7 +940,9 @@ export class CaffoldTaskWorkspace extends LitElement {
     this.syncPresentationState();
   }
 
-  private deleteArchivedTask(event: CustomEvent<{ threadId?: string }>) {
+  private deleteArchivedTask(
+    event: CustomEvent<TaskArchivedDeleteConfirmedDetail>,
+  ) {
     event.stopPropagation();
     void this.taskNavigator.deleteThread(`${event.detail?.threadId ?? ""}`);
   }
@@ -954,7 +964,9 @@ export class CaffoldTaskWorkspace extends LitElement {
     void this.codexStatusLifecycle.requestRuntimeUpdate();
   }
 
-  private consumeResetCredit(event: CustomEvent<{ creditId?: string | null }>) {
+  private consumeResetCredit(
+    event: CustomEvent<CodexResetCreditConfirmedDetail>,
+  ) {
     event.stopPropagation();
     void this.codexStatusLifecycle.requestResetCredit(
       event.detail?.creditId ?? null,
@@ -1056,7 +1068,7 @@ export class CaffoldTaskWorkspace extends LitElement {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent("caffold:request-tasks-route", {
+      new CustomEvent<RequestTasksRouteDetail>("caffold:request-tasks-route", {
         bubbles: true,
         detail: {
           route: {
@@ -1141,9 +1153,7 @@ export class CaffoldTaskWorkspace extends LitElement {
     this.syncNavigationPane();
   }
 
-  private resizeNavigationPane(
-    event: CustomEvent<{ phase: "start" | "update" | "end" }>,
-  ) {
+  private resizeNavigationPane(event: CustomEvent<PaneResizeDetail>) {
     event.stopPropagation();
     if (event.detail.phase === "start") {
       this.classList.add("is-resizing-navigation-pane");
@@ -1356,5 +1366,10 @@ export class CaffoldTaskWorkspace extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-workspace": CaffoldTaskWorkspace;
+  }
+
+  interface HTMLElementEventMap {
+    [LIVE_CONNECTION_REPORT_EVENT]: CustomEvent<LiveConnectionReport>;
+    "caffold:request-workspace-tab": CustomEvent<RequestWorkspaceTabDetail>;
   }
 }

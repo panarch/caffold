@@ -360,4 +360,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-note-document": CaffoldNoteDocument;
   }
+
+  interface HTMLElementEventMap {
+    [NOTE_DOCUMENT_INTENT_EVENT]: CustomEvent<NoteDocumentIntent>;
+  }
 }

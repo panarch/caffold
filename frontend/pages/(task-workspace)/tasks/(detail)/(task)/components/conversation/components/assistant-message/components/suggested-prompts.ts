@@ -148,4 +148,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-assistant-message-suggested-prompts": CaffoldTaskAssistantMessageSuggestedPrompts;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:task-suggested-prompt-intent": CustomEvent<SuggestedPromptIntentDetail>;
+  }
 }

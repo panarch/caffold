@@ -1,3 +1,7 @@
+export interface ThemeChangeDetail {
+  themeMode: ThemeMode;
+  resolvedTheme: ResolvedTheme;
+}
 const SYSTEM_THEME_QUERY = "(prefers-color-scheme: dark)";
 
 export type ThemeMode = "system" | "light" | "dark";
@@ -82,7 +86,7 @@ function applyResolvedTheme(resolvedTheme: ResolvedTheme) {
 
   if (initialized && previousTheme !== resolvedTheme) {
     globalThis.window?.dispatchEvent?.(
-      new CustomEvent("caffold:theme-change", {
+      new CustomEvent<ThemeChangeDetail>("caffold:theme-change", {
         detail: getThemeState(),
       }),
     );
@@ -114,4 +118,10 @@ function handleSystemThemeChange(event: MediaQueryListEvent) {
 function systemPrefersDark() {
   ensureSystemThemeListener();
   return systemThemeMedia?.matches ?? false;
+}
+
+declare global {
+  interface WindowEventMap {
+    "caffold:theme-change": CustomEvent<ThemeChangeDetail>;
+  }
 }

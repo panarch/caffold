@@ -428,4 +428,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-active-task-row": CaffoldActiveTaskRow;
   }
+
+  interface HTMLElementEventMap {
+    [ACTIVE_TASK_ROW_INTENT_EVENT]: CustomEvent<TaskRowIntent>;
+  }
 }

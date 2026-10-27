@@ -1556,4 +1556,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-turn-options": CaffoldTaskTurnOptions;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:task-turn-options-change": CustomEvent<TurnOptionsSnapshot>;
+  }
 }

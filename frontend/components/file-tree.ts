@@ -19,7 +19,13 @@ import {
 } from "../settings.js";
 import { entryIcon, warmIcons } from "./icons.js";
 import "./loading-text.js";
+import type { SettingsChangeDetail } from "../settings.js";
 import { DrawnRef, DrawnRefs, drawn } from "./drawn-refs.js";
+
+export interface FileTreeLoadChildrenDetail {
+  key: string;
+  path: string;
+}
 
 export const FILE_TREE_SELECT_EVENT = "caffold:file-tree-select";
 export const FILE_TREE_LOAD_EVENT = "caffold:file-tree-load-children";
@@ -119,9 +125,11 @@ export class CaffoldFileTree extends LitElement {
   private readonly entriesByKey = new DrawnRefs<HTMLButtonElement>(this);
   private readonly iconsByKey = new DrawnRefs<HTMLSpanElement>(this);
   private readonly iconsReady = () => this.requestUpdate();
-  private readonly settingsChanged = (event: Event) => {
+  private readonly settingsChanged = (
+    event: CustomEvent<SettingsChangeDetail>,
+  ) => {
     this.globalFileSortMode = normalizeFileSortMode(
-      (event as CustomEvent).detail?.settings?.fileSortMode,
+      event.detail?.settings?.fileSortMode,
     );
   };
 
@@ -520,7 +528,7 @@ export class CaffoldFileTree extends LitElement {
     const childStatus = childState(node).status;
     if (expanded && (childStatus === "unloaded" || childStatus === "error")) {
       this.dispatchEvent(
-        new CustomEvent(FILE_TREE_LOAD_EVENT, {
+        new CustomEvent<FileTreeLoadChildrenDetail>(FILE_TREE_LOAD_EVENT, {
           bubbles: true,
           detail: { key: node.key, path: node.path ?? "" },
         }),
@@ -860,5 +868,10 @@ function nextAnimationFrame() {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-file-tree": CaffoldFileTree;
+  }
+
+  interface HTMLElementEventMap {
+    [FILE_TREE_SELECT_EVENT]: CustomEvent<FileTreeSelectDetail>;
+    [FILE_TREE_LOAD_EVENT]: CustomEvent<FileTreeLoadChildrenDetail>;
   }
 }

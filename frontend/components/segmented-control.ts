@@ -3,6 +3,10 @@ import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { type ActionHintPull, ActionHints } from "../action-hints.js";
 
+export interface SegmentedControlIntentDetail {
+  value: string;
+}
+
 export interface SegmentedChoice {
   value: string;
   label: string;
@@ -102,11 +106,14 @@ export class CaffoldSegmentedControl extends LitElement {
 
   private choose(value: string) {
     this.dispatchEvent(
-      new CustomEvent("caffold:segmented-control-intent", {
-        bubbles: true,
-        composed: true,
-        detail: { value },
-      }),
+      new CustomEvent<SegmentedControlIntentDetail>(
+        "caffold:segmented-control-intent",
+        {
+          bubbles: true,
+          composed: true,
+          detail: { value },
+        },
+      ),
     );
   }
 }
@@ -114,5 +121,9 @@ export class CaffoldSegmentedControl extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-segmented-control": CaffoldSegmentedControl;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:segmented-control-intent": CustomEvent<SegmentedControlIntentDetail>;
   }
 }

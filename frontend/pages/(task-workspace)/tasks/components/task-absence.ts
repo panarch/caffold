@@ -159,4 +159,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-absence": CaffoldTaskAbsence;
   }
+
+  interface HTMLElementEventMap {
+    [TASK_ABSENCE_INTENT_EVENT]: CustomEvent<TaskAbsenceIntent>;
+  }
 }

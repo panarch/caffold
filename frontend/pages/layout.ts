@@ -63,6 +63,11 @@ import {
 } from "./navigation-history.js";
 import { PwaUpdateLifecycle } from "./pwa-update-lifecycle.js";
 
+export interface RequestTasksRouteDetail {
+  route: ParsedRoute;
+  correction?: boolean;
+}
+
 // The Navigation API as far as the shell and the workspace use it; TypeScript's
 // DOM types do not have it yet.
 declare global {
@@ -230,35 +235,26 @@ export class CaffoldAppShell extends LitElement {
     this.addEventListener("caffold:open-settings", (event) => {
       this.navigateToRoute({
         kind: "settings",
-        section:
-          (event as CustomEvent<{ section?: string }>).detail?.section ?? "",
+        section: event.detail?.section ?? "",
       });
     });
     this.addEventListener("caffold:open-about", () => {
       this.navigateToRoute({ kind: "settings", section: "about" });
     });
     this.addEventListener("caffold:request-tasks-route", (event) => {
-      const request = (
-        event as CustomEvent<{ route?: ParsedRoute; correction?: boolean }>
-      ).detail;
+      const request = event.detail;
       this.navigateToRoute(request?.route, {
         correction: Boolean(request?.correction),
       });
     });
     this.addEventListener("caffold:request-settings-route", (event) => {
-      this.navigateToRoute(
-        (event as CustomEvent<{ route?: ParsedRoute }>).detail?.route,
-      );
+      this.navigateToRoute(event.detail?.route);
     });
     this.addEventListener("caffold:request-workspace-route", (event) => {
-      this.navigateToRoute(
-        (event as CustomEvent<{ route?: ParsedRoute }>).detail?.route,
-      );
+      this.navigateToRoute(event.detail?.route);
     });
     this.addEventListener("caffold:request-workspace-tab", (event) => {
-      const request = (
-        event as CustomEvent<{ tab?: string; fallbackRoute?: ParsedRoute }>
-      ).detail;
+      const request = event.detail;
       this.navigateToRoute(
         this.navigationHistory.routeForTab(
           request?.tab,
@@ -283,15 +279,11 @@ export class CaffoldAppShell extends LitElement {
     });
     this.addEventListener("caffold:task-transport-status", (event) => {
       event.stopPropagation();
-      this.foregroundRecoveryLifecycle.setTargets(
-        (event as CustomEvent<{ targets?: unknown }>).detail?.targets,
-      );
+      this.foregroundRecoveryLifecycle.setTargets(event.detail?.targets);
     });
     this.addEventListener(LIVE_CONNECTION_REPORT_EVENT, (event) => {
       event.stopPropagation();
-      this.foregroundRecoveryLifecycle.reportLiveConnection(
-        (event as CustomEvent).detail,
-      );
+      this.foregroundRecoveryLifecycle.reportLiveConnection(event.detail);
     });
     void this.pwaUpdateLifecycle.start();
     void warmIcons();
@@ -971,5 +963,9 @@ function notificationActivationRoute(value: unknown) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-app-shell": CaffoldAppShell;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:request-tasks-route": CustomEvent<RequestTasksRouteDetail>;
   }
 }

@@ -2,6 +2,11 @@ import { html, LitElement } from "lit";
 import { customElement } from "lit/decorators.js";
 import { type ActionHintPull, ActionHints } from "../action-hints.js";
 
+export interface PaneResizeDetail {
+  phase: PaneResizePhase;
+  value?: number;
+}
+
 const START_DEFAULT_WIDTH = 320;
 const START_MIN_WIDTH = 180;
 const END_MIN_WIDTH = 320;
@@ -300,7 +305,7 @@ export class CaffoldPaneResizer extends LitElement {
   private emitResize(phase: PaneResizePhase, value: number | null = null) {
     const detail = value === null ? { phase } : { phase, value };
     this.dispatchEvent(
-      new CustomEvent("caffold:pane-resize", {
+      new CustomEvent<PaneResizeDetail>("caffold:pane-resize", {
         bubbles: true,
         composed: true,
         detail,
@@ -347,5 +352,9 @@ function positiveWidth(value: string | null) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-pane-resizer": CaffoldPaneResizer;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:pane-resize": CustomEvent<PaneResizeDetail>;
   }
 }

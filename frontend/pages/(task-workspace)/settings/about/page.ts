@@ -20,6 +20,10 @@ import "#components/loading-text.js";
 import "../components/detail-list.js";
 import type { SettingsDetailRow } from "../components/detail-list.js";
 
+export interface CaffoldUpdateTaskRequestDetail {
+  opener: HTMLButtonElement;
+}
+
 /** Asks the workspace to open the update Task dialog. */
 export const CAFFOLD_UPDATE_TASK_REQUEST_EVENT =
   "caffold:caffold-update-task-request";
@@ -318,11 +322,14 @@ export class CaffoldSettingsAboutPage extends LitElement {
     }
     if (control.dataset.action === "update-caffold") {
       this.dispatchEvent(
-        new CustomEvent(CAFFOLD_UPDATE_TASK_REQUEST_EVENT, {
-          bubbles: true,
-          composed: true,
-          detail: { opener: control },
-        }),
+        new CustomEvent<CaffoldUpdateTaskRequestDetail>(
+          CAFFOLD_UPDATE_TASK_REQUEST_EVENT,
+          {
+            bubbles: true,
+            composed: true,
+            detail: { opener: control },
+          },
+        ),
       );
       return;
     }
@@ -654,5 +661,9 @@ function diagnosticLineValue(value: unknown, fallback: string) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-settings-about-page": CaffoldSettingsAboutPage;
+  }
+
+  interface HTMLElementEventMap {
+    [CAFFOLD_UPDATE_TASK_REQUEST_EVENT]: CustomEvent<CaffoldUpdateTaskRequestDetail>;
   }
 }

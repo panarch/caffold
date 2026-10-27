@@ -19,6 +19,10 @@ import {
   textboxActionHintTarget,
   withActionHintOcclusionRoots,
 } from "./action-hint-scope.js";
+import type {
+  ActionHintActivateDetail,
+  ActionHintCancelDetail,
+} from "./action-hints/components/dialog.js";
 import {
   ACTION_HINT_ACTIVATE_EVENT,
   ACTION_HINT_CANCEL_EVENT,
@@ -187,11 +191,6 @@ export interface ActionHintControllerOptions {
   onSessionExit?: (exit: ActionHintSessionExit) => void;
 }
 
-type CancelDetail = {
-  reason?: string;
-  originalEvent?: Event & { isComposing?: boolean };
-};
-
 export class ActionHintController {
   private readonly workspace: HTMLElement;
   private readonly dialog: ActionHintPresentation | null;
@@ -207,8 +206,12 @@ export class ActionHintController {
   private readonly onSessionExit: (exit: ActionHintSessionExit) => void;
   private connected: boolean;
   session: ActionHintSession | null;
-  private readonly boundActivate: (event: Event) => void;
-  private readonly boundCancel: (event: Event) => void;
+  private readonly boundActivate: (
+    event: CustomEvent<ActionHintActivateDetail>,
+  ) => void;
+  private readonly boundCancel: (
+    event: CustomEvent<ActionHintCancelDetail>,
+  ) => void;
 
   constructor({
     workspace,
@@ -232,16 +235,16 @@ export class ActionHintController {
     this.session = null;
     this.boundActivate = (event) => {
       event.stopPropagation();
-      this.activate(
-        `${(event as CustomEvent<{ code?: string }>).detail?.code ?? ""}`,
-      );
+      this.activate(`${event.detail?.code ?? ""}`);
     };
     this.boundCancel = (event) => {
       event.stopPropagation();
-      const detail = (event as CustomEvent<CancelDetail>).detail;
+      const detail = event.detail;
       if (
         detail?.reason === "escape" &&
-        (this.isCompositionActive() || detail?.originalEvent?.isComposing)
+        (this.isCompositionActive() ||
+          ("isComposing" in detail.originalEvent &&
+            detail.originalEvent.isComposing === true))
       ) {
         return;
       }

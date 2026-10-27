@@ -9,6 +9,15 @@ import {
 } from "../control.js";
 import { clampBadgePosition, type HintProgress, type Rect } from "../model.js";
 
+export interface ActionHintCancelDetail {
+  reason: string;
+  originalEvent: Event;
+}
+
+export interface ActionHintActivateDetail {
+  code: string | undefined;
+}
+
 let actionHintDialogInstanceId = 0;
 
 /**
@@ -209,7 +218,7 @@ export class CaffoldActionHintDialog extends LitElement {
     if (badge && !badge.hidden) {
       event.stopPropagation();
       this.dispatchEvent(
-        new CustomEvent(ACTION_HINT_ACTIVATE_EVENT, {
+        new CustomEvent<ActionHintActivateDetail>(ACTION_HINT_ACTIVATE_EVENT, {
           bubbles: true,
           detail: { code: badge.dataset.actionHintCode },
         }),
@@ -228,7 +237,7 @@ export class CaffoldActionHintDialog extends LitElement {
 
   private dispatchCancel(reason: string, originalEvent: Event) {
     this.dispatchEvent(
-      new CustomEvent(ACTION_HINT_CANCEL_EVENT, {
+      new CustomEvent<ActionHintCancelDetail>(ACTION_HINT_CANCEL_EVENT, {
         bubbles: true,
         detail: { reason, originalEvent },
       }),
@@ -274,5 +283,10 @@ export class CaffoldActionHintDialog extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-action-hint-dialog": CaffoldActionHintDialog;
+  }
+
+  interface HTMLElementEventMap {
+    [ACTION_HINT_ACTIVATE_EVENT]: CustomEvent<ActionHintActivateDetail>;
+    [ACTION_HINT_CANCEL_EVENT]: CustomEvent<ActionHintCancelDetail>;
   }
 }

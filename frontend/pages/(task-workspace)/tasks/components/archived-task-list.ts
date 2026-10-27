@@ -38,6 +38,8 @@ import {
   upsertTask,
 } from "../task-list-model.js";
 import "./task-status-chip.js";
+import type { ArchivedTaskListIntent } from "../task-navigator-intent-event.js";
+import { TASK_NAVIGATOR_INTENT_EVENT } from "../task-navigator-intent-event.js";
 
 export const ARCHIVED_TASK_LIST_INITIAL_SETTLED_EVENT =
   "caffold:archived-task-list-initial-settled";
@@ -57,13 +59,6 @@ export interface ArchivedTaskListState {
 export interface ArchivedTaskRestoredDetail {
   task: ActiveTask;
   activeTopPlacement: ActiveTaskTopPlacement;
-}
-
-// What the list asks of its navigator's owner: deleting a Task needs the
-// person to confirm it first.
-export interface ArchivedTaskListIntent {
-  type: "delete-archived-task";
-  task: Task;
 }
 
 await busySpin.register(
@@ -572,7 +567,7 @@ export class CaffoldArchivedTaskList extends LitElement {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent<ArchivedTaskListIntent>("caffold:task-navigator-intent", {
+      new CustomEvent<ArchivedTaskListIntent>(TASK_NAVIGATOR_INTENT_EVENT, {
         bubbles: true,
         composed: true,
         detail: { type: "delete-archived-task", task },
@@ -704,5 +699,10 @@ function asError(error: unknown) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-archived-task-list": CaffoldArchivedTaskList;
+  }
+
+  interface HTMLElementEventMap {
+    [ARCHIVED_TASK_LIST_STATE_EVENT]: CustomEvent<ArchivedTaskListState>;
+    [ARCHIVED_TASK_RESTORED_EVENT]: CustomEvent<ArchivedTaskRestoredDetail>;
   }
 }

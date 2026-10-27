@@ -11,6 +11,11 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import type { FetchState } from "../(log)/layout.js";
 
+export interface ChangeCompareRefsDetail {
+  baseRef: string;
+  headRef: string;
+}
+
 // What the Git header's controls show for the open route.
 export interface GitControlsSnapshot {
   mode: "compare" | "log" | null;
@@ -172,7 +177,7 @@ export class CaffoldGitReviewControls extends LitElement {
 
   private changeRefs() {
     this.dispatchEvent(
-      new CustomEvent("caffold:change-compare-refs", {
+      new CustomEvent<ChangeCompareRefsDetail>("caffold:change-compare-refs", {
         bubbles: true,
         detail: {
           baseRef: this.baseRefSelect.value?.value ?? "",
@@ -245,5 +250,9 @@ function refKindLabel(kind: string) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-git-review-controls": CaffoldGitReviewControls;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:change-compare-refs": CustomEvent<ChangeCompareRefsDetail>;
   }
 }

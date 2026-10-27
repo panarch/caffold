@@ -329,4 +329,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-switcher-dialog": CaffoldTaskSwitcherDialog;
   }
+
+  interface HTMLElementEventMap {
+    [TASK_SWITCHER_SELECT_EVENT]: CustomEvent<TaskSwitcherSelectDetail>;
+  }
 }

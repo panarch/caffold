@@ -119,6 +119,12 @@ The Task conversation renders the components its entries mount at once in the
 same way, because Task Detail reads the whole transcript right after it
 changes.
 Event listeners bound in a template come and go with their nodes.
+A custom event that carries a detail is declared once: its detail type and its
+entry in the DOM event map (`WindowEventMap` for one sent on `window`) live in
+the module that dispatches it, in the one module that listens when several
+dispatch it, or, when several do both, in a `<name>-event.ts` module that also
+exports the name. Listeners take the declared detail without casting, and the
+custom-events contract checks where each declaration lives.
 
 Lit keeps the nodes of a rendered template across later renders and commits
 only the bindings whose values changed. Rendering a different template at the

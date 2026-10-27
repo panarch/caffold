@@ -31,6 +31,7 @@ import type {
 import "./task-start-dialog/components/github-issue.js";
 import type { CaffoldGithubIssueTaskSource } from "./task-start-dialog/components/github-issue.js";
 import "./task-start-dialog/components/github-pull.js";
+import type { TaskCreatedHandoff } from "#tasks/layout.js";
 import type { CaffoldGithubPullTaskSource } from "./task-start-dialog/components/github-pull.js";
 
 // The issue or pull request a Task is started for.
@@ -343,7 +344,7 @@ export class CaffoldGithubTaskStartDialog extends LitElement {
         adopted: false,
       };
       this.dispatchEvent(
-        new CustomEvent("caffold:task-created", {
+        new CustomEvent<TaskCreatedHandoff>("caffold:task-created", {
           bubbles: true,
           composed: true,
           detail: handoff,

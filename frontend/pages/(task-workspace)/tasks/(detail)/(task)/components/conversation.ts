@@ -1365,4 +1365,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-conversation": CaffoldTaskConversation;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:task-conversation-intent": CustomEvent<ConversationIntent>;
+  }
 }

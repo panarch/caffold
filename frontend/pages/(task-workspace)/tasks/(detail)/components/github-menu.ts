@@ -182,4 +182,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-detail-github": CaffoldTaskDetailGithub;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:task-detail-github-intent": CustomEvent<GitHubMenuIntent>;
+  }
 }

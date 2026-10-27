@@ -92,4 +92,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-detail-summary": CaffoldTaskDetailSummary;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:task-detail-summary-intent": CustomEvent<TaskSummaryIntent>;
+  }
 }

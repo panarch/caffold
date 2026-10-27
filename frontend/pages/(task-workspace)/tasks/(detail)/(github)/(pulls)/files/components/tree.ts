@@ -18,6 +18,11 @@ import {
 } from "#components/file-tree.js";
 import "#components/loading-text.js";
 
+export interface OpenGithubPullFileDetail {
+  path: string;
+  status: string;
+}
+
 const LOADING_FILES = "Loading pull request files...";
 
 type FilesState =
@@ -156,10 +161,13 @@ export class CaffoldGithubPullFilesTree extends LitElement {
     }
     this.selectedPath = file.path;
     this.dispatchEvent(
-      new CustomEvent("caffold:open-github-pull-file", {
-        bubbles: true,
-        detail: { path: file.path, status: file.status },
-      }),
+      new CustomEvent<OpenGithubPullFileDetail>(
+        "caffold:open-github-pull-file",
+        {
+          bubbles: true,
+          detail: { path: file.path, status: file.status },
+        },
+      ),
     );
   }
 
@@ -213,5 +221,9 @@ function pullEntityKey(payload: GitHubPullFiles) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-github-pull-files-tree": CaffoldGithubPullFilesTree;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:open-github-pull-file": CustomEvent<OpenGithubPullFileDetail>;
   }
 }

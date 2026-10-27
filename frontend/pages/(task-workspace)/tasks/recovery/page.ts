@@ -593,4 +593,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-recovery": CaffoldTaskRecovery;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:task-recovery-intent": CustomEvent<TaskRecoveryIntent>;
+  }
 }

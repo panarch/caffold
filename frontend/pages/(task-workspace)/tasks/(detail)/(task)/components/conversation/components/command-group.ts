@@ -255,4 +255,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-command-group": CaffoldTaskCommandGroup;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:task-command-group-disclosure-intent": CustomEvent<CommandGroupDisclosureIntentDetail>;
+  }
 }

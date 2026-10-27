@@ -11,11 +11,28 @@ import {
   type WatchChange,
 } from "../watch.js";
 import "./file-navigator/components/list.js";
+import type { DirectoryEntry } from "../api.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
 import type {
   CaffoldFileList,
+  OpenEntryDetail,
   RefreshButtonState,
 } from "./file-navigator/components/list.js";
+
+export interface FileNavigatorRefreshStateDetail {
+  state: RefreshButtonState;
+}
+
+export interface FileNavigatorRefreshSelectedDetail {
+  path: string;
+  entry: DirectoryEntry | null;
+  revision: unknown;
+}
+
+export interface FileNavigatorOpenFileDetail {
+  path: string;
+  entry: DirectoryEntry | null;
+}
 
 const LOADING_DELAY_MS = 180;
 
@@ -278,7 +295,7 @@ export class CaffoldFileNavigator extends LitElement {
     return this.hasAttribute("external-navigation");
   }
 
-  private openDirectory(event: CustomEvent<{ path?: string }>) {
+  private openDirectory(event: CustomEvent<OpenEntryDetail>) {
     if (this.usesExternalNavigation()) {
       return;
     }
@@ -286,7 +303,7 @@ export class CaffoldFileNavigator extends LitElement {
     void this.loadDirectory(event.detail?.path ?? "");
   }
 
-  private openFile(event: CustomEvent<{ path?: string; entry?: unknown }>) {
+  private openFile(event: CustomEvent<OpenEntryDetail>) {
     if (this.usesExternalNavigation()) {
       return;
     }
@@ -294,10 +311,13 @@ export class CaffoldFileNavigator extends LitElement {
     const path = event.detail?.path ?? "";
     this.setSelectedPath(path);
     this.dispatchEvent(
-      new CustomEvent("caffold:file-navigator-open-file", {
-        bubbles: true,
-        detail: { path, entry: event.detail?.entry ?? null },
-      }),
+      new CustomEvent<FileNavigatorOpenFileDetail>(
+        "caffold:file-navigator-open-file",
+        {
+          bubbles: true,
+          detail: { path, entry: event.detail?.entry ?? null },
+        },
+      ),
     );
   }
 
@@ -366,14 +386,17 @@ export class CaffoldFileNavigator extends LitElement {
     }
     if (pending.selected && this.selectedPath) {
       this.dispatchEvent(
-        new CustomEvent("caffold:file-navigator-refresh-selected", {
-          bubbles: true,
-          detail: {
-            path: this.selectedPath,
-            entry: this.entryForPath(this.selectedPath),
-            revision: pending.revision,
+        new CustomEvent<FileNavigatorRefreshSelectedDetail>(
+          "caffold:file-navigator-refresh-selected",
+          {
+            bubbles: true,
+            detail: {
+              path: this.selectedPath,
+              entry: this.entryForPath(this.selectedPath),
+              revision: pending.revision,
+            },
           },
-        }),
+        ),
       );
     }
   }
@@ -437,10 +460,13 @@ export class CaffoldFileNavigator extends LitElement {
           : "idle";
     this.fileList.setRefreshState(nextState);
     this.dispatchEvent(
-      new CustomEvent("caffold:file-navigator-refresh-state", {
-        bubbles: true,
-        detail: { state: nextState },
-      }),
+      new CustomEvent<FileNavigatorRefreshStateDetail>(
+        "caffold:file-navigator-refresh-state",
+        {
+          bubbles: true,
+          detail: { state: nextState },
+        },
+      ),
     );
   }
 
@@ -500,5 +526,11 @@ function createPendingRefresh(): PendingRefresh {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-file-navigator": CaffoldFileNavigator;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:file-navigator-open-file": CustomEvent<FileNavigatorOpenFileDetail>;
+    "caffold:file-navigator-refresh-selected": CustomEvent<FileNavigatorRefreshSelectedDetail>;
+    "caffold:file-navigator-refresh-state": CustomEvent<FileNavigatorRefreshStateDetail>;
   }
 }

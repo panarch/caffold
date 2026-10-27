@@ -20,6 +20,7 @@ import type {
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "../../components/workspace-brand.js";
+import type { FileTreeLoadChildrenDetail } from "#components/file-tree.js";
 import type { NotesPicker } from "../layout/selection.js";
 import {
   directoryIdFromKey,
@@ -322,7 +323,7 @@ export class CaffoldNotesNavigator extends LitElement {
     }
   }
 
-  private loadDirectory(event: CustomEvent<{ key?: string }>) {
+  private loadDirectory(event: CustomEvent<FileTreeLoadChildrenDetail>) {
     event.stopPropagation();
     const directoryId = directoryIdFromKey(event.detail?.key);
     if (directoryId) {
@@ -343,7 +344,7 @@ export class CaffoldNotesNavigator extends LitElement {
 
   private dispatchIntent(detail: NotesNavigatorIntent) {
     this.dispatchEvent(
-      new CustomEvent(NOTES_NAVIGATOR_INTENT_EVENT, {
+      new CustomEvent<NotesNavigatorIntent>(NOTES_NAVIGATOR_INTENT_EVENT, {
         bubbles: true,
         detail,
       }),
@@ -358,5 +359,9 @@ export class CaffoldNotesNavigator extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-notes-navigator": CaffoldNotesNavigator;
+  }
+
+  interface HTMLElementEventMap {
+    [NOTES_NAVIGATOR_INTENT_EVENT]: CustomEvent<NotesNavigatorIntent>;
   }
 }

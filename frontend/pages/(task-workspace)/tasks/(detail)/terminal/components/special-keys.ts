@@ -95,4 +95,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-terminal-special-keys": CaffoldTerminalSpecialKeys;
   }
+
+  interface HTMLElementEventMap {
+    [TERMINAL_SPECIAL_KEY_EVENT]: CustomEvent<TerminalSpecialKeyDetail>;
+  }
 }

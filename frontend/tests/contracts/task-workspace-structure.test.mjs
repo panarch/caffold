@@ -500,7 +500,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(globalNew, /import "\.\.\/components\/task-create\.js"/);
   assert.match(globalNew, /browseCwd: true/);
   assert.match(taskCreate, /class CaffoldTaskCreate/);
-  assert.match(taskCreate, /caffold:task-create-intent/);
+  assert.match(taskCreate, /TASK_CREATE_INTENT_EVENT/);
   assert.doesNotMatch(taskCreate, /await createTask|caffold:task-created/);
   assert.match(tasksLayout, /^  createTask,$/m);
   assert.match(tasksLayout, /pendingTaskCreation/);

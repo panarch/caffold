@@ -228,4 +228,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-image-preview-dialog": CaffoldTaskImagePreviewDialog;
   }
+
+  interface HTMLElementEventMap {
+    [TASK_IMAGE_PREVIEW_EVENT]: CustomEvent<TaskImagePreviewRequest>;
+  }
 }

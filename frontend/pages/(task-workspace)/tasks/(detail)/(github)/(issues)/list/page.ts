@@ -12,7 +12,16 @@ import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/loading-text.js";
 import "#components/pagination.js";
+import type { ChangePageDetail } from "#components/pagination/components/button.js";
 import type { CaffoldPagination } from "#components/pagination.js";
+
+export interface OpenGithubIssueDetail {
+  number: number;
+}
+
+export interface ChangeGithubIssuesPageDetail {
+  page: number;
+}
 
 type IssuesState =
   | { status: "idle" }
@@ -208,20 +217,23 @@ export class CaffoldGithubIssuesListPage extends LitElement {
 
   private openIssue(number: number) {
     this.dispatchEvent(
-      new CustomEvent("caffold:open-github-issue", {
+      new CustomEvent<OpenGithubIssueDetail>("caffold:open-github-issue", {
         bubbles: true,
         detail: { number },
       }),
     );
   }
 
-  private changePage(event: CustomEvent<{ page: number }>) {
+  private changePage(event: CustomEvent<ChangePageDetail>) {
     event.stopPropagation();
     this.dispatchEvent(
-      new CustomEvent("caffold:change-github-issues-page", {
-        bubbles: true,
-        detail: { page: event.detail.page },
-      }),
+      new CustomEvent<ChangeGithubIssuesPageDetail>(
+        "caffold:change-github-issues-page",
+        {
+          bubbles: true,
+          detail: { page: event.detail.page },
+        },
+      ),
     );
   }
 }
@@ -245,5 +257,10 @@ function loadingPayload(payload: GitHubIssues | null, page: number | null) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-github-issues-list-page": CaffoldGithubIssuesListPage;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:change-github-issues-page": CustomEvent<ChangeGithubIssuesPageDetail>;
+    "caffold:open-github-issue": CustomEvent<OpenGithubIssueDetail>;
   }
 }

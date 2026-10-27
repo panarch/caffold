@@ -9,6 +9,11 @@ import { KEYBOARD_SHORTCUT_CLOSE_EVENT } from "../shortcuts.js";
 import "./presentation.js";
 import "./shortcut-list.js";
 
+export interface KeyboardShortcutCloseDetail {
+  reason: string;
+  originalEvent: Event;
+}
+
 const CLOSE_LABEL = "Close keyboard shortcuts";
 
 /**
@@ -143,11 +148,14 @@ export class CaffoldKeyboardShortcutDialog extends LitElement {
 
   private dispatchClose(reason: string, originalEvent: Event) {
     this.dispatchEvent(
-      new CustomEvent(KEYBOARD_SHORTCUT_CLOSE_EVENT, {
-        bubbles: true,
-        composed: true,
-        detail: { reason, originalEvent },
-      }),
+      new CustomEvent<KeyboardShortcutCloseDetail>(
+        KEYBOARD_SHORTCUT_CLOSE_EVENT,
+        {
+          bubbles: true,
+          composed: true,
+          detail: { reason, originalEvent },
+        },
+      ),
     );
   }
 }
@@ -155,5 +163,9 @@ export class CaffoldKeyboardShortcutDialog extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-keyboard-shortcut-dialog": CaffoldKeyboardShortcutDialog;
+  }
+
+  interface HTMLElementEventMap {
+    [KEYBOARD_SHORTCUT_CLOSE_EVENT]: CustomEvent<KeyboardShortcutCloseDetail>;
   }
 }

@@ -8,6 +8,10 @@ import {
 import { compactIconButton } from "#app/component-styles.js";
 import { inlineIcon } from "#components/icons.js";
 
+export interface TaskDetailTerminalIntentDetail {
+  type: "toggle";
+}
+
 export const TERMINAL_BUTTON_INTENT_EVENT =
   "caffold:task-detail-terminal-intent";
 
@@ -84,11 +88,14 @@ export class CaffoldTaskDetailTerminal extends LitElement {
 
   private toggle() {
     this.dispatchEvent(
-      new CustomEvent<{ type: "toggle" }>(TERMINAL_BUTTON_INTENT_EVENT, {
-        bubbles: true,
-        composed: true,
-        detail: { type: "toggle" },
-      }),
+      new CustomEvent<TaskDetailTerminalIntentDetail>(
+        TERMINAL_BUTTON_INTENT_EVENT,
+        {
+          bubbles: true,
+          composed: true,
+          detail: { type: "toggle" },
+        },
+      ),
     );
   }
 }
@@ -96,5 +103,9 @@ export class CaffoldTaskDetailTerminal extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-detail-terminal": CaffoldTaskDetailTerminal;
+  }
+
+  interface HTMLElementEventMap {
+    [TERMINAL_BUTTON_INTENT_EVENT]: CustomEvent<TaskDetailTerminalIntentDetail>;
   }
 }

@@ -25,6 +25,7 @@ import {
   type TaskTransportState,
 } from "../../runtime-state.js";
 import "./components/special-keys.js";
+import type { TerminalViewInputDetail } from "#components/terminal-view.js";
 import type {
   CaffoldTerminalSpecialKeys,
   TerminalSpecialKeyDetail,
@@ -45,6 +46,10 @@ import {
   type TerminalState,
   terminalTransition,
 } from "./page/model.js";
+
+export interface TerminalPageStateDetail {
+  node: TerminalNode;
+}
 
 export const TERMINAL_PAGE_STATE_EVENT = "caffold:terminal-page-state";
 export const TERMINAL_PAGE_FOCUS_RELEASE_EVENT =
@@ -332,7 +337,7 @@ export class CaffoldTerminalPage extends LitElement {
     this.draw();
     this.settleWaiting();
     this.dispatchEvent(
-      new CustomEvent<{ node: TerminalNode }>(TERMINAL_PAGE_STATE_EVENT, {
+      new CustomEvent<TerminalPageStateDetail>(TERMINAL_PAGE_STATE_EVENT, {
         bubbles: true,
         detail: { node: this.state.node },
       }),
@@ -461,7 +466,7 @@ export class CaffoldTerminalPage extends LitElement {
     this.connection = null;
   }
 
-  private sendInput(event: CustomEvent<{ data: string; binary: boolean }>) {
+  private sendInput(event: CustomEvent<TerminalViewInputDetail>) {
     const { data, binary } = event.detail;
     if (this.state.node !== TERMINAL_NODE.LIVE) {
       return;
@@ -626,5 +631,9 @@ function writePreference(key: string, value: boolean) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-terminal-page": CaffoldTerminalPage;
+  }
+
+  interface HTMLElementEventMap {
+    [TERMINAL_PAGE_STATE_EVENT]: CustomEvent<TerminalPageStateDetail>;
   }
 }

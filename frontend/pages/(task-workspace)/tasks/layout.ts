@@ -6,12 +6,9 @@ import {
   mergeActionHintScopes,
 } from "#app/action-hint-scope.js";
 import {
-  type ActiveTask,
   type ActiveTaskRecovery,
-  type ActiveTaskTopPlacement,
   type CreatedTask,
   createTask,
-  type Task,
 } from "#app/api.js";
 import { mergeKeyboardNavigationContexts } from "#app/keyboard-navigation.js";
 import { routeDomain, routeTarget } from "#app/navigation-routes.js";
@@ -34,24 +31,47 @@ import type { ComposerSubmission } from "./components/composer.js";
 import {
   type CaffoldTaskImagePreviewDialog,
   TASK_IMAGE_PREVIEW_EVENT,
-  type TaskImagePreviewRequest,
 } from "./components/image-preview-dialog.js";
 import type {
   CaffoldTaskNavigator,
   TaskNavigatorListState,
 } from "./components/navigator.js";
-import type { TaskStartIntent } from "./components/task-create.js";
 import "./components/task-store-recovery.js";
 import type { CaffoldTaskStoreRecovery } from "./components/task-store-recovery.js";
 import "./new/page.js";
 import type { CaffoldTaskNew } from "./new/page.js";
 import "./recovery/page.js";
+import type { RequestTasksRouteDetail } from "../../layout.js";
+import type { TaskStartIntent } from "../task-create-intent-event.js";
+import { TASK_CREATE_INTENT_EVENT } from "../task-create-intent-event.js";
+import type { TaskDetailIntent } from "./(detail)/task-detail-intent-event.js";
+import type { TaskDetailTransportChangeDetail } from "./(detail)/task-detail-transport-change-event.js";
+import type { TaskNavigatorTransportChangeDetail } from "./components/active-task-list.js";
+import type { TaskNewRouteIntentDetail } from "./new/page.js";
 import type {
   CaffoldTaskRecovery,
   TaskRecoveryIntent,
 } from "./recovery/page.js";
+import type { TaskTransportState } from "./runtime-state.js";
 import { TASK_TRANSPORT_STATE } from "./runtime-state.js";
 import { taskDetailThreadId } from "./task-list-model.js";
+import type { TaskNavigatorIntentDetail } from "./task-navigator-intent-event.js";
+import { TASK_NAVIGATOR_INTENT_EVENT } from "./task-navigator-intent-event.js";
+
+export interface TaskTransportStatusDetail {
+  targets: {
+    list: {
+      active: boolean;
+      content: "present" | "absent";
+      transport: TaskTransportState;
+    };
+    detail: {
+      active: boolean;
+      content: "present" | "absent";
+      transport: TaskTransportState | "inactive";
+    };
+  };
+}
 
 type TasksView = "home" | "new" | "detail" | "recovery";
 
@@ -73,26 +93,9 @@ interface RouteOptions {
   defaultCwdPath?: string;
 }
 
-// What the Task list asks of the Tasks screen.
-type NavigatorIntent =
-  | { type: "select-task" | "select-task-recovery"; threadId: string }
-  | { type: "select-section"; sectionId: string }
-  | { type: "new-task" | "open-task-switcher" };
-
-// What a Task's or Section's Detail tells the Tasks screen.
-type DetailIntent =
-  | { type: "task-archived"; task?: Task }
-  | { type: "task-deleted"; threadId?: string }
-  | {
-      type: "task-restored";
-      task?: ActiveTask;
-      activeTopPlacement: ActiveTaskTopPlacement;
-    }
-  | { type: "review-route" | "domain-route"; route?: TasksRoute };
-
 // A Task made elsewhere under Tasks, which this screen opens; `adopted` is
 // set once its Detail holds it.
-interface TaskCreatedHandoff {
+export interface TaskCreatedHandoff {
   created: CreatedTask;
   submission: Partial<ComposerSubmission> | null;
   adopted: boolean;
@@ -142,9 +145,11 @@ export class CaffoldTasksPage extends LitElement {
   private readonly taskRecovery = new DrawnRef<CaffoldTaskRecovery>(this);
   private readonly imagePreviewDialog =
     new DrawnRef<CaffoldTaskImagePreviewDialog>(this);
-  private readonly navigatorIntent = (event: Event) => {
+  private readonly navigatorIntent = (
+    event: CustomEvent<TaskNavigatorIntentDetail>,
+  ) => {
     event.stopPropagation();
-    const intent = (event as CustomEvent<NavigatorIntent>).detail;
+    const intent = event.detail;
     if (intent?.type === "select-task") {
       this.requestRoute({ kind: "tasks", threadId: intent.threadId });
     } else if (intent?.type === "select-task-recovery") {
@@ -163,18 +168,18 @@ export class CaffoldTasksPage extends LitElement {
       this.requestNewTaskRoute();
     }
   };
-  private readonly navigatorListState = (event: Event) => {
+  private readonly navigatorListState = (
+    event: CustomEvent<TaskNavigatorListState>,
+  ) => {
     event.stopPropagation();
-    this.syncTaskListState(
-      (event as CustomEvent<TaskNavigatorListState>).detail,
-    );
+    this.syncTaskListState(event.detail);
     this.publishTransportState();
   };
-  private readonly navigatorTransportChange = (event: Event) => {
+  private readonly navigatorTransportChange = (
+    event: CustomEvent<TaskNavigatorTransportChangeDetail>,
+  ) => {
     event.stopPropagation();
-    const available = Boolean(
-      (event as CustomEvent<{ available?: boolean }>).detail?.available,
-    );
+    const available = Boolean(event.detail?.available);
     this.taskNew.value?.setTransportAvailable(available);
     this.taskDetail()?.setTransportAvailable(available);
     this.publishTransportState();
@@ -183,8 +188,8 @@ export class CaffoldTasksPage extends LitElement {
   constructor() {
     super();
     // Task Create starts a Task from New Task and from a Section alike.
-    this.addEventListener("caffold:task-create-intent", (event) => {
-      const intent = (event as CustomEvent<{ type: string }>).detail;
+    this.addEventListener(TASK_CREATE_INTENT_EVENT, (event) => {
+      const intent = event.detail;
       if (intent?.type !== "start") {
         return;
       }
@@ -199,7 +204,7 @@ export class CaffoldTasksPage extends LitElement {
     });
     this.addEventListener("caffold:task-created", (event) => {
       event.stopPropagation();
-      const handoff = (event as CustomEvent<TaskCreatedHandoff>).detail;
+      const handoff = event.detail;
       handoff.adopted = this.adoptCreatedTask(
         handoff?.created,
         handoff?.submission,
@@ -215,9 +220,7 @@ export class CaffoldTasksPage extends LitElement {
     });
     this.addEventListener(TASK_IMAGE_PREVIEW_EVENT, (event) => {
       event.stopPropagation();
-      this.imagePreviewDialog.value?.openImage(
-        (event as CustomEvent<TaskImagePreviewRequest>).detail,
-      );
+      this.imagePreviewDialog.value?.openImage(event.detail);
     });
   }
 
@@ -259,7 +262,7 @@ export class CaffoldTasksPage extends LitElement {
     );
     this.connectedTaskNavigator = navigator ?? null;
     this.connectedTaskNavigator?.addEventListener(
-      "caffold:task-navigator-intent",
+      TASK_NAVIGATOR_INTENT_EVENT,
       this.navigatorIntent,
     );
     this.connectedTaskNavigator?.addEventListener(
@@ -726,14 +729,14 @@ export class CaffoldTasksPage extends LitElement {
     `;
   }
 
-  private newTaskRouteIntent(event: CustomEvent<{ route?: TasksRoute }>) {
+  private newTaskRouteIntent(event: CustomEvent<TaskNewRouteIntentDetail>) {
     event.stopPropagation();
     if (event.detail?.route) {
       this.requestRoute(event.detail.route);
     }
   }
 
-  private detailIntent(event: CustomEvent<DetailIntent>) {
+  private detailIntent(event: CustomEvent<TaskDetailIntent>) {
     event.stopPropagation();
     const intent = event.detail;
     if (intent?.type === "task-archived" && intent.task) {
@@ -758,7 +761,9 @@ export class CaffoldTasksPage extends LitElement {
     }
   }
 
-  private detailTransportChange(event: Event) {
+  private detailTransportChange(
+    event: CustomEvent<TaskDetailTransportChangeDetail>,
+  ) {
     if (event.target !== this.taskDetail()) {
       return;
     }
@@ -974,7 +979,7 @@ export class CaffoldTasksPage extends LitElement {
     options: { correction?: boolean } = {},
   ) {
     this.dispatchEvent(
-      new CustomEvent("caffold:request-tasks-route", {
+      new CustomEvent<RequestTasksRouteDetail>("caffold:request-tasks-route", {
         bubbles: true,
         detail: {
           route: { ...route },
@@ -1001,7 +1006,7 @@ export class CaffoldTasksPage extends LitElement {
       listState && listState.activeCount > 0 && listState.activeError
         ? TASK_TRANSPORT_STATE.UNAVAILABLE
         : (navigator?.streamState ?? TASK_TRANSPORT_STATE.IDLE);
-    const targets = {
+    const targets: TaskTransportStatusDetail["targets"] = {
       list: {
         active: Boolean(navigator),
         content:
@@ -1027,11 +1032,14 @@ export class CaffoldTasksPage extends LitElement {
     }
     this.lastPublishedTransportTargets = publicationKey;
     this.dispatchEvent(
-      new CustomEvent("caffold:task-transport-status", {
-        bubbles: true,
-        composed: true,
-        detail: { targets },
-      }),
+      new CustomEvent<TaskTransportStatusDetail>(
+        "caffold:task-transport-status",
+        {
+          bubbles: true,
+          composed: true,
+          detail: { targets },
+        },
+      ),
     );
   }
 
@@ -1078,5 +1086,10 @@ function taskRoutePresentation(route: TasksRoute) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-tasks-page": CaffoldTasksPage;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:task-created": CustomEvent<TaskCreatedHandoff>;
+    "caffold:task-transport-status": CustomEvent<TaskTransportStatusDetail>;
   }
 }

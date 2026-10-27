@@ -18,11 +18,22 @@ import type { CaffoldGitLogLayout } from "./(log)/layout.js";
 import "./compare/page.js";
 import type { CaffoldGitComparePage } from "./compare/page.js";
 import "./components/controls.js";
+import type { OpenCompareDiffDetail } from "#components/git-compare-tree.js";
+import type { OpenCommitDiffDetail } from "./(log)/commit/components/changes-tree.js";
+import type {
+  ChangeLogPageDetail,
+  OpenGitCommitDetail,
+} from "./(log)/list/page.js";
 import {
   type CaffoldGitReviewControls,
   type GitControlsSnapshot,
   IDLE_CONTROLS,
 } from "./components/controls.js";
+
+export interface RequestGitRouteDetail {
+  route: GitRoute;
+  options: { status?: string };
+}
 
 type GitMode = "compare" | "log";
 
@@ -579,9 +590,7 @@ export class CaffoldTaskGitLayout extends LitElement {
     this.updateChrome();
   }
 
-  private openCompareDiff(
-    event: CustomEvent<{ path: string; status: string }>,
-  ) {
+  private openCompareDiff(event: CustomEvent<OpenCompareDiffDetail>) {
     event.stopPropagation();
     this.requestGitRoute(
       {
@@ -604,7 +613,7 @@ export class CaffoldTaskGitLayout extends LitElement {
     });
   }
 
-  private openCommit(event: CustomEvent<{ sha: string }>) {
+  private openCommit(event: CustomEvent<OpenGitCommitDetail>) {
     event.stopPropagation();
     this.requestGitRoute({
       kind: "log",
@@ -613,14 +622,12 @@ export class CaffoldTaskGitLayout extends LitElement {
     });
   }
 
-  private changeLogPage(event: CustomEvent<{ page: number }>) {
+  private changeLogPage(event: CustomEvent<ChangeLogPageDetail>) {
     event.stopPropagation();
     this.requestGitRoute({ kind: "log", page: event.detail.page });
   }
 
-  private openCommitDiff(
-    event: CustomEvent<{ sha: string; path: string; status: string }>,
-  ) {
+  private openCommitDiff(event: CustomEvent<OpenCommitDiffDetail>) {
     event.stopPropagation();
     this.requestGitRoute(
       {
@@ -649,7 +656,7 @@ export class CaffoldTaskGitLayout extends LitElement {
 
   private requestGitRoute(route: GitRoute, options: { status?: string } = {}) {
     this.dispatchEvent(
-      new CustomEvent("caffold:request-git-route", {
+      new CustomEvent<RequestGitRouteDetail>("caffold:request-git-route", {
         bubbles: true,
         detail: { route, options },
       }),
@@ -733,5 +740,9 @@ export class CaffoldTaskGitLayout extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-git-layout": CaffoldTaskGitLayout;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:request-git-route": CustomEvent<RequestGitRouteDetail>;
   }
 }

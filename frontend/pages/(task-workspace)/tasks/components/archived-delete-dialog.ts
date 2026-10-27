@@ -6,6 +6,10 @@ import "#app/keyboard-navigation/components/presentation.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { taskThreadId } from "../task-list-model.js";
 
+export interface TaskArchivedDeleteConfirmedDetail {
+  threadId: string;
+}
+
 export const TASK_ARCHIVED_DELETE_CONFIRMED_EVENT =
   "caffold:task-archived-delete-confirmed";
 
@@ -126,11 +130,14 @@ export class CaffoldTaskArchivedDeleteDialog extends LitElement {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent(TASK_ARCHIVED_DELETE_CONFIRMED_EVENT, {
-        bubbles: true,
-        composed: true,
-        detail: { threadId },
-      }),
+      new CustomEvent<TaskArchivedDeleteConfirmedDetail>(
+        TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
+        {
+          bubbles: true,
+          composed: true,
+          detail: { threadId },
+        },
+      ),
     );
   }
 }
@@ -138,5 +145,9 @@ export class CaffoldTaskArchivedDeleteDialog extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-archived-delete-dialog": CaffoldTaskArchivedDeleteDialog;
+  }
+
+  interface HTMLElementEventMap {
+    [TASK_ARCHIVED_DELETE_CONFIRMED_EVENT]: CustomEvent<TaskArchivedDeleteConfirmedDetail>;
   }
 }

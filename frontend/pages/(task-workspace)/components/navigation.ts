@@ -8,6 +8,10 @@ import {
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import type { CaffoldUpdateSnapshot } from "../settings/about/page.js";
 
+export interface WorkspaceNavigationIntentDetail {
+  mode: WorkspaceMode | undefined;
+}
+
 type WorkspaceMode = "tasks" | "notes" | "settings";
 
 const MODES: readonly { mode: WorkspaceMode; label: string; icon: string }[] = [
@@ -107,10 +111,17 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
   private select(event: Event) {
     const button = event.currentTarget as HTMLButtonElement;
     this.dispatchEvent(
-      new CustomEvent("caffold:workspace-navigation-intent", {
-        bubbles: true,
-        detail: { mode: button.dataset.workspaceMode },
-      }),
+      new CustomEvent<WorkspaceNavigationIntentDetail>(
+        "caffold:workspace-navigation-intent",
+        {
+          bubbles: true,
+          detail: {
+            mode: MODES.find(
+              (entry) => entry.mode === button.dataset.workspaceMode,
+            )?.mode,
+          },
+        },
+      ),
     );
   }
 }
@@ -118,5 +129,9 @@ export class CaffoldTaskWorkspaceNavigation extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-workspace-navigation": CaffoldTaskWorkspaceNavigation;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:workspace-navigation-intent": CustomEvent<WorkspaceNavigationIntentDetail>;
   }
 }

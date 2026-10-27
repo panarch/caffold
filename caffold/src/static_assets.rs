@@ -668,6 +668,10 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/layout.js"
         )))),
+        "pages/(task-workspace)/task-create-intent-event.js" => Some(js(include_str!(concat!(
+            env!("OUT_DIR"),
+            "/frontend/pages/(task-workspace)/task-create-intent-event.js"
+        )))),
         "keyboard-navigation.js" => Some(js(include_str!(concat!(
             env!("OUT_DIR"),
             "/frontend/keyboard-navigation.js"
@@ -860,6 +864,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/tasks/layout.js"
         )))),
+        "pages/(task-workspace)/tasks/task-navigator-intent-event.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/task-navigator-intent-event.js"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/layout.css"
         ))),
@@ -867,6 +877,18 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
             env!("OUT_DIR"),
             "/frontend/pages/(task-workspace)/tasks/(detail)/layout.js"
         )))),
+        "pages/(task-workspace)/tasks/(detail)/task-detail-intent-event.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/task-detail-intent-event.js"
+            ))))
+        }
+        "pages/(task-workspace)/tasks/(detail)/task-detail-transport-change-event.js" => {
+            Some(js(include_str!(concat!(
+                env!("OUT_DIR"),
+                "/frontend/pages/(task-workspace)/tasks/(detail)/task-detail-transport-change-event.js"
+            ))))
+        }
         "pages/(task-workspace)/tasks/(detail)/(section)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.css"
         ))),

@@ -16,6 +16,10 @@ import {
   type ThemeMode,
 } from "./theme.js";
 
+export interface SettingsChangeDetail {
+  settings: Settings;
+}
+
 export type { TypefacePreset } from "./fonts.js";
 
 const STORAGE_KEY = "caffold:settings";
@@ -284,7 +288,7 @@ function persistApplyAndPublish(settings: Settings) {
 
   if (typeof window !== "undefined") {
     window.dispatchEvent(
-      new CustomEvent("caffold:settings-change", {
+      new CustomEvent<SettingsChangeDetail>("caffold:settings-change", {
         detail: { settings: getSettings() },
       }),
     );
@@ -300,5 +304,11 @@ function persistSettings(settings: Settings) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch {
     // Keep the normalized in-memory setting active when storage is unavailable.
+  }
+}
+
+declare global {
+  interface WindowEventMap {
+    "caffold:settings-change": CustomEvent<SettingsChangeDetail>;
   }
 }

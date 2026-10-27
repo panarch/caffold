@@ -21,6 +21,15 @@ import {
 import "./loading-text.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
 
+export interface SelectCompareBaseDetail {
+  baseRef: string;
+}
+
+export interface OpenCompareDiffDetail {
+  path: string;
+  status: string | undefined;
+}
+
 type CompareState =
   | { status: "idle" }
   | {
@@ -300,7 +309,7 @@ export class CaffoldGitCompareTree extends LitElement {
     }
     this.baseSelection = { ...this.baseSelection, value: baseRef };
     this.dispatchEvent(
-      new CustomEvent("caffold:select-compare-base", {
+      new CustomEvent<SelectCompareBaseDetail>("caffold:select-compare-base", {
         bubbles: true,
         composed: true,
         detail: { baseRef },
@@ -315,7 +324,7 @@ export class CaffoldGitCompareTree extends LitElement {
     }
     this.selectedPath = file.path;
     this.dispatchEvent(
-      new CustomEvent("caffold:open-compare-diff", {
+      new CustomEvent<OpenCompareDiffDetail>("caffold:open-compare-diff", {
         bubbles: true,
         detail: { path: file.path, status: file.status },
       }),
@@ -405,5 +414,10 @@ function compareEntityKey(payload: GitCompare) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-git-compare-tree": CaffoldGitCompareTree;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:open-compare-diff": CustomEvent<OpenCompareDiffDetail>;
+    "caffold:select-compare-base": CustomEvent<SelectCompareBaseDetail>;
   }
 }

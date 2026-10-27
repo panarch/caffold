@@ -35,7 +35,13 @@ import "./keyboard/page.js";
 import "./notifications/page.js";
 import "./remote-access/page.js";
 import "./voice/page.js";
+import type { ParsedRoute } from "#app/navigation-routes.js";
 import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
+import type { SettingsNavigatorIntentDetail } from "./components/navigator/components/item.js";
+
+export interface RequestSettingsRouteDetail {
+  route: ParsedRoute;
+}
 
 const TITLES: Readonly<Record<string, string>> = {
   appearance: "Appearance",
@@ -101,11 +107,11 @@ export class CaffoldSettingsWorkspace extends LitElement {
     this.wide = this.masterDetailMedia.matches;
     this.syncPresentation();
   };
-  private readonly navigatorIntent = (event: Event) => {
+  private readonly navigatorIntent = (
+    event: CustomEvent<SettingsNavigatorIntentDetail>,
+  ) => {
     event.stopPropagation();
-    this.requestSection(
-      (event as CustomEvent<{ section?: string }>).detail?.section,
-    );
+    this.requestSection(event.detail?.section);
   };
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this);
@@ -393,10 +399,13 @@ export class CaffoldSettingsWorkspace extends LitElement {
 
   private requestSection(section: string | null | undefined) {
     this.dispatchEvent(
-      new CustomEvent("caffold:request-settings-route", {
-        bubbles: true,
-        detail: { route: { kind: "settings", section: section ?? "" } },
-      }),
+      new CustomEvent<RequestSettingsRouteDetail>(
+        "caffold:request-settings-route",
+        {
+          bubbles: true,
+          detail: { route: { kind: "settings", section: section ?? "" } },
+        },
+      ),
     );
   }
 
@@ -429,5 +438,9 @@ export class CaffoldSettingsWorkspace extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-settings-workspace": CaffoldSettingsWorkspace;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:request-settings-route": CustomEvent<RequestSettingsRouteDetail>;
   }
 }

@@ -214,4 +214,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-section-github-shortcuts": CaffoldSectionGithubShortcuts;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:section-detail-intent": CustomEvent<GitHubShortcutIntent>;
+  }
 }

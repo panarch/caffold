@@ -691,4 +691,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-markdown": CaffoldTaskMarkdown;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:task-markdown-rendered": CustomEvent<MarkdownRenderedDetail>;
+  }
 }

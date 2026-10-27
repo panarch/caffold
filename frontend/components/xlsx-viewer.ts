@@ -15,7 +15,10 @@ import type { DocumentPreviewFile } from "./dom.js";
 import "./loading-text.js";
 import "./segmented-control.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
-import type { CaffoldSegmentedControl } from "./segmented-control.js";
+import type {
+  CaffoldSegmentedControl,
+  SegmentedControlIntentDetail,
+} from "./segmented-control.js";
 import {
   containsRange,
   coverMerges,
@@ -131,7 +134,9 @@ class CaffoldXlsxViewer extends LitElement {
                 })}
                 class="xlsx-viewer-tabs"
                 ?hidden=${!tabbed}
-                @caffold:segmented-control-intent=${(event: CustomEvent) => {
+                @caffold:segmented-control-intent=${(
+                  event: CustomEvent<SegmentedControlIntentDetail>,
+                ) => {
                   // The tabs choose this viewer's sheet; no review surface
                   // above owns them.
                   event.stopPropagation();

@@ -17,12 +17,14 @@ import {
 } from "../../task-store-status.js";
 import { cleanLogicalPath } from "../task-format.js";
 import "./composer.js";
-import type {
-  CaffoldTaskComposer,
-  ComposerSubmission,
-  ComposerSubmitDetail,
-} from "./composer.js";
+import type { CaffoldTaskComposer, ComposerSubmitDetail } from "./composer.js";
 import "./task-create/components/directory-field.js";
+import type {
+  TaskCreateIntentDetail,
+  TaskStartIntent,
+} from "../../task-create-intent-event.js";
+import { TASK_CREATE_INTENT_EVENT } from "../../task-create-intent-event.js";
+import type { ComposerIntentDetail } from "./composer.js";
 import type {
   CaffoldTaskDirectoryField,
   DirectoryChosenDetail,
@@ -31,7 +33,6 @@ import {
   directoryPathDisplay,
   type ServerPaths,
 } from "./task-create/directory-path.js";
-import type { TurnSubmissionOptions } from "./task-turn-options.js";
 
 // What a New Task surface last ran under, which a new Task starts from.
 export interface ComposerSettings {
@@ -46,24 +47,6 @@ export interface ComposerSettings {
 type ComposerSettingsInput = {
   [Key in keyof ComposerSettings]?: ComposerSettings[Key] | null;
 };
-
-// A request to start a Task, with as much of a submission as its asker has.
-// The owner that takes it sets `accepted` and the `completion` that settles
-// once the new Task holds the submission.
-export interface TaskStartIntent {
-  type: "start";
-  request: {
-    cwd?: string;
-    titleSource: string;
-  } & Partial<TurnSubmissionOptions>;
-  submission: Partial<ComposerSubmission>;
-  accepted: boolean;
-  completion: Promise<unknown> | null;
-}
-
-export type TaskCreateIntentDetail =
-  | { type: "choose-cwd"; path: string }
-  | TaskStartIntent;
 
 /**
  * Where a new Task works and what it is asked first: the directory above the
@@ -282,7 +265,7 @@ export class CaffoldTaskCreate extends LitElement {
     });
   }
 
-  private composerIntent(event: Event) {
+  private composerIntent(event: CustomEvent<ComposerIntentDetail>) {
     if (event.target === this.composer()) {
       event.stopPropagation();
     }
@@ -294,7 +277,7 @@ export class CaffoldTaskCreate extends LitElement {
     }
     event.stopPropagation();
     this.dispatchEvent(
-      new CustomEvent<TaskCreateIntentDetail>("caffold:task-create-intent", {
+      new CustomEvent<TaskCreateIntentDetail>(TASK_CREATE_INTENT_EVENT, {
         bubbles: true,
         composed: true,
         detail: { type: "choose-cwd", path: event.detail.path },
@@ -335,7 +318,7 @@ export class CaffoldTaskCreate extends LitElement {
         completion: null,
       };
       this.dispatchEvent(
-        new CustomEvent<TaskCreateIntentDetail>("caffold:task-create-intent", {
+        new CustomEvent<TaskCreateIntentDetail>(TASK_CREATE_INTENT_EVENT, {
           bubbles: true,
           composed: true,
           detail: intent,

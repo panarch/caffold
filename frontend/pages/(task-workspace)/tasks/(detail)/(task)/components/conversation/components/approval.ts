@@ -314,4 +314,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-approval": CaffoldTaskApproval;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:task-approval-intent": CustomEvent<ApprovalIntentDetail>;
+  }
 }

@@ -30,6 +30,12 @@ import {
 import { inlineIcon, warmIcons } from "../../icons.js";
 import "../../loading-text.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
+import type { FileTreeLoadChildrenDetail } from "../../file-tree.js";
+
+export interface OpenEntryDetail {
+  path: string;
+  entry: DirectoryEntry;
+}
 
 const TREE_LOADING_DELAY_MS = 180;
 
@@ -377,7 +383,7 @@ export class CaffoldFileList extends LitElement {
         ? "caffold:open-directory"
         : "caffold:open-file";
     this.dispatchEvent(
-      new CustomEvent(eventName, {
+      new CustomEvent<OpenEntryDetail>(eventName, {
         bubbles: true,
         detail: {
           path: entry.path,
@@ -387,7 +393,7 @@ export class CaffoldFileList extends LitElement {
     );
   }
 
-  private loadTreeChildren(event: CustomEvent<{ path: string }>) {
+  private loadTreeChildren(event: CustomEvent<FileTreeLoadChildrenDetail>) {
     event.stopPropagation();
     const path = event.detail.path;
     this.treeState?.errors.delete(path);
@@ -722,5 +728,10 @@ function sameDirectoryPresentation(
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-file-list": CaffoldFileList;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:open-directory": CustomEvent<OpenEntryDetail>;
+    "caffold:open-file": CustomEvent<OpenEntryDetail>;
   }
 }

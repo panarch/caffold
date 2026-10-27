@@ -11,6 +11,7 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { ChangesReading } from "../changes-reading.js";
 import type { ReviewChange } from "./selected-file/content.js";
 import "./working-tree-changes/components/changes-tree.js";
+import type { ChangesRead } from "../layout.js";
 import type { CaffoldGitDiffChangesTree } from "./working-tree-changes/components/changes-tree.js";
 
 @customElement("caffold-review-working-tree-changes")
@@ -212,9 +213,12 @@ export class CaffoldReviewWorkingTreeChanges extends LitElement {
     );
   }
 
-  private announceRead(detail: Record<string, unknown>) {
+  private announceRead(detail: ChangesRead) {
     this.dispatchEvent(
-      new CustomEvent("caffold:review-changes-read", { bubbles: true, detail }),
+      new CustomEvent<ChangesRead>("caffold:review-changes-read", {
+        bubbles: true,
+        detail,
+      }),
     );
   }
 

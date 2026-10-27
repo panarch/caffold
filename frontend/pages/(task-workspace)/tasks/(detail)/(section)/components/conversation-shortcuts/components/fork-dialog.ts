@@ -14,6 +14,7 @@ import "#app/keyboard-navigation/components/presentation.js";
 import { ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/loading-text.js";
+import type { TaskCreatedHandoff } from "#tasks/layout.js";
 import { formatDate } from "#tasks/task-format.js";
 
 const CODEX_THREAD_URI_PREFIX = "codex://threads/";
@@ -397,7 +398,7 @@ export class CaffoldConversationForkDialog extends LitElement {
       }
       const handoff = { created, submission: null, adopted: false };
       this.dispatchEvent(
-        new CustomEvent("caffold:task-created", {
+        new CustomEvent<TaskCreatedHandoff>("caffold:task-created", {
           bubbles: true,
           composed: true,
           detail: handoff,

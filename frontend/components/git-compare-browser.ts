@@ -22,8 +22,16 @@ import "./git-compare-tree.js";
 import type { CaffoldGitCompareTree } from "./git-compare-tree.js";
 import "./pane-resizer.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
-import type { CaffoldPaneResizer } from "./pane-resizer.js";
+import type { CaffoldPaneResizer, PaneResizeDetail } from "./pane-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.js";
+
+export interface GitCompareStateChangeDetail {
+  detailView: DetailView;
+  refsPayload: GitRefs | null;
+  baseRef: string | null;
+  headRef: string | null;
+  compare: GitCompare | null;
+}
 
 const LOADING_DELAY_MS = 180;
 
@@ -629,7 +637,7 @@ export class CaffoldGitCompareBrowser extends LitElement {
     });
   }
 
-  private handlePanelResize(event: CustomEvent<{ phase: string }>) {
+  private handlePanelResize(event: CustomEvent<PaneResizeDetail>) {
     event.stopPropagation();
     if (event.detail.phase === "start") {
       this.classList.add("is-resizing-panel");
@@ -653,16 +661,19 @@ export class CaffoldGitCompareBrowser extends LitElement {
 
   private emitStateChange() {
     this.dispatchEvent(
-      new CustomEvent("caffold:git-compare-state-change", {
-        bubbles: true,
-        detail: {
-          detailView: this.detailView,
-          refsPayload: this.refsPayload,
-          baseRef: this.baseRef,
-          headRef: this.headRef,
-          compare: this.compare,
+      new CustomEvent<GitCompareStateChangeDetail>(
+        "caffold:git-compare-state-change",
+        {
+          bubbles: true,
+          detail: {
+            detailView: this.detailView,
+            refsPayload: this.refsPayload,
+            baseRef: this.baseRef,
+            headRef: this.headRef,
+            compare: this.compare,
+          },
         },
-      }),
+      ),
     );
   }
 }
@@ -689,5 +700,9 @@ function chooseCompareRef(
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-git-compare-browser": CaffoldGitCompareBrowser;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:git-compare-state-change": CustomEvent<GitCompareStateChangeDetail>;
   }
 }

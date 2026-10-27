@@ -17,6 +17,7 @@ import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "../../components/markdown.js";
 import type { CaffoldGithubMarkdown } from "../../components/markdown.js";
+import type { StartGithubTaskDetail } from "../../layout.js";
 
 type IssueState =
   | { status: "empty" }
@@ -215,7 +216,7 @@ export class CaffoldGithubIssueDetailPage extends LitElement {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent("caffold:start-github-task", {
+      new CustomEvent<StartGithubTaskDetail>("caffold:start-github-task", {
         bubbles: true,
         composed: true,
         detail: {

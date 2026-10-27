@@ -4,6 +4,15 @@ import { repeat } from "lit/directives/repeat.js";
 import { clampBadgePosition, type Rect } from "../../action-hints.js";
 import { DrawnRef, DrawnRefs, drawn } from "../../components/drawn-refs.js";
 
+export interface ScrollSurfaceSelectDetail {
+  code: string | undefined;
+}
+
+export interface ScrollSurfaceCancelDetail {
+  reason: string;
+  originalEvent: Event;
+}
+
 export const SCROLL_SURFACE_SELECT_EVENT = "caffold:scroll-surface-select";
 export const SCROLL_SURFACE_CANCEL_EVENT = "caffold:scroll-surface-cancel";
 
@@ -183,10 +192,13 @@ export class CaffoldScrollSurfaceSelector extends LitElement {
     if (badge && !badge.parentElement?.hidden) {
       event.stopPropagation();
       this.dispatchEvent(
-        new CustomEvent(SCROLL_SURFACE_SELECT_EVENT, {
-          bubbles: true,
-          detail: { code: badge.dataset.scrollSurfaceCode },
-        }),
+        new CustomEvent<ScrollSurfaceSelectDetail>(
+          SCROLL_SURFACE_SELECT_EVENT,
+          {
+            bubbles: true,
+            detail: { code: badge.dataset.scrollSurfaceCode },
+          },
+        ),
       );
       return;
     }
@@ -202,7 +214,7 @@ export class CaffoldScrollSurfaceSelector extends LitElement {
 
   private dispatchCancel(reason: string, originalEvent: Event) {
     this.dispatchEvent(
-      new CustomEvent(SCROLL_SURFACE_CANCEL_EVENT, {
+      new CustomEvent<ScrollSurfaceCancelDetail>(SCROLL_SURFACE_CANCEL_EVENT, {
         bubbles: true,
         detail: { reason, originalEvent },
       }),
@@ -297,5 +309,10 @@ function rectsOverlap(
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-scroll-surface-selector": CaffoldScrollSurfaceSelector;
+  }
+
+  interface HTMLElementEventMap {
+    [SCROLL_SURFACE_CANCEL_EVENT]: CustomEvent<ScrollSurfaceCancelDetail>;
+    [SCROLL_SURFACE_SELECT_EVENT]: CustomEvent<ScrollSurfaceSelectDetail>;
   }
 }

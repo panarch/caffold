@@ -6,6 +6,7 @@ import {
   ActionHints,
 } from "#app/action-hints.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
+import type { SettingsChangeDetail } from "#app/settings.js";
 import {
   APPEARANCE_RANGE_SETTINGS,
   type AppearanceRangeName,
@@ -73,10 +74,10 @@ export class CaffoldSettingsAppearancePage extends LitElement {
   @state()
   private accessor settings: Settings = getSettings();
 
-  private readonly settingsChanged = (event: Event) => {
-    this.settings =
-      (event as CustomEvent<{ settings?: Settings }>).detail?.settings ??
-      getSettings();
+  private readonly settingsChanged = (
+    event: CustomEvent<SettingsChangeDetail>,
+  ) => {
+    this.settings = event.detail?.settings ?? getSettings();
   };
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints: ActionHints = new ActionHints(this, {

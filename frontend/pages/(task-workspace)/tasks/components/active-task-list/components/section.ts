@@ -620,4 +620,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-active-task-section": CaffoldActiveTaskSection;
   }
+
+  interface HTMLElementEventMap {
+    [ACTIVE_TASK_SECTION_INTENT_EVENT]: CustomEvent<SectionIntent>;
+  }
 }

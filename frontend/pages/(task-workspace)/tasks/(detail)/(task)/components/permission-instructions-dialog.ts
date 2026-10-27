@@ -11,18 +11,12 @@ import { emptyScrollSurfaceScope } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import { formatDate } from "#tasks/task-format.js";
+import type { TaskRequestFailedIntent } from "../../task-detail-intent-event.js";
+import { TASK_DETAIL_INTENT_EVENT } from "../../task-detail-intent-event.js";
 
 const EMPTY_MESSAGE =
   "Nothing yet. A prompt that says what this Task may or may not do is kept here while it runs under Ask Jev first.";
 const CLOSE_LABEL = "Close what this Task settled";
-
-// What a request about the record tells the Task screen when it fails: the
-// conversation decides what the failure says about the Task itself.
-export interface TaskRequestFailedIntent {
-  type: "task-request-failed";
-  threadId: string;
-  error: unknown;
-}
 
 interface RecordState {
   loading: boolean;
@@ -259,7 +253,7 @@ export class CaffoldTaskPermissionInstructionsDialog extends LitElement {
 
   private reportRequestFailure(threadId: string, error: unknown) {
     this.dispatchEvent(
-      new CustomEvent<TaskRequestFailedIntent>("caffold:task-detail-intent", {
+      new CustomEvent<TaskRequestFailedIntent>(TASK_DETAIL_INTENT_EVENT, {
         bubbles: true,
         composed: true,
         detail: { type: "task-request-failed", threadId, error },

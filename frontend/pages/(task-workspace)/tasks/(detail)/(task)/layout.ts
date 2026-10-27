@@ -72,10 +72,7 @@ import {
   taskThreadId,
 } from "../../task-list-model.js";
 import "./components/broken-delete-dialog.js";
-import type {
-  BrokenTaskDeleteIntent,
-  CaffoldBrokenTaskDeleteDialog,
-} from "./components/broken-delete-dialog.js";
+import type { CaffoldBrokenTaskDeleteDialog } from "./components/broken-delete-dialog.js";
 import "./components/command-dialog.js";
 import type { CaffoldTaskCommandDialog } from "./components/command-dialog.js";
 import "./components/conversation.js";
@@ -92,10 +89,17 @@ import type {
   MarkdownPreviewRequest,
 } from "./components/markdown-preview-dialog.js";
 import "./components/permission-instructions-dialog.js";
+import type { TurnOptionsSnapshot } from "../../components/task-turn-options.js";
+import type { TaskCreatedHandoff } from "../../layout.js";
 import type {
-  CaffoldTaskPermissionInstructionsDialog,
+  BrokenTaskDeleteIntent,
+  TaskDetailIntent,
   TaskRequestFailedIntent,
-} from "./components/permission-instructions-dialog.js";
+} from "../task-detail-intent-event.js";
+import { TASK_DETAIL_INTENT_EVENT } from "../task-detail-intent-event.js";
+import type { TaskDetailTransportChangeDetail } from "../task-detail-transport-change-event.js";
+import { TASK_DETAIL_TRANSPORT_CHANGE_EVENT } from "../task-detail-transport-change-event.js";
+import type { CaffoldTaskPermissionInstructionsDialog } from "./components/permission-instructions-dialog.js";
 import {
   ConversationProjection,
   projectionRevision,
@@ -1055,11 +1059,14 @@ export class CaffoldTaskDetail extends LitElement {
       this.draw();
     }
     this.dispatchEvent(
-      new CustomEvent("caffold:task-detail-transport-change", {
-        bubbles: true,
-        composed: true,
-        detail: { state },
-      }),
+      new CustomEvent<TaskDetailTransportChangeDetail>(
+        TASK_DETAIL_TRANSPORT_CHANGE_EVENT,
+        {
+          bubbles: true,
+          composed: true,
+          detail: { state },
+        },
+      ),
     );
   }
 
@@ -1150,7 +1157,7 @@ export class CaffoldTaskDetail extends LitElement {
       }
       this.restoreStateValue = { loading: false, error: null };
       this.dispatchEvent(
-        new CustomEvent("caffold:task-detail-intent", {
+        new CustomEvent<TaskDetailIntent>(TASK_DETAIL_INTENT_EVENT, {
           bubbles: true,
           composed: true,
           detail: {
@@ -1612,7 +1619,7 @@ export class CaffoldTaskDetail extends LitElement {
       }
       this.archiveStateValue = { loading: false, error: null };
       this.dispatchEvent(
-        new CustomEvent("caffold:task-detail-intent", {
+        new CustomEvent<TaskDetailIntent>(TASK_DETAIL_INTENT_EVENT, {
           bubbles: true,
           composed: true,
           detail: { type: "task-archived", task },
@@ -1673,7 +1680,7 @@ export class CaffoldTaskDetail extends LitElement {
       this.forkStateValue = { loading: false, error: null };
       const handoff = { created, submission: null, adopted: false };
       this.dispatchEvent(
-        new CustomEvent("caffold:task-created", {
+        new CustomEvent<TaskCreatedHandoff>("caffold:task-created", {
           bubbles: true,
           composed: true,
           detail: handoff,
@@ -2393,7 +2400,7 @@ export class CaffoldTaskDetail extends LitElement {
 
   // Task actions show what the next turn's approval mode settles, so the
   // subject snapshot is published again when that mode changes.
-  private turnOptionsChanged(event: Event) {
+  private turnOptionsChanged(event: CustomEvent<TurnOptionsSnapshot>) {
     const composer = this.followUpComposer();
     if (!composer || !this.fromComposer(event, composer)) {
       return;
@@ -2559,5 +2566,9 @@ function taskDetailSurface(
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-detail": CaffoldTaskDetail;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:task-subject-snapshot": CustomEvent<TaskSubjectSnapshot>;
   }
 }

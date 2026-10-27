@@ -610,4 +610,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-work-details": CaffoldTaskWorkDetails;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:task-work-details-disclosure-intent": CustomEvent<WorkDetailsDisclosureIntentDetail>;
+  }
 }

@@ -12,12 +12,19 @@ import {
   rectsEqual,
 } from "./action-hints.js";
 import type { CaffoldScrollModeHud } from "./keyboard-navigation/components/hud.js";
+import type {
+  ScrollSurfaceCancelDetail,
+  ScrollSurfaceSelectDetail,
+} from "./keyboard-navigation/components/selector.js";
 import {
   type CaffoldScrollSurfaceSelector,
   SCROLL_SURFACE_CANCEL_EVENT,
   SCROLL_SURFACE_SELECT_EVENT,
 } from "./keyboard-navigation/components/selector.js";
-import type { CaffoldKeyboardShortcutDialog } from "./keyboard-navigation/components/shortcut-dialog.js";
+import type {
+  CaffoldKeyboardShortcutDialog,
+  KeyboardShortcutCloseDetail,
+} from "./keyboard-navigation/components/shortcut-dialog.js";
 import {
   type ContextScrollSurface,
   type KeyboardNavigationContext,
@@ -49,6 +56,7 @@ import {
   matchesKeyboardNavigationKey,
 } from "./keyboard-navigation/shortcuts.js";
 import { availableScrollAxes, type ScrollAxis } from "./scroll-scope.js";
+import type { SettingsChangeDetail } from "./settings.js";
 
 export {
   KeyboardContexts,
@@ -184,47 +192,50 @@ export class KeyboardNavigationController {
       this.clearComposition();
     }
   };
-  private readonly boundSettingsChange = (event: Event) => {
-    const { detail } = event as CustomEvent<{
-      settings?: { actionHintsEnabled?: boolean };
-    }>;
+  private readonly boundSettingsChange = (
+    event: CustomEvent<SettingsChangeDetail>,
+  ) => {
+    const { detail } = event;
     if (detail?.settings?.actionHintsEnabled === false) {
       this.cancelStoredMode("setting-disabled");
       this.closeShortcutHelp("setting-disabled");
     }
   };
-  private readonly boundSurfaceSelect = (event: Event) => {
+  private readonly boundSurfaceSelect = (
+    event: CustomEvent<ScrollSurfaceSelectDetail>,
+  ) => {
     if (event.target !== this.selectionSession?.selector) {
       return;
     }
     event.stopPropagation();
-    this.selectSurface((event as CustomEvent<{ code?: string }>).detail?.code);
+    this.selectSurface(event.detail?.code);
   };
-  private readonly boundSurfaceCancel = (event: Event) => {
+  private readonly boundSurfaceCancel = (
+    event: CustomEvent<ScrollSurfaceCancelDetail>,
+  ) => {
     if (event.target !== this.selectionSession?.selector) {
       return;
     }
     event.stopPropagation();
-    const { detail } = event as CustomEvent<{
-      reason?: string;
-      originalEvent?: Event & { isComposing?: boolean };
-    }>;
+    const { detail } = event;
     if (
       detail?.reason === "escape" &&
-      (this.compositionActive || detail?.originalEvent?.isComposing)
+      (this.compositionActive ||
+        ("isComposing" in detail.originalEvent &&
+          detail.originalEvent.isComposing === true))
     ) {
       return;
     }
     this.cancelSelection(detail?.reason ?? "selector");
   };
-  private readonly boundShortcutClose = (event: Event) => {
+  private readonly boundShortcutClose = (
+    event: CustomEvent<KeyboardShortcutCloseDetail>,
+  ) => {
     if (event.target !== this.shortcutDialog) {
       return;
     }
     event.stopPropagation();
-    this.closeShortcutHelp(
-      (event as CustomEvent<{ reason?: string }>).detail?.reason ?? "dialog",
-    );
+    this.closeShortcutHelp(event.detail?.reason ?? "dialog");
   };
 
   constructor({

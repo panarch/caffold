@@ -615,4 +615,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-directory-field": CaffoldTaskDirectoryField;
   }
+
+  interface HTMLElementEventMap {
+    [DIRECTORY_CHOSEN_EVENT]: CustomEvent<DirectoryChosenDetail>;
+  }
 }

@@ -129,4 +129,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-older-history": CaffoldTaskOlderHistory;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:task-older-history-intent": CustomEvent<OlderHistoryIntentDetail>;
+  }
 }

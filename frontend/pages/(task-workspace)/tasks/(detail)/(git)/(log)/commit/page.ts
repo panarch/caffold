@@ -31,6 +31,7 @@ import "#components/pane-resizer.js";
 import type { CaffoldPaneResizer } from "#components/pane-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "#components/review-responsive.js";
 import "./components/changes-tree.js";
+import type { PaneResizeDetail } from "#components/pane-resizer.js";
 import type { CaffoldCommitChangesTree } from "./components/changes-tree.js";
 
 const LOADING_DELAY_MS = 180;
@@ -546,7 +547,7 @@ export class CaffoldGitLogCommitPage extends LitElement {
     });
   }
 
-  private handlePanelResize(event: CustomEvent<{ phase: string }>) {
+  private handlePanelResize(event: CustomEvent<PaneResizeDetail>) {
     event.stopPropagation();
     if (event.detail.phase === "start") {
       this.classList.add("is-resizing-panel");

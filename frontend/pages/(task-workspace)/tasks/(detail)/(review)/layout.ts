@@ -30,6 +30,17 @@ import type {
 } from "./components/selected-file/content.js";
 import type { CaffoldReviewSelectedFile } from "./components/selected-file.js";
 import "./components/working-tree-changes.js";
+import type { ParsedRoute } from "#app/navigation-routes.js";
+import type {
+  FileNavigatorOpenFileDetail,
+  FileNavigatorRefreshSelectedDetail,
+} from "#components/file-navigator.js";
+import type { OpenCompareDiffDetail } from "#components/git-compare-tree.js";
+import type { PaneResizeDetail } from "#components/pane-resizer.js";
+import type { SegmentedControlIntentDetail } from "#components/segmented-control.js";
+import type { ReviewBaseIntentDetail } from "./components/branch-changes.js";
+import type { ReviewRepresentationIntentDetail } from "./components/selected-file.js";
+import type { OpenGitDiffDetail } from "./components/working-tree-changes/components/changes-tree.js";
 import type { CaffoldReviewWorkingTreeChanges } from "./components/working-tree-changes.js";
 import {
   joinLogicalPath,
@@ -54,6 +65,10 @@ import {
   isFileRepresentation,
 } from "./representations.js";
 
+export interface TaskReviewRouteIntentDetail {
+  route: ParsedRoute;
+}
+
 // Matches the width where layout.css stops showing one pane at a time.
 const REVIEW_SPLIT_MEDIA_QUERY = "(min-width: 561px)";
 
@@ -61,8 +76,9 @@ type ReviewChangesElement =
   | CaffoldReviewWorkingTreeChanges
   | CaffoldReviewBranchChanges;
 
-interface ChangesRead {
+export interface ChangesRead {
   ok: boolean;
+  error?: unknown;
   hadData?: boolean;
   wasOutdated?: boolean;
   background?: boolean;
@@ -520,7 +536,7 @@ export class CaffoldTaskReview extends LitElement {
     return true;
   }
 
-  private chooseAxis(event: CustomEvent<{ value?: string }>) {
+  private chooseAxis(event: CustomEvent<SegmentedControlIntentDetail>) {
     event.stopPropagation();
     const axis = (event.currentTarget as HTMLElement).dataset.reviewAxis;
     const value = `${event.detail?.value ?? ""}`;
@@ -537,13 +553,13 @@ export class CaffoldTaskReview extends LitElement {
   }
 
   private chooseRepresentation(
-    event: CustomEvent<{ representation?: string }>,
+    event: CustomEvent<ReviewRepresentationIntentDetail>,
   ) {
     event.stopPropagation();
     this.chooseViewer(`${event.detail?.representation ?? ""}`);
   }
 
-  private chooseBase(event: CustomEvent<{ baseRef?: string }>) {
+  private chooseBase(event: CustomEvent<ReviewBaseIntentDetail>) {
     event.stopPropagation();
     this.captureLocalState();
     this.requestRoute({
@@ -584,7 +600,11 @@ export class CaffoldTaskReview extends LitElement {
     }
   }
 
-  private openChange(event: CustomEvent<{ path?: string }>) {
+  private openChange(
+    event: CustomEvent<
+      FileNavigatorOpenFileDetail | OpenCompareDiffDetail | OpenGitDiffDetail
+    >,
+  ) {
     event.stopPropagation();
     const relative = relativeTaskPath(
       event.detail?.path,
@@ -596,14 +616,14 @@ export class CaffoldTaskReview extends LitElement {
     this.requestRoute(routeForSelectedFile(this.route, relative));
   }
 
-  private refreshFile(event: Event) {
+  private refreshFile(event: CustomEvent<FileNavigatorRefreshSelectedDetail>) {
     event.stopPropagation();
     if (isFileRepresentation(this.route.viewer)) {
       this.selectedFile.reload(this.currentView(), { background: true });
     }
   }
 
-  private resizePanel(event: CustomEvent<{ value?: number }>) {
+  private resizePanel(event: CustomEvent<PaneResizeDetail>) {
     event.stopPropagation();
     if (Number.isFinite(event.detail?.value)) {
       this.applyPanelWidth();
@@ -905,11 +925,14 @@ export class CaffoldTaskReview extends LitElement {
   private requestRoute(state: ReviewRoute) {
     const route = taskRouteForReview(taskThreadId(this.task), state);
     this.dispatchEvent(
-      new CustomEvent("caffold:task-review-route-intent", {
-        bubbles: true,
-        composed: true,
-        detail: { route },
-      }),
+      new CustomEvent<TaskReviewRouteIntentDetail>(
+        "caffold:task-review-route-intent",
+        {
+          bubbles: true,
+          composed: true,
+          detail: { route },
+        },
+      ),
     );
   }
 
@@ -1059,5 +1082,10 @@ export class CaffoldTaskReview extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-review": CaffoldTaskReview;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:review-changes-read": CustomEvent<ChangesRead>;
+    "caffold:task-review-route-intent": CustomEvent<TaskReviewRouteIntentDetail>;
   }
 }

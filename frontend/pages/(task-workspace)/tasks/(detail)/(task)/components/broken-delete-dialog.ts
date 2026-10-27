@@ -5,6 +5,8 @@ import { deleteTask, getTask, type TaskResponseError } from "#app/api.js";
 import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
+import type { BrokenTaskDeleteIntent } from "../../task-detail-intent-event.js";
+import { TASK_DETAIL_INTENT_EVENT } from "../../task-detail-intent-event.js";
 
 // The Task a broken worktree keeps from opening, as its Task screen holds it.
 export interface BrokenTaskContext {
@@ -12,12 +14,6 @@ export interface BrokenTaskContext {
   title?: string | null;
   error: TaskResponseError | null;
 }
-
-// What the dialog tells the Task screen: the Task is gone, or the delete
-// failed and the Task's diagnosis is now this.
-export type BrokenTaskDeleteIntent =
-  | { type: "task-deleted"; threadId: string }
-  | { type: "broken-delete-error"; error: unknown };
 
 type Phase = "idle" | "confirming" | "deleting";
 type PhaseEvent =
@@ -297,7 +293,7 @@ export class CaffoldBrokenTaskDeleteDialog extends LitElement {
 
   private intent(detail: BrokenTaskDeleteIntent) {
     this.dispatchEvent(
-      new CustomEvent<BrokenTaskDeleteIntent>("caffold:task-detail-intent", {
+      new CustomEvent<BrokenTaskDeleteIntent>(TASK_DETAIL_INTENT_EVENT, {
         bubbles: true,
         composed: true,
         detail,

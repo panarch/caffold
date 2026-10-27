@@ -9,12 +9,15 @@ import {
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import type { TaskStoreStatusSnapshot } from "../../task-store-status.js";
 import "../components/task-create.js";
+import type { ParsedRoute } from "#app/navigation-routes.js";
+import type { TaskCreateIntentDetail } from "../../task-create-intent-event.js";
 import type { ServerPaths } from "../components/task-create/directory-path.js";
-import type {
-  CaffoldTaskCreate,
-  TaskCreateIntentDetail,
-} from "../components/task-create.js";
+import type { CaffoldTaskCreate } from "../components/task-create.js";
 import { cleanLogicalPath } from "../task-format.js";
+
+export interface TaskNewRouteIntentDetail {
+  route: ParsedRoute;
+}
 
 const GUIDE_INTRO =
   "Start with a setup-only request when you want this task separated from your main checkout. By default, Caffold prepares a clean worktree and leaves staged, unstaged, and untracked changes in your current checkout. The same setup request also works in an existing task.";
@@ -188,11 +191,14 @@ export class CaffoldTaskNew extends LitElement {
     this.cwd = cleanLogicalPath(detail.path ?? "");
     this.syncTaskCreate();
     this.dispatchEvent(
-      new CustomEvent("caffold:task-new-route-intent", {
-        bubbles: true,
-        composed: true,
-        detail: { route: { kind: "tasks", new: true, cwd: this.cwd } },
-      }),
+      new CustomEvent<TaskNewRouteIntentDetail>(
+        "caffold:task-new-route-intent",
+        {
+          bubbles: true,
+          composed: true,
+          detail: { route: { kind: "tasks", new: true, cwd: this.cwd } },
+        },
+      ),
     );
   }
 
@@ -213,5 +219,9 @@ export class CaffoldTaskNew extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-new": CaffoldTaskNew;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:task-new-route-intent": CustomEvent<TaskNewRouteIntentDetail>;
   }
 }

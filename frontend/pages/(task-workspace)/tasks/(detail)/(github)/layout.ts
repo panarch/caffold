@@ -23,9 +23,28 @@ import "./(pulls)/layout.js";
 import type { CaffoldGithubPullsLayout } from "./(pulls)/layout.js";
 import "./components/task-start-dialog.js";
 import type {
+  ChangeGithubIssuesPageDetail,
+  OpenGithubIssueDetail,
+} from "./(issues)/list/page.js";
+import type { OpenGithubPullFilesDetail } from "./(pulls)/detail/page.js";
+import type { OpenGithubPullFileDetail } from "./(pulls)/files/components/tree.js";
+import type {
+  ChangeGithubPullsPageDetail,
+  OpenGithubPullDetail,
+} from "./(pulls)/list/page.js";
+import type {
   CaffoldGithubTaskStartDialog,
   TaskStartSource,
 } from "./components/task-start-dialog.js";
+
+export interface RequestGithubRouteDetail {
+  route: GithubRoute;
+  options: { status?: string };
+}
+
+export type StartGithubTaskDetail = TaskStartSource & {
+  opener: EventTarget | null;
+};
 
 type GithubMode = "issues" | "pulls";
 
@@ -461,7 +480,7 @@ export class CaffoldTaskGithubLayout extends LitElement {
     }
   }
 
-  private openIssue(event: CustomEvent<{ number: number }>) {
+  private openIssue(event: CustomEvent<OpenGithubIssueDetail>) {
     event.stopPropagation();
     this.requestGithubRoute({
       kind: "issues",
@@ -470,12 +489,12 @@ export class CaffoldTaskGithubLayout extends LitElement {
     });
   }
 
-  private changeIssuesPage(event: CustomEvent<{ page: number }>) {
+  private changeIssuesPage(event: CustomEvent<ChangeGithubIssuesPageDetail>) {
     event.stopPropagation();
     this.requestGithubRoute({ kind: "issues", page: event.detail.page });
   }
 
-  private openPull(event: CustomEvent<{ number: number }>) {
+  private openPull(event: CustomEvent<OpenGithubPullDetail>) {
     event.stopPropagation();
     this.requestGithubRoute({
       kind: "pulls",
@@ -484,12 +503,12 @@ export class CaffoldTaskGithubLayout extends LitElement {
     });
   }
 
-  private changePullsPage(event: CustomEvent<{ page: number }>) {
+  private changePullsPage(event: CustomEvent<ChangeGithubPullsPageDetail>) {
     event.stopPropagation();
     this.requestGithubRoute({ kind: "pulls", page: event.detail.page });
   }
 
-  private openPullFiles(event: CustomEvent<{ number: number }>) {
+  private openPullFiles(event: CustomEvent<OpenGithubPullFilesDetail>) {
     event.stopPropagation();
     this.requestGithubRoute({
       kind: "pulls",
@@ -500,7 +519,7 @@ export class CaffoldTaskGithubLayout extends LitElement {
     });
   }
 
-  private openPullFile(event: CustomEvent<{ path: string; status: string }>) {
+  private openPullFile(event: CustomEvent<OpenGithubPullFileDetail>) {
     event.stopPropagation();
     const number = this.pullsLayout.currentPullNumber();
     if (!number) {
@@ -533,9 +552,7 @@ export class CaffoldTaskGithubLayout extends LitElement {
     });
   }
 
-  private startTask(
-    event: CustomEvent<TaskStartSource & { opener: HTMLElement | null }>,
-  ) {
+  private startTask(event: CustomEvent<StartGithubTaskDetail>) {
     event.stopPropagation();
     this.taskStartDialog.open({
       ...event.detail,
@@ -549,10 +566,13 @@ export class CaffoldTaskGithubLayout extends LitElement {
     options: { status?: string } = {},
   ) {
     this.dispatchEvent(
-      new CustomEvent("caffold:request-github-route", {
-        bubbles: true,
-        detail: { route, options },
-      }),
+      new CustomEvent<RequestGithubRouteDetail>(
+        "caffold:request-github-route",
+        {
+          bubbles: true,
+          detail: { route, options },
+        },
+      ),
     );
   }
 
@@ -653,5 +673,10 @@ function githubParentKey(route: GithubRoute | null) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-github-layout": CaffoldTaskGithubLayout;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:start-github-task": CustomEvent<StartGithubTaskDetail>;
+    "caffold:request-github-route": CustomEvent<RequestGithubRouteDetail>;
   }
 }

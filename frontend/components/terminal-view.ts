@@ -8,6 +8,11 @@ import { html, LitElement } from "lit";
 import { customElement } from "lit/decorators.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
 
+export interface TerminalViewInputDetail {
+  data: string;
+  binary: boolean;
+}
+
 const XTERM_VERSION = "6.0.0";
 const FIT_ADDON_VERSION = "0.11.0";
 const XTERM_BASE = `https://cdn.jsdelivr.net/npm/@xterm/xterm@${XTERM_VERSION}`;
@@ -208,7 +213,7 @@ export class CaffoldTerminalView extends LitElement {
 
   private emitInput(data: string, binary: boolean) {
     this.dispatchEvent(
-      new CustomEvent(TERMINAL_VIEW_INPUT_EVENT, {
+      new CustomEvent<TerminalViewInputDetail>(TERMINAL_VIEW_INPUT_EVENT, {
         detail: { data, binary },
       }),
     );
@@ -263,7 +268,7 @@ export class CaffoldTerminalView extends LitElement {
     }
     this.size = { cols, rows };
     this.dispatchEvent(
-      new CustomEvent(TERMINAL_VIEW_RESIZE_EVENT, {
+      new CustomEvent<TerminalSize>(TERMINAL_VIEW_RESIZE_EVENT, {
         detail: { ...this.size },
       }),
     );
@@ -377,5 +382,10 @@ function scrollOnTouch(terminal: Terminal) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-terminal-view": CaffoldTerminalView;
+  }
+
+  interface HTMLElementEventMap {
+    [TERMINAL_VIEW_RESIZE_EVENT]: CustomEvent<TerminalSize>;
+    [TERMINAL_VIEW_INPUT_EVENT]: CustomEvent<TerminalViewInputDetail>;
   }
 }

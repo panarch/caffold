@@ -30,6 +30,8 @@ import {
 import { TaskStreamLifecycle, type TaskStreamRecovery } from "../stream.js";
 import { sectionLabel } from "../task-format.js";
 import { type ListedTask, taskThreadId } from "../task-list-model.js";
+import type { ActiveTaskListIntent } from "../task-navigator-intent-event.js";
+import { TASK_NAVIGATOR_INTENT_EVENT } from "../task-navigator-intent-event.js";
 import {
   CaffoldActiveTaskSection,
   type ListedSection,
@@ -38,6 +40,11 @@ import {
   type SectionSnapshot,
 } from "./active-task-list/components/section.js";
 import { moveListItemBefore } from "./active-task-list/move-list-item.js";
+
+export interface TaskNavigatorTransportChangeDetail {
+  available: boolean;
+  state: TaskTransportState;
+}
 
 export type { ReorderMode } from "./active-task-list/components/section.js";
 
@@ -86,16 +93,6 @@ export interface ArchiveSyncDetail {
   action: "refresh" | "remove";
   threadId: string;
 }
-
-// What the list asks of its navigator's owner.
-export type ActiveTaskListIntent =
-  | { type: "select-task"; threadId: string }
-  | {
-      type: "select-task-recovery";
-      threadId: string;
-      recovery: ActiveTaskRecovery;
-    }
-  | { type: "select-section"; sectionId: string };
 
 // A Task beside the Section it sits in, for surfaces that show no headers.
 export interface TaskWithSection {
@@ -1524,11 +1521,14 @@ export class CaffoldActiveTaskList extends LitElement {
 
   private announceTransport(state: TaskTransportState) {
     this.dispatchEvent(
-      new CustomEvent("caffold:task-navigator-transport-change", {
-        bubbles: true,
-        composed: true,
-        detail: { available: !isTaskTransportStale(state), state },
-      }),
+      new CustomEvent<TaskNavigatorTransportChangeDetail>(
+        "caffold:task-navigator-transport-change",
+        {
+          bubbles: true,
+          composed: true,
+          detail: { available: !isTaskTransportStale(state), state },
+        },
+      ),
     );
   }
 
@@ -1539,7 +1539,7 @@ export class CaffoldActiveTaskList extends LitElement {
 
   private dispatchIntent(detail: ActiveTaskListIntent) {
     this.dispatchEvent(
-      new CustomEvent<ActiveTaskListIntent>("caffold:task-navigator-intent", {
+      new CustomEvent<ActiveTaskListIntent>(TASK_NAVIGATOR_INTENT_EVENT, {
         bubbles: true,
         composed: true,
         detail,
@@ -1762,5 +1762,11 @@ function sameOrder(left: string[], right: string[]) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-active-task-list": CaffoldActiveTaskList;
+  }
+
+  interface HTMLElementEventMap {
+    [ACTIVE_TASK_LIST_ARCHIVE_SYNC_EVENT]: CustomEvent<ArchiveSyncDetail>;
+    [ACTIVE_TASK_LIST_STATE_EVENT]: CustomEvent<ActiveTaskListState>;
+    "caffold:task-navigator-transport-change": CustomEvent<TaskNavigatorTransportChangeDetail>;
   }
 }

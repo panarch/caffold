@@ -281,4 +281,8 @@ declare global {
   interface HTMLElementTagNameMap {
     "caffold-task-composer-attachments": CaffoldTaskComposerAttachments;
   }
+
+  interface HTMLElementEventMap {
+    "caffold:task-composer-attachment-remove": CustomEvent<AttachmentRemoveDetail>;
+  }
 }

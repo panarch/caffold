@@ -19,6 +19,10 @@ import {
   type ReviewView,
 } from "./selected-file/content.js";
 
+export interface ReviewRepresentationIntentDetail {
+  representation: string;
+}
+
 interface ViewPosition {
   scroll: ScrollPosition | null;
   line: number | null;
@@ -135,13 +139,16 @@ export class CaffoldReviewSelectedFile extends LitElement {
     }
     event.stopPropagation();
     this.dispatchEvent(
-      new CustomEvent("caffold:review-representation-intent", {
-        bubbles: true,
-        detail: {
-          representation:
-            action.dataset.action === "view-preview" ? "preview" : "source",
+      new CustomEvent<ReviewRepresentationIntentDetail>(
+        "caffold:review-representation-intent",
+        {
+          bubbles: true,
+          detail: {
+            representation:
+              action.dataset.action === "view-preview" ? "preview" : "source",
+          },
         },
-      }),
+      ),
     );
   }
 
@@ -332,5 +339,9 @@ export class CaffoldReviewSelectedFile extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-review-selected-file": CaffoldReviewSelectedFile;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:review-representation-intent": CustomEvent<ReviewRepresentationIntentDetail>;
   }
 }

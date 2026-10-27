@@ -5,6 +5,10 @@ import { KeyboardContexts } from "#app/keyboard-navigation.js";
 import "#app/keyboard-navigation/components/presentation.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 
+export interface CodexResetCreditConfirmedDetail {
+  creditId: string | null;
+}
+
 export const CODEX_RESET_CREDIT_CONFIRMED_EVENT =
   "caffold:codex-reset-credit-confirmed";
 
@@ -107,11 +111,14 @@ export class CaffoldCodexResetCreditDialog extends LitElement {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent(CODEX_RESET_CREDIT_CONFIRMED_EVENT, {
-        bubbles: true,
-        composed: true,
-        detail: { creditId: this.request.creditId ?? null },
-      }),
+      new CustomEvent<CodexResetCreditConfirmedDetail>(
+        CODEX_RESET_CREDIT_CONFIRMED_EVENT,
+        {
+          bubbles: true,
+          composed: true,
+          detail: { creditId: this.request.creditId ?? null },
+        },
+      ),
     );
   }
 }
@@ -119,5 +126,9 @@ export class CaffoldCodexResetCreditDialog extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-codex-reset-credit-dialog": CaffoldCodexResetCreditDialog;
+  }
+
+  interface HTMLElementEventMap {
+    [CODEX_RESET_CREDIT_CONFIRMED_EVENT]: CustomEvent<CodexResetCreditConfirmedDetail>;
   }
 }

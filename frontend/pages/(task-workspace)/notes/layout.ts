@@ -11,6 +11,7 @@ import {
 } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "./components/document.js";
+import type { ParsedRoute } from "#app/navigation-routes.js";
 import type {
   CaffoldNoteDocument,
   NoteDocumentIntent,
@@ -30,6 +31,10 @@ import {
   type NotesLevels,
   noteDirectoryKey,
 } from "./tree.js";
+
+export interface RequestWorkspaceRouteDetail {
+  route: ParsedRoute;
+}
 
 // A level with nothing to show yet is marked loading only once its read
 // outlasts this wait, so a quick read never flashes a loading row.
@@ -102,11 +107,11 @@ export class CaffoldNotesWorkspace extends LitElement {
   private documents: Record<NoteSide, CaffoldNoteDocument> | null = null;
   private readonly primaryDocument = new DrawnRef<CaffoldNoteDocument>(this);
   private readonly secondaryDocument = new DrawnRef<CaffoldNoteDocument>(this);
-  private readonly navigatorIntent = (event: Event) => {
+  private readonly navigatorIntent = (
+    event: CustomEvent<NotesNavigatorIntent>,
+  ) => {
     event.stopPropagation();
-    this.handleNavigatorIntent(
-      (event as CustomEvent<NotesNavigatorIntent>).detail,
-    );
+    this.handleNavigatorIntent(event.detail);
   };
 
   override createRenderRoot() {
@@ -454,16 +459,19 @@ export class CaffoldNotesWorkspace extends LitElement {
 
   private requestNote(noteId: string, secondaryNoteId = "") {
     this.dispatchEvent(
-      new CustomEvent("caffold:request-workspace-route", {
-        bubbles: true,
-        detail: {
-          route: {
-            kind: "notes",
-            noteId: noteId ?? "",
-            ...(secondaryNoteId ? { secondaryNoteId } : {}),
+      new CustomEvent<RequestWorkspaceRouteDetail>(
+        "caffold:request-workspace-route",
+        {
+          bubbles: true,
+          detail: {
+            route: {
+              kind: "notes",
+              noteId: noteId ?? "",
+              ...(secondaryNoteId ? { secondaryNoteId } : {}),
+            },
           },
         },
-      }),
+      ),
     );
   }
 
@@ -647,5 +655,9 @@ export class CaffoldNotesWorkspace extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-notes-workspace": CaffoldNotesWorkspace;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:request-workspace-route": CustomEvent<RequestWorkspaceRouteDetail>;
   }
 }

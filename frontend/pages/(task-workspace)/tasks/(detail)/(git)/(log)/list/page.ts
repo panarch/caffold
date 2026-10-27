@@ -13,7 +13,16 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "#components/pagination.js";
+import type { ChangePageDetail } from "#components/pagination/components/button.js";
 import type { CaffoldPagination } from "#components/pagination.js";
+
+export interface OpenGitCommitDetail {
+  sha: string;
+}
+
+export interface ChangeLogPageDetail {
+  page: number;
+}
 
 type LogState =
   | { status: "idle" }
@@ -238,14 +247,14 @@ export class CaffoldGitLogListPage extends LitElement {
     return this.surfaces.scope({ ...pull, scopeId, label });
   }
 
-  private changePage(event: CustomEvent<{ page?: number | string }>) {
+  private changePage(event: CustomEvent<ChangePageDetail>) {
     event.stopPropagation();
     const page = Number.parseInt(`${event.detail.page ?? ""}`, 10);
     if (!Number.isFinite(page) || page < 1) {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent("caffold:change-log-page", {
+      new CustomEvent<ChangeLogPageDetail>("caffold:change-log-page", {
         bubbles: true,
         detail: { page },
       }),
@@ -262,7 +271,7 @@ export class CaffoldGitLogListPage extends LitElement {
 
   private openCommit(sha: string) {
     this.dispatchEvent(
-      new CustomEvent("caffold:open-git-commit", {
+      new CustomEvent<OpenGitCommitDetail>("caffold:open-git-commit", {
         bubbles: true,
         detail: { sha },
       }),
@@ -284,5 +293,10 @@ function formatDate(ms: number) {
 declare global {
   interface HTMLElementTagNameMap {
     "caffold-git-log-list-page": CaffoldGitLogListPage;
+  }
+
+  interface HTMLElementEventMap {
+    "caffold:change-log-page": CustomEvent<ChangeLogPageDetail>;
+    "caffold:open-git-commit": CustomEvent<OpenGitCommitDetail>;
   }
 }
