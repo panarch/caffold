@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  commandPresentation,
-  sameCommandPresentation,
-} from "./model.js";
+import { commandPresentation } from "./model.js";
 
 const event = (status, payload = {}) => ({
   id: "event_command",
@@ -99,6 +96,6 @@ test("compares only the derived Command snapshot", () => {
     event("inProgress", { output: "new output" }),
   );
 
-  assert.equal(sameCommandPresentation(first, equivalent), true);
-  assert.equal(sameCommandPresentation(first, updated), false);
+  assert.deepEqual(first, equivalent);
+  assert.notDeepEqual(first, updated);
 });

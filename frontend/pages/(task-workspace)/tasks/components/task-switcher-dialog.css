@@ -181,19 +181,6 @@ caffold-task-switcher-dialog {
     font-variant-numeric: tabular-nums;
   }
 
-  & .task-switcher-row-status {
-    width: var(--interface-icon-slot-size);
-    height: var(--interface-icon-slot-size);
-    justify-content: center;
-    padding: 0;
-    border: 0;
-    background: var(--surface-muted);
-  }
-
-  & .task-switcher-row[data-task-status="running"] .task-switcher-row-status {
-    background: transparent;
-  }
-
   & .task-switcher-row-unseen {
     display: inline-grid;
     width: var(--interface-icon-slot-size);

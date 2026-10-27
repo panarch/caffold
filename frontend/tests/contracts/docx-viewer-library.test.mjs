@@ -9,7 +9,7 @@ function read(path) {
 }
 
 test("the browser and the browser suite load the same docx-preview release", () => {
-  const viewer = read("components/docx-viewer.js");
+  const viewer = read("components/docx-viewer.ts");
   const manifest = JSON.parse(read("package.json"));
 
   const [, sourceVersion] =
@@ -38,7 +38,7 @@ test("the browser suite answers docx-preview's jsDelivr module from the installe
 });
 
 test("docx-preview stays a runtime CDN import rather than a shipped asset", () => {
-  const serviceWorker = read("service-worker.js");
+  const serviceWorker = read("service-worker.ts");
   const staticAssets = readFileSync(
     new URL("../caffold/src/static_assets.rs", frontendUrl),
     "utf8",

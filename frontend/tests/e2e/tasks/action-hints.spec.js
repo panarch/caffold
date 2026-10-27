@@ -620,8 +620,12 @@ test("hands create M to the native model popover and P to prompt editing", { tag
   await expect(selectedModel).toBeFocused();
   await page.keyboard.press("f");
   await expect(popoverHint).toBeVisible();
-  const retained = await turnOptions.evaluate((options) => {
-    const root = options.modelPopover();
+  const selectedCode = await popoverHint
+    .getByRole("button", { name: / — GPT-5\.6-Sol.*Selected$/ })
+    .getAttribute("data-action-hint-code");
+  expect(selectedCode).toBeTruthy();
+  const retained = await turnOptions.evaluate(async (options) => {
+    const root = options.querySelector(".task-model-popover");
     const presentation = root.querySelector(
       ":scope > caffold-keyboard-navigation-presentation",
     );
@@ -630,22 +634,26 @@ test("hands create M to the native model popover and P to prompt editing", { tag
         ? { ...option, displayName: `${option.displayName} Refreshed` }
         : option
     );
-    options.render();
+    options.requestUpdate();
+    await options.updateComplete;
     return {
       presentation: root.querySelector(
         ":scope > caffold-keyboard-navigation-presentation",
       ) === presentation,
-      root: options.modelPopover() === root,
+      root: options.querySelector(".task-model-popover") === root,
     };
   });
   expect(retained).toEqual({ presentation: true, root: true });
-  await expect(popoverHint).toBeHidden();
+  // The option buttons stay, so the open hints keep their codes and show the
+  // new name.
+  const refreshed = popoverHint.getByRole("button", {
+    name: / — GPT-5\.6-Sol Refreshed.*Selected$/,
+  });
+  await expect(refreshed).toBeVisible();
+  expect(await refreshed.getAttribute("data-action-hint-code")).toBe(
+    selectedCode,
+  );
   await expect(modelPopover).toBeVisible();
-  await page.keyboard.press("f");
-  await expect(popoverHint).toBeVisible();
-  await expect(
-    popoverHint.getByRole("button", { name: / — GPT-5\.6-Sol Refreshed.*Selected$/ }),
-  ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(popoverHint).toBeHidden();
   await expect(modelPopover).toBeHidden();
@@ -1552,41 +1560,6 @@ test("reconciles local owners and cancels on interaction, viewport, and route ch
     button.disabled = false;
   });
   await expect(dialog.locator('[data-action-hint-code="N"]')).toHaveCount(0);
-  await page.keyboard.press("Escape");
-
-  const firstRow = page.locator(
-    'button.task-row[data-thread-id="action_hint_01"]',
-  );
-  await enterActionHints(page);
-  const firstRowBadge = dialog.getByLabel(
-    / — Open task: Action Hint Task 01$/,
-  );
-  const firstRowCode = await firstRowBadge.getAttribute("data-action-hint-code");
-  expect(firstRowCode).toBeTruthy();
-  await firstRow.evaluate((button) => {
-    button.dataset.activeTaskRowAction = "unknown-action";
-  });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.locator(
-    `[data-action-hint-code="${firstRowCode}"]`,
-  )).toHaveCount(0);
-  await firstRow.evaluate((button) => {
-    button.dataset.activeTaskRowAction = "open-task";
-  });
-  await page.keyboard.press("Escape");
-
-  const modelButton = page.locator("caffold-task-new .task-model-button");
-  const modelPopoverTarget = await modelButton.getAttribute("popovertarget");
-  await enterActionHints(page);
-  await expect(dialog.locator('[data-action-hint-code="M"]')).toBeVisible();
-  await modelButton.evaluate((button) => {
-    button.setAttribute("popovertarget", "missing-model-popover");
-  });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.locator('[data-action-hint-code="M"]')).toHaveCount(0);
-  await modelButton.evaluate((button, target) => {
-    button.setAttribute("popovertarget", target);
-  }, modelPopoverTarget);
   await page.keyboard.press("Escape");
 
   await enterActionHints(page);

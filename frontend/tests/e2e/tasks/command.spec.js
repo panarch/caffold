@@ -89,6 +89,10 @@ test("owns active disclosure state and terminal presentation across canonical up
   await expect(collapsedChevron).not.toBeVisible();
   await expect(expandedChevron).toBeVisible();
   await expect.poll(outputSeam).toEqual({ output: true, lines: 1 });
+  await expect.poll(() => page.locator("caffold-task-conversation").evaluate(
+    (conversation) => conversation.scrollSurfaceScope().surfaces
+      .map(({ label }) => label),
+  )).toContain("Command output");
   await rememberCommandIdentity(command);
 
   const summaryOffset = await disclosureOffset(summary);

@@ -451,7 +451,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
     .click();
   const taskReview = tasksPage.locator("caffold-task-review");
   if (testInfo.project.name === "phone") {
-    await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
+    await taskReview.evaluate((review) => review.updateRoute({ viewer: "source" }));
   } else {
     await taskReview
       .locator(
@@ -482,7 +482,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   const taskDiff = tasksPage.locator("caffold-task-review");
   await taskDiff.getByRole("button", { name: "Changes", exact: true }).click();
   if (testInfo.project.name === "phone") {
-    await taskDiff.evaluate((review) => review.updateAxis("viewer", "diff"));
+    await taskDiff.evaluate((review) => review.updateRoute({ viewer: "diff" }));
   } else {
     await taskDiff.getByRole("button", { name: "Diff", exact: true }).click();
   }

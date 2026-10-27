@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -19,9 +19,9 @@ const conversationOwners = new Set([
   "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css",
-  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js",
+  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts",
   "pages/(task-workspace)/settings/appearance/page.css",
-  "settings.js",
+  "settings.ts",
   "styles.css",
 ]);
 
@@ -29,7 +29,7 @@ const codeOwners = new Set([
   "components/file-viewer/components/code-viewer.css",
   "components/file-viewer/components/diff-viewer.css",
   "components/markdown-preview.css",
-  "components/terminal-view.js",
+  "components/terminal-view.ts",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
@@ -39,10 +39,10 @@ const codeOwners = new Set([
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
-  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js",
+  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts",
   "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css",
   "pages/(task-workspace)/settings/appearance/page.css",
-  "settings.js",
+  "settings.ts",
   "styles.css",
 ]);
 
@@ -50,17 +50,17 @@ const typefaceOwners = new Set([
   "action-hints/components/dialog.css",
   "components/file-viewer/components/code-viewer.css",
   "components/file-viewer/components/diff-viewer.css",
-  "components/docx-viewer.js",
+  "components/docx-viewer.ts",
   "components/file-tree.css",
   "components/markdown-preview.css",
-  "components/pptx-viewer.js",
-  "components/terminal-view.js",
+  "components/pptx-viewer.ts",
+  "components/terminal-view.ts",
   "components/xlsx-viewer.css",
-  "fonts.js",
+  "fonts.ts",
   "keyboard-navigation/components/selector.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css",
-  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js",
+  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts",
   "pages/(task-workspace)/settings/appearance/page.css",
   "styles.css",
 ]);
@@ -220,8 +220,8 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
   );
   for (const [path, spinner] of [
     [
-      "pages/(task-workspace)/tasks/components/task-status.css",
-      "task-status-spinner",
+      "pages/(task-workspace)/tasks/components/task-status-chip.css",
+      '\\[data-status="running"\\]',
     ],
     [
       "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css",
@@ -387,7 +387,7 @@ test("unseen completion attention blinks the marker without hiding it", () => {
     "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
   );
   const activeTaskListView = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts",
   );
 
   cssBlockMatching(activeList, ".task-unseen-complete::before", [
@@ -420,11 +420,8 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
   const taskList = "> .task-repository-groups > .task-repository-group > .task-list > .task-archived-row";
   const consumers = [
     ["pages/layout", "caffold-app-shell", "> .app-foreground-recovery > .app-foreground-recovery-spinner"],
-    ["pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row", "caffold-active-task-row", "> .task-row > .task-row-indicators > .task-status-chip > .task-status-spinner"],
-    ["pages/(task-workspace)/tasks/components/archived-task-list", "caffold-archived-task-list", `${taskList} > .task-archived-copy > .task-row-indicators > .task-status-chip > .task-status-spinner`],
+    ["pages/(task-workspace)/tasks/components/task-status-chip", "caffold-task-status-chip", "> .task-status-spinner"],
     ["pages/(task-workspace)/tasks/components/archived-task-list", "caffold-archived-task-list", `${taskList} > .task-archived-actions > .task-archived-action-button.is-loading > .task-archived-action-icon`],
-    ["pages/(task-workspace)/tasks/components/task-switcher-dialog", "caffold-task-switcher-dialog", "> dialog > .task-switcher-card > .task-switcher-scroll > .task-switcher-list > .task-switcher-item > .task-switcher-row > .task-switcher-row-indicators > .task-status-chip > .task-status-spinner"],
-    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info", "caffold-task-detail-info", "> .task-detail-info-button > .task-status-chip > .task-status-spinner"],
     ["pages/(task-workspace)/tasks/components/task-turn-options", "caffold-task-turn-options", "> .task-turn-options > .task-model-picker > .task-model-button > .task-picker-spinner"],
     ["pages/(task-workspace)/tasks/components/task-turn-options", "caffold-task-turn-options", "> .task-turn-options > .task-permission-picker > .task-permission-button > .task-picker-spinner"],
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn", "caffold-task-active-turn", "> .task-active-turn-spinner"],
@@ -434,9 +431,9 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
   ];
   const declarations = [];
   for (const [path, source] of frontendSources()) {
-    if (!path.endsWith(".js") || path.endsWith(".test.js")) continue;
+    if (!/\.(?:js|ts)$/.test(path)) continue;
     for (const [, owner, target] of source.matchAll(/await busySpin\.register\(\s*"([^"]+)",\s*"([^"]+)"\s*,?\s*\)/g)) {
-      declarations.push([path.replace(/\.js$/, ""), owner, target]);
+      declarations.push([path.replace(/\.(?:js|ts)$/, ""), owner, target]);
     }
   }
   assert.deepEqual(declarations.map((entry) => entry.join(" ")).sort(), consumers.map((entry) => entry.join(" ")).sort());
@@ -484,13 +481,13 @@ test("workspace header identity and titles share semantic ownership", () => {
     "pages/(task-workspace)/components/workspace-brand.css",
   );
   const brandView = readFrontend(
-    "pages/(task-workspace)/components/workspace-brand.js",
+    "pages/(task-workspace)/components/workspace-brand.ts",
   );
   const taskNavigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.css",
   );
   const taskNavigatorView = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const detail = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/(task)/layout.css",
@@ -499,13 +496,13 @@ test("workspace header identity and titles share semantic ownership", () => {
     "pages/(task-workspace)/settings/components/navigator.css",
   );
   const settingsNavigatorView = readFrontend(
-    "pages/(task-workspace)/settings/components/navigator.js",
+    "pages/(task-workspace)/settings/components/navigator.ts",
   );
   const settingsLayout = readFrontend(
     "pages/(task-workspace)/settings/layout.css",
   );
   const appearanceView = readFrontend(
-    "pages/(task-workspace)/settings/appearance/page.js",
+    "pages/(task-workspace)/settings/appearance/page.ts",
   );
 
   assert.match(tokens, /--workspace-header-title-size: 0\.8125rem/);
@@ -525,7 +522,7 @@ test("workspace header identity and titles share semantic ownership", () => {
   ]);
   assert.match(
     brandView,
-    /customElements\.define\("caffold-workspace-brand"/,
+    /@customElement\("caffold-workspace-brand"\)/,
   );
   assert.match(taskNavigatorView, /<caffold-workspace-brand>/);
   assert.match(settingsNavigatorView, /<caffold-workspace-brand>/);
@@ -656,11 +653,11 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
     assert.match(source, /var\(--settings-page-description-size\)/);
   }
 
-  const appLayout = readFrontend("pages/layout.js");
-  const taskWorkspace = readFrontend("pages/(task-workspace)/layout.js");
-  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
+  const appLayout = readFrontend("pages/layout.ts");
+  const taskWorkspace = readFrontend("pages/(task-workspace)/layout.ts");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.ts");
   const settingsWorkspace = readFrontend(
-    "pages/(task-workspace)/settings/layout.js",
+    "pages/(task-workspace)/settings/layout.ts",
   );
   assert.match(appLayout, /<main class="app-main"/);
   for (const source of [taskWorkspace, tasksPage, settingsWorkspace]) {
@@ -670,13 +667,13 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
     settingsWorkspace,
     /role="region"[\s\S]*aria-labelledby="settings-workspace-title"/,
   );
-  assert.match(settingsWorkspace, /<h1 id="settings-workspace-title"><\/h1>/);
+  assert.match(settingsWorkspace, /<h1 id="settings-workspace-title">\$\{/);
 
   for (const path of [
-    "pages/(task-workspace)/settings/appearance/page.js",
-    "pages/(task-workspace)/settings/files/page.js",
-    "pages/(task-workspace)/settings/codex/page.js",
-    "pages/(task-workspace)/settings/about/page.js",
+    "pages/(task-workspace)/settings/appearance/page.ts",
+    "pages/(task-workspace)/settings/files/page.ts",
+    "pages/(task-workspace)/settings/codex/page.ts",
+    "pages/(task-workspace)/settings/about/page.ts",
   ]) {
     assert.doesNotMatch(
       readFrontend(path),
@@ -684,22 +681,22 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
     );
   }
   assert.match(
-    readFrontend("pages/(task-workspace)/settings/components/navigator.js"),
+    readFrontend("pages/(task-workspace)/settings/components/navigator.ts"),
     /aria-label="Settings sections"/,
   );
   assert.doesNotMatch(
-    readFrontend("pages/(task-workspace)/settings/components/navigator.js"),
+    readFrontend("pages/(task-workspace)/settings/components/navigator.ts"),
     /Local to this browser/,
   );
 
   const appearancePage = readFrontend(
-    "pages/(task-workspace)/settings/appearance/page.js",
+    "pages/(task-workspace)/settings/appearance/page.ts",
   );
   assert.match(appearancePage, /settings-typeface-preview/);
   assert.match(appearancePage, /settings-text-preview/);
   assert.match(appearancePage, /uiTypefacePreset:/);
   assert.match(appearancePage, /codeTypefacePreset:/);
-  assert.match(appearancePage, /renderInlineIcon\("RotateCcw"/);
+  assert.match(appearancePage, /inlineIcon\("RotateCcw"/);
   assert.match(appearancePage, /data-reset-label=/);
   assert.doesNotMatch(appearancePage, /data-typeface-description/);
   assert.doesNotMatch(appearancePage, /settings-interface-preview/);
@@ -793,7 +790,7 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["components/file-tree.css", ".entry-icon-svg", "--file-tree-icon-size"],
     ["components/file-viewer.css", ".viewer-refresh-icon", "--interface-icon-size"],
     ["components/file-viewer.css", ".viewer-info-icon", "--interface-icon-size"],
-    ["components/pagination.css", ".pagination-icon", "--interface-icon-small-size"],
+    ["components/pagination/components/button.css", ".pagination-icon", "--interface-icon-small-size"],
   ];
 
   for (const [path, selector, token] of owners) {
@@ -840,7 +837,7 @@ test("control paint layers do not pull screen-reader text into layout", () => {
 test("the browser fixture renders every shared inline icon used by production", () => {
   const usedNames = new Set(
     frontendSources().flatMap(([, source]) =>
-      [...source.matchAll(/renderInlineIcon\("([A-Za-z0-9]+)"/g)].map(
+      [...source.matchAll(/\binlineIcon\("([A-Za-z0-9]+)"/g)].map(
         (match) => match[1],
       ),
     ),
@@ -974,12 +971,12 @@ test("compact icon controls declare shared styles at their own component boundar
     ["pages/(task-workspace)/tasks/(detail)/terminal/page", "caffold-terminal-page", "> .terminal-page-bar > .terminal-page-button"],
     ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", "caffold-git-review-controls", "> .git-review-controls > .git-review-refresh"],
     ["components/file-navigator/components/list", "caffold-file-list", "> .file-list-panel > header > .file-list-title-row > .file-list-actions > .file-refresh-button"],
-    ["components/pagination", "caffold-pagination", "> .pagination-panel > .pagination-button"],
+    ["components/pagination/components/button", "caffold-pagination-button", "> .pagination-button"],
     ["components/file-viewer", "caffold-review-file-viewer", "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-actions > .viewer-refresh-button"],
     ["components/file-viewer", "caffold-review-file-viewer", "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-close-button"],
   ];
   for (const [path, owner, target] of consumers) {
-    const javascript = readFrontend(`${path}.js`);
+    const javascript = readFrontendModule(path);
     const declarations = [...javascript.matchAll(/await compactIconButton\.register\(\s*"([^"]+)",\s*"([^"]+)"\s*,?\s*\)/g)];
     assert.ok(declarations.some(([, name, selector]) => name === owner && selector === target), path);
   }
@@ -1474,6 +1471,13 @@ function readFrontend(path) {
   return readFileSync(resolve(frontendRoot, path), "utf8");
 }
 
+// A module still in JavaScript or already moved to TypeScript, by its stem.
+function readFrontendModule(stem) {
+  return existsSync(resolve(frontendRoot, `${stem}.ts`))
+    ? readFrontend(`${stem}.ts`)
+    : readFrontend(`${stem}.js`);
+}
+
 function cssBlock(source, selector) {
   const start = source.indexOf(selector);
   assert.notEqual(start, -1, `missing selector ${selector}`);
@@ -1523,8 +1527,8 @@ function walk(directory) {
     if (entry.isDirectory()) {
       return walk(path);
     }
-    return /\.(?:css|js)$/.test(entry.name) &&
-      !entry.name.endsWith(".test.js")
+    return /\.(?:css|js|ts)$/.test(entry.name) &&
+      !/\.(?:test|d)\.(?:js|ts)$/.test(entry.name)
       ? [path]
       : [];
   });

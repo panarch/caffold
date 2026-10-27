@@ -63,7 +63,7 @@ test("drops a Branch compare that returns after Review leaves Branch", async (t)
     showReadingState() {},
     headRef: branchChanges.headRef,
     announceRead() {},
-    tree: () => tree,
+    tree,
   };
 
   const current = branchChanges.read.call(owner);

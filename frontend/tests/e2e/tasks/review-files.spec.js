@@ -58,7 +58,7 @@ test("browses source through the shared Files navigator and one root watch", { t
     taskReview.getByRole("button", { name: "Files", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   if (testInfo.project.name === "phone") {
-    await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
+    await taskReview.evaluate((review) => review.updateRoute({ viewer: "source" }));
   } else {
     await activateActionHint(page, /Show Source$/);
   }
@@ -905,7 +905,7 @@ test("selects supported source and preview representations for images", { tag: "
     await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
     await taskReview.getByRole("button", { name: "Files", exact: true }).click();
     if (testInfo.project.name === "phone") {
-      await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
+      await taskReview.evaluate((review) => review.updateRoute({ viewer: "source" }));
     } else {
       await taskReview.getByRole("button", { name: "Source", exact: true }).click();
     }
@@ -1093,16 +1093,12 @@ test("fetches an image once when the file list arrives after it", { tag: "@viewp
         .locator("caffold-file-navigator")
         .locator(`button[data-file-tree-path="src/${imageName}"]`),
     ).toHaveAttribute("aria-current", "true");
-    const header = taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header");
-    await header.evaluate((element) => {
-      element.dataset.beforeStatus = "";
-    });
+    const viewer = taskReview.locator("caffold-review-file-viewer");
+    await markShownAgain(viewer, "setImage");
     const statusArrived = page.waitForResponse(statusPattern);
     status.letThrough();
     await statusArrived;
-    await expect(
-      taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header[data-before-status]"),
-    ).toHaveCount(0);
+    await expect(viewer).toHaveAttribute("data-shown-again", "");
 
     await expectFetchedPicture(taskReview.locator("caffold-review-file-viewer img.image-preview"));
     expect(requests).toHaveLength(1);
@@ -1241,18 +1237,25 @@ async function openGuidePreview(page, folder) {
   );
   const preview = taskReview.locator("caffold-review-file-viewer caffold-markdown-preview");
   await expect(preview).toHaveAttribute("data-render-state", "markdown");
-  const header = taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header");
-  await header.evaluate((element) => {
-    element.dataset.beforeStatus = "";
-  });
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await markShownAgain(viewer, "setMarkdown");
   const statusArrived = page.waitForResponse(statusPattern);
   status.letThrough();
   await statusArrived;
-  await expect(
-    taskReview.locator("caffold-review-file-viewer > .viewer-panel > .viewer-header[data-before-status]"),
-  ).toHaveCount(0);
+  await expect(viewer).toHaveAttribute("data-shown-again", "");
   await expect(preview).toHaveAttribute("data-render-state", "markdown");
   return { taskReview, preview };
+}
+
+// Marks the viewer once the Review hands it its file again through `method`.
+async function markShownAgain(viewer, method) {
+  await viewer.evaluate((element, name) => {
+    const show = element[name];
+    element[name] = function (...args) {
+      this.dataset.shownAgain = "";
+      return show.apply(this, args);
+    };
+  }, method);
 }
 
 // Tells the Review's open watch on the Task root that a test's guide.md
@@ -1405,4 +1408,160 @@ test("keeps the open file shown while the next one loads and names a longer wait
   await expect(viewer.locator("caffold-diff-viewer")).toContainText(
     "new planner behavior",
   );
+});
+
+test("the file viewer offers a notice's representation button, and details only for metadata", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  const result = await page.evaluate(async () => {
+    await import("/assets/components/file-viewer.js");
+    const viewer = document.createElement("caffold-review-file-viewer");
+    document.body.append(viewer);
+    const drawn = () => new Promise(requestAnimationFrame);
+    const targets = async () => {
+      await drawn();
+      return viewer.actionHintScope({
+        scopeId: "review:viewer",
+        actions: {
+          parent: "navigation.parent",
+          notice: "navigation.review.axis",
+          details: "navigation.file-details.open",
+        },
+      }).targets.map((target) => [target.id, target.actionId, target.label]);
+    };
+    const openDetails = async () => {
+      viewer.querySelector(".viewer-info-button").click();
+      await drawn();
+      return viewer.keyboardNavigationContexts({ scopeId: "review:viewer" })
+        .map((context) => [context.id, context.actionHints.targets.length]);
+    };
+
+    viewer.setNotice("This file is large.", {
+      title: "big.md",
+      actionLabel: "View rendered preview",
+      action: "view-preview",
+    });
+    const notice = await targets();
+    viewer.setNotice("This file could not be read.", {
+      title: "big.md",
+      actionLabel: "Try again",
+      action: "retry",
+    });
+    const otherNotice = await targets();
+    viewer.setDiff({ diff: "" }, {
+      presentation: { title: "a.rs", subtitle: "src/a.rs", metadata: [] },
+    });
+    const bare = await targets();
+    const bareDetails = await openDetails();
+    viewer.setDiff({ diff: "" }, {
+      presentation: {
+        title: "a.rs",
+        metadata: [{ field: "size", label: "Size", value: "1 KB" }],
+      },
+    });
+    const described = await targets();
+    const describedDetails = await openDetails();
+    return { notice, otherNotice, bare, bareDetails, described, describedDetails };
+  });
+
+  // Beside a file list the viewer has no Back or close button to offer.
+  expect(result).toEqual({
+    notice: [
+      ["review:viewer:notice:view-preview", "navigation.review.axis", "View rendered preview"],
+    ],
+    otherNotice: [],
+    bare: [],
+    bareDetails: [],
+    described: [
+      ["review:viewer:details:open", "navigation.file-details.open", "Show details for a.rs"],
+    ],
+    describedDetails: [["review:viewer:details", 0]],
+  });
+});
+
+test("each document preview scrolls as one vertical surface named after its file", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  const surfaces = await page.evaluate(async () => {
+    await import("/assets/components/file-viewer.js");
+    const described = [];
+    for (const kind of ["pdf", "docx", "pptx"]) {
+      const element = document.createElement(`caffold-${kind}-viewer`);
+      element.style.cssText = "display: block; height: 100px; overflow: auto;";
+      document.body.append(element);
+      await new Promise(requestAnimationFrame);
+      described.push(element.scrollSurfaceScope({
+        scopeId: `review:viewer:${kind}`,
+        label: `report.${kind} preview`,
+      }).surfaces.map((surface) => ({
+        id: surface.id,
+        label: surface.label,
+        axes: surface.axes,
+        scrollport: surface.scrollport === element,
+      })));
+      element.hidden = true;
+      await new Promise(requestAnimationFrame);
+      described.push(element.scrollSurfaceScope({
+        scopeId: `review:viewer:${kind}`,
+      }).surfaces);
+    }
+    return described;
+  });
+
+  expect(surfaces).toEqual(["pdf", "docx", "pptx"].flatMap((kind) => [
+    [{
+      id: `review:viewer:${kind}:scroll`,
+      label: `report.${kind} preview`,
+      axes: ["vertical"],
+      scrollport: true,
+    }],
+    [],
+  ]));
+});
+
+test("the file viewer scrolls a source file and a notice under the names it shows", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  const surfaces = await page.evaluate(async () => {
+    await import("/assets/components/file-viewer.js");
+    const viewer = document.createElement("caffold-review-file-viewer");
+    viewer.style.cssText = "display: block; height: 300px;";
+    document.body.append(viewer);
+    const described = async () => {
+      await new Promise(requestAnimationFrame);
+      return viewer.scrollSurfaceScope({ scopeId: "review:viewer" })
+        .surfaces.map((surface) => ({
+          id: surface.id,
+          label: surface.label,
+          axes: surface.axes ?? ["vertical"],
+          scrollport: surface.scrollport.className,
+        }));
+    };
+    viewer.setFile({ path: "src/PLAN.md", content: "# Plan\nNext" });
+    const source = await described();
+    viewer.setNotice("This file is large.", { title: "big.bin" });
+    const notice = await described();
+    return { source, notice };
+  });
+
+  expect(surfaces).toEqual({
+    source: [{
+      id: "review:viewer:source:scroll",
+      label: "PLAN.md source",
+      axes: ["vertical", "horizontal"],
+      scrollport: "code-lines",
+    }],
+    notice: [{
+      id: "review:viewer:notice:scroll",
+      label: "big.bin notice",
+      axes: ["vertical"],
+      scrollport: "viewer-notice-content",
+    }],
+  });
 });

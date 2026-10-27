@@ -7,16 +7,9 @@ caffold-task-detail-info {
     color: var(--control-fg);
   }
 
-  & .task-detail-info-button .task-status-chip {
+  & .task-detail-status {
     position: relative;
-    grid-auto-flow: initial;
-    place-items: center;
     pointer-events: none;
-  }
-
-  & .task-detail-info-button .task-status-icon,
-  & .task-detail-info-button .task-status-spinner {
-    grid-area: 1 / 1;
   }
 
   & .task-detail-popover {
@@ -65,18 +58,6 @@ caffold-task-detail-info {
     overflow-wrap: anywhere;
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
-  }
-
-  & .task-detail-status {
-    width: var(--interface-icon-slot-size);
-    height: var(--interface-icon-slot-size);
-    justify-content: center;
-    padding: 0;
-    border: 0;
-  }
-
-  & .task-detail-status[data-status="running"] {
-    background: transparent;
   }
 }
 

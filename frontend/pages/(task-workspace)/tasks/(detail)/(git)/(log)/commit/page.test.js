@@ -56,7 +56,6 @@ test("composes only active Commit tree/viewer leaves", () => {
     fileViewer,
     panelResizer,
     sidePaneCollapsed: page.sidePaneCollapsed,
-    ensureRendered() {},
     currentCommitSha: () => "abcdef123456",
   };
   assert.deepEqual(page.actionHintScope.call(owner).targets, [
@@ -64,9 +63,9 @@ test("composes only active Commit tree/viewer leaves", () => {
     { id: "separator" },
     viewerTarget,
   ]);
-  assert.equal(treeOptions.disclosureActionId, "disclosure.toggle");
-  assert.equal(viewerOptions.refreshActionId, "button.activate");
-  assert.equal(viewerOptions.linkActionId, "link.open");
+  assert.equal(treeOptions.actions.disclosure, "disclosure.toggle");
+  assert.equal(viewerOptions.actions.refresh, "button.activate");
+  assert.equal(viewerOptions.actions.link, "link.open");
   assert.equal(resizerOptions.actionId, "control.separator.focus");
   assert.deepEqual(page.scrollSurfaceScope.call(owner).surfaces, [
     treeSurface,

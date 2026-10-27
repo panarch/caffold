@@ -2,62 +2,37 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../../../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 import {
   createCodexStatusSnapshot,
 } from "#app/pages/(task-workspace)/codex-status.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./conversation-shortcuts.js");
+const { ActionHints } = await import("#app/action-hints.js");
 const shortcuts = registry.element("caffold-section-conversation-shortcuts").prototype;
 after(() => registry.restore());
 
-test("provides the retained Fork opener only for the active Section context", () => {
-  let control = {
-    disabled: false,
-    textContent: "Fork from Codex thread ID",
-    getAttribute: () => null,
-    focus() {},
-    click() {},
-  };
-  const owner = {
-    active: true,
-    hidden: false,
-    isConnected: true,
-    context: { key: "section-a\0/repo" },
-    ensureRendered() {},
-    querySelector: () => control,
-  };
-
-  const target = shortcuts.actionHintScope.call(owner, {
-    scopeId: "section:section-a",
-  }).targets[0];
-  assert.equal(target.id, "section:section-a:fork-conversation");
-  assert.equal(target.actionId, "button.activate");
-  assert.equal(target.isActionable(), true);
-  owner.context = { key: "section-b\0/repo" };
-  assert.equal(target.isActionable(), false);
-  control = null;
-});
-
 test("shows the Fork opener only once Codex is known to be installed", () => {
-  const button = { disabled: false, title: "" };
-  const reason = { textContent: "", hidden: true };
-  const owner = {
+  const owner = elementStandIn(shortcuts, {
     active: true,
     hidden: false,
     context: { sectionId: "section-a" },
     transportAvailable: true,
     taskStoreStatusSnapshot: null,
     codexReadiness: createCodexStatusSnapshot(),
-    toggleAttribute(name, force) {
-      assert.equal(name, "hidden");
-      this.hidden = force;
-    },
-    disabledReason: shortcuts.disabledReason,
-    querySelector: (selector) =>
-      selector.includes("fork-codex") ? button : reason,
+  });
+  owner.hints = new ActionHints(owner);
+  const drawn = () => {
+    shortcuts.updated.call(owner);
+    const markup = templateHtml(owner.render()).replace(/\s+/g, " ");
+    return {
+      disabled: markup.includes('?disabled="true"'),
+      reason: markup.match(/section-conversations-action-reason" \?hidden="\w+" >([^<]*)</)?.[1] ?? "",
+    };
   };
   const answered = (state, diagnosticMessage = "") => createCodexStatusSnapshot({
     phase: "loaded",
@@ -70,36 +45,31 @@ test("shows the Fork opener only once Codex is known to be installed", () => {
     },
   });
 
-  shortcuts.patch.call(owner);
+  drawn();
   assert.equal(owner.hidden, true, "nothing is shown before the server answers");
 
   owner.codexReadiness = createCodexStatusSnapshot({ phase: "loaded", status: null });
-  shortcuts.patch.call(owner);
+  drawn();
   assert.equal(owner.hidden, true, "a server that has not checked yet shows nothing");
 
   owner.codexReadiness = answered("missing", "Install Codex.");
-  shortcuts.patch.call(owner);
+  drawn();
   assert.equal(owner.hidden, true);
 
   owner.codexReadiness = answered("signInRequired", "Sign in to Codex.");
-  shortcuts.patch.call(owner);
+  assert.deepEqual(drawn(), { disabled: true, reason: "Sign in to Codex." });
   assert.equal(owner.hidden, false);
-  assert.equal(button.disabled, true);
-  assert.equal(reason.textContent, "Sign in to Codex.");
 
   owner.codexReadiness = answered("ready");
-  shortcuts.patch.call(owner);
+  assert.deepEqual(drawn(), { disabled: false, reason: "" });
   assert.equal(owner.hidden, false);
-  assert.equal(button.disabled, false);
 
   owner.codexReadiness = createCodexStatusSnapshot({
     phase: "failed",
     error: "Load failed",
   });
-  shortcuts.patch.call(owner);
+  assert.deepEqual(drawn(), { disabled: true, reason: "Load failed" });
   assert.equal(owner.hidden, false);
-  assert.equal(button.disabled, true);
-  assert.equal(reason.textContent, "Load failed");
 });
 
 test("asks what the server knows about Codex when shown and drops an answer that comes after hiding", async () => {
@@ -169,16 +139,15 @@ test("a failed question is shown as the reason the Fork opener is unavailable", 
 });
 
 function shortcutsOwner() {
-  return Object.assign(Object.create(shortcuts), {
+  return elementStandIn(shortcuts, {
     active: false,
     context: { key: "section-a\0/repo", sectionId: "section-a", path: "/repo" },
     transportAvailable: true,
     taskStoreStatusSnapshot: null,
     codexReadiness: createCodexStatusSnapshot(),
     codexReadinessRequest: 0,
-    ensureRendered() {},
     forkDialog: () => null,
-    patch() {},
+    draw() {},
   });
 }
 

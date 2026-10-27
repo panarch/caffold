@@ -60,6 +60,13 @@ for (const scopes of [[], ["allowForSession"], ["allowForSession", "allowAlways"
     await expect(card).not.toContainText("Deny and Stop");
     const argument = card.getByLabel("Document", { exact: true });
     await expect(argument).toHaveText(JSON.stringify(longValue));
+    await expect.poll(() => page.locator("caffold-task-conversation").evaluate(
+      (conversation) => conversation.scrollSurfaceScope().surfaces
+        .map(({ label, axes }) => [label, (axes ?? []).join()]),
+    )).toEqual(expect.arrayContaining([
+      ["Document", "horizontal"],
+      ["Options", "horizontal"],
+    ]));
     await expect(card.getByLabel("Options", { exact: true })).toHaveText(JSON.stringify({ comments: false, revision: null, sections: [1, 2] }, null, 2));
     await argument.scrollIntoViewIfNeeded();
     await argument.focus();
@@ -189,7 +196,9 @@ test("approval owner retains native state through refresh, errors, and lifecycle
   });
   await expect(owner.getByRole("button", { name: "Allow", exact: true })).toBeDisabled();
   expect(await page.evaluate(() => window.__approvalTargets.length)).toBe(3);
-  expect(await page.evaluate(() => window.__approvalTargets.every((target) => !target.isActionable()))).toBe(true);
+  expect(await page.locator("caffold-task-conversation").evaluate((conversation) =>
+    conversation.actionHintScope().targets.filter((target) => target.invalidationOwner === window.__approvalOwner).length,
+  )).toBe(0);
   expect(await argument.evaluate((node) => node === window.__approvalNode && node.scrollLeft === 80)).toBe(true);
   await page.locator("caffold-task-conversation").evaluate((conversation) => {
     conversation.setSnapshot({ ...conversation.snapshot, transportState: "live" });
@@ -200,14 +209,15 @@ test("approval owner retains native state through refresh, errors, and lifecycle
   await expect(owner.getByRole("button", { name: "Allow", exact: true })).toBeEnabled();
 
   // A different Task may reuse a provider request ID; its local error and DOM
-  // must belong to the new Task, and retained old keyboard actions must expire.
+  // must belong to the new Task, and the old card offers no keyboard actions.
   await page.locator("caffold-task-conversation").evaluate((conversation) => {
-    window.__approvalTargets = conversation.actionHintScope().targets.filter((target) => target.invalidationOwner === window.__approvalOwner);
     conversation.setSnapshot({ ...conversation.snapshot, threadId: "different-task" });
   });
   await expect(owner.getByRole("alert")).toBeHidden();
   expect(await owner.evaluate((node) => node !== window.__approvalOwner)).toBe(true);
-  expect(await page.evaluate(() => window.__approvalTargets.every((target) => !target.isActionable()))).toBe(true);
+  expect(await page.locator("caffold-task-conversation").evaluate((conversation) =>
+    conversation.actionHintScope().targets.filter((target) => target.invalidationOwner === window.__approvalOwner).length,
+  )).toBe(0);
   await page.locator("caffold-task-conversation").evaluate((conversation) => conversation.setSnapshot({ ...conversation.snapshot, events: [] }));
   await expect(owner).toHaveCount(0);
   expect(scenario.pageErrors).toEqual([]);

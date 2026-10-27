@@ -11,7 +11,6 @@ const gitLayout = registry.element("caffold-task-git-layout").prototype;
 after(() => registry.restore());
 
 test("merges Git chrome with only the active Compare or Log child", () => {
-  const back = { hidden: true, disabled: false };
   const calls = { compare: 0, log: 0 };
   const owner = {
     active: true,
@@ -20,11 +19,10 @@ test("merges Git chrome with only the active Compare or Log child", () => {
     mode: "compare",
     repository: { rootPath: "/repo" },
     currentPath: "/repo",
-    backButton: back,
-    ensureRendered() {},
-    querySelector(selector) {
-      return selector.includes("task-domain-body") ? {} : back;
-    },
+    scopeId: gitLayout.scopeId,
+    hints: { scope: () => ({ targets: [] }) },
+    body: { value: {} },
+    controls: { actionHintScope: () => null },
     comparePage: {
       actionHintScope() {
         calls.compare += 1;
@@ -55,8 +53,9 @@ test("delegates Scroll only to the active Git route", () => {
     mode: "compare",
     repository: { rootPath: "/repo" },
     currentPath: "/repo",
-    ensureRendered() {},
-    querySelector: () => ({}),
+    scopeId: gitLayout.scopeId,
+    performUpdate() {},
+    body: { value: {} },
     comparePage: {
       scrollSurfaceScope: () => ({ surfaces: [compareSurface] }),
     },

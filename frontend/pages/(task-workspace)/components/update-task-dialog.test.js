@@ -4,10 +4,15 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 const { updateTaskFrom, updateTaskPrompt } = await import("./update-task-dialog.js");
-const dialog = registry.element("caffold-update-task-dialog").prototype;
+const Dialog = registry.element("caffold-update-task-dialog");
+const dialog = Dialog.prototype;
+const { ActionHints } = await import("#app/action-hints.js");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
+const { ScrollSurfaces } = await import("#app/scroll-scope.js");
 after(() => registry.restore());
 
 const COMMAND =
@@ -65,20 +70,22 @@ function dialogHost({ accept = true, completion = Promise.resolve({}) } = {}) {
     pending: false,
     error: null,
     createRequestId: 0,
-    update: { to: "0.18.3", cwd: STATUS.updateTask.cwd, command: COMMAND },
-    turnOptions: () => ({
-      readyForSubmission: () => true,
-      submissionOptions: () => ({
-        provider: "codex",
-        model: "gpt-6",
-        effort: "high",
-        fastMode: false,
-        permissionMode: "fullAccess",
-      }),
-      resetFastMode() {},
-    }),
-    dialog: () => ({ close: (value) => closes.push(value) }),
-    patch() {},
+    updateTask: { to: "0.18.3", cwd: STATUS.updateTask.cwd, command: COMMAND },
+    turnOptions: {
+      value: {
+        readyForSubmission: () => true,
+        submissionOptions: () => ({
+          provider: "codex",
+          model: "gpt-6",
+          effort: "high",
+          fastMode: false,
+          permissionMode: "fullAccess",
+        }),
+        resetFastMode() {},
+      },
+    },
+    dialog: { value: { close: (value) => closes.push(value) } },
+    updateSetup() {},
     dispatchEvent(event) {
       events.push(event);
       if (accept) {
@@ -108,7 +115,6 @@ test("hands the Task to whoever creates Tasks and closes once it exists", async 
   );
   assert.equal(event.detail.submission.prompt, event.detail.request.titleSource);
   assert.match(event.detail.submission.submissionId, /^caffold-update:\d+:1$/);
-  assert.deepEqual(event.detail.submission.images, []);
   assert.deepEqual(closes, ["started"]);
   assert.equal(host.pending, false);
 });
@@ -127,21 +133,39 @@ test("stays open with the reason when the Task could not start", async () => {
 });
 
 test("renders the agreed text and two buttons", () => {
-  const owner = { innerHTML: "" };
-  dialog.render.call(owner);
+  const owner = Object.create(
+    Dialog.prototype,
+    Object.getOwnPropertyDescriptors({
+      updateTask: { to: "0.18.3", cwd: STATUS.updateTask.cwd, command: COMMAND },
+      choosing: true,
+      ready: true,
+      pending: false,
+      error: null,
+    }),
+  );
+  owner.hints = new ActionHints(owner);
+  owner.surfaces = new ScrollSurfaces(owner);
+  owner.keyboard = new KeyboardContexts(owner);
+  const drawn = templateHtml(owner.render()).replace(/\s+/g, " ");
 
+  assert.match(drawn, /<h2 id="caffold-update-task-title">Update Caffold to 0\.18\.3<\/h2>/);
   assert.match(
-    owner.innerHTML,
+    drawn,
+    /An agent runs the update in a new Task\. If 0\.18\.3 does not start, the previous version is restored\./,
+  );
+  assert.match(
+    drawn,
     /Running Tasks keep going while Caffold restarts\. Claude sessions stop if it takes more than 10 minutes\. Open terminals close\./,
   );
   assert.match(
-    owner.innerHTML,
+    drawn,
     /To let the agent recover Caffold even if the restore fails, choose the mode that allows everything \(Full access or Allow all\)\. Other modes can stop at the update command, and no one can answer approvals while Caffold restarts, including Ask Jev first\./,
   );
-  assert.match(owner.innerHTML, />Cancel</);
-  assert.match(owner.innerHTML, />Start Update</);
+  assert.match(drawn, /<caffold-task-turn-options @caffold:task-turn-options-change="" >/);
+  assert.match(drawn, /\?disabled="false" @click="" >Cancel</);
+  assert.match(drawn, /\?disabled="false" >Start Update</);
   assert.equal(
-    [...owner.innerHTML.matchAll(/<caffold-keyboard-navigation-presentation>/g)].length,
+    [...drawn.matchAll(/<caffold-keyboard-navigation-presentation/g)].length,
     1,
   );
 });

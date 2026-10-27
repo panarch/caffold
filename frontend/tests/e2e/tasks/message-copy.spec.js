@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { activateActionHint } from "../support/action-hints.js";
+import { activateActionHint, workspaceTargets } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import {
@@ -127,6 +127,31 @@ test("offers Copy beside every agent message time without growing the meta line"
   expect(scenario.pageErrors).toEqual([]);
 });
 
+test("offers each message's Copy, the Thinking disclosure, and the conversation's scrolling to the keyboard", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const scenario = await seedMessageCopyTask(page, "thread_message_copy_hints", {
+    activeTurn: true,
+  });
+  const conversation = page.locator("caffold-task-conversation");
+  await expect(conversation.locator(".task-thinking")).toHaveCount(1);
+
+  await expect.poll(async () =>
+    (await workspaceTargets(page, "task:thread_message_copy_hints:conversation:"))
+      .map(([, label]) => label),
+  ).toEqual(expect.arrayContaining([
+    "Copy message",
+    expect.stringMatching(/^(?:Expand|Collapse) Thinking$/),
+  ]));
+  await expect.poll(() => conversation.evaluate((element) =>
+    element.scrollSurfaceScope().surfaces.map(({ label }) => label)
+  )).toEqual(expect.arrayContaining([
+    "Conversation",
+    expect.stringMatching(/ code block 1$/),
+  ]));
+  expect(scenario.pageErrors).toEqual([]);
+});
+
 test("copies each message's Markdown source exactly with bounded success and retryable failure", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
@@ -246,7 +271,7 @@ test("drops a copy of text the message no longer holds", { tag: "@desktop" }, as
     message.id = "standalone-message-probe";
     shell.append(message);
     document.body.append(shell);
-    message.setSnapshot({ event: { payload: { text: "older text" } } });
+    message.event = { payload: { text: "older text" } };
   });
   const probe = page.locator("#standalone-message-probe");
   const copy = probe.locator('button[data-message-action="copy"]');
@@ -279,7 +304,7 @@ test("drops a copy of text the message no longer holds", { tag: "@desktop" }, as
   await expect(copy).toHaveAttribute("aria-label", "Copying message");
   await expect(copy).toHaveAttribute("aria-disabled", "true");
   await probe.evaluate((message) => {
-    message.setSnapshot({ event: { payload: { text: "current text" } } });
+    message.event = { payload: { text: "current text" } };
   });
   await expect(copy).toHaveAttribute("aria-label", "Copy message");
   await expect(copy).toHaveAttribute("aria-disabled", "false");

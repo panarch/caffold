@@ -4,6 +4,7 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 const previousElement = globalThis.Element;
@@ -11,7 +12,8 @@ const previousDocument = globalThis.document;
 globalThis.Element = globalThis.HTMLElement;
 globalThis.document = { ...previousDocument, activeElement: null };
 await import("./task-turn-options.js");
-const turnOptions = registry.element("caffold-task-turn-options").prototype;
+const TurnOptions = registry.element("caffold-task-turn-options");
+const turnOptions = TurnOptions.prototype;
 after(() => {
   restoreGlobal("Element", previousElement);
   restoreGlobal("document", previousDocument);
@@ -217,165 +219,8 @@ const SHARED_NAME_CATALOG = {
   unavailable: [],
 };
 
-test("provides Model through the owned native popover button", () => {
-  const clipRoot = {};
-  let clicks = 0;
-  const attributes = new Map([
-    ["aria-label", "Choose GPT-5.6 and reasoning"],
-    ["popovertarget", "model-options"],
-    ["popovertargetaction", "toggle"],
-  ]);
-  const control = {
-    disabled: false,
-    focusOptions: null,
-    getAttribute(name) {
-      return attributes.get(name) ?? null;
-    },
-    focus(options) {
-      this.focusOptions = options;
-    },
-    click() {
-      clicks += 1;
-    },
-  };
-  let currentControl = control;
-  let popoverOpen = false;
-  const popover = {
-    id: "model-options",
-    matches(selector) {
-      assert.equal(selector, ":popover-open");
-      return popoverOpen;
-    },
-  };
-  const owner = {
-    isConnected: true,
-    context: { locked: false },
-    ensureRendered() {},
-    modelButton() {
-      return currentControl;
-    },
-    modelPopover() {
-      return popover;
-    },
-  };
-
-  const target = turnOptions.actionHintModelTarget.call(owner, {
-    scopeId: "task:thread-a",
-    clipRoots: [clipRoot],
-  });
-
-  assert.deepEqual(
-    {
-      id: target.id,
-      actionId: target.actionId,
-      label: target.label,
-      controlKind: target.controlKind,
-    },
-    {
-      id: "task-composer:task:thread-a:model",
-      actionId: "task.model.choose",
-      label: "Choose GPT-5.6 and reasoning",
-      controlKind: "button",
-    },
-  );
-  assert.equal(target.control, control);
-  assert.equal(target.anchor, control);
-  assert.equal(target.badgeAtEnd, false);
-  assert.deepEqual(target.clipRoots, [clipRoot]);
-  assert.equal(target.isActionable(), true);
-  target.activate();
-  assert.equal(clicks, 1);
-  assert.deepEqual(control.focusOptions, { preventScroll: true });
-
-  popoverOpen = true;
-  assert.equal(target.isActionable(), false);
-  popoverOpen = false;
-  owner.context.locked = true;
-  assert.equal(target.isActionable(), false);
-  owner.context.locked = false;
-  currentControl = { ...control };
-  assert.equal(target.isActionable(), false);
-});
-
-test("provides Permission through the same retained native popover contract", () => {
-  let focused = false;
-  let clicked = false;
-  const control = {
-    disabled: false,
-    focus() {
-      focused = true;
-    },
-    click() {
-      clicked = true;
-    },
-    getAttribute(name) {
-      return new Map([
-        ["aria-label", "Choose approval mode"],
-        ["popovertarget", "permission-options"],
-        ["popovertargetaction", "toggle"],
-      ]).get(name) ?? null;
-    },
-  };
-  const popover = {
-    id: "permission-options",
-    matches: () => false,
-  };
-  const picker = { hidden: false };
-  const owner = {
-    isConnected: true,
-    context: { locked: false },
-    ensureRendered() {},
-    permissionFixed: () => false,
-    permissionButton: () => control,
-    permissionPicker: () => picker,
-    permissionPopover: () => popover,
-  };
-
-  const target = turnOptions.actionHintPermissionTarget.call(owner, {
-    scopeId: "new",
-  });
-  assert.equal(target.actionId, "task.permission.open");
-  assert.equal(target.isActionable(), true);
-  target.activate();
-  assert.equal(focused, true);
-  assert.equal(clicked, true);
-
-  picker.hidden = true;
-  assert.equal(target.isActionable(), false);
-});
-
-test("permission Action Hint is not actionable once the catalog has fixed the mode", () => {
-  const control = {
-    disabled: false,
-    getAttribute(name) {
-      return new Map([
-        ["aria-label", "Choose approval mode"],
-        ["popovertarget", "permission-options"],
-        ["popovertargetaction", "toggle"],
-      ]).get(name) ?? null;
-    },
-  };
-  const owner = {
-    isConnected: true,
-    context: { locked: false, provider: "grok" },
-    ensureRendered() {},
-    permissionFixed: () => true,
-    permissionButton: () => control,
-    permissionPicker: () => ({ hidden: false }),
-    permissionPopover: () => ({
-      id: "permission-options",
-      matches: () => false,
-    }),
-  };
-
-  const target = turnOptions.actionHintPermissionTarget.call(owner, {
-    scopeId: "task:thread-a",
-  });
-  assert.equal(target.isActionable(), false);
-});
-
 test("locks only the approval picker when the conversation exists and the catalog fixes the mode", async (t) => {
-  const { nodes, server } = mount({
+  const { element, server } = mount({
     provider: "grok",
     initialSelection: { model: "grok-4.6", permissionMode: "ask" },
   });
@@ -383,25 +228,27 @@ test("locks only the approval picker when the conversation exists and the catalo
   await answerModels(server);
   await answerModes(server);
 
-  assert.equal(nodes.modelButton.disabled, false);
-  assert.equal(nodes.permissionButton.disabled, true);
-  assert.equal(nodes.permissionButton.title, GROK_FIXED);
+  const { model, permission } = drawing(element);
+  assert.equal(model.disabled, false);
+  assert.equal(permission.disabled, true);
+  assert.equal(permission.title, GROK_FIXED);
 });
 
 test("keeps the approval picker editable on a new Task even when the catalog would fix the mode later", async (t) => {
-  const { element, nodes, server } = mount();
+  const { element, server } = mount();
   t.after(() => server.restore());
   await answerModels(server);
   await answerModes(server);
   element.selectModel("grok-4.6", "grok");
   await answerModes(server);
 
-  assert.equal(nodes.permissionButton.disabled, false);
-  assert.equal(nodes.permissionButton.title, "Ask first");
+  const { permission } = drawing(element);
+  assert.equal(permission.disabled, false);
+  assert.equal(permission.title, "Ask first");
 });
 
 test("prefers the conversation-start lock copy over the active-turn lock on a fixed approval picker", async (t) => {
-  const { nodes, server } = mount({
+  const { element, server } = mount({
     provider: "grok",
     locked: true,
     initialSelection: { model: "grok-4.6", permissionMode: "ask" },
@@ -410,13 +257,14 @@ test("prefers the conversation-start lock copy over the active-turn lock on a fi
   await answerModels(server);
   await answerModes(server);
 
-  assert.equal(nodes.modelButton.disabled, true);
+  const { model, permission } = drawing(element);
+  assert.equal(model.disabled, true);
   assert.equal(
-    nodes.modelButton.title,
+    model.title,
     "Model, reasoning, and speed can be changed after the active turn finishes.",
   );
-  assert.equal(nodes.permissionButton.disabled, true);
-  assert.equal(nodes.permissionButton.title, GROK_FIXED);
+  assert.equal(permission.disabled, true);
+  assert.equal(permission.title, GROK_FIXED);
 });
 
 test("does not change approval mode after the catalog has fixed it", async (t) => {
@@ -494,116 +342,6 @@ test("a pick for Caffold's own mode survives the list being asked again", async 
   assert.equal(element.snapshot().permissionExplicit, true);
 });
 
-test("keeps the popover shell while replacing only its option body", () => {
-  const content = control();
-  content.contains = () => false;
-  const popover = {
-    querySelector: () => content,
-    matches: () => false,
-  };
-
-  turnOptions.patchPopover.call({}, popover, "new");
-  turnOptions.patchPopover.call({}, popover, "new");
-  assert.deepEqual(
-    { html: content.innerHTML, assignments: content.assignments },
-    { html: "new", assignments: 1 },
-  );
-  assert.equal(popover.querySelector(), content);
-});
-
-test("provides selected model options and excludes disabled permission options", () => {
-  const selectedModel = optionControl({
-    action: "select-model",
-    provider: "codex",
-    model: "gpt-5.6-sol",
-    label: "GPT-5.6-Sol",
-  });
-  const provider = optionControl({
-    action: "browse-provider",
-    provider: "claude",
-    label: "Claude",
-  });
-  const selectedReasoning = optionControl({
-    action: "select-effort",
-    effort: "max",
-    label: "max",
-  });
-  const selectedSpeed = optionControl({
-    action: "select-fast-mode",
-    fastMode: "false",
-    label: "Normal",
-  });
-  const blockedPermission = optionControl({
-    action: "select-permission",
-    permissionMode: "fullAccess",
-    label: "Full access",
-    disabled: true,
-  });
-  const modelPopover = popoverWithOptions([
-    provider,
-    selectedModel,
-    selectedReasoning,
-    selectedSpeed,
-  ]);
-  const permissionPopover = popoverWithOptions([blockedPermission]);
-  const owner = {
-    isConnected: true,
-    context: { locked: false },
-    modelPopover: () => modelPopover,
-    permissionPopover: () => permissionPopover,
-  };
-
-  const modelScope = turnOptions.popoverActionHintScope.call(owner, {
-    contextId: "new:model",
-    kind: "model",
-    popover: modelPopover,
-  });
-  assert.equal(modelScope.targets.every(({ badgeAtEnd }) => badgeAtEnd), true);
-  assert.deepEqual(
-    modelScope.targets.map(({ actionId }) => actionId),
-    ["task.model.provider.browse", "task.model.select", "task.reasoning.select", "task.speed.select"],
-  );
-  assert.equal(modelScope.targets.every(({ isActionable }) => isActionable()), true);
-  assert.deepEqual(
-    turnOptions.popoverActionHintScope.call(owner, {
-      contextId: "new:permission",
-      kind: "permission",
-      popover: permissionPopover,
-    }).targets,
-    [],
-  );
-});
-
-test("uses provider and model together as the option identity", async (t) => {
-  const codex = optionControl({
-    action: "select-model",
-    provider: "codex",
-    model: "shared",
-    label: "Codex Shared",
-  });
-  const claude = optionControl({
-    action: "select-model",
-    provider: "claude",
-    model: "shared",
-    label: "Claude Shared",
-  });
-  const popover = { ...popoverWithOptions([codex, claude]), setAttribute() {} };
-  const { element, server } = mount();
-  t.after(() => server.restore());
-  element.modelPopover = () => popover;
-  await answerModels(server, SHARED_NAME_CATALOG);
-
-  const scope = element.popoverActionHintScope({
-    contextId: "new:model",
-    kind: "model",
-    popover,
-  });
-  assert.equal(new Set(scope.targets.map(({ id }) => id)).size, 2);
-
-  element.selectModel("shared", "claude");
-  assert.equal(element.selectedModel().provider, "claude");
-});
-
 test("restores a retained dangerous permission option after confirmation is canceled", async (t) => {
   const frames = [];
   const option = optionControl({
@@ -615,10 +353,9 @@ test("restores a retained dangerous permission option after confirmation is canc
   option.focus = (options) => {
     focusOptions = options;
   };
-  const popover = { ...popoverWithOptions([option]), setAttribute() {} };
-  const { element, server } = mount();
+  const { element, nodes, server } = mount();
   t.after(() => server.restore());
-  element.permissionPopover = () => popover;
+  nodes.permissionPopover = popoverWithOptions([option]);
   await answerModels(server);
   await answerModes(server);
   Object.assign(globalThis.window, {
@@ -636,132 +373,58 @@ test("restores a retained dangerous permission option after confirmation is canc
   assert.deepEqual(focusOptions, { preventScroll: true });
 });
 
-test("declares a session-bound Action Hint context for both retained popover contexts", () => {
-  const presentation = {
-    actionHintDialog: () => ({}),
-    scrollModeHud: () => ({}),
-    scrollSurfaceSelector: () => ({}),
-  };
-  const popover = () => ({
-    matches: () => false,
-    querySelector: () => presentation,
-    querySelectorAll: () => [],
-  });
-  const owner = {
-    isConnected: true,
-    context: { locked: false },
-    ensureRendered() {},
-    modelPopover: () => modelPopover,
-    permissionPopover: () => permissionPopover,
-    popoverKeyboardNavigationContext:
-      turnOptions.popoverKeyboardNavigationContext,
-    popoverActionHintScope: turnOptions.popoverActionHintScope,
-  };
-  const modelPopover = popover();
-  const permissionPopover = popover();
-
-  const contexts = turnOptions.keyboardNavigationContexts.call(owner, {
-    scopeId: "task:thread-a",
-  });
-
-  assert.deepEqual(
-    contexts.map(({ id, kind, root, actionHints }) => ({
-      id,
-      kind,
-      root,
-      sessionBound: actionHints.sessionBound,
-    })),
-    [
-      {
-        id: "task-composer:task:thread-a:model-options",
-        kind: "popover",
-        root: modelPopover,
-        sessionBound: true,
-      },
-      {
-        id: "task-composer:task:thread-a:permission-options",
-        kind: "popover",
-        root: permissionPopover,
-        sessionBound: true,
-      },
-    ],
-  );
-});
-
 test("marks only the selected model and permission options as the popover autofocus", async (t) => {
-  const { element, nodes, server } = mount();
+  const { element, server } = mount();
   t.after(() => server.restore());
-  let modelHtml = "";
-  let permissionHtml = "";
-  element.renderModelPopover = turnOptions.renderModelPopover;
-  element.patchPopover = (popover, html) => {
-    if (popover === nodes.modelPopover) {
-      modelHtml += html;
-    } else if (popover === nodes.permissionPopover) {
-      permissionHtml = html;
-    }
-  };
   await answerModels(server, SHARED_NAME_CATALOG);
   await answerModes(server);
 
-  modelHtml = "";
-  element.render();
-
+  const models = menuMarkup(element, "model");
   assert.match(
-    modelHtml,
-    /data-provider="codex"[\s\S]*?aria-pressed="true"\s+autofocus/,
+    models,
+    /data-provider="codex"[\s\S]*?aria-pressed="true" \?autofocus="true"/,
   );
-  assert.equal(modelHtml.match(/autofocus/g).length, 1);
+  assert.equal(models.match(/\?autofocus="true"/g).length, 1);
+  const permissions = menuMarkup(element, "permission");
   assert.match(
-    permissionHtml,
-    /data-permission-mode="approveForMe"[\s\S]*?aria-pressed="true"\s+autofocus/,
+    permissions,
+    /data-permission-mode="approveForMe"[\s\S]*?aria-pressed="true" \?autofocus="true"/,
   );
-  assert.equal(permissionHtml.match(/autofocus/g).length, 1);
+  assert.equal(permissions.match(/\?autofocus="true"/g).length, 1);
 });
 
 test("hides only its own popover when a bound Action Hint session is dismissed", () => {
   const hidden = [];
-  const modelPopover = {};
-  const permissionPopover = {};
-  const owner = {
-    modelPopover: () => modelPopover,
-    permissionPopover: () => permissionPopover,
-    hidePopover: (popover) => hidden.push(popover),
+  const nodes = {
+    modelPopover: popoverNode({ open: true, hidden }),
+    permissionPopover: popoverNode({ open: true, hidden }),
   };
-  turnOptions.handleDismiss.call(owner, { target: {} });
-  turnOptions.handleDismiss.call(owner, { target: permissionPopover });
-  turnOptions.handleDismiss.call(owner, { target: modelPopover });
-  assert.deepEqual(hidden, [permissionPopover, modelPopover]);
+  const element = turnOptionsHost(nodes);
+  element.dismissed({ target: {} });
+  element.dismissed({ target: nodes.permissionPopover });
+  element.dismissed({ target: nodes.modelPopover });
+  assert.deepEqual(hidden, [nodes.permissionPopover, nodes.modelPopover]);
 });
 
 test("renders only the exact provider and model identity as selected", async (t) => {
-  const { element, nodes, server } = mount();
+  const { element, server } = mount();
   t.after(() => server.restore());
-  let modelHtml = "";
-  element.renderModelPopover = turnOptions.renderModelPopover;
-  element.patchPopover = (popover, html) => {
-    if (popover === nodes.modelPopover) {
-      modelHtml += html;
-    }
-  };
   await answerModels(server, SHARED_NAME_CATALOG);
 
-  modelHtml = "";
-  element.render();
+  const codex = menuMarkup(element, "model");
   assert.match(
-    modelHtml,
+    codex,
     /data-provider="codex"[\s\S]*?data-model="shared"[\s\S]*?aria-pressed="true"/,
   );
-  assert.doesNotMatch(modelHtml, /Claude Shared/);
+  assert.doesNotMatch(codex, /Claude Shared/);
 
-  element.browsedProvider = "claude";
-  modelHtml = "";
-  element.render();
+  element.browseProvider("claude");
+  const claude = menuMarkup(element, "model");
   assert.match(
-    modelHtml,
+    claude,
     /data-provider="claude"[\s\S]*?data-model="shared"[\s\S]*?aria-pressed="false"/,
   );
-  assert.doesNotMatch(modelHtml, /Codex Shared/);
+  assert.doesNotMatch(claude, /Codex Shared/);
 });
 
 test("browsing a provider leaves the chosen model and its settings untouched", async (t) => {
@@ -845,66 +508,76 @@ test("an effort must be offered even when an unavailable default is supplied", a
 });
 
 test("keeps a closed picker wordless while its list loads", (t) => {
-  const { nodes, server } = mount({ provider: "codex" });
+  const { element, server } = mount({ provider: "codex" });
   t.after(() => server.restore());
 
-  assert.equal(nodes.modelButton.innerHTML, LOADING_SLOT_HTML);
-  assert.equal(nodes.modelButton.classList.contains("is-deferred"), true);
-  assert.equal(nodes.modelButton.attributes.get("aria-busy"), "true");
-  assert.equal(nodes.modelButton.attributes.get("aria-label"), "Choose model");
-  assert.equal(nodes.modelButton.title, "Loading models");
-  assert.equal(nodes.permissionPicker.hidden, true);
-  assert.equal(nodes.permissionButton.innerHTML, LOADING_SLOT_HTML);
-  assert.equal(nodes.permissionButton.attributes.get("aria-busy"), "true");
+  const { model, permission, permissionHidden } = drawing(element);
+  assert.equal(model.content, LOADING_SLOT_HTML);
+  assert.equal(model.classes.includes("is-deferred"), true);
+  assert.equal(model.busy, true);
+  assert.equal(model.label, "Choose model");
+  assert.equal(model.title, "Loading models");
+  assert.equal(permissionHidden, true);
+  assert.equal(permission.content, LOADING_SLOT_HTML);
+  assert.equal(permission.busy, true);
   // The modes on offer belong to a model, so none are asked for before one.
   assert.deepEqual(server.asked(), []);
-  const assignments = nodes.modelButton.assignments;
 
-  // Showing the ring changes the button's class, not the slot's nodes.
+  // Showing the ring changes the button's class, not what its slot draws.
   server.fireTimers();
-  assert.equal(nodes.modelButton.classList.contains("is-deferred"), false);
-  assert.equal(nodes.modelButton.assignments, assignments);
+  const ringed = drawing(element).model;
+  assert.equal(ringed.classes.includes("is-deferred"), false);
+  assert.equal(ringed.content, model.content);
 });
 
 test("shows the permission picker once the model is known and its label once a list describes it", async (t) => {
-  const { nodes, server } = mount();
+  const { element, server } = mount();
   t.after(() => server.restore());
   await answerModels(server);
 
-  assert.equal(nodes.permissionPicker.hidden, false);
-  assert.equal(nodes.permissionButton.innerHTML, LOADING_SLOT_HTML);
-  assert.equal(nodes.permissionButton.classList.contains("is-deferred"), true);
-  assert.equal(nodes.permissionButton.attributes.get("aria-busy"), "true");
-  assert.equal(nodes.permissionButton.title, "Loading permission modes");
+  const { permission, permissionHidden } = drawing(element);
+  assert.equal(permissionHidden, false);
+  assert.equal(permission.content, LOADING_SLOT_HTML);
+  assert.equal(permission.classes.includes("is-deferred"), true);
+  assert.equal(permission.busy, true);
+  assert.equal(permission.title, "Loading permission modes");
 
   server.fireTimers();
-  assert.equal(nodes.permissionButton.classList.contains("is-deferred"), false);
+  const ringed = drawing(element).permission;
+  assert.equal(ringed.classes.includes("is-deferred"), false);
 
   await answerModes(server);
-  assert.equal(nodes.permissionButton.innerHTML, permissionButtonHtml("Auto review"));
-  assert.equal(nodes.permissionButton.attributes.has("aria-busy"), false);
-  assert.equal(nodes.permissionButton.title, "Approve for me");
+  const answered = drawing(element).permission;
+  assert.equal(answered.content, permissionButtonHtml("Auto review"));
+  assert.equal(answered.busy, false);
+  assert.equal(answered.title, "Approve for me");
 });
 
 test("a closed permission control keeps what it showed until the delay, then shows the spinner", async (t) => {
-  const { element, nodes, server } = mount();
+  const { element, server } = mount();
   t.after(() => server.restore());
   await answerModels(server);
   await answerModes(server);
-  assert.equal(nodes.permissionButton.innerHTML, permissionButtonHtml("Auto review"));
+  assert.equal(
+    drawing(element).permission.content,
+    permissionButtonHtml("Auto review"),
+  );
 
   element.selectModel("opus[1m]", "claude");
-  assert.equal(nodes.permissionButton.innerHTML, permissionButtonHtml("Auto review"));
-  assert.equal(nodes.permissionButton.attributes.get("aria-busy"), "true");
-  assert.equal(nodes.permissionButton.classList.contains("is-deferred"), false);
+  const kept = drawing(element).permission;
+  assert.equal(kept.content, permissionButtonHtml("Auto review"));
+  assert.equal(kept.busy, true);
+  assert.equal(kept.classes.includes("is-deferred"), false);
 
   server.fireTimers();
-  assert.equal(nodes.permissionButton.innerHTML, LOADING_SLOT_HTML);
-  assert.equal(nodes.permissionButton.classList.contains("is-deferred"), false);
+  const ringed = drawing(element).permission;
+  assert.equal(ringed.content, LOADING_SLOT_HTML);
+  assert.equal(ringed.classes.includes("is-deferred"), false);
 
   await answerModes(server);
-  assert.equal(nodes.permissionButton.innerHTML, permissionButtonHtml("Automatic"));
-  assert.equal(nodes.permissionButton.attributes.has("aria-busy"), false);
+  const answered = drawing(element).permission;
+  assert.equal(answered.content, permissionButtonHtml("Automatic"));
+  assert.equal(answered.busy, false);
 });
 
 test("counts a pending list once across the requests that ask for it", () => {
@@ -924,7 +597,7 @@ test("counts a pending list once across the requests that ask for it", () => {
   try {
     let renders = 0;
     const owner = {
-      render() {
+      draw() {
         renders += 1;
       },
     };
@@ -1171,7 +844,7 @@ test("a mode is the person's, then the remembered one, then the list's default, 
 });
 
 test("an unreadable permission list reads as unavailable, holds the submission, and is not asked for again", async (t) => {
-  const { element, nodes, server } = mount();
+  const { element, server } = mount();
   t.after(() => server.restore());
   await answerModels(server);
   refuse(server.permissions().at(-1), "Codex app-server is unavailable.");
@@ -1179,10 +852,11 @@ test("an unreadable permission list reads as unavailable, holds the submission, 
 
   assert.equal(element.readyForSubmission(), false);
   assert.equal(Object.hasOwn(element.submissionOptions(), "permissionMode"), false);
-  assert.equal(nodes.permissionButton.innerHTML, permissionButtonHtml("Unavailable"));
-  assert.equal(nodes.permissionButton.classList.contains("is-unavailable"), true);
+  const { permission } = drawing(element);
+  assert.equal(permission.content, permissionButtonHtml("Unavailable"));
+  assert.equal(permission.classes.includes("is-unavailable"), true);
   assert.equal(
-    nodes.permissionButton.title,
+    permission.title,
     "Permission modes could not be loaded. Codex app-server is unavailable.",
   );
 
@@ -1194,31 +868,35 @@ test("an unreadable permission list reads as unavailable, holds the submission, 
   assert.deepEqual(server.asked(), ["codex/gpt-6-astra", "codex/gpt-5.6-sol"]);
   await answerModes(server);
   assert.equal(element.readyForSubmission(), true);
-  assert.equal(nodes.permissionButton.classList.contains("is-unavailable"), false);
+  assert.equal(
+    drawing(element).permission.classes.includes("is-unavailable"),
+    false,
+  );
 });
 
 test("an unreadable model list holds the submission and leaves no permission control to show", async (t) => {
-  const { element, nodes, server } = mount();
+  const { element, server } = mount();
   t.after(() => server.restore());
   refuse(server.models().at(-1), "No agent offered a model.");
   await drain();
 
   assert.equal(element.readyForSubmission(), false);
-  assert.equal(nodes.permissionPicker.hidden, true);
+  const { model, permissionHidden } = drawing(element);
+  assert.equal(permissionHidden, true);
   assert.equal(
-    nodes.modelButton.innerHTML,
+    model.content,
     '<span class="task-model-name">Unavailable</span>',
   );
-  assert.equal(nodes.modelButton.classList.contains("is-unavailable"), true);
+  assert.equal(model.classes.includes("is-unavailable"), true);
   assert.equal(
-    nodes.modelButton.title,
+    model.title,
     "Models could not be loaded. No agent offered a model.",
   );
   assert.deepEqual(server.asked(), []);
 });
 
 test("a Task whose agent offered no models reads as unavailable for that agent's reason", async (t) => {
-  const { element, nodes, server } = mount({ provider: "claude" });
+  const { element, server } = mount({ provider: "claude" });
   t.after(() => server.restore());
   await answerModels(server, {
     models: CATALOG.models.filter((model) => model.provider !== "claude"),
@@ -1226,21 +904,22 @@ test("a Task whose agent offered no models reads as unavailable for that agent's
   });
 
   assert.equal(element.readyForSubmission(), false);
-  assert.equal(nodes.permissionPicker.hidden, true);
+  const { model, permissionHidden } = drawing(element);
+  assert.equal(permissionHidden, true);
   assert.equal(
-    nodes.modelButton.title,
+    model.title,
     "Models could not be loaded. Claude is not installed.",
   );
   assert.deepEqual(server.asked(), []);
 });
 
 test("opening the model menu asks the agents again and offers what they answer", async (t) => {
-  const { element, nodes, server } = mount();
+  const { element, server } = mount();
   t.after(() => server.restore());
   await answerModels(server);
   await answerModes(server);
 
-  openModelMenu(element, nodes);
+  openModelMenu(element);
   assert.equal(server.models().length, 2);
   await answerModels(server, {
     models: [...CATALOG.models, NEW_CODEX_MODEL],
@@ -1253,44 +932,42 @@ test("opening the model menu asks the agents again and offers what they answer",
 });
 
 test("a list asked for again leaves the control as it was until the answer arrives", async (t) => {
-  const { element, nodes, server } = mount();
+  const { element, server } = mount();
   t.after(() => server.restore());
   await answerModels(server);
   await answerModes(server);
-  const shown = nodes.modelButton.innerHTML;
-  const title = nodes.modelButton.title;
+  const shown = drawing(element).model;
 
-  openModelMenu(element, nodes);
+  openModelMenu(element);
   server.fireTimers();
 
   assert.equal(server.models().length, 2);
-  assert.equal(nodes.modelButton.innerHTML, shown);
-  assert.equal(nodes.modelButton.title, title);
-  assert.equal(nodes.modelButton.attributes.has("aria-busy"), false);
+  assert.deepEqual(drawing(element).model, shown);
+  assert.equal(shown.busy, false);
   assert.equal(element.readyForSubmission(), true);
 });
 
 test("the menu asks for no second list while one is on its way", async (t) => {
-  const { element, nodes, server } = mount();
+  const { element, server } = mount();
   t.after(() => server.restore());
-  openModelMenu(element, nodes);
+  openModelMenu(element);
   assert.equal(server.models().length, 1);
   await answerModels(server);
   await answerModes(server);
 
-  openModelMenu(element, nodes);
-  openModelMenu(element, nodes);
+  openModelMenu(element);
+  openModelMenu(element);
   assert.equal(server.models().length, 2);
 });
 
 test("a chosen model that leaves the list gives way to the next in line and its modes are asked for", async (t) => {
-  const { element, nodes, server } = mount({ provider: "codex" });
+  const { element, server } = mount({ provider: "codex" });
   t.after(() => server.restore());
   await answerModels(server);
   await answerModes(server);
   assert.equal(element.snapshot().model, "gpt-6-astra");
 
-  openModelMenu(element, nodes);
+  openModelMenu(element);
   await answerModels(server, {
     models: [{ ...CATALOG.models[1], isDefault: true }],
     unavailable: [],
@@ -1301,36 +978,37 @@ test("a chosen model that leaves the list gives way to the next in line and its 
 });
 
 test("a list that cannot be read again reads as unavailable and holds the submission", async (t) => {
-  const { element, nodes, events, server } = mount();
+  const { element, events, server } = mount();
   t.after(() => server.restore());
   await answerModels(server);
   await answerModes(server);
   assert.equal(element.readyForSubmission(), true);
 
-  openModelMenu(element, nodes);
+  openModelMenu(element);
   refuse(server.models().at(-1), "Codex app-server is unavailable.");
   await drain();
 
   assert.equal(element.readyForSubmission(), false);
   assert.equal(events.at(-1).ready, false);
-  assert.equal(nodes.permissionPicker.hidden, true);
+  const { model, permissionHidden } = drawing(element);
+  assert.equal(permissionHidden, true);
   assert.equal(
-    nodes.modelButton.innerHTML,
+    model.content,
     '<span class="task-model-name">Unavailable</span>',
   );
   assert.equal(
-    nodes.modelButton.title,
+    model.title,
     "Models could not be loaded. Codex app-server is unavailable.",
   );
 });
 
 test("an agent that cannot be asked at a later opening leaves its Task unavailable for that agent's reason", async (t) => {
-  const { element, nodes, server } = mount({ provider: "codex" });
+  const { element, server } = mount({ provider: "codex" });
   t.after(() => server.restore());
   await answerModels(server);
   await answerModes(server);
 
-  openModelMenu(element, nodes);
+  openModelMenu(element);
   await answerModels(server, {
     models: CATALOG.models.filter((model) => model.provider !== "codex"),
     unavailable: [{ provider: "codex", message: CODEX_SIGN_IN_REQUIRED }],
@@ -1338,33 +1016,33 @@ test("an agent that cannot be asked at a later opening leaves its Task unavailab
 
   assert.equal(element.readyForSubmission(), false);
   assert.equal(
-    nodes.modelButton.title,
+    drawing(element).model.title,
     `Models could not be loaded. ${CODEX_SIGN_IN_REQUIRED}`,
   );
 });
 
 test("a list read again after a failure takes the failure's place", async (t) => {
-  const { element, nodes, server } = mount();
+  const { element, server } = mount();
   t.after(() => server.restore());
   refuse(server.models().at(-1), "No agent offered a model.");
   await drain();
-  assert.equal(nodes.modelButton.classList.contains("is-unavailable"), true);
+  assert.equal(drawing(element).model.classes.includes("is-unavailable"), true);
 
-  openModelMenu(element, nodes);
+  openModelMenu(element);
   await answerModels(server);
   await answerModes(server);
 
-  assert.equal(nodes.modelButton.classList.contains("is-unavailable"), false);
+  assert.equal(drawing(element).model.classes.includes("is-unavailable"), false);
   assert.equal(element.snapshot().model, "gpt-6-astra");
   assert.equal(element.readyForSubmission(), true);
 });
 
 test("a list answered after the control is detached is not taken up", async (t) => {
-  const { element, nodes, server } = mount({ provider: "codex" });
+  const { element, server } = mount({ provider: "codex" });
   t.after(() => server.restore());
   await answerModels(server);
   await answerModes(server);
-  openModelMenu(element, nodes);
+  openModelMenu(element);
   const late = server.models().at(-1);
 
   element.disconnectedCallback();
@@ -1379,7 +1057,7 @@ test("a list answered after the control is detached is not taken up", async (t) 
 
   assert.equal(element.snapshot().model, "gpt-6-astra");
   assert.equal(server.models().length, 2);
-  openModelMenu(element, nodes);
+  openModelMenu(element);
   assert.equal(server.models().length, 3);
 });
 
@@ -1469,46 +1147,89 @@ test("a submission handed over stays as the person's picks until its overrides a
   });
 });
 
-// The real component methods, with its own DOM nodes and the agent routes
-// standing in. Each request stays open until the test answers it.
+// The real component, given its context and then connected, with its two
+// menus and the agent routes standing in. Each request stays open until the
+// test answers it, and every change it announces is kept in `events`.
 function mount(context = {}) {
   const server = installAgentServer();
-  const nodes = {
-    modelButton: control(),
-    permissionButton: control(),
-    modelPopover: control(),
-    permissionPopover: control(),
-    permissionPicker: { hidden: false },
-  };
+  const nodes = { modelPopover: popoverNode(), permissionPopover: popoverNode() };
   const events = [];
-  const element = Object.create(turnOptions);
-  Object.assign(element, {
-    isConnected: true,
-    dataset: {},
-    addEventListener() {},
-    removeEventListener() {},
+  const element = turnOptionsHost(nodes, {
     dispatchEvent(event) {
-      events.push({
-        ...event.detail,
-        ready: turnOptions.readyForSubmission.call(this),
-      });
+      events.push({ ...event.detail, ready: this.readyForSubmission() });
       return true;
     },
-    ensureRendered() {},
-    modelButton: () => nodes.modelButton,
-    permissionButton: () => nodes.permissionButton,
-    permissionPicker: () => nodes.permissionPicker,
-    modelPopover: () => nodes.modelPopover,
-    permissionPopover: () => nodes.permissionPopover,
-    renderModelPopover() {},
-    patchPopover() {},
-    hidePopover() {},
-    hidePopovers() {},
   });
-  element.ensureState();
   element.setContext({ cwd: "src", ...context });
+  element.isConnected = true;
   element.connectedCallback();
   return { element, nodes, events, server };
+}
+
+// An element whose menus are `nodes`, read when it looks for them, and whose
+// drawing runs `willUpdate()`, `render()`, and `updated()` in turn and keeps
+// what `render()` drew.
+function turnOptionsHost(nodes, properties = {}) {
+  return Object.assign(new TurnOptions(), {
+    isConnected: false,
+    dataset: {},
+    drawn: null,
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent: () => true,
+    modelPopover: {
+      get value() {
+        return nodes.modelPopover;
+      },
+    },
+    permissionPopover: {
+      get value() {
+        return nodes.permissionPopover;
+      },
+    },
+    performUpdate() {
+      this.willUpdate();
+      this.drawn = this.render();
+      this.updated();
+    },
+    ...properties,
+  });
+}
+
+// What the last drawing showed on the two closed controls.
+function drawing(element) {
+  const markup = templateHtml(element.drawn)
+    .replace(/\s+/g, " ")
+    .replaceAll(" >", ">");
+  const button = (name) => {
+    const [, classes, attributes, content] = new RegExp(
+      `<button type="button" class="(${name}[^"]*)"([^>]*)>(.*?)</button>`,
+    ).exec(markup);
+    const attribute = (key) =>
+      new RegExp(` ${key}="([^"]*)"`).exec(attributes)?.[1];
+    return {
+      classes: classes.split(" "),
+      label: attribute("aria-label"),
+      title: attribute("title"),
+      busy: attribute("aria-busy") === "true",
+      disabled: attributes.includes(' ?disabled="true"'),
+      content,
+    };
+  };
+  return {
+    model: button("task-model-button"),
+    permission: button("task-permission-button"),
+    permissionHidden: markup.includes(
+      '<div class="task-permission-picker" ?hidden="true">',
+    ),
+  };
+}
+
+// What one menu held in the last drawing.
+function menuMarkup(element, kind) {
+  return new RegExp(
+    `class="task-${kind}-popover-content">([\\s\\S]*?)<caffold-keyboard-navigation-presentation`,
+  ).exec(templateHtml(element.drawn).replace(/\s+/g, " "))[1];
 }
 
 function installAgentServer() {
@@ -1557,8 +1278,11 @@ function installAgentServer() {
   return server;
 }
 
-function openModelMenu(element, nodes) {
-  element.handleBeforeToggle({ newState: "open", target: nodes.modelPopover });
+function openModelMenu(element) {
+  element.handleBeforeToggle({
+    newState: "open",
+    target: element.modelPopover.value,
+  });
 }
 
 async function answerModels(server, catalog = CATALOG) {
@@ -1633,43 +1357,19 @@ function permissionButtonHtml(label) {
 const LOADING_SLOT_HTML =
   '<span class="task-picker-spinner" aria-hidden="true"></span>';
 
-function control() {
-  const attributes = new Map();
-  const classes = new Set();
-  let html = "";
-  return {
-    attributes,
-    disabled: false,
+// A menu element, closed unless `open`; each one hidden is added to `hidden`.
+function popoverNode({ open = false, hidden = [] } = {}) {
+  return Object.assign(new HTMLElement(), {
+    open,
     style: {},
-    querySelector: (selector) => ({ selector }),
-    assignments: 0,
-    title: "",
-    classList: {
-      toggle(name, force) {
-        if (force) {
-          classes.add(name);
-        } else {
-          classes.delete(name);
-        }
-      },
-      contains(name) {
-        return classes.has(name);
-      },
+    matches(selector) {
+      return selector === ":popover-open" && this.open;
     },
-    get innerHTML() {
-      return html;
+    hidePopover() {
+      this.open = false;
+      hidden.push(this);
     },
-    set innerHTML(value) {
-      html = value;
-      this.assignments += 1;
-    },
-    setAttribute(name, value) {
-      attributes.set(name, value);
-    },
-    removeAttribute(name) {
-      attributes.delete(name);
-    },
-  };
+  });
 }
 
 function popoverWithOptions(options) {

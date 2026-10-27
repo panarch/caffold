@@ -128,11 +128,12 @@ test("keeps long names readable and selection stable while scrolling a long mode
   await expect(menu.locator('[data-model="long-21"]')).toHaveAttribute("aria-pressed", "true");
   const before = await menu.evaluate((element) => element.scrollTop);
   expect(before).toBeGreaterThan(0);
-  const after = await picker.evaluate((element) => {
-    const popover = element.modelPopover();
+  const after = await picker.evaluate(async (element) => {
+    const popover = element.querySelector(".task-model-popover");
     const providers = popover.querySelector(".task-provider-options");
     const selected = popover.querySelector('[data-model][aria-pressed="true"]');
-    element.render();
+    element.requestUpdate();
+    await element.updateComplete;
     return {
       scroll: popover.scrollTop,
       retainedProvider: providers === popover.querySelector(".task-provider-options"),

@@ -221,6 +221,7 @@ test("release checks the source before versioning and packaging on macOS", () =>
     assert.ok(macos.includes(`- name: ${name}\n        if: startsWith(inputs.action, 'release-')`));
   }
   const ordered = [
+    "npm ci --omit=dev",
     "node scripts/bump-release-version.mjs", 'git commit -m "Release v${RELEASE_VERSION}"',
     "desktop/macos/test-contracts", "desktop/macos/test-runtime",
     "cargo test --locked", "cargo clippy --locked --all-targets -- -D warnings",

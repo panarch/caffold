@@ -10,52 +10,6 @@ await import("./pane-resizer.js");
 const resizer = registry.element("caffold-pane-resizer").prototype;
 after(() => registry.restore());
 
-test("provides its exact visible keyboard-operable separator", () => {
-  const parent = {};
-  let current = true;
-  const calls = [];
-  const owner = {
-    hidden: false,
-    isConnected: true,
-    parentElement: parent,
-    handle: { id: "handle" },
-    canResize: () => true,
-    getAttribute: () => "Resize review navigator",
-    getClientRects: () => [{}],
-    focus: (options) => calls.push(options),
-  };
-
-  const scope = resizer.actionHintScope.call(owner, {
-    scopeId: "review:thread:navigator",
-    actionId: "control.separator.focus",
-    clipRoots: [{ id: "review" }],
-    isCurrent: () => current,
-  });
-  assert.equal(scope.targets.length, 1);
-  assert.equal(
-    scope.targets[0].id,
-    "review:thread:navigator:separator",
-  );
-  assert.equal(scope.targets[0].controlKind, "separator");
-  assert.equal(scope.targets[0].label, "Resize review navigator");
-  assert.equal(scope.targets[0].control, owner);
-  assert.equal(scope.targets[0].anchor, owner.handle);
-  scope.targets[0].activate();
-  assert.deepEqual(calls, [{ preventScroll: true }]);
-
-  current = false;
-  assert.equal(scope.targets[0].isActionable(), false);
-  current = true;
-  owner.parentElement = {};
-  assert.equal(scope.targets[0].isActionable(), false);
-  owner.parentElement = parent;
-  owner.canResize = () => false;
-  assert.deepEqual(resizer.actionHintScope.call(owner, {
-    scopeId: "review:thread:navigator",
-    actionId: "control.separator.focus",
-  }).targets, []);
-});
-
 test("keeps the start pane within its maximum, the end minimum, and 70% of the container", () => {
   const panel = (container, attributes = {}) =>
     Object.assign(Object.create(resizer), {

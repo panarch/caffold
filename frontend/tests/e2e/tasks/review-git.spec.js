@@ -4,6 +4,7 @@ import {
   actionHintDialog,
   enterActionHints,
   waitForActionHintTarget,
+  workspaceTargets,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
@@ -400,7 +401,7 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
 
   if (testInfo.project.name === "phone") {
     await expect(taskReview.locator(".task-review-navigator-axis")).toBeHidden();
-    await taskReview.evaluate((review) => review.updateAxis("navigator", "files"));
+    await taskReview.evaluate((review) => review.updateRoute({ navigator: "files" }));
   } else {
     await taskReview.getByRole("button", { name: "Files", exact: true }).click();
   }
@@ -442,7 +443,8 @@ test("supports every scope navigator and viewer combination", { tag: "@all-viewp
       await selectTaskReviewScope(tasksPage, scope);
       if (test.info().project.name === "phone") {
         await taskReview.evaluate(
-          (review, nextNavigator) => review.updateAxis("navigator", nextNavigator),
+          (review, nextNavigator) =>
+            review.updateRoute({ navigator: nextNavigator }),
           navigator,
         );
       } else {
@@ -743,7 +745,7 @@ test("retires the Branch base owner when its select binding is replaced", { tag:
   await page.keyboard.press("Escape");
 });
 
-test("keeps the Branch base Hint available without ready compared files", { tag: "@viewport-independent" }, async ({
+test("offers the Branch base Hint without ready compared files, and none without base refs", { tag: "@viewport-independent" }, async ({
   page,
 }) => {
   const { reviewScenario, tasksPage, taskReview } =
@@ -796,6 +798,14 @@ test("keeps the Branch base Hint available without ready compared files", { tag:
     "No changes compared with origin/main.",
   );
   await assertSelectOnly();
+
+  await compareTree.evaluate((tree) => {
+    tree.setBaseSelection({ refs: [] });
+  });
+  const hint = await enterActionHints(page);
+  await expect(hint.locator("button[data-action-hint-code]").first())
+    .toBeVisible();
+  await expect(hint.getByLabel(/ — Choose comparison base/)).toHaveCount(0);
 });
 
 test("keeps equivalent Branch header refreshes mutation-free", { tag: "@all-viewports" }, async ({ page }) => {
@@ -1004,6 +1014,11 @@ test("reads Working Tree again when it is chosen after returning on Branch", { t
   const reviewBranch = taskReview.getByRole("button", { name: "Review branch changes" });
   await expect(changes).toContainText("No changes.");
   await expect(reviewBranch).toBeVisible();
+  await expect.poll(async () =>
+    (await workspaceTargets(page, "review:"))
+      .filter(([id]) => id.endsWith(":working:branch"))
+      .map(([, label]) => label),
+  ).toEqual(["Review branch changes"]);
   await selectTaskReviewScope(tasksPage, "branch");
   await expect(
     taskReview.locator('caffold-git-compare-tree button[data-file-tree-path="src/planner.rs"]'),
@@ -1228,7 +1243,7 @@ test("keeps the open Branch diff where it was when Branch is read again", { tag:
   await expect.poll(() => reviewScenario.gitCompareDiffRequests).toBe(diffsBefore + 1);
   await expect
     .poll(() => readViewerReload(viewer, "caffold-diff-viewer", ".diff-lines"))
-    .toEqual({ reloaded: true, loadingSeen: false, top });
+    .toEqual({ handedAgain: true, sameContent: true, loadingSeen: false, top });
 });
 
 test("keeps the open Working Tree diff where it was after returning", { tag: "@viewport-independent" }, async ({
@@ -1254,7 +1269,7 @@ test("keeps the open Working Tree diff where it was after returning", { tag: "@v
   await expect.poll(() => reviewScenario.gitDiffRequests).toBe(diffsBefore + 1);
   await expect
     .poll(() => readViewerReload(viewer, "caffold-diff-viewer", ".diff-lines"))
-    .toEqual({ reloaded: true, loadingSeen: false, top });
+    .toEqual({ handedAgain: true, sameContent: true, loadingSeen: false, top });
 });
 
 test("keeps the open Branch Source where it was when Branch is read again", { tag: "@viewport-independent" }, async ({
@@ -1286,7 +1301,7 @@ test("keeps the open Branch Source where it was when Branch is read again", { ta
   await expect.poll(() => fileReads).toBe(readsBefore + 1);
   await expect
     .poll(() => readViewerReload(viewer, "caffold-code-viewer", ".code-lines"))
-    .toEqual({ reloaded: true, loadingSeen: false, top });
+    .toEqual({ handedAgain: true, sameContent: true, loadingSeen: false, top });
 });
 
 test("falls back when the selected Branch base disappears", { tag: "@all-viewports" }, async ({ page }) => {
@@ -1966,10 +1981,9 @@ test("maps the visible source line when Diff and Source representations switch",
     .toBe(sourceLine);
 
   await viewer.locator("caffold-code-viewer").evaluate((element) => {
-    element.setFile({
+    element.file = {
       content: "horizontal-only-source-segment-".repeat(30),
-      language: "Plain Text",
-    });
+    };
   });
   await expect(codeScroll).toContainText("horizontal-only-source-segment");
   await expect.poll(() => codeScroll.evaluate(
@@ -1997,13 +2011,13 @@ test("maps the visible source line when Diff and Source representations switch",
   await taskReview.getByRole("button", { name: "Diff", exact: true }).click();
   const horizontalDiff = viewer.locator("caffold-diff-viewer .diff-lines");
   await viewer.locator("caffold-diff-viewer").evaluate((element) => {
-    element.setDiff({
+    element.diff = {
       diff: [
         "@@ -1 +1 @@",
         "-short",
         `+${"horizontal-only-diff-segment-".repeat(30)}`,
       ].join("\n"),
-    });
+    };
   });
   await expect(horizontalDiff).toContainText("horizontal-only-diff-segment");
   await expect.poll(() => horizontalDiff.evaluate(
@@ -2159,6 +2173,7 @@ async function scrollViewerAndWatchReload(viewer, contentSelector, scrollSelecto
     scroller.scrollTop = scroller.scrollHeight / 2;
     const probe = {
       content: element.querySelector(contentSelector),
+      handedAgain: false,
       loadingSeen: false,
       record(records) {
         for (const record of records) {
@@ -2173,6 +2188,14 @@ async function scrollViewerAndWatchReload(viewer, contentSelector, scrollSelecto
         }
       },
     };
+    // The diff or source viewer stays and is handed the file read again.
+    const updated = probe.content.updated;
+    probe.content.updated = function (changed) {
+      if (changed.has("diff") || changed.has("file")) {
+        probe.handedAgain = true;
+      }
+      return updated.call(this, changed);
+    };
     probe.observer = new MutationObserver((records) => probe.record(records));
     probe.observer.observe(element, { childList: true, subtree: true });
     window.__reviewViewerReloadProbe = probe;
@@ -2186,7 +2209,8 @@ async function readViewerReload(viewer, contentSelector, scrollSelector) {
     probe.record(probe.observer.takeRecords());
     const content = element.querySelector(contentSelector);
     return {
-      reloaded: Boolean(content) && content !== probe.content,
+      handedAgain: probe.handedAgain,
+      sameContent: content === probe.content,
       loadingSeen: probe.loadingSeen,
       top: content?.querySelector(scrollSelector)?.scrollTop ?? null,
     };

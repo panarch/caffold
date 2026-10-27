@@ -2123,6 +2123,10 @@ test("starts a same-repository PR Task from the exact prepared head", { tag: "@a
   );
   await expect(dialog.locator("select[name='baseRef']")).toBeHidden();
   await expect(dialog.getByRole("button", { name: "Start Task" })).toBeEnabled();
+  await expect.poll(() => page.locator("caffold-github-task-start-dialog").evaluate(
+    (element) => element.keyboardNavigationContexts()[0]?.scroll.surfaces
+      .map(({ label }) => label),
+  )).toContain("Pull request base and head relationship");
   await captureReviewScreenshot(page, testInfo, "github-pr-start-task-dialog");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).focus();
   await page.keyboard.press("f");

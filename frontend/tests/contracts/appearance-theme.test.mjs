@@ -81,7 +81,7 @@ test("representative text, feedback, syntax, and diff roles meet contrast target
 test("theme-sensitive component assets follow app theme roles, not OS media", () => {
   for (const path of frontendSourcePaths()) {
     const source = readFrontend(path);
-    if (path === "index.html" || path === "theme.js") {
+    if (path === "index.html" || path === "theme.ts") {
       continue;
     }
     assert.doesNotMatch(
@@ -89,7 +89,7 @@ test("theme-sensitive component assets follow app theme roles, not OS media", ()
       /prefers-color-scheme/,
       `${path} must consume the resolved app theme instead of OS preference`,
     );
-    if (path.endsWith(".js") && path !== "service-worker.js") {
+    if (/\.(?:js|ts)$/.test(path) && path !== "service-worker.ts") {
       assert.doesNotMatch(
         source,
         /(?:git-logomark|github-invertocat)-(?:light|dark)\.svg/,
@@ -155,8 +155,8 @@ function frontendSourcePaths(directory = frontendRoot) {
     if (entry.isDirectory()) {
       return frontendSourcePaths(absolute);
     }
-    return [".css", ".html", ".js"].includes(extname(entry.name)) &&
-      !entry.name.endsWith(".test.js")
+    return [".css", ".html", ".js", ".ts"].includes(extname(entry.name)) &&
+      !/\.(?:test|d)\.(?:js|ts)$/.test(entry.name)
       ? [relative(frontendRoot, absolute)]
       : [];
   });

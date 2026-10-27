@@ -16,13 +16,8 @@ function drawingViewer() {
   return {
     opened,
     owner: {
-      initialized: true,
       generation: 4,
-      dataset: { renderState: "pptx" },
-      ensureRendered() {},
-      showMessage(renderState) {
-        this.dataset.renderState = renderState;
-      },
+      renderState: "pptx",
       release() {
         pptxViewer.release.call(this);
       },
@@ -66,7 +61,7 @@ function deckViewer(slides) {
       mount: { shadowRoot: root },
       isConnected: true,
       hidden: false,
-      dataset: { renderState: "pptx" },
+      renderState: "pptx",
     },
   };
 }
@@ -75,32 +70,11 @@ test("lets go of the deck shown and opens the file it is handed", () => {
   const { owner, opened } = drawingViewer();
   const file = Promise.resolve(new Blob(["bytes"]));
 
-  pptxViewer.setFile.call(owner, file);
+  owner.file = { file, newerCopy: false };
+  pptxViewer.willUpdate.call(owner, new Map([["file", null]]));
 
-  assert.equal(owner.dataset.renderState, "loading", "it says the file is loading until it is drawn");
+  assert.equal(owner.renderState, "loading", "it says the file is loading until it is drawn");
   assert.deepEqual(opened, [{ generation: 5, file }], "the deck shown before is let go of first");
-});
-
-test("publishes only the vertical axis of slides fitted to its width", () => {
-  const owner = {
-    initialized: true,
-    hidden: false,
-    isConnected: true,
-    ensureRendered() {},
-    getClientRects: () => [{}],
-  };
-
-  const scope = pptxViewer.scrollSurfaceScope.call(owner, {
-    scopeId: "review:viewer:pptx",
-  });
-
-  assert.equal(scope.surfaces.length, 1);
-  assert.deepEqual(scope.surfaces[0].axes, ["vertical"]);
-  assert.equal(scope.surfaces[0].scrollport, owner);
-  assert.equal(scope.surfaces[0].isEligible(), true);
-  owner.hidden = true;
-  assert.equal(scope.surfaces[0].isEligible(), false);
-  assert.deepEqual(pptxViewer.scrollSurfaceScope.call(owner, {}).surfaces, []);
 });
 
 test("offers the links out of the deck and to other slides on the slides drawn now", () => {
@@ -120,13 +94,12 @@ test("offers the links out of the deck and to other slides on the slides drawn n
     slide(0, [report, bookmark]),
     slide(4, [jump, tooltip, bare, diagram, button]),
   ]);
-  let current = true;
+  const fileViewer = { id: "file-viewer" };
 
   const scope = pptxViewer.actionHintScope.call(owner, {
     scopeId: "review:viewer:document",
-    linkActionId: "link.open",
-    clipRoots: [{ id: "file-viewer" }],
-    isCurrent: () => current,
+    actions: { link: "link.open" },
+    clipRoots: [fileViewer],
   });
 
   assert.deepEqual(scope.targets.map(({ id, label }) => ({ id, label })), [
@@ -155,11 +128,9 @@ test("offers the links out of the deck and to other slides on the slides drawn n
       label: "Open Write to us",
     },
   ]);
+  assert.deepEqual(scope.targets[0].clipRoots, [owner, fileViewer]);
   // A slide drawn or released inside the deck's shadow root changes the links.
   assert.deepEqual(scope.mutationRoots, [owner, root]);
-  assert.equal(scope.targets[1].isActionable(), true);
-  current = false;
-  assert.equal(scope.targets[1].isActionable(), false);
 });
 
 test("offers no links before the deck is drawn or without a link action", () => {
@@ -170,10 +141,10 @@ test("offers no links before the deck is drawn or without a link action", () => 
   assert.deepEqual(pptxViewer.actionHintScope.call(owner, {
     scopeId: "review:viewer:document",
   }).targets, []);
-  owner.dataset.renderState = "loading";
+  owner.renderState = "loading";
   assert.deepEqual(pptxViewer.actionHintScope.call(owner, {
     scopeId: "review:viewer:document",
-    linkActionId: "link.open",
+    actions: { link: "link.open" },
   }).targets, []);
 });
 

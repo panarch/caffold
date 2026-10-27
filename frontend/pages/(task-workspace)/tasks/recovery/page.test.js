@@ -4,78 +4,73 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./page.js");
+const { ActionHints } = await import("#app/action-hints.js");
+const { ScrollSurfaces } = await import("#app/scroll-scope.js");
 const Recovery = registry.element("caffold-task-recovery");
 const recovery = Recovery.prototype;
 after(() => registry.restore());
 
-function button(action) {
-  return {
-    dataset: { taskRecoveryAction: action },
-    disabled: false,
-    textContent: action,
-    clicks: 0,
-    getAttribute: () => null,
-    getClientRects: () => [{}],
-    focus() {},
-    click() {
-      this.clicks += 1;
-    },
-  };
-}
-
-test("provides the current recovery actions and exact recovery body", () => {
-  const actions = [
-    "restore",
-    "archive",
-    "remove",
-    "recheck",
-    "cancel-remove",
-    "confirm-remove",
-  ];
-  let controls = actions.map(button);
-  const scrollport = {
-    clientHeight: 100,
-    scrollHeight: 300,
-    getClientRects: () => [{}],
-  };
-  const owner = {
-    hidden: false,
-    isConnected: true,
-    recovery: { threadId: "thread-a" },
-    ensureState() {},
-    absenceNotice: () => null,
-    getClientRects: () => [{}],
-    querySelector(selector) {
-      if (selector.includes("task-recovery-body")) return scrollport;
-      return controls.find((control) =>
-        selector.includes(`\"${control.dataset.taskRecoveryAction}\"`)
-      ) ?? null;
-    },
-    querySelectorAll: () => controls,
-  };
-
-  const scope = recovery.actionHintScope.call(owner);
-  assert.deepEqual(
-    scope.targets.map(({ id }) => id),
-    actions.map((action) => `task-recovery:thread-a:${action}`),
+test("draws only the actions the server offers, all held while one runs", () => {
+  const { view } = recoveryView(recoveryTask());
+  const idle = drawn(view);
+  assert.match(idle, /<h2 id="task-recovery-task-title">Recovery Task<\/h2>/);
+  assert.match(idle, /<h3>Thread unavailable<\/h3>/);
+  assert.match(
+    idle,
+    /<p>Caffold still has this Task.<\/p><p>Its Codex Thread could not be found.<\/p>/,
   );
-  scope.targets.forEach((target) => target.activate());
-  assert.deepEqual(controls.map(({ clicks }) => clicks), [1, 1, 1, 1, 1, 1]);
+  assert.doesNotMatch(idle, /data-task-recovery-action="restore"/);
+  assert.doesNotMatch(idle, /data-task-recovery-action="archive"/);
+  assert.match(idle, /data-task-recovery-action="remove" \?disabled="false"/);
+  assert.match(idle, /data-task-recovery-action="recheck" \?disabled="false"/);
+  assert.match(idle, /<code>thread-recovery<\/code>/);
 
-  const scrollScope = recovery.scrollSurfaceScope.call(owner);
-  assert.equal(scrollScope.surfaces[0].scrollport, scrollport);
-  assert.equal(scrollScope.surfaces[0].isEligible(), true);
-  owner.recovery = { threadId: "thread-b" };
-  assert.equal(scope.targets[0].isActionable(), false);
-  assert.equal(scrollScope.surfaces[0].isEligible(), false);
-  owner.recovery = { threadId: "thread-a" };
-  scrollport.scrollHeight = 100;
-  assert.equal(scrollScope.surfaces[0].isEligible(), true);
-  controls = [];
-  assert.equal(scope.targets[0].isActionable(), false);
+  view.pendingAction = "recheck";
+  const busy = drawn(view);
+  assert.match(busy, /data-task-recovery-action="remove" \?disabled="true"/);
+  assert.match(busy, /role="status">Checking Task state…<\/p>/);
+});
+
+test("asks before removing, and says why an action failed", () => {
+  const { view } = recoveryView(recoveryTask());
+  view.confirmingRemoval = true;
+  view.actionError = new Error("Removal failed");
+  const confirming = drawn(view);
+
+  assert.match(confirming, /<strong>Remove this Task from Caffold\?<\/strong>/);
+  assert.match(
+    confirming,
+    /<p>The Codex Thread could not be found. Caffold will remove its membership and managed Task resources. This cannot be undone.<\/p>/,
+  );
+  assert.match(confirming, /data-task-recovery-action="cancel-remove"/);
+  assert.match(confirming, /data-task-recovery-action="confirm-remove"/);
+  assert.doesNotMatch(confirming, /data-task-recovery-action="remove"/);
+  assert.match(confirming, /role="alert">Removal failed<\/p>/);
+});
+
+test("an absent Task's notice takes the screen, and its Restore is answered here", () => {
+  const { view } = recoveryView(recoveryTask());
+  view.absence = "archived";
+  assert.match(
+    drawn(view),
+    /^<caffold-task-absence @caffold:task-absence-intent=""><\/caffold-task-absence>$/,
+  );
+
+  let restores = 0;
+  let stopped = 0;
+  const owner = { restoreArchived: () => { restores += 1; } };
+  const intent = (type) => ({
+    detail: { type },
+    stopPropagation: () => { stopped += 1; },
+  });
+  recovery.absenceIntent.call(owner, intent("restore"));
+  recovery.absenceIntent.call(owner, intent("other"));
+  assert.equal(restores, 1);
+  assert.equal(stopped, 2);
 });
 
 test("stores an equivalent fresh projection without clearing confirmation or error", () => {
@@ -162,15 +157,30 @@ function recoveryTask() {
 }
 
 function recoveryView(current) {
-  const view = new Recovery();
-  Object.assign(view, {
-    stateReady: true,
-    recovery: current,
-    pendingAction: "",
-    actionError: null,
-    confirmingRemoval: false,
-  });
   const renders = [];
-  view.render = () => renders.push(view.recovery);
+  const view = Object.create(
+    Recovery.prototype,
+    Object.getOwnPropertyDescriptors({
+      recovery: current,
+      absence: null,
+      pendingAction: "",
+      actionError: null,
+      confirmingRemoval: false,
+      draw() {
+        renders.push(this.recovery);
+      },
+    }),
+  );
+  view.hints = new ActionHints(view);
+  view.surfaces = new ScrollSurfaces(view);
   return { view, renders };
+}
+
+function drawn(view) {
+  return templateHtml(view.render())
+    .replace(/\s+/g, " ")
+    .replaceAll(" >", ">")
+    .replaceAll("> ", ">")
+    .replaceAll(" <", "<")
+    .trim();
 }

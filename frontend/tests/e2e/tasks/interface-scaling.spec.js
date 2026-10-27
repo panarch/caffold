@@ -42,11 +42,11 @@ test("scales visible Task controls without shrinking their touch targets", { tag
       "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-model-name",
     ),
   ).toHaveCount(1);
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const composer = document.querySelector(
       "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
     );
-    composer.stateFor().attachments = [
+    composer.state.attachments = [
       {
         id: "scale-audit-image",
         name: "scale-audit.png",
@@ -55,7 +55,8 @@ test("scales visible Task controls without shrinking their touch targets", { tag
           "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
       },
     ];
-    composer.render();
+    composer.requestUpdate();
+    await composer.updateComplete;
   });
   const compactAttachment = await attachmentRemoveMetrics(page);
   await page.getByRole("button", { name: /Task details/ }).click();

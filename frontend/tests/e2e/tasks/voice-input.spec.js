@@ -597,12 +597,15 @@ test("finishes transcription before sending when Send is tapped during recording
   const prompt = composer.locator('textarea[name="prompt"]');
   await composer.evaluate((form) => {
     window.__caffoldVoiceSubmissions = [];
-    form.closest("caffold-task-composer").addEventListener(
+    // Caught on its way down, before New Task's own listener on the Composer
+    // starts a Task with it.
+    form.closest("caffold-task-create").addEventListener(
       "caffold:task-composer-submit",
       (event) => {
         event.stopPropagation();
         window.__caffoldVoiceSubmissions.push(event.detail);
       },
+      { capture: true },
     );
   });
   await prompt.fill("기존 초안");
@@ -727,12 +730,15 @@ test("keeps the draft unsent when send-triggered transcription fails", { tag: "@
   const prompt = composer.locator('textarea[name="prompt"]');
   await composer.evaluate((form) => {
     window.__caffoldVoiceSubmissions = [];
-    form.closest("caffold-task-composer").addEventListener(
+    // Caught on its way down, before New Task's own listener on the Composer
+    // starts a Task with it.
+    form.closest("caffold-task-create").addEventListener(
       "caffold:task-composer-submit",
       (event) => {
         event.stopPropagation();
         window.__caffoldVoiceSubmissions.push(event.detail);
       },
+      { capture: true },
     );
   });
   await prompt.fill("보존할 초안");

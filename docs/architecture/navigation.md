@@ -8,7 +8,7 @@ Back/forward. They do not encode desktop, foldable, or phone presentation.
 
 `caffold-task-workspace` is the only routed workspace below
 `caffold-app-shell`. The App Shell parses and forwards routes, owns the browser
-history and each tab's last route behind `frontend/pages/navigation-history.js`,
+history and each tab's last route behind `frontend/pages/navigation-history.ts`,
 applies application bootstrap data, and presents build updates. It does not
 select a Task child, derive repository context for Git or GitHub, or implement
 domain-local Back behavior.
@@ -176,7 +176,7 @@ traversal.
 
 ## Route definitions
 
-`frontend/navigation-routes.js` is the pure central schema. Its internal
+`frontend/navigation-routes.ts` is the pure central schema. Its internal
 `ROUTE_DEFINITIONS` entries own parsing, URL generation, query normalization,
 parent calculation, and surface/domain/target metadata. They do not own API
 requests, selected Task state, or component activation.

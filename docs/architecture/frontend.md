@@ -13,12 +13,12 @@ page-level custom-element ownership, not a URL router such as Next.js. The
 directory path expresses ownership even when it does not appear in the browser
 URL.
 
-Use `layout.js` and `layout.css` for container components that own nested
-surfaces, shared chrome, state transitions, or pane behavior. Use `page.js` and
+Use `layout.ts` and `layout.css` for container components that own nested
+surfaces, shared chrome, state transitions, or pane behavior. Use `page.ts` and
 `page.css` for leaf app surfaces. Intermediate `frontend/pages` directories
-without their own `page.js` are wrapped in parentheses, such as `(git)`,
+without their own `page.ts` are wrapped in parentheses, such as `(git)`,
 `(log)`, and `(github)`; these are pathless ownership/layout nodes, not URL
-segments. The root `frontend/pages/layout.js` is the sole exception because an
+segments. The root `frontend/pages/layout.ts` is the sole exception because an
 additional parenthesized root would repeat the application hierarchy.
 
 Lower-level or reusable leaves stay in `frontend/components` even when they are
@@ -28,17 +28,32 @@ their owner. A reusable component does not become a page merely because it
 occupies most of a surface.
 
 An expanded non-page module uses a same-stem file and directory pair. The root
-`name.js` is its public feature entry point; `name/` owns private model and
+`name.ts` is its public feature entry point; `name/` owns private model and
 lifecycle implementation, plus a `components/` directory for Web Components
 mounted by the feature's outside owner. Non-visual consumers import only the
 explicit public API from `name.js`. A mounting owner imports the component path
 directly so custom-element registration remains visible. Unlike page ownership
-directories, an expanded module directory contains no `page.js` or `layout.js`.
+directories, an expanded module directory contains no `page.ts` or `layout.ts`.
 
 ## Native module imports
 
-JavaScript modules run directly without a bundler or transpiler. Shared imports
-can use three native aliases:
+Modules run in the browser without a bundler, one file per module. Each is
+TypeScript, `name.ts`, under the strict check. When the server is built, tsc
+compiles it to `name.js` with a source map beside it, and the server serves
+both under `/assets/`. tsc keeps import specifiers as written, so an import
+names the `.js` file that runs, and the type check reads the `.ts` source
+beside it. The service worker is typed for its own global scope, so
+`frontend/tsconfig.worker.json` compiles it apart from the page modules. A type
+error in either stops the server build.
+
+A source map carries its TypeScript source, so browser developer tools show
+`/assets/name.ts` without fetching it; the service worker does not cache source
+maps. `build-info.d.ts` is the one type declaration file: it declares the
+module the server build writes. Unit tests run from tsc's output too:
+`npm run test:unit` compiles the modules and their colocated tests into
+`frontend/tests/unit-build/` and runs them there.
+
+Shared imports can use three native aliases:
 
 | Prefix | Frontend-relative directory | Example |
 | --- | --- | --- |
@@ -53,8 +68,9 @@ the browser's `/assets/` URL and the frontend package directory respectively.
 
 Use relative imports within the same owner and aliases for shared dependencies.
 Use `#components/` for shared components and `#tasks/` for Task-owned shared
-modules; `#app/` covers other app-wide modules. Retain explicit `.js` extensions
-and the existing public-entry-point and private-implementation boundaries.
+modules; `#app/` covers other app-wide modules. Retain explicit `.js`
+extensions and the existing public-entry-point and private-implementation
+boundaries.
 Aliases only change path resolution, not module ownership or registration.
 
 Production imports that ascend three or more directories use these aliases.
@@ -63,6 +79,62 @@ contract checks that long relative imports do not return, that both runtimes
 resolve aliases to the same files, and that those files are served and cached.
 Worker and AudioWorklet modules do not inherit the document's import map;
 their imports and asset URLs remain relative or explicit URLs.
+
+Lit is imported through its `lit` package, as `lit` and `lit/…`, its standard
+decorators included (`lit/decorators.js`). The import map sends those, and the
+`lit-html`, `lit-element`, and `@lit/reactive-element` modules they import, to
+`/assets/`, which the server answers with the release `frontend/package.json`
+pins as a runtime dependency, embedded from `frontend/node_modules` when the
+server is built. tsc writes the decorators as calls of helpers it imports from
+`tslib`, which reaches `/assets/` the same way. A build therefore needs
+`npm ci` in `frontend/` first and Node.js on `PATH` for the TypeScript modules.
+Each package's modules reach its core through paths that resolve to one URL, so
+a page loads one module per package. Node unit tests resolve the same
+specifiers through the packages' exports to their Node builds, which stand in
+for the browser globals Node lacks.
+
+## Rendering
+
+A component that renders through Lit extends `LitElement` and renders into its
+own Light DOM; `@customElement()` registers it. The state it shows lives in
+reactive properties, `accessor` fields that `@property()` or `@state()`
+declares, and an owner hands a child what it shows through property bindings in
+its template. When one changes, Lit calls `render()` once the code that changed
+it has finished, so the DOM changes then rather than at the assignment. Work
+that reads the rendered DOM, such as scroll restoration, focus, or measurement,
+runs in `updated()`, or, in a flow that is already asynchronous, after
+`updateComplete` once it has checked that its request is still current. An
+owner that needs a child's rendered DOM awaits the child's `updateComplete`.
+A component that calls methods on a child its own template draws renders its
+pending update, with `performUpdate()`, before it looks the child up, so the
+child is there even before the component is in the document. A public method
+renders at once in the same way where the same call goes on to use what it
+drew, to measure or place it, to open or focus an element the change drew, or
+to hand values to the children it draws, and where a component changes its
+state in place rather than through reactive properties. The routed layouts
+render at once whenever they change what they show, because each hands the
+next layout or page its route right after drawing it. Other components,
+including when they connect, render on Lit's update.
+The Task conversation renders the components its entries mount at once in the
+same way, because Task Detail reads the whole transcript right after it
+changes.
+Event listeners bound in a template come and go with their nodes.
+A custom event that carries a detail is declared once: its detail type and its
+entry in the DOM event map (`WindowEventMap` for one sent on `window`) live in
+the module that dispatches it, in the one module that listens when several
+dispatch it, or, when several do both, in a `<name>-event.ts` module that also
+exports the name. Listeners take the declared detail without casting, and the
+custom-events contract checks where each declaration lives.
+
+Lit keeps the nodes of a rendered template across later renders and commits
+only the bindings whose values changed. Rendering a different template at the
+same place, or reordering a list rendered without keys, creates new nodes
+there. While a template stays rendered, Lit leaves alone the children of an
+element that has no bindings inside. It escapes bound values; raw HTML goes
+through its `unsafeHTML` directive. Components choose templates, list keys, and
+binding-free containers so that the identity
+[Incremental DOM updates](../review/frontend.md#incremental-dom-updates)
+requires survives.
 
 ## Routed hierarchy
 
@@ -106,7 +178,7 @@ subject identity throughout shared child transitions.
 
 ## App Shell
 
-`frontend/pages/layout.js` defines `caffold-app-shell`. It owns only
+`frontend/pages/layout.ts` defines `caffold-app-shell`. It owns only
 application-lifetime coordination:
 
 - bootstrap health and initial-path loading;
@@ -139,7 +211,7 @@ the dialog first closes a background Hint or Scroll session; the user presses
 handoff.
 
 The app shell owns one `NavigationHistory` behind the public
-`navigation-history.js` entry point. It answers what a requested route does to
+`navigation-history.ts` entry point. It answers what a requested route does to
 the browser history, which entries a route arriving from outside needs beneath
 it, and where each bottom tab reopens, reading only the route schema's declared
 parents and tabs. The shell keeps the browser calls, the entry record it writes
@@ -149,7 +221,7 @@ own scaffolding is never read back as a person navigating, and it writes an
 address the browser loaded before installing its navigation listeners.
 
 The app shell owns one `ForegroundRecoveryLifecycle` behind the public
-`foreground-recovery.js` entry point. It normalizes browser activation and
+`foreground-recovery.ts` entry point. It normalizes browser activation and
 connectivity observations into one idempotent recovery request. Raw listener
 wiring, the finite control model, and effectful lifecycle work remain private
 under that same-stem boundary; consumers receive semantic operations and an
@@ -201,7 +273,7 @@ transport internals. Async completions must still match both the foreground
 generation and the active route.
 
 Task List and Task Detail each keep one Task stream through shared
-`tasks/stream.js`. Its private graph separates inactive, suspended,
+`tasks/stream.ts`. Its private graph separates inactive, suspended,
 subscribing, preparing, reconciling, ready, waiting for the gateway, backing
 off, unavailable, and gone, and every node a stream can wait in ends on its own.
 Subscribing ends through the live gateway's open check, preparing through
@@ -222,7 +294,7 @@ A stream is gone when the gateway refuses its channel because the Task is
 archived or missing, or when its owner learns that from another request about
 the Task: it releases its subscription and retries nothing, foreground recovery
 and hiding leave it alone, and it presents as idle until the owner opens a
-context again. The `api.js` boundary alone turns a refusal code into that
+context again. The `api.ts` boundary alone turns a refusal code into that
 absence. Owners read only the derived transport state: idle, connecting,
 validating, reconnecting, ready, or unavailable. Callers that join a Task list
 read in flight share its canonical answer and each decide for itself whether it
@@ -354,7 +426,7 @@ Markdown Preview through their optional `--file-tree-scroll-end-clearance` and
 detail pane does not inherit this clearance. Navigation owns the panel chrome
 and preserves the same buttons, input paths, and semantic selection.
 
-`frontend/pages/(task-workspace)/layout.js` is the only routed workspace. It
+`frontend/pages/(task-workspace)/layout.ts` is the only routed workspace. It
 owns:
 
 - the shared master/detail presentation;
@@ -414,9 +486,9 @@ document listener or global presentation.
 
 Workspace, registered modal, and registered popover owners publish one thin
 keyboard-navigation context identified by stable ID, ownership kind, and exact
-retained root. Action Hint and Scroll remain separate optional capabilities on
-that context, and the Action Hint capability may declare the context
-session-bound. The same fresh context resolution serves both `F` and `S`: one
+retained root, with the presentation host it shows its modes in. Action Hint
+and Scroll remain separate optional scopes on that context, and the context may
+declare itself session-bound. The same fresh context resolution serves both `F` and `S`: one
 open registered popover wins over the workspace, including when it is an exact
 descendant of the currently open product modal; otherwise an unknown or
 unrelated open overlay, duplicate root, or ambiguous popover rejects entry. The
@@ -427,8 +499,9 @@ infer actions or scrollports from overlay descendants.
 The coordinator enters Action Hint mode from a non-editing `F` key, or from
 its key combination below, and pulls one-shot semantic descriptors from
 explicitly participating owners. A non-editing `T` key first asks Task
-Workspace to open the Task switcher and then enters the same mode, so the
-session it collects is scoped to that modal.
+Workspace to open the Task switcher and, in the next frame, once the switcher
+has drawn its rows, enters the same mode, so the session it collects is scoped
+to that modal.
 Task Workspace opens it only on its Tasks surface, because the Notes and
 Settings surfaces do not load the Task list the switcher shows; a refusal
 leaves the key unhandled. Its two pointer openers reach the same Task
@@ -438,7 +511,7 @@ compact Back belongs to Task Workspace, which shows it exactly when it shows
 that Back.
 
 Key combinations are a second set of keys the coordinator handles in editing
-and with keyboard navigation turned off. `keyboard-navigation/shortcuts.js`
+and with keyboard navigation turned off. `keyboard-navigation/shortcuts.ts`
 lists them, each action with one combination for Apple keyboards, listed
 first, and one without ⌘:
 
@@ -480,6 +553,22 @@ and file-viewer actions. Git
 declares Refresh, while GitHub detail declares Start Task and Pull Files.
 Activation reuses each owner's existing native button click, form, or
 product-intent path.
+
+Each owner declares these targets in its template, on the control they act on,
+with the `ActionHints` it keeps (`action-hints/declarations.ts`), for example
+`${this.hints.button({ id, label, action, when })}`. A declaration stays while
+its element is drawn and leaves with it. The owner's public
+`actionHintScope(pull)` returns `this.hints.scope(pull)`, which reads what the
+owner last drew, puts the parent's scope ID in front of each declared ID,
+and leaves out a declaration whose `when` is false, whose control is disabled,
+or whose anchor has no layout box. A container adds only which direct children
+it merges, and reaches them through the `DrawnRef` it drew them with rather
+than by selector. Scroll surfaces are declared the same way with
+`ScrollSurfaces` (`scroll-scope.ts`), and modals and popovers with
+`KeyboardContexts` (`keyboard-navigation/context.ts`) together with the
+presentation host inside each. Content no template draws, such as the links,
+disclosures, code blocks, and tables Markdown renders, keeps a list its owner
+builds after drawing and checks when pulled.
 
 Product-owned native controls use distinct closed action kinds rather than
 pretending to be buttons. Appearance declares non-current Theme radios, its
@@ -604,7 +693,8 @@ textboxes keep their owner-specific focus behavior, while dialog selects use
 the same general native select contract as workspace controls. Popover and
 dialog openers are ordinary workspace actions. A context that declares itself
 session-bound continues Action Hints when a Hint activation makes it the
-interaction owner and closes itself when the user dismisses that session; the
+interaction owner, in the next frame once it has drawn, and closes itself when
+the user dismisses that session; the
 coordinator reports the dismissal on the context root, and the owner hides its
 own surface. Every registered popover with actions declares it, and so does the
 Task switcher, which receives the session its key starts and the session in
@@ -615,7 +705,7 @@ declares itself session-bound, only when it offers Download for Source and
 Preview; a diff's File details declares no internal Action Hint target.
 
 Provider collection is hierarchical: each layout merges its own actions with
-only its active direct child scopes through `action-hint-scope.js`. Ancestors
+only its active direct child scopes through `action-hint-scope.ts`. Ancestors
 do not enumerate or reach through descendant DOM. A retained pane with no
 layout box is omitted before merge, so its hidden mutation and scroll
 dependencies cannot invalidate the visible pane's session.
@@ -664,9 +754,15 @@ the remaining targets in one viewport-sized native modal dialog. The target set
 is monotonic for that session: later descriptors never receive codes, and a
 retired or initially offscreen target can participate only after a fresh `F`.
 
-Mutation, resize (including declared occlusion roots), and declared owner-scroll
-observations request one coalesced scope revalidation; their roots are signals,
-not evidence from which the controller infers ownership. If a frozen target
+Resize (including declared occlusion roots) and declared owner-scroll
+observations request one coalesced scope revalidation at once. Mutation
+observations request one in the next frame instead: a declared scope reads only
+what its owner last drew, and Lit draws what a mutation set off owner by owner
+in the microtasks after it. Scroll selection and active Scroll revalidate on
+the same schedule. The observed roots are signals, not evidence from which the
+controller infers ownership. A declared scope
+watches the owners its declarations name: the component, or a narrower element
+a declaration names as its owner. If a frozen target
 disappears, becomes
 non-actionable or invisible, changes owner, or changes any native binding, the
 controller retires every frozen target with that same frozen owner. Exact
@@ -687,9 +783,10 @@ character that leaves no match is likewise consumed and closes the selection
 mode.
 
 Each registered popover retains a small shared presentation host containing its
-own Action Hint dialog, Scroll selector, and Scroll HUD. Dynamic Model and
-Permission rendering replaces only an option-content child, preserving the
-popover root and presentation identity. The selected Model and Permission
+own Action Hint dialog, Scroll selector, and Scroll HUD. Model and Permission
+rendering keeps the popover root, its presentation host, and each option
+button, keyed by what the option chooses, so a refreshed list patches a renamed
+option's label onto its retained badge. The selected Model and Permission
 options carry native `autofocus`, so the popover's initial focus is settled
 before any keyboard session is captured. Popover option targets declare
 `badgeAtEnd`, so their badges sit at the trailing edge of each row instead of
@@ -737,7 +834,7 @@ unregistered destinations do not cause the coordinator to infer a fallback or
 consume the key.
 
 Scroll mode enters from a non-editing `S` key and uses only surfaces
-explicitly published through `scroll-scope.js`; it does not discover generic
+explicitly published through `scroll-scope.ts`; it does not discover generic
 scrollable DOM. Each owner declares a closed list of `vertical` and
 `horizontal` axes for its exact retained scrollport. An omitted declaration
 keeps the migration default of `vertical`, while empty, duplicate, or unknown
@@ -791,7 +888,7 @@ contexts, so overlay scrolling never shares a selection set with background
 workspace surfaces.
 
 Eligibility directly checks the bound element, current declared-axis overflow,
-layout box, visual viewport, clip roots, and owner revalidation. One eligible
+layout box, visual viewport, and clip roots. One eligible
 surface enters active mode directly. Multiple workspace or modal surfaces
 receive temporary same-width `ASDFGHJKLQWERTYUIOPZXCVBNM` codes in visual
 order and appear in their context-local native modal selector; a popover with
@@ -970,7 +1067,7 @@ in-page handoff preserves the one-action experience and prevents a duplicate
 request between them.
 
 A pending prompt moves through one transition table in the Detail layout's
-private `layout/prompt-submission.js`: idle, uploading, sending, and accepted.
+private `layout/prompt-submission.ts`: idle, uploading, sending, and accepted.
 Every change of node goes through that table, so an upload finishing, a stop,
 the prompt response, and the canonical item each apply only from the node they
 belong to; a late arrival for a prompt that has moved on is dropped. A prompt
@@ -982,7 +1079,7 @@ its header and file-list bars in place instead of rendering the list again. A
 stop while uploading aborts the upload,
 discards the send's folder, and returns the message to the Composer,
 separately from the interrupt request the same stop makes for a running turn.
-Discards belong to the private `layout/upload-discards.js`, where each folder
+Discards belong to the private `layout/upload-discards.ts`, where each folder
 is sending, waiting, or settled. Any answer from Caffold settles it; a discard
 that cannot reach Caffold waits and is sent again on
 `caffold:origin-reachable`, which any request that Caffold answers raises. A
@@ -1051,13 +1148,13 @@ projection order it received instead of manufacturing an anchor or update time.
 `observedMs` is the direct per-event time shown by Conversation and Work
 details, including a provider-history item time when one exists; `null`
 suppresses a timestamp when history supplied order but no individual time.
-Conversation keys entries by exact identity and versions them from rendered
-content, not projection revision or position. A canonical reorder therefore
-moves an existing entry instead of replacing its DOM and state.
+Conversation keys entries by exact identity, not projection revision or
+position. A canonical reorder therefore moves an existing entry instead of
+replacing its DOM and state.
 
 The adjacent task-scoped Detail session owns snapshot acquisition while Detail
 keeps the canonical Task metadata and rendering cache. Its private
-`layout/conversation.js` applies publication revisions to exact identities and
+`layout/conversation.ts` applies publication revisions to exact identities and
 owned membership extents, including deletion evidence. A newer Task revision
 cannot reject an unrelated conversation page, and a newer bounded page cannot
 reject an older delta outside that page. Unscoped answers update exact
@@ -1190,23 +1287,25 @@ therefore retire only the replaced
 entry, approval card, or child owner while unaffected sibling, App Shell, and
 Composer codes remain frozen, without introducing a descendant-DOM scan.
 
-Conversation mounts `conversation/components/approval.js` for each pending
+Conversation mounts `conversation/components/approval.ts` for each pending
 normalized approval. Approval owns its card DOM, request-error presentation,
 styles, decision intents, Action Hint scope, and command/argument scroll
-surfaces. Conversation retains cards by Task and approval identity, controls
-pending membership and placement, and composes their public scopes. Task Detail
+surfaces. Conversation keeps each card by approval identity within its entry of
+pending approvals, controls pending membership and placement, and composes
+their public scopes. A card that moves to another entry, as when a finished
+turn gathers its pending approvals into one, is a new card. Task Detail
 owns the approval API call and canonical response acceptance; its error reaches
 the current card through Conversation. Equivalent detail refreshes, request
 errors, and transport disabling preserve the card's native focus, selection,
 and detail scroll. A different Task or approval identity clears local errors.
 
-Conversation mounts `conversation/components/older-history.js` as a retained
+Conversation mounts `conversation/components/older-history.ts` as a retained
 child outside the timeline list. Older History owns its load button, loading
 status, error and retry presentation, styles, and Action Hint scope. It receives
 Task identity and request presentation from Conversation and emits load or
 retry intent upward. Equivalent snapshots retain its button or loading phrase DOM.
 Conversation composes that child's scope, forwards its intent, and owns scroll
-triggering and anchoring. Task Detail's private `layout/history.js` owns pagination and automatic gap
+triggering and anchoring. Task Detail's private `layout/history.ts` owns pagination and automatic gap
 recovery through one request controller. It joins actual received page spans
 and responses to their continuations; open membership extents do not prove
 loaded history. An unscoped first response contributes one known position as a
@@ -1348,7 +1447,7 @@ Images and documents also answer one `Range: bytes=` range with 206 and
 `Content-Range`, reading only that part of the file, and a range that starts
 past the end with 416. `If-None-Match` is answered before the range, and an
 `If-Range` that does not name the current version gets the whole file. Their
-viewers fetch them through `fetchInChunks` (`frontend/chunked-fetch.js`) in
+viewers fetch them through `fetchInChunks` (`frontend/chunked-fetch.ts`) in
 64 KB cells cut at the same places every time, so the bytes of a large file
 wait in line on the shared connection ahead of the page's other requests, the
 live updates included, by no more than the cells in flight. The first cell
@@ -1412,7 +1511,7 @@ names of its own, so they cannot replace the app's fonts. Its PDF fallback for
 SmartArt and EMF pictures is off.
 
 `caffold-xlsx-viewer` imports its pinned SheetJS release at first use and
-turns the workbook into a drawing model (`xlsx-viewer/workbook.js`): each
+turns the workbook into a drawing model (`xlsx-viewer/workbook.ts`): each
 sheet's track sizes, hidden rows and columns, merges, frozen panes, cell text
 as Excel displays it, links, and the CSS declarations of every cell style.
 SheetJS reads values, sizes, merges, fills, fonts, and alignment; which style
@@ -1455,7 +1554,7 @@ keeps the newer Task fields, such as branch and HEAD, for later requests and
 starts no request.
 
 Each changes component tracks how far its read has come in one explicit graph
-(`changes-reading.js`): no data, a first read, a failed first read, data read
+(`changes-reading.ts`): no data, a first read, a failed first read, data read
 since Review last came back, data from before that, a reread of it, or a
 failed reread. When the root watch recovers or a cached entry connects again,
 both components mark their data as from before the return and drop answers to
@@ -1505,10 +1604,10 @@ as proof that remote data is current.
 `caffold-terminal-page` is a direct shared Detail child under
 `tasks/(detail)/terminal`, mounted once in its slot and shown for the Task or
 Section the Detail layout activates it for. It owns the terminal screen's
-control model and WebSocket (private `page/model.js`, `page/connection.js`, and
-`page/keys.js`), the empty and "open on another screen" states, the bar with
+control model and WebSocket (private `page/model.ts`, `page/connection.ts`, and
+`page/keys.ts`), the empty and "open on another screen" states, the bar with
 the special-key toggle, Kill terminal, and the header toggle, the special key
-row (`components/special-keys.js`), and the choice to give the Detail header's
+row (`components/special-keys.ts`), and the choice to give the Detail header's
 height to the terminal, which each browser keeps in `localStorage`.
 [Terminals](terminal.md#browser) owns the control model and the backend
 contract. The bar is as tall as the review file viewer's header. Detail passes
@@ -1524,7 +1623,7 @@ terminal is the presented surface, announces each change with
 `caffold:detail-header-change`, and Tasks publishes it in its presentation
 snapshot for Task Workspace.
 
-`caffold-terminal-view` in `frontend/components/terminal-view.js` is the
+`caffold-terminal-view` in `frontend/components/terminal-view.ts` is the
 reusable leaf that loads xterm.js, opens and closes its terminal, sizes it to
 its box, applies the Code typeface, Code size, and theme colors, scrolls the
 history under a dragged finger as [Terminals](terminal.md#browser) describes,
@@ -1535,7 +1634,7 @@ An on-screen keyboard is the one layout value the terminal screen sets from
 JavaScript. Browsers keep the page laid out at full height when a phone's or
 tablet's keyboard opens and shrink only the visual viewport, so CSS cannot see
 how much the keyboard covers. While active, the screen measures that height
-from `window.visualViewport` (`terminal/page/keyboard-inset.js`) and leaves it
+from `window.visualViewport` (`terminal/page/keyboard-inset.ts`) and leaves it
 as bottom padding, which puts the prompt and the special key row above the
 keyboard. The measurement counts nothing while the page is pinch-zoomed. Other
 screens keep the browser's default of panning to the focused input.
@@ -1589,9 +1688,9 @@ revision lifetimes are independent.
 
 ## Route ownership
 
-`frontend/navigation-routes.js` owns the pure schema and metadata, including
+`frontend/navigation-routes.ts` owns the pure schema and metadata, including
 each route's tab and how any two routes stand to each other. App Shell forwards
-and owns the browser history behind `frontend/pages/navigation-history.js`;
+and owns the browser history behind `frontend/pages/navigation-history.ts`;
 Task Workspace selects Tasks/Notes/Settings; Tasks selects its subject; the
 common Detail layout selects the subject or shared child; Git and GitHub select
 their domain-local modes and leaves. A screen requests a route and never
@@ -1620,7 +1719,7 @@ is still present. Only Global New represents its selected directory in
 Where the surface lets the cwd change, Task Create mounts the directory field;
 otherwise it draws the fixed path in the same place with the same insets. The
 field owns its folder list, typed path, and the listing requests behind them.
-One transition function in `task-create/components/directory-field/control.js`
+One transition function in `task-create/components/directory-field/control.ts`
 decides its closed, browsing, and editing states, so a listing answer counts
 only for the request in flight. A chosen folder leaves the field as a
 `choose-cwd` Task Create intent, and Global New updates its cwd and route. The
@@ -1662,13 +1761,13 @@ colored within the old file and an added or context line within the new one.
 Text stays uncolored when no syntax matches, when a line is longer than 5,000
 characters, when that whole-file diff exceeds 1 MiB, and in GitHub Pull Request
 diffs. `/api/file` also names the syntax in `language`, which File details shows
-as Language, "Plain Text" when none matches. The file viewer's `syntax-spans.js`
+as Language, "Plain Text" when none matches. The file viewer's `syntax-spans.ts`
 turns a line and its spans into markup for both viewers, and each viewer's
 stylesheet gives the six classes their `--syntax-*` colors.
 
 ## Notes
 
-Notes lives inside Task Workspace. `notes/layout.js` defines
+Notes lives inside Task Workspace. `notes/layout.ts` defines
 `caffold-notes-workspace`, the owner of the primary and optional secondary
 route ids, independent document reads, and one retained navigator. Each
 folder level and each document has its own generation and abort controller;
@@ -1680,13 +1779,13 @@ Leaving Notes or disconnecting cancels all reads and deactivates both Info
 popovers. Reentry and foreground recovery reread the top, previously read
 levels, and both committed documents.
 
-`notes/layout/selection.js` owns the private transient selection graph: single,
+`notes/layout/selection.ts` owns the private transient selection graph: single,
 choose companion, paired, replace primary, and replace secondary. It accepts
 committed route changes, permits companion selection only from a readable
 primary, and cancels to the previous committed presentation. The route schema
 owns reloadable ids as described in [Notes routes](navigation.md#notes-routes).
 
-`notes/components/document.js` defines `caffold-note-document`. Each retained
+`notes/components/document.ts` defines `caffold-note-document`. Each retained
 instance owns its header, Markdown Preview, Info, focus, and public keyboard,
 Action Hint, and Scroll providers. The primary instance moves between its
 ordinary detail location and a left slot above the workspace tabs. The
@@ -1695,11 +1794,11 @@ uses the browser's state-preserving move when available and restores scroll
 through the child's public API otherwise. Replacing a document resets only
 its preview; refreshing the same document preserves its reading position.
 
-`notes/components/navigator.js` defines `caffold-notes-navigator`. It renders
+`notes/components/navigator.ts` defines `caffold-notes-navigator`. It renders
 the brand or selection header and the shared File Tree from workspace
 snapshots. Directory disclosure and tree scroll remain with that instance.
 It emits open-Note, load-directory, Retry, cancel, and close intents. The
-other pane's committed Note is disabled in a selector. `notes/tree.js` maps
+other pane's committed Note is disabled in a selector. `notes/tree.ts` maps
 independently read folder levels to directories-first File Tree nodes and
 reveals the selected Note's containing directories once their rows exist.
 
@@ -1712,7 +1811,7 @@ resizer and collapse toggle without writing their saved preferences. The left
 bottom tabs occur once, and each visible document or selector publishes its
 own clipped input and scroll scope. Hidden panes supply no active targets.
 
-`notes/components/info.js` defines `caffold-notes-info`, the Info button at the
+`notes/components/info.ts` defines `caffold-notes-info`, the Info button at the
 end of the Note header. Its popover lists when the open Note changed and was
 created and the Tasks that wrote it, and below that offers Copy path and Copy
 Markdown. The button provides its own Action Hint, and the popover is a
@@ -1724,10 +1823,10 @@ same Note is read again.
 
 The two copy actions are separate components in
 `notes/components/info/components/`, and the popover hands each the Note it
-shows. `copy-path.js` defines
+shows. `copy-path.ts` defines
 `caffold-notes-info-copy-path`, which copies the names in the Note's `location`
 and the Note's own name, joined by ` / `, followed by `(note id: <id>)` with the
-id the Notes tools read the Note by. `copy-markdown.js` defines
+id the Notes tools read the Note by. `copy-markdown.ts` defines
 `caffold-notes-info-copy-markdown`, which copies the Note's Markdown content and
 is disabled for an empty Note. Each writes to the clipboard, reports Copied or
 a failure for a moment, drops a copy still in flight when what it copies
@@ -1861,136 +1960,141 @@ Relevant source ownership follows the routed hierarchy:
 
 ```text
 frontend/
-|-- action-hint-scope.js
-|-- action-hints.js
+|-- action-hint-scope.ts
+|-- action-hints.ts
 |-- action-hints/
-|   |-- control.js
-|   |-- model.js
-|   `-- components/dialog.js
-|-- scroll-scope.js
-|-- keyboard-navigation.js
+|   |-- control.ts
+|   |-- declarations.ts
+|   |-- model.ts
+|   `-- components/dialog.ts
+|-- element-declarations.ts
+|-- scroll-scope.ts
+|-- keyboard-navigation.ts
 |-- keyboard-navigation/
-|   |-- context.js
-|   |-- control.js
-|   |-- model.js
+|   |-- context.ts
+|   |-- control.ts
+|   |-- model.ts
+|   |-- shortcuts.ts
 |   `-- components/
-|       |-- presentation.js
-|       |-- hud.js
-|       `-- selector.js
-|-- navigation-routes.js
+|       |-- presentation.ts
+|       |-- hud.ts
+|       |-- selector.ts
+|       |-- shortcut-dialog.ts
+|       `-- shortcut-list.ts
+|-- navigation-routes.ts
 |-- pages/
-|   |-- layout.js
+|   |-- layout.ts
 |   |-- components/
-|   |   |-- build-mismatch-alert.js
-|   |   `-- update-dialog.js
-|   |-- foreground-recovery.js
+|   |   |-- build-mismatch-alert.ts
+|   |   `-- update-dialog.ts
+|   |-- foreground-recovery.ts
 |   |-- foreground-recovery/...
-|   |-- pwa-update-lifecycle.js
+|   |-- pwa-update-lifecycle.ts
 |   |-- pwa-update-lifecycle/...
 |   `-- (task-workspace)/
-|       |-- layout.js
-|       |-- live-updates.js
-|       |-- live-updates/lifecycle.js
-|       |-- codex-status.js
+|       |-- layout.ts
+|       |-- live-updates.ts
+|       |-- live-updates/lifecycle.ts
+|       |-- codex-status.ts
 |       |-- codex-status/...
-|       |-- task-store-status.js
+|       |-- task-store-status.ts
 |       |-- task-store-status/...
 |       |-- notes/
-|       |   |-- layout.js
-|       |   |-- layout/selection.js
-|       |   |-- tree.js
-|       |   |-- components/document.js
-|       |   `-- components/navigator.js
+|       |   |-- layout.ts
+|       |   |-- layout/selection.ts
+|       |   |-- tree.ts
+|       |   |-- components/document.ts
+|       |   `-- components/navigator.ts
 |       |-- settings/
-|       |   |-- keyboard/page.js
+|       |   |-- keyboard/page.ts
 |       |   `-- ...
 |       `-- tasks/
-|           |-- layout.js
-|           |-- stream.js
-|           |-- stream/machine.js
-|           |-- new/page.js
-|           |-- recovery/page.js
+|           |-- layout.ts
+|           |-- stream.ts
+|           |-- stream/machine.ts
+|           |-- new/page.ts
+|           |-- recovery/page.ts
 |           |-- components/
-|           |   |-- navigator.js
-|           |   |-- active-task-list.js
+|           |   |-- navigator.ts
+|           |   |-- active-task-list.ts
 |           |   |-- active-task-list/
 |           |   |   `-- components/
-|           |   |       |-- section.js
-|           |   |       `-- section/components/row.js
-|           |   |-- task-create.js
-|           |   |-- task-create/components/directory-field.js
-|           |   |-- task-turn-options.js
-|           |   |-- composer.js
-|           |   |-- composer/action-hints.js
-|           |   |-- composer/components/attachments.js
-|           |   `-- composer/components/context-usage.js
+|           |   |       |-- section.ts
+|           |   |       `-- section/components/row.ts
+|           |   |-- task-create.ts
+|           |   |-- task-create/components/directory-field.ts
+|           |   |-- task-turn-options.ts
+|           |   |-- composer.ts
+|           |   |-- composer/components/attachments.ts
+|           |   `-- composer/components/context-usage.ts
 |           `-- (detail)/
-|               |-- layout.js
+|               |-- layout.ts
 |               |-- components/
-|               |   |-- git-menu.js
-|               |   |-- github-menu.js
-|               |   `-- terminal-button.js
+|               |   |-- git-menu.ts
+|               |   |-- github-menu.ts
+|               |   `-- terminal-button.ts
 |               |-- terminal/
-|               |   |-- page.js
+|               |   |-- page.ts
 |               |   |-- page/...
-|               |   `-- components/special-keys.js
+|               |   `-- components/special-keys.ts
 |               |-- (task)/
-|               |   |-- layout.js
-|               |   |-- session.js
+|               |   |-- layout.ts
+|               |   |-- session.ts
 |               |   `-- components/
-|               |       |-- summary.js
-|               |       |-- conversation.js
-|               |       |-- command-dialog.js
-|               |       |-- current-plan.js
+|               |       |-- summary.ts
+|               |       |-- conversation.ts
+|               |       |-- command-dialog.ts
+|               |       |-- current-plan.ts
 |               |       |-- current-plan/
-|               |       |   |-- model.js
-|               |       |   `-- components/document-dialog.js
+|               |       |   |-- model.ts
+|               |       |   `-- components/document-dialog.ts
 |               |       `-- conversation/...
 |               |-- (section)/
-|               |   |-- layout.js
+|               |   |-- layout.ts
 |               |   `-- components/
-|               |       |-- conversation-shortcuts.js
-|               |       |-- conversation-shortcuts/components/fork-dialog.js
-|               |       |-- github-shortcuts.js
-|               |       `-- summary.js
+|               |       |-- conversation-shortcuts.ts
+|               |       |-- conversation-shortcuts/components/fork-dialog.ts
+|               |       |-- github-shortcuts.ts
+|               |       `-- summary.ts
 |               |-- (review)/
-|               |   |-- layout.js
-|               |   |-- changes-reading.js
+|               |   |-- layout.ts
+|               |   |-- changes-reading.ts
 |               |   `-- components/
-|               |       |-- working-tree-changes.js
-|               |       |-- branch-changes.js
-|               |       `-- selected-file.js
+|               |       |-- working-tree-changes.ts
+|               |       |-- branch-changes.ts
+|               |       `-- selected-file.ts
 |               |-- (git)/
-|               |   |-- layout.js
-|               |   |-- compare/page.js
+|               |   |-- layout.ts
+|               |   |-- compare/page.ts
 |               |   `-- (log)/...
 |               `-- (github)/
-|                   |-- layout.js
-|                   |-- components/task-start-dialog.js
+|                   |-- layout.ts
+|                   |-- components/task-start-dialog.ts
 |                   |-- (issues)/...
 |                   `-- (pulls)/...
 `-- components/
-    |-- file-tree.js
-    |-- file-navigator.js
-    |-- file-viewer.js
-    |-- git-compare-browser.js
-    |-- git-compare-tree.js
-    |-- markdown-preview.js
-    |-- pagination.js
-    |-- pdf-viewer.js
-    |-- docx-viewer.js
-    |-- pptx-viewer.js
-    |-- xlsx-viewer.js
-    |-- xlsx-viewer/workbook.js
-    |-- xlsx-viewer/window.js
-    |-- pane-resizer.js
-    |-- segmented-control.js
-    `-- terminal-view.js
+    |-- file-tree.ts
+    |-- file-navigator.ts
+    |-- file-viewer.ts
+    |-- git-compare-browser.ts
+    |-- git-compare-tree.ts
+    |-- markdown-preview.ts
+    |-- pagination.ts
+    |-- pagination/components/button.ts
+    |-- pdf-viewer.ts
+    |-- docx-viewer.ts
+    |-- pptx-viewer.ts
+    |-- xlsx-viewer.ts
+    |-- xlsx-viewer/workbook.ts
+    |-- xlsx-viewer/window.ts
+    |-- pane-resizer.ts
+    |-- segmented-control.ts
+    `-- terminal-view.ts
 ```
 
 Parenthesized directories are pathless ownership nodes. A directory with its
-own `page.js`, such as Global New or Git Compare, remains a leaf surface.
-Routed `page.js` and `layout.js` files register the page or layout owner they
+own `page.ts`, such as Global New or Git Compare, remains a leaf surface.
+Routed `page.ts` and `layout.ts` files register the page or layout owner they
 represent; child Web Components use the nearest `components/` namespace. Names
 describe the current owner and role: Task-only Conversation and Command stay
 below `(task)`; shared review and repository domains are siblings below
@@ -2017,9 +2121,10 @@ Components render in Light DOM, so CSS remains one cascade. Each stylesheet
 must scope internal selectors below the owning custom element. A parent may
 size or hide a child host, but descendant styling belongs to the child.
 
-`frontend/component-styles.js` exports two shared styles, `compactIconButton`
+`frontend/component-styles.ts` exports two shared styles, `compactIconButton`
 and `busySpin`. Components await `register(owner, target)` on each style they
-use before defining their element, declaring the explicit child path from the
+use before defining their element, so the await stands above the class
+`@customElement()` registers, declaring the explicit child path from the
 owner to their own local class; a step in that path may add the owner's state
 classes. Each style fetches its stylesheet
 (`component-styles/compact-icon-button.css`, `component-styles/busy-spin.css`)
@@ -2048,7 +2153,7 @@ do not turn in step.
 Busy controls and waiting content use two presentations. A busy control or
 icon slot turns its ring or icon in place through `busySpin`. A place
 where content is about to appear shows `caffold-loading-text` from
-`frontend/components/loading-text.js`: a short muted phrase crossed by a moving
+`frontend/components/loading-text.ts`: a short muted phrase crossed by a moving
 highlight and announced as a status. It stays invisible for 180 ms and then
 fades in, so a load that finishes sooner never shows it; reduced motion keeps
 the delay and drops the highlight and the fade. Its one attribute,
@@ -2063,8 +2168,7 @@ remove it, its text, and its place: the first row's position in list and tree
 panels, the center of other content areas, and the existing slot inside a row
 or a value. Its text size follows that Interface container. An owner keeps the
 same element while the wait lasts, because a new element starts the delay and
-the animation again; owners that patch their DOM use `retainLoadingText` or
-`showLoadingText`, which keep a phrase that already says the same thing.
+the animation again.
 
 `--font-ui` and `--font-code` are the two typeface roles. `--font-ui` covers
 interface chrome and conversation prose, including the Composer textarea;
@@ -2117,13 +2221,16 @@ Every production JavaScript/CSS asset must be registered consistently in:
 - module imports;
 - `frontend/styles.css`, or the consuming component's explicit style declaration
   for reusable `:scope` sources;
-- `frontend/service-worker.js`;
+- `frontend/service-worker.ts`;
 - `caffold/src/static_assets.rs`;
 - static asset and CSS ownership tests.
 
 The service-worker cache and Rust static-asset table are exact manifests of the
-assets imported by the active application hierarchy. pdf.js, docx-preview,
-pptx-renderer, SheetJS, and xterm.js with its fit addon are the exceptions:
+assets imported by the active application hierarchy. Lit's modules are part
+of both even though they come from `frontend/node_modules`, and a TypeScript
+module is listed at the `.js` path it is served at. pdf.js,
+docx-preview, pptx-renderer, SheetJS, and xterm.js with its fit addon are the
+exceptions:
 their owners import pinned releases at first use, and the browser suite answers
 those URLs from the same versions in `node_modules`. SheetJS comes from its own
 CDN, which publishes its current releases there rather than on npm, and the

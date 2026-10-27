@@ -223,7 +223,7 @@ test("route, setting, and disconnect cleanup close shortcut help", () => {
   }
 });
 
-test("the Task switcher key opens its surface and then enters Hint", () => {
+test("the Task switcher key opens its surface and enters Hint once it has drawn", () => {
   const restoreDom = installEventGlobals();
   try {
     const order = [];
@@ -244,9 +244,13 @@ test("the Task switcher key opens its surface and then enters Hint", () => {
     const event = keyEvent("T");
     controller.handleKeydown(event);
 
-    assert.deepEqual(order, ["open-switcher", "start-hints"]);
+    assert.deepEqual(order, ["open-switcher"]);
     assert.equal(event.prevented, true);
     assert.equal(event.stopped, true);
+    assert.equal(controller.controlNode(), KEYBOARD_NAVIGATION_NODE.NORMAL);
+
+    nextFrame();
+    assert.deepEqual(order, ["open-switcher", "start-hints"]);
     assert.equal(controller.controlNode(), KEYBOARD_NAVIGATION_NODE.HINT);
   } finally {
     restoreDom();
@@ -664,23 +668,19 @@ test("capture intersects declared axes with exact current overflow", () => {
       id: "workspace",
       kind: "workspace",
       root,
+      presentation: presentationOf({ hud: element(), selector: scrollSelector() }),
       scroll: {
-        hud: element(),
-        selector: scrollSelector(),
-        scope: {
-          blocked: false,
-          surfaces: [{
-            id: "code",
-            label: "Code",
-            scrollport,
-            axes: ["vertical", "horizontal"],
-            clipRoots: [],
-            isEligible: () => true,
-          }],
-          mutationRoots: [],
-          resizeElements: [],
-          scrollRoots: [scrollport],
-        },
+        blocked: false,
+        surfaces: [{
+          id: "code",
+          label: "Code",
+          scrollport,
+          axes: ["vertical", "horizontal"],
+          clipRoots: [],
+        }],
+        mutationRoots: [],
+        resizeElements: [],
+        scrollRoots: [scrollport],
       },
     };
 
@@ -717,6 +717,7 @@ test("active S releases Scroll and selects from fresh surfaces including the cur
     controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
     controller.activeSession = {
       id: "conversation",
+      cleanup: [() => order.push("detach-scroll")],
       context: { hud: { close: () => order.push("hud-close") } },
     };
     controller.activeBindingIsCurrent = () => true;
@@ -725,7 +726,6 @@ test("active S releases Scroll and selects from fresh surfaces including the cur
       context,
       surfaces: [{ id: "conversation" }, { id: "newly-visible-code" }],
     });
-    controller.detachActiveSignals = () => order.push("detach-scroll");
     controller.beginSelection = (snapshot) => {
       assert.equal(controller.activeSession, null);
       assert.equal(controller.storedNode, KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING);
@@ -844,10 +844,9 @@ test("active F closes Scroll before collecting a fresh Action Hint session", () 
     const snapshot = { targets: [{ id: "settings" }] };
     controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
     controller.activeSession = {
-      cleanup: [],
+      cleanup: [() => order.push("detach-scroll")],
       context: { hud: { close: () => order.push("hud-close") } },
     };
-    controller.detachActiveSignals = () => order.push("detach-scroll");
     controller.actionHints.prepareSnapshot = () => {
       assert.equal(controller.storedNode, null);
       assert.equal(controller.activeSession, null);
@@ -1020,9 +1019,14 @@ test("continues Action Hints into an owner that declares itself session-bound", 
     controller.collectKeyboardNavigationContexts = () => [workspace, popover];
 
     document.popover = popover.root;
-    activate(workspace);
-
+    controller.actionHints.afterActivation(
+      { id: "model", actionId: "task.model.choose", code: "M" },
+      { context: workspace },
+    );
     assert.equal(hooks(), 1);
+    assert.deepEqual(order, [], "the popover is read once it has drawn");
+
+    nextFrame();
     assert.deepEqual(order, ["capture", "start"]);
     assert.equal(controller.storedNode, KEYBOARD_NAVIGATION_NODE.HINT);
   } finally {
@@ -1231,7 +1235,6 @@ test("Escape in a session-bound active Scroll reports a dismissal and switching 
       cleanup: [],
       context: { root, sessionBound, hud: { close() {} } },
     });
-    controller.detachActiveSignals = () => {};
 
     controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
     controller.activeSession = activeSession(true);
@@ -1344,11 +1347,17 @@ test("registered modal consumes only the first non-composing Editing Escape", ()
         document.activeElement = cancel;
       },
     });
-    root.contains = (candidate) => [root, input, cancel].includes(candidate);
+    const presentation = presentationOf();
+    root.contains = (candidate) =>
+      [root, input, cancel, presentation].includes(candidate);
     controller.collectKeyboardNavigationContexts = () => [{
       id: "fork",
       kind: "modal",
       root,
+      presentation,
+      sessionBound: false,
+      actionHints: null,
+      scroll: null,
       editing: { escapeTarget: (editable) => editable === input ? cancel : null },
     }];
     document.modal = root;
@@ -1426,7 +1435,6 @@ test("rejects malformed and duplicate provider identities centrally", () => {
       axes: ["vertical"],
       availableAxes: ["vertical"],
       clipRoots: [],
-      isEligible: () => true,
     };
     root.contains = (candidate) =>
       candidate === root || candidate === hud || candidate === selector;
@@ -1434,16 +1442,13 @@ test("rejects malformed and duplicate provider identities centrally", () => {
       id: "workspace",
       kind: "workspace",
       root,
+      presentation: presentationOf({ hud: hud, selector: selector }),
       scroll: {
-        hud,
-        selector,
-        scope: {
-          blocked: false,
-          surfaces: [surface, { ...surface }],
-          mutationRoots: [],
-          resizeElements: [],
-          scrollRoots: [],
-        },
+        blocked: false,
+        surfaces: [surface, { ...surface }],
+        mutationRoots: [],
+        resizeElements: [],
+        scrollRoots: [],
       },
     }];
     assert.equal(controller.safeCollectKeyboardNavigationContexts(), null);
@@ -1659,6 +1664,7 @@ test("viewport signals ignore stale delivery and cancel real snapshot drift", ()
       mutationRoots: [],
       ownershipObserver: null,
       resizeElements: [],
+      scrollRoots: [],
       resizeObserver: null,
     };
     controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
@@ -1709,6 +1715,7 @@ test("opening beforetoggle invalidates selection and active mode before selector
       mutationRoots: [],
       ownershipObserver: null,
       resizeElements: [],
+      scrollRoots: [],
       resizeObserver: null,
     };
     controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
@@ -1827,17 +1834,33 @@ function hintContext(id, kind, { sessionBound = false } = {}) {
     updateInput() {},
     reconcileTargets: () => true,
   });
-  root.contains = (candidate) => candidate === root || candidate === dialog;
+  const presentation = presentationOf({ dialog });
+  root.contains = (candidate) =>
+    candidate === root || candidate === dialog || candidate === presentation;
   return {
     id,
     kind,
     root,
+    presentation,
+    sessionBound,
     actionHints: {
-      dialog,
-      scope: { targets: [], mutationRoots: [], scrollRoots: [] },
-      sessionBound,
+      blocked: false,
+      targets: [],
+      mutationRoots: [],
+      scrollRoots: [],
     },
+    scroll: null,
+    editing: null,
   };
+}
+
+// What a context shows its modes with, from the parts a test gives it.
+function presentationOf({ dialog = null, hud = null, selector = null } = {}) {
+  return element({
+    actionHintDialog: () => dialog,
+    scrollModeHud: () => hud,
+    scrollSurfaceSelector: () => selector,
+  });
 }
 
 function continuationController() {
@@ -1862,11 +1885,13 @@ function continuationController() {
     controller,
     order,
     hooks: () => hooks,
-    activate: (context) =>
+    activate: (context) => {
       controller.actionHints.afterActivation(
         { id: "model", actionId: "task.model.choose", code: "M" },
         { context },
-      ),
+      );
+      nextFrame();
+    },
   };
 }
 
@@ -1951,35 +1976,54 @@ function installEventGlobals() {
   const windowTarget = Object.assign(new FakeEventTarget(), {
     visualViewport: null,
   });
+  const previousFrame = globalThis.requestAnimationFrame;
   globalThis.document = documentTarget;
   globalThis.window = windowTarget;
+  frames = [];
+  globalThis.requestAnimationFrame = (callback) => frames.push(callback);
   return () => {
     restoreGlobal("document", previousDocument);
     restoreGlobal("window", previousWindow);
+    restoreGlobal("requestAnimationFrame", previousFrame);
   };
+}
+
+let frames = [];
+
+// Runs what the controller left for the next frame.
+function nextFrame() {
+  const pending = frames;
+  frames = [];
+  for (const callback of pending) {
+    callback();
+  }
 }
 
 function context(id, kind) {
   const root = element();
   const hud = element({ show() {}, close() {}, updateLabel() {} });
   const selector = scrollSelector();
+  const presentation = presentationOf({ hud, selector });
   root.contains = (candidate) =>
-    candidate === root || candidate === hud || candidate === selector;
+    candidate === root ||
+    candidate === hud ||
+    candidate === selector ||
+    candidate === presentation;
   return {
     id,
     kind,
     root,
+    presentation,
+    sessionBound: false,
+    actionHints: null,
     scroll: {
-      hud,
-      selector,
-      scope: {
-        blocked: false,
-        surfaces: [],
-        mutationRoots: [],
-        resizeElements: [],
-        scrollRoots: [],
-      },
+      blocked: false,
+      surfaces: [],
+      mutationRoots: [],
+      resizeElements: [],
+      scrollRoots: [],
     },
+    editing: null,
   };
 }
 

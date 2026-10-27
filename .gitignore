@@ -1,5 +1,6 @@
 /target
 /frontend/node_modules
+/frontend/tests/unit-build
 /playwright-report
 /test-results
 /frontend/tests/e2e/*-snapshots

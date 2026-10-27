@@ -9,7 +9,7 @@ the changed boundary, and record what was and was not verified.
 The supported contributor baseline is:
 
 - the Rust toolchain pinned by `rust-toolchain.toml`;
-- Node.js 22 and npm;
+- Node.js 24 or newer and npm;
 - Git;
 - CMake and the Xcode Command Line Tools on macOS;
 - the authenticated standalone Codex CLI for Codex live work;
@@ -29,6 +29,9 @@ xcode-select --install
 
 The npm package lives in `frontend/`, so JavaScript and browser commands run
 from that directory while Rust commands stay at the repository root. The
+server embeds Lit from `frontend/node_modules` and runs Node.js to build the
+frontend's TypeScript modules, so run `npm ci` there before the first Cargo
+build in a checkout or worktree, and keep Node.js on `PATH` while building. The
 ordinary browser suite also needs Playwright's Chromium build:
 
 ```sh

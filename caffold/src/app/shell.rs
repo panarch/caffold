@@ -276,8 +276,12 @@ mod tests {
         let first = render_service_worker(source, "first-build").unwrap();
         let second = render_service_worker(source, "second\"\\\nbuild").unwrap();
 
-        assert!(first.starts_with("const CACHE_NAME = \"caffold-shell-first-build\";"));
-        assert!(second.starts_with("const CACHE_NAME = \"caffold-shell-second\\\"\\\\\\nbuild\";"));
+        assert!(
+            first.starts_with("\"use strict\";\nconst CACHE_NAME = \"caffold-shell-first-build\";")
+        );
+        assert!(second.starts_with(
+            "\"use strict\";\nconst CACHE_NAME = \"caffold-shell-second\\\"\\\\\\nbuild\";"
+        ));
         assert_ne!(first, second);
         assert!(!first.contains("__CAFFOLD_BUILD_ID__"));
         assert!(!second.contains("__CAFFOLD_BUILD_ID__"));

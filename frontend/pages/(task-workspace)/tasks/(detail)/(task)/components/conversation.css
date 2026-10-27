@@ -100,6 +100,21 @@ caffold-task-conversation {
     line-height: var(--interface-line-height);
   }
 
+  & .task-event-status > .task-status-chip {
+    display: inline-grid;
+    grid-auto-flow: column;
+    align-items: center;
+    gap: 0.3125rem;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    background: var(--surface-subtle);
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    white-space: nowrap;
+  }
+
   & .task-event-status[data-event-status="warning"] .task-status-chip {
     border-color: var(--warning-border);
     background: var(--warning-soft);

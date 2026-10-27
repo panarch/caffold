@@ -9,7 +9,7 @@ function readFrontend(path) {
   return readFileSync(new URL(path, `file://${frontendRoot}/`), "utf8");
 }
 
-function frontendJavascriptFiles(directory = frontendRoot, prefix = "") {
+function frontendModules(directory = frontendRoot, prefix = "") {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     if (entry.name === "node_modules" || entry.name === "tests") {
       return [];
@@ -17,53 +17,53 @@ function frontendJavascriptFiles(directory = frontendRoot, prefix = "") {
     const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
     const absolutePath = `${directory}/${entry.name}`;
     if (entry.isDirectory()) {
-      return frontendJavascriptFiles(absolutePath, relativePath);
+      return frontendModules(absolutePath, relativePath);
     }
     return entry.isFile() &&
-      entry.name.endsWith(".js") &&
-      !entry.name.endsWith(".test.js")
+      /\.(js|ts)$/.test(entry.name) &&
+      !/\.(test|d)\.(js|ts)$/.test(entry.name)
       ? [[relativePath, readFileSync(absolutePath, "utf8")]]
       : [];
   });
 }
 
 test("task workspace declares one shared master pane and one detail pane", () => {
-  const appShell = readFrontend("pages/layout.js");
-  const workspace = readFrontend("pages/(task-workspace)/layout.js");
+  const appShell = readFrontend("pages/layout.ts");
+  const workspace = readFrontend("pages/(task-workspace)/layout.ts");
   const workspaceNavigation = readFrontend(
-    "pages/(task-workspace)/components/navigation.js",
+    "pages/(task-workspace)/components/navigation.ts",
   );
-  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.ts");
   const taskSummary = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.ts",
   );
   const reviewBranchChanges = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.js",
+    "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.ts",
   );
   const settingsWorkspace = readFrontend(
-    "pages/(task-workspace)/settings/layout.js",
+    "pages/(task-workspace)/settings/layout.ts",
   );
   const notesWorkspace = readFrontend(
-    "pages/(task-workspace)/notes/layout.js",
+    "pages/(task-workspace)/notes/layout.ts",
   );
   const actionHints = readFrontend(
-    "action-hints.js",
+    "action-hints.ts",
   );
   const keyboardNavigation = readFrontend(
-    "keyboard-navigation.js",
+    "keyboard-navigation.ts",
   );
   const actionHintDialog = readFrontend(
-    "action-hints/components/dialog.js",
+    "action-hints/components/dialog.ts",
   );
   const shortcutDialog = readFrontend(
-    "keyboard-navigation/components/shortcut-dialog.js",
+    "keyboard-navigation/components/shortcut-dialog.ts",
   );
   const keyboardSettings = readFrontend(
-    "pages/(task-workspace)/settings/keyboard/page.js",
+    "pages/(task-workspace)/settings/keyboard/page.ts",
   );
 
   const masterPane = workspace.match(
-    /<aside class="task-workspace-master-pane"[\s\S]*?<\/aside>/,
+    /<aside\s+\$\{drawn\(this\.parts\.of\("master-pane"\)\)\}\s+class="task-workspace-master-pane"[\s\S]*?<\/aside>/,
   )?.[0];
   assert.ok(masterPane, "workspace must declare its master pane");
   assert.match(masterPane, /<caffold-task-navigator/);
@@ -72,12 +72,12 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   assert.match(masterPane, /<caffold-task-workspace-navigation/);
   assert.doesNotMatch(masterPane, /<nav class="task-workspace-navigation"/);
   assert.match(workspaceNavigation, /<nav class="task-workspace-navigation"/);
-  assert.match(workspaceNavigation, /data-workspace-mode="tasks"/);
-  assert.match(workspaceNavigation, /data-workspace-mode="notes"/);
-  assert.match(workspaceNavigation, /data-workspace-mode="settings"/);
+  assert.match(workspaceNavigation, /mode: "tasks"/);
+  assert.match(workspaceNavigation, /mode: "notes"/);
+  assert.match(workspaceNavigation, /mode: "settings"/);
 
   const detailPane = workspace.match(
-    /<div class="task-workspace-detail-pane"[\s\S]*?<\/div>/,
+    /<div\s+\$\{drawn\(this\.parts\.of\("detail-pane"\)\)\}\s+class="task-workspace-detail-pane"[\s\S]*?<\/div>/,
   )?.[0];
   assert.ok(detailPane, "workspace must declare its detail pane");
   assert.match(detailPane, /<caffold-tasks-page/);
@@ -90,7 +90,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     /closeActiveSubview|tasksPage\.taskDetailView|tasksPage\?\.taskDetailView/,
   );
   const routeControls = workspace.match(
-    /<div class="task-workspace-route-controls">[\s\S]*?<\/div>/,
+    /<div\s+\$\{drawn\(this\.parts\.of\("route-controls"\)\)\}\s+class="task-workspace-route-controls"\s*>[\s\S]*?<\/div>/,
   )?.[0];
   assert.ok(routeControls, "workspace must group its compact route controls");
   assert.match(
@@ -118,11 +118,11 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     0,
   );
   assert.equal(
-    [...appShell.matchAll(/<caffold-keyboard-navigation-presentation>/g)].length,
+    [...appShell.matchAll(/<caffold-keyboard-navigation-presentation\b/g)].length,
     1,
   );
   assert.equal(
-    [...appShell.matchAll(/<caffold-keyboard-shortcut-dialog>/g)].length,
+    [...appShell.matchAll(/<caffold-keyboard-shortcut-dialog\b/g)].length,
     1,
   );
   assert.match(appShell, /shortcutDialog: this\.keyboardShortcutDialog/);
@@ -133,8 +133,8 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     /document\.addEventListener\("keydown", this\.boundKeydown, true\)/,
   );
   assert.doesNotMatch(actionHints, /document\.addEventListener\("keydown"/);
-  for (const [path, source] of frontendJavascriptFiles()) {
-    if (path !== "action-hints.js" && !path.startsWith("action-hints/")) {
+  for (const [path, source] of frontendModules()) {
+    if (path !== "action-hints.ts" && !path.startsWith("action-hints/")) {
       assert.doesNotMatch(
         source,
         /(?:\.{1,2}\/)+action-hints\/(?:control|model)\.js/,
@@ -142,7 +142,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
       );
     }
     if (
-      path !== "keyboard-navigation.js" &&
+      path !== "keyboard-navigation.ts" &&
       !path.startsWith("keyboard-navigation/")
     ) {
       assert.doesNotMatch(
@@ -152,14 +152,14 @@ test("task workspace declares one shared master pane and one detail pane", () =>
       );
     }
   }
-  assert.doesNotMatch(actionHints, /customElements\.define/);
+  assert.doesNotMatch(actionHints, /customElements\.define|@customElement\(/);
   assert.match(
     actionHintDialog,
-    /customElements\.define\(\s*"caffold-action-hint-dialog"/,
+    /@customElement\("caffold-action-hint-dialog"\)/,
   );
   assert.match(
     shortcutDialog,
-    /customElements\.define\(\s*"caffold-keyboard-shortcut-dialog"/,
+    /@customElement\("caffold-keyboard-shortcut-dialog"\)/,
   );
   assert.match(settingsWorkspace, /import "\.\/keyboard\/page\.js"/);
   assert.equal(
@@ -168,71 +168,76 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   );
   assert.match(
     keyboardSettings,
-    /customElements\.define\(\s*"caffold-settings-keyboard-page"/,
+    /@customElement\("caffold-settings-keyboard-page"\)/,
   );
 });
 
 test("App Shell owns one global keyboard listener over explicit Scroll providers", () => {
-  const keyboardOwners = frontendJavascriptFiles()
+  const keyboardOwners = frontendModules()
     .filter(([, source]) =>
       /document\.addEventListener\(\s*["']keydown["']/.test(source)
     )
     .map(([path]) => path);
   assert.deepEqual(keyboardOwners, [
-    "keyboard-navigation.js",
+    "keyboard-navigation.ts",
   ]);
 
   const keyboardNavigation = readFrontend(
-    "keyboard-navigation.js",
+    "keyboard-navigation.ts",
   );
   const taskNavigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const conversation = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.ts",
   );
   const currentPlanDialog = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.ts",
   );
 
   assert.doesNotMatch(
     keyboardNavigation,
     /querySelector(?:All)?\([^\n]*(?:scroll|overflow)|elementFromPoint|last(?:Pointer|Scroll)/i,
   );
-  assert.match(taskNavigator, /:scope > \.task-list-scroll/);
-  assert.match(conversation, /:scope > \.task-conversation-scroll/);
-  assert.match(currentPlanDialog, /this\.preview\(\)/);
-  assert.match(currentPlanDialog, /preview\.scrollSurfaceScope\?\.\(/);
+  assert.match(
+    taskNavigator,
+    /this\.surfaces\.surface\(\{\s*id: "task-list",[\s\S]*?\}\)\}\s*class="task-list-scroll"/,
+  );
+  assert.match(
+    conversation,
+    /\$\{drawn\(this\.scrollerElement\)\}\s*\$\{this\.surfaces\.surface\(\{[\s\S]*?\}\)\}\s*class="task-conversation-scroll"/,
+  );
+  assert.match(currentPlanDialog, /this\.preview\b/);
+  assert.match(currentPlanDialog, /preview\.value\?\.scrollSurfaceScope\(/);
 });
 
 test("App Shell owns the normal context and route cleanup while Task Workspace provides product state", () => {
-  const appShell = readFrontend("pages/layout.js");
-  const workspace = readFrontend("pages/(task-workspace)/layout.js");
+  const appShell = readFrontend("pages/layout.ts");
+  const workspace = readFrontend("pages/(task-workspace)/layout.ts");
   const presentation = readFrontend(
-    "keyboard-navigation/components/presentation.js",
+    "keyboard-navigation/components/presentation.ts",
   );
-  const context = readFrontend("keyboard-navigation/context.js");
+  const context = readFrontend("keyboard-navigation/context.ts");
 
-  assert.equal([...appShell.matchAll(/kind: "workspace"/g)].length, 1);
-  assert.match(appShell, /this\.keyboardNavigation\?\.connect\(\)/);
-  assert.match(appShell, /this\.keyboardNavigation\?\.disconnect\(\)/);
-  assert.match(appShell, /this\.taskWorkspace\?\.actionHintScope\?\.\(\)/);
-  assert.match(appShell, /this\.taskWorkspace\?\.scrollSurfaceScope\?\.\(\)/);
+  assert.equal([...appShell.matchAll(/this\.keyboard\.workspace\(/g)].length, 1);
+  assert.match(appShell, /this\.keyboardNavigation\.connect\(\)/);
+  assert.match(appShell, /this\.keyboardNavigation\.disconnect\(\)/);
+  assert.match(appShell, /this\.taskWorkspace\.actionHintScope\(\)/);
+  assert.match(appShell, /this\.taskWorkspace\.scrollSurfaceScope\(\)/);
   assert.match(appShell, /this\.taskWorkspace\.actionHintEditingEscapeTarget/);
   assert.match(appShell, /this\.taskWorkspace\.afterActionHintActivation/);
   assert.doesNotMatch(workspace, /keyboardNavigation\.(?:connect|disconnect|routeWillChange)/);
   assert.match(workspace, /actionHintScope\(\)/);
   assert.match(workspace, /scrollSurfaceScope\(\)/);
   assert.match(workspace, /keyboardNavigationContexts\(\)/);
-  assert.match(presentation, /<caffold-action-hint-dialog>/);
-  assert.match(presentation, /<caffold-scroll-mode-hud>/);
-  assert.match(presentation, /<caffold-scroll-surface-selector>/);
-  assert.doesNotMatch(presentation, /<caffold-keyboard-shortcut-dialog>/);
-  assert.match(context, /selector: scroll\.selector/);
-  assert.match(context, /!root\.contains\(selector\)/);
+  assert.match(presentation, /<caffold-action-hint-dialog\b/);
+  assert.match(presentation, /<caffold-scroll-mode-hud\b/);
+  assert.match(presentation, /<caffold-scroll-surface-selector\b/);
+  assert.doesNotMatch(presentation, /<caffold-keyboard-shortcut-dialog\b/);
+  assert.match(context, /!context\.root\.contains\(context\.presentation\)/);
 
   const applyRoute = appShell.match(
-    /async applyRoute\([\s\S]*?\n  \}\n\n  actionHintScope/,
+    /async applyRoute\([\s\S]*?\n  \}\n/,
   )?.[0] ?? "";
   assert.ok(applyRoute);
   assert.ok(
@@ -242,35 +247,35 @@ test("App Shell owns the normal context and route cleanup while Task Workspace p
 });
 
 test("registered dialog contexts stay owned and compose through public providers", () => {
-  const appShell = readFrontend("pages/layout.js");
-  const workspace = readFrontend("pages/(task-workspace)/layout.js");
-  const tasks = readFrontend("pages/(task-workspace)/tasks/layout.js");
-  const taskNew = readFrontend("pages/(task-workspace)/tasks/new/page.js");
+  const appShell = readFrontend("pages/layout.ts");
+  const workspace = readFrontend("pages/(task-workspace)/layout.ts");
+  const tasks = readFrontend("pages/(task-workspace)/tasks/layout.ts");
+  const taskNew = readFrontend("pages/(task-workspace)/tasks/new/page.ts");
   const section = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(section)/layout.ts",
   );
   const task = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.ts",
   );
   const github = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(github)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(github)/layout.ts",
   );
 
   for (const source of [appShell, workspace, tasks, section, task, github]) {
     assert.match(source, /mergeKeyboardNavigationContexts\(/);
   }
-  assert.match(appShell, /this\.updateDialog\?\.keyboardNavigationContexts/);
-  assert.match(appShell, /this\.taskWorkspace\?\.keyboardNavigationContexts/);
-  assert.match(workspace, /this\.codexRuntimeRestartDialog\?\.keyboardNavigationContexts/);
-  assert.match(workspace, /this\.claudeRuntimeRestartDialog\?\.keyboardNavigationContexts/);
-  assert.match(workspace, /this\.archivedDeleteDialog\?\.keyboardNavigationContexts/);
-  assert.match(workspace, /this\.taskSwitcherDialog\?\.keyboardNavigationContexts/);
-  assert.match(tasks, /this\.imagePreviewDialog\?\.\(\)\?\.keyboardNavigationContexts/);
-  assert.match(taskNew, /this\.taskCreate\(\)\?\.keyboardNavigationContexts/);
+  assert.match(appShell, /this\.updateDialog\.value\?\.keyboardNavigationContexts/);
+  assert.match(appShell, /this\.taskWorkspace\.keyboardNavigationContexts/);
+  assert.match(workspace, /this\.codexRuntimeRestartDialog\.keyboardNavigationContexts/);
+  assert.match(workspace, /this\.claudeRuntimeRestartDialog\.keyboardNavigationContexts/);
+  assert.match(workspace, /this\.archivedDeleteDialog\.keyboardNavigationContexts/);
+  assert.match(workspace, /this\.taskSwitcherDialog\.keyboardNavigationContexts/);
+  assert.match(tasks, /this\.imagePreviewDialog\.value\?\.keyboardNavigationContexts/);
+  assert.match(taskNew, /this\.create\.value\?\.keyboardNavigationContexts/);
   assert.match(section, /this\.conversationShortcuts\(\)\?\.keyboardNavigationContexts/);
-  assert.match(task, /this\.currentPlanComponent\(\)\?\.keyboardNavigationContexts/);
-  assert.match(task, /this\.commandDialog\(\)\?\.keyboardNavigationContexts/);
-  assert.match(task, /this\.markdownPreviewDialog\(\)\?\.keyboardNavigationContexts/);
+  assert.match(task, /this\.currentPlanComponent\.value\?\.keyboardNavigationContexts/);
+  assert.match(task, /this\.commandDialog\.value\?\.keyboardNavigationContexts/);
+  assert.match(task, /this\.markdownPreviewDialog\.value\?\.keyboardNavigationContexts/);
   assert.match(github, /this\.taskStartDialog\.keyboardNavigationContexts/);
   assert.doesNotMatch(
     workspace,
@@ -280,36 +285,32 @@ test("registered dialog contexts stay owned and compose through public providers
 
 test("registered product dialogs retain one context-local keyboard presentation", () => {
   const dialogs = [
-    "pages/components/update-dialog.js",
-    "pages/components/update-result-dialog.js",
-    "pages/(task-workspace)/components/update-task-dialog.js",
-    "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
-    "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
-    "pages/(task-workspace)/codex-status/components/reset-credit-dialog.js",
-    "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
-    "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
-    "pages/(task-workspace)/tasks/components/task-switcher-dialog.js",
-    "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
-    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js",
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.js",
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js",
-    "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js",
+    "pages/components/update-dialog.ts",
+    "pages/components/update-result-dialog.ts",
+    "pages/(task-workspace)/components/update-task-dialog.ts",
+    "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts",
+    "pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts",
+    "pages/(task-workspace)/codex-status/components/reset-credit-dialog.ts",
+    "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.ts",
+    "pages/(task-workspace)/tasks/components/archived-delete-dialog.ts",
+    "pages/(task-workspace)/tasks/components/task-switcher-dialog.ts",
+    "pages/(task-workspace)/tasks/components/image-preview-dialog.ts",
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.ts",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.ts",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/markdown-preview-dialog.ts",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.ts",
+    "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.ts",
   ];
 
   for (const path of dialogs) {
     const source = readFrontend(path);
     assert.equal(
-      [...source.matchAll(/<caffold-keyboard-navigation-presentation>/g)].length,
+      [...source.matchAll(/<caffold-keyboard-navigation-presentation\b/g)].length,
       1,
       path,
     );
-    assert.match(
-      source,
-      /:scope > caffold-keyboard-navigation-presentation/,
-      path,
-    );
-    assert.match(source, /kind: "modal"/, path);
+    assert.match(source, /this\.keyboard\.presentation\(\)/, path);
+    assert.match(source, /this\.keyboard\.modal\(/, path);
   }
 });
 
@@ -337,27 +338,27 @@ test("product dialog CSS does not style nested keyboard presentation dialogs", (
 
 test("Git and GitHub detail components independently own their native auto popovers", () => {
   const detailLayout = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/layout.ts",
   );
   const taskSummary = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.ts",
   );
   const git = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/components/git-menu.js",
+    "pages/(task-workspace)/tasks/(detail)/components/git-menu.ts",
   );
   const github = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/components/github-menu.js",
+    "pages/(task-workspace)/tasks/(detail)/components/github-menu.ts",
   );
 
   assert.match(detailLayout, /import "\.\/components\/git-menu\.js"/);
   assert.match(detailLayout, /import "\.\/components\/github-menu\.js"/);
   assert.match(
     detailLayout,
-    /<caffold-task-detail-git><\/caffold-task-detail-git>/,
+    /<caffold-task-detail-git\b/,
   );
   assert.match(
     detailLayout,
-    /<caffold-task-detail-github><\/caffold-task-detail-github>/,
+    /<caffold-task-detail-github\b/,
   );
   assert.match(detailLayout, /caffold:task-detail-git-intent/);
   assert.match(detailLayout, /caffold:task-detail-github-intent/);
@@ -371,13 +372,13 @@ test("Git and GitHub detail components independently own their native auto popov
   assert.match(git, /class="task-git-button"/);
   assert.match(git, /class="task-git-popover"/);
   assert.match(git, /popover="auto"/);
-  assert.match(git, /popovertarget="\$\{this\.popoverId\}"/);
+  assert.match(git, /popovertarget=\$\{this\.popoverId\}/);
   assert.match(git, /popovertargetaction="hide"/);
   assert.match(git, /data-git-button-action/);
   assert.match(git, /type: "open-git-tool"/);
   assert.match(
     git,
-    /customElements\.define\("caffold-task-detail-git"/,
+    /@customElement\("caffold-task-detail-git"\)/,
   );
   assert.doesNotMatch(git, /CaffoldTaskDetailGithub|caffold-task-detail-github/);
 
@@ -385,13 +386,13 @@ test("Git and GitHub detail components independently own their native auto popov
   assert.match(github, /class="task-github-button"/);
   assert.match(github, /class="task-github-popover"/);
   assert.match(github, /popover="auto"/);
-  assert.match(github, /popovertarget="\$\{this\.popoverId\}"/);
+  assert.match(github, /popovertarget=\$\{this\.popoverId\}/);
   assert.match(github, /popovertargetaction="hide"/);
   assert.match(github, /data-github-button-action/);
   assert.match(github, /type: "open-github-tool"/);
   assert.match(
     github,
-    /customElements\.define\("caffold-task-detail-github"/,
+    /@customElement\("caffold-task-detail-github"\)/,
   );
   assert.doesNotMatch(
     github,
@@ -408,41 +409,47 @@ test("Git and GitHub detail components independently own their native auto popov
 
 test("common Detail owns shared surfaces while Task and Section keep subject work", () => {
   const detailLayout = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/layout.ts",
   );
   const taskLayout = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.ts",
   );
   const sectionLayout = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(section)/layout.ts",
   );
   const sectionGithubShortcuts = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js",
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.ts",
   );
   const sectionConversationShortcuts = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.js",
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.ts",
   );
   const conversationForkDialog = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.ts",
   );
   const taskCreate = readFrontend(
-    "pages/(task-workspace)/tasks/components/task-create.js",
+    "pages/(task-workspace)/tasks/components/task-create.ts",
   );
   const globalNew = readFrontend(
-    "pages/(task-workspace)/tasks/new/page.js",
+    "pages/(task-workspace)/tasks/new/page.ts",
   );
   const tasksLayout = readFrontend(
-    "pages/(task-workspace)/tasks/layout.js",
+    "pages/(task-workspace)/tasks/layout.ts",
   );
   const activeTaskList = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list.js",
+    "pages/(task-workspace)/tasks/components/active-task-list.ts",
   );
 
   for (const child of ["(review)", "(git)", "(github)"]) {
     assert.ok(detailLayout.includes(`import "./${child}/layout.js"`));
   }
-  assert.match(detailLayout, /<caffold-task-detail hidden>/);
-  assert.match(detailLayout, /<caffold-section-detail hidden>/);
+  assert.match(
+    detailLayout,
+    /<caffold-task-detail\s+\$\{drawn\(this\.taskDetail\)\}\s+hidden\b/,
+  );
+  assert.match(
+    detailLayout,
+    /<caffold-section-detail\s+\$\{drawn\(this\.sectionDetail\)\}\s+hidden\b/,
+  );
   assert.match(detailLayout, /class="detail-review-slot"/);
   assert.match(detailLayout, /class="detail-git-slot"/);
   assert.match(detailLayout, /class="detail-github-slot"/);
@@ -456,9 +463,9 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(taskLayout, /import "\.\/components\/conversation\.js"/);
   assert.match(taskLayout, /import "\.\/components\/command-dialog\.js"/);
   assert.match(taskLayout, /import "\.\/components\/markdown-preview-dialog\.js"/);
-  assert.match(taskLayout, /<caffold-task-conversation>/);
-  assert.match(taskLayout, /<caffold-task-command-dialog>/);
-  assert.match(taskLayout, /<caffold-task-markdown-preview-dialog>/);
+  assert.match(taskLayout, /<caffold-task-conversation\b/);
+  assert.match(taskLayout, /<caffold-task-command-dialog\b/);
+  assert.match(taskLayout, /<caffold-task-markdown-preview-dialog\b/);
   assert.doesNotMatch(taskLayout, /\(review\)|\(git\)|\(github\)/);
   assert.doesNotMatch(
     taskLayout,
@@ -468,9 +475,15 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(sectionLayout, /import "\.\.\/\.\.\/components\/task-create\.js"/);
   assert.match(sectionLayout, /import "\.\/components\/github-shortcuts\.js"/);
   assert.match(sectionLayout, /import "\.\/components\/conversation-shortcuts\.js"/);
-  assert.match(sectionLayout, /<caffold-task-create>/);
-  assert.match(sectionLayout, /<caffold-section-conversation-shortcuts hidden>/);
-  assert.match(sectionLayout, /<caffold-section-github-shortcuts hidden>/);
+  assert.match(sectionLayout, /<caffold-task-create\b/);
+  assert.match(
+    sectionLayout,
+    /<caffold-section-conversation-shortcuts\s+\$\{drawn\(this\.conversations\)\}\s+hidden\s*>/,
+  );
+  assert.match(
+    sectionLayout,
+    /<caffold-section-github-shortcuts\s+\$\{drawn\(this\.github\)\}\s+hidden\s*>/,
+  );
   assert.doesNotMatch(
     sectionLayout,
     /getGitHubStatus|statusRequestId|section-github-repository/,
@@ -478,7 +491,7 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(sectionGithubShortcuts, /getGitHubStatus/);
   assert.match(sectionGithubShortcuts, /statusRequestId/);
   assert.match(sectionGithubShortcuts, /caffold:section-detail-intent/);
-  assert.match(sectionConversationShortcuts, /<caffold-conversation-fork-dialog>/);
+  assert.match(sectionConversationShortcuts, /<caffold-conversation-fork-dialog\b/);
   assert.match(sectionConversationShortcuts, /Fork from Codex thread ID/);
   assert.match(conversationForkDialog, /previewTaskForkSource/);
   assert.match(conversationForkDialog, /createTaskFork/);
@@ -487,21 +500,21 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(globalNew, /import "\.\.\/components\/task-create\.js"/);
   assert.match(globalNew, /browseCwd: true/);
   assert.match(taskCreate, /class CaffoldTaskCreate/);
-  assert.match(taskCreate, /caffold:task-create-intent/);
+  assert.match(taskCreate, /TASK_CREATE_INTENT_EVENT/);
   assert.doesNotMatch(taskCreate, /await createTask|caffold:task-created/);
-  assert.match(tasksLayout, /import \{ createTask \} from/);
+  assert.match(tasksLayout, /^  createTask,$/m);
   assert.match(tasksLayout, /pendingTaskCreation/);
   assert.match(tasksLayout, /startTaskCreation/);
   assert.match(tasksLayout, /createAndAdoptTask/);
 });
 
 test("custom elements use routed owners or the nearest components namespace", () => {
-  const invalidOwners = frontendJavascriptFiles()
-    .filter(([, source]) => source.includes("customElements.define"))
+  const invalidOwners = frontendModules()
+    .filter(([, source]) => source.includes("@customElement("))
     .filter(([path]) => {
       const segments = path.split("/");
       const fileName = segments.at(-1);
-      return !["page.js", "layout.js"].includes(fileName) &&
+      return !["page.js", "page.ts", "layout.js", "layout.ts"].includes(fileName) &&
         segments.at(-2) !== "components";
     })
     .map(([path]) => path);
@@ -511,18 +524,18 @@ test("custom elements use routed owners or the nearest components namespace", ()
 
 test("Task Info keeps action presentation in its private leaf", () => {
   const info = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.ts",
   );
   const actions = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.ts",
   );
 
   assert.match(info, /import "\.\/info\/components\/actions\.js"/);
-  assert.match(info, /<caffold-task-detail-info-actions>/);
+  assert.match(info, /<caffold-task-detail-info-actions\b/);
   assert.match(info, /caffold:task-detail-info-action-intent/);
   assert.doesNotMatch(info, /data-task-info-action|forkDisabledReason/);
 
-  assert.match(actions, /customElements\.define/);
+  assert.match(actions, /@customElement\(/);
   assert.match(actions, /data-task-info-action="fork"/);
   assert.match(actions, /data-task-info-action="archive"/);
   assert.match(actions, /caffold:task-detail-info-action-intent/);
@@ -531,58 +544,61 @@ test("Task Info keeps action presentation in its private leaf", () => {
 
 test("workspace brand owns the shared Tasks, Notes, and Settings navigator identity", () => {
   const brand = readFrontend(
-    "pages/(task-workspace)/components/workspace-brand.js",
+    "pages/(task-workspace)/components/workspace-brand.ts",
   );
   const taskNavigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const settingsNavigator = readFrontend(
-    "pages/(task-workspace)/settings/components/navigator.js",
+    "pages/(task-workspace)/settings/components/navigator.ts",
   );
   const notesNavigator = readFrontend(
-    "pages/(task-workspace)/notes/components/navigator.js",
+    "pages/(task-workspace)/notes/components/navigator.ts",
   );
   const appearance = readFrontend(
-    "pages/(task-workspace)/settings/appearance/page.js",
+    "pages/(task-workspace)/settings/appearance/page.ts",
   );
   const files = readFrontend(
-    "pages/(task-workspace)/settings/files/page.js",
+    "pages/(task-workspace)/settings/files/page.ts",
   );
 
   assert.match(
     brand,
-    /customElements\.define\("caffold-workspace-brand"/,
+    /@customElement\("caffold-workspace-brand"\)/,
   );
   assert.match(brand, /class="workspace-brand-icon"/);
   assert.match(brand, /class="workspace-brand-title">Caffold/);
   for (const owner of [taskNavigator, notesNavigator, settingsNavigator]) {
-    assert.match(owner, /<caffold-workspace-brand><\/caffold-workspace-brand>/);
+    assert.match(
+      owner,
+      /<caffold-workspace-brand\b[^>]*><\/caffold-workspace-brand>/,
+    );
   }
   assert.doesNotMatch(
     appearance,
-    /<caffold-workspace-brand><\/caffold-workspace-brand>/,
+    /<caffold-workspace-brand\b[^>]*><\/caffold-workspace-brand>/,
   );
   assert.doesNotMatch(
     files,
-    /<caffold-workspace-brand><\/caffold-workspace-brand>/,
+    /<caffold-workspace-brand\b[^>]*><\/caffold-workspace-brand>/,
   );
   assert.doesNotMatch(taskNavigator, /task-list-primary-(?:brand|icon)/);
   assert.doesNotMatch(settingsNavigator, /<strong>Settings<\/strong>/);
 });
 
 test("App Shell owns one foreground recovery UI and retry intent", () => {
-  const appShell = readFrontend("pages/layout.js");
-  const foreground = readFrontend("pages/foreground-recovery.js");
+  const appShell = readFrontend("pages/layout.ts");
+  const foreground = readFrontend("pages/foreground-recovery.ts");
   const navigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const detail = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.ts",
   );
   const taskStatus = readFrontend(
-    "pages/(task-workspace)/tasks/components/task-status.css",
+    "pages/(task-workspace)/tasks/components/task-status-chip.css",
   );
-  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.ts");
 
   assert.match(appShell, /class="app-foreground-recovery"/);
   assert.match(appShell, /data-action="retry-foreground-recovery"/);
@@ -600,7 +616,7 @@ test("App Shell owns one foreground recovery UI and retry intent", () => {
 });
 
 test("foreground recovery machine reads from graph to private projection", () => {
-  const foreground = readFrontend("pages/foreground-recovery/machine.js");
+  const foreground = readFrontend("pages/foreground-recovery/machine.ts");
   const declarations = [
     "export const FOREGROUND_RECOVERY_NODE",
     "export const FOREGROUND_RECOVERY_TRANSITIONS",
@@ -621,7 +637,7 @@ test("foreground recovery machine reads from graph to private projection", () =>
 });
 
 test("foreground recovery public exports contain only consumer contracts", () => {
-  const foreground = readFrontend("pages/foreground-recovery.js");
+  const foreground = readFrontend("pages/foreground-recovery.ts");
   const exportedNames = [...foreground.matchAll(
     /^export (?:class|const|function)\s+([A-Za-z0-9_]+)/gm,
   )].map((match) => match[1]);
@@ -638,11 +654,11 @@ test("foreground recovery public exports contain only consumer contracts", () =>
 });
 
 test("PWA update lifecycle keeps one public non-visual owner and private graph", () => {
-  const appShell = readFrontend("pages/layout.js");
-  const lifecycle = readFrontend("pages/pwa-update-lifecycle.js");
-  const machine = readFrontend("pages/pwa-update-lifecycle/machine.js");
-  const runtime = readFrontend("pages/pwa-update-lifecycle/runtime.js");
-  const serviceWorker = readFrontend("service-worker.js");
+  const appShell = readFrontend("pages/layout.ts");
+  const lifecycle = readFrontend("pages/pwa-update-lifecycle.ts");
+  const machine = readFrontend("pages/pwa-update-lifecycle/machine.ts");
+  const runtime = readFrontend("pages/pwa-update-lifecycle/runtime.ts");
+  const serviceWorker = readFrontend("service-worker.ts");
   const exportedNames = [...lifecycle.matchAll(
     /^export (?:class|const|function)\s+([A-Za-z0-9_]+)/gm,
   )].map((match) => match[1]);
@@ -677,24 +693,24 @@ test("PWA update lifecycle keeps one public non-visual owner and private graph",
 });
 
 test("App Shell solely coordinates foreground recovery through public owners", () => {
-  const appShell = readFrontend("pages/layout.js");
-  const foreground = readFrontend("pages/foreground-recovery.js");
+  const appShell = readFrontend("pages/layout.ts");
+  const foreground = readFrontend("pages/foreground-recovery.ts");
   const browserSignals = readFrontend(
-    "pages/foreground-recovery/browser-signals.js",
+    "pages/foreground-recovery/browser-signals.ts",
   );
   const foregroundLifecycle = readFrontend(
-    "pages/foreground-recovery/lifecycle.js",
+    "pages/foreground-recovery/lifecycle.ts",
   );
-  const workspace = readFrontend("pages/(task-workspace)/layout.js");
-  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
+  const workspace = readFrontend("pages/(task-workspace)/layout.ts");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.ts");
   const navigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const detail = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.ts",
   );
-  const stream = readFrontend("pages/(task-workspace)/tasks/stream.js");
-  const serviceWorker = readFrontend("service-worker.js");
+  const stream = readFrontend("pages/(task-workspace)/tasks/stream.ts");
+  const serviceWorker = readFrontend("service-worker.ts");
 
   assert.match(appShell, /new ForegroundRecoveryLifecycle\(/);
   assert.match(appShell, /onRecover: \(request\) => this\.recoverForeground\(request\)/);
@@ -747,17 +763,19 @@ test("App Shell solely coordinates foreground recovery through public owners", (
 
 test("Task navigator keeps primary chrome outside its role-specific scrolling lists", () => {
   const navigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const renderMarkup = navigator.match(
-    /this\.innerHTML = `([\s\S]*?)`;\n\s*}/,
+    /\n  override render\(\) \{[\s\S]*?return html`([\s\S]*?)`;\n {2}}/,
   )?.[1];
 
   assert.ok(renderMarkup, "navigator render markup must remain inspectable");
-  const header = renderMarkup.indexOf("${this.renderPrimaryHeader()}");
-  const scroller = renderMarkup.indexOf('<div class="task-list-scroll">');
-  const active = renderMarkup.indexOf("<caffold-active-task-list>");
-  const archived = renderMarkup.indexOf("<caffold-archived-task-list hidden>");
+  const header = renderMarkup.indexOf(
+    '<header class="task-list-section-header task-list-primary-header">',
+  );
+  const scroller = renderMarkup.search(/<div\b[^`]*?class="task-list-scroll"/);
+  const active = renderMarkup.search(/<caffold-active-task-list\b/);
+  const archived = renderMarkup.search(/<caffold-archived-task-list\s+\$\{drawn\(this\.archivedList\)\}\s+hidden\b/);
 
   assert.ok(header >= 0 && header < scroller);
   assert.ok(active > scroller);
@@ -766,30 +784,30 @@ test("Task navigator keeps primary chrome outside its role-specific scrolling li
     navigator,
     /class="task-list-section-header task-list-primary-header"/,
   );
-  assert.match(navigator, /<caffold-workspace-brand><\/caffold-workspace-brand>/);
+  assert.match(navigator, /<caffold-workspace-brand\b[^>]*><\/caffold-workspace-brand>/);
 });
 
 test("active and archived Task lists own distinct state and lifecycle boundaries", () => {
   const navigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const active = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list.js",
+    "pages/(task-workspace)/tasks/components/active-task-list.ts",
   );
   const activeStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list.css",
   );
   const archived = readFrontend(
-    "pages/(task-workspace)/tasks/components/archived-task-list.js",
+    "pages/(task-workspace)/tasks/components/archived-task-list.ts",
   );
   const activeRow = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts",
   );
   const activeRowStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
   );
   const section = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/section.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section.ts",
   );
   const sectionStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list/components/section.css",
@@ -798,35 +816,35 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
     "pages/(task-workspace)/tasks/components/archived-task-list.css",
   );
 
-  assert.match(active, /customElements\.define\("caffold-active-task-list"/);
+  assert.match(active, /@customElement\("caffold-active-task-list"\)/);
   assert.match(active, /getTasks/);
   assert.match(active, /TaskStreamLifecycle/);
   assert.match(active, /aria-label", "Caffold Tasks"/);
   assert.doesNotMatch(active, /getArchivedTasks|restoreTask|deleteTask/);
   assert.doesNotMatch(active, /load-more-tasks|taskListNextCursor/);
-  assert.match(activeRow, /customElements\.define\("caffold-active-task-row"/);
+  assert.match(activeRow, /@customElement\("caffold-active-task-row"\)/);
   assert.doesNotMatch(
     active,
     /ACTIVE_TASK_ROW_INTENT_EVENT|caffold-active-task-row|li\[data-thread-id/,
   );
-  assert.match(section, /createElement\("caffold-active-task-row"\)/);
+  assert.match(section, /new CaffoldActiveTaskRow\(\)/);
   assert.match(section, /\.\/section\/components\/row\.js/);
-  assert.match(section, /ACTIVE_TASK_ROW_INTENT_EVENT/);
+  assert.match(section, /@caffold:active-task-row-intent=/);
   assert.match(section, /detail: \{ subject: "task", \.\.\.event\.detail \}/);
   assert.doesNotMatch(activeRow, /ACTIVE_TASK_SECTION_INTENT_EVENT/);
   assert.match(
     section,
-    /customElements\.define\(\s*"caffold-active-task-section"/,
+    /@customElement\("caffold-active-task-section"\)/,
   );
-  assert.match(active, /createElement\(\s*"caffold-active-task-section"/);
-  assert.match(section, /list\.className = "task-list"/);
+  assert.match(active, /new CaffoldActiveTaskSection\(\)/);
+  assert.match(section, /<ol\s+\$\{drawn\(this\.list\)\}\s+class="task-list"/);
   assert.match(
     section,
-    /reconcileRows\(\{ availableRows = new Map\(\), prune = true \} = \{\}\)/,
+    /reconcileRows\(availableRows: Map<string, HTMLLIElement>\)/,
   );
-  assert.match(section, /transferableRows\(localThreadIds, projectedThreadIds\)/);
-  assert.match(section, /updateTask\(task\)/);
-  assert.match(active, /section\?\.updateTask\(nextTask\)/);
+  assert.match(section, /transferableRows\(localThreadIds: Set<string>, listedThreadIds: Set<string>\)/);
+  assert.match(section, /updateTask\(task: ListedTask\)/);
+  assert.match(active, /sectionComponentFor\(listKey\)\?\.updateTask\(next\)/);
   assert.doesNotMatch(section, /closest\("caffold-active-task-list"\)/);
   assert.doesNotMatch(
     navigator,
@@ -842,7 +860,7 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
 
   assert.match(
     archived,
-    /customElements\.define\("caffold-archived-task-list"/,
+    /@customElement\("caffold-archived-task-list"\)/,
   );
   assert.match(archived, /getArchivedTasks/);
   assert.match(archived, /restoreTask/);
@@ -851,8 +869,8 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
   assert.match(archivedStyles, /\.task-archived-action-button/);
   assert.doesNotMatch(archivedStyles, /task-unseen-complete|load-more-tasks/);
 
-  assert.match(navigator, /<caffold-active-task-list>/);
-  assert.match(navigator, /<caffold-archived-task-list hidden>/);
+  assert.match(navigator, /<caffold-active-task-list\b/);
+  assert.match(navigator, /<caffold-archived-task-list\s+\$\{drawn\(this\.archivedList\)\}\s+hidden\b/);
   assert.doesNotMatch(
     navigator,
     /\bgetTasks\b|\bgetArchivedTasks\b|\brestoreTask\b|\bdeleteTask\b|TaskStreamLifecycle/,
@@ -860,33 +878,33 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
 });
 
 test("Task and Section reordering keep navigation, ordering, and row presentation owners bounded", () => {
-  const api = readFrontend("api.js");
-  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
+  const api = readFrontend("api.ts");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.ts");
   const navigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.js",
+    "pages/(task-workspace)/tasks/components/navigator.ts",
   );
   const active = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list.js",
+    "pages/(task-workspace)/tasks/components/active-task-list.ts",
   );
   const activeStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list.css",
   );
   const row = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.ts",
   );
   const rowStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
   );
   const section = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/section.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section.ts",
   );
   const sectionStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list/components/section.css",
   );
 
-  assert.match(api, /export async function reorderTask\(threadId, beforeThreadId\)/);
+  assert.match(api, /export async function reorderTask\(\s*threadId: string,\s*beforeThreadId: string \| null,\s*\)/);
   assert.match(api, /body: \{ beforeThreadId: beforeThreadId \?\? null \}/);
-  assert.match(api, /export async function reorderSection\(sectionId, beforeSectionId\)/);
+  assert.match(api, /export async function reorderSection\(\s*sectionId: string,\s*beforeSectionId: string \| null,\s*\)/);
   assert.match(api, /body: \{ beforeSectionId: beforeSectionId \?\? null \}/);
   const switcherControl = navigator.indexOf(
     'data-task-action="open-task-switcher"',
@@ -898,36 +916,43 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
       switcherControl < reorderControl &&
       reorderControl < newControl,
   );
-  assert.match(navigator, /aria-pressed="\$\{this\.reorderMode !== "none"\}"/);
+  assert.match(navigator, /const reordering = this\.reorderMode !== "none"/);
+  assert.match(navigator, /aria-pressed=\$\{reordering\}/);
   assert.match(navigator, /popover="auto"/);
   assert.match(navigator, />Reorder Tasks<\/button>/);
   assert.match(navigator, />Reorder Sections<\/button>/);
-  assert.match(navigator, /renderInlineIcon\(\s*"ArrowDownUp"/);
-  assert.match(navigator, /this\.activeTaskList\.setReorderMode\(next, \{/);
+  assert.match(navigator, /inlineIcon\(\s*"ArrowDownUp"/);
+  assert.match(navigator, /activeList\.setReorderMode\(mode, \{/);
   assert.match(tasksPage, /exitReorderMode\(\{ restoreFocus: false \}\)/);
 
-  assert.match(active, /reorderTask\(threadId, move\.beforeThreadId\)/);
-  assert.match(active, /reorderSection\(sectionId, move\.beforeSectionId\)/);
+  assert.match(active, /reorderTask\(threadId, beforeThreadId\)/);
+  assert.match(active, /reorderSection\(sectionId, beforeSectionId\)/);
   assert.match(active, /this\.pendingMove/);
-  assert.match(active, /class="sr-only task-reorder-announcement" aria-live="polite"/);
+  assert.match(
+    active,
+    /class="sr-only task-reorder-announcement"\s+aria-live="polite"/,
+  );
   assert.doesNotMatch(
     active,
     /ACTIVE_TASK_ROW_INTENT_EVENT|caffold-active-task-row|li\[data-thread-id/,
   );
-  assert.match(active, /ACTIVE_TASK_SECTION_INTENT_EVENT/);
-  assert.match(active, /createElement\(\s*"caffold-active-task-section"/);
-  assert.match(section, /createElement\("caffold-active-task-row"\)/);
-  assert.match(section, /list\.className = "task-list"/);
-  assert.match(section, /updateTaskDropTarget\(threadId, clientY\)/);
+  assert.match(active, /@caffold:active-task-section-intent=/);
+  assert.match(active, /new CaffoldActiveTaskSection\(\)/);
+  assert.match(section, /new CaffoldActiveTaskRow\(\)/);
+  assert.match(section, /<ol\s+\$\{drawn\(this\.list\)\}\s+class="task-list"/);
+  assert.match(section, /updateTaskDropTarget\(threadId: string, clientY: number\)/);
   assert.match(section, /clearTaskDropTarget\(\)/);
-  assert.match(active, /sectionComponentFor\(drag\.sectionId\)[\s\S]*?updateTaskDropTarget/);
+  assert.match(
+    active,
+    /sectionComponentFor\(\s*drag\.sectionId,?\s*\)[\s\S]*?updateTaskDropTarget/,
+  );
   assert.match(active, /sectionComponentFor\(drag\.sectionId\)\?\.clearTaskDropTarget/);
   assert.doesNotMatch(active, /\.matches\("\.task-list"\)/);
-  assert.doesNotMatch(active, /renderInlineIcon\(\s*"Grip",\s*"Reorder Section"/);
+  assert.doesNotMatch(active, /inlineIcon\(\s*"Grip",\s*"Reorder Section"/);
   assert.doesNotMatch(active, /addEventListener\("pointer(?:down|move|up|cancel)"/);
   assert.doesNotMatch(active, /function renderTaskRowMeta|function patchTaskListRow/);
 
-  assert.match(row, /renderInlineIcon\("Grip"/);
+  assert.match(row, /inlineIcon\(\s*"Grip"/);
   assert.match(row, /event\.key === "ArrowUp"/);
   assert.match(row, /event\.key === "ArrowDown"/);
   assert.match(row, /class="task-row task-row-reorder-mode"/);
@@ -965,7 +990,7 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
     sectionStyles,
     /& \.task-repository-count \{[\s\S]*?@starting-style/,
   );
-  assert.match(section, /renderInlineIcon\(\s*"Grip",\s*"Reorder Section"/);
+  assert.match(section, /inlineIcon\(\s*"Grip",\s*"Reorder Section"/);
   assert.match(section, /const POINTER_DRAG_THRESHOLD_PX = 5/);
   assert.match(section, /event\.isPrimary === false/);
   assert.match(section, /handle\.focus\(\{ preventScroll: true \}\)/);
@@ -974,24 +999,21 @@ test("Task and Section reordering keep navigation, ordering, and row presentatio
   assert.match(section, /handle\.releasePointerCapture\(gesture\.pointerId\)/);
   assert.match(section, /event\.key === "ArrowUp"/);
   assert.match(section, /event\.key === "ArrowDown"/);
-  assert.match(
-    section,
-    /const selectable = !section\.recovery && this\.snapshot\.reorderMode === "none"/,
-  );
+  assert.match(section, /!section\.recovery && reorderMode === "none"/);
   assert.doesNotMatch(activeStyles, /section-reorder-handle|task-repository-count/);
   assert.match(rowStyles, /min-height: var\(--task-list-row-height\)/);
   assert.match(rowStyles, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
 test("archived task deletion dialog owns its modal state and markup", () => {
-  const workspace = readFrontend("pages/(task-workspace)/layout.js");
+  const workspace = readFrontend("pages/(task-workspace)/layout.ts");
   const deleteDialog = readFrontend(
-    "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
+    "pages/(task-workspace)/tasks/components/archived-delete-dialog.ts",
   );
 
   assert.match(
     workspace,
-    /<caffold-task-archived-delete-dialog><\/caffold-task-archived-delete-dialog>/,
+    /<caffold-task-archived-delete-dialog\b[^>]*><\/caffold-task-archived-delete-dialog>/,
   );
   assert.doesNotMatch(workspace, /<dialog|pendingDeleteTask|showModal\(/);
   assert.match(deleteDialog, /<dialog/);
@@ -1001,37 +1023,37 @@ test("archived task deletion dialog owns its modal state and markup", () => {
 });
 
 test("Codex status, Task-store status, and the Task-store card keep explicit lifecycle and UI owners", () => {
-  const workspace = readFrontend("pages/(task-workspace)/layout.js");
-  const owner = readFrontend("pages/(task-workspace)/codex-status.js");
-  const model = readFrontend("pages/(task-workspace)/codex-status/model.js");
+  const workspace = readFrontend("pages/(task-workspace)/layout.ts");
+  const owner = readFrontend("pages/(task-workspace)/codex-status.ts");
+  const model = readFrontend("pages/(task-workspace)/codex-status/model.ts");
   const lifecycle = readFrontend(
-    "pages/(task-workspace)/codex-status/lifecycle.js",
+    "pages/(task-workspace)/codex-status/lifecycle.ts",
   );
-  const storeOwner = readFrontend("pages/(task-workspace)/task-store-status.js");
+  const storeOwner = readFrontend("pages/(task-workspace)/task-store-status.ts");
   const storeModel = readFrontend(
-    "pages/(task-workspace)/task-store-status/model.js",
+    "pages/(task-workspace)/task-store-status/model.ts",
   );
   const storeLifecycle = readFrontend(
-    "pages/(task-workspace)/task-store-status/lifecycle.js",
+    "pages/(task-workspace)/task-store-status/lifecycle.ts",
   );
   const storeRecovery = readFrontend(
-    "pages/(task-workspace)/tasks/components/task-store-recovery.js",
+    "pages/(task-workspace)/tasks/components/task-store-recovery.ts",
   );
   const restartLifecycle = readFrontend(
-    "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js",
+    "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.ts",
   );
   const restartDialog = readFrontend(
-    "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
+    "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.ts",
   );
   const updateLifecycle = readFrontend(
-    "pages/(task-workspace)/codex-status/runtime-update-lifecycle.js",
+    "pages/(task-workspace)/codex-status/runtime-update-lifecycle.ts",
   );
   const updateDialog = readFrontend(
-    "pages/(task-workspace)/codex-status/components/runtime-update-dialog.js",
+    "pages/(task-workspace)/codex-status/components/runtime-update-dialog.ts",
   );
-  const tasks = readFrontend("pages/(task-workspace)/tasks/layout.js");
+  const tasks = readFrontend("pages/(task-workspace)/tasks/layout.ts");
   const settings = readFrontend(
-    "pages/(task-workspace)/settings/codex/page.js",
+    "pages/(task-workspace)/settings/codex/page.ts",
   );
 
   assert.match(workspace, /from "\.\/codex-status\.js"/);
@@ -1041,7 +1063,7 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   );
   assert.match(
     workspace,
-    /<caffold-codex-runtime-restart-dialog><\/caffold-codex-runtime-restart-dialog>/,
+    /<caffold-codex-runtime-restart-dialog\b[^>]*><\/caffold-codex-runtime-restart-dialog>/,
   );
   assert.match(
     workspace,
@@ -1049,7 +1071,7 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   );
   assert.match(
     workspace,
-    /<caffold-codex-runtime-update-dialog><\/caffold-codex-runtime-update-dialog>/,
+    /<caffold-codex-runtime-update-dialog\b[^>]*><\/caffold-codex-runtime-update-dialog>/,
   );
   assert.match(owner, /from "\.\/codex-status\/model\.js"/);
   assert.match(
@@ -1082,12 +1104,15 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   assert.match(restartLifecycle, /class CodexRuntimeRestartLifecycle/);
   assert.match(updateLifecycle, /class CodexRuntimeUpdateLifecycle/);
   assert.match(restartDialog, /<dialog/);
-  assert.match(restartDialog, /customElements\.define\(/);
+  assert.match(restartDialog, /@customElement\(/);
   assert.match(updateDialog, /<dialog/);
-  assert.match(updateDialog, /customElements\.define\(/);
+  assert.match(updateDialog, /@customElement\(/);
   assert.doesNotMatch(tasks, /codex-readiness-card|CODEX_INSTALL_COMMAND/);
   assert.match(tasks, /import "\.\/components\/task-store-recovery\.js"/);
-  assert.match(tasks, /<caffold-task-store-recovery hidden>/);
+  assert.match(
+    tasks,
+    /<caffold-task-store-recovery\s+\$\{drawn\(this\.taskStoreRecovery\)\}\s+\?hidden=\$\{!takeover\}/,
+  );
   assert.match(storeRecovery, /class CaffoldTaskStoreRecovery/);
   assert.match(storeRecovery, /TASK_STORE_RETRY_REQUEST_EVENT/);
   assert.doesNotMatch(storeRecovery, /codex/i);
@@ -1099,30 +1124,30 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
   assert.doesNotMatch(settings, /restartCodexRuntime|<dialog|runtime-restart-dialog/);
   assert.doesNotMatch(settings, /updateCodexRuntime|runtime-update-dialog/);
 
-  for (const [path, source] of frontendJavascriptFiles()) {
+  for (const [path, source] of frontendModules()) {
     const insideOwner =
-      path === "pages/(task-workspace)/codex-status.js" ||
+      path === "pages/(task-workspace)/codex-status.ts" ||
       path.startsWith("pages/(task-workspace)/codex-status/");
-    const assetInventory = path === "service-worker.js";
+    const assetInventory = path === "service-worker.ts";
     if (!insideOwner && !assetInventory) {
       assert.doesNotMatch(
         source,
         /codex-status\/(?!components\/)/,
-        `${path} must consume non-visual Codex status behavior through codex-status.js`,
+        `${path} must consume non-visual Codex status behavior through codex-status.ts`,
       );
     }
     const insideStoreOwner =
-      path === "pages/(task-workspace)/task-store-status.js" ||
+      path === "pages/(task-workspace)/task-store-status.ts" ||
       path.startsWith("pages/(task-workspace)/task-store-status/");
     if (!insideStoreOwner && !assetInventory) {
       assert.doesNotMatch(
         source,
         /task-store-status\//,
-        `${path} must consume Task-store status through task-store-status.js`,
+        `${path} must consume Task-store status through task-store-status.ts`,
       );
     }
     if (
-      path !== "pages/(task-workspace)/layout.js" &&
+      path !== "pages/(task-workspace)/layout.ts" &&
       !assetInventory &&
       !path.startsWith("pages/(task-workspace)/codex-status/")
     ) {
@@ -1137,11 +1162,11 @@ test("Codex status, Task-store status, and the Task-store card keep explicit lif
 
 test("split panes remember their widths and collapse under one key pair per kind of pane", () => {
   const storageKeys = [
-    "pages/(task-workspace)/layout.js",
-    "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",
-    "components/git-compare-browser.js",
-    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js",
-    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js",
+    "pages/(task-workspace)/layout.ts",
+    "pages/(task-workspace)/tasks/(detail)/(review)/layout.ts",
+    "components/git-compare-browser.ts",
+    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.ts",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.ts",
   ].map((path) => {
     const resizers = [...readFrontend(path).matchAll(
       /<caffold-pane-resizer\b[^>]*>/g,

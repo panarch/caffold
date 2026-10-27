@@ -4,30 +4,31 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./presentation.js");
-const Presentation = registry.element(
+const presentation = registry.element(
   "caffold-keyboard-navigation-presentation",
-);
+).prototype;
 after(() => registry.restore());
 
-test("mounts and exposes every shared context-local presentation", () => {
-  const presentation = new Presentation();
-  presentation.ensureRendered();
-  assert.match(presentation.innerHTML, /caffold-action-hint-dialog/);
-  assert.match(presentation.innerHTML, /caffold-scroll-mode-hud/);
-  assert.match(presentation.innerHTML, /scroll-surface-selector/);
-
+test("draws and hands out every part one context shows its modes with", () => {
   const dialog = {};
   const hud = {};
   const selector = {};
-  presentation.querySelector = (query) => new Map([
-    [":scope > caffold-action-hint-dialog", dialog],
-    [":scope > caffold-scroll-mode-hud", hud],
-    [":scope > caffold-scroll-surface-selector", selector],
-  ]).get(query) ?? null;
-  assert.equal(presentation.actionHintDialog(), dialog);
-  assert.equal(presentation.scrollModeHud(), hud);
-  assert.equal(presentation.scrollSurfaceSelector(), selector);
+  const owner = Object.assign(Object.create(presentation), {
+    dialog: { value: dialog },
+    hud: { value: hud },
+    selector: { value: selector },
+    performUpdate() {},
+  });
+
+  const drawn = templateHtml(owner.render());
+  assert.match(drawn, /<caffold-action-hint-dialog/);
+  assert.match(drawn, /<caffold-scroll-mode-hud/);
+  assert.match(drawn, /<caffold-scroll-surface-selector/);
+  assert.equal(owner.actionHintDialog(), dialog);
+  assert.equal(owner.scrollModeHud(), hud);
+  assert.equal(owner.scrollSurfaceSelector(), selector);
 });

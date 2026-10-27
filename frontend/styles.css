@@ -3,6 +3,7 @@
 @import "./pages/components/update-dialog.css";
 @import "./pages/components/update-result-dialog.css";
 @import "./components/pagination.css";
+@import "./components/pagination/components/button.css";
 @import "./components/file-tree.css";
 @import "./components/file-navigator.css";
 @import "./components/file-viewer.css";
@@ -52,7 +53,7 @@
 @import "./pages/(task-workspace)/settings/grok/page.css";
 @import "./pages/(task-workspace)/settings/about/page.css";
 @import "./pages/(task-workspace)/tasks/controls.css";
-@import "./pages/(task-workspace)/tasks/components/task-status.css";
+@import "./pages/(task-workspace)/tasks/components/task-status-chip.css";
 @import "./pages/(task-workspace)/tasks/layout.css";
 @import "./pages/(task-workspace)/tasks/(detail)/layout.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(section)/layout.css";
@@ -63,8 +64,8 @@
 @import "./pages/(task-workspace)/tasks/components/composer.css";
 @import "./pages/(task-workspace)/tasks/components/composer/components/attachments.css";
 @import "./pages/(task-workspace)/tasks/components/composer/components/context-usage.css";
+@import "./pages/(task-workspace)/tasks/components/composer/components/voice-level-meter.css";
 @import "./pages/(task-workspace)/tasks/components/task-turn-options.css";
-@import "./pages/(task-workspace)/tasks/components/voice-level-meter.css";
 @import "./pages/(task-workspace)/tasks/components/archived-delete-dialog.css";
 @import "./pages/(task-workspace)/tasks/components/task-switcher-dialog.css";
 @import "./pages/(task-workspace)/tasks/components/image-preview-dialog.css";

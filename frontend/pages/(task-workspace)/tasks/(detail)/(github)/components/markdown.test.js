@@ -10,39 +10,13 @@ await import("./markdown.js");
 const markdown = registry.element("caffold-github-markdown").prototype;
 after(() => registry.restore());
 
-test("provides the Issue Markdown host without inspecting Shadow DOM", () => {
-  const shadowRoot = { querySelector: () => null };
-  const owner = {
-    hidden: false,
-    isConnected: true,
-    shadowRoot,
-    scrollSurfaceRecords: [],
-    clientHeight: 100,
-    scrollHeight: 320,
-    getClientRects: () => [{}],
-  };
-  let current = true;
-  const scope = markdown.scrollSurfaceScope.call(owner, {
-    scopeId: "github:issue:42:body",
-    isCurrent: () => current,
-  });
-  assert.equal(scope.surfaces[0].scrollport, owner);
-  assert.deepEqual(scope.surfaces[0].axes, ["vertical", "horizontal"]);
-  assert.deepEqual(scope.mutationRoots, [owner, shadowRoot]);
-  assert.equal(scope.surfaces[0].isEligible(), true);
-  current = false;
-  assert.equal(scope.surfaces[0].isEligible(), false);
-});
-
 test("composes retained Shadow DOM code and table scrollports", () => {
   const code = layoutElement();
   const table = layoutElement();
   const body = {
     contains: (element) => [code, table].includes(element),
   };
-  const shadowRoot = {
-    querySelector: () => body,
-  };
+  const renderRoot = {};
   const codeRecord = {
     kind: "code",
     ordinal: 1,
@@ -56,16 +30,24 @@ test("composes retained Shadow DOM code and table scrollports", () => {
     scrollport: table,
   };
   const owner = layoutElement({
-    hidden: false,
-    isConnected: true,
-    shadowRoot,
+    renderRoot,
+    body: { value: body },
+    surfaces: {
+      scope: (pull) => ({
+        surfaces: [
+          {
+            id: `${pull.scopeId}:scroll`,
+            axes: ["vertical", "horizontal"],
+            scrollport: owner,
+          },
+        ],
+      }),
+    },
     scrollSurfaceRecords: [codeRecord, tableRecord],
   });
+  const pull = { scopeId: "github:issue:42:body", label: "Issue description" };
 
-  const scope = markdown.scrollSurfaceScope.call(owner, {
-    scopeId: "github:issue:42:body",
-    label: "Issue description",
-  });
+  const scope = markdown.scrollSurfaceScope.call(owner, pull);
   assert.deepEqual(scope.surfaces.map(({ id, axes, scrollport }) => ({
     id,
     axes,
@@ -87,12 +69,14 @@ test("composes retained Shadow DOM code and table scrollports", () => {
       scrollport: table,
     },
   ]);
-  assert.equal(scope.surfaces[1].isEligible(), true);
-  owner.scrollSurfaceRecords = [tableRecord];
-  assert.equal(scope.surfaces[1].isEligible(), false);
   assert.deepEqual(
     new Set(scope.mutationRoots),
-    new Set([owner, shadowRoot]),
+    new Set([owner, renderRoot]),
+  );
+  owner.scrollSurfaceRecords = [tableRecord];
+  assert.deepEqual(
+    markdown.scrollSurfaceScope.call(owner, pull).surfaces.map(({ id }) => id),
+    ["github:issue:42:body:scroll", "github:issue:42:body:table:1"],
   );
 });
 
@@ -125,26 +109,23 @@ test("provides retained sanitized Shadow DOM links and table scroll roots", () =
   const body = {
     contains: (element) => [control, tableScrollRoot].includes(element),
   };
-  const shadowRoot = {
-    querySelector: () => body,
-  };
+  const renderRoot = {};
   const owner = {
     actionHintLinks: [record],
-    hidden: false,
-    isConnected: true,
-    shadowRoot,
+    actionHintDisclosures: [],
+    renderRoot,
+    body: { value: body },
+    performUpdate() {},
   };
-  const scope = markdown.actionHintScope.call(owner, {
-    scopeId: "github:issue:42:body",
-  });
+  const pull = { scopeId: "github:issue:42:body" };
+  const scope = markdown.actionHintScope.call(owner, pull);
 
   assert.equal(scope.targets[0].id, "github:issue:42:body:link:1");
   assert.equal(scope.targets[0].label, "Open Repository in a new tab");
-  assert.deepEqual(scope.mutationRoots, [owner, shadowRoot]);
+  assert.deepEqual(scope.mutationRoots, [owner, renderRoot]);
   assert.deepEqual(scope.scrollRoots, [owner, tableScrollRoot]);
-  assert.equal(scope.targets[0].isActionable(), true);
   attributes.set("target", "_self");
-  assert.equal(scope.targets[0].isActionable(), false);
+  assert.deepEqual(markdown.actionHintScope.call(owner, pull).targets, []);
 });
 
 test("declares each folded section's summary and names it by its open state", () => {
@@ -159,9 +140,9 @@ test("declares each folded section's summary and names it by its open state", ()
   const owner = {
     actionHintLinks: [],
     actionHintDisclosures: [{ details, summary, ordinal: 2 }],
-    hidden: false,
-    isConnected: true,
-    shadowRoot: { querySelector: () => body },
+    renderRoot: {},
+    body: { value: body },
+    performUpdate() {},
   };
   const scope = () => markdown.actionHintScope.call(owner, {
     scopeId: "github:pull:7:body",
@@ -172,7 +153,6 @@ test("declares each folded section's summary and names it by its open state", ()
     closed.targets.map(({ id, actionId, label }) => [id, actionId, label]),
     [["github:pull:7:body:disclosure:2", "disclosure.toggle", "Expand Test output"]],
   );
-  assert.equal(closed.targets[0].isActionable(), true);
   closed.targets[0].activate();
   assert.deepEqual(calls, ["focus", "click"]);
 
@@ -209,9 +189,9 @@ test("leaves out what a closed section folds away, though it has a layout box", 
       { details: outer, summary: outerSummary, ordinal: 1 },
       { details: inner, summary: innerSummary, ordinal: 2 },
     ],
-    hidden: false,
-    isConnected: true,
-    shadowRoot: { querySelector: () => body },
+    renderRoot: {},
+    body: { value: body },
+    performUpdate() {},
   };
   const labels = () => markdown.actionHintScope.call(owner, {
     scopeId: "github:pull:7:body",
@@ -241,7 +221,7 @@ test("leaves out what a closed section folds away, though it has a layout box", 
   ]);
 
   outer.open = false;
-  assert.equal(outerOpen.targets[2].isActionable(), false);
+  assert.deepEqual(labels(), ["Open Review guide", "Expand Review info"]);
 });
 
 function layoutElement(properties = {}) {

@@ -4,247 +4,24 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./composer.js");
-const composer = registry.element("caffold-task-composer").prototype;
+const { ActionHints } = await import("#app/action-hints.js");
+const Composer = registry.element("caffold-task-composer");
 after(() => registry.restore());
-
-test("provides Model, Permission, and Prompt through their existing component actions", () => {
-  const clipRoot = {};
-  let modelClicks = 0;
-  let permissionClicks = 0;
-  let promptFocuses = 0;
-  const modelControl = {};
-  const modelTarget = {
-    id: "task-composer:task:thread-a:model",
-    actionId: "task.model.choose",
-    label: "Choose model and reasoning",
-    controlKind: "button",
-    control: modelControl,
-    anchor: modelControl,
-    clipRoots: [clipRoot],
-    isActionable: () => true,
-    activate: () => {
-      modelClicks += 1;
-    },
-  };
-  const permissionControl = {};
-  const permissionTarget = {
-    id: "task-composer:task:thread-a:permission",
-    actionId: "task.permission.open",
-    label: "Choose approval mode",
-    controlKind: "button",
-    control: permissionControl,
-    anchor: permissionControl,
-    clipRoots: [clipRoot],
-    isActionable: () => true,
-    activate: () => {
-      permissionClicks += 1;
-    },
-  };
-  let delegatedOptions = null;
-  const options = {
-    actionHintModelTarget(value) {
-      delegatedOptions = value;
-      return modelTarget;
-    },
-    actionHintPermissionTarget(value) {
-      assert.deepEqual(value, delegatedOptions);
-      return permissionTarget;
-    },
-  };
-  const textarea = {
-    disabled: false,
-    focus() {
-      promptFocuses += 1;
-    },
-  };
-  const owner = {
-    context: { mode: "follow-up" },
-    ensureState() {},
-    turnOptions() {
-      return options;
-    },
-    querySelector(selector) {
-      return selector === "textarea[name='prompt']" ? textarea : null;
-    },
-    querySelectorAll: () => [],
-    stateFor() {
-      return { selectionStart: null, selectionEnd: null };
-    },
-    focus: composer.focus,
-    actionHintContextKey: composer.actionHintContextKey,
-    actionHintButtonTargets(options) {
-      return composer.actionHintButtonTargets.call(this, options);
-    },
-    attachmentActionHintTargets(options) {
-      return composer.attachmentActionHintTargets.call(this, options);
-    },
-    attachmentStrip: () => ({
-      actionHintTargets(options) {
-        stripOptions = options;
-        return [stripTarget];
-      },
-    }),
-    contextUsage: () => ({
-      actionHintTarget(options) {
-        pieOptions = options;
-        return pieTarget;
-      },
-    }),
-  };
-  const stripTarget = {
-    id: "task-composer:task:thread-a:remove-image:image-a",
-    isActionable: () => true,
-  };
-  let stripOptions = null;
-  const pieTarget = { id: "task-composer:task:thread-a:context-usage" };
-  let pieOptions = null;
-
-  const targets = composer.actionHintTargets.call(owner, {
-    scopeId: "task:thread-a",
-    clipRoots: [clipRoot],
-  });
-
-  assert.equal(targets.length, 5);
-  assert.deepEqual(delegatedOptions, {
-    scopeId: "task:thread-a",
-    clipRoots: [clipRoot],
-  });
-  assert.deepEqual(stripOptions, delegatedOptions, "the attachment strip provides its own targets");
-  assert.deepEqual(pieOptions, delegatedOptions, "the pie provides its own target");
-  const [model, permission, prompt, attachment, pie] = targets;
-  assert.equal(attachment.id, stripTarget.id);
-  assert.equal(attachment.isActionable(), true);
-  assert.equal(pie, pieTarget);
-  assert.equal(model.control, modelControl);
-  assert.equal(model.isActionable(), true);
-  model.activate();
-  assert.equal(modelClicks, 1);
-
-  assert.equal(permission.control, permissionControl);
-  assert.equal(permission.isActionable(), true);
-  permission.activate();
-  assert.equal(permissionClicks, 1);
-
-  assert.deepEqual(
-    {
-      id: prompt.id,
-      actionId: prompt.actionId,
-      label: prompt.label,
-      controlKind: prompt.controlKind,
-    },
-    {
-      id: "task-composer:task:thread-a:prompt",
-      actionId: "task.prompt.focus",
-      label: "Edit follow-up prompt",
-      controlKind: "textbox",
-    },
-  );
-  assert.equal(prompt.control, textarea);
-  assert.equal(prompt.anchor, textarea);
-  assert.deepEqual(prompt.clipRoots, [clipRoot]);
-  assert.equal(prompt.isActionable(), true);
-  prompt.activate();
-  assert.equal(promptFocuses, 1);
-
-  owner.context.mode = "review";
-  assert.equal(model.isActionable(), false);
-  assert.equal(permission.isActionable(), false);
-  assert.equal(prompt.isActionable(), false);
-  assert.equal(attachment.isActionable(), false, "an attachment key belongs to the draft it was offered for");
-});
-
-function composerButton({ action = "", primaryAction = "" }) {
-  return {
-    dataset: { composerAction: action, primaryAction },
-    disabled: false,
-    title: "",
-    textContent: action || primaryAction,
-    clicks: 0,
-    getAttribute: () => null,
-    getClientRects: () => [{}],
-    focus() {},
-    click() {
-      this.clicks += 1;
-    },
-  };
-}
-
-test("provides the current Composer button catalog without retargeting it", () => {
-  const attach = composerButton({ action: "attach" });
-  const voice = composerButton({ action: "voice" });
-  const cancelVoice = composerButton({ action: "cancel-voice" });
-  const cancel = composerButton({ action: "cancel" });
-  const primary = composerButton({ primaryAction: "start" });
-  let controls = [attach, voice, cancelVoice, cancel, primary];
-  const matches = (selector) => {
-    if (selector.includes("task-primary-action-button")) {
-      return controls.filter(({ dataset }) => dataset.primaryAction);
-    }
-    const actions = Array.from(
-      selector.matchAll(/data-composer-action="([^"]+)"/g),
-      (match) => match[1],
-    );
-    return controls.filter(({ dataset }) => actions.includes(dataset.composerAction));
-  };
-  const owner = {
-    isConnected: true,
-    context: { mode: "create", threadId: "", cwd: "/repo" },
-    state: { activeSubmissionId: null },
-    stateFor() {
-      return this.state;
-    },
-    actionHintContextKey: composer.actionHintContextKey,
-    querySelector: (selector) => matches(selector)[0] ?? null,
-    querySelectorAll: matches,
-  };
-
-  const targets = composer.actionHintButtonTargets.call(owner, {
-    mode: "create",
-    scopeId: "new",
-    clipRoots: [{}],
-  });
-  assert.deepEqual(targets.map(({ id }) => id), [
-    "task-composer:new:attach",
-    "task-composer:new:voice",
-    "task-composer:new:cancel-voice",
-    "task-composer:new:cancel",
-    "task-composer:new:primary:start",
-  ]);
-  targets.forEach((target) => target.activate());
-  assert.deepEqual(
-    controls.map(({ clicks }) => clicks),
-    [1, 1, 1, 1, 1],
-  );
-
-  // The primary button changes its action in place; the key offered for the
-  // old action no longer presses it.
-  primary.dataset.primaryAction = "stop";
-  assert.equal(targets[4].isActionable(), false);
-  primary.dataset.primaryAction = "start";
-  assert.equal(targets[4].isActionable(), true);
-  owner.state.activeSubmissionId = "submission-a";
-  assert.equal(targets[0].isActionable(), false);
-  controls = controls.filter((control) => control !== voice);
-  assert.equal(targets[1].isActionable(), false);
-});
 
 test("offers Send once the turn options have settled what the turn runs under", () => {
   let ready = false;
-  const owner = {
-    context: { mode: "follow-up", submitLabel: "Send prompt" },
-    voice: { phase: "idle" },
-    state: { prompt: "Keep going", attachments: [] },
-    stateFor() {
-      return this.state;
-    },
-    activeSubmissionFor: () => null,
+  const owner = composerHost({
     turnOptions: () => ({ readyForSubmission: () => ready }),
-  };
+  });
+  owner.context.mode = "follow-up";
+  owner.voice.phase = "idle";
+  owner.state.prompt = "Keep going";
   const action = () => {
-    const { kind, disabled } = composer.primaryActionView.call(owner);
+    const { kind, disabled } = owner.primaryActionView();
     return { kind, disabled };
   };
 
@@ -260,74 +37,59 @@ test("offers Send once the turn options have settled what the turn runs under", 
   owner.voice.phase = "idle";
   owner.state.prompt = "";
   // A Task at work can be stopped whether or not its turn is known yet.
-  Object.assign(owner.context, { turnActive: true });
+  owner.context.turnActive = true;
   assert.deepEqual(action(), { kind: "stop", disabled: false });
 });
 
-test("renders Send after the turn options take the new context", () => {
-  const previousDocument = globalThis.document;
-  globalThis.document = { activeElement: null };
-  try {
-    let ready = true;
-    const node = () => ({ dataset: {}, setAttribute() {}, removeAttribute() {} });
-    const nodes = {
-      ":scope > form[data-task-form]": node(),
-      "textarea[name='prompt']": { ...node(), value: "Keep going" },
-      ".task-primary-action-button": node(),
-      'button[data-composer-action="attach"]': node(),
-    };
-    const owner = {
-      context: { mode: "follow-up", threadId: "thread-1", submitLabel: "Send prompt" },
-      voice: { phase: "idle" },
-      state: { prompt: "Keep going", attachments: [] },
-      ensureState() {},
-      ensureRendered() {},
-      stateFor() {
-        return this.state;
-      },
-      activeSubmissionFor: () => null,
-      promptFieldLocked: composer.promptFieldLocked,
-      acceptsAttachments: composer.acceptsAttachments,
-      primaryActionView: composer.primaryActionView,
-      syncPrimaryAction: composer.syncPrimaryAction,
-      querySelector: (selector) => nodes[selector],
-      setRegion() {},
-      renderVoiceStatus: () => "",
-      syncVoiceControls() {},
-      attachmentStrip: () => ({ setAttachments() {} }),
-      turnOptions: () => ({ readyForSubmission: () => ready }),
-      contextUsage: () => ({ hidden: true }),
-      // A new working directory asks for its own permission list.
-      syncTurnOptionsContext() {
-        ready = false;
-      },
-      syncTurnOptionsFields() {},
-      notifyLayoutChange() {},
-    };
+test("draws Send again once the turn options take the new context", () => {
+  let ready = true;
+  let taken = "";
+  const drawnSend = [];
+  const turnOptions = {
+    readyForSubmission: () => ready,
+    // A new working directory asks for its own permission list, which the
+    // turn options announce as it goes out.
+    setContext(context) {
+      if (JSON.stringify(context) === taken) {
+        return false;
+      }
+      taken = JSON.stringify(context);
+      ready = false;
+      owner.turnOptionsChanged({ target: turnOptions });
+      return true;
+    },
+  };
+  const owner = composerHost({
+    turnOptions: () => turnOptions,
+    performUpdate() {
+      drawnSend.push(this.primaryActionView().disabled);
+    },
+  });
+  owner.context.mode = "follow-up";
+  owner.voice.phase = "idle";
+  owner.state.prompt = "Keep going";
 
-    composer.render.call(owner);
+  owner.draw();
 
-    const send = nodes[".task-primary-action-button"];
-    assert.equal(send.dataset.primaryAction, "send");
-    assert.equal(send.disabled, true);
-  } finally {
-    restoreGlobal("document", previousDocument);
-  }
+  assert.deepEqual(drawnSend, [false, true]);
+  assert.deepEqual(JSON.parse(taken), {
+    cwd: ".",
+    provider: "",
+    initialSelection: { model: "", effort: "", fastMode: false, permissionMode: "" },
+    locked: false,
+    placement: "above",
+  });
 });
 
 test("stops an upload in place of the disabled Send, and names what it stops", () => {
-  const owner = {
-    context: { mode: "follow-up", submitLabel: "Send prompt", uploading: true },
-    voice: { phase: "idle" },
-    state: { prompt: "", attachments: [] },
-    stateFor() {
-      return this.state;
-    },
-    activeSubmissionFor: () => ({ id: "uploading" }),
+  const owner = composerHost({
     turnOptions: () => ({ readyForSubmission: () => true }),
-  };
+    activeSubmissionFor: () => ({ id: "uploading" }),
+  });
+  Object.assign(owner.context, { mode: "follow-up", uploading: true });
+  owner.voice.phase = "idle";
   const action = () => {
-    const { kind, label, disabled } = composer.primaryActionView.call(owner);
+    const { kind, label, disabled } = owner.primaryActionView();
     return { kind, label, disabled };
   };
 
@@ -336,27 +98,20 @@ test("stops an upload in place of the disabled Send, and names what it stops", (
   assert.deepEqual(action(), { kind: "stop", label: "Stop current turn", disabled: false });
   owner.context.interrupting = true;
   assert.deepEqual(action(), { kind: "send", label: "Send prompt", disabled: true });
-  owner.context = { mode: "follow-up", submitLabel: "Send prompt" };
+  owner.context = { ...owner.context, uploading: false, interrupting: false, turnActive: false };
   assert.deepEqual(action(), { kind: "send", label: "Send prompt", disabled: true });
 });
 
 test("puts a suggested request after what is being written, ready to read and send", () => {
   const focused = [];
   let locked = false;
-  const owner = {
-    state: { prompt: "", selectionStart: 0, selectionEnd: 0 },
-    ensureState() {},
+  const owner = composerHost({
     promptFieldLocked: () => locked,
-    stateFor() {
-      return this.state;
-    },
-    captureCurrentState() {},
-    render() {},
     focus() {
       focused.push({ ...this.state });
     },
-  };
-  const append = (prompt) => composer.appendSuggestedPrompt.call(owner, prompt);
+  });
+  const append = (prompt) => owner.appendSuggestedPrompt(prompt);
 
   assert.equal(append("Compare the two vendors."), true);
   assert.equal(owner.state.prompt, "Compare the two vendors.");
@@ -384,12 +139,15 @@ test("puts a suggested request after what is being written, ready to read and se
 });
 
 test("takes no text in its prompt field while dictating or creating", () => {
-  const owner = (phase, { disabled = false, mode = "follow-up", submitting = false } = {}) => ({
-    context: { disabled, mode },
-    voice: { phase },
-    activeSubmissionFor: () => (submitting ? { id: "submission" } : null),
-  });
-  const locked = (state) => composer.promptFieldLocked.call(state);
+  const owner = (phase, { disabled = false, mode = "follow-up", submitting = false } = {}) => {
+    const host = composerHost({
+      activeSubmissionFor: () => (submitting ? { id: "submission" } : null),
+    });
+    Object.assign(host.context, { disabled, mode });
+    host.voice.phase = phase;
+    return host;
+  };
+  const locked = (host) => host.promptFieldLocked();
 
   assert.equal(locked(owner("idle")), false);
   assert.equal(locked(owner("idle", { submitting: true })), false);
@@ -401,20 +159,13 @@ test("takes no text in its prompt field while dictating or creating", () => {
 });
 
 test("puts messages that never reached the agent ahead of what was written since", () => {
-  const owner = {
-    state: {
-      prompt: "written since",
-      attachments: [{ id: "new" }],
-      attachmentError: "",
-    },
-    stateFor() {
-      return this.state;
-    },
-    captureCurrentState() {},
-  };
+  const owner = composerHost();
+  Object.assign(owner.state, {
+    prompt: "written since",
+    attachments: [{ id: "new" }],
+  });
 
-  composer.restoreAheadOfDraft.call(
-    owner,
+  owner.restoreAheadOfDraft(
     ["sent first", "", "sent second"],
     Array.from({ length: 10 }, (_, index) => ({ id: `returned-${index}` })),
   );
@@ -437,19 +188,10 @@ test("attaches any file, showing only pictures every agent reads as thumbnails",
     }
   };
   try {
-    const owner = {
-      state: { attachments: [], attachmentError: "" },
-      stateFor() {
-        return this.state;
-      },
-      renders: 0,
-      render() {
-        this.renders += 1;
-      },
-    };
+    const owner = composerHost();
     const file = (name, type, size = 10) => ({ name, type, size });
 
-    await composer.addAttachments.call(owner, [
+    await owner.addAttachments([
       file("shot.png", "image/png"),
       file("photo.heic", "image/heic"),
       file("server.log", "text/plain", 5 * 1024 * 1024 * 1024),
@@ -468,11 +210,10 @@ test("attaches any file, showing only pictures every agent reads as thumbnails",
     );
     assert.equal(owner.state.attachmentError, "too-big.zip is larger than 5 GB.");
 
-    await composer.addAttachments.call(owner, [file("", "image/png")], { pasted: true });
+    await owner.addAttachments([file("", "image/png")], { pasted: true });
     assert.equal(owner.state.attachments.at(-1).name, "clipboard-image-5.png");
 
-    await composer.addAttachments.call(
-      owner,
+    await owner.addAttachments(
       Array.from({ length: 6 }, (_, index) => file(`${index}.txt`, "text/plain")),
     );
     assert.equal(owner.state.attachments.length, 10);
@@ -484,13 +225,12 @@ test("attaches any file, showing only pictures every agent reads as thumbnails",
 
 test("takes the files of a drop and refuses the folders in it", async () => {
   const added = [];
-  const owner = {
+  const owner = composerHost({
     acceptsAttachments: () => true,
-    setDropTarget() {},
     async addAttachments(files, options) {
       added.push({ names: files.map(({ name }) => name), error: options.error });
     },
-  };
+  });
   const item = (name, directory) => ({
     kind: "file",
     webkitGetAsEntry: () => ({ isDirectory: directory }),
@@ -498,7 +238,7 @@ test("takes the files of a drop and refuses the folders in it", async () => {
   });
   let prevented = false;
 
-  await composer.handleDrop.call(owner, {
+  await owner.handleDrop({
     preventDefault() {
       prevented = true;
     },
@@ -510,95 +250,94 @@ test("takes the files of a drop and refuses the folders in it", async () => {
   });
 
   assert.equal(prevented, true);
+  assert.equal(owner.dropTarget, false);
   assert.deepEqual(added, [{ names: ["server.log"], error: "Folders cannot be attached." }]);
-});
-
-test("writes a status region only when its text changes, quotes included", () => {
-  let writes = 0;
-  const region = {
-    html: "",
-    set innerHTML(value) {
-      writes += 1;
-      this.html = value;
-    },
-    // What a browser hands back: a quote in text is not escaped.
-    get innerHTML() {
-      return this.html.replaceAll("&#39;", "'");
-    },
-  };
-  const owner = { querySelector: () => region };
-  const alert = '<p role="alert">Couldn&#39;t reach the server.</p>';
-
-  composer.setRegion.call(owner, "request-error", alert);
-  composer.setRegion.call(owner, "request-error", alert);
-  assert.equal(writes, 1);
-  composer.setRegion.call(owner, "request-error", "");
-  assert.equal(writes, 2);
 });
 
 test("hands the agent's count to the context pie without drawing the Composer again", () => {
   const snapshots = [];
-  const owner = {
-    ensureState() {},
-    ensureRendered() {},
-    contextUsage: () => ({ setSnapshot: (context) => snapshots.push(context) }),
-    render() {
+  const owner = composerHost({
+    contextUsage: { setSnapshot: (context) => snapshots.push(context) },
+    draw() {
       throw new Error("a new count is the pie's alone");
     },
-  };
+  });
 
-  composer.setContextUsage.call(owner, { usedTokens: 32_147, windowTokens: 200_000 });
-  composer.setContextUsage.call(owner, null);
+  owner.setContextUsage({ usedTokens: 32_147, windowTokens: 200_000 });
+  owner.setContextUsage(null);
 
   assert.deepEqual(snapshots, [{ usedTokens: 32_147, windowTokens: 200_000 }, null]);
 });
 
 test("shows the context pie only in a Task's follow-up Composer", () => {
-  const previousDocument = globalThis.document;
-  globalThis.document = { activeElement: null };
-  try {
-    const node = () => ({ dataset: {}, setAttribute() {}, removeAttribute() {} });
-    const pie = { hidden: true };
-    const owner = {
-      context: { mode: "follow-up", threadId: "thread-1", submitLabel: "Send prompt" },
-      voice: { phase: "idle" },
-      state: { prompt: "", attachments: [] },
-      ensureState() {},
-      ensureRendered() {},
-      stateFor() {
-        return this.state;
-      },
-      activeSubmissionFor: () => null,
-      promptFieldLocked: composer.promptFieldLocked,
-      acceptsAttachments: composer.acceptsAttachments,
-      primaryActionView: composer.primaryActionView,
-      querySelector: (selector) => ({
-        ":scope > form[data-task-form]": node(),
-        "textarea[name='prompt']": { ...node(), value: "" },
-        'button[data-composer-action="attach"]': node(),
-      })[selector] ?? { innerHTML: "" },
-      setRegion() {},
-      renderVoiceStatus: () => "",
-      syncVoiceControls() {},
-      syncPrimaryAction() {},
-      attachmentStrip: () => ({ setAttachments() {} }),
-      turnOptions: () => ({ readyForSubmission: () => true }),
-      contextUsage: () => pie,
-      syncTurnOptionsContext() {},
-      syncTurnOptionsFields() {},
-      notifyLayoutChange() {},
-    };
+  const owner = composerHost({
+    turnOptions: () => ({ readyForSubmission: () => true, snapshot: () => null }),
+  });
+  Object.assign(owner.context, { mode: "follow-up", threadId: "thread-1" });
+  const pieHidden = () =>
+    /<caffold-task-context-usage\s+\?hidden="(true|false)"/.exec(
+      templateHtml(owner.render()),
+    )[1];
 
-    composer.render.call(owner);
-    assert.equal(pie.hidden, false);
+  assert.equal(pieHidden(), "false");
 
-    owner.context = { ...owner.context, mode: "create", threadId: "" };
-    composer.render.call(owner);
-    assert.equal(pie.hidden, true);
-  } finally {
-    restoreGlobal("document", previousDocument);
-  }
+  owner.context = { ...owner.context, mode: "create", threadId: "" };
+  assert.equal(pieHidden(), "true");
 });
+
+// A Composer with its own fields as it starts, and no drawing of its own.
+function composerHost(properties = {}) {
+  const host = Object.create(Composer.prototype, {
+    ...Object.getOwnPropertyDescriptors({
+      context: {
+        mode: "create",
+        threadId: "",
+        cwd: ".",
+        placeholder: "",
+        ariaLabel: "Task prompt",
+        submitLabel: "Send prompt",
+        cancel: false,
+        disabled: false,
+        settingsLocked: false,
+        requestError: "",
+        turnActive: false,
+        uploading: false,
+        interrupting: false,
+        interruptError: "",
+        fastMode: false,
+      },
+      voice: {
+        phase: "checking",
+        error: "",
+        ready: false,
+        maxRecordingSeconds: 300,
+        elapsedSeconds: 0,
+        recordingLimitReached: false,
+      },
+      state: {
+        prompt: "",
+        attachments: [],
+        attachmentError: "",
+        selectionStart: 0,
+        selectionEnd: 0,
+        activeSubmissionId: "",
+      },
+      activeSubmissions: new Map(),
+      dropTarget: false,
+      isConnected: false,
+      promptField: { value: undefined },
+      attachmentStrip: { value: undefined },
+      levelMeter: { value: undefined },
+      dispatchEvent: () => true,
+      turnOptions: () => null,
+      requestUpdate() {},
+      performUpdate() {},
+    }),
+    ...Object.getOwnPropertyDescriptors(properties),
+  });
+  host.hints = new ActionHints(host);
+  return host;
+}
 
 function restoreGlobal(name, value) {
   if (value === undefined) {

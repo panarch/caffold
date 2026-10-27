@@ -56,11 +56,10 @@ test("drops a Working Tree status read sent before the page came back", async (t
     reading,
     generation: 0,
     selectedPath: "",
-    ensureRendered() {},
     acceptsRead: workingTreeChanges.acceptsRead,
     showReadingState() {},
     announceRead: (detail) => announced.push(detail),
-    tree: () => tree,
+    tree,
   };
 
   const sentBefore = workingTreeChanges.read.call(owner, { background: true });

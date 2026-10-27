@@ -16,13 +16,8 @@ function drawingViewer() {
   return {
     opened,
     owner: {
-      initialized: true,
       generation: 4,
-      dataset: { renderState: "pdf" },
-      ensureRendered() {},
-      showMessage(renderState) {
-        this.dataset.renderState = renderState;
-      },
+      renderState: "pdf",
       release() {
         pdfViewer.release.call(this);
       },
@@ -37,40 +32,11 @@ test("lets go of the document shown and opens the file it is handed", () => {
   const { owner, opened } = drawingViewer();
   const file = Promise.resolve(new Blob(["bytes"]));
 
-  pdfViewer.setFile.call(owner, file);
+  owner.file = { file, newerCopy: false };
+  pdfViewer.willUpdate.call(owner, new Map([["file", null]]));
 
-  assert.equal(owner.dataset.renderState, "loading", "it says the file is loading until it is drawn");
+  assert.equal(owner.renderState, "loading", "it says the file is loading until it is drawn");
   assert.deepEqual(opened, [{ generation: 5, file }], "the document shown before is let go of first");
-});
-
-test("publishes only the axis a scaled page can overflow", () => {
-  const owner = {
-    initialized: true,
-    hidden: false,
-    isConnected: true,
-    ensureRendered() {},
-    getClientRects: () => [{}],
-  };
-
-  const scope = pdfViewer.scrollSurfaceScope.call(owner, {
-    scopeId: "review:viewer:pdf",
-  });
-
-  assert.equal(scope.surfaces.length, 1);
-  assert.deepEqual(scope.surfaces[0].axes, ["vertical"]);
-  assert.equal(scope.surfaces[0].scrollport, owner);
-  assert.equal(scope.surfaces[0].isEligible(), true);
-  owner.hidden = true;
-  assert.equal(scope.surfaces[0].isEligible(), false);
-});
-
-test("publishes no scroll surface without a scope identity", () => {
-  const owner = { initialized: true, hidden: false, ensureRendered() {} };
-
-  assert.deepEqual(
-    pdfViewer.scrollSurfaceScope.call(owner, {}).surfaces,
-    [],
-  );
 });
 
 test("cancels page renders and tears down the loading task when released", () => {

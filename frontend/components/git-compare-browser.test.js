@@ -17,107 +17,91 @@ after(() => {
   else globalThis.window = previousWindow;
 });
 
-test("composes only active Compare tree/viewer leaves", () => {
+test("composes only the Compare tree and viewer that are shown", () => {
   const treeTarget = { id: "file" };
   const viewerTarget = { id: "back" };
   const treeSurface = { id: "tree" };
   const viewerSurface = { id: "viewer" };
-  let treeOptions = null;
-  let viewerOptions = null;
+  let treePull = null;
+  let viewerPull = null;
   const compareTree = {
-    getClientRects: () => [{}],
-    actionHintScope(options) {
-      treeOptions = options;
+    actionHintScope(pull) {
+      treePull = pull;
       return { targets: [treeTarget] };
     },
     scrollSurfaceScope: () => ({ surfaces: [treeSurface] }),
   };
   const viewer = {
-    getClientRects: () => [{}],
-    actionHintScope(options) {
-      viewerOptions = options;
+    actionHintScope(pull) {
+      viewerPull = pull;
       return { targets: [viewerTarget] };
     },
     scrollSurfaceScope: () => ({ surfaces: [viewerSurface] }),
   };
   const owner = {
-    hidden: false,
     detailView: "viewer",
     compareTree,
     viewer,
-    panelResizer: { collapsed: false },
+    panelResizer: {
+      collapsed: false,
+      actionHintScope: () => ({ targets: [] }),
+    },
     sidePaneCollapsed: browser.sidePaneCollapsed,
-    ensureRendered() {},
   };
-  const actionOptions = {
-    scopeId: "git:compare",
-    fileActionId: "navigation.file.open",
-    disclosureActionId: "disclosure.toggle",
-    selectActionId: "control.select.open",
-    parentActionId: "navigation.parent",
-    detailsActionId: "file.details.open",
-    refreshActionId: "button.activate",
-    linkActionId: "link.open",
+  const actions = {
+    file: "navigation.file.open",
+    disclosure: "disclosure.toggle",
+    select: "control.select.open",
+    parent: "navigation.parent",
+    details: "file.details.open",
+    refresh: "button.activate",
+    link: "link.open",
   };
-  assert.deepEqual(browser.actionHintScope.call(owner, actionOptions).targets, [
+  const pull = { scopeId: "git:compare", actions };
+  assert.deepEqual(browser.actionHintScope.call(owner, pull).targets, [
     treeTarget,
     viewerTarget,
   ]);
-  assert.equal(treeOptions.disclosureActionId, "disclosure.toggle");
-  assert.equal(treeOptions.selectActionId, "control.select.open");
-  assert.equal(viewerOptions.refreshActionId, "button.activate");
-  assert.equal(viewerOptions.linkActionId, "link.open");
-  assert.deepEqual(browser.scrollSurfaceScope.call(owner, actionOptions).surfaces, [
+  assert.deepEqual(treePull, { ...pull, scopeId: "git:compare:compare", clipRoots: [owner] });
+  assert.deepEqual(viewerPull, { ...pull, scopeId: "git:compare:viewer", clipRoots: [owner] });
+  assert.deepEqual(browser.scrollSurfaceScope.call(owner, pull).surfaces, [
     treeSurface,
     viewerSurface,
   ]);
 
   owner.panelResizer.collapsed = true;
-  assert.deepEqual(browser.actionHintScope.call(owner, actionOptions).targets, [viewerTarget]);
-  assert.deepEqual(browser.scrollSurfaceScope.call(owner, actionOptions).surfaces, [viewerSurface]);
+  assert.deepEqual(browser.actionHintScope.call(owner, pull).targets, [viewerTarget]);
+  assert.deepEqual(browser.scrollSurfaceScope.call(owner, pull).surfaces, [viewerSurface]);
   owner.panelResizer.collapsed = false;
 
   singlePane = true;
-  assert.deepEqual(browser.actionHintScope.call(owner, actionOptions).targets, [viewerTarget]);
-  assert.deepEqual(browser.scrollSurfaceScope.call(owner, actionOptions).surfaces, [viewerSurface]);
+  assert.deepEqual(browser.actionHintScope.call(owner, pull).targets, [viewerTarget]);
+  assert.deepEqual(browser.scrollSurfaceScope.call(owner, pull).surfaces, [viewerSurface]);
+  singlePane = false;
 });
 
-test("composes the shared panel resizer through its public scope", () => {
-  let options = null;
-  let hasLayoutBox = true;
-  const panelResizer = {
-    getClientRects: () => hasLayoutBox ? [{}] : [],
-    actionHintScope(input) {
-      options = input;
-      return { targets: [{ id: "separator" }] };
-    },
-  };
+test("hands the resizer its separator action", () => {
+  let received = null;
   const owner = {
-    hidden: false,
-    isConnected: true,
     detailView: "list",
-    panelResizer,
+    panelResizer: {
+      actionHintScope(pull) {
+        received = pull;
+        return { targets: [{ id: "git:compare:separator" }] };
+      },
+    },
     sidePaneCollapsed: browser.sidePaneCollapsed,
     compareTree: { actionHintScope: () => ({ targets: [] }) },
     viewer: { actionHintScope: () => ({ targets: [] }) },
-    ensureRendered() {},
   };
-  const actionOptions = {
+
+  assert.deepEqual(browser.actionHintScope.call(owner, {
     scopeId: "git:compare",
-    separatorActionId: "control.separator.focus",
-  };
-
-  assert.deepEqual(browser.actionHintScope.call(owner, actionOptions).targets, [
-    { id: "separator" },
-  ]);
-  assert.equal(options.scopeId, "git:compare");
-  assert.equal(options.actionId, "control.separator.focus");
-  assert.equal(options.clipRoots[0], owner);
-  assert.equal(options.isCurrent(), true);
-  owner.panelResizer = {};
-  assert.equal(options.isCurrent(), false);
-
-  owner.panelResizer = panelResizer;
-  hasLayoutBox = false;
-  assert.deepEqual(browser.actionHintScope.call(owner, actionOptions).targets, []);
+    actions: { separator: "control.separator.focus" },
+  }).targets, [{ id: "git:compare:separator" }]);
+  assert.deepEqual(received, {
+    scopeId: "git:compare",
+    actionId: "control.separator.focus",
+    clipRoots: [owner],
+  });
 });

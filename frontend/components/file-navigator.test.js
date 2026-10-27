@@ -10,46 +10,49 @@ await import("./file-navigator.js");
 const navigator = registry.element("caffold-file-navigator").prototype;
 after(() => registry.restore());
 
-test("forwards semantic Action and Scroll options to its retained list owner", () => {
+test("forwards the pull to the list it draws, clipped by itself", () => {
   const target = { id: "refresh" };
   const surface = { id: "tree" };
-  let actionOptions = null;
-  let scrollOptions = null;
+  let actionPull = null;
+  let scrollPull = null;
   const fileList = {
-    actionHintScope(options) {
-      actionOptions = options;
+    actionHintScope(pull) {
+      actionPull = pull;
       return { targets: [target] };
     },
-    scrollSurfaceScope(options) {
-      scrollOptions = options;
+    scrollSurfaceScope(pull) {
+      scrollPull = pull;
       return { surfaces: [surface] };
     },
   };
-  const owner = {
-    hidden: false,
-    fileList,
-    ensureRendered() {},
-  };
+  const owner = Object.assign(Object.create(navigator), {
+    list: { value: fileList },
+    performUpdate() {},
+  });
   const clipRoot = {};
-  assert.deepEqual(navigator.actionHintScope.call(owner, {
+  const actions = {
+    file: "navigation.file.open",
+    disclosure: "disclosure.toggle",
+    refresh: "button.activate",
+  };
+  assert.deepEqual(owner.actionHintScope({
     scopeId: "review:files",
-    actionId: "navigation.file.open",
-    disclosureActionId: "disclosure.toggle",
-    refreshActionId: "button.activate",
+    actions,
     clipRoots: [clipRoot],
   }).targets, [target]);
-  assert.deepEqual(actionOptions, {
+  assert.deepEqual(actionPull, {
     scopeId: "review:files",
-    actionId: "navigation.file.open",
-    disclosureActionId: "disclosure.toggle",
-    refreshActionId: "button.activate",
+    actions,
     clipRoots: [owner, clipRoot],
   });
-  assert.deepEqual(navigator.scrollSurfaceScope.call(owner, {
+  assert.deepEqual(owner.scrollSurfaceScope({
     scopeId: "review:files",
     label: "Repository files",
     clipRoots: [clipRoot],
   }).surfaces, [surface]);
-  assert.equal(scrollOptions.label, "Repository files");
-  assert.deepEqual(scrollOptions.clipRoots, [owner, clipRoot]);
+  assert.deepEqual(scrollPull, {
+    scopeId: "review:files",
+    label: "Repository files",
+    clipRoots: [owner, clipRoot],
+  });
 });

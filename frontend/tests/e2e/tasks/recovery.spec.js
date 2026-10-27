@@ -3,6 +3,7 @@ import {
   activateActionHint,
   enterActionHints,
   waitForActionHintTarget,
+  workspaceTargets,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
@@ -228,6 +229,29 @@ test("opens archived-in-Codex recovery without opening ordinary Task detail and 
   expect(detailReads).toBe(0);
 });
 
+test("offers a recovery Task's row as the Action Hint that opens its recovery", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const threadId = "thread_recovery_hint";
+  const recovery = recoveryTask(
+    threadId,
+    "Hinted recovery Task",
+    "codexArchived",
+    ["restoreToActive", "moveToArchived", "recheck"],
+  );
+  await installRecoveryList(page, recovery);
+  await page.goto("/tasks");
+
+  await expect.poll(() => workspaceTargets(page, "task:")).toContainEqual([
+    threadId,
+    "Open task recovery: Hinted recovery Task",
+  ]);
+  await activateActionHint(page, "Open task recovery: Hinted recovery Task");
+  await expect(
+    page.getByRole("heading", { name: "Archived in Codex" }),
+  ).toBeVisible();
+});
+
 test("moves an already-Codex-archived recovery Task into Caffold Archived", { tag: "@all-viewports" }, async ({
   page,
 }) => {
@@ -290,6 +314,11 @@ test("confirms before removing a missing Codex Thread from Caffold", { tag: "@al
   await activateActionHint(page, /Remove from Caffold/);
   await expect(page.getByText("Remove this Task from Caffold?")).toBeVisible();
   expect(removeCalls).toBe(0);
+  await expect.poll(() => workspaceTargets(page, `task-recovery:${threadId}:`))
+    .toEqual([
+      ["cancel-remove", "Cancel"],
+      ["confirm-remove", "Remove Task"],
+    ]);
 
   await activateActionHint(page, /Remove Task$/);
   await expect.poll(() => removeCalls).toBe(1);

@@ -78,11 +78,17 @@ jobs:
           # Packaging requires a clean main worktree on this runner.
           git checkout -B main "${REQUESTED_SHA}"
 
-      - name: Install Node.js 22
+      - name: Install Node.js 24
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           package-manager-cache: false
+
+      # The server embeds Lit and tslib from frontend/node_modules and
+      # compiles its TypeScript modules with the TypeScript installed there.
+      - name: Install frontend build dependencies
+        run: npm ci --omit=dev
+        working-directory: frontend
 
       - name: Bump the release version locally
         if: startsWith(inputs.action, 'release-')

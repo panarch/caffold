@@ -369,6 +369,38 @@ test("switches sheets with the tabs and keeps the sheet when its file changes", 
   await expect(sheetTab(viewer, "Ledger")).toHaveAttribute("aria-pressed", "true");
 });
 
+test("scrolls the sheet both ways and, with several sheets, the tabs sideways", { tag: "@viewport-independent" }, async ({
+  page,
+}, testInfo) => {
+  const { taskReview } = await openDocument(page, testInfo);
+  const viewer = taskReview.locator("caffold-xlsx-viewer");
+  await expect(viewer.getByText("Region", { exact: true })).toBeVisible();
+
+  const surfaces = await viewer.evaluate((element) =>
+    element.scrollSurfaceScope({ scopeId: "review:viewer:xlsx", label: "budget.xlsx preview" })
+      .surfaces.map((surface) => ({
+        id: surface.id,
+        label: surface.label,
+        axes: surface.axes,
+        scrollport: surface.scrollport.className,
+      })),
+  );
+  expect(surfaces).toEqual([
+    {
+      id: "review:viewer:xlsx:sheet",
+      label: "budget.xlsx preview",
+      axes: ["vertical", "horizontal"],
+      scrollport: "xlsx-viewer-sheet",
+    },
+    {
+      id: "review:viewer:xlsx:sheets",
+      label: "budget.xlsx preview sheets",
+      axes: ["horizontal"],
+      scrollport: "xlsx-viewer-tabs",
+    },
+  ]);
+});
+
 test("links a cell only to a web or mail address", { tag: "@viewport-independent" }, async ({
   page,
 }, testInfo) => {

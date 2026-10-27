@@ -69,13 +69,12 @@ test("composes the navigation pane resizer through its public scope", () => {
     hidden: false,
     isConnected: true,
     mode: "tasks",
+    hints: { scope: () => ({ targets: [] }) },
     masterResizer,
     masterDetail: {},
     masterPane: null,
-    backButton: null,
     navigation: null,
-    tasksPage: null,
-    querySelector: () => null,
+    tasksPage: { actionHintScope: () => null },
   };
 
   assert.deepEqual(workspace.actionHintScope.call(owner).targets, [
@@ -84,9 +83,6 @@ test("composes the navigation pane resizer through its public scope", () => {
   assert.equal(options.scopeId, "workspace:navigation-pane");
   assert.equal(options.actionId, "control.separator.focus");
   assert.deepEqual(options.clipRoots, [owner, owner.masterDetail]);
-  assert.equal(options.isCurrent(), true);
-  owner.masterResizer = { getClientRects: () => [{}] };
-  assert.equal(options.isCurrent(), false);
 });
 
 test("declares navigation as an occluder of content without occluding its own actions", () => {
@@ -95,61 +91,14 @@ test("declares navigation as an occluder of content without occluding its own ac
   const navigation = { getClientRects: () => [{}], actionHintScope: () => ({ targets: [navigationTarget] }) };
   const owner = {
     hidden: false, mode: "tasks", masterPane: {}, navigation,
+    hints: { scope: () => ({ targets: [] }) },
     tasksPage: { actionHintScope: () => ({ targets: [contentTarget] }) },
-    querySelector: () => null,
   };
   const targets = workspace.actionHintScope.call(owner).targets;
   assert.equal(targets[0], navigationTarget);
   assert.equal(targets[0].occlusionRoots, undefined);
   assert.deepEqual(targets[1].occlusionRoots, [navigation]);
   assert.equal(contentTarget.occlusionRoots, undefined);
-});
-
-test("offers the visible compact Back and the Task switcher beside it", () => {
-  const routeControl = (label) => ({
-    hidden: false,
-    disabled: false,
-    getClientRects: () => [{}],
-    getAttribute: (name) => (name === "aria-label" ? label : null),
-  });
-  const backButton = routeControl("Back to tasks");
-  const taskSwitcherButton = routeControl("Switch task");
-  const owner = {
-    hidden: false,
-    isConnected: true,
-    mode: "tasks",
-    backButton,
-    taskSwitcherButton,
-    masterResizer: null,
-    masterDetail: {},
-    masterPane: null,
-    navigation: null,
-    tasksPage: null,
-    querySelector: () => null,
-  };
-
-  const [back, switcher, ...others] =
-    workspace.actionHintScope.call(owner).targets;
-  assert.deepEqual(others, []);
-  assert.equal(back.id, "workspace:parent:tasks");
-  assert.equal(back.actionId, "navigation.parent");
-  assert.equal(back.label, "Back to tasks");
-  assert.equal(back.control, backButton);
-  assert.equal(back.isActionable(), true);
-  assert.equal(switcher.id, "workspace:task-switcher:open");
-  assert.equal(switcher.actionId, "task.switcher.open");
-  assert.equal(switcher.label, "Switch task");
-  assert.equal(switcher.control, taskSwitcherButton);
-  assert.equal(switcher.isActionable(), true);
-
-  owner.taskSwitcherButton = routeControl("Switch task");
-  assert.equal(switcher.isActionable(), false);
-  owner.taskSwitcherButton = taskSwitcherButton;
-  backButton.hidden = true;
-  taskSwitcherButton.hidden = true;
-  assert.equal(back.isActionable(), false);
-  assert.equal(switcher.isActionable(), false);
-  assert.deepEqual(workspace.actionHintScope.call(owner).targets, []);
 });
 
 test("shows the compact Back and the Task switcher on Task, Section, and New Task roots only", (t) => {
@@ -159,32 +108,15 @@ test("shows the compact Back and the Task switcher on Task, Section, and New Tas
   });
   const backVisible = (url) => {
     const route = parseRoute(url);
-    const attributes = new Map();
     const owner = {
-      backButton: { hidden: true },
-      taskSwitcherButton: { hidden: true },
       route,
       mode: route.kind === "settings" ? "settings" : "tasks",
-      dataset: {},
+      showBack: false,
       navigation: { setMode() {} },
-      renderIcons() {},
       syncPresentationState() {},
-      toggleAttribute(name, force) {
-        attributes.set(name, force);
-      },
     };
     workspace.updateChrome.call(owner);
-    assert.equal(
-      attributes.get("data-workspace-route-control-visible"),
-      !owner.backButton.hidden,
-      url,
-    );
-    assert.equal(
-      owner.taskSwitcherButton.hidden,
-      owner.backButton.hidden,
-      url,
-    );
-    return !owner.backButton.hidden;
+    return owner.showBack;
   };
 
   for (const url of [
@@ -226,12 +158,20 @@ test("shows the compact Back and the Task switcher on Task, Section, and New Tas
 test("composes the keyboard contexts of the shown workspace mode", () => {
   const tasksContext = { id: "tasks" };
   const notesContext = { id: "notes" };
+  const dialog = { keyboardNavigationContexts: () => [] };
   const owner = {
     hidden: false,
     mode: "notes",
-    ensureRendered() {},
+    performUpdate() {},
     tasksPage: { keyboardNavigationContexts: () => [tasksContext] },
     notesWorkspace: { keyboardNavigationContexts: () => [notesContext] },
+    codexRuntimeRestartDialog: dialog,
+    codexRuntimeUpdateDialog: dialog,
+    codexResetCreditDialog: dialog,
+    claudeRuntimeRestartDialog: dialog,
+    updateTaskDialog: dialog,
+    archivedDeleteDialog: dialog,
+    taskSwitcherDialog: dialog,
   };
 
   assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), [notesContext]);
@@ -253,7 +193,7 @@ test("hands the Task switcher the navigator's own active Task snapshot", () => {
   const owner = {
     hidden: false,
     mode: "tasks",
-    ensureRendered() {},
+    performUpdate() {},
     taskNavigator: { activeTaskSnapshot: () => snapshot },
     taskSwitcherDialog: {
       open(given) {
@@ -283,7 +223,7 @@ test("offers the terminal toggle only where Tasks is shown", () => {
   const owner = {
     hidden: false,
     mode: "tasks",
-    ensureRendered() {},
+    performUpdate() {},
     tasksPage: {
       toggleTerminal() {
         toggles += 1;
@@ -318,7 +258,7 @@ test("the side pane key combination acts only where the corner button would", ()
   };
   const owner = {
     hidden: false,
-    ensureRendered() {},
+    performUpdate() {},
     currentSidePane: () => pane,
     sidePaneToggleShown: () => shown,
     syncSidePaneToggle() {},
@@ -352,7 +292,7 @@ test("Escape in a terminal or New Task's directory path gets no editing destinat
       ownsTerminalInput: (element) => element === terminalInput,
       ownsEditingEscape: (element) => element === directoryInput,
       contains: () => true,
-      querySelector: () => pane,
+      editingEscapeTarget: () => pane,
     },
   };
 

@@ -4,6 +4,7 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../tests/support/lit-template.js";
 import { KEYBOARD_SHORTCUT_HELP_SECTIONS } from "../shortcuts.js";
 
 const registry = installCustomElementUnitRegistry();
@@ -13,10 +14,9 @@ const shortcutList = registry.element(
 ).prototype;
 after(() => registry.restore());
 
-test("renders every shortcut section from the shared keymap", () => {
-  const owner = {};
-  shortcutList.connectedCallback.call(owner);
+const owner = { innerHTML: templateHtml(shortcutList.render()) };
 
+test("draws every shortcut section from the shared keymap", () => {
   for (const { title, rows } of KEYBOARD_SHORTCUT_HELP_SECTIONS) {
     assert.match(owner.innerHTML, new RegExp(`>${escapePattern(title)}<`));
     for (const { keys, description } of rows) {
@@ -35,8 +35,6 @@ test("renders every shortcut section from the shared keymap", () => {
 });
 
 test("joins a key combination's keys with or, under its description and above its note", () => {
-  const owner = {};
-  shortcutList.connectedCallback.call(owner);
   const combinations = KEYBOARD_SHORTCUT_HELP_SECTIONS.at(-1);
 
   const section = owner.innerHTML.slice(
@@ -47,14 +45,6 @@ test("joins a key combination's keys with or, under its description and above it
   assert.match(section, new RegExp(`</dl>\\s*<p>${escapePattern(combinations.note)}</p>`));
   // The pairs of the other sections, such as J and K, keep their slash.
   assert.match(owner.innerHTML, /<kbd>J<\/kbd><span aria-hidden="true">\/<\/span><kbd>K<\/kbd>/);
-});
-
-test("retains its rendered shortcut rows when reconnected", () => {
-  const owner = {};
-  shortcutList.connectedCallback.call(owner);
-  owner.innerHTML = "retained";
-  shortcutList.connectedCallback.call(owner);
-  assert.equal(owner.innerHTML, "retained");
 });
 
 function escapePattern(value) {

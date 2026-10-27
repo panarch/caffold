@@ -35,43 +35,41 @@ test("merges Review axes with only the active navigator and selected viewer", ()
     task: { threadId: "thread-a", worktree: { rootPath: "/repo" } },
     contextKey: "thread-a\0/repo\0/repo",
     route: { navigator: "changes", scope: "working", viewer: "diff", path: "" },
-    ensureRendered() {},
-    querySelector(selector) {
-      if (selector.includes("navigator-pane")) return panes.navigator;
-      if (selector.includes("viewer-pane")) return panes.viewer;
-      throw new Error(`Unexpected selector: ${selector}`);
-    },
+    performUpdate() {},
+    navigatorPane: { value: panes.navigator },
+    viewerPane: { value: panes.viewer },
     axisControl(axis) {
       return { actionHintScope: () => scope(`${axis}-axis`) };
     },
-    workingTreeChanges() {
-      return { actionHintScope: (options) => {
+    workingTreeChanges: {
+      actionHintScope: (options) => {
         calls.working += 1;
         actionOptions.working = options;
         return scope("working");
-      } };
+      },
     },
-    branchChanges() {
-      return { actionHintScope: (options) => {
+    branchChanges: {
+      actionHintScope: (options) => {
         calls.branch += 1;
         actionOptions.branch = options;
         return scope("branch");
-      } };
+      },
     },
-    fileNavigator() {
-      return { actionHintScope: (options) => {
+    fileNavigator: {
+      actionHintScope: (options) => {
         calls.files += 1;
         actionOptions.files = options;
         return scope("files");
-      } };
+      },
     },
-    selectedFile() {
-      return { actionHintScope: (options) => {
+    selectedFile: {
+      actionHintScope: (options) => {
         calls.viewer += 1;
         actionOptions.viewer = options;
         return scope("viewer");
-      } };
+      },
     },
+    resizer: { actionHintScope: () => null },
   };
 
   assert.deepEqual(
@@ -79,7 +77,11 @@ test("merges Review axes with only the active navigator and selected viewer", ()
     ["navigator-axis", "viewer-axis", "working"],
   );
   assert.deepEqual(calls, { working: 1, branch: 0, files: 0, viewer: 0 });
-  assert.equal(actionOptions.working.disclosureActionId, "disclosure.toggle");
+  assert.deepEqual(actionOptions.working.actions, {
+    file: "navigation.file.open",
+    disclosure: "disclosure.toggle",
+    branch: "navigation.review.axis",
+  });
 
   owner.route = { ...owner.route, scope: "branch", path: "src/a.js" };
   assert.deepEqual(
@@ -87,9 +89,9 @@ test("merges Review axes with only the active navigator and selected viewer", ()
     ["navigator-axis", "viewer-axis", "branch", "viewer"],
   );
   assert.deepEqual(calls, { working: 1, branch: 1, files: 0, viewer: 1 });
-  assert.equal(actionOptions.branch.disclosureActionId, "disclosure.toggle");
-  assert.equal(actionOptions.branch.selectActionId, "control.select.open");
-  assert.equal(actionOptions.viewer.linkActionId, "link.open");
+  assert.equal(actionOptions.branch.actions.disclosure, "disclosure.toggle");
+  assert.equal(actionOptions.branch.actions.select, "control.select.open");
+  assert.equal(actionOptions.viewer.actions.link, "link.open");
 
   owner.route = { ...owner.route, navigator: "files" };
   assert.deepEqual(
@@ -97,7 +99,7 @@ test("merges Review axes with only the active navigator and selected viewer", ()
     ["navigator-axis", "viewer-axis", "files", "viewer"],
   );
   assert.deepEqual(calls, { working: 1, branch: 1, files: 1, viewer: 2 });
-  assert.equal(actionOptions.files.disclosureActionId, "disclosure.toggle");
+  assert.equal(actionOptions.files.actions.disclosure, "disclosure.toggle");
 
   panes.navigator.visible = false;
   assert.deepEqual(
@@ -131,23 +133,23 @@ test("composes the shared Review panel resizer through its public scope", () => 
     task: { threadId: "thread-a" },
     contextKey: "thread-a\0/repo",
     route: { navigator: "changes", scope: "working", path: "" },
-    ensureRendered() {},
-    querySelector() {
-      return { getClientRects: () => [{}] };
-    },
-    axisControl: () => null,
-    workingTreeChanges: () => ({ actionHintScope: () => scope("working") }),
-    resizer: () => panelResizer,
+    performUpdate() {},
+    navigatorPane: { value: { getClientRects: () => [{}] } },
+    viewerPane: { value: { getClientRects: () => [{}] } },
+    axisControl: () => ({ actionHintScope: () => null }),
+    workingTreeChanges: { actionHintScope: () => scope("working") },
+    resizer: panelResizer,
   };
 
   assert.deepEqual(
     review.actionHintScope.call(owner).targets.map(({ id }) => id),
     ["working", "separator"],
   );
-  assert.equal(options.actionId, "control.separator.focus");
-  assert.equal(options.isCurrent(), true);
-  owner.contextKey = "thread-a\0/other";
-  assert.equal(options.isCurrent(), false);
+  assert.deepEqual(options, {
+    scopeId: "review:thread-a:navigator",
+    actionId: "control.separator.focus",
+    clipRoots: [owner],
+  });
 });
 
 test("merges only visible Review navigator and viewer Scroll leaves", () => {
@@ -166,18 +168,15 @@ test("merges only visible Review navigator and viewer Scroll leaves", () => {
     task: { threadId: "thread-a" },
     contextKey: "thread-a\0/repo",
     route: { navigator: "changes", scope: "working", path: "src/a.js" },
-    ensureRendered() {},
-    querySelector(selector) {
-      return selector.includes("navigator-pane") ? panes.navigator : panes.viewer;
-    },
-    workingTreeChanges: () => ({
+    performUpdate() {},
+    navigatorPane: { value: panes.navigator },
+    viewerPane: { value: panes.viewer },
+    workingTreeChanges: {
       scrollSurfaceScope: () => ({ surfaces: [navigatorSurface] }),
-    }),
-    branchChanges: () => null,
-    fileNavigator: () => null,
-    selectedFile: () => ({
+    },
+    selectedFile: {
       scrollSurfaceScope: () => ({ surfaces: [viewerSurface] }),
-    }),
+    },
   };
 
   assert.deepEqual(

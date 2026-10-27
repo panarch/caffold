@@ -9,7 +9,7 @@ function read(path) {
 }
 
 test("the browser and the browser suite load the same pptx-renderer release", () => {
-  const viewer = read("components/pptx-viewer.js");
+  const viewer = read("components/pptx-viewer.ts");
   const manifest = JSON.parse(read("package.json"));
 
   const [, sourceVersion] =
@@ -33,7 +33,7 @@ test("the browser suite serves pptx-renderer from the installed package", () => 
 });
 
 test("pptx-renderer stays a runtime CDN import rather than a shipped asset", () => {
-  const serviceWorker = read("service-worker.js");
+  const serviceWorker = read("service-worker.ts");
   const staticAssets = readFileSync(
     new URL("../caffold/src/static_assets.rs", frontendUrl),
     "utf8",

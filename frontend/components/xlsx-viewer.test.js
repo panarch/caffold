@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../tests/support/custom-element-unit.js";
 
@@ -16,14 +17,9 @@ function drawingViewer() {
   return {
     opened,
     owner: {
-      initialized: true,
       generation: 4,
       selectedSheetName: "Q3",
-      dataset: { renderState: "xlsx" },
-      ensureRendered() {},
-      showMessage(renderState) {
-        this.dataset.renderState = renderState;
-      },
+      renderState: "xlsx",
       release() {
         xlsxViewer.release.call(this);
       },
@@ -52,52 +48,49 @@ function cellLink(cell, href, text) {
   };
 }
 
-function workbookViewer({ links = [], tabsHidden = false, tabScope = null } = {}) {
+// A viewer with its workbook drawn: its own declarations make no targets,
+// and its sheet tabs answer with `tabScope`.
+function workbookViewer({ links = [], tabScope = null } = {}) {
   const received = {};
   const sheetport = {
-    isConnected: true,
-    getClientRects: () => [{}],
     querySelectorAll: () => links,
-    contains: (element) => links.includes(element),
   };
-  const control = {
-    actionHintScope(options) {
-      received.tabs = options;
-      return tabScope ?? { blocked: false, targets: [], mutationRoots: [this], scrollRoots: [] };
+  const tabs = {};
+  const owner = elementStandIn(xlsxViewer, {
+    renderState: "xlsx",
+    hints: {
+      scope: () => ({ blocked: false, targets: [], mutationRoots: [owner], scrollRoots: [] }),
     },
-  };
-  const tabs = {
-    hidden: tabsHidden,
-    isConnected: true,
-    getClientRects: () => [{}],
-    querySelector: () => control,
-  };
-  const owner = {
-    initialized: true,
-    isConnected: true,
-    hidden: false,
-    dataset: { renderState: "xlsx" },
-    ensureRendered() {},
-    sheetport: () => sheetport,
-    tabStrip: () => tabs,
-  };
-  return { owner, sheetport, tabs, control, received };
+    sheetport: { value: sheetport },
+    tabStrip: { value: tabs },
+    sheetTabs: {
+      value: {
+        actionHintScope(pull) {
+          received.tabs = pull;
+          return tabScope ?? { blocked: false, targets: [], mutationRoots: [], scrollRoots: [] };
+        },
+      },
+    },
+  });
+  return { owner, sheetport, tabs, received };
 }
 
 test("lets go of the workbook shown and opens the file it is handed", () => {
   const { owner, opened } = drawingViewer();
   const file = Promise.resolve(new Blob(["bytes"]));
 
-  xlsxViewer.setFile.call(owner, file);
+  owner.file = { file, newerCopy: false };
+  xlsxViewer.willUpdate.call(owner, new Map([["file", null]]));
 
-  assert.equal(owner.dataset.renderState, "loading", "it says the file is loading until it is drawn");
+  assert.equal(owner.renderState, "loading", "it says the file is loading until it is drawn");
   assert.deepEqual(opened, [{ generation: 5, file }], "the workbook shown before is let go of first");
 });
 
 test("keeps the sheet being read for a newer copy of the same file", () => {
   const { owner } = drawingViewer();
 
-  xlsxViewer.setFile.call(owner, Promise.resolve(new Blob(["bytes"])), { newerCopy: true });
+  owner.file = { file: Promise.resolve(new Blob(["bytes"])), newerCopy: true };
+  xlsxViewer.willUpdate.call(owner, new Map([["file", null]]));
 
   assert.equal(owner.selectedSheetName, "Q3");
 });
@@ -105,60 +98,10 @@ test("keeps the sheet being read for a newer copy of the same file", () => {
 test("starts another file at its first sheet", () => {
   const { owner } = drawingViewer();
 
-  xlsxViewer.setFile.call(owner, Promise.resolve(new Blob(["bytes"])));
+  owner.file = { file: Promise.resolve(new Blob(["bytes"])), newerCopy: false };
+  xlsxViewer.willUpdate.call(owner, new Map([["file", null]]));
 
   assert.equal(owner.selectedSheetName, null);
-});
-
-test("scrolls the sheet on both axes and the sheet tabs sideways", () => {
-  const { owner, sheetport, tabs } = workbookViewer();
-  let current = true;
-
-  const scope = xlsxViewer.scrollSurfaceScope.call(owner, {
-    scopeId: "review:viewer:xlsx",
-    label: "budget.xlsx preview",
-    isCurrent: () => current,
-  });
-
-  assert.deepEqual(scope.surfaces.map(({ id, label, axes, scrollport }) => ({
-    id,
-    label,
-    axes,
-    scrollport,
-  })), [
-    {
-      id: "review:viewer:xlsx:sheet",
-      label: "budget.xlsx preview",
-      axes: ["vertical", "horizontal"],
-      scrollport: sheetport,
-    },
-    {
-      id: "review:viewer:xlsx:sheets",
-      label: "budget.xlsx preview sheets",
-      axes: ["horizontal"],
-      scrollport: tabs,
-    },
-  ]);
-  assert.equal(scope.surfaces[0].isEligible(), true);
-  current = false;
-  assert.equal(scope.surfaces[0].isEligible(), false);
-});
-
-test("publishes no tab surface for a single sheet and nothing before a workbook is drawn", () => {
-  const single = workbookViewer({ tabsHidden: true });
-  assert.deepEqual(
-    xlsxViewer.scrollSurfaceScope.call(single.owner, { scopeId: "review:viewer:xlsx" })
-      .surfaces.map(({ id }) => id),
-    ["review:viewer:xlsx:sheet"],
-  );
-
-  const loading = workbookViewer();
-  loading.owner.sheetport = () => null;
-  assert.deepEqual(
-    xlsxViewer.scrollSurfaceScope.call(loading.owner, { scopeId: "review:viewer:xlsx" })
-      .surfaces,
-    [],
-  );
 });
 
 test("offers the drawn cells' links and the other sheets' tabs", () => {
@@ -169,29 +112,27 @@ test("offers the drawn cells' links and the other sheets' tabs", () => {
     links: [report, mail],
     tabScope: { blocked: false, targets: [tabTarget], mutationRoots: [], scrollRoots: [] },
   });
-  let current = true;
+  const fileViewer = { id: "file-viewer" };
 
-  const scope = xlsxViewer.actionHintScope.call(owner, {
+  const scope = owner.actionHintScope({
     scopeId: "review:viewer:document",
-    linkActionId: "link.open",
-    buttonActionId: "button.activate",
-    clipRoots: [{ id: "file-viewer" }],
-    isCurrent: () => current,
+    actions: { link: "link.open", button: "button.activate" },
+    clipRoots: [fileViewer],
   });
 
   assert.deepEqual(scope.targets.slice(0, 2).map(({ id, label }) => ({ id, label })), [
     { id: "review:viewer:document:cell:3:1", label: "Open Report in a new tab" },
     { id: "review:viewer:document:cell:4:0", label: "Open Team in an email app" },
   ]);
+  assert.deepEqual(scope.targets[0].clipRoots, [sheetport, owner, fileViewer]);
   assert.equal(scope.targets[2], tabTarget);
-  assert.deepEqual(scope.scrollRoots, [owner, sheetport]);
-  assert.equal(received.tabs.scopeId, "review:viewer:document:sheets");
-  assert.equal(received.tabs.actionId, "button.activate");
-  assert.deepEqual(received.tabs.clipRoots, [tabs, owner, { id: "file-viewer" }]);
-  assert.equal(received.tabs.labelForChoice({ label: "Q3" }), "Show sheet Q3");
-  assert.equal(scope.targets[0].isActionable(), true);
-  current = false;
-  assert.equal(scope.targets[0].isActionable(), false);
+  assert.deepEqual(scope.mutationRoots, [owner]);
+  assert.deepEqual(scope.scrollRoots, [sheetport]);
+  assert.deepEqual(received.tabs, {
+    scopeId: "review:viewer:document:sheets",
+    actionId: "button.activate",
+    clipRoots: [tabs, owner, fileViewer],
+  });
 });
 
 test("offers nothing while the workbook loads or failed", () => {
@@ -200,11 +141,10 @@ test("offers nothing while the workbook loads or failed", () => {
   });
 
   for (const renderState of ["loading", "error"]) {
-    owner.dataset.renderState = renderState;
-    assert.deepEqual(xlsxViewer.actionHintScope.call(owner, {
+    owner.renderState = renderState;
+    assert.deepEqual(owner.actionHintScope({
       scopeId: "review:viewer:document",
-      linkActionId: "link.open",
-      buttonActionId: "button.activate",
+      actions: { link: "link.open", button: "button.activate" },
     }).targets, []);
   }
 });

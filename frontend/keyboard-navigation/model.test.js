@@ -103,20 +103,14 @@ test("moves horizontally by ten percent with minimum and exact clamping", () => 
     clientWidth: 2,
   }), { axis: "horizontal", position: 1 });
   assert.equal(scrollCommandPosition({ ...input, command: "J" }), null);
-  assert.equal(scrollCommandPosition({
-    ...input,
-    availableAxes: null,
-    command: "L",
-  }), null);
 });
 
 test("freezes selector geometry and active element identity while allowing labels", () => {
   const root = {};
-  const hud = {};
-  const selector = {};
+  const presentation = {};
   const scrollport = {};
   const clip = {};
-  const context = { id: "workspace", kind: "workspace", root, hud, selector };
+  const context = { id: "workspace", kind: "workspace", root, presentation };
   const surface = {
     id: "task-list",
     code: "A",
@@ -152,7 +146,7 @@ test("freezes selector geometry and active element identity while allowing label
     surfaces: [{ ...surface, availableAxes: ["horizontal"] }],
   }), false);
   assert.equal(sameScrollSelectionSnapshot(snapshot, {
-    context: { ...context, selector: {} },
+    context: { ...context, presentation: {} },
     contextRect: rect(0, 0, 100, 100),
     viewport: viewport(),
     surfaces: [{ ...surface }],

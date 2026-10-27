@@ -1,0 +1,443 @@
+// The kinds of control an Action Hint target can be. Each kind has its own
+// activation: a press, a focus, or a native picker.
+export type ActionHintControlKind =
+  | "button"
+  | "link"
+  | "disclosure"
+  | "radio"
+  | "switch"
+  | "textbox"
+  | "select"
+  | "range"
+  | "separator"
+  | "reorder-handle";
+
+export interface ActionHintTarget {
+  id: string;
+  actionId: string;
+  label: string;
+  invalidationOwner: Element;
+  controlKind: ActionHintControlKind;
+  control: HTMLElement;
+  anchor: Element;
+  clipRoots: Element[];
+  occlusionRoots?: Element[];
+  badgeAtEnd: boolean;
+  activationKey?: string;
+  activate: () => void;
+}
+
+export interface ActionHintScope {
+  blocked: boolean;
+  targets: ActionHintTarget[];
+  mutationRoots: Node[];
+  scrollRoots: Element[];
+}
+
+interface ActionHintTargetOptions {
+  id: string;
+  actionId: string;
+  label: string;
+  invalidationOwner: Element;
+  control: HTMLElement;
+  anchor?: Element;
+  clipRoots: Element[];
+}
+
+export interface LinkActionHintBinding {
+  readonly href: string | null;
+  readonly target: string | null;
+  readonly rel: string | null;
+}
+
+const ACTION_HINT_SCOPE_LIST_KEYS = [
+  "targets",
+  "mutationRoots",
+  "scrollRoots",
+] as const;
+
+export function emptyActionHintScope(): ActionHintScope {
+  return {
+    blocked: false,
+    targets: [],
+    mutationRoots: [],
+    scrollRoots: [],
+  };
+}
+
+export function buttonActionHintTarget({
+  id,
+  actionId,
+  label,
+  invalidationOwner,
+  control,
+  anchor = control,
+  clipRoots,
+  badgeAtEnd = false,
+}: ActionHintTargetOptions & { badgeAtEnd?: boolean }): ActionHintTarget {
+  return focusAndClickActionHintTarget({
+    id,
+    actionId,
+    label,
+    invalidationOwner,
+    controlKind: "button",
+    control,
+    anchor,
+    clipRoots,
+    badgeAtEnd,
+  });
+}
+
+export function linkActionHintTarget({
+  id,
+  actionId,
+  label,
+  invalidationOwner,
+  control,
+  anchor = control,
+  clipRoots,
+}: ActionHintTargetOptions): ActionHintTarget {
+  const binding = captureLinkActionHintBinding(control);
+  const activationKey = JSON.stringify(binding);
+  return focusAndClickActionHintTarget({
+    id,
+    actionId,
+    label,
+    invalidationOwner,
+    controlKind: "link",
+    control,
+    anchor,
+    clipRoots,
+    activationKey,
+  });
+}
+
+export function captureLinkActionHintBinding(
+  control: Element,
+): LinkActionHintBinding {
+  return Object.freeze({
+    href: control.getAttribute("href"),
+    target: control.getAttribute("target"),
+    rel: control.getAttribute("rel"),
+  });
+}
+
+export function matchesLinkActionHintBinding(
+  control: Element,
+  binding: LinkActionHintBinding | null | undefined,
+) {
+  return Boolean(
+    binding &&
+      control.getAttribute("href") === binding.href &&
+      control.getAttribute("target") === binding.target &&
+      control.getAttribute("rel") === binding.rel,
+  );
+}
+
+export function linkActionHintLabel(control: Element) {
+  const binding = captureLinkActionHintBinding(control);
+  if (!binding.href || binding.href.startsWith("#")) {
+    return "";
+  }
+  const imageText = Array.from(control.querySelectorAll?.("img[alt]") ?? [])
+    .map((image) => image.getAttribute("alt"))
+    .join(" ");
+  // biome-ignore lint/performance/useDomNodeTextContent: a link is named by the words it shows.
+  const { innerText } = control as Partial<HTMLElement>;
+  const visibleText =
+    typeof innerText === "string" ? innerText : control.textContent;
+  const name =
+    [
+      control.getAttribute("aria-label"),
+      visibleText,
+      control.getAttribute("title"),
+      imageText,
+    ]
+      .map(normalizeActionHintText)
+      .find(Boolean) ?? "";
+  if (!name) {
+    return "";
+  }
+  if (binding.href.trim().toLowerCase().startsWith("mailto:")) {
+    return `Open ${name} in an email app`;
+  }
+  if (binding.target?.toLowerCase() === "_blank") {
+    return `Open ${name} in a new tab`;
+  }
+  return `Open ${name}`;
+}
+
+export function disclosureActionHintTarget({
+  id,
+  actionId,
+  label,
+  invalidationOwner,
+  control,
+  anchor = control,
+  clipRoots,
+}: ActionHintTargetOptions): ActionHintTarget {
+  return focusAndClickActionHintTarget({
+    id,
+    actionId,
+    label,
+    invalidationOwner,
+    controlKind: "disclosure",
+    control,
+    anchor,
+    clipRoots,
+  });
+}
+
+export function radioActionHintTarget({
+  id,
+  actionId,
+  label,
+  invalidationOwner,
+  control,
+  anchor = control,
+  clipRoots,
+}: ActionHintTargetOptions): ActionHintTarget {
+  return focusAndClickActionHintTarget({
+    id,
+    actionId,
+    label,
+    invalidationOwner,
+    controlKind: "radio",
+    control,
+    anchor,
+    clipRoots,
+  });
+}
+
+export function switchActionHintTarget({
+  id,
+  actionId,
+  label,
+  invalidationOwner,
+  control,
+  anchor = control,
+  clipRoots,
+}: ActionHintTargetOptions): ActionHintTarget {
+  return focusAndClickActionHintTarget({
+    id,
+    actionId,
+    label,
+    invalidationOwner,
+    controlKind: "switch",
+    control,
+    anchor,
+    clipRoots,
+  });
+}
+
+// `anchor` places the badge when the focused control itself is not what the
+// person sees, such as a terminal's off-screen input.
+export function textboxActionHintTarget({
+  id,
+  actionId,
+  label,
+  invalidationOwner,
+  control,
+  anchor = control,
+  clipRoots,
+}: ActionHintTargetOptions): ActionHintTarget {
+  return focusActionHintTarget({
+    id,
+    actionId,
+    label,
+    invalidationOwner,
+    controlKind: "textbox",
+    control,
+    anchor,
+    clipRoots,
+  });
+}
+
+export function selectActionHintTarget({
+  id,
+  actionId,
+  label,
+  invalidationOwner,
+  control,
+  anchor = control,
+  clipRoots,
+}: ActionHintTargetOptions): ActionHintTarget {
+  const target = focusActionHintTarget({
+    id,
+    actionId,
+    label,
+    invalidationOwner,
+    controlKind: "select",
+    control,
+    anchor,
+    clipRoots,
+  });
+  return {
+    ...target,
+    activate: () => {
+      control.focus({ preventScroll: true });
+      try {
+        (control as HTMLElement & { showPicker?: () => void }).showPicker?.();
+      } catch {
+        // Focus is the progressive fallback when a native picker is unavailable.
+      }
+    },
+  };
+}
+
+export function rangeActionHintTarget({
+  id,
+  actionId,
+  label,
+  invalidationOwner,
+  control,
+  clipRoots,
+}: ActionHintTargetOptions): ActionHintTarget {
+  return focusActionHintTarget({
+    id,
+    actionId,
+    label,
+    invalidationOwner,
+    controlKind: "range",
+    control,
+    clipRoots,
+  });
+}
+
+export function separatorActionHintTarget({
+  id,
+  actionId,
+  label,
+  invalidationOwner,
+  control,
+  anchor,
+  clipRoots,
+}: ActionHintTargetOptions): ActionHintTarget {
+  return focusActionHintTarget({
+    id,
+    actionId,
+    label,
+    invalidationOwner,
+    controlKind: "separator",
+    control,
+    anchor,
+    clipRoots,
+  });
+}
+
+export function reorderHandleActionHintTarget({
+  id,
+  actionId,
+  label,
+  invalidationOwner,
+  control,
+  clipRoots,
+}: ActionHintTargetOptions): ActionHintTarget {
+  return focusActionHintTarget({
+    id,
+    actionId,
+    label,
+    invalidationOwner,
+    controlKind: "reorder-handle",
+    control,
+    clipRoots,
+  });
+}
+
+export function hasActionHintLayoutBox(element: Element | null | undefined) {
+  return Boolean(element?.getClientRects?.().length);
+}
+
+export function mergeActionHintScopes(
+  ...scopes: Array<Partial<ActionHintScope> | null | undefined>
+): ActionHintScope {
+  const merged = emptyActionHintScope();
+  for (const scope of scopes) {
+    if (scope == null) {
+      continue;
+    }
+    if (typeof scope !== "object") {
+      throw new TypeError("Action Hint scope must be an object");
+    }
+    merged.blocked ||= Boolean(scope.blocked);
+    for (const key of ACTION_HINT_SCOPE_LIST_KEYS) {
+      const items = scope[key];
+      if (items == null) {
+        continue;
+      }
+      if (!Array.isArray(items)) {
+        throw new TypeError(`Action Hint scope ${key} must be an array`);
+      }
+      (merged[key] as unknown[]).push(...items);
+    }
+  }
+  return merged;
+}
+
+// The scope with each target also hidden behind `occlusionRoots`.
+export function withActionHintOcclusionRoots(
+  scope: ActionHintScope | null | undefined,
+  occlusionRoots: Element[],
+): ActionHintScope | null | undefined {
+  if (scope == null || occlusionRoots.length === 0) {
+    return scope;
+  }
+  return {
+    ...scope,
+    targets: (scope.targets ?? []).map((target) => ({
+      ...target,
+      occlusionRoots: [...(target.occlusionRoots ?? []), ...occlusionRoots],
+    })),
+  };
+}
+
+function focusActionHintTarget({
+  id,
+  actionId,
+  label,
+  invalidationOwner,
+  controlKind,
+  control,
+  anchor = control,
+  clipRoots,
+  badgeAtEnd = false,
+  activationKey,
+}: ActionHintTargetOptions & {
+  controlKind: ActionHintControlKind;
+  badgeAtEnd?: boolean;
+  activationKey?: string;
+}): ActionHintTarget {
+  if (!invalidationOwner) {
+    throw new TypeError("Action Hint targets require an invalidation owner");
+  }
+  return {
+    id,
+    actionId,
+    label,
+    invalidationOwner,
+    controlKind,
+    control,
+    anchor,
+    clipRoots,
+    badgeAtEnd: Boolean(badgeAtEnd),
+    ...(activationKey == null ? {} : { activationKey }),
+    activate: () => control.focus({ preventScroll: true }),
+  };
+}
+
+function normalizeActionHintText(value: unknown) {
+  return `${value ?? ""}`.replace(/\s+/g, " ").trim();
+}
+
+function focusAndClickActionHintTarget(
+  options: Parameters<typeof focusActionHintTarget>[0],
+): ActionHintTarget {
+  const target = focusActionHintTarget(options);
+  return {
+    ...target,
+    activate: () => {
+      options.control.focus({ preventScroll: true });
+      options.control.click();
+    },
+  };
+}

@@ -37,6 +37,7 @@ const buildInfoHook = registerHooks({
 const registry = installCustomElementUnitRegistry();
 await import("./layout.js");
 const appShell = registry.element("caffold-app-shell").prototype;
+const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
 
 after(() => {
   registry.restore();
@@ -46,66 +47,8 @@ after(() => {
   restoreGlobal("matchMedia", previousMatchMedia);
 });
 
-test("provides bootstrap Retry only while its exact panel is visible", () => {
-  const calls = [];
-  const control = button("Retry", calls);
-  const panel = {
-    hidden: false,
-    querySelector: () => control,
-  };
-  const owner = {
-    isConnected: true,
-    querySelector: () => panel,
-  };
-
-  const scope = appShell.bootstrapRetryActionHintScope.call(owner);
-  assert.deepEqual(scope.mutationRoots, [panel]);
-  assert.deepEqual(
-    scope.targets.map(({ id, actionId }) => [id, actionId]),
-    [["app:bootstrap:retry", "button.activate"]],
-  );
-  scope.targets[0].activate();
-  assert.deepEqual(calls, ["focus:Retry", "click:Retry"]);
-
-  panel.hidden = true;
-  assert.equal(scope.targets[0].isActionable(), false);
-  const hidden = appShell.bootstrapRetryActionHintScope.call(owner);
-  assert.deepEqual(hidden.targets, []);
-  assert.deepEqual(hidden.mutationRoots, [panel]);
-});
-
-test("provides foreground Retry only for the unavailable presentation", () => {
-  const control = button("Retry", []);
-  const notice = {
-    dataset: { recoveryState: "unavailable" },
-    hidden: false,
-    querySelector: () => control,
-  };
-  const owner = {
-    isConnected: true,
-    querySelector: () => notice,
-  };
-
-  const scope = appShell.foregroundRetryActionHintScope.call(owner);
-  assert.equal(scope.targets[0].id, "app:foreground-recovery:retry");
-  assert.equal(scope.targets[0].isActionable(), true);
-
-  notice.dataset.recoveryState = "offline";
-  assert.equal(scope.targets[0].isActionable(), false);
-  const offline = appShell.foregroundRetryActionHintScope.call(owner);
-  assert.deepEqual(offline.targets, []);
-  assert.deepEqual(offline.mutationRoots, [notice]);
-});
-
 test("composes one App Shell workspace context with public child contexts", () => {
-  const dialog = {};
-  const hud = {};
-  const selector = {};
-  const presentation = {
-    actionHintDialog: () => dialog,
-    scrollModeHud: () => hud,
-    scrollSurfaceSelector: () => selector,
-  };
+  const presentation = {};
   const taskChild = { id: "task-child" };
   const updateChild = { id: "update-child" };
   const shortcutChild = { id: "shortcut-child" };
@@ -116,27 +59,34 @@ test("composes one App Shell workspace context with public child contexts", () =
     keyboardNavigationContexts: () => [taskChild],
     scrollSurfaceScope: () => scrollScope,
   };
-  const owner = {
+  const owner = Object.create(appShell, Object.getOwnPropertyDescriptors({
     actionHintScope: () => ({ targets: [{ id: "task" }] }),
-    keyboardNavigationPresentation: presentation,
     taskWorkspace,
     updateDialog: {
-      keyboardNavigationContexts: () => [updateChild],
+      value: { keyboardNavigationContexts: () => [updateChild] },
     },
+    updateResultDialog: { value: { keyboardNavigationContexts: () => [] } },
     keyboardShortcutDialog: {
-      keyboardNavigationContexts: () => [shortcutChild],
+      value: { keyboardNavigationContexts: () => [shortcutChild] },
     },
-  };
+  }));
+  owner.keyboard = new KeyboardContexts(owner);
+  owner.keyboard.presentations.add({}, {
+    element: Object.assign(presentation, { parentElement: null }),
+    value: null,
+  });
 
   const contexts = appShell.keyboardNavigationContexts.call(owner);
   assert.equal(contexts.length, 4);
   assert.equal(contexts[0].id, "workspace");
   assert.equal(contexts[0].kind, "workspace");
   assert.equal(contexts[0].root, owner);
-  assert.equal(contexts[0].actionHints.dialog, dialog);
-  assert.equal(contexts[0].scroll.hud, hud);
-  assert.equal(contexts[0].scroll.selector, selector);
-  assert.deepEqual(contexts[0].scroll.scope.surfaces, scrollScope.surfaces);
+  assert.equal(contexts[0].presentation, presentation);
+  assert.deepEqual(
+    contexts[0].actionHints.targets.map(({ id }) => id),
+    ["task"],
+  );
+  assert.deepEqual(contexts[0].scroll.surfaces, scrollScope.surfaces);
   assert.equal(contexts[0].editing.escapeTarget({}), "escape-target");
   assert.deepEqual(contexts.slice(1), [updateChild, shortcutChild, taskChild]);
 });
@@ -151,26 +101,23 @@ test("merges only owner-declared Action Hint dependencies", () => {
       scrollRoots: [],
     }),
   };
+  const panel = {};
   const owner = {
-    bootstrapRetryActionHintScope: () => ({
-      blocked: false,
-      targets: [],
-      mutationRoots: [],
-      scrollRoots: [],
-    }),
-    foregroundRetryActionHintScope: () => ({
-      blocked: false,
-      targets: [],
-      mutationRoots: [],
-      scrollRoots: [],
-    }),
-    buildMismatchAlert: null,
+    hints: {
+      scope: () => ({
+        blocked: false,
+        targets: [],
+        mutationRoots: [panel],
+        scrollRoots: [],
+      }),
+    },
+    buildMismatchAlert: { value: undefined },
     taskWorkspace,
   };
 
   const scope = appShell.actionHintScope.call(owner);
   assert.deepEqual(scope.targets, [{ id: "task" }]);
-  assert.deepEqual(scope.mutationRoots, [taskRoot]);
+  assert.deepEqual(scope.mutationRoots, [panel, taskRoot]);
   assert.equal(scope.mutationRoots.includes(taskWorkspace), false);
 });
 
@@ -373,17 +320,6 @@ test("a check shows the last answer meanwhile and outranks a read that left befo
     delete globalThis.window.clearTimeout;
   }
 });
-
-function button(label, calls) {
-  return {
-    disabled: false,
-    hidden: false,
-    textContent: label,
-    getClientRects: () => [{}],
-    focus: () => calls.push(`focus:${label}`),
-    click: () => calls.push(`click:${label}`),
-  };
-}
 
 function restoreGlobal(name, value) {
   if (value === undefined) {

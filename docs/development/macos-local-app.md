@@ -13,7 +13,9 @@ backend to reattach to any sessions it still holds.
 
 ## Install a local build
 
-From the repository root:
+From the repository root, after `npm ci` in `frontend/`; the backend embeds
+Lit from `frontend/node_modules` and runs Node.js to build the frontend's
+TypeScript modules:
 
 ```sh
 desktop/macos/install-local

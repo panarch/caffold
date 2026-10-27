@@ -3,6 +3,7 @@ import { registerHooks } from "node:module";
 import test, { after } from "node:test";
 
 import {
+  elementStandIn,
   installCustomElementUnitRegistry,
 } from "../../../tests/support/custom-element-unit.js";
 
@@ -25,102 +26,79 @@ after(() => {
   buildInfoHook.deregister();
 });
 
-test("merges responsive Back with only the presented direct page", () => {
-  const childTarget = { id: "appearance-reset" };
-  const childSurface = { id: "appearance-scroll" };
+test("merges its own Back with only the presented page, clipped by the detail pane", () => {
+  const pulls = [];
   const page = {
-    hidden: false,
-    getClientRects: () => [{}],
-    actionHintScope: () => ({
-      targets: [childTarget],
-      mutationRoots: [page],
-      scrollRoots: [],
-    }),
-    scrollSurfaceScope: () => ({
-      surfaces: [childSurface],
-      mutationRoots: [page],
-      resizeElements: [page],
-      scrollRoots: [],
-    }),
+    actionHintScope(pull) {
+      pulls.push(["actions", pull]);
+      return { targets: [{ id: "settings:appearance:reset-all" }] };
+    },
+    scrollSurfaceScope(pull) {
+      pulls.push(["scroll", pull]);
+      return { surfaces: [{ id: "settings:appearance:scroll" }] };
+    },
   };
-  const control = {
-    disabled: false,
-    getAttribute: () => "Back to settings",
-    focus() {},
-    click() {},
-  };
-  const header = { hidden: false };
-  const detail = {};
-  const owner = {
-    hidden: false,
-    isConnected: true,
+  const detailPane = {};
+  const owner = elementStandIn(workspace, {
     section: "appearance",
-    masterDetailMedia: { matches: true },
-    ensureRendered() {},
-    presentedSection() {
-      return workspace.presentedSection.call(this);
-    },
-    settingsPages: () => ({ appearance: page }),
-    querySelector(selector) {
-      if (selector.includes("button[data-action=")) return control;
-      if (selector.endsWith(".settings-workspace-detail-header")) return header;
-      if (selector.endsWith(".settings-workspace-detail-pane")) return detail;
-      return null;
-    },
-  };
+    wide: true,
+    hints: { scope: () => ({ targets: [{ id: "settings:parent:list" }] }) },
+    surfaces: { scope: () => ({ surfaces: [] }) },
+    detailPane: { value: detailPane },
+    pages: { get: (section) => (section === "appearance" ? page : undefined) },
+  });
 
   assert.deepEqual(
-    workspace.actionHintScope.call(owner).targets.map(({ id }) => id),
-    ["settings:parent:list", "appearance-reset"],
+    owner.actionHintScope().targets.map(({ id }) => id),
+    ["settings:parent:list", "settings:appearance:reset-all"],
   );
   assert.deepEqual(
-    workspace.scrollSurfaceScope.call(owner).surfaces,
-    [childSurface],
+    owner.scrollSurfaceScope().surfaces.map(({ id }) => id),
+    ["settings:appearance:scroll"],
   );
+  assert.deepEqual(pulls, [
+    ["actions", { scopeId: "settings:appearance", clipRoots: [detailPane] }],
+    ["scroll", { scopeId: "settings:appearance", label: "Appearance", clipRoots: [detailPane] }],
+  ]);
 
   owner.section = "";
+  owner.wide = false;
   assert.deepEqual(
-    workspace.actionHintScope.call(owner).targets,
-    [childTarget],
+    owner.actionHintScope().targets.map(({ id }) => id),
+    ["settings:parent:list"],
   );
-  owner.masterDetailMedia.matches = false;
-  assert.deepEqual(workspace.actionHintScope.call(owner).targets, []);
-  assert.deepEqual(workspace.scrollSurfaceScope.call(owner).surfaces, []);
 });
 
 test("hands a navigator that connects later the update states it missed", () => {
-  const received = [];
-  const about = {
-    setUpdateStatus: (status) => received.push(["about", status]),
-  };
   const owner = {
     section: "about",
-    caffoldUpdateValue: { checking: false, status: { updateAvailable: false } },
-    updateStatusValue: null,
+    wide: false,
+    caffoldUpdate: { checking: false, status: { updateAvailable: true } },
+    updateStatus: null,
     connectedSettingsNavigator: null,
-    boundSettingsNavigatorIntent: () => {},
-    ensureRendered() {},
-    querySelector: () => about,
+    navigatorIntent: () => {},
+    performUpdate() {},
+    presentedSection: workspace.presentedSection,
+    updateAvailable: workspace.updateAvailable,
+    reloadReady: workspace.reloadReady,
   };
   const status = { state: "ready", preparedUpdate: { ready: true, buildId: "next" } };
 
   workspace.setUpdateStatus.call(owner, status);
-  assert.deepEqual(received, [["about", status]]);
+  assert.equal(owner.updateStatus, status, "About takes the status it is bound to");
 
-  const navigator = {
-    addEventListener() {},
-    removeEventListener() {},
-    setSelectedSection() {},
-    setCaffoldUpdate: (snapshot) => received.push(["navigator release", snapshot]),
-    setUpdateStatus: (value) => received.push(["navigator reload", value]),
-  };
+  const navigator = { addEventListener() {}, removeEventListener() {} };
   workspace.connectSettingsNavigator.call(owner, navigator);
-  assert.deepEqual(received.slice(1), [
-    ["navigator release", owner.caffoldUpdateValue],
-    ["navigator reload", status],
-  ]);
+  assert.deepEqual(
+    {
+      selectedSection: navigator.selectedSection,
+      updateAvailable: navigator.updateAvailable,
+      reloadReady: navigator.reloadReady,
+    },
+    { selectedSection: "about", updateAvailable: true, reloadReady: true },
+  );
 
   const settled = { state: "settled", preparedUpdate: { ready: false, buildId: null } };
   workspace.setUpdateStatus.call(owner, settled);
-  assert.deepEqual(received.slice(3), [["about", settled], ["navigator reload", settled]]);
+  assert.equal(navigator.reloadReady, false);
 });

@@ -69,21 +69,14 @@ function readingOwner() {
     levelReads: new Map(),
     noteRead: { generation: 0, controller: null },
     noteState: { state: "idle", note: null, message: "" },
-    renders: 0,
-    navigatorSyncs: 0,
-    renderDetail() {
-      this.renders += 1;
-    },
-    syncNavigator() {
-      this.navigatorSyncs += 1;
-    },
-    syncPresentation() {},
-    ensureRendered() {},
-    info: () => null,
+    documents: null,
+    requestUpdate() {},
+    performUpdate() {},
   };
   for (const method of [
     "loadLevel",
     "loadNote",
+    "setLevel",
     "cancelNoteRead",
     "cancelLevelReads",
     "reload",
@@ -346,12 +339,11 @@ test("the navigator is told to open the directories that hold the open Note", ()
       },
       message: "",
     },
-    connectedNotesNavigator: { setSnapshot: (snapshot) => snapshots.push(snapshot) },
   };
 
-  workspace.syncNavigator.call(owner);
+  snapshots.push(workspace.navigatorSnapshot.call(owner));
   owner.noteId = "inbox";
-  workspace.syncNavigator.call(owner);
+  snapshots.push(workspace.navigatorSnapshot.call(owner));
 
   assert.deepEqual(snapshots.map(({ selectedNoteId, reveal }) => ({ selectedNoteId, reveal })), [
     {
@@ -390,14 +382,15 @@ test("the details owner in the Note header provides the Notes keyboard contexts 
   const scopeIds = [];
   const owner = {
     hidden: false,
-    ensureRendered() {},
-    primaryDocument: {
-      keyboardNavigationContexts({ scopeId }) {
-        scopeIds.push(scopeId);
-        return [context];
+    documents: {
+      primary: {
+        keyboardNavigationContexts({ scopeId }) {
+          scopeIds.push(scopeId);
+          return [context];
+        },
       },
+      secondary: { keyboardNavigationContexts: () => [] },
     },
-    secondaryDocument: { keyboardNavigationContexts: () => [] },
   };
 
   assert.deepEqual(workspace.keyboardNavigationContexts.call(owner), [context]);

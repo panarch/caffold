@@ -82,7 +82,7 @@ test("reopens the selected Review scope at its last semantic route", { tag: "@al
   await selectTaskReviewScope(tasksPage, "branch");
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
   if (testInfo.project.name === "phone") {
-    await taskReview.evaluate((review) => review.updateAxis("navigator", "files"));
+    await taskReview.evaluate((review) => review.updateRoute({ navigator: "files" }));
   } else {
     await taskReview.getByRole("button", { name: "Files", exact: true }).click();
   }
@@ -446,7 +446,7 @@ test("rejects a late file navigator response while Review is inactive", { tag: "
         tasksPage.evaluate((element, threadId) => {
           const detail = element.querySelector("caffold-detail-layout");
           const review = detail.reviewComponents.get(`task:${threadId}`);
-          return review.fileNavigator().loadedDirectoryPath;
+          return review.fileNavigator.loadedDirectoryPath;
         }, taskScenario.threadId),
       )
       .toBe(null);
@@ -514,7 +514,7 @@ test("keeps the first Working Tree loads running through Task updates", { tag: "
     ).toBeVisible();
     await expect
       .poll(() =>
-        taskReview.evaluate((review) => review.fileNavigator().loadedDirectoryPath),
+        taskReview.evaluate((review) => review.fileNavigator.loadedDirectoryPath),
       )
       .toBe("src");
     // Only the newest request's answer is accepted, so every earlier request

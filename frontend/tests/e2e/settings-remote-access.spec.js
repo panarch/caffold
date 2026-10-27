@@ -3,6 +3,7 @@ import {
   actionHintDialog,
   activateActionHint,
   enterActionHints,
+  workspaceTargets,
 } from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import {
@@ -333,6 +334,36 @@ test("presents an initial status request failure without inventing read-only sta
   ).toBeVisible();
   await expect(remoteAccess.getByText("Serve settings are read-only")).toBeHidden();
   await expect(remoteAccess.getByRole("button", { name: "Retry" })).toBeEnabled();
+});
+
+test("offers the controls each state shows as Action Hints", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  let state = "ready";
+  await page.route(/\/api\/tailscale\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(tailscaleStatus(state)),
+    }),
+  );
+
+  await page.goto("/settings/remote-access");
+  const remoteAccess = page.locator("caffold-settings-remote-access-page");
+  await expect(remoteAccess.getByRole("heading", { name: "Private access is ready" })).toBeVisible();
+  await expect.poll(() => workspaceTargets(page, "settings:remote-access:")).toEqual([
+    ["refresh", "Refresh"],
+    ["disable", "Disable"],
+    ["copy-link", "Copy link"],
+    ["open-link", "Open private access address in a new tab"],
+  ]);
+
+  state = "failed";
+  await page.goto("/settings/remote-access");
+  await expect(remoteAccess.getByRole("heading", { name: "Remote access setup failed" })).toBeVisible();
+  await expect.poll(() => workspaceTargets(page, "settings:remote-access:")).toEqual([
+    ["refresh", "Refresh"],
+    ["retry", "Retry"],
+  ]);
 });
 
 async function revealActionTarget(page, target) {

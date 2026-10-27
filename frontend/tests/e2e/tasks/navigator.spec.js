@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { workspaceTargets } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeListTask,
@@ -370,6 +371,8 @@ test("holds an initial Archived failure until active Tasks settle", { tag: "@all
   await expect(
     archivedSection.getByRole("button", { name: "Retry" }),
   ).toBeVisible();
+  await expect.poll(() => workspaceTargets(page, "task-list:archived:"))
+    .toContainEqual(["retry", "Retry"]);
 });
 
 test("shows an initial active failure immediately and reveals Archived after it settles", { tag: "@all-viewports" }, async ({

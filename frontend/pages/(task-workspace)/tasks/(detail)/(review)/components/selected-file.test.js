@@ -54,7 +54,7 @@ test("drops a diff that returns after another file is shown", async () => {
     rootPath: "repo",
     worktreeRootPath: "repo",
     view: diffView("a.js", () => first.promise),
-    viewer: () => viewer,
+    viewer,
     diffPresentation: selectedFile.diffPresentation,
     acceptsLoad: selectedFile.acceptsLoad,
     restorePosition() {},
@@ -77,10 +77,10 @@ test("keeps the position of a view it leaves and carries the line to another rep
     view: diffView("a.js"),
     positions: new Map(),
     pendingLines: new Map(),
-    viewer: () => ({
+    viewer: {
       visibleLine: () => 42,
       captureContentScroll: () => ({ top: 10 }),
-    }),
+    },
   };
   const source = {
     ...diffView("a.js"),
@@ -104,7 +104,6 @@ test("keeps the reading position on a reread only while it shows the same view",
   const loads = [];
   const owner = {
     shownStateKey: "working:a.js:diff",
-    ensureRendered() {},
     load: (options) => loads.push(options.background),
   };
   const source = {

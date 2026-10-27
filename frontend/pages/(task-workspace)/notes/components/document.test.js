@@ -13,7 +13,7 @@ function retainedDocument() {
     scrollLeft: 37,
     getScrollState() { return { top: this.scrollTop, left: this.scrollLeft }; },
   };
-  return { parentElement: {}, isConnected: true, preview: () => preview };
+  return { parentElement: {}, isConnected: true, preview: { value: preview } };
 }
 
 test("the placement fallback restores both reading axes after a disconnecting move", () => {
@@ -22,11 +22,11 @@ test("the placement fallback restores both reading axes after a disconnecting mo
     assert.equal(element, view);
     assert.equal(target, null, "a sibling in a different slot is not an insertion target");
     element.parentElement = this;
-    element.preview().scrollTop = 0;
-    element.preview().scrollLeft = 0;
+    element.preview.value.scrollTop = 0;
+    element.preview.value.scrollLeft = 0;
   } };
   documentView.place.call(view, parent, { parentElement: {} });
-  assert.deepEqual(view.preview().getScrollState(), { top: 220, left: 37 });
+  assert.deepEqual(view.preview.value.getScrollState(), { top: 220, left: 37 });
 });
 
 test("a connected retained document uses native moveBefore and stays untouched in its current slot", () => {
@@ -42,5 +42,5 @@ test("a connected retained document uses native moveBefore and stays untouched i
   documentView.place.call(view, parent, sibling);
   documentView.place.call(view, parent, sibling);
   assert.equal(moves, 1);
-  assert.deepEqual(view.preview().getScrollState(), { top: 220, left: 37 });
+  assert.deepEqual(view.preview.value.getScrollState(), { top: 220, left: 37 });
 });

@@ -10,290 +10,161 @@ await import("./conversation.js");
 const conversation = registry.element("caffold-task-conversation").prototype;
 after(() => registry.restore());
 
-test("provides only the exact active Conversation scrollport", () => {
-  const scrollport = {
-    clientHeight: 200,
-    scrollHeight: 800,
-    getClientRects: () => [{}],
-  };
-  const list = { children: [] };
-  const owner = {
+// A Conversation showing `entries`, whose parts answer from `parts` by their
+// `kind:identity` and whose approval cards answer from `approvals` by id.
+function conversationOwner({ entries, parts = {}, approvals = {}, ...rest }) {
+  return Object.create(conversation, Object.getOwnPropertyDescriptors({
     active: true,
-    hidden: false,
-    isConnected: true,
     snapshot: { threadId: "thread-a", task: { threadId: "thread-a" } },
-    ensureState() {},
-    getClientRects: () => [{}],
-    scroller: () => scrollport,
-    conversationList: () => list,
-  };
-
-  const scope = conversation.scrollSurfaceScope.call(owner);
-  const surface = scope.surfaces[0];
-  assert.deepEqual(
-    {
-      id: surface.id,
-      label: surface.label,
-      scrollport: surface.scrollport,
-      clipRoots: surface.clipRoots,
-    },
-    {
-      id: "task:thread-a:conversation",
-      label: "Conversation",
-      scrollport,
-      clipRoots: [owner, scrollport],
-    },
-  );
-  assert.deepEqual(scope.mutationRoots, [owner, scrollport]);
-  assert.equal(surface.isEligible(), true);
-  owner.active = false;
-  assert.equal(surface.isEligible(), false);
-  owner.active = true;
-  owner.snapshot = { threadId: "thread-b", task: { threadId: "thread-b" } };
-  assert.equal(surface.isEligible(), false);
-});
-
-test("composes direct tool and approval command scrollports with Conversation", () => {
-  const toolOutput = layoutElement();
-  let currentToolOutput = toolOutput;
-  const toolEntry = {
-    dataset: { conversationEntryKey: "tool-a" },
-    matches: (selector) => selector === ".task-tool-card",
-    querySelector(selector) {
-      if (selector === ":scope > pre") return currentToolOutput;
-      if (selector === ":scope > header > strong") {
-        return { textContent: "Plan" };
-      }
-      return null;
-    },
-  };
-  let currentApproval = true;
-  const approvalCard = {
-    approvalId: "approval-a",
-    scrollSurfaceScope(options) {
-      return {
-        surfaces: [{
-          id: `${options.scopeId}:output:0`,
-          label: "Approval command",
-          axes: ["horizontal"],
-          isEligible: () => currentApproval && options.isCurrent(),
-        }],
-      };
-    },
-  };
-  const approvalEntry = {
-    dataset: { conversationEntryKey: "approval-flow-a" },
-    matches: (selector) => selector === ".task-approval-flow",
-    querySelector: () => null,
-    querySelectorAll: () => [approvalCard],
-  };
-  const list = { children: [toolEntry, approvalEntry] };
-  const scrollport = layoutElement();
-  const owner = layoutElement({
-    active: true,
-    hidden: false,
-    isConnected: true,
-    snapshot: { threadId: "thread-a", task: { threadId: "thread-a" } },
-    ensureState() {},
-    scroller: () => scrollport,
-    conversationList: () => list,
-    approvalComponents: (entry) => entry === approvalEntry && currentApproval ? [approvalCard] : [],
-  });
-
-  const scope = conversation.scrollSurfaceScope.call(owner);
-  assert.deepEqual(scope.surfaces.map(({ id, label, axes }) => ({
-    id,
-    label,
-    axes,
-  })), [
-    {
-      id: "task:thread-a:conversation",
-      label: "Conversation",
-      axes: undefined,
-    },
-    {
-      id: "task:thread-a:conversation:tool-output:tool-a:scroll",
-      label: "Plan output",
-      axes: ["horizontal"],
-    },
-    {
-      id:
-        "task:thread-a:conversation:approval:approval-a:approval-flow-a:output:0",
-      label: "Approval command",
-      axes: ["horizontal"],
-    },
-  ]);
-  assert.equal(scope.surfaces[1].isEligible(), true);
-  assert.equal(scope.surfaces[2].isEligible(), true);
-  currentToolOutput = layoutElement();
-  assert.equal(scope.surfaces[1].isEligible(), false);
-  currentToolOutput = toolOutput;
-  currentApproval = false;
-  assert.equal(scope.surfaces[2].isEligible(), false);
-  currentApproval = true;
-  owner.snapshot = { threadId: "thread-a", task: null };
-  assert.equal(scope.surfaces[1].isEligible(), false);
-  assert.equal(scope.surfaces[2].isEligible(), false);
-});
-
-test("returns an empty scope before a Conversation owns a Task scrollport", () => {
-  const scope = conversation.scrollSurfaceScope.call({
-    snapshot: { threadId: "", task: null },
-    ensureState() {},
-    scroller: () => null,
-    conversationList: () => null,
-  });
-  assert.deepEqual(scope.surfaces, []);
-});
-
-function conversationButton(dataset, label) {
-  return {
-    dataset,
-    disabled: false,
-    textContent: label,
-    title: "",
-    clicks: 0,
-    getAttribute: () => null,
-    getClientRects: () => [{}],
-    focus() {},
-    click() {
-      this.clicks += 1;
-    },
-  };
+    shownEntries: entries,
+    scrollerElement: { value: {} },
+    list: { value: {} },
+    olderHistoryElement: { value: undefined },
+    parts: { get: (key) => parts[key] },
+    approvals: { get: (id) => approvals[id] },
+    ...rest,
+  }));
 }
 
-function layoutElement(properties = {}) {
-  return { getClientRects: () => [{}], ...properties };
-}
-
-function childProvider(targetId) {
-  const provider = {
-    actionHintScope(options) {
-      provider.options = options;
-      return {
-        targets: [{ id: targetId, invalidationOwner: provider }],
-        mutationRoots: [provider],
-      };
+test("offers its own Scroll surface and each part's while it shows a Task", () => {
+  const pulls = [];
+  const part = (id) => ({
+    scrollSurfaceScope(pull) {
+      pulls.push(pull);
+      return { surfaces: [{ id }] };
     },
-  };
-  return provider;
-}
-
-test("merges owned Conversation actions with direct retained child providers", () => {
-  const detailButton = conversationButton({ conversationAction: "retry-detail" }, "Older messages");
-  const approvalTarget = { id: "approval-choice" };
-  let approvalOptions;
-  const approvalCard = {
-    approvalId: "approval-a",
-    actionHintScope(options) {
-      approvalOptions = options;
-      return { targets: [approvalTarget], mutationRoots: [approvalCard] };
-    },
-  };
-  approvalTarget.invalidationOwner = approvalCard;
-  const command = {
-    actionHintScope(options) {
-      assert.equal(options.scopeId, "task:thread-a:conversation:command:command-a");
-      return { targets: [childTarget], mutationRoots: [command] };
-    },
-  };
-  const childTarget = { id: "command-output", invalidationOwner: command };
-  const olderHistory = {
-    actionHintScope(options) {
-      assert.equal(options.scopeId, "task:thread-a:conversation:older-history");
-      assert.deepEqual(options.clipRoots, [owner, scrollport]);
-      return { targets: [historyTarget], mutationRoots: [olderHistory] };
-    },
-  };
-  const historyTarget = { id: "older-page", invalidationOwner: olderHistory };
-  const entry = {
-    dataset: { conversationEntryKey: "command-a" },
-    querySelector(selector) {
-      return selector === ":scope > caffold-task-command" ? command : null;
-    },
-  };
-  const commandGroup = childProvider("command-group-toggle");
-  const commandGroupEntry = {
-    dataset: { conversationEntryKey: "command-group:command-b" },
-    querySelector(selector) {
-      return selector === ":scope > caffold-task-command-group"
-        ? commandGroup
-        : null;
-    },
-  };
-  const prompt = childProvider("prompt-preview");
-  const promptEntry = {
-    dataset: { conversationEntryKey: "prompt-a" },
-    querySelector(selector) {
-      return selector.includes("caffold-task-user-message") ? prompt : null;
-    },
-  };
-  const picture = childProvider("generated-preview");
-  const pictureEntry = {
-    dataset: { conversationEntryKey: "picture-a" },
-    querySelector(selector) {
-      return selector === ":scope > caffold-task-message-attachments"
-        ? picture
-        : null;
-    },
-  };
-  const list = {
-    children: [entry, commandGroupEntry, promptEntry, pictureEntry],
-  };
-  const scrollport = {};
-  let controls = [detailButton];
-  const owner = {
-    active: true,
-    hidden: false,
-    isConnected: true,
-    snapshot: { threadId: "thread-a", task: { threadId: "thread-a" } },
-    ensureState() {},
-    scroller: () => scrollport,
-    conversationList: () => list,
-    olderHistory: () => olderHistory,
-    approvalComponents: (candidate) =>
-      candidate === entry || candidate === undefined ? [approvalCard] : [],
-    contains: (control) => controls.includes(control),
-    querySelector(selector) {
-      return selector.includes("retry-detail") ? detailButton : null;
-    },
-  };
-
-  const scope = conversation.actionHintScope.call(owner, {
-    scopeId: "task:thread-a:conversation",
   });
-  assert.deepEqual(scope.targets.map(({ id }) => id), [
-    "task:thread-a:conversation:retry-detail",
-    "older-page",
-    "approval-choice",
+  let ownPull;
+  const owner = conversationOwner({
+    entries: [
+      { kind: "command", identity: "command-a" },
+      { kind: "status", identity: "status-a" },
+      { kind: "assistant-message", identity: "message-a" },
+      {
+        kind: "approvals",
+        identity: "flow-a",
+        requests: [{ approvalId: "approval:a" }, { approvalId: "gone" }],
+      },
+    ],
+    parts: {
+      "command:command-a": part("command-output"),
+      "message:message-a": part("table"),
+    },
+    approvals: {
+      "approval:a": { approvalId: "approval:a", ...part("approval-command") },
+    },
+    surfaces: {
+      scope(pull) {
+        ownPull = pull;
+        return { surfaces: [{ id: "conversation" }] };
+      },
+    },
+  });
+  const clip = {};
+  const ids = (pull) =>
+    conversation.scrollSurfaceScope
+      .call(owner, pull)
+      .surfaces.map(({ id }) => id);
+
+  assert.deepEqual(ids({ clipRoots: [clip] }), [
+    "conversation",
     "command-output",
-    "command-group-toggle",
-    "prompt-preview",
-    "generated-preview",
+    "table",
+    "approval-command",
   ]);
-  assert.deepEqual(scope.targets.map(({ invalidationOwner }) =>
-    invalidationOwner
-  ), [owner, olderHistory, approvalCard, command, commandGroup, prompt, picture]);
-  assert.equal(
-    commandGroup.options.scopeId,
-    "task:thread-a:conversation:command-group:command-group:command-b",
+  assert.deepEqual(ownPull, {
+    scopeId: "task:thread-a:conversation",
+    label: "Conversation",
+    clipRoots: [clip],
+  });
+  assert.deepEqual(pulls.map(({ scopeId }) => scopeId), [
+    "task:thread-a:conversation:command:command-a",
+    "task:thread-a:conversation:message:message-a",
+    "task:thread-a:conversation:approval:approval%3Aa:flow-a",
+  ]);
+  assert.deepEqual(pulls[0].clipRoots, [
+    owner,
+    owner.scrollerElement.value,
+    owner.list.value,
+    clip,
+  ]);
+
+  owner.active = false;
+  assert.deepEqual(ids(), []);
+  owner.active = true;
+  owner.snapshot = { threadId: "thread-a", task: null };
+  assert.deepEqual(ids(), []);
+});
+
+test("merges its own actions with older history's and each part's while it shows a Task", () => {
+  const pulls = [];
+  const part = (id) => ({
+    actionHintScope(pull) {
+      pulls.push(pull);
+      return { targets: [{ id }] };
+    },
+  });
+  const owner = conversationOwner({
+    entries: [
+      { kind: "user-message", identity: "prompt-a" },
+      { kind: "generated-image", identity: "picture-a" },
+      { kind: "thinking", identity: "thinking-a" },
+      { kind: "command", identity: "command-a" },
+      { kind: "command-group", identity: "group-a" },
+      { kind: "turn-work", identity: "work-a" },
+      {
+        kind: "approvals",
+        identity: "flow-a",
+        requests: [{ approvalId: "approval-a" }],
+      },
+    ],
+    parts: {
+      "message:prompt-a": part("prompt-preview"),
+      "attachments:picture-a": part("generated-preview"),
+      "thinking:thinking-a": part("thinking-copy"),
+      "command:command-a": part("command-output"),
+      "command-group:group-a": part("group-toggle"),
+      "work-details:work-a": part("work-toggle"),
+    },
+    approvals: {
+      "approval-a": { approvalId: "approval-a", ...part("approval-choice") },
+    },
+    olderHistoryElement: { value: part("older-page") },
+    hints: { scope: () => ({ targets: [{ id: "retry" }] }) },
+  });
+  const clip = {};
+  const pull = { scopeId: "conversation", clipRoots: [clip] };
+
+  assert.deepEqual(
+    conversation.actionHintScope.call(owner, pull).targets.map(({ id }) => id),
+    [
+      "retry",
+      "older-page",
+      "prompt-preview",
+      "generated-preview",
+      "thinking-copy",
+      "command-output",
+      "group-toggle",
+      "work-toggle",
+      "approval-choice",
+    ],
   );
-  assert.equal(
-    prompt.options.scopeId,
-    "task:thread-a:conversation:message:prompt-a",
-  );
-  assert.equal(
-    picture.options.scopeId,
-    "task:thread-a:conversation:attachments:picture-a",
-  );
-  scope.targets[0].activate();
-  assert.equal(detailButton.clicks, 1);
-  assert.equal(approvalOptions.scopeId, "task:thread-a:conversation:approval:approval-a:command-a");
-  assert.equal(approvalOptions.isCurrent(), true);
-  owner.snapshot = { threadId: "thread-b", task: { threadId: "thread-b" } };
-  assert.equal(scope.targets[0].isActionable(), false);
-  assert.equal(approvalOptions.isCurrent(), false);
-  controls = [];
+  assert.deepEqual(pulls.map(({ scopeId }) => scopeId), [
+    "conversation:older-history",
+    "conversation:message:prompt-a",
+    "conversation:attachments:picture-a",
+    "conversation:thinking:thinking-a",
+    "conversation:command:command-a",
+    "conversation:command-group:group-a",
+    "conversation:work-details:work-a",
+    "conversation:approval:approval-a:flow-a",
+  ]);
+  const scroller = owner.scrollerElement.value;
+  assert.deepEqual(pulls[0].clipRoots, [owner, scroller, clip]);
+  assert.deepEqual(pulls[1].clipRoots, [owner, scroller, owner.list.value, clip]);
+
+  owner.active = false;
+  assert.deepEqual(conversation.actionHintScope.call(owner, pull).targets, []);
 });
 
 test("forwards only the current direct history child's intent", () => {
@@ -306,7 +177,7 @@ test("forwards only the current direct history child's intent", () => {
     dispatchIntent: (...intent) => intents.push(intent),
   };
   const emit = (target, threadId, retry = false) =>
-    conversation.handleOlderHistoryIntent.call(owner, {
+    conversation.requestOlderHistory.call(owner, {
       target, detail: { threadId, retry }, stopPropagation() {},
     });
   emit({}, "a");
@@ -315,111 +186,17 @@ test("forwards only the current direct history child's intent", () => {
   emit(child, "a");
   emit(child, "a", true);
   assert.deepEqual(intents, [
-    ["older-history", { retry: false }],
-    ["older-history", { retry: true }],
+    [{ type: "older-history", retry: false }],
+    [{ type: "older-history", retry: true }],
   ]);
   owner.active = false;
   emit(child, "a");
   assert.equal(intents.length, 2);
 });
 
-test("provides only direct owner-known Thinking disclosures with inner Markdown", () => {
-  let clicks = 0;
-  const anchor = { id: "thinking-chevron" };
-  const summary = {
-    getClientRects: () => [{}],
-    querySelector: () => anchor,
-    focus() {},
-    click() {
-      clicks += 1;
-    },
-  };
-  const disclosure = {
-    dataset: { disclosureKey: "thinking:event-a" },
-    open: false,
-    querySelector: () => summary,
-  };
-  const markdownTarget = { id: "thinking-markdown-copy" };
-  const markdown = {
-    actionHintScope: () => ({ targets: [markdownTarget] }),
-  };
-  const entry = {
-    dataset: { conversationEntryKey: "event-a" },
-    querySelector(selector) {
-      if (selector.includes('data-disclosure-key^="thinking:"')) {
-        return disclosure;
-      }
-      if (selector.includes("caffold-task-markdown")) {
-        return markdown;
-      }
-      return null;
-    },
-  };
-  const arbitraryEntry = {
-    dataset: { conversationEntryKey: "event-b" },
-    querySelector: () => null,
-  };
-  const list = { children: [entry, arbitraryEntry] };
-  const scrollport = {};
-  const owner = {
-    active: true,
-    hidden: false,
-    isConnected: true,
-    snapshot: { threadId: "thread-a", task: { threadId: "thread-a" } },
-    ensureState() {},
-    scroller: () => scrollport,
-    conversationList: () => list,
-    olderHistory: () => null,
-    approvalComponents: () => [],
-    contains: (control) => control === summary,
-    querySelector: () => null,
-    querySelectorAll: () => [],
-  };
-
-  const collapsed = conversation.actionHintScope.call(owner, {
-    scopeId: "task:thread-a:conversation",
-  });
-  assert.deepEqual(collapsed.targets.slice(1), [markdownTarget]);
-  assert.deepEqual(
-    {
-      id: collapsed.targets[0].id,
-      actionId: collapsed.targets[0].actionId,
-      label: collapsed.targets[0].label,
-      controlKind: collapsed.targets[0].controlKind,
-      anchor: collapsed.targets[0].anchor,
-    },
-    {
-      id: "task:thread-a:conversation:thinking:event-a:thinking%3Aevent-a",
-      actionId: "disclosure.toggle",
-      label: "Expand Thinking",
-      controlKind: "disclosure",
-      anchor,
-    },
-  );
-  assert.equal(collapsed.targets[0].isActionable(), true);
-  collapsed.targets[0].activate();
-  assert.equal(clicks, 1);
-
-  disclosure.open = true;
-  const expanded = conversation.actionHintScope.call(owner, {
-    scopeId: "task:thread-a:conversation",
-  }).targets[0];
-  assert.equal(expanded.id, collapsed.targets[0].id);
-  assert.equal(expanded.label, "Collapse Thinking");
-  entry.dataset.conversationEntryKey = "event-b";
-  assert.equal(collapsed.targets[0].isActionable(), false);
-  entry.dataset.conversationEntryKey = "event-a";
-  const originalSummaryQuery = summary.querySelector;
-  summary.querySelector = () => ({ id: "replacement-chevron" });
-  assert.equal(collapsed.targets[0].isActionable(), false);
-  summary.querySelector = originalSummaryQuery;
-  disclosure.dataset.disclosureKey = "thinking:event-c";
-  assert.equal(collapsed.targets[0].isActionable(), false);
-});
-
 test("forwards a suggested prompt only from a message it shows, while it can be sent", () => {
-  const chips = { localName: "caffold-task-assistant-message-suggested-prompts" };
-  const stray = { localName: "caffold-task-assistant-message-suggested-prompts" };
+  const chips = new HTMLElement();
+  const stray = new HTMLElement();
   const intents = [];
   const owner = {
     active: true,
@@ -429,7 +206,7 @@ test("forwards a suggested prompt only from a message it shows, while it can be 
   };
   let stopped = 0;
   const emit = (target, threadId, prompt = "Do the next thing.") =>
-    conversation.handleSuggestedPromptIntent.call(owner, {
+    conversation.sendSuggestedPrompt.call(owner, {
       target,
       detail: { threadId, prompt },
       stopPropagation() {
@@ -438,13 +215,15 @@ test("forwards a suggested prompt only from a message it shows, while it can be 
     });
 
   emit(stray, "thread-a");
-  emit({ localName: "div" }, "thread-a");
+  emit({}, "thread-a");
   assert.equal(stopped, 0, "an intent from elsewhere passes through untouched");
   emit(chips, "old-thread");
   emit(chips, "thread-a", " ");
   assert.deepEqual(intents, []);
   emit(chips, "thread-a");
-  assert.deepEqual(intents, [["suggested-prompt", { prompt: "Do the next thing." }]]);
+  assert.deepEqual(intents, [
+    [{ type: "suggested-prompt", prompt: "Do the next thing." }],
+  ]);
   owner.snapshot.transportState = "reconnecting";
   emit(chips, "thread-a");
   owner.snapshot.transportState = "live";
@@ -462,7 +241,7 @@ test("forwards approval intent only from the current Task's mounted card", () =>
     approvalComponents: () => [card],
     dispatchIntent: (...intent) => intents.push(intent),
   };
-  const emit = (target, threadId) => conversation.handleApprovalIntent.call(owner, {
+  const emit = (target, threadId) => conversation.sendApproval.call(owner, {
     target, detail: { threadId, approvalId: card.approvalId, decision: "cancel" },
     stopPropagation() {},
   });
@@ -470,7 +249,9 @@ test("forwards approval intent only from the current Task's mounted card", () =>
   emit(card, "old-thread");
   assert.deepEqual(intents, []);
   emit(card, "thread-a");
-  assert.deepEqual(intents, [["approval", { approvalId: 'mcp:"42"', decision: "cancel" }]]);
+  assert.deepEqual(intents, [
+    [{ type: "approval", approvalId: 'mcp:"42"', decision: "cancel" }],
+  ]);
   owner.snapshot.transportState = "reconnecting";
   emit(card, "thread-a");
   owner.snapshot.transportState = "live";

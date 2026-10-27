@@ -10,117 +10,63 @@ await import("./task-start-dialog.js");
 const taskStart = registry.element("caffold-github-task-start-dialog").prototype;
 after(() => registry.restore());
 
-test("merges own, turn-option, and current source targets", () => {
-  const cancel = button("Cancel");
-  const start = button("Start Task");
-  const body = layoutElement();
-  const dialog = layoutElement({
-    open: true,
-    querySelector(selector) {
-      if (selector === ".github-task-start-body") {
-        return body;
-      }
-      return selector.includes("cancel") ? cancel : start;
-    },
-  });
-  const model = { id: "model" };
-  const permission = { id: "permission" };
-  const sourceTarget = { id: "source" };
-  const source = {
-    source: () => ({ number: 12 }),
-    actionHintScope: () => ({ targets: [sourceTarget] }),
-  };
-  const turnOptions = {
-    actionHintModelTarget: () => model,
-    actionHintPermissionTarget: () => permission,
+test("merges its buttons with the turn options' and the source's, held while starting", () => {
+  const body = {};
+  const pulls = [];
+  const scope = (name) => (pull) => {
+    pulls.push([name, pull]);
+    return { targets: [{ id: name }] };
   };
   const owner = {
-    isConnected: true,
-    sourceKind: "issue",
     pending: false,
-    dialog: () => dialog,
-    sourceComponent: () => source,
-    turnOptions: () => turnOptions,
+    body: { value: body },
+    hints: { scope: scope("own") },
+    turnOptions: { actionHintScope: scope("turn-options") },
+    sourceComponent: { actionHintScope: scope("source") },
   };
-  const scope = taskStart.actionHintScope.call(owner);
+  const root = {};
+  const pull = { scopeId: "github-task-start:issue:12", clipRoots: [root] };
 
-  assert.deepEqual(scope.targets.map(({ id }) => id), [
-    "github-task-start:issue:12:cancel",
-    "github-task-start:issue:12:start",
-    "model",
-    "permission",
+  const merged = taskStart.actionHintScope.call(owner, pull);
+  assert.deepEqual(merged.targets.map(({ id }) => id), [
+    "own",
+    "turn-options",
     "source",
   ]);
+  assert.equal(merged.blocked, false);
+  assert.deepEqual(pulls, [
+    ["own", pull],
+    [
+      "turn-options",
+      { scopeId: "github-task-start:issue:12", clipRoots: [root, body] },
+    ],
+    [
+      "source",
+      { scopeId: "github-task-start:issue:12", clipRoots: [root, body] },
+    ],
+  ]);
+
+  owner.pending = true;
+  assert.equal(taskStart.actionHintScope.call(owner, pull).blocked, true);
 });
 
-test("binds modal Editing escape and exact Task setup scrollport", () => {
-  const cancel = button("Cancel");
+test("sends Escape in the branch list to Cancel", () => {
+  const cancel = {};
   const select = {};
-  const body = layoutElement({ clientHeight: 100, scrollHeight: 240 });
-  const hintDialog = {};
-  const hud = {};
-  const selector = {};
-  const presentation = {
-    actionHintDialog: () => hintDialog,
-    scrollModeHud: () => hud,
-    scrollSurfaceSelector: () => selector,
-  };
-  const dialog = layoutElement({
-    open: true,
-    querySelector(selector) {
-      if (selector.includes("keyboard-navigation-presentation")) {
-        return presentation;
-      }
-      if (selector === ".github-task-start-body") {
-        return body;
-      }
-      return cancel;
-    },
-  });
-  const relationship = layoutElement();
-  const source = {
-    source: () => ({ number: 12 }),
-    scrollSurfaceScope: () => ({
-      surfaces: [{
-        id: "github-task-start:issue:12:source:relationship",
-        scrollport: relationship,
-        axes: ["horizontal"],
-      }],
-    }),
-  };
-  const turnOptions = { keyboardNavigationContexts: () => [] };
+  let capabilities;
   const owner = {
-    isConnected: true,
-    sourceKind: "issue",
-    dialog: () => dialog,
-    sourceComponent: () => source,
-    issueSource: () => ({ querySelector: () => select }),
-    turnOptions: () => turnOptions,
-    actionHintScope: () => ({ targets: [] }),
+    keyboard: {
+      contexts(given) {
+        capabilities = given;
+        return [];
+      },
+    },
+    issueSource: { isBaseRefSelect: (element) => element === select },
+    cancelButton: { value: cancel },
+    turnOptions: { keyboardNavigationContexts: () => [] },
   };
-  owner.scrollSurfaceScope = () => taskStart.scrollSurfaceScope.call(owner);
-  const [context] = taskStart.keyboardNavigationContexts.call(owner);
-  const surfaces = context.scroll.scope.surfaces;
 
-  assert.equal(context.actionHints.dialog, hintDialog);
-  assert.equal(context.scroll.hud, hud);
-  assert.equal(context.scroll.selector, selector);
-  assert.equal(context.editing.escapeTarget(select), cancel);
-  assert.equal(surfaces[0].scrollport, body);
-  assert.equal(surfaces[0].isEligible(), true);
-  assert.equal(surfaces[1].scrollport, relationship);
-  assert.deepEqual(surfaces[1].axes, ["horizontal"]);
+  taskStart.keyboardNavigationContexts.call(owner);
+  assert.equal(capabilities.editing.escapeTarget(select), cancel);
+  assert.equal(capabilities.editing.escapeTarget({}), null);
 });
-
-function button(textContent) {
-  return {
-    disabled: false,
-    textContent,
-    focus() {},
-    click() {},
-  };
-}
-
-function layoutElement(properties = {}) {
-  return { getClientRects: () => [{}], ...properties };
-}

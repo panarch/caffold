@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   availableScrollAxes,
+  declaredScrollSurfaceScope,
   emptyScrollSurfaceScope,
   hasHorizontalScrollOverflow,
   hasScrollLayoutBox,
@@ -112,3 +113,80 @@ test("scrolls back to the top smoothly unless reduced motion is preferred", (t) 
     { top: 0, behavior: "auto" },
   ]);
 });
+
+test("a declared scrollport becomes a surface named after its owner", () => {
+  const owner = {};
+  const sheet = drawn();
+  const tabs = drawn();
+  const dialog = {};
+  const scope = declaredScrollSurfaceScope(
+    owner,
+    [
+      { element: sheet, value: { id: "sheet", axes: ["vertical", "horizontal"] } },
+      {
+        element: tabs,
+        value: {
+          id: "sheets",
+          label: (name) => `${name} sheets`,
+          axes: ["horizontal"],
+          clipRoots: () => [owner, null],
+        },
+      },
+    ],
+    { scopeId: "file", label: "Budget preview", clipRoots: [dialog] },
+  );
+
+  assert.deepEqual(
+    scope.surfaces.map(({ id, label, scrollport, axes, clipRoots }) => ({
+      id,
+      label,
+      scrollport,
+      axes,
+      clipRoots,
+    })),
+    [
+      {
+        id: "file:sheet",
+        label: "Budget preview",
+        scrollport: sheet,
+        axes: ["vertical", "horizontal"],
+        clipRoots: [dialog],
+      },
+      {
+        id: "file:sheets",
+        label: "Budget preview sheets",
+        scrollport: tabs,
+        axes: ["horizontal"],
+        clipRoots: [owner, dialog],
+      },
+    ],
+  );
+  assert.deepEqual(scope.mutationRoots, [owner]);
+  assert.deepEqual(scope.resizeElements, [owner, sheet, tabs]);
+  assert.deepEqual(scope.scrollRoots, [sheet, tabs]);
+});
+
+test("a declared surface Scroll mode may not move now, unseen, or unnamed is left out", () => {
+  const owner = {};
+  const scope = declaredScrollSurfaceScope(
+    owner,
+    [
+      { element: drawn(), value: { id: "held", when: false } },
+      { element: { getClientRects: () => [] }, value: { id: "hidden" } },
+      { element: drawn(), value: { id: "unnamed", label: () => "" } },
+    ],
+    { label: "Notes" },
+  );
+
+  assert.deepEqual(scope, {
+    blocked: false,
+    surfaces: [],
+    mutationRoots: [owner],
+    resizeElements: [owner],
+    scrollRoots: [],
+  });
+});
+
+function drawn() {
+  return { getClientRects: () => [{}] };
+}

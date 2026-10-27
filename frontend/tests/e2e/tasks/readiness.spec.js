@@ -174,7 +174,6 @@ test("waits for explicit route activation when readiness settles first", { tag: 
         // booted shell keeps this second workspace's route work in the page.
         await customElements.whenDefined("caffold-app-shell");
         const workspace = new Workspace();
-        workspace.ensureRendered();
         workspace.codexRuntimeRestartDialog.close = () => {};
         workspace.prepareRoute = () => {};
         let opens = 0;

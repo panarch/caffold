@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   actionHintDialog,
   activateActionHint,
+  workspaceTargets,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
@@ -68,6 +69,9 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   await expect(finalMarkdown.getByRole("button", { name: "Copy code" })).toHaveCount(3);
   const previewButton = finalMarkdown.getByRole("button", { name: "Preview Markdown" });
   await expect(previewButton).toHaveCount(1);
+  await expect.poll(async () =>
+    (await workspaceTargets(page, "task:")).map(([, label]) => label),
+  ).toContain("Preview Markdown");
   await expect(blocks.nth(2).getByRole("button", { name: "Preview Markdown" })).toHaveCount(1);
   await expect(previewButton).not.toHaveAttribute("aria-pressed", /.*/);
   await expect(finalMarkdown.locator(".code-block-action-icon-svg")).toHaveCount(7);
@@ -333,7 +337,7 @@ test("keeps Markdown fallback text plain", { tag: "@viewport-independent" }, asy
     const fallback = document.createElement("caffold-task-markdown");
     fallback.id = "markdown-fallback-probe";
     fallback.setAttribute("code-block-controls", "");
-    fallback.textContent = "[[caffold-test:markdown-error]]";
+    fallback.markdown = "[[caffold-test:markdown-error]]";
     document.body.append(fallback);
   });
   const fallback = page.locator("#markdown-fallback-probe");
@@ -358,11 +362,11 @@ test("keeps opt-in code blocks current across rerenders", { tag: "@desktop" }, a
     const markdown = document.createElement("caffold-task-markdown");
     markdown.id = "standalone-markdown-probe";
     markdown.setAttribute("code-block-controls", "");
-    markdown.textContent = "```text\nstale\n```";
+    markdown.markdown = "```text\nstale\n```";
     shell.append(markdown);
     document.body.append(shell);
-    markdown.setMarkdown("```rust\nolder\n```");
-    markdown.setMarkdown("```" + rawLabel + "\nfresh\n```");
+    markdown.markdown = "```rust\nolder\n```";
+    markdown.markdown = "```" + rawLabel + "\nfresh\n```";
   }, RAW_LABEL);
 
   const probe = page.locator("#standalone-markdown-probe");
@@ -412,7 +416,7 @@ test("keeps opt-in code blocks current across rerenders", { tag: "@desktop" }, a
     "true",
   );
   await probe.evaluate((markdown) => {
-    markdown.setMarkdown("```text\ncurrent\n```");
+    markdown.markdown = "```text\ncurrent\n```";
   });
   await expect(probe.locator("pre > code")).toHaveText("current\n");
   await page.evaluate(() => window.__releaseCodeCopy());
@@ -424,12 +428,12 @@ test("keeps opt-in code blocks current across rerenders", { tag: "@desktop" }, a
   const previewButton = probe.getByRole("button", { name: "Preview Markdown" });
   await expect(previewButton).toHaveCount(0);
   await probe.evaluate((markdown) => {
-    markdown.setMarkdown("```md\n# fresh\n```");
+    markdown.markdown = "```md\n# fresh\n```";
   });
   await expect(probe.locator(".code-block-label")).toHaveText("md");
   await expect(previewButton).toHaveCount(1);
   await probe.evaluate((markdown) => {
-    markdown.setMarkdown("```text\ncurrent\n```");
+    markdown.markdown = "```text\ncurrent\n```";
   });
   await expect(probe.locator(".code-block-label")).toHaveText("text");
   await expect(previewButton).toHaveCount(0);

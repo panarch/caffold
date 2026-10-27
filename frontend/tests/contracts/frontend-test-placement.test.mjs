@@ -30,35 +30,35 @@ test("the frontend unit-test command reaches every colocated test", () => {
   const packageManifest = JSON.parse(
     readFileSync(join(frontendRoot, "package.json"), "utf8"),
   );
-  const patterns = packageManifest.scripts["test:unit"]
-    .match(/"[^"]+"/g)
-    .map((pattern) => pattern.slice(1, -1));
-  const roots = patterns.map((pattern) => pattern.split("/")[0]);
+  const unitBuild = JSON.parse(
+    readFileSync(join(frontendRoot, "tsconfig.test.json"), "utf8"),
+  );
 
-  for (const testPath of unitTestPaths) {
-    const root = testPath.includes("/") ? testPath.split("/")[0] : "*.test.js";
-    assert.ok(
-      roots.includes(root),
-      `${testPath} is not reached by test:unit patterns ${patterns.join(" ")}`,
-    );
-  }
+  // Every colocated test is compiled into the unit-test build, and the
+  // command runs every test that build holds.
+  assert.ok(unitBuild.include.includes("**/*.test.js"));
+  assert.ok(
+    packageManifest.scripts["test:unit"].includes(
+      `"${unitBuild.compilerOptions.outDir}/**/*.test.js"`,
+    ),
+  );
 });
 
 test("focused frontend Node tests stay beside exact same-stem owners", () => {
   assert.ok(unitTestPaths.length > 0);
   for (const testPath of unitTestPaths) {
-    const ownerPath = testPath.replace(/[.]test[.]js$/, ".js");
+    const ownerPaths = [".js", ".ts"].map((extension) => testPath.replace(/[.]test[.]js$/, extension));
     assert.equal(
-      existsSync(join(frontendRoot, ownerPath)),
+      ownerPaths.some((ownerPath) => existsSync(join(frontendRoot, ownerPath))),
       true,
-      `${testPath} must be owned by ${ownerPath}`,
+      `${testPath} must be owned by ${ownerPaths.join(" or ")}`,
     );
   }
 });
 
 test("colocated tests stay outside production imports and runtime assets", () => {
   for (const path of frontendFiles) {
-    if (!path.endsWith(".js") || path.endsWith(".test.js")) {
+    if (!/[.][jt]s$/.test(path) || path.endsWith(".test.js")) {
       continue;
     }
     assert.doesNotMatch(
@@ -69,7 +69,7 @@ test("colocated tests stay outside production imports and runtime assets", () =>
   }
 
   const serviceWorker = readFileSync(
-    join(frontendRoot, "service-worker.js"),
+    join(frontendRoot, "service-worker.ts"),
     "utf8",
   );
   const staticAssets = readFileSync(

@@ -142,6 +142,11 @@ Apply the common [Source Module Ownership](policy.md#source-module-ownership)
 rules when deciding whether frontend implementation remains private to its
 current owner or moves to a shared boundary.
 
+Frontend modules are TypeScript files, `name.ts`, imported as `name.js`, the
+file tsc writes for them; the paths below are those import paths. A type
+belongs to the module that owns the contract it describes, and other modules
+import it rather than declaring it again.
+
 When one frontend module grows beyond a single file, use an adjacent same-stem
 directory: `name.js` and `name/` form one ownership boundary. `name.js` is the
 primary public entry point for non-visual behavior. `name/` contains the
@@ -341,25 +346,29 @@ prove that its external observations or side effects are wired correctly.
 
 ### Incremental DOM updates
 
-Caffold's frontend direction favors browser-owned, long-lived DOM over adding
-a React-style virtual tree or a generic keyed reconciliation layer. This is a
-preference for new work and for paths already being changed, not a requirement
-to rewrite every existing `render()` method before an adjacent improvement can
-land.
+Components render through Lit's reactive update: the state a component shows
+lives in its reactive properties, and Lit renders after the code that changed
+them finishes. Work that reads the rendered DOM belongs after that update, not
+right after the state change, and a result awaited across an update is still
+checked against its request identity. State transitions and their effects stay
+with the owner's transition authority; the update lifecycle renders and does
+the DOM work that follows, but it does not start transitions of its own. Do not
+add a virtual tree or another rendering layer on top. String-built markup is
+converted when its path changes; an adjacent improvement does not have to
+convert it first.
 
-Where the component already owns stable elements, prefer applying the domain
-change directly to the smallest affected DOM surface. A title change can update
-text, a status change can update its status presentation, and an ordering
-change can move the existing row. Equivalent canonical snapshots should
-ideally be DOM no-ops. Preserve node identity when it carries animation, focus,
-selection, scroll, disclosure, media, or custom-element lifecycle continuity.
+Equivalent canonical snapshots should be DOM no-ops. Node identity that
+carries animation, focus, selection, scroll, disclosure, media, or
+custom-element lifecycle continuity must survive state changes and list
+reordering. Content another owner manages imperatively stays outside the
+template's reach.
 
-Initial mounting and meaningful structural transitions may still render a
-larger subtree when that remains the clearest implementation. Improve broad
-render paths incrementally as related behavior is touched; do not turn a local
-identity fix into a new rendering framework or an unrelated rewrite. If direct
-patching would become brittle, prefer a clearer component ownership boundary or
-a deliberately scoped rerender over accumulating hidden DOM assumptions.
+Values reach the DOM escaped; raw HTML enters only at places that name its
+source.
+
+A meaningful structural transition may still replace a subtree when nothing in
+it carries the state above. If a template would have to encode brittle DOM
+assumptions, prefer a clearer component ownership boundary.
 
 Do not add a global store merely to coordinate an extraction. Independent API
 or revision projections must remain independent unless the external source

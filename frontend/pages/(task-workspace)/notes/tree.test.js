@@ -60,7 +60,7 @@ test("builds each directory from its own read, and leaves unread ones to load wh
             name: "Broken",
             children: { status: "error", message: "Request failed with HTTP 500" },
           },
-          { key: "note:plan", kind: "file", name: "Plan", noteId: "plan" },
+          { key: "note:plan", kind: "file", name: "Plan", source: "plan" },
         ],
       },
     },
@@ -76,13 +76,13 @@ test("builds each directory from its own read, and leaves unread ones to load wh
       name: "Unread",
       children: { status: "unloaded" },
     },
-    { key: "note:inbox", kind: "file", name: "Inbox", noteId: "inbox" },
+    { key: "note:inbox", kind: "file", name: "Inbox", source: "inbox" },
   ]);
 });
 
 test("a directory read again, or failing again, keeps showing what it held", () => {
   const held = { directories: [], notes: [{ id: "plan", name: "Plan", updatedAtMs: 1 }] };
-  const plan = [{ key: "note:plan", kind: "file", name: "Plan", noteId: "plan" }];
+  const plan = [{ key: "note:plan", kind: "file", name: "Plan", source: "plan" }];
   for (const read of [
     { state: "loading", listing: held, message: "" },
     { state: "failed", listing: held, message: "Request failed with HTTP 500" },

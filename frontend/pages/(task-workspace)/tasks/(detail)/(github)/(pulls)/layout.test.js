@@ -22,7 +22,6 @@ test("delegates Action and Scroll to the exact active Pull Request view", () => 
     hidden: false,
     view: "list",
     page: 4,
-    ensureRendered() {},
     listPage: children.list,
     detailPage: children.detail,
     filesPage: children.files,

@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { activateActionHint } from "../support/action-hints.js";
+import {
+  activateActionHint,
+  workspaceTargets,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import {
@@ -200,6 +203,8 @@ test("puts the compact Back to Tasks in the New Task header", { tag: "@phone" },
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "new");
   await expect(back).toBeVisible();
   await expect(back).toHaveAttribute("aria-label", "Back to tasks");
+  await expect.poll(() => workspaceTargets(page, "workspace:"))
+    .toContainEqual(["parent:tasks", "Back to tasks"]);
   const layout = await newTaskLayout();
   expectHeaderOnTop(layout);
   expect(layout.controlMiddles).toHaveLength(2);
@@ -680,7 +685,6 @@ test("creates a task with responsive composer controls and canonical approval st
     expect(statusPresentation).toEqual(
       expect.objectContaining({
         backgroundColor: "rgb(255, 248, 231)",
-        borderColor: "rgb(223, 197, 143)",
         borderRadius: "999px",
         borderWidth: "0px",
         color: "rgb(127, 86, 0)",

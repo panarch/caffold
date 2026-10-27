@@ -10,13 +10,19 @@ provide different evidence and must be reported separately.
 The npm package lives in `frontend/`. Run every JavaScript and browser command
 from that directory; Rust and release commands stay at the repository root.
 
-Use Node.js 22 and the committed npm lockfile:
+Use Node.js 24 or newer and the committed npm lockfile:
 
 ```sh
 cd frontend
 npm ci
 npx playwright install chromium
 ```
+
+`npm ci` also installs the Lit release the server embeds and the TypeScript
+compiler, so it comes before the Rust checks as well as the browser suites.
+Cargo builds run tsc on Node.js to compile the frontend's TypeScript modules
+and stop on a type error, and `npm run test:unit` runs the unit tests from
+tsc's output.
 
 Rust checks use the 1.96 toolchain pinned by `rust-toolchain.toml` and bounded by
 `Cargo.toml`'s minimum supported version.
@@ -61,6 +67,8 @@ one records where it runs from and what it needs:
 
 | Command | Run from | Requires | Boundary |
 | --- | --- | --- | --- |
+| `npm run typecheck` | `frontend/` | Node | TypeScript types of the frontend's `.ts` modules |
+| `npm run lint` | `frontend/` | Node | Biome formatting, import order, and lint rules of the frontend's `.ts` modules |
 | `npm run test:unit` | `frontend/` | Node | all focused frontend Node unit tests |
 | `npm run test:contract` | `frontend/` | Node | frontend policy and browser-infrastructure contracts, plus the repository, release, and protocol contracts that have not yet moved to an owner |
 | `npm run test:e2e` | `frontend/` | Node, Chromium, a built server | deterministic fixture-backed Playwright coverage |
@@ -109,7 +117,7 @@ verification it performs:
 
 | Job | Reusable workflow in `.github/workflows/` | Verifies |
 | --- | --- | --- |
-| Frontend Tests | `frontend-tests.yml` | colocated units and frontend contracts |
+| Frontend Tests | `frontend-tests.yml` | TypeScript types, formatting and lints of the `.ts` modules, colocated units, and frontend contracts |
 | Documentation Contracts | `documentation-contracts.yml` | the documentation index, links, and command index, and the user manual's strict build |
 | Repository Tooling Tests | `repository-tooling-tests.yml` | the release version tooling, by calling it |
 | macOS Packaging Contracts | `macos-packaging-contracts.yml` | packaging, release, and installer definitions |

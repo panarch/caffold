@@ -32,8 +32,8 @@ test("components wait for shared CSS and share one request per stylesheet", { ta
     release.resolve();
     await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
     expect(requests.sort()).toEqual(["busy-spin.css", "compact-icon-button.css"]);
-    // 19 compact icon button scopes and 12 busy spin scopes.
-    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(31);
+    // 19 compact icon button scopes and 9 busy spin scopes.
+    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(28);
   } finally {
     release.resolve();
   }
@@ -176,4 +176,192 @@ test("pagination keeps its compact surface, disabled appearance and native activ
   await next.focus();
   await next.press("Enter");
   await expect(pagination).toHaveAttribute("data-selected-page", "2");
+});
+
+test("a drawn ref keeps its element out of the document and lets go once it is no longer drawn", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+  const result = await page.evaluate(async () => {
+    const { html, LitElement, nothing } = await import("lit");
+    const { DrawnRef, DrawnRefs, drawn } = await import("/assets/components/drawn-refs.js");
+    class DrawnRefProbe extends LitElement {
+      static properties = { shown: { attribute: false }, keys: { attribute: false } };
+      panel = new DrawnRef(this);
+      rows = new DrawnRefs(this);
+      constructor() {
+        super();
+        this.shown = true;
+        this.keys = ["a", "b"];
+      }
+      createRenderRoot() {
+        return this;
+      }
+      render() {
+        return html`${this.shown ? html`<section ${drawn(this.panel)}></section>` : nothing}
+          ${this.keys.map((key) => html`<p ${drawn(this.rows.of(key))}>${key}</p>`)}`;
+      }
+      draw() {
+        this.performUpdate();
+      }
+    }
+    customElements.define("caffold-drawn-ref-probe", DrawnRefProbe);
+    const probe = document.createElement("caffold-drawn-ref-probe");
+    probe.draw();
+    const beforeAttach = [probe.panel.value?.localName, probe.rows.get("b")?.textContent];
+    document.body.append(probe);
+    probe.remove();
+    const afterDetach = [probe.panel.value?.localName, probe.rows.get("a")?.textContent];
+    document.body.append(probe);
+    probe.shown = false;
+    probe.keys = ["a"];
+    probe.draw();
+    return {
+      beforeAttach,
+      afterDetach,
+      undrawn: [probe.panel.value ?? null, probe.rows.get("b") ?? null, probe.rows.get("a")?.textContent],
+    };
+  });
+  expect(result).toEqual({
+    beforeAttach: ["section", "b"],
+    afterDetach: ["section", "a"],
+    undrawn: [null, null, "a"],
+  });
+});
+
+test("pagination offers its enabled page buttons as Action Hints from the page it draws", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-pagination"));
+  // Each pull waits for the next frame, as keyboard navigation does, by which
+  // Lit has drawn the change.
+  const result = await page.evaluate(async () => {
+    const pagination = document.createElement("caffold-pagination");
+    pagination.setAttribute("page", "1");
+    pagination.setAttribute("total-pages", "3");
+    pagination.setAttribute("has-next", "");
+    document.body.append(pagination);
+    const clip = document.body;
+    const targets = async () => {
+      await new Promise(requestAnimationFrame);
+      return pagination.actionHintScope({
+        scopeId: "issues:page",
+        actionId: "navigation.page",
+        clipRoots: [clip],
+      }).targets.map((target) => ({
+        id: target.id,
+        actionId: target.actionId,
+        label: target.label,
+        clipped: target.clipRoots.includes(clip),
+      }));
+    };
+    const firstPage = await targets();
+    pagination.setAttribute("has-previous", "");
+    pagination.setAttribute("page", "2");
+    const secondPage = await targets();
+    pagination.setAttribute("total-pages", "1");
+    const onePage = await targets();
+    return { firstPage, secondPage, onePage };
+  });
+  const target = (id, label) => ({ id: `issues:page:page:${id}`, actionId: "navigation.page", label, clipped: true });
+  expect(result).toEqual({
+    firstPage: [target("next:2", "Next page"), target("last:3", "Last page")],
+    secondPage: [
+      target("first:1", "First page"),
+      target("previous:1", "Previous page"),
+      target("next:3", "Next page"),
+      target("last:3", "Last page"),
+    ],
+    onePage: [],
+  });
+});
+
+test("segmented control offers the choices other than the current one as Action Hints", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-segmented-control"));
+  // Each pull waits for the next frame, as keyboard navigation does.
+  const result = await page.evaluate(async () => {
+    const control = document.createElement("caffold-segmented-control");
+    document.body.append(control);
+    const choices = [
+      { value: "changes", label: "Changes" },
+      { value: "file path", label: "Files" },
+    ];
+    const targets = async () => {
+      await new Promise(requestAnimationFrame);
+      return control.actionHintScope({
+        scopeId: "review:navigator-axis",
+        actionId: "navigation.review.axis",
+      }).targets.map((target) => [target.id, target.label]);
+    };
+    control.setSnapshot({ label: "Review navigator", selected: "changes", choices, actionVerb: "Show" });
+    const onChanges = await targets();
+    control.setSnapshot({ label: "Review navigator", selected: "file path", choices });
+    const onFiles = await targets();
+    return { onChanges, onFiles };
+  });
+  expect(result).toEqual({
+    onChanges: [["review:navigator-axis:choice:file%20path", "Show Files"]],
+    onFiles: [["review:navigator-axis:choice:changes", "Select Changes"]],
+  });
+});
+
+test("pagination changes its page in place and leaves the same page untouched", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-pagination"));
+  const result = await page.evaluate(async () => {
+    const pagination = document.createElement("caffold-pagination");
+    pagination.setAttribute("page", "1");
+    pagination.setAttribute("total-pages", "3");
+    pagination.setAttribute("has-next", "");
+    document.body.append(pagination);
+    const rendered = async () => {
+      await pagination.updateComplete;
+      await Promise.all([...pagination.querySelectorAll("caffold-pagination-button")].map((button) => button.updateComplete));
+    };
+    await rendered();
+    const buttons = () => [...pagination.querySelectorAll(
+      ":scope > .pagination-panel > caffold-pagination-button > .pagination-button",
+    )];
+    const indicator = () => pagination.querySelector(":scope > .pagination-panel > .pagination-indicator");
+    const firstButtons = buttons();
+    const firstIndicator = indicator();
+    const records = [];
+    const observer = new MutationObserver((delivered) => records.push(...delivered));
+    observer.observe(pagination, { subtree: true, childList: true, attributes: true, characterData: true });
+    const renderedChanges = () => records.splice(0).concat(observer.takeRecords())
+      .filter((record) => record.target !== pagination || record.type !== "attributes");
+
+    pagination.setAttribute("page", "1");
+    await rendered();
+    const samePageRecords = renderedChanges().length;
+    pagination.setAttribute("has-previous", "");
+    pagination.setAttribute("page", "2");
+    await rendered();
+    const removedElements = renderedChanges()
+      .flatMap((record) => [...record.removedNodes])
+      .filter((node) => node.nodeType === Node.ELEMENT_NODE).length;
+    observer.disconnect();
+
+    const [first, previous, next] = buttons();
+    return {
+      samePageRecords,
+      removedElements,
+      sameButtons: firstButtons.length === 4 && buttons().every((button, index) => button === firstButtons[index]),
+      sameIndicator: indicator() === firstIndicator,
+      indicator: [indicator().textContent.trim(), indicator().getAttribute("aria-label")],
+      enabled: [first.disabled, previous.disabled].map((disabled) => !disabled),
+      nextPage: next.dataset.page,
+    };
+  });
+  expect(result).toEqual({
+    samePageRecords: 0,
+    removedElements: 0,
+    sameButtons: true,
+    sameIndicator: true,
+    indicator: ["2 / 3", "Page 2 of 3"],
+    enabled: [true, true],
+    nextPage: "3",
+  });
 });

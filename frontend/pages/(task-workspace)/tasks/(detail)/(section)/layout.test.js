@@ -34,7 +34,7 @@ test("combines New Task actions with direct Section shortcuts", () => {
   };
   const owner = {
     section: { id: "section-a" },
-    ensureRendered() {},
+    ensureDrawn() {},
     taskCreate: () => taskCreate,
     conversationShortcuts: () => conversations,
     githubShortcuts: () => github,
@@ -54,7 +54,7 @@ test("merges Task Create popovers and the Fork modal independently", () => {
   const owner = {
     hidden: false,
     section: { id: "section-a" },
-    ensureRendered() {},
+    ensureDrawn() {},
     taskCreate: () => ({
       keyboardNavigationContexts(options) {
         assert.equal(options.scopeId, "section:section-a");

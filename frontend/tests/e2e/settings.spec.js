@@ -4,6 +4,7 @@ import {
   activateActionHint,
   enterActionHints,
   workspaceOcclusionTargets,
+  workspaceTargets,
 } from "./support/action-hints.js";
 import {
   installBrowserDefaults,
@@ -553,6 +554,10 @@ test("shows Codex versions and explicitly restarts an outdated runtime", { tag: 
   await settings.getByRole("button", { name: "Restart runtime…" }).click();
   await dialog.getByRole("button", { name: "Restart Codex" }).click();
   await expect(settings.getByRole("button", { name: "Restarting…" })).toBeDisabled();
+  // A restart holds Refresh back without turning its icon.
+  await expect(refresh).toBeDisabled();
+  await expect(refresh.locator(".settings-refresh-icon"))
+    .toHaveCSS("animation-name", "none");
 
   releaseRestart();
   await expect(settings).toContainText("Codex runtime restarted.");
@@ -696,6 +701,14 @@ test("shows the newest Codex and updates it through its own confirmation", { tag
   await expect(page.locator(
     "caffold-task-workspace > caffold-codex-runtime-update-dialog",
   )).toHaveCount(1);
+  await page.keyboard.press("f");
+  const updateHint = actionHintDialog(page);
+  await expect(updateHint.getByRole("button", { name: / — Cancel$/ })).toBeVisible();
+  await expect(
+    updateHint.getByRole("button", { name: / — Update Codex$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(updateHint).toBeHidden();
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
   expect(updateRequests).toBe(0);
@@ -1212,6 +1225,42 @@ test("shows every usage limit Codex reports, its single-bucket limit first", { t
     .toEqual([]);
   await usage.scrollIntoViewIfNeeded();
   await captureReviewScreenshot(page, testInfo, "settings-codex-usage-limits");
+});
+
+test("offers each Codex control it shows as an Action Hint", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus({
+        rateLimits: {
+          rateLimitResetCredits: {
+            availableCount: 1,
+            credits: [{
+              id: "RateLimitResetCredit_1",
+              resetType: "codexRateLimits",
+              status: "available",
+              title: "Full reset for Codex primary and weekly rate-limit windows",
+              grantedAt: 1790108687,
+              expiresAt: 1792700687,
+            }],
+          },
+        },
+      })),
+    }),
+  );
+
+  await page.goto("/settings/codex");
+  const credits = page.locator("caffold-settings-codex-page .settings-codex-reset-credits");
+  await expect(credits.locator("[data-reset-credit-count]")).toHaveText("1 available");
+  // The page's own controls, then its Refresh action's.
+  await expect.poll(() => workspaceTargets(page, "settings:codex:")).toEqual([
+    ["service-status", "Open Service status in a new tab"],
+    ["reset-credit:credit:RateLimitResetCredit_1", "Use this reset"],
+    ["restart-runtime", "Restart runtime…"],
+    ["refresh", "Refresh"],
+  ]);
 });
 
 test("shows reset expiration and requires confirmation before consuming a credit", { tag: "@all-viewports" }, async ({
@@ -2388,6 +2437,50 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
   );
 });
 
+test("Appearance offers its other choices, its controls, and the resets of changed values", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.addInitScript(
+    ({ key }) => {
+      localStorage.setItem(key, JSON.stringify({ themeMode: "dark", codeTextPx: 16 }));
+    },
+    { key: SETTINGS_KEY },
+  );
+
+  await page.goto("/settings/appearance");
+  await expect(page.locator("caffold-settings-appearance-page")).toBeVisible();
+  await expect.poll(() => workspaceTargets(page, "settings:appearance:")).toEqual([
+    ["reset-all", "Reset all"],
+    ["theme:system", "Use System theme"],
+    ["theme:light", "Use Light theme"],
+    ["reset-theme", "Reset theme"],
+    ["typeface:uiTypefacePreset", "Choose interface font (current Geist Sans)"],
+    ["typeface:codeTypefacePreset", "Choose code font (current GeistMono Nerd Font)"],
+    ["range:interfaceScalePercent", "Adjust Interface size (100%)"],
+    ["range:conversationTextPx", "Adjust Conversation text (14px)"],
+    ["range:codeTextPx", "Adjust Code text (16px)"],
+    ["reset-setting:codeTextPx", "Reset code text"],
+  ]);
+});
+
+test("Settings scrolls its section list and the page it presents", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/keyboard");
+  await expect(page.locator("caffold-settings-keyboard-page")).toBeVisible();
+  await expect.poll(() =>
+    page.locator("caffold-app-shell").evaluate((shell) =>
+      shell.keyboardNavigationContexts()
+        .flatMap((context) => context.scroll?.surfaces ?? [])
+        .filter((surface) => surface.id.startsWith("settings:"))
+        .map((surface) => [surface.id, surface.label, surface.scrollport.className]),
+    ),
+  ).toEqual([
+    ["settings:sections:scroll", "Settings sections", "settings-navigator-list"],
+    ["settings:keyboard:scroll", "Keyboard", "settings-keyboard-scroll"],
+  ]);
+});
+
 test("persists file ordering and keeps it across appearance reset", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
@@ -2623,6 +2716,13 @@ test("turns keyboard navigation off through its declared switch", { tag: "@all-v
   await expect(page.locator("caffold-settings-keyboard-page")).toContainText(
     "Single keys need Keyboard navigation on; key combinations always work.",
   );
+  // The page says what the switch is for and leaves the keys to the list.
+  await expect(page.locator("caffold-settings-keyboard-page")).toContainText(
+    "Navigate Caffold with single keys when you are not typing.",
+  );
+  await expect(page.locator("caffold-settings-keyboard-page")).not.toContainText(
+    "H/L to move horizontally",
+  );
   await captureReviewScreenshot(
     page,
     testInfo,
@@ -2795,8 +2895,9 @@ test("updates independent ranges live without replacing their DOM", { tag: "@all
   const semanticProbe = await page.evaluate(async () => {
     await customElements.whenDefined("caffold-task-composer");
     const github = document.createElement("caffold-github-markdown");
-    github.setHtml("<p>Conversation <code>code</code></p>");
+    github.html = "<p>Conversation <code>code</code></p>";
     document.body.append(github);
+    await github.updateComplete;
     const githubBody = github.shadowRoot.querySelector("p");
     const githubCode = github.shadowRoot.querySelector("code");
 
@@ -3229,16 +3330,14 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
     document.body.append(host);
 
     const approval = document.createElement("caffold-task-approval");
-    approval.setSnapshot({
-      threadId: "appearance-preview",
-      request: {
-        approvalId: "appearance-approval",
-        title: "Approval",
-        reason: "Review the requested command before continuing.",
-        command: "cargo test --all-targets",
-        decisions: ["deny", "allow"],
-      },
-    });
+    approval.threadId = "appearance-preview";
+    approval.request = {
+      approvalId: "appearance-approval",
+      title: "Approval",
+      reason: "Review the requested command before continuing.",
+      command: "cargo test --all-targets",
+      decisions: ["deny", "allow"],
+    };
     host.append(approval);
 
     const composer = document.createElement("caffold-task-composer");
@@ -3246,8 +3345,9 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
     host.append(composer);
 
     const github = document.createElement("caffold-github-markdown");
-    github.setHtml("<p>Long-form review <code>const value = 1;</code></p>");
+    github.html = "<p>Long-form review <code>const value = 1;</code></p>";
     host.append(github);
+    await github.updateComplete;
 
     const approvalText = approval.querySelector("p");
     const approvalCode = approval.querySelector("pre");
@@ -3769,9 +3869,8 @@ async function representativeThemeStyles(page) {
     diff.style.cssText =
       "position:fixed;inset:auto auto 0 -10000px;width:20rem;height:10rem";
     document.body.append(diff);
-    diff.setDiff({
-      diff: "@@ -1 +1 @@\n-old line\n+new line",
-    });
+    diff.diff = { diff: "@@ -1 +1 @@\n-old line\n+new line" };
+    await diff.updateComplete;
 
     const colorPair = (element) => {
       const style = getComputedStyle(element);

@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { activateActionHint } from "../support/action-hints.js";
+import {
+  activateActionHint,
+  enterActionHints,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   installTaskApiFixture,
@@ -222,6 +225,10 @@ test("opening the terminal on another screen takes it, and the screen that lost 
   const otherTerminal = other.locator("caffold-terminal-page");
   await expect(otherTerminal).toHaveAttribute("data-terminal-node", "elsewhere");
   await expect(otherTerminal.getByText("This terminal is open on another screen.")).toBeVisible();
+  const otherHint = await enterActionHints(other);
+  await expect(otherHint.getByRole("button", { name: / — Open here$/ })).toBeVisible();
+  await other.keyboard.press("Escape");
+  await expect(otherHint).toBeHidden();
 
   await otherTerminal.getByRole("button", { name: "Open here" }).click();
 

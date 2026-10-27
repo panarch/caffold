@@ -9,7 +9,7 @@ function read(path) {
 }
 
 test("the browser and the browser suite load the same xterm.js releases", () => {
-  const view = read("components/terminal-view.js");
+  const view = read("components/terminal-view.ts");
   const manifest = JSON.parse(read("package.json"));
 
   const [, xterm] = view.match(/const XTERM_VERSION = "([^"]+)";/) ?? [];
@@ -30,7 +30,7 @@ test("the browser suite serves xterm.js from the installed packages", () => {
 });
 
 test("xterm.js stays a runtime CDN import rather than a shipped asset", () => {
-  const serviceWorker = read("service-worker.js");
+  const serviceWorker = read("service-worker.ts");
   const staticAssets = readFileSync(
     new URL("../caffold/src/static_assets.rs", frontendUrl),
     "utf8",

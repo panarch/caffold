@@ -19,14 +19,15 @@ test("merges only code-block providers mounted in the retained Markdown body", (
   const owner = {
     hidden: false,
     isConnected: true,
-    dataset: { renderState: "markdown" },
-    body: () => body,
+    renderState: "markdown",
+    actionHintLinks: [],
+    body,
   };
   assert.deepEqual(
     markdown.actionHintScope.call(owner, { scopeId: "message:a" }).targets,
     targets,
   );
-  owner.dataset.renderState = "plain";
+  owner.renderState = "plain";
   assert.deepEqual(markdown.actionHintScope.call(owner, { scopeId: "message:a" }).targets, []);
 });
 
@@ -63,8 +64,8 @@ test("provides only retained final links with table scroll dependencies", () => 
     actionHintLinks: [record],
     hidden: false,
     isConnected: true,
-    dataset: { renderState: "markdown" },
-    body: () => body,
+    renderState: "markdown",
+    body,
   };
   const scope = markdown.actionHintScope.call(owner, {
     scopeId: "message:a",
@@ -80,9 +81,7 @@ test("provides only retained final links with table scroll dependencies", () => 
     tableScrollRoot,
     { id: "conversation" },
   ]);
-  assert.equal(scope.targets[0].isActionable(), true);
   attributes.set("href", "https://example.com/changed");
-  assert.equal(scope.targets[0].isActionable(), false);
   assert.deepEqual(
     markdown.actionHintScope.call(owner, { scopeId: "message:a" }).targets,
     [],
@@ -113,21 +112,15 @@ test("merges exact retained table and code-block Scroll providers", () => {
   const body = {
     contains: (element) => [table, code].includes(element),
   };
-  let current = true;
   const owner = layoutElement({
-    hidden: false,
-    isConnected: true,
-    dataset: { renderState: "markdown" },
-    body: () => body,
+    renderState: "markdown",
+    body,
     scrollSurfaceRecords: [tableRecord],
     scrollCodeBlocks: [code],
   });
+  const pull = { scopeId: "message:a", clipRoots: [{ id: "conversation" }] };
 
-  const scope = markdown.scrollSurfaceScope.call(owner, {
-    scopeId: "message:a",
-    clipRoots: [{ id: "conversation" }],
-    isCurrent: () => current,
-  });
+  const scope = markdown.scrollSurfaceScope.call(owner, pull);
 
   assert.deepEqual(scope.surfaces.map(({ id }) => id), [
     "message:a:table:1",
@@ -135,15 +128,13 @@ test("merges exact retained table and code-block Scroll providers", () => {
   ]);
   assert.deepEqual(scope.surfaces[0].axes, ["horizontal"]);
   assert.equal(scope.surfaces[0].scrollport, table);
-  assert.equal(scope.surfaces[0].isEligible(), true);
   assert.equal(code.options.scopeId, "message:a:code-block:1");
   assert.equal(code.options.label, "JavaScript code block 1");
-  assert.equal(code.options.isCurrent(), true);
   owner.scrollSurfaceRecords = [];
-  assert.equal(scope.surfaces[0].isEligible(), false);
-  owner.scrollSurfaceRecords = [tableRecord];
-  current = false;
-  assert.equal(code.options.isCurrent(), false);
+  assert.deepEqual(
+    markdown.scrollSurfaceScope.call(owner, pull).surfaces.map(({ id }) => id),
+    [codeSurface.id],
+  );
 });
 
 test("provides a renderer-registered native progress code scrollport", () => {
@@ -156,26 +147,22 @@ test("provides a renderer-registered native progress code scrollport", () => {
   };
   const body = { contains: (element) => element === code };
   const owner = layoutElement({
-    hidden: false,
-    isConnected: true,
-    dataset: { renderState: "markdown" },
-    body: () => body,
+    renderState: "markdown",
+    body,
     scrollSurfaceRecords: [codeRecord],
     scrollCodeBlocks: [],
   });
+  const pull = { scopeId: "message:progress" };
 
-  const scope = markdown.scrollSurfaceScope.call(owner, {
-    scopeId: "message:progress",
-  });
+  const scope = markdown.scrollSurfaceScope.call(owner, pull);
 
   assert.equal(scope.surfaces.length, 1);
   assert.equal(scope.surfaces[0].id, "message:progress:code:1");
   assert.equal(scope.surfaces[0].label, "text code block 1");
   assert.equal(scope.surfaces[0].scrollport, code);
   assert.deepEqual(scope.surfaces[0].axes, ["horizontal"]);
-  assert.equal(scope.surfaces[0].isEligible(), true);
   owner.scrollSurfaceRecords = [];
-  assert.equal(scope.surfaces[0].isEligible(), false);
+  assert.deepEqual(markdown.scrollSurfaceScope.call(owner, pull).surfaces, []);
 });
 
 function layoutElement(properties = {}) {

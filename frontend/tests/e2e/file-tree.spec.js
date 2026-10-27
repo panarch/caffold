@@ -76,9 +76,13 @@ test("reorders existing rows while preserving structural and reconciled state", 
     selectedRow.contractMarker = "retained-row";
     selectedButton.contractMarker = "retained-button";
     selectedButton.focus();
+    const loadingPhrase = () =>
+      tree.rowForKey("directory:beta:children-state").querySelector("caffold-loading-text");
+    const phrase = loadingPhrase();
 
     const foldersFirst = rowKeys(tree);
     setFileSortMode("name");
+    await tree.updateComplete;
     const byName = rowKeys(tree);
 
     const overrideTree = document.createElement("caffold-file-tree");
@@ -110,6 +114,17 @@ test("reorders existing rows while preserving structural and reconciled state", 
         tree.isExpanded("directory:beta") &&
         tree.isExpanded("directory:error"),
       entityPreserved: tree.entityKey === "ordering-contract",
+      // Its owner waited before adding the row, so the phrase shows at once,
+      // and moving the row keeps it from starting over.
+      loadingPhrase: {
+        immediate: phrase.hasAttribute("immediate"),
+        text: phrase.textContent,
+        preserved: loadingPhrase() === phrase,
+      },
+      errorPhrase: tree.rowForKey("directory:error:children-state").textContent,
+      errorIsPlainText: !tree
+        .rowForKey("directory:error:children-state")
+        .querySelector("caffold-loading-text"),
     };
   });
 
@@ -151,6 +166,9 @@ test("reorders existing rows while preserving structural and reconciled state", 
     selectionPreserved: true,
     expansionPreserved: true,
     entityPreserved: true,
+    loadingPhrase: { immediate: true, text: "Loading beta", preserved: true },
+    errorPhrase: "Unable to load Error",
+    errorIsPlainText: true,
   }));
 });
 
@@ -361,4 +379,154 @@ test("places a status row's message on its branch guide below its folder's name"
   expect(Object.entries(offsets).filter(([, { guide, column }]) =>
     Math.abs(guide) > 1 || Math.abs(column) > 1
   )).toEqual([]);
+});
+
+test("offers its rows as Action Hints: directories toggle, entries open, the open one stays out", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  const result = await page.evaluate(async () => {
+    await import("/assets/components/file-tree.js");
+    const tree = document.createElement("caffold-file-tree");
+    document.body.append(tree);
+    const nodes = [
+      {
+        key: "src",
+        kind: "directory",
+        name: "src",
+        selectable: false,
+        children: [{ key: "src/a.js", kind: "file", name: "a.js" }],
+      },
+      { key: "folder", kind: "directory", name: "folder", ariaLabel: "Open folder" },
+      { key: "current.js", kind: "file", name: "current.js" },
+      { key: "locked.js", kind: "file", name: "locked.js", selectable: false },
+      { key: "next.js", kind: "file", name: "next.js", ariaLabel: "Show diff for next.js" },
+      { key: "plain.js", kind: "file", name: "plain.js" },
+      { key: "off.js", kind: "file", name: "off.js", disabled: true },
+    ];
+    const pull = () => tree.actionHintScope({
+      scopeId: "review:files",
+      actions: { file: "navigation.file.open", disclosure: "disclosure.toggle" },
+    });
+    const described = (scope) => scope.targets.map((target) => ({
+      id: target.id,
+      actionId: target.actionId,
+      label: target.label,
+      onIcon: target.anchor.classList.contains("file-tree-icon") &&
+        target.control.contains(target.anchor),
+      clippedByScroll: target.clipRoots.includes(tree.scroller()),
+    }));
+    tree.setModel({ entityKey: "review", nodes, selectedKey: "current.js" });
+    const scope = pull();
+    const collapsed = described(scope);
+    const scrollRoots = scope.scrollRoots.map((root) => root === tree.scroller());
+    tree.querySelector('[data-file-tree-key="src"]').click();
+    const expanded = described(pull())
+      .filter(({ id }) => id.includes("src"))
+      .map(({ id, label }) => [id, label]);
+    tree.setModel({
+      entityKey: "picker",
+      nodes,
+      selectedKey: "current.js",
+      listboxLabel: "Folders",
+    });
+    const listbox = described(pull()).map(({ id }) => id);
+    return { collapsed, scrollRoots, expanded, listbox };
+  });
+
+  const target = (id, actionId, label) => ({ id: `review:files:${id}`, actionId, label, onIcon: true, clippedByScroll: true });
+  expect(result).toEqual({
+    collapsed: [
+      target("file:folder", "navigation.file.open", "Open folder"),
+      target("disclosure:src", "disclosure.toggle", "Expand src"),
+      target("file:next.js", "navigation.file.open", "Show diff for next.js"),
+      target("file:plain.js", "navigation.file.open", "Open plain.js"),
+    ],
+    scrollRoots: [true],
+    expanded: [
+      ["review:files:disclosure:src", "Collapse src"],
+      ["review:files:file:src%2Fa.js", "Open a.js"],
+    ],
+    listbox: [
+      "review:files:file:folder",
+      "review:files:disclosure:src",
+      "review:files:file:current.js",
+      "review:files:file:next.js",
+      "review:files:file:plain.js",
+    ],
+  });
+});
+
+test("names its scrollport as a Scroll surface after the owner", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  const surfaces = await page.evaluate(async () => {
+    await import("/assets/components/file-tree.js");
+    const tree = document.createElement("caffold-file-tree");
+    document.body.append(tree);
+    tree.setModel({ entityKey: "review", nodes: [{ key: "a.js", kind: "file", name: "a.js" }] });
+    const described = (scope) => scope.surfaces.map((surface) => ({
+      id: surface.id,
+      label: surface.label,
+      scrollport: surface.scrollport === tree.scroller(),
+      axes: surface.axes,
+      clipRoots: surface.clipRoots.map((root) => root === tree || root === tree.scroller()),
+    }));
+    return [
+      described(tree.scrollSurfaceScope({ scopeId: "review:files" })),
+      described(tree.scrollSurfaceScope({ scopeId: "review:files", label: "Changed files" })),
+    ];
+  });
+
+  const surface = (label) => ({
+    id: "review:files:scroll",
+    label,
+    scrollport: true,
+    axes: ["vertical", "horizontal"],
+    clipRoots: [true, true],
+  });
+  expect(surfaces).toEqual([[surface("Files")], [surface("Changed files")]]);
+});
+
+test("the file list offers Refresh files while it shows the button, under the label it shows", { tag: "@viewport-independent" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/files");
+
+  const labels = await page.evaluate(async () => {
+    await import("/assets/components/file-navigator/components/list.js");
+    const list = document.createElement("caffold-file-list");
+    document.body.append(list);
+    list.setDirectory({
+      path: "project",
+      entries: [{ name: "a.js", path: "project/a.js", kind: "file", supported: true }],
+    });
+    const refreshTargets = async () => {
+      await new Promise(requestAnimationFrame);
+      return list.actionHintScope({
+        scopeId: "review:files",
+        actions: { refresh: "button.activate" },
+      }).targets.map((target) => [target.id, target.actionId, target.label]);
+    };
+    list.setRefreshVisible(false);
+    const hidden = await refreshTargets();
+    list.setRefreshVisible(true);
+    const shown = await refreshTargets();
+    list.setRefreshState("unavailable");
+    const unavailable = await refreshTargets();
+    return { hidden, shown, unavailable };
+  });
+
+  expect(labels).toEqual({
+    hidden: [],
+    shown: [["review:files:refresh", "button.activate", "Refresh files"]],
+    unavailable: [[
+      "review:files:refresh",
+      "button.activate",
+      "Live updates unavailable. Refresh manually.",
+    ]],
+  });
 });

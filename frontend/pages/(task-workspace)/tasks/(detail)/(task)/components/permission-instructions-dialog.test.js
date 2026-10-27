@@ -4,68 +4,66 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../tests/support/custom-element-unit.js";
+import { templateHtml } from "../../../../../../tests/support/lit-template.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./permission-instructions-dialog.js");
-const dialog = registry.element(
-  "caffold-task-permission-instructions-dialog",
-).prototype;
+const Dialog = registry.element("caffold-task-permission-instructions-dialog");
+const { ActionHints } = await import("#app/action-hints.js");
+const { KeyboardContexts } = await import("#app/keyboard-navigation.js");
 after(() => registry.restore());
 
-function owner(state) {
-  const parts = {
-    ".task-permission-instructions-text": { textContent: "", dataset: {} },
-    ".task-permission-instructions-error": { textContent: "", hidden: false },
-    'button[data-permission-instructions-action="forget"]': { disabled: false },
+function draw(state) {
+  const dialog = Object.create(Dialog.prototype, {
+    state: { value: state },
+    threadId: { value: "thread-a" },
+  });
+  dialog.hints = new ActionHints(dialog);
+  dialog.keyboard = new KeyboardContexts(dialog);
+  const drawn = templateHtml(dialog.render());
+  return {
+    text: /<pre[^>]*>([\s\S]*?)<\/pre>/.exec(drawn)?.[1],
+    empty: /data-empty="(\w+)"/.exec(drawn)?.[1],
+    forgetDisabled: /data-permission-instructions-action="forget"\s+\?disabled="(\w+)"/
+      .exec(drawn)?.[1],
   };
-  return { state, parts, querySelector: (selector) => parts[selector] ?? null };
 }
 
 test("shows each entry's time where the reader is, and its words as they were typed", () => {
-  const subject = owner({
+  const shown = draw({
     loading: false,
     error: "",
     instructions: "[2026-09-21 10:43 UTC]\n네트워크 요청 거절해줘",
   });
 
-  dialog.patch.call(subject);
-
-  const shown = subject.parts[".task-permission-instructions-text"].textContent;
-  assert.ok(!shown.includes("UTC"), shown);
-  assert.ok(shown.includes("네트워크 요청 거절해줘"), shown);
-  assert.match(shown.split("\n")[0], /^\[.+\]$/);
-  assert.equal(
-    subject.parts['button[data-permission-instructions-action="forget"]'].disabled,
-    false,
-  );
+  assert.ok(!shown.text.includes("UTC"), shown.text);
+  assert.ok(shown.text.includes("네트워크 요청 거절해줘"), shown.text);
+  assert.match(shown.text.split("\n")[0], /^\[.+\]$/);
+  assert.equal(shown.empty, "false");
+  assert.equal(shown.forgetDisabled, "false");
 });
 
 test("leaves a stamp it does not recognise exactly as the record has it", () => {
-  const subject = owner({
+  const shown = draw({
     loading: false,
     error: "",
     instructions: "[unknown time]\n지워도 돼",
   });
 
-  dialog.patch.call(subject);
-
-  assert.equal(
-    subject.parts[".task-permission-instructions-text"].textContent,
-    "[unknown time]\n지워도 돼",
-  );
+  assert.equal(shown.text, "[unknown time]\n지워도 돼");
 });
 
 test("an empty record says so and offers nothing to forget", () => {
-  const subject = owner({ loading: false, error: "", instructions: "" });
+  const shown = draw({ loading: false, error: "", instructions: "" });
 
-  dialog.patch.call(subject);
+  assert.match(shown.text, /Nothing yet\./);
+  assert.equal(shown.empty, "true");
+  assert.equal(shown.forgetDisabled, "true");
+});
 
-  assert.match(
-    subject.parts[".task-permission-instructions-text"].textContent,
-    /Nothing yet\./,
-  );
-  assert.equal(
-    subject.parts['button[data-permission-instructions-action="forget"]'].disabled,
-    true,
-  );
+test("says it is reading while a request runs, with Forget held", () => {
+  const shown = draw({ loading: true, error: "", instructions: "kept" });
+
+  assert.equal(shown.text, "Reading...");
+  assert.equal(shown.forgetDisabled, "true");
 });
