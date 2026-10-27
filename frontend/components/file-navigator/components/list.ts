@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
@@ -28,10 +28,12 @@ import {
 } from "../../file-tree.js";
 import { inlineIcon, warmIcons } from "../../icons.js";
 import "../../loading-text.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
 import type { FileTreeLoadChildrenDetail } from "../../file-tree.js";
 
 import { compactIconButton } from "#app/component-styles.js";
+import styles from "./list.css.js";
 
 export interface OpenEntryDetail {
   path: string;
@@ -60,19 +62,16 @@ interface TreeState {
   pendingExpandedPaths: Set<string>;
 }
 
-await compactIconButton.register(
-  "caffold-file-list",
-  "> .file-list-panel > header > .file-list-title-row > .file-list-actions > .file-refresh-button",
-);
-
 @customElement("caffold-file-list")
-export class CaffoldFileList extends LitElement {
+export class CaffoldFileList extends CaffoldElement {
   @state()
   private accessor state: ListState = { status: "idle" };
   @state()
   private accessor refreshState: RefreshButtonState = "idle";
   @state()
   private accessor refreshVisible = true;
+
+  static override styles = [compactIconButton(".file-refresh-button"), styles];
 
   private selectedPath = "";
   private keyByPath = new Map<string, string>();
@@ -85,10 +84,6 @@ export class CaffoldFileList extends LitElement {
   private readonly hints = new ActionHints(this);
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly tree = new DrawnRef<CaffoldFileTree>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

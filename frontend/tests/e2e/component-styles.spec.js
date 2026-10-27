@@ -27,13 +27,12 @@ test("components wait for shared CSS and share one request per stylesheet", { ta
       "caffold-note-document", "caffold-notes-navigator",
       "caffold-task-navigator", "caffold-task-workspace", "caffold-task-git-layout",
       "caffold-task-github-layout", "caffold-terminal-page", "caffold-git-review-controls",
-      "caffold-file-list", "caffold-review-file-viewer",
     ].some((name) => Boolean(customElements.get(name))))).toBe(false);
     release.resolve();
     await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
     expect(requests.sort()).toEqual(["busy-spin.css", "compact-icon-button.css"]);
-    // 18 compact icon button scopes and 9 busy spin scopes.
-    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(27);
+    // 15 compact icon button scopes and 9 busy spin scopes.
+    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(24);
   } finally {
     release.resolve();
   }
@@ -355,6 +354,45 @@ test("segmented control offers the choices other than the current one as Action 
   expect(result).toEqual({
     onChanges: [["review:navigator-axis:choice:file%20path", "Show Files"]],
     onFiles: [["review:navigator-axis:choice:changes", "Select Changes"]],
+  });
+});
+
+test("segmented control keeps its button rule inside its shadow root and the document's button rules out", { tag: "@viewport-independent" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("caffold-task-workspace")).toBeVisible();
+  await page.evaluate(() => customElements.whenDefined("caffold-segmented-control"));
+  const result = await page.evaluate(async () => {
+    const control = document.createElement("caffold-segmented-control");
+    // Outside the control, the element its stylesheet styles inside by name.
+    const outside = document.createElement("button");
+    outside.textContent = "Outside";
+    document.body.append(control, outside);
+    control.setSnapshot({
+      label: "Review navigator",
+      selected: "changes",
+      choices: [{ value: "changes", label: "Changes" }, { value: "files", label: "Files" }],
+    });
+    await control.updateComplete;
+    const inside = control.shadowRoot.querySelector("button");
+    const documentRule = new CSSStyleSheet();
+    documentRule.replaceSync("button { opacity: 0.25; }");
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, documentRule];
+    return {
+      root: control.shadowRoot?.mode,
+      lightChildren: control.childElementCount,
+      outside: [getComputedStyle(outside).display, getComputedStyle(outside).cursor],
+      outsideOpacity: getComputedStyle(outside).opacity,
+      inside: [getComputedStyle(inside).display, getComputedStyle(inside).cursor],
+      insideOpacity: getComputedStyle(inside).opacity,
+    };
+  });
+  expect(result).toEqual({
+    root: "open",
+    lightChildren: 0,
+    outside: ["inline-block", "default"],
+    outsideOpacity: "0.25",
+    inside: ["grid", "pointer"],
+    insideOpacity: "1",
   });
 });
 

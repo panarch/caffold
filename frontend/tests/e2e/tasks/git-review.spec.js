@@ -543,9 +543,10 @@ test("clamps the Compare tree when the window narrows so the viewer keeps its mi
     Number(await separator.getAttribute("aria-valuenow"))
   ).toBeLessThan(widened);
   const split = await compareBrowser.evaluate((browser) => {
-    const tree = browser.querySelector(":scope > caffold-git-compare-tree").getBoundingClientRect();
-    const resizer = browser.querySelector(":scope > caffold-pane-resizer").getBoundingClientRect();
-    const viewer = browser.querySelector(":scope > caffold-review-file-viewer").getBoundingClientRect();
+    const part = (name) => browser.shadowRoot.querySelector(name).getBoundingClientRect();
+    const tree = part("caffold-git-compare-tree");
+    const resizer = part("caffold-pane-resizer");
+    const viewer = part("caffold-review-file-viewer");
     return {
       treeEnd: tree.right,
       separatorCenter: resizer.left + resizer.width / 2,
@@ -771,13 +772,7 @@ test("uses Log actions and scrolls the exact visible Commit tree and diff from t
   await expect(generatedDirectory).toHaveAccessibleName("Expand generated");
   await expect(generatedDirectory).toHaveAttribute("aria-expanded", "false");
   await expect(generatedFile).toHaveCount(0);
-  await expect
-    .poll(() =>
-      generatedDirectory.evaluate(
-        (element) => document.activeElement === element,
-      )
-    )
-    .toBe(true);
+  await expect(generatedDirectory).toBeFocused();
   await expect
     .poll(() =>
       generatedDirectory.evaluate(
@@ -1116,8 +1111,10 @@ test("collapses the Compare and Commit trees from the corner toggle, each rememb
   const viewerFills = (host) =>
     host.evaluate((element) => {
       const bounds = element.getBoundingClientRect();
-      const viewer = element
-        .querySelector(":scope > caffold-review-file-viewer")
+      // Compare draws its viewer in its shadow root; the commit page draws it
+      // as a child of its own element.
+      const viewer = [...(element.shadowRoot ?? element).children]
+        .find((child) => child.localName === "caffold-review-file-viewer")
         .getBoundingClientRect();
       return Math.abs(viewer.left - bounds.left) <= 1 &&
         Math.abs(viewer.width - bounds.width) <= 1;

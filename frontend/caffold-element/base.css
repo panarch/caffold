@@ -2,7 +2,9 @@
   box-sizing: border-box;
 }
 
-button {
+button,
+input,
+textarea {
   font: inherit;
 }
 

@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
   type ActionHintScope,
@@ -11,6 +11,9 @@ import type { ActionHintPull } from "../action-hints.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
 import type { DocumentPreviewFile } from "./dom.js";
 import "./loading-text.js";
+import { CaffoldElement } from "../caffold-element.js";
+
+import styles from "./pptx-viewer.css.js";
 
 const PPTX_RENDERER_VERSION = "1.3.0";
 const PPTX_RENDERER_IMPORT =
@@ -91,7 +94,7 @@ type RenderState = "empty" | "loading" | "error" | "pptx";
 let libraryPromise: Promise<PptxRenderer> | undefined;
 
 @customElement("caffold-pptx-viewer")
-class CaffoldPptxViewer extends LitElement {
+class CaffoldPptxViewer extends CaffoldElement {
   @property({ attribute: false })
   accessor file: DocumentPreviewFile | null = null;
   @state()
@@ -99,15 +102,13 @@ class CaffoldPptxViewer extends LitElement {
   @state()
   private accessor mount: HTMLElement | null = null;
 
+  static override styles = styles;
+
   private generation = 0;
   private slideObserver: MutationObserver | null = null;
   private viewer: PptxViewer | null = null;
 
   private readonly surfaces = new ScrollSurfaces(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -205,7 +206,7 @@ class CaffoldPptxViewer extends LitElement {
     return {
       blocked: false,
       targets,
-      mutationRoots: [this, root],
+      mutationRoots: [this, this.renderRoot, root],
       scrollRoots: [this],
     };
   }

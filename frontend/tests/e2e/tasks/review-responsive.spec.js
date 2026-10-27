@@ -146,9 +146,9 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   const after = await taskReview.evaluate((review) => {
     const navigator = review.querySelector(".task-review-navigator-pane");
     const viewer = review.querySelector(".task-review-viewer-pane");
-    const viewerInfo = review.querySelector(
-      "caffold-review-file-viewer .viewer-info-button",
-    );
+    const viewerInfo = review
+      .querySelector("caffold-review-file-viewer")
+      .shadowRoot.querySelector(".viewer-info-button");
     const viewerAxis = review.querySelector(
       '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
     );
@@ -265,7 +265,9 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
   ).toHaveCount(1);
 
   const geometry = await taskReview.evaluate((review) => {
-    const viewerHeader = review.querySelector("caffold-review-file-viewer .viewer-header");
+    const viewerHeader = review
+      .querySelector("caffold-review-file-viewer")
+      .shadowRoot.querySelector(".viewer-header");
     const close = viewerHeader.querySelector(".viewer-close-button");
     const info = viewerHeader.querySelector(".viewer-info-button");
     const titleBlock = viewerHeader.querySelector(".viewer-title-block");
@@ -488,7 +490,7 @@ test("draws the shared separator as the pane line with a centered handle and a 3
     const bounds = resizer.getBoundingClientRect();
     const center = bounds.left + bounds.width / 2;
     const middle = bounds.top + bounds.height / 2;
-    const handle = resizer.querySelector(":scope > .pane-resizer-handle");
+    const handle = resizer.shadowRoot.querySelector(".pane-resizer-handle");
     const handleBounds = handle.getBoundingClientRect();
     const probe = document.body.appendChild(document.createElement("i"));
     probe.style.color = "var(--border-strong)";
@@ -528,7 +530,7 @@ test("draws the shared separator as the pane line with a centered handle and a 3
     const expected = getComputedStyle(probe).color;
     probe.remove();
     const line = getComputedStyle(resizer, "::after");
-    const handle = getComputedStyle(resizer.querySelector(":scope > .pane-resizer-handle"));
+    const handle = getComputedStyle(resizer.shadowRoot.querySelector(".pane-resizer-handle"));
     return {
       width: line.width,
       color: line.backgroundColor,
@@ -553,7 +555,7 @@ test("gives the shared separator handle the Interface touch target", { tag: ["@d
 
   const touch = await taskReview.evaluate((review) => {
     const resizer = review.querySelector(".task-review-layout > caffold-pane-resizer");
-    const handle = resizer.querySelector(":scope > .pane-resizer-handle").getBoundingClientRect();
+    const handle = resizer.shadowRoot.querySelector(".pane-resizer-handle").getBoundingClientRect();
     const centerX = handle.left + handle.width / 2;
     const centerY = handle.top + handle.height / 2;
     const hits = (dx, dy) =>
@@ -599,7 +601,7 @@ test("keeps the shared separator unlit on touch unless a drag holds it", { tag: 
     separator.evaluate((resizer) => ({
       line: getComputedStyle(resizer, "::after").backgroundColor,
       handle: getComputedStyle(
-        resizer.querySelector(":scope > .pane-resizer-handle"),
+        resizer.shadowRoot.querySelector(".pane-resizer-handle"),
       ).backgroundColor,
     }));
 
@@ -645,25 +647,31 @@ test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports"
         "caffold-segmented-control[data-detail-view-switch]",
       );
       const viewer = review.querySelector(".task-review-viewer-pane");
-      const code = review.querySelector(".diff-code");
+      const code = review
+        .querySelector("caffold-review-file-viewer")
+        ?.shadowRoot.querySelector("caffold-diff-viewer")
+        ?.shadowRoot.querySelector(".diff-code");
       return {
         overflow: review.scrollWidth > review.clientWidth,
         modeSwitchOverflow: modeSwitch.scrollWidth > modeSwitch.clientWidth,
         viewerOverflow: viewer.scrollWidth > viewer.clientWidth,
         codeFontSize: code ? getComputedStyle(code).fontSize : null,
         selectedInsets: [...review.querySelectorAll(
-          '.task-review-pane-axis > caffold-segmented-control button[aria-pressed="true"] > span',
-        )].map((selected) => {
-          const group = selected.closest("caffold-segmented-control").getBoundingClientRect();
+          ".task-review-pane-axis > caffold-segmented-control",
+        )].flatMap((control) => [
+          ...control.shadowRoot.querySelectorAll('button[aria-pressed="true"] > span'),
+        ].map((selected) => {
+          const group = control.getBoundingClientRect();
           const visual = selected.getBoundingClientRect();
           return {
             bottom: group.bottom - visual.bottom,
             top: visual.top - group.top,
           };
-        }),
+        })),
         truncatedAxisLabels: [...review.querySelectorAll(
-          ".task-review-pane-axis > caffold-segmented-control button > span",
+          ".task-review-pane-axis > caffold-segmented-control",
         )]
+          .flatMap((control) => [...control.shadowRoot.querySelectorAll("button > span")])
           .filter((label) => label.scrollWidth > label.clientWidth)
           .map((label) => label.textContent.trim()),
       };
@@ -722,7 +730,7 @@ test("keeps compact Task segments pixel-aligned on Retina displays", { tag: "@al
         ]
           .filter((group) => group.getClientRects().length > 0)
           .map((group) => {
-            const button = group.querySelector('button[aria-pressed="true"]');
+            const button = group.shadowRoot.querySelector('button[aria-pressed="true"]');
             const selected = button.querySelector("span");
             const groupBounds = group.getBoundingClientRect();
             const buttonBounds = button.getBoundingClientRect();

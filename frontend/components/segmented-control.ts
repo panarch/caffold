@@ -1,7 +1,10 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { type ActionHintPull, ActionHints } from "../action-hints.js";
+import { CaffoldElement } from "../caffold-element.js";
+
+import styles from "./segmented-control.css.js";
 
 export interface SegmentedControlIntentDetail {
   value: string;
@@ -22,7 +25,9 @@ interface SegmentedSnapshot {
 }
 
 @customElement("caffold-segmented-control")
-export class CaffoldSegmentedControl extends LitElement {
+export class CaffoldSegmentedControl extends CaffoldElement {
+  static override styles = styles;
+
   // An equivalent snapshot leaves the control as it is.
   @state({
     hasChanged: (next: unknown, previous: unknown) =>
@@ -36,10 +41,6 @@ export class CaffoldSegmentedControl extends LitElement {
   };
 
   private readonly hints = new ActionHints(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const { selected, choices, actionVerb } = this.snapshot;

@@ -524,7 +524,7 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   await forkButton.focus();
   await page.keyboard.press("s");
   const forkHud = dialog.locator(
-    "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+    "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect(forkHud).toContainText("Scroll: Fork preview");
   await page.keyboard.press("j");

@@ -130,10 +130,10 @@ test("UI and code typeface roles stay within semantic owners", () => {
 
 test("keyboard hint badges share the code typeface wherever they appear", () => {
   for (const [path, selector] of [
-    ["action-hints/components/dialog.css", "& .action-hint-badge {"],
+    ["action-hints/components/dialog.css", ".action-hint-badge {"],
     [
       "keyboard-navigation/components/selector.css",
-      "& .scroll-surface-selector-badge {",
+      ".scroll-surface-selector-badge {",
     ],
   ]) {
     assert.match(
@@ -160,12 +160,12 @@ test("mobile interaction policies preserve pinch zoom and own viewer text sizing
     "The viewport must retain user-controlled pinch zoom",
   );
   for (const [path, source, selector] of [
-    ["components/file-viewer/components/code-viewer.css", codeViewer, "& .code-lines {"],
-    ["components/file-viewer/components/diff-viewer.css", diffViewer, "& .diff-lines {"],
+    ["components/file-viewer/components/code-viewer.css", codeViewer, ".code-lines {"],
+    ["components/file-viewer/components/diff-viewer.css", diffViewer, ".diff-lines {"],
     [
       "components/markdown-preview.css",
       markdownPreview,
-      "caffold-markdown-preview {",
+      ":host {",
     ],
   ]) {
     const block = cssBlock(source, selector);
@@ -462,12 +462,12 @@ test("the loading phrase waits, fades in, and falls back to still text for reduc
   );
   assert.match(
     loadingText,
-    /&\[immediate\] \{\s*animation: caffold-loading-text-sweep 1\.8s linear infinite;/,
+    /:host\(\[immediate\]\) \{\s*animation: caffold-loading-text-sweep 1\.8s linear infinite;/,
     "an owner that already waited shows the phrase at once",
   );
   assert.match(
     loadingText,
-    /@media \(prefers-reduced-motion: reduce\)[\s\S]*background-image: none;[\s\S]*animation: caffold-loading-text-enter 1ms step-end 180ms backwards;[\s\S]*&\[immediate\] \{\s*animation: none;/,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*background-image: none;[\s\S]*animation: caffold-loading-text-enter 1ms step-end 180ms backwards;[\s\S]*:host\(\[immediate\]\) \{\s*animation: none;/,
   );
   assert.doesNotMatch(
     loadingText,
@@ -971,9 +971,6 @@ test("compact icon controls declare shared styles at their own component boundar
     ["pages/(task-workspace)/tasks/(detail)/(github)/layout", "caffold-task-github-layout", "> .task-github-surface > .task-domain-header > .task-domain-back"],
     ["pages/(task-workspace)/tasks/(detail)/terminal/page", "caffold-terminal-page", "> .terminal-page-bar > .terminal-page-button"],
     ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", "caffold-git-review-controls", "> .git-review-controls > .git-review-refresh"],
-    ["components/file-navigator/components/list", "caffold-file-list", "> .file-list-panel > header > .file-list-title-row > .file-list-actions > .file-refresh-button"],
-    ["components/file-viewer", "caffold-review-file-viewer", "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-actions > .viewer-refresh-button"],
-    ["components/file-viewer", "caffold-review-file-viewer", "> .viewer-panel > .viewer-header > .viewer-title-row > .viewer-close-button"],
   ];
   for (const [path, owner, target] of consumers) {
     const javascript = readFrontendModule(path);
@@ -981,7 +978,12 @@ test("compact icon controls declare shared styles at their own component boundar
     assert.ok(declarations.some(([, name, selector]) => name === owner && selector === target), path);
   }
   // Components that render into a shadow root name the target in that root.
-  for (const [path, target] of [["components/pagination/components/button", ".pagination-button"]]) {
+  for (const [path, target] of [
+    ["components/pagination/components/button", ".pagination-button"],
+    ["components/file-navigator/components/list", ".file-refresh-button"],
+    ["components/file-viewer", ".viewer-refresh-button"],
+    ["components/file-viewer", ".viewer-close-button"],
+  ]) {
     const javascript = readFrontendModule(path);
     const declarations = [...javascript.matchAll(/\bcompactIconButton\(\s*"([^"]+)"\s*\)/g)];
     assert.ok(declarations.some(([, selector]) => selector === target), path);
@@ -1125,7 +1127,7 @@ test("contextual and inline actions stay compact while page and primary actions 
   const compactControls = [
     [
       "components/segmented-control.css",
-      "caffold-segmented-control",
+      ":host {",
       "--interface-compact-visual-size",
     ],
     [
@@ -1235,7 +1237,7 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
   );
   assert.match(
     segmentedControl,
-    /& button \{[\s\S]*height: var\(--interface-compact-hit-size\)[\s\S]*margin-block: calc\(0rem - var\(--interface-compact-hit-outset\)\)/,
+    /\nbutton \{[\s\S]*height: var\(--interface-compact-hit-size\)[\s\S]*margin-block: calc\(0rem - var\(--interface-compact-hit-outset\)\)/,
   );
   assert.match(
     segmentedControl,

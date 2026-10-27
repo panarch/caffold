@@ -281,7 +281,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
       "caffold-scroll-surface-selector > dialog:modal",
   );
   const commandHud = dialog.locator(
-    "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+    "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect(commandSelector).toBeVisible();
   const commandBadges = commandSelector.locator(

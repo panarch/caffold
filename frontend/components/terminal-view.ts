@@ -4,9 +4,12 @@
 // column count. xterm.js and its fit addon load from a pinned jsDelivr release
 // the first time a terminal opens.
 
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
+import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
+
+import styles from "./terminal-view.css.js";
 
 export interface TerminalViewInputDetail {
   data: string;
@@ -68,6 +71,8 @@ interface FitAddon {
 interface TerminalLibrary {
   Terminal: new (options: TerminalOptions) => Terminal;
   FitAddon: new () => FitAddon;
+  // xterm.js's stylesheet, which each view adopts into its shadow root.
+  stylesheet: CSSStyleSheet;
 }
 
 export interface TerminalSize {
@@ -81,7 +86,9 @@ let libraryPromise: Promise<TerminalLibrary> | null = null;
 let libraryFailures = 0;
 
 @customElement("caffold-terminal-view")
-export class CaffoldTerminalView extends LitElement {
+export class CaffoldTerminalView extends CaffoldElement {
+  static override styles = styles;
+
   size: TerminalSize | null = null;
   private terminal: Terminal | null = null;
   private fitAddon: FitAddon | null = null;
@@ -92,10 +99,6 @@ export class CaffoldTerminalView extends LitElement {
   );
 
   private readonly screen = new DrawnRef<HTMLDivElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -181,7 +184,11 @@ export class CaffoldTerminalView extends LitElement {
   }
 
   private async createTerminal() {
-    const { Terminal, FitAddon } = await loadLibrary();
+    const { Terminal, FitAddon, stylesheet } = await loadLibrary();
+    const root = this.shadowRoot;
+    if (root && !root.adoptedStyleSheets.includes(stylesheet)) {
+      root.adoptedStyleSheets = [...root.adoptedStyleSheets, stylesheet];
+    }
     const appearance = terminalAppearance(this);
     // Cells are measured when the terminal opens, so the Code font has to be
     // loaded by then.
@@ -292,9 +299,10 @@ function loadLibrary() {
     import(`${FIT_ADDON_BASE}/lib/addon-fit.mjs${attempt}`),
     loadStylesheet(`${XTERM_BASE}/css/xterm.css`),
   ]).then(
-    ([xterm, fit]) => ({
+    ([xterm, fit, stylesheet]) => ({
       Terminal: xterm.Terminal,
       FitAddon: fit.FitAddon,
+      stylesheet,
     }),
     (error) => {
       // Recovering the terminal loads it again.
@@ -306,22 +314,14 @@ function loadLibrary() {
   return libraryPromise;
 }
 
-function loadStylesheet(href: string) {
-  return new Promise<void>((resolve, reject) => {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = href;
-    link.addEventListener("load", () => resolve(), { once: true });
-    link.addEventListener(
-      "error",
-      () => {
-        link.remove();
-        reject(new Error(`${href} did not load.`));
-      },
-      { once: true },
-    );
-    document.head.append(link);
-  });
+async function loadStylesheet(href: string) {
+  const response = await fetch(href);
+  if (!response.ok) {
+    throw new Error(`${href} did not load (${response.status}).`);
+  }
+  const stylesheet = new CSSStyleSheet();
+  stylesheet.replaceSync(await response.text());
+  return stylesheet;
 }
 
 /** The Code-axis font and the theme colors the stylesheet gives the view. */

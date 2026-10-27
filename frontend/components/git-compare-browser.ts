@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { type ActionHintPull, mergeActionHintScopes } from "../action-hints.js";
 import {
@@ -21,9 +21,12 @@ import { diffViewerPresentation } from "./file-viewer-presentation.js";
 import "./git-compare-tree.js";
 import type { CaffoldGitCompareTree } from "./git-compare-tree.js";
 import "./pane-resizer.js";
+import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
 import type { CaffoldPaneResizer, PaneResizeDetail } from "./pane-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.js";
+
+import styles from "./git-compare-browser.css.js";
 
 export interface GitCompareStateChangeDetail {
   detailView: DetailView;
@@ -38,7 +41,9 @@ const LOADING_DELAY_MS = 180;
 type DetailView = "list" | "viewer";
 
 @customElement("caffold-git-compare-browser")
-export class CaffoldGitCompareBrowser extends LitElement {
+export class CaffoldGitCompareBrowser extends CaffoldElement {
+  static override styles = styles;
+
   // What the Compare page reads back.
   repository: GitRepository | null = null;
   refsPayload: GitRefs | null = null;
@@ -58,10 +63,6 @@ export class CaffoldGitCompareBrowser extends LitElement {
   private readonly tree = new DrawnRef<CaffoldGitCompareTree>(this);
   private readonly resizer = new DrawnRef<CaffoldPaneResizer>(this);
   private readonly fileViewer = new DrawnRef<CaffoldReviewFileViewer>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override disconnectedCallback() {
     super.disconnectedCallback();

@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "../action-hints.js";
 import { type DirectoryListing, listDirectory } from "../api.js";
@@ -12,12 +12,15 @@ import {
 } from "../watch.js";
 import "./file-navigator/components/list.js";
 import type { DirectoryEntry } from "../api.js";
+import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
 import type {
   CaffoldFileList,
   OpenEntryDetail,
   RefreshButtonState,
 } from "./file-navigator/components/list.js";
+
+import styles from "./file-navigator.css.js";
 
 export interface FileNavigatorRefreshStateDetail {
   state: RefreshButtonState;
@@ -50,7 +53,9 @@ export type ResolvedPath =
   | { kind: "error"; directory: DirectoryListing | false | null };
 
 @customElement("caffold-file-navigator")
-export class CaffoldFileNavigator extends LitElement {
+export class CaffoldFileNavigator extends CaffoldElement {
+  static override styles = styles;
+
   private readonly list = new DrawnRef<CaffoldFileList>(this);
   private currentPath = "";
   private directoryRequestId = 0;
@@ -69,10 +74,6 @@ export class CaffoldFileNavigator extends LitElement {
       () => this.performPendingRefresh(),
       (state) => this.setRefreshState(state),
     );
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

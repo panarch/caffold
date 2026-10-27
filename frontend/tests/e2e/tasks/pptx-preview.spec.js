@@ -174,7 +174,7 @@ test("reaches the deck's links and jumps to a linked slide", { tag: "@desktop" }
   // Where the third slide sits inside the scrollport, whether or not the
   // renderer has drawn it yet.
   const appendixPlacement = () => viewer.evaluate((element) => {
-    const slide = element.querySelector(".pptx-viewer-document").shadowRoot
+    const slide = element.shadowRoot.querySelector(".pptx-viewer-document").shadowRoot
       .querySelector('[data-slide-index="2"]');
     const port = element.getBoundingClientRect();
     const box = slide.getBoundingClientRect();
@@ -213,7 +213,7 @@ test("reaches a link on a whole picture from the keyboard", { tag: "@desktop" },
   await jump.focus();
   await page.keyboard.press("Enter");
   await expect.poll(() => viewer.evaluate((element) => {
-    const slide = element.querySelector(".pptx-viewer-document").shadowRoot
+    const slide = element.shadowRoot.querySelector(".pptx-viewer-document").shadowRoot
       .querySelector('[data-slide-index="2"]');
     const port = element.getBoundingClientRect();
     const box = slide.getBoundingClientRect();

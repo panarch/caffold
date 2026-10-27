@@ -1,13 +1,14 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
+import { CaffoldElement } from "../../caffold-element.js";
 import { KEYBOARD_SHORTCUT_HELP_SECTIONS } from "../shortcuts.js";
+
+import styles from "./shortcut-list.css.js";
 
 /** Every keyboard shortcut, in the sections the help dialog shows. */
 @customElement("caffold-keyboard-shortcut-list")
-export class CaffoldKeyboardShortcutList extends LitElement {
-  override createRenderRoot() {
-    return this;
-  }
+export class CaffoldKeyboardShortcutList extends CaffoldElement {
+  static override styles = styles;
 
   override render() {
     return KEYBOARD_SHORTCUT_HELP_SECTIONS.map(

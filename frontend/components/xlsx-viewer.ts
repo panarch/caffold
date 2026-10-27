@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import {
   hasActionHintLayoutBox,
@@ -14,6 +14,7 @@ import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
 import type { DocumentPreviewFile } from "./dom.js";
 import "./loading-text.js";
 import "./segmented-control.js";
+import { CaffoldElement } from "../caffold-element.js";
 import { DrawnRef, drawn } from "./drawn-refs.js";
 import type {
   CaffoldSegmentedControl,
@@ -32,6 +33,8 @@ import {
   type SheetModel,
   type WorkbookModel,
 } from "./xlsx-viewer/workbook.js";
+
+import styles from "./xlsx-viewer.css.js";
 
 const SHEETJS_VERSION = "0.20.3";
 const SHEETJS_IMPORT = `https://cdn.sheetjs.com/xlsx-${SHEETJS_VERSION}/package/xlsx.mjs`;
@@ -53,13 +56,15 @@ interface VisibleSheet {
 let libraryPromise: Promise<SheetJs> | undefined;
 
 @customElement("caffold-xlsx-viewer")
-class CaffoldXlsxViewer extends LitElement {
+class CaffoldXlsxViewer extends CaffoldElement {
   @property({ attribute: false })
   accessor file: DocumentPreviewFile | null = null;
   @state()
   private accessor renderState: RenderState = "empty";
   @state()
   private accessor visibleSheets: VisibleSheet[] | null = null;
+
+  static override styles = styles;
 
   private generation = 0;
   private selectedSheetName: string | null = null;
@@ -80,10 +85,6 @@ class CaffoldXlsxViewer extends LitElement {
   private readonly space = new DrawnRef<HTMLDivElement>(this);
   private readonly tabStrip = new DrawnRef<HTMLDivElement>(this);
   private readonly sheetTabs = new DrawnRef<CaffoldSegmentedControl>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

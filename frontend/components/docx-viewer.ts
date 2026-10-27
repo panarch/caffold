@@ -1,8 +1,11 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "../scroll-scope.js";
 import type { DocumentPreviewFile } from "./dom.js";
 import "./loading-text.js";
+import { CaffoldElement } from "../caffold-element.js";
+
+import styles from "./docx-viewer.css.js";
 
 const DOCX_PREVIEW_VERSION = "0.4.1";
 const DOCX_PREVIEW_IMPORT = `https://cdn.jsdelivr.net/npm/docx-preview@${DOCX_PREVIEW_VERSION}/+esm`;
@@ -71,7 +74,7 @@ type RenderState = "empty" | "loading" | "error" | "docx";
 let libraryPromise: Promise<DocxPreview> | undefined;
 
 @customElement("caffold-docx-viewer")
-class CaffoldDocxViewer extends LitElement {
+class CaffoldDocxViewer extends CaffoldElement {
   @property({ attribute: false })
   accessor file: DocumentPreviewFile | null = null;
   @state()
@@ -79,15 +82,13 @@ class CaffoldDocxViewer extends LitElement {
   @state()
   private accessor mount: HTMLElement | null = null;
 
+  static override styles = styles;
+
   private generation = 0;
   private pages: PageRecord[] | null = null;
   private widthObserver: ResizeObserver | null = null;
 
   private readonly surfaces = new ScrollSurfaces(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

@@ -1537,11 +1537,7 @@ test("toggles retained Pull Files directories through the GitHub owner", { tag: 
   await expect(actionHintDialog(page)).toBeHidden();
   await expect(srcDirectory).toHaveAccessibleName("Expand src");
   await expect(srcFile).toHaveCount(0);
-  await expect
-    .poll(() =>
-      srcDirectory.evaluate((element) => document.activeElement === element)
-    )
-    .toBe(true);
+  await expect(srcDirectory).toBeFocused();
   await activateActionHint(page, /Expand src$/);
   await expect(srcDirectory).toHaveAccessibleName("Collapse src");
   await expect(srcFile).toBeVisible();
@@ -1847,7 +1843,7 @@ test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll cont
   await expect(select).toHaveValue("origin/main");
   const body = dialog.locator(".github-task-start-body");
   const hud = dialog.locator(
-    ":scope > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud",
+    ":scope > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect.poll(() => body.evaluate(
     (element) => element.scrollHeight <= element.clientHeight + 1,

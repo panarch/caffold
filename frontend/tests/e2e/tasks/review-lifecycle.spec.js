@@ -166,23 +166,24 @@ test("keeps Task view and pane controls mounted and focused through live updates
     .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
     .click();
 
-  await tasksPage.evaluate((tasks) => {
-    tasks.querySelector(
-      'caffold-segmented-control[data-detail-view-switch] '
-        + 'button[data-segmented-value="working"]',
-    ).stableControlProbe = true;
-    const review = tasks.querySelector("caffold-task-review");
-    review.querySelector(
-      'caffold-segmented-control[data-review-axis="navigator"] '
-        + 'button[data-segmented-value="files"]',
-    ).stableControlProbe = true;
-    const viewerControl = review.querySelector(
-      'caffold-segmented-control[data-review-axis="viewer"] '
-        + 'button[data-segmented-value="diff"]',
-    );
-    viewerControl.stableControlProbe = true;
-    viewerControl.focus();
-  });
+  const scopeControl = tasksPage.locator(
+    'caffold-segmented-control[data-detail-view-switch] '
+      + 'button[data-segmented-value="working"]',
+  );
+  const navigatorControl = taskReview.locator(
+    'caffold-segmented-control[data-review-axis="navigator"] '
+      + 'button[data-segmented-value="files"]',
+  );
+  const viewerControl = taskReview.locator(
+    'caffold-segmented-control[data-review-axis="viewer"] '
+      + 'button[data-segmented-value="diff"]',
+  );
+  for (const control of [scopeControl, navigatorControl, viewerControl]) {
+    await control.evaluate((button) => {
+      button.stableControlProbe = true;
+    });
+  }
+  await viewerControl.focus();
 
   const requestsBefore = reviewScenario.gitStatusRequests;
   reviewScenario.includeLiveFile = true;
@@ -195,34 +196,14 @@ test("keeps Task view and pane controls mounted and focused through live updates
   });
   await expect.poll(() => reviewScenario.gitStatusRequests).toBeGreaterThan(requestsBefore);
 
-  expect(
-    await tasksPage.evaluate((tasks) => {
-      const scope = tasks.querySelector(
-        'caffold-segmented-control[data-detail-view-switch] '
-          + 'button[data-segmented-value="working"]',
-      );
-      const review = tasks.querySelector("caffold-task-review");
-      const navigator = review.querySelector(
-        'caffold-segmented-control[data-review-axis="navigator"] '
-          + 'button[data-segmented-value="files"]',
-      );
-      const viewer = review.querySelector(
-        'caffold-segmented-control[data-review-axis="viewer"] '
-          + 'button[data-segmented-value="diff"]',
-      );
-      return {
-        scope: scope.stableControlProbe === true,
-        navigator: navigator.stableControlProbe === true,
-        viewer: viewer.stableControlProbe === true,
-        viewerFocused: document.activeElement === viewer,
-      };
-    }),
-  ).toEqual({
-    scope: true,
-    navigator: true,
-    viewer: true,
-    viewerFocused: true,
-  });
+  const kept = (control) =>
+    control.evaluate((button) => button.stableControlProbe === true);
+  expect({
+    scope: await kept(scopeControl),
+    navigator: await kept(navigatorControl),
+    viewer: await kept(viewerControl),
+  }).toEqual({ scope: true, navigator: true, viewer: true });
+  await expect(viewerControl).toBeFocused();
 });
 
 test("does not reveal the selected Files entry again during canonical task sync", { tag: ["@desktop", "@foldable"] }, async ({

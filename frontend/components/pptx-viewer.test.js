@@ -58,6 +58,7 @@ function deckViewer(slides) {
   return {
     root,
     owner: {
+      renderRoot: { id: "viewer-root" },
       mount: { shadowRoot: root },
       isConnected: true,
       hidden: false,
@@ -129,8 +130,9 @@ test("offers the links out of the deck and to other slides on the slides drawn n
     },
   ]);
   assert.deepEqual(scope.targets[0].clipRoots, [owner, fileViewer]);
-  // A slide drawn or released inside the deck's shadow root changes the links.
-  assert.deepEqual(scope.mutationRoots, [owner, root]);
+  // A slide drawn or released inside the deck's shadow root changes the
+  // links, and so does the mount the viewer's own root draws.
+  assert.deepEqual(scope.mutationRoots, [owner, owner.renderRoot, root]);
 });
 
 test("offers no links before the deck is drawn or without a link action", () => {

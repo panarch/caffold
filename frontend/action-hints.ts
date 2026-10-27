@@ -49,6 +49,11 @@ import {
   taskHintSuffix,
   visibleTargetRect,
 } from "./action-hints/model.js";
+import {
+  containsAcrossShadowRoots,
+  eachDocumentTree,
+  focusedElement,
+} from "./shadow-roots.js";
 
 export {
   type ActionHintDeclaration,
@@ -355,10 +360,8 @@ export class ActionHintController {
       dialog,
       scope: emptyActionHintScope(),
     };
-    const opener =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
+    const focused = focusedElement();
+    const opener = focused instanceof HTMLElement ? focused : null;
     const session: ActionHintSession = {
       ...snapshot,
       binding,
@@ -528,18 +531,15 @@ export class ActionHintController {
       });
     }
 
-    if (typeof MutationObserver === "function" && document.documentElement) {
-      session.ownershipObserver = new MutationObserver(() => {
-        if (this.hasOtherInteractionOwner(session.binding ?? null)) {
-          this.cancel("interaction-owner");
-        }
-      });
-      session.ownershipObserver.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ["open"],
-        subtree: true,
-      });
-    }
+    const observer =
+      typeof MutationObserver === "function"
+        ? new MutationObserver(() => {
+            if (this.hasOtherInteractionOwner(session.binding ?? null)) {
+              this.cancel("interaction-owner");
+            }
+          })
+        : null;
+    session.ownershipObserver = observer;
     const handleBeforeToggle = (event: Event) => {
       const toggle = event as ToggleEvent;
       if (
@@ -551,14 +551,22 @@ export class ActionHintController {
       }
       if (
         toggle.newState === "open" &&
-        !session.dialog.contains?.(toggle.target as Node | null)
+        !containsAcrossShadowRoots(session.dialog, toggle.target as Node | null)
       ) {
         this.cancel("interaction-owner");
       }
     };
-    document.addEventListener("beforetoggle", handleBeforeToggle, true);
-    session.cleanup.push(() =>
-      document.removeEventListener("beforetoggle", handleBeforeToggle, true),
+    session.cleanup.push(
+      eachDocumentTree((tree) => {
+        observer?.observe(tree, {
+          attributes: true,
+          attributeFilter: ["open"],
+          subtree: true,
+        });
+        tree.addEventListener("beforetoggle", handleBeforeToggle, true);
+        return () =>
+          tree.removeEventListener("beforetoggle", handleBeforeToggle, true);
+      }),
     );
     this.replaceRevalidationSignals(session);
   }

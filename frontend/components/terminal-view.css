@@ -1,4 +1,4 @@
-caffold-terminal-view {
+:host {
   --terminal-background: var(--code-bg);
   --terminal-foreground: var(--text);
   --terminal-cursor: var(--text);
@@ -13,17 +13,19 @@ caffold-terminal-view {
   background: var(--terminal-background);
 
   /* The fit addon counts rows and columns in this box's content height and width. */
-  & > .terminal-view-screen {
-    height: 100%;
-    min-height: 0;
-  }
+}
 
-  & > .terminal-view-screen > .xterm {
-    height: 100%;
-  }
+.terminal-view-screen {
+  height: 100%;
+  min-height: 0;
+}
 
-  /* xterm.js paints its scroll area black; the rows below the last full one show it. */
-  & .xterm .xterm-viewport {
-    background-color: var(--terminal-background);
-  }
+.terminal-view-screen > .xterm {
+  height: 100%;
+}
+
+/* xterm.js paints its scroll area black; the rows below the last full one show it. */
+
+.xterm .xterm-viewport {
+  background-color: var(--terminal-background);
 }

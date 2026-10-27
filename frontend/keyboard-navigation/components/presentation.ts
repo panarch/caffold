@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import "../../action-hints/components/dialog.js";
 import type { CaffoldActionHintDialog } from "../../action-hints/components/dialog.js";
@@ -6,7 +6,10 @@ import { DrawnRef, drawn } from "../../components/drawn-refs.js";
 import "./hud.js";
 import type { CaffoldScrollModeHud } from "./hud.js";
 import "./selector.js";
+import { CaffoldElement } from "../../caffold-element.js";
 import type { CaffoldScrollSurfaceSelector } from "./selector.js";
+
+import styles from "./presentation.css.js";
 
 /**
  * What one keyboard context shows its modes with: the Action Hint badges,
@@ -14,14 +17,12 @@ import type { CaffoldScrollSurfaceSelector } from "./selector.js";
  * own, so a modal or popover keeps them in its top layer.
  */
 @customElement("caffold-keyboard-navigation-presentation")
-export class CaffoldKeyboardNavigationPresentation extends LitElement {
+export class CaffoldKeyboardNavigationPresentation extends CaffoldElement {
+  static override styles = styles;
+
   private readonly dialog = new DrawnRef<CaffoldActionHintDialog>(this);
   private readonly hud = new DrawnRef<CaffoldScrollModeHud>(this);
   private readonly selector = new DrawnRef<CaffoldScrollSurfaceSelector>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     return html`

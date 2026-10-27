@@ -1120,7 +1120,8 @@ async function dragTerminal(page, rows, fingers = 1) {
       const rowHeight = box.height / screen.querySelectorAll(".xterm-rows > div").length;
       const x = box.left + box.width / 2;
       const y = box.top + box.height / 2;
-      const target = document.elementFromPoint(x, y);
+      // The screen sits in the terminal view's shadow root, where a touch lands.
+      const target = screen.getRootNode().elementFromPoint(x, y);
       const distance = (rows + Math.sign(rows) / 2) * rowHeight;
       const at = (offset) =>
         Array.from({ length: fingers }, (_, identifier) =>
@@ -1130,6 +1131,7 @@ async function dragTerminal(page, rows, fingers = 1) {
         target.dispatchEvent(new TouchEvent(type, {
           bubbles: true,
           cancelable: true,
+          composed: true,
           touches,
           targetTouches: touches,
           changedTouches,

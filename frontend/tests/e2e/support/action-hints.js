@@ -76,9 +76,14 @@ export async function workspaceOcclusionTargets(page, ownerSelector) {
     const bounds = { left: viewport?.offsetLeft ?? 0, top: viewport?.offsetTop ?? 0,
       right: (viewport?.offsetLeft ?? 0) + (viewport?.width ?? innerWidth),
       bottom: (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight) };
+    // A target may sit inside the shadow roots of the owner's components.
+    const inside = (node) => {
+      while (node && node !== owner) node = node.parentNode ?? node.host;
+      return node === owner;
+    };
     const result = { covered: [], clear: [] };
     for (const target of document.querySelector("caffold-app-shell").actionHintScope().targets) {
-      if (!owner.contains(target.anchor)) continue;
+      if (!inside(target.anchor)) continue;
       const anchor = target.anchor.getBoundingClientRect();
       const clips = [bounds, anchor, ...target.clipRoots.map((root) => root.getBoundingClientRect())];
       const left = Math.max(...clips.map((rect) => rect.left));

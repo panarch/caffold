@@ -439,29 +439,23 @@ test("renders a route-owned Markdown Preview without changing file selection", {
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
 
-  await taskReview.evaluate((review) => {
-    const viewerControl = review.querySelector(
-      'caffold-segmented-control[data-review-axis="viewer"]',
-    );
-    for (const value of ["diff", "source"]) {
-      viewerControl.querySelector(
-        `button[data-segmented-value="${value}"]`,
-      ).stableChoiceProbe = true;
-    }
-  });
+  const viewerChoice = (value) => taskReview.locator(
+    'caffold-segmented-control[data-review-axis="viewer"] '
+      + `button[data-segmented-value="${value}"]`,
+  );
+  for (const value of ["diff", "source"]) {
+    await viewerChoice(value).evaluate((button) => {
+      button.stableChoiceProbe = true;
+    });
+  }
 
   const navigator = taskReview.locator("caffold-file-navigator");
   await navigator.locator('button[data-file-tree-path="src/README.md"]').click();
-  expect(await taskReview.evaluate((review) => {
-    const viewerControl = review.querySelector(
-      'caffold-segmented-control[data-review-axis="viewer"]',
-    );
-    return ["diff", "source"].every((value) =>
-      viewerControl.querySelector(
-        `button[data-segmented-value="${value}"]`,
-      ).stableChoiceProbe === true
-    );
-  })).toBe(true);
+  for (const value of ["diff", "source"]) {
+    expect(await viewerChoice(value).evaluate(
+      (button) => button.stableChoiceProbe === true,
+    )).toBe(true);
+  }
   const previewControl = taskReview.getByRole("button", {
     name: "Preview",
     exact: true,
@@ -469,12 +463,14 @@ test("renders a route-owned Markdown Preview without changing file selection", {
   await expect(previewControl).toBeVisible();
   await expect(previewControl).toBeEnabled();
   expect(await previewControl.evaluate((button) => {
-    const control = button.parentElement;
-    const selected = control.querySelector('button[aria-pressed="true"]')
+    // The choices sit in the control's shadow root.
+    const root = button.getRootNode();
+    const control = root.host;
+    const selected = root.querySelector('button[aria-pressed="true"]')
       ?.dataset.segmentedValue ?? "";
     const snapshot = {
       label: control.getAttribute("aria-label"),
-      choices: [...control.querySelectorAll("button")].map((choice) => ({
+      choices: [...root.querySelectorAll("button")].map((choice) => ({
         value: choice.dataset.segmentedValue,
         label: choice.textContent.trim(),
         title: choice.title,
@@ -486,12 +482,12 @@ test("renders a route-owned Markdown Preview without changing file selection", {
       selected: button.dataset.segmentedValue,
     });
     const retained =
-      document.activeElement === button &&
-      control.querySelector(
+      root.activeElement === button &&
+      root.querySelector(
         `button[data-segmented-value="${button.dataset.segmentedValue}"]`,
       ) === button;
     control.setSnapshot({ ...snapshot, selected });
-    return retained && document.activeElement === button;
+    return retained && root.activeElement === button;
   })).toBe(true);
   await previewControl.click();
   await expect(page).toHaveURL(
@@ -585,12 +581,11 @@ test("renders a route-owned Markdown Preview without changing file selection", {
     element.scrollTop = 0;
   });
 
-  const layout = await taskReview.evaluate((review) => {
+  const layout = await taskReview.evaluate((review, previewScroll) => {
     const axis = review.querySelector(
       '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
     );
-    const labels = [...axis.querySelectorAll("button > span")];
-    const previewScroll = review.querySelector("caffold-markdown-preview");
+    const labels = [...axis.shadowRoot.querySelectorAll("button > span")];
     return {
       rootFontSize: Number.parseFloat(
         getComputedStyle(document.documentElement).fontSize,
@@ -607,7 +602,7 @@ test("renders a route-owned Markdown Preview without changing file selection", {
         })),
       visibleLabels: labels.map((label) => label.textContent.trim()),
     };
-  });
+  }, await markdownPreview.elementHandle());
   expect(layout.reviewOverflow).toBe(false);
   expect(layout.previewOverflow).toBe(false);
   expect(layout.axisWidth).toBeCloseTo(layout.rootFontSize * 11.25, 0);
@@ -739,8 +734,8 @@ test("shrinks a Markdown Preview image wider than the text to the text width", {
     await expectFetchedPicture(preview.locator('img[alt="Wide"]'));
 
     const sizes = await preview.evaluate((element) => {
-      const text = element.querySelector(".markdown-preview-body").getBoundingClientRect();
-      const image = element.querySelector('img[alt="Wide"]').getBoundingClientRect();
+      const text = element.shadowRoot.querySelector(".markdown-preview-body").getBoundingClientRect();
+      const image = element.shadowRoot.querySelector('img[alt="Wide"]').getBoundingClientRect();
       return { text: text.width, width: image.width, height: image.height };
     });
     expect(sizes.width).toBeLessThanOrEqual(sizes.text);
@@ -779,7 +774,7 @@ test("keeps a Markdown Preview's reading position while it fetches its pictures 
     const paragraph = preview.getByText("Below the pictures.", { exact: true });
     const place = () => paragraph.evaluate((element) => Math.round(
       element.getBoundingClientRect().top -
-        element.closest("caffold-markdown-preview").getBoundingClientRect().top,
+        element.getRootNode().host.getBoundingClientRect().top,
     ));
     await preview.evaluate((element, offset) => {
       element.scrollTop += offset;
@@ -1432,7 +1427,7 @@ test("the file viewer offers a notice's representation button, and details only 
       }).targets.map((target) => [target.id, target.actionId, target.label]);
     };
     const openDetails = async () => {
-      viewer.querySelector(".viewer-info-button").click();
+      viewer.shadowRoot.querySelector(".viewer-info-button").click();
       await drawn();
       return viewer.keyboardNavigationContexts({ scopeId: "review:viewer" })
         .map((context) => [context.id, context.actionHints.targets.length]);

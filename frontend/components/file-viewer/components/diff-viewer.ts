@@ -1,10 +1,13 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { SyntaxSpan } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
 import { syntaxLine } from "../syntax-spans.js";
 import type { ScrollPosition, ViewerPosition } from "./code-viewer.js";
+
+import styles from "./diff-viewer.css.js";
 
 export interface FileDiff {
   diff?: string;
@@ -35,19 +38,17 @@ const EMPTY_DIFF_MESSAGE = "No diff for this file.";
 const SOURCE_ROWS = new Set<DiffRowType>(["added", "removed", "context"]);
 
 @customElement("caffold-diff-viewer")
-export class CaffoldDiffViewer extends LitElement {
+export class CaffoldDiffViewer extends CaffoldElement {
   @property({ attribute: false })
   accessor diff: FileDiff | null = null;
   @property({ attribute: false })
   accessor position: ViewerPosition | null = null;
 
+  static override styles = styles;
+
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly table = new DrawnRef<HTMLDivElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     if (!this.diff) {

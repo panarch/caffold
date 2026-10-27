@@ -1,4 +1,5 @@
 import compactIconButtonSource from "./component-styles/compact-icon-button.css.js";
+import secondaryButtonSource from "./component-styles/secondary-button.css.js";
 
 // A shared style a component applies to one of its own elements: `owner` is
 // the component's element name and `target` the child path to the element.
@@ -15,6 +16,13 @@ export const compactIconButton = Object.assign(
     "Compact icon buttons",
     "./component-styles/compact-icon-button.css",
   ),
+);
+
+// A bordered text button. Components in Light DOM still take it from
+// `tasks/controls.css`.
+export const secondaryButton = scopedStyle(
+  "Secondary buttons",
+  secondaryButtonSource,
 );
 
 // An element that stays while idle names its busy state class in the path.

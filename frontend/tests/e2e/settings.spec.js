@@ -3240,19 +3240,16 @@ test("applies extreme values to the retained Review code viewer", { tag: "@all-v
     "text-size-adjust",
     "100%",
   );
-  const fileToolbarTiers = await page.evaluate(() => {
+  const fileToolbarTiers = await page.locator(
+    "caffold-review-file-viewer .viewer-info-button",
+  ).evaluate((info) => {
     const tokenProbe = document.createElement("div");
     tokenProbe.style.cssText =
       "position:fixed;height:var(--interface-compact-hit-size)";
     document.body.append(tokenProbe);
     const compact = tokenProbe.getBoundingClientRect().height;
     tokenProbe.remove();
-    const height = (selector) =>
-      document.querySelector(selector).getBoundingClientRect().height;
-    return {
-      compact,
-      info: height("caffold-review-file-viewer .viewer-info-button"),
-    };
+    return { compact, info: info.getBoundingClientRect().height };
   });
   expect(fileToolbarTiers.info).toBeCloseTo(fileToolbarTiers.compact, 1);
 
@@ -3887,8 +3884,8 @@ async function representativeThemeStyles(page) {
       ),
       reviewDanger: colorPair(review.querySelector(".task-review-error")),
       code: colorPair(document.querySelector(".settings-code-preview")),
-      diffAdded: colorPair(diff.querySelector(".diff-row-added")),
-      diffRemoved: colorPair(diff.querySelector(".diff-row-removed")),
+      diffAdded: colorPair(diff.shadowRoot.querySelector(".diff-row-added")),
+      diffRemoved: colorPair(diff.shadowRoot.querySelector(".diff-row-removed")),
     };
     review.remove();
     diff.remove();

@@ -1,6 +1,9 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { type ActionHintPull, ActionHints } from "../action-hints.js";
+import { CaffoldElement } from "../caffold-element.js";
+
+import styles from "./pane-resizer.css.js";
 
 export interface PaneResizeDetail {
   phase: PaneResizePhase;
@@ -15,7 +18,9 @@ const START_MAX_RATIO = 0.7;
 export type PaneResizePhase = "start" | "update" | "end";
 
 @customElement("caffold-pane-resizer")
-export class CaffoldPaneResizer extends LitElement {
+export class CaffoldPaneResizer extends CaffoldElement {
+  static override styles = styles;
+
   private currentValue = START_DEFAULT_WIDTH;
   private preferredValue: number | null = null;
   private collapsedPreference = false;
@@ -33,10 +38,6 @@ export class CaffoldPaneResizer extends LitElement {
     this.adjustFromKeyboard(event);
   private readonly onFocus = () => this.syncRange();
   private readonly hints = new ActionHints(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   // The separator is the host, so the handle carries its Action Hint.
   override render() {
@@ -69,8 +70,9 @@ export class CaffoldPaneResizer extends LitElement {
     this.addEventListener("lostpointercapture", this.onPointerEnd);
     this.addEventListener("keydown", this.onKeyDown);
     this.addEventListener("focus", this.onFocus);
-    if (this.parentElement) {
-      this.resizeObserver.observe(this.parentElement);
+    const container = this.container();
+    if (container) {
+      this.resizeObserver.observe(container);
     }
     this.restorePreferredValue();
     this.restoreCollapsed();
@@ -188,7 +190,7 @@ export class CaffoldPaneResizer extends LitElement {
   }
 
   private updateFromPointer(event: PointerEvent) {
-    const container = this.parentElement;
+    const container = this.container();
     if (!container) {
       return;
     }
@@ -274,7 +276,7 @@ export class CaffoldPaneResizer extends LitElement {
   }
 
   private maxValue() {
-    const width = this.parentElement?.getBoundingClientRect().width ?? 0;
+    const width = this.container()?.getBoundingClientRect().width ?? 0;
     if (!width) {
       return START_DEFAULT_WIDTH;
     }
@@ -299,7 +301,15 @@ export class CaffoldPaneResizer extends LitElement {
   }
 
   private canResize() {
-    return Boolean(this.parentElement && this.getClientRects().length > 0);
+    return Boolean(this.container() && this.getClientRects().length > 0);
+  }
+
+  // The box the separator divides: its parent, or the host when it sits at
+  // the top of a shadow root.
+  private container() {
+    return (
+      this.parentElement ?? (this.parentNode as ShadowRoot | null)?.host ?? null
+    );
   }
 
   private emitResize(phase: PaneResizePhase, value: number | null = null) {

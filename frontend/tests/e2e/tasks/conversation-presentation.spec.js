@@ -239,7 +239,7 @@ test("opens resolved Markdown file links through Task Review with native link se
   const viewer = review.locator("caffold-review-file-viewer");
   await expect(viewer).toContainText("pub fn plan");
   await expect
-    .poll(() => viewer.evaluate(sourceLineIsVisible, 60))
+    .poll(() => viewer.locator('.code-row[data-line-number="60"]').evaluate(sourceLineIsVisible))
     .toBe(true);
   await expect(
     fileNavigator.locator('button[data-file-tree-path="src/planner.rs"]'),
@@ -250,7 +250,7 @@ test("opens resolved Markdown file links through Task Review with native link se
     `/tasks/${scenario.threadId}/review?nav=files&view=source&file=planner.rs&line=60`,
   );
   await expect
-    .poll(() => viewer.evaluate(sourceLineIsVisible, 60))
+    .poll(() => viewer.locator('.code-row[data-line-number="60"]').evaluate(sourceLineIsVisible))
     .toBe(true);
   await page.goBack();
   await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
@@ -602,10 +602,9 @@ function reviewRoute(threadId, path, line = null) {
   return `/tasks/${threadId}/review?${query}`;
 }
 
-function sourceLineIsVisible(viewer, line) {
-  const scroller = viewer.querySelector(".code-lines");
-  const row = viewer.querySelector(`.code-row[data-line-number="${line}"]`);
-  if (!scroller || !row) {
+function sourceLineIsVisible(row) {
+  const scroller = row.closest(".code-lines");
+  if (!scroller) {
     return false;
   }
   const scrollerRect = scroller.getBoundingClientRect();
@@ -1419,7 +1418,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         ".detail-layout-actions > button, .detail-layout-actions > details > summary, .task-detail-info-button",
       ),
     ];
-    const modeButtons = [...modeSwitch.querySelectorAll("button")];
+    const modeButtons = [...modeSwitch.shadowRoot.querySelectorAll("button")];
     const expandedTouchControls = [
       ...element.querySelectorAll(
         ".task-detail-actions > button, .task-detail-actions > details > summary, .task-detail-info-button",
@@ -1440,7 +1439,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         (control) => control.getBoundingClientRect().height,
       ),
       selectedInset: (() => {
-        const selected = modeSwitch.querySelector('button[aria-pressed="true"] > span');
+        const selected = modeSwitch.shadowRoot.querySelector('button[aria-pressed="true"] > span');
         const group = modeSwitch.getBoundingClientRect();
         const visual = selected.getBoundingClientRect();
         return {

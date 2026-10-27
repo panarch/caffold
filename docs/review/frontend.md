@@ -113,15 +113,12 @@ DOM as current. Keep inactive caches bounded.
 
 ## Web Components And CSS
 
-Caffold currently uses internal Web Components rendered in Light DOM. This
-keeps browser behavior, debugging, Playwright tests, shared theme variables,
-and small frontend modules straightforward. It also means CSS is still one
-global cascade.
+Caffold's internal Web Components render into an open shadow root through
+`CaffoldElement`, so the browser keeps each component's styles and DOM inside
+its own boundary instead of review keeping one global cascade apart.
 
-Light DOM is the default until a component has a clear reason to isolate styles
-with Shadow DOM. Good reasons include reusable leaf widgets, third-party-like
-components, or a component whose styles cannot reasonably share the app
-cascade.
+Shadow DOM is the default. A component stays in Light DOM only when it has a
+clear reason that shadow-root isolation cannot serve.
 
 ### Native disclosure and modal surfaces
 

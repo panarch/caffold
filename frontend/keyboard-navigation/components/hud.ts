@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   clampBadgePosition,
@@ -6,23 +6,24 @@ import {
   type Rect,
   type RectLike,
 } from "../../action-hints.js";
+import { CaffoldElement } from "../../caffold-element.js";
 import { DrawnRef, drawn } from "../../components/drawn-refs.js";
+
+import styles from "./hud.css.js";
 
 /**
  * The outline around the surface Scroll mode moves, and the status at its
  * corner that names it.
  */
 @customElement("caffold-scroll-mode-hud")
-export class CaffoldScrollModeHud extends LitElement {
+export class CaffoldScrollModeHud extends CaffoldElement {
+  static override styles = styles;
+
   private label = "";
   private contextRect: Rect | null = null;
   private surfaceRect: Rect | null = null;
   private readonly outline = new DrawnRef<HTMLDivElement>(this);
   private readonly status = new DrawnRef<HTMLDivElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, ActionHints } from "../../action-hints.js";
 import { DrawnRef, drawn } from "../../components/drawn-refs.js";
@@ -8,6 +8,9 @@ import { KeyboardContexts } from "../context.js";
 import { KEYBOARD_SHORTCUT_CLOSE_EVENT } from "../shortcuts.js";
 import "./presentation.js";
 import "./shortcut-list.js";
+import { CaffoldElement } from "../../caffold-element.js";
+
+import styles from "./shortcut-dialog.css.js";
 
 export interface KeyboardShortcutCloseDetail {
   reason: string;
@@ -21,7 +24,9 @@ const CLOSE_LABEL = "Close keyboard shortcuts";
  * navigation to close it, so the shortcut that opened it also closes it.
  */
 @customElement("caffold-keyboard-shortcut-dialog")
-export class CaffoldKeyboardShortcutDialog extends LitElement {
+export class CaffoldKeyboardShortcutDialog extends CaffoldElement {
+  static override styles = styles;
+
   // Whether the dialog is closing because the controller asked, which needs
   // no request back.
   private ownerClosed = false;
@@ -32,10 +37,6 @@ export class CaffoldKeyboardShortcutDialog extends LitElement {
   private readonly dialog = new DrawnRef<HTMLDialogElement>(this);
   private readonly closeButton = new DrawnRef<HTMLButtonElement>(this);
   private readonly list = new DrawnRef<HTMLElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

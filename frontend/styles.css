@@ -3,25 +3,7 @@
 @import "./pages/components/build-mismatch-alert.css";
 @import "./pages/components/update-dialog.css";
 @import "./pages/components/update-result-dialog.css";
-@import "./components/file-tree.css";
-@import "./components/file-navigator.css";
-@import "./components/file-viewer.css";
-@import "./components/markdown-preview.css";
-@import "./components/pdf-viewer.css";
-@import "./components/docx-viewer.css";
-@import "./components/pptx-viewer.css";
-@import "./components/xlsx-viewer.css";
-@import "./components/pane-resizer.css";
-@import "./components/segmented-control.css";
-@import "./components/loading-text.css";
-@import "./components/terminal-view.css";
 @import "./pages/(task-workspace)/layout.css";
-@import "./action-hints/components/dialog.css";
-@import "./keyboard-navigation/components/hud.css";
-@import "./keyboard-navigation/components/presentation.css";
-@import "./keyboard-navigation/components/selector.css";
-@import "./keyboard-navigation/components/shortcut-list.css";
-@import "./keyboard-navigation/components/shortcut-dialog.css";
 @import "./pages/(task-workspace)/components/navigation.css";
 @import "./pages/(task-workspace)/components/update-task-dialog.css";
 @import "./pages/(task-workspace)/components/workspace-brand.css";
@@ -119,8 +101,6 @@
 @import "./pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css";
-@import "./components/git-compare-browser.css";
-@import "./components/git-compare-tree.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(github)/layout.css";
 @import "./pages/(task-workspace)/tasks/(detail)/terminal/page.css";
 @import "./pages/(task-workspace)/tasks/(detail)/terminal/components/special-keys.css";
@@ -135,8 +115,6 @@
 @import "./pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css";
-@import "./components/file-viewer/components/code-viewer.css";
-@import "./components/file-viewer/components/diff-viewer.css";
 
 @font-face {
   font-family: "Caffold Geist Sans";

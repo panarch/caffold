@@ -1,9 +1,12 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { SyntaxSpan } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "../../drawn-refs.js";
 import { syntaxLine } from "../syntax-spans.js";
+
+import styles from "./code-viewer.css.js";
 
 export interface CodeFile {
   content: string;
@@ -30,19 +33,17 @@ export interface ViewerPosition {
 }
 
 @customElement("caffold-code-viewer")
-export class CaffoldCodeViewer extends LitElement {
+export class CaffoldCodeViewer extends CaffoldElement {
   @property({ attribute: false })
   accessor file: CodeFile | null = null;
   @property({ attribute: false })
   accessor position: ViewerPosition | null = null;
 
+  static override styles = styles;
+
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly scrollport = new DrawnRef<HTMLDivElement>(this);
   private readonly table = new DrawnRef<HTMLDivElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     if (!this.file) {

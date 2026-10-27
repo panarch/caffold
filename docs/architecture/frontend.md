@@ -503,8 +503,9 @@ open registered popover wins over the workspace, including when it is an exact
 descendant of the currently open product modal; otherwise an unknown or
 unrelated open overlay, duplicate root, or ambiguous popover rejects entry. The
 coordinator reads native
-`:popover-open` and `dialog:modal` state only to validate ownership. It does not
-infer actions or scrollports from overlay descendants.
+`:popover-open` and `dialog:modal` state, in the document and in every Caffold
+shadow root ([Styling and assets](#styling-and-assets)), only to validate
+ownership. It does not infer actions or scrollports from overlay descendants.
 
 The coordinator enters Action Hint mode from a non-editing `F` key, or from
 its key combination below, and pulls one-shot semantic descriptors from
@@ -639,9 +640,10 @@ Changing any frozen link attribute retires that link's declared owner group,
 while an accessible-name-only patch updates the existing badge and code.
 
 Rendered-content owners register links only after their existing sanitizer and
-final DOM mount. Task Markdown and the shared Markdown Preview enumerate the
-final anchors in their own light-DOM body; GitHub Markdown enumerates its own
-open Shadow DOM. The registry stores the exact anchor, a render-local ordinal,
+final DOM mount. Task Markdown enumerates the final anchors in its own
+light-DOM body; the shared Markdown Preview and GitHub Markdown enumerate theirs
+in their own open shadow roots.
+The registry stores the exact anchor, a render-local ordinal,
 and the frozen native binding. Generated IDs combine the stable parent scope
 with that ordinal and never contain the URL, so duplicate hrefs or labels remain
 distinct. A raw href beginning with `#`, an absent href, or an anchor without an
@@ -655,8 +657,8 @@ Loading, fallback, rerender, representation change, and content replacement
 replace or clear the registry. A disconnected owner publishes no scope and may
 reuse only its still-current mounted registry after reconnection. Markdown
 table-scroll wrappers are explicit per-link clip and scroll dependencies, and
-GitHub Markdown publishes both its host and Shadow root as mutation
-dependencies.
+the Markdown Preview and GitHub Markdown publish both their host and shadow
+root as mutation dependencies.
 
 Document viewers find their links when a session is captured, among the slides
 or cells they have drawn at that moment, since both draw only what is near the
@@ -1409,7 +1411,9 @@ that only draws:
   `caffold-git-compare-tree`;
 - `caffold-review-selected-file` decides what `caffold-review-file-viewer`
   shows for the selected file and representation, loads it, and keeps each
-  view's reading position.
+  view's reading position. A notice's action, such as View source, comes back
+  from the viewer as `caffold:file-viewer-notice-action`, which it turns into
+  a representation intent.
 
 Both changes components answer the selected file's change and diff for the
 viewer, and raise intents for the route changes they ask for.
@@ -1527,7 +1531,7 @@ as Excel displays it, links, and the CSS declarations of every cell style.
 SheetJS reads values, sizes, merges, fills, fonts, and alignment; which style
 each cell uses, the borders, and the frozen panes come from the workbook's own
 XML, which SheetJS hands over unread. The viewer draws the sheet itself, in
-Light DOM with CSS grid. Column letters, row numbers, and frozen rows and
+its shadow root with CSS grid. Column letters, row numbers, and frozen rows and
 columns stay in place with `position: sticky`, and only the rows and columns
 near the viewport are drawn. Track sizes come from the workbook, and a sheet
 can have 1,048,576 rows, more than WebKit lays out in one grid, so JavaScript
@@ -1634,7 +1638,8 @@ terminal is the presented surface, announces each change with
 snapshot for Task Workspace.
 
 `caffold-terminal-view` in `frontend/components/terminal-view.ts` is the
-reusable leaf that loads xterm.js, opens and closes its terminal, sizes it to
+reusable leaf that loads xterm.js, adopts xterm.js's stylesheet into its own
+shadow root, opens and closes its terminal, sizes it to
 its box, applies the Code typeface, Code size, and theme colors, scrolls the
 history under a dragged finger as [Terminals](terminal.md#browser) describes,
 and reports typed input and size changes. It owns no connection or terminal
@@ -2127,31 +2132,46 @@ finishing never starts another Hint session automatically.
 
 ## Styling and assets
 
-Most components render in Light DOM, where CSS is one cascade: `styles.css`
-imports each component's stylesheet, and each stylesheet scopes internal
-selectors below the owning custom element. A parent may size or hide a child
-host, but descendant styling belongs to the child.
+The shared components in `frontend/components/`, the keyboard mode's
+presentation, Scroll selector, Scroll HUD, and shortcut help in
+`keyboard-navigation/components/`, the Action Hint dialog, and pagination with
+its page button extend `CaffoldElement` (`frontend/caffold-element.ts`) and
+render into open shadow roots. Their stylesheets style the host as `:host` and
+the rest by local class, and reach the component as a module: beside each
+stylesheet the server build writes `name.css.js`, whose default export is the
+stylesheet as a `CSSStyleSheet`, the shape a CSS module script has, which
+Safari does not load. The component lists that sheet in its `static styles`,
+and Lit adopts it into every instance's shadow root. The document's stylesheets
+do not reach inside those roots, and their sheets do not reach out. A parent
+names a child it draws only to place, size, or hide its host.
 
-`caffold-pagination` and its `caffold-pagination-button` extend
-`CaffoldElement` (`frontend/caffold-element.ts`) and render into open shadow
-roots instead. Their stylesheets style the host as `:host` and the rest
-by local class, and reach the component as a module: beside each stylesheet the
-server build writes `name.css.js`, whose default export is the stylesheet as a
-`CSSStyleSheet`, the shape a CSS module script has, which Safari does not load.
-The component lists that sheet in its `static styles`, and Lit adopts it into
-every instance's shadow root. The document's stylesheets do not reach inside
-those roots, and their sheets do not reach out. An event that leaves a root,
-such as `caffold:change-page`, is `composed`.
+An event heard outside the root it starts in is `composed`, such as
+`caffold:change-page`, the Scroll selector's choice, and the File Viewer's
+close and refresh. A listener outside the root sees the host as the event's
+target. An event that shared code sends to an element inside a root, such as the
+dismissal of a session-bound keyboard context, does not leave that root, so its
+owner listens on that element. Code that needs the whole page goes through
+`frontend/shadow-roots.ts`: `CaffoldElement` adds its shadow root to a list
+there when it connects and removes it when it disconnects, so the keyboard mode
+can run its document queries, observers, and capturing listeners on every
+listed root as well, and resolve the focused element inside the roots that hold
+it.
+
+The other components render in Light DOM, where CSS is one cascade:
+`styles.css` imports each component's stylesheet, and each stylesheet scopes
+internal selectors below the owning custom element. A parent may size or hide a
+child host, but descendant styling belongs to the child.
 
 `caffold-element/base.css` holds the rules every component's elements take:
-box sizing, button and code fonts, `[hidden]`, `.surface-message`, and
+box sizing, form control and code fonts, `[hidden]`, `.surface-message`, and
 `.sr-only`. `styles.css` imports it first, and `CaffoldElement` puts it before
 the `static styles` of every component that extends it, so such a component
 lists only its own. Theme tokens and inherited text properties reach a shadow
 root from the document.
 
-`frontend/component-styles.ts` exports two shared styles,
-`compactIconButton` and `busySpin`. Components in Light DOM await
+`frontend/component-styles.ts` exports three shared styles:
+`compactIconButton`, `secondaryButton`, and `busySpin`.
+Components in Light DOM await
 `register(owner, target)` on each style they use before defining their element,
 so the await stands above the class `@customElement()` registers, declaring the
 explicit child path from the owner to their own local class; a step in that
@@ -2161,7 +2181,10 @@ once per document and adopts a native `@scope` sheet for each registration. A
 component in a shadow root puts `compactIconButton(target)` in its
 `static styles` instead, `target` being the class path to its element in that
 root; the sheet comes from the stylesheet's module, so it needs no request, and
-every instance shares the one sheet for that target. The CSS uses `:scope`
+every instance shares the one sheet for that target. `secondaryButton`, the
+bordered text button, has only that form, for the File Viewer's notice action;
+components in Light DOM below Tasks still take the same look from
+`tasks/controls.css`. The CSS uses `:scope`
 without naming consumers and may define its own keyframes. Shared defaults use
 the `component-styles` layer; unlayered owner rules retain local overrides.
 Registration lasts for the document, while components retain their native
@@ -2187,7 +2210,8 @@ Busy controls and waiting content use two presentations. A busy control or
 icon slot turns its ring or icon in place through `busySpin`. A place
 where content is about to appear shows `caffold-loading-text` from
 `frontend/components/loading-text.ts`: a short muted phrase crossed by a moving
-highlight and announced as a status. It stays invisible for 180 ms and then
+highlight and announced as a status. It draws the text its owner gives it
+through a `<slot>`. It stays invisible for 180 ms and then
 fades in, so a load that finishes sooner never shows it; reduced motion keeps
 the delay and drops the highlight and the fade. Its one attribute,
 `immediate`, removes only the delay and the fade, for owners that already
@@ -2237,7 +2261,9 @@ Integrated Review retain route state, choice availability, and host placement.
 start pane width and of the person's choice to collapse the start pane. It
 keeps the width last chosen by pointer or keyboard apart from the applied
 width: a narrower container clamps the applied width, and a wider one returns
-to the chosen width. Its host sets `start-default`, `start-min`, `start-max`,
+to the chosen width. The container is its parent, or the host when it sits at
+the top of a shadow root, as in Git Compare.
+Its host sets `start-default`, `start-min`, `start-max`,
 and `end-min` where it needs them, names a `storage-key` and a
 `collapsed-storage-key`, applies the published width to its own grid variable,
 and keeps no copy of either value. The resizer restores both from

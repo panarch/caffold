@@ -1,107 +1,108 @@
-caffold-file-list {
+:host {
   display: block;
   min-width: 0;
   min-height: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
+}
 
-  & .file-list-panel {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    min-height: 0;
-    height: 100%;
-  }
+.file-list-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+}
 
-  & .file-list-panel > header {
-    box-sizing: border-box;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.125rem;
-    align-content: center;
-    height: var(--review-header-height, auto);
-    min-height: 0;
-    overflow: hidden;
-    padding: 0 0.875rem;
-    padding-left: var(--review-navigator-header-padding-inline, 0.875rem);
-    padding-right: var(--review-pane-action-clearance, 0.875rem);
-    border-bottom: 1px solid var(--border);
-  }
+.file-list-panel > header {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.125rem;
+  align-content: center;
+  height: var(--review-header-height, auto);
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 0.875rem;
+  padding-left: var(--review-navigator-header-padding-inline, 0.875rem);
+  padding-right: var(--review-pane-action-clearance, 0.875rem);
+  border-bottom: 1px solid var(--border);
+}
 
-  & h2 {
-    margin: 0;
-    overflow: hidden;
-    font-size: var(--review-pane-title-size, 0.9375rem);
-    font-weight: 600;
-    line-height: var(--review-pane-title-line-height, 1.15);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--review-pane-title-size, 0.9375rem);
+  font-weight: 600;
+  line-height: var(--review-pane-title-line-height, 1.15);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  & .file-list-panel > header span {
-    color: var(--muted);
-    font-size: var(--review-pane-meta-size, 0.8125rem);
-    line-height: var(--review-pane-meta-line-height, normal);
-  }
+.file-list-panel > header span {
+  color: var(--muted);
+  font-size: var(--review-pane-meta-size, 0.8125rem);
+  line-height: var(--review-pane-meta-line-height, normal);
+}
 
-  & .file-list-title-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.5rem;
-    align-items: center;
-    width: 100%;
-    min-width: 0;
-  }
+.file-list-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
 
-  & .entry-count {
-    justify-self: end;
-    white-space: nowrap;
-  }
-  & .file-list-actions {
-    display: grid;
-    grid-auto-flow: column;
-    gap: max(0.375rem, calc(var(--interface-compact-hit-outset) * 2));
-    align-items: center;
-  }
+.entry-count {
+  justify-self: end;
+  white-space: nowrap;
+}
 
-  & .file-refresh-button {
-    margin-block: 0;
-    color: var(--control-fg);
-  }
+.file-list-actions {
+  display: grid;
+  grid-auto-flow: column;
+  gap: max(0.375rem, calc(var(--interface-compact-hit-outset) * 2));
+  align-items: center;
+}
 
-  & .file-refresh-button:hover::before,
-  & .file-refresh-button:focus-visible::before {
-    border-color: var(--border);
-    background: var(--control-hover-bg);
-  }
+.file-refresh-button {
+  margin-block: 0;
+  color: var(--control-fg);
+}
 
-  & .file-refresh-button.is-unavailable {
-    color: var(--warning);
-  }
+.file-refresh-button:hover::before,
+.file-refresh-button:focus-visible::before {
+  border-color: var(--border);
+  background: var(--control-hover-bg);
+}
 
-  & .file-refresh-icon {
-    position: relative;
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-  }
+.file-refresh-button.is-unavailable {
+  color: var(--warning);
+}
 
-  & .git-summary {
-    display: block;
-    min-width: 0;
-    overflow: hidden;
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.file-refresh-icon {
+  position: relative;
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+}
 
-  & .git-summary.is-dirty {
-    color: var(--warning);
-  }
+.git-summary {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-summary.is-dirty {
+  color: var(--warning);
 }
 
 @media (max-width: 860px) {
-  caffold-file-list {
+  :host {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }

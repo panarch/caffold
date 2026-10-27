@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { type ActionHintPull, ActionHints } from "../action-hints.js";
@@ -19,8 +19,11 @@ import {
 } from "../settings.js";
 import { entryIcon, warmIcons } from "./icons.js";
 import "./loading-text.js";
+import { CaffoldElement } from "../caffold-element.js";
 import type { SettingsChangeDetail } from "../settings.js";
 import { DrawnRef, DrawnRefs, drawn } from "./drawn-refs.js";
+
+import styles from "./file-tree.css.js";
 
 export interface FileTreeLoadChildrenDetail {
   key: string;
@@ -93,7 +96,7 @@ interface TreeRow {
 }
 
 @customElement("caffold-file-tree")
-export class CaffoldFileTree extends LitElement {
+export class CaffoldFileTree extends CaffoldElement {
   @state()
   private accessor nodes: FileTreeNode[] = [];
   @state()
@@ -114,6 +117,8 @@ export class CaffoldFileTree extends LitElement {
     getSettings().fileSortMode,
   );
 
+  static override styles = styles;
+
   private entityKey: string | null = null;
   private nodeByKey = new Map<string, FileTreeNode>();
   private knownDirectoryKeys = new Set<string>();
@@ -132,10 +137,6 @@ export class CaffoldFileTree extends LitElement {
       event.detail?.settings?.fileSortMode,
     );
   };
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

@@ -777,7 +777,7 @@ function manySwitcherTasks(count) {
 function switcherHud(page) {
   return page.locator(
     "caffold-task-switcher-dialog > dialog > " +
-      "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+      "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud .scroll-mode-status",
   );
 }
 

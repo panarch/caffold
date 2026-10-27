@@ -1,13 +1,17 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import type { ActionHintSessionTarget } from "../../action-hints.js";
+import { CaffoldElement } from "../../caffold-element.js";
 import { DrawnRef, DrawnRefs, drawn } from "../../components/drawn-refs.js";
+import { focusedElement } from "../../shadow-roots.js";
 import {
   ACTION_HINT_ACTIVATE_EVENT,
   ACTION_HINT_CANCEL_EVENT,
 } from "../control.js";
 import { clampBadgePosition, type HintProgress, type Rect } from "../model.js";
+
+import styles from "./dialog.css.js";
 
 export interface ActionHintCancelDetail {
   reason: string;
@@ -29,7 +33,9 @@ let actionHintDialogInstanceId = 0;
  * stays, so focus and measurements carry over.
  */
 @customElement("caffold-action-hint-dialog")
-export class CaffoldActionHintDialog extends LitElement {
+export class CaffoldActionHintDialog extends CaffoldElement {
+  static override styles = styles;
+
   private readonly titleId: string;
   private readonly descriptionId: string;
   private targets: readonly ActionHintSessionTarget[] = [];
@@ -70,10 +76,6 @@ export class CaffoldActionHintDialog extends LitElement {
     actionHintDialogInstanceId += 1;
     this.titleId = `action-hint-title-${actionHintDialogInstanceId}`;
     this.descriptionId = `action-hint-description-${actionHintDialogInstanceId}`;
-  }
-
-  override createRenderRoot() {
-    return this;
   }
 
   override disconnectedCallback() {
@@ -156,10 +158,12 @@ export class CaffoldActionHintDialog extends LitElement {
   }
 
   allowsNativeActivation(event: KeyboardEvent) {
+    // A listener outside this root sees the host as the target.
+    const [target] = event.composedPath();
     return Boolean(
       (event.key === "Enter" || event.key === " ") &&
-        event.target instanceof HTMLButtonElement &&
-        this.dialog.value?.contains(event.target),
+        target instanceof HTMLButtonElement &&
+        this.dialog.value?.contains(target),
     );
   }
 
@@ -184,7 +188,7 @@ export class CaffoldActionHintDialog extends LitElement {
     ) {
       return false;
     }
-    const focused = document.activeElement;
+    const focused = focusedElement();
     const focusedBadge =
       focused instanceof HTMLButtonElement && dialog.contains(focused)
         ? focused

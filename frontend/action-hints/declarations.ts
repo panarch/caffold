@@ -19,6 +19,7 @@ import {
   type DeclaredElement,
   ElementDeclarations,
 } from "../element-declarations.js";
+import { elementAndShadowRoot } from "../shadow-roots.js";
 import type { ActionFor } from "./model.js";
 
 // One target as its owner's template declares it, on the control itself. A
@@ -159,7 +160,7 @@ export function declaredActionHintScope(
   const mutationRoots = new Set<Node>();
   for (const entry of declarations) {
     const watched = entry.value.declaration.owner?.() ?? owner;
-    for (const root of rootsInside(watched)) {
+    for (const root of elementAndShadowRoot(watched)) {
       mutationRoots.add(root);
     }
     const ownClipRoots = (entry.value.declaration.clipRoots?.() ?? []).filter(
@@ -180,15 +181,11 @@ export function declaredActionHintScope(
   return {
     blocked: false,
     targets,
-    mutationRoots: mutationRoots.size ? [...mutationRoots] : rootsInside(owner),
+    mutationRoots: mutationRoots.size
+      ? [...mutationRoots]
+      : elementAndShadowRoot(owner),
     scrollRoots: [...scrollRoots],
   };
-}
-
-// An owner that renders into a shadow root changes there, out of reach of an
-// observer on the owner alone.
-function rootsInside(owner: Element): Node[] {
-  return owner.shadowRoot ? [owner, owner.shadowRoot] : [owner];
 }
 
 function declaredTarget(

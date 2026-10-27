@@ -84,11 +84,8 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
     await expect(dialog.getByLabel(/Show folders/)).toHaveCount(0);
   }
 
-  const anchored = await page.evaluate(() => {
+  const anchored = await dialog.locator('[data-action-hint-code="N"]').evaluate((badge) => {
     const control = document.querySelector(".task-list-new-task");
-    const badge = document.querySelector(
-      'caffold-action-hint-dialog [data-action-hint-code="N"]',
-    );
     const controlRect = control.getBoundingClientRect();
     const badgeRect = badge.getBoundingClientRect();
     return {
@@ -1117,6 +1114,7 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await dialog.evaluate((element) => {
     element.dispatchEvent(new CompositionEvent("compositionstart", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
     element.dispatchEvent(new Event("cancel", {
@@ -1127,6 +1125,7 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await dialog.evaluate((element) => {
     element.dispatchEvent(new CompositionEvent("compositionend", {
       bubbles: true,
+      composed: true,
       data: "ㅎ",
     }));
   });
@@ -1198,14 +1197,11 @@ test("keeps unaffected row owners through local actionability, scroll, and topol
   });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('[data-action-hint-code="TA"]')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => {
+  await expect.poll(() => dialog.locator('[data-action-hint-code="TA"]').evaluate((badge) => {
     const control = document.querySelector(
       'button.task-row[data-thread-id="action_hint_01"]',
     );
-    const badge = document.querySelector(
-      'caffold-action-hint-dialog [data-action-hint-code="TA"]',
-    );
-    if (!control || !badge) {
+    if (!control) {
       return Infinity;
     }
     return Math.abs(
@@ -1406,14 +1402,12 @@ test("retires only a changed Conversation owner while preserving codes and the r
   await expect(dialog.locator(
     `[data-action-hint-code="${outsideCode}"]`,
   )).toBeVisible();
-  expect(await page.evaluate(({ outsideCode, survivorCode }) => (
-    window.__conversationHintSurvivorBadge === document.querySelector(
-      `caffold-action-hint-dialog [data-action-hint-code="${survivorCode}"]`,
-    ) &&
-    window.__conversationHintOutsideBadge === document.querySelector(
-      `caffold-action-hint-dialog [data-action-hint-code="${outsideCode}"]`,
-    )
-  ), { outsideCode, survivorCode })).toBe(true);
+  expect(await dialog.locator(
+    `[data-action-hint-code="${survivorCode}"]`,
+  ).evaluate((badge) => badge === window.__conversationHintSurvivorBadge)).toBe(true);
+  expect(await dialog.locator(
+    `[data-action-hint-code="${outsideCode}"]`,
+  ).evaluate((badge) => badge === window.__conversationHintOutsideBadge)).toBe(true);
 
   await conversation.evaluate((element) => {
     // A new picture replaces Owner A's preview button; new words alone would
@@ -1460,33 +1454,30 @@ test("retires only a changed Conversation owner while preserving codes and the r
   await expect(dialog.locator(
     `[data-action-hint-code="${outsideCode}"]`,
   )).toBeVisible();
-  expect(await page.evaluate(({ outsideCode, survivorCode }) => (
-    window.__conversationHintSurvivorBadge === document.querySelector(
-      `caffold-action-hint-dialog [data-action-hint-code="${survivorCode}"]`,
-    ) &&
-    window.__conversationHintOutsideBadge === document.querySelector(
-      `caffold-action-hint-dialog [data-action-hint-code="${outsideCode}"]`,
-    )
-  ), { outsideCode, survivorCode })).toBe(true);
+  expect(await dialog.locator(
+    `[data-action-hint-code="${survivorCode}"]`,
+  ).evaluate((badge) => badge === window.__conversationHintSurvivorBadge)).toBe(true);
+  expect(await dialog.locator(
+    `[data-action-hint-code="${outsideCode}"]`,
+  ).evaluate((badge) => badge === window.__conversationHintOutsideBadge)).toBe(true);
   expect(await survivorPreview.evaluate((element) =>
     element === window.__conversationHintSurvivorControl &&
     element.closest(".task-event[data-conversation-entry-key]") ===
       window.__conversationHintSurvivorOwner
   )).toBe(true);
-  await expect.poll(() => page.evaluate((code) => {
+  await expect.poll(() => dialog.locator(
+    `[data-action-hint-code="${survivorCode}"]`,
+  ).evaluate((badge) => {
     const control = document.querySelector(
       'button[aria-label="Preview owner-b.png"]',
     );
-    const badge = document.querySelector(
-      `caffold-action-hint-dialog [data-action-hint-code="${code}"]`,
-    );
-    if (!control || !badge) {
+    if (!control) {
       return Infinity;
     }
     return Math.abs(
       control.getBoundingClientRect().top - badge.getBoundingClientRect().top,
     );
-  }, survivorCode)).toBeLessThanOrEqual(1);
+  })).toBeLessThanOrEqual(1);
   const currentSurvivorTop = await dialog.locator(
     `[data-action-hint-code="${survivorCode}"]`,
   ).evaluate((element) => element.getBoundingClientRect().top);
@@ -1908,7 +1899,8 @@ async function visibleTaskTitles(page) {
 }
 
 async function captureActionHintVisualState(page) {
-  return page.evaluate(() => {
+  const badges = actionHintDialog(page).locator("button[data-action-hint-code]");
+  return badges.evaluateAll((badges) => {
     const viewport = {
       left: window.visualViewport?.offsetLeft ?? 0,
       top: window.visualViewport?.offsetTop ?? 0,
@@ -2023,8 +2015,8 @@ async function captureActionHintVisualState(page) {
     const workspaceSeparator = workspace?.querySelector(
       ":scope > .task-workspace-surface > .task-workspace-master-detail > caffold-pane-resizer",
     );
-    const workspaceHandle = workspaceSeparator?.querySelector(
-      ":scope > .pane-resizer-handle",
+    const workspaceHandle = workspaceSeparator?.shadowRoot.querySelector(
+      ".pane-resizer-handle",
     );
     if (workspaceSeparator && workspaceHandle && masterDetail) {
       automaticTargets.set(
@@ -2035,9 +2027,6 @@ async function captureActionHintVisualState(page) {
     let taskIndex = 0;
     const alignmentErrors = [];
     const viewportEscapes = [];
-    const badges = [...document.querySelectorAll(
-      "caffold-action-hint-dialog button[data-action-hint-code]",
-    )];
     for (const badge of badges) {
       const code = badge.dataset.actionHintCode;
       const label = badge.getAttribute("aria-label")

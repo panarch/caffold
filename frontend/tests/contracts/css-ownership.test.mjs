@@ -11,32 +11,38 @@ const frontendRoot = fileURLToPath(new URL("../../", import.meta.url));
 const registeredStyles = [
   "component-styles/compact-icon-button.css",
   "component-styles/busy-spin.css",
+  "component-styles/secondary-button.css",
 ];
 const baseStyles = "caffold-element/base.css";
 // Stylesheets a component puts in the shadow root it renders into, by owner.
 const shadowRootStyles = new Map([
+  ["action-hints/components/dialog.css", "caffold-action-hint-dialog"],
+  ["components/docx-viewer.css", "caffold-docx-viewer"],
+  ["components/file-navigator.css", "caffold-file-navigator"],
+  ["components/file-navigator/components/list.css", "caffold-file-list"],
+  ["components/file-tree.css", "caffold-file-tree"],
+  ["components/file-viewer.css", "caffold-review-file-viewer"],
+  ["components/file-viewer/components/code-viewer.css", "caffold-code-viewer"],
+  ["components/file-viewer/components/diff-viewer.css", "caffold-diff-viewer"],
+  ["components/git-compare-browser.css", "caffold-git-compare-browser"],
+  ["components/git-compare-tree.css", "caffold-git-compare-tree"],
+  ["components/loading-text.css", "caffold-loading-text"],
+  ["components/markdown-preview.css", "caffold-markdown-preview"],
   ["components/pagination.css", "caffold-pagination"],
   ["components/pagination/components/button.css", "caffold-pagination-button"],
+  ["components/pane-resizer.css", "caffold-pane-resizer"],
+  ["components/pdf-viewer.css", "caffold-pdf-viewer"],
+  ["components/pptx-viewer.css", "caffold-pptx-viewer"],
+  ["components/segmented-control.css", "caffold-segmented-control"],
+  ["components/terminal-view.css", "caffold-terminal-view"],
+  ["components/xlsx-viewer.css", "caffold-xlsx-viewer"],
+  ["keyboard-navigation/components/hud.css", "caffold-scroll-mode-hud"],
+  ["keyboard-navigation/components/presentation.css", "caffold-keyboard-navigation-presentation"],
+  ["keyboard-navigation/components/selector.css", "caffold-scroll-surface-selector"],
+  ["keyboard-navigation/components/shortcut-dialog.css", "caffold-keyboard-shortcut-dialog"],
+  ["keyboard-navigation/components/shortcut-list.css", "caffold-keyboard-shortcut-list"],
 ]);
 const ownership = new Map([
-  ["components/file-viewer/components/code-viewer.css", ["caffold-code-viewer"]],
-  ["components/file-viewer/components/diff-viewer.css", ["caffold-diff-viewer"]],
-  ["components/file-navigator.css", ["caffold-file-navigator"]],
-  ["components/file-navigator/components/list.css", ["caffold-file-list"]],
-  ["components/file-tree.css", ["caffold-file-tree"]],
-  [
-    "components/file-viewer.css",
-    ["caffold-review-file-viewer"],
-  ],
-  [
-    "components/markdown-preview.css",
-    ["caffold-markdown-preview"],
-  ],
-  ["components/git-compare-browser.css", ["caffold-git-compare-browser"]],
-  [
-    "components/git-compare-tree.css",
-    ["caffold-git-compare-tree"],
-  ],
   [
     "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css",
     ["caffold-review-working-tree-changes"],
@@ -53,42 +59,7 @@ const ownership = new Map([
     "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.css",
     ["caffold-review-selected-file"],
   ],
-  ["components/pdf-viewer.css", ["caffold-pdf-viewer"]],
-  ["components/docx-viewer.css", ["caffold-docx-viewer"]],
-  ["components/pptx-viewer.css", ["caffold-pptx-viewer"]],
-  ["components/xlsx-viewer.css", ["caffold-xlsx-viewer"]],
-  [
-    "components/pane-resizer.css",
-    ["caffold-pane-resizer"],
-  ],
-  ["components/segmented-control.css", ["caffold-segmented-control"]],
-  ["components/loading-text.css", ["caffold-loading-text"]],
-  ["components/terminal-view.css", ["caffold-terminal-view"]],
   ["pages/(task-workspace)/layout.css", ["caffold-task-workspace"]],
-  [
-    "keyboard-navigation/components/hud.css",
-    ["caffold-scroll-mode-hud"],
-  ],
-  [
-    "keyboard-navigation/components/selector.css",
-    ["caffold-scroll-surface-selector"],
-  ],
-  [
-    "keyboard-navigation/components/presentation.css",
-    ["caffold-keyboard-navigation-presentation"],
-  ],
-  [
-    "keyboard-navigation/components/shortcut-list.css",
-    ["caffold-keyboard-shortcut-list"],
-  ],
-  [
-    "keyboard-navigation/components/shortcut-dialog.css",
-    ["caffold-keyboard-shortcut-dialog"],
-  ],
-  [
-    "action-hints/components/dialog.css",
-    ["caffold-action-hint-dialog"],
-  ],
   [
     "pages/(task-workspace)/components/navigation.css",
     ["caffold-task-workspace-navigation"],
@@ -898,8 +869,26 @@ test("a shadow root's stylesheet is its owner's alone and names no element outsi
     assert.match(module, new RegExp(`from "\\./${name.replace(".", "\\.")}\\.js"`), path);
     assert.equal(entrypoint.includes(`@import "./${path}"`), false, path);
     // A constructed stylesheet drops `@import`; the host is `:host`.
-    assert.doesNotMatch(css, /@import\b|caffold-/, path);
-    assert.ok(effectiveSelectors(css).includes(":host"), path);
+    assert.doesNotMatch(css, /@import\b/, path);
+    // A pseudo-element goes after `:host(…)`; inside it, the rule is dropped.
+    assert.doesNotMatch(css, /:host\([^)]*::/, path);
+    const selectors = effectiveSelectors(css);
+    assert.ok(selectors.some((selector) => selector.startsWith(":host")), path);
+    // Another element by name only as a child host the owner draws and places.
+    for (const selector of selectors) {
+      for (const [element] of selector.matchAll(/caffold-[a-z0-9-]+/g)) {
+        assert.ok(
+          module.includes(`<${element}`) || module.includes(`createElement("${element}")`),
+          `${path} names ${element}, which ${owner} does not draw`,
+        );
+        // The element ends the selector, or an argument of a closing `:is()`.
+        assert.match(
+          selector,
+          new RegExp(`${element}(?:\\[[^\\]]*\\]|:[\\w-]+)*(?:,[^()]*)?\\)?$`),
+          `${path} reaches inside ${element}: ${selector}`,
+        );
+      }
+    }
   }
 });
 

@@ -1,10 +1,4 @@
 caffold-tasks-page {
-  & button,
-  & input,
-  & textarea {
-    font: inherit;
-  }
-
   & .task-primary-button,
   & .task-secondary-button,
   & .task-icon-button {

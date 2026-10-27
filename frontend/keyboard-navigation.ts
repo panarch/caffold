@@ -57,6 +57,12 @@ import {
 } from "./keyboard-navigation/shortcuts.js";
 import { availableScrollAxes, type ScrollAxis } from "./scroll-scope.js";
 import type { SettingsChangeDetail } from "./settings.js";
+import {
+  containsAcrossShadowRoots,
+  documentTrees,
+  eachDocumentTree,
+  focusedElement,
+} from "./shadow-roots.js";
 
 export {
   KeyboardContexts,
@@ -178,7 +184,7 @@ export class KeyboardNavigationController {
     this.handleKeydown(event);
   private readonly boundCompositionStart = (event: Event) => {
     this.compositionActive = true;
-    this.compositionOwner = event.target;
+    this.compositionOwner = originalTarget(event);
     if (
       this.storedNode === KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING ||
       this.storedNode === KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE
@@ -188,7 +194,7 @@ export class KeyboardNavigationController {
   };
   private readonly boundCompositionEnd = () => this.clearComposition();
   private readonly boundFocusOut = (event: Event) => {
-    if (event.target === this.compositionOwner) {
+    if (originalTarget(event) === this.compositionOwner) {
       this.clearComposition();
     }
   };
@@ -204,7 +210,7 @@ export class KeyboardNavigationController {
   private readonly boundSurfaceSelect = (
     event: CustomEvent<ScrollSurfaceSelectDetail>,
   ) => {
-    if (event.target !== this.selectionSession?.selector) {
+    if (originalTarget(event) !== this.selectionSession?.selector) {
       return;
     }
     event.stopPropagation();
@@ -213,7 +219,7 @@ export class KeyboardNavigationController {
   private readonly boundSurfaceCancel = (
     event: CustomEvent<ScrollSurfaceCancelDetail>,
   ) => {
-    if (event.target !== this.selectionSession?.selector) {
+    if (originalTarget(event) !== this.selectionSession?.selector) {
       return;
     }
     event.stopPropagation();
@@ -231,7 +237,7 @@ export class KeyboardNavigationController {
   private readonly boundShortcutClose = (
     event: CustomEvent<KeyboardShortcutCloseDetail>,
   ) => {
-    if (event.target !== this.shortcutDialog) {
+    if (originalTarget(event) !== this.shortcutDialog) {
       return;
     }
     event.stopPropagation();
@@ -398,7 +404,7 @@ export class KeyboardNavigationController {
       return;
     }
     const editable =
-      editableOwner(event.target) ?? editableOwner(document.activeElement);
+      editableOwner(originalTarget(event)) ?? editableOwner(focusedElement());
     if (editable) {
       if (
         event.key === "Escape" &&
@@ -680,9 +686,7 @@ export class KeyboardNavigationController {
       this.actionHints.session?.opener ??
       this.selectionSession?.opener ??
       this.activeSession?.opener ??
-      (document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null)
+      focusedHTMLElement()
     );
   }
 
@@ -839,10 +843,7 @@ export class KeyboardNavigationController {
   private beginSelection(snapshot: ScrollSnapshot) {
     const session: SelectionSession = {
       ...snapshot,
-      opener:
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null,
+      opener: focusedHTMLElement(),
       selector: snapshot.context.selector,
       buffer: "",
       cleanup: [],
@@ -942,9 +943,7 @@ export class KeyboardNavigationController {
       opener:
         snapshot.opener instanceof HTMLElement
           ? snapshot.opener
-          : document.activeElement instanceof HTMLElement
-            ? document.activeElement
-            : null,
+          : focusedHTMLElement(),
       context: snapshot.context,
       contextRect: snapshot.contextRect,
       viewport: snapshot.viewport,
@@ -1062,11 +1061,7 @@ export class KeyboardNavigationController {
     if (this.storedNode) {
       return this.storedNode;
     }
-    if (
-      this.compositionActive ||
-      editable ||
-      editableOwner(document.activeElement)
-    ) {
+    if (this.compositionActive || editable || editableOwner(focusedElement())) {
       return KEYBOARD_NAVIGATION_NODE.EDITING;
     }
     return KEYBOARD_NAVIGATION_NODE.NORMAL;
@@ -1104,7 +1099,7 @@ export class KeyboardNavigationController {
       const context = contexts.find((candidate) => candidate.root === popover);
       if (
         context?.kind !== "popover" ||
-        modals.some((modal) => !modal.contains(popover))
+        modals.some((modal) => !containsAcrossShadowRoots(modal, popover))
       ) {
         return null;
       }
@@ -1424,22 +1419,27 @@ export class KeyboardNavigationController {
     session: SessionSignals,
     revalidate: SignalRevalidation,
   ) {
-    if (typeof MutationObserver === "function" && document.documentElement) {
-      session.ownershipObserver = new MutationObserver(() => revalidate());
-      session.ownershipObserver.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ["open"],
-        subtree: true,
-      });
-    }
+    const observer =
+      typeof MutationObserver === "function"
+        ? new MutationObserver(() => revalidate())
+        : null;
+    session.ownershipObserver = observer;
     const handleBeforeToggle = (event: Event) => {
       if ((event as ToggleEvent).newState === "open") {
         revalidate({ opening: true, owner: event.target });
       }
     };
-    document.addEventListener("beforetoggle", handleBeforeToggle, true);
-    session.cleanup.push(() =>
-      document.removeEventListener("beforetoggle", handleBeforeToggle, true),
+    session.cleanup.push(
+      eachDocumentTree((tree) => {
+        observer?.observe(tree, {
+          attributes: true,
+          attributeFilter: ["open"],
+          subtree: true,
+        });
+        tree.addEventListener("beforetoggle", handleBeforeToggle, true);
+        return () =>
+          tree.removeEventListener("beforetoggle", handleBeforeToggle, true);
+      }),
     );
   }
 
@@ -1520,7 +1520,7 @@ function scrollSurfaceAvailableAxes(
     if (
       !(
         surface.scrollport.isConnected &&
-        contextContains(root, surface.scrollport) &&
+        containsAcrossShadowRoots(root, surface.scrollport) &&
         hasLayoutBox(surface.scrollport)
       )
     ) {
@@ -1530,21 +1530,6 @@ function scrollSurfaceAvailableAxes(
   } catch {
     return null;
   }
-}
-
-function contextContains(root: Element, element: Element) {
-  if (root.contains(element)) {
-    return true;
-  }
-  let currentRoot = element.getRootNode();
-  while (currentRoot instanceof ShadowRoot) {
-    const host = currentRoot.host;
-    if (host === root || root.contains(host)) {
-      return true;
-    }
-    currentRoot = host.getRootNode();
-  }
-  return false;
 }
 
 function hasLayoutBox(element: Element | null | undefined) {
@@ -1589,6 +1574,17 @@ function captureViewport(): Viewport {
   };
 }
 
+// The node an event started at, which a listener outside a shadow root sees
+// only as that root's host.
+function originalTarget(event: Event) {
+  return event.composedPath?.()[0] ?? event.target;
+}
+
+function focusedHTMLElement() {
+  const focused = focusedElement();
+  return focused instanceof HTMLElement ? focused : null;
+}
+
 function editableOwner(element: EventTarget | null) {
   if (!(element instanceof Element)) {
     return null;
@@ -1616,7 +1612,9 @@ function focusableTarget(
 
 function openPopovers() {
   try {
-    return [...document.querySelectorAll(":popover-open")];
+    return documentTrees().flatMap((tree) => [
+      ...tree.querySelectorAll(":popover-open"),
+    ]);
   } catch {
     return [];
   }
@@ -1637,7 +1635,9 @@ function sameContextOwner(
 
 function openModalDialogs() {
   try {
-    return [...document.querySelectorAll("dialog:modal")];
+    return documentTrees().flatMap((tree) => [
+      ...tree.querySelectorAll("dialog:modal"),
+    ]);
   } catch {
     return [];
   }
