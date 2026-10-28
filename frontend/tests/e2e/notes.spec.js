@@ -1432,7 +1432,7 @@ test("covered Markdown links are excluded and companion frozen hints survive pri
   await popup.close();
 });
 
-test("Notes action paint gaps match the compact toolbar while floating shadows scale with the interface", { tag: ["@desktop", "@foldable"] }, async ({ page }, testInfo) => {
+test("Notes action paint gaps and hit targets match the compact toolbar across Interface scales", { tag: ["@desktop", "@foldable"] }, async ({ page }, testInfo) => {
   await stubNotes(page);
   await page.setViewportSize({ width: 736, height: 440 });
   await page.goto("/notes/storage");
@@ -1446,55 +1446,82 @@ test("Notes action paint gaps match the compact toolbar while floating shadows s
     const aPaint = getComputedStyle(first, "::before"), bPaint = getComputedStyle(second, "::before");
     return { hitGap: b.left - a.right, paintGap: b.left + Number.parseFloat(bPaint.left) - (a.right - Number.parseFloat(aPaint.right)), hitHeight: a.height };
   });
-  for (const preset of ["geist-sans", "inter", "pretendard", "system"]) {
-    for (const [scale, theme] of [[90, "light"], [100, "light"], [120, "dark"]]) {
-      await page.evaluate(async ({ scale, theme, preset }) => {
-        const settings = await import("/assets/settings.js");
-        settings.setUiTypefacePreset(preset);
-        settings.setAppearanceRangeSetting("interfaceScalePercent", scale);
-        settings.setThemeMode(theme);
-        await document.fonts.ready;
-      }, { scale, theme, preset });
-      const expected = await page.evaluate(() => {
-        const probe = document.createElement("div");
-        probe.style.width = "var(--interface-toolbar-gap)";
-        document.body.append(probe);
-        const gap = Number.parseFloat(getComputedStyle(probe).width);
-        probe.remove();
-        return { gap, root: Number.parseFloat(getComputedStyle(document.documentElement).fontSize) };
-      });
-      await page.setViewportSize({ width: 933, height: 440 });
-      await page.goto("/tasks");
-      await expect(page.locator(".task-list-switcher")).toBeVisible();
-      const toolbar = await actionGeometry(".task-list-primary-actions");
-      expect(toolbar.paintGap).toBeGreaterThanOrEqual(expected.gap - 0.05);
-      await page.setViewportSize({ width: 736, height: 440 });
-      await page.goto("/notes/storage");
-      await expect(documentPane(page, "primary").locator("caffold-markdown-preview h1")).toHaveText("Storage");
-      const normal = await actionGeometry('caffold-note-document[data-note-side="primary"] .note-document-actions');
-      expect(normal.paintGap).toBeCloseTo(toolbar.paintGap, 1);
-      expect(normal.hitGap).toBeGreaterThanOrEqual(0);
-      await documentPane(page, "primary").locator(".note-document-split").click();
-      await page.locator("caffold-notes-workspace > caffold-notes-navigator").getByRole("button", { name: "Inbox", exact: true }).click();
-      await expect(documentPane(page, "secondary").locator("caffold-markdown-preview h1")).toHaveText("Inbox");
-      const paired = await actionGeometry('caffold-note-document[data-note-side="secondary"] .note-document-actions');
-      expect(paired.paintGap).toBeCloseTo(normal.paintGap, 1);
-      expect(paired.hitHeight).toBeCloseTo(normal.hitHeight, 1);
-      const shadows = await page.locator("caffold-task-workspace-navigation").evaluate((element) => {
-        const shadow = getComputedStyle(element).boxShadow;
-        return [...shadow.matchAll(/rgba?\([^)]*\)\s+0px\s+([\d.]+)px\s+([\d.]+)px/g)].map((match) => ({ color: match[0].split(")")[0] + ")", y: Number(match[1]), blur: Number(match[2]) }));
-      });
-      expect(shadows).toHaveLength(2);
-      expect(shadows[0].y).toBeCloseTo(expected.root * 0.125, 2);
-      expect(shadows[0].blur).toBeCloseTo(expected.root * 0.375, 2);
-      expect(shadows[1].y).toBeCloseTo(expected.root * 0.375, 2);
-      expect(shadows[1].blur).toBeCloseTo(expected.root * 1.25, 2);
-      expect(shadows[0].color).toContain(theme === "dark" ? "0.24" : "0.12");
-      expect(shadows[1].color).toContain(theme === "dark" ? "0.36" : "0.14");
-      if (preset === "geist-sans" && [100, 120].includes(scale)) await captureReviewScreenshot(page, testInfo, `floating-shadow-gap-${theme}`);
-      await documentPane(page, "secondary").locator(".note-document-close").click();
-    }
+  const navigation = page.locator("caffold-task-workspace-navigation");
+  await expect(documentPane(page, "primary").locator("caffold-markdown-preview h1")).toHaveText("Storage");
+  // Font-dependent widths belong to the floating-tab sizing test above.
+  for (const scale of [90, 100, 120]) {
+    await page.evaluate(async (scale) => {
+      const { setAppearanceRangeSetting } = await import("/assets/settings.js");
+      setAppearanceRangeSetting("interfaceScalePercent", scale);
+    }, scale);
+    const expectedGap = await page.evaluate(() => {
+      const probe = document.createElement("div");
+      probe.style.width = "var(--interface-toolbar-gap)";
+      document.body.append(probe);
+      const gap = Number.parseFloat(getComputedStyle(probe).width);
+      probe.remove();
+      return gap;
+    });
+    await page.setViewportSize({ width: 933, height: 440 });
+    await navigation.getByRole("button", { name: "Tasks", exact: true }).click();
+    await expect(page.locator(".task-list-switcher")).toBeVisible();
+    const toolbar = await actionGeometry(".task-list-primary-actions");
+    expect(toolbar.paintGap).toBeGreaterThanOrEqual(expectedGap - 0.05);
+    // Tasks hides the workspace tabs when its detail fills a narrow viewport.
+    await navigation.getByRole("button", { name: "Notes", exact: true }).click();
+    await expect(page).toHaveURL(/\/notes\/storage$/);
+    await page.setViewportSize({ width: 736, height: 440 });
+    await expect(documentPane(page, "primary").locator("caffold-markdown-preview h1")).toHaveText("Storage");
+    await expect(documentPane(page, "primary").getByRole("button", { name: "Note details", exact: true })).toBeVisible();
+    const normal = await actionGeometry('caffold-note-document[data-note-side="primary"] .note-document-actions');
+    expect(normal.paintGap).toBeCloseTo(toolbar.paintGap, 1);
+    expect(normal.hitGap).toBeGreaterThanOrEqual(0);
+    expect(normal.hitHeight).toBeCloseTo(toolbar.hitHeight, 1);
+    await documentPane(page, "primary").locator(".note-document-split").click();
+    await page.locator("caffold-notes-workspace > caffold-notes-navigator").getByRole("button", { name: "Inbox", exact: true }).click();
+    await expect(page).toHaveURL(/\/notes\/storage\?beside=inbox$/);
+    await expect(documentPane(page, "secondary").locator("caffold-markdown-preview h1")).toHaveText("Inbox");
+    await expect(documentPane(page, "secondary").getByRole("button", { name: "Note details", exact: true })).toBeVisible();
+    const paired = await actionGeometry('caffold-note-document[data-note-side="secondary"] .note-document-actions');
+    expect(paired.paintGap).toBeCloseTo(normal.paintGap, 1);
+    expect(paired.hitGap).toBeGreaterThanOrEqual(0);
+    expect(paired.hitHeight).toBeCloseTo(normal.hitHeight, 1);
+    if (scale === 100) await captureReviewScreenshot(page, testInfo, "notes-action-gaps");
+    await documentPane(page, "secondary").locator(".note-document-close").click();
+    await expect(page).toHaveURL(/\/notes\/storage$/);
+  }
+});
+
+test("floating navigation shadows scale with the interface and theme and disappear in narrow layouts", { tag: ["@desktop", "@foldable"] }, async ({ page }, testInfo) => {
+  await stubNotes(page);
+  await page.setViewportSize({ width: 736, height: 440 });
+  await page.goto("/notes");
+  await expect(treeNames(page)).toHaveText(["Projects", "Inbox"]);
+  const navigation = page.locator("caffold-task-workspace-navigation");
+  await expect(navigation).toBeVisible();
+  for (const [scale, theme] of [[90, "light"], [100, "light"], [120, "dark"]]) {
+    await page.evaluate(async ({ scale, theme }) => {
+      const settings = await import("/assets/settings.js");
+      settings.setAppearanceRangeSetting("interfaceScalePercent", scale);
+      settings.setThemeMode(theme);
+    }, { scale, theme });
+    const { root, shadows } = await navigation.evaluate((element) => {
+      const shadow = getComputedStyle(element).boxShadow;
+      return {
+        root: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+        shadows: [...shadow.matchAll(/rgba?\([^)]*\)\s+0px\s+([\d.]+)px\s+([\d.]+)px/g)].map((match) => ({ color: match[0].split(")")[0] + ")", y: Number(match[1]), blur: Number(match[2]) })),
+      };
+    });
+    expect(shadows).toHaveLength(2);
+    expect(shadows[0].y).toBeCloseTo(root * 0.125, 2);
+    expect(shadows[0].blur).toBeCloseTo(root * 0.375, 2);
+    expect(shadows[1].y).toBeCloseTo(root * 0.375, 2);
+    expect(shadows[1].blur).toBeCloseTo(root * 1.25, 2);
+    expect(shadows[0].color).toContain(theme === "dark" ? "0.24" : "0.12");
+    expect(shadows[1].color).toContain(theme === "dark" ? "0.36" : "0.14");
+    if ([100, 120].includes(scale)) await captureReviewScreenshot(page, testInfo, `floating-shadow-${theme}`);
   }
   await page.setViewportSize({ width: 390, height: 440 });
-  expect(await page.locator("caffold-task-workspace-navigation").evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none");
+  await expect(navigation).toBeVisible();
+  await expect(navigation).toHaveCSS("box-shadow", "none");
 });
