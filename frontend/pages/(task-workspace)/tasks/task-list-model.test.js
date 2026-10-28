@@ -79,3 +79,24 @@ test("upsert and detail identity accept canonical threadId before legacy id", ()
   assert.equal(tasks[0].title, "Next");
   assert.equal(taskDetailThreadId({ threadId: "detail-thread", task: next }), "detail-thread");
 });
+
+test("archived worktrees group by their recorded repository after their directories are removed", () => {
+  const archived = (id, repositoryPath, recency) => task(id, recency, {
+    cwd: `/caffold/worktrees/${id}`,
+    cwdPath: null,
+    worktree: null,
+    repositoryPath,
+  });
+  const groups = groupTasksByRepository([
+    archived("alpha-old", "projects/alpha", 10),
+    archived("beta", "projects/beta", 20),
+    archived("alpha-new", "projects/alpha", 30),
+  ]);
+
+  assert.deepEqual(groups.map(({ key, label, rootPath, repository, tasks }) => ({
+    key, label, rootPath, repository, tasks: tasks.map(({ threadId }) => threadId),
+  })), [
+    { key: "repository:projects/alpha", label: "alpha", rootPath: "projects/alpha", repository: true, tasks: ["alpha-new", "alpha-old"] },
+    { key: "repository:projects/beta", label: "beta", rootPath: "projects/beta", repository: true, tasks: ["beta"] },
+  ]);
+});

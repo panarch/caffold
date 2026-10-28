@@ -2165,7 +2165,7 @@ mod tests {
             .expect("the archived list does not ask Codex either")
             .0;
         assert_eq!(listed.tasks.len(), 1);
-        assert_eq!(listed.tasks[0].thread_id, thread_id);
+        assert_eq!(listed.tasks[0].task.thread_id, thread_id);
 
         let restored = task_restore(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
@@ -2271,7 +2271,7 @@ mod tests {
             list_archived_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
                 .await
                 .expect("archived list succeeds");
-        assert_eq!(archived_page.0.tasks[0].thread_id, thread_id);
+        assert_eq!(archived_page.0.tasks[0].task.thread_id, thread_id);
 
         let restored = task_restore(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
@@ -3151,9 +3151,9 @@ mod tests {
                 .await
                 .expect("unavailable conversation remains listable");
         assert_eq!(archived.0.tasks.len(), 1);
-        assert_eq!(archived.0.tasks[0].thread_id, thread_id);
-        assert!(!archived.0.tasks[0].conversation_available);
-        assert_eq!(archived.0.tasks[0].preview, "Conversation unavailable");
+        assert_eq!(archived.0.tasks[0].task.thread_id, thread_id);
+        assert!(!archived.0.tasks[0].task.conversation_available);
+        assert_eq!(archived.0.tasks[0].task.preview, "Conversation unavailable");
 
         state.task_events.publish_local(TaskEventRecord {
             id: "cached-event".to_string(),

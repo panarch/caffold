@@ -180,8 +180,17 @@ struct TaskApprovalRequest {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskListResponse {
-    tasks: Vec<TaskRecord>,
+    tasks: Vec<ArchivedTaskRecord>,
     next_cursor: Option<String>,
+}
+
+/// An archived Task's listing repository is independent of its removed checkout.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ArchivedTaskRecord {
+    #[serde(flatten)]
+    task: TaskRecord,
+    repository_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
