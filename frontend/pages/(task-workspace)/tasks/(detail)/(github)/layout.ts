@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -21,6 +21,7 @@ import type { CaffoldGithubIssuesLayout } from "./(issues)/layout.js";
 import "./(pulls)/layout.js";
 import type { CaffoldGithubPullsLayout } from "./(pulls)/layout.js";
 import "./components/task-start-dialog.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type {
   ChangeGithubIssuesPageDetail,
   OpenGithubIssueDetail,
@@ -37,7 +38,8 @@ import type {
 } from "./components/task-start-dialog.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { adoptScopedStyle } from "#app/scoped-style.js";
+import { scopedStyle } from "#app/scoped-style.js";
+import styles from "./layout.css.js";
 
 export interface RequestGithubRouteDetail {
   route: GithubRoute;
@@ -75,14 +77,8 @@ interface Chrome {
   parentKey: string;
 }
 
-adoptScopedStyle(
-  compactIconButton,
-  "caffold-task-github-layout",
-  "> .task-github-surface > .task-domain-header > .task-domain-back",
-);
-
 @customElement("caffold-task-github-layout")
-export class CaffoldTaskGithubLayout extends LitElement {
+export class CaffoldTaskGithubLayout extends CaffoldElement {
   @state()
   private accessor chrome: Chrome = {
     mode: null,
@@ -92,6 +88,11 @@ export class CaffoldTaskGithubLayout extends LitElement {
     backShown: false,
     parentKey: "",
   };
+
+  static override styles = [
+    scopedStyle(compactIconButton, ".task-domain-back"),
+    styles,
+  ];
 
   // Whether Detail has this layout on screen for a repository.
   active = false;
@@ -110,10 +111,6 @@ export class CaffoldTaskGithubLayout extends LitElement {
   private readonly startDialog = new DrawnRef<CaffoldGithubTaskStartDialog>(
     this,
   );
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -630,12 +627,6 @@ export class CaffoldTaskGithubLayout extends LitElement {
       backShown: Boolean(details.backLabel) && !fileOpen,
       parentKey: githubParentKey(this.routeForWorkspaceBack()),
     };
-    this.dataset.mobileDetail =
-      (mode === "issues" && issues.view === "detail") ||
-      pullsView === "detail" ||
-      fileOpen
-        ? "true"
-        : "false";
     this.performUpdate();
   }
 

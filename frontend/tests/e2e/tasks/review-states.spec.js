@@ -104,7 +104,7 @@ test("normalizes a non-Git task to Files and Source", { tag: "@all-viewports" },
   ).toBeAttached();
   // Working outside Git is not a degraded review, so nothing above it says so.
   expect(await taskReview.evaluate((review) =>
-    review.querySelector(".task-review-layout").getBoundingClientRect().top
+    review.shadowRoot.querySelector(".task-review-layout").getBoundingClientRect().top
       - review.getBoundingClientRect().top)).toBe(0);
   if (testInfo.project.name === "phone") {
     await expect(

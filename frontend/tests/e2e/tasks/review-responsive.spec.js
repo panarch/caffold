@@ -60,9 +60,9 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
     const infoVisualInset = Number.parseFloat(
       getComputedStyle(summaryInfo, "::before").right,
     );
-    const navigator = review.querySelector(".task-review-navigator-pane");
-    const viewer = review.querySelector(".task-review-viewer-pane");
-    const visiblePaneControls = [...review.querySelectorAll(
+    const navigator = review.shadowRoot.querySelector(".task-review-navigator-pane");
+    const viewer = review.shadowRoot.querySelector(".task-review-viewer-pane");
+    const visiblePaneControls = [...review.shadowRoot.querySelectorAll(
       ".task-review-pane-axis > caffold-segmented-control",
     )].filter((control) => control.getClientRects().length > 0);
     const rightmostPaneControl = visiblePaneControls.reduce((rightmost, control) =>
@@ -144,12 +144,13 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
 
   await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
   const after = await taskReview.evaluate((review) => {
-    const navigator = review.querySelector(".task-review-navigator-pane");
-    const viewer = review.querySelector(".task-review-viewer-pane");
+    const navigator = review.shadowRoot.querySelector(".task-review-navigator-pane");
+    const viewer = review.shadowRoot.querySelector(".task-review-viewer-pane");
     const viewerInfo = review
-      .querySelector("caffold-review-file-viewer")
+      .shadowRoot.querySelector("caffold-review-selected-file")
+      .shadowRoot.querySelector("caffold-review-file-viewer")
       .shadowRoot.querySelector(".viewer-info-button");
-    const viewerAxis = review.querySelector(
+    const viewerAxis = review.shadowRoot.querySelector(
       '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
     );
     const visualBounds = (element, pseudo) => {
@@ -266,7 +267,8 @@ test("keeps one compact file-navigation header on phone", { tag: "@phone" }, asy
 
   const geometry = await taskReview.evaluate((review) => {
     const viewerHeader = review
-      .querySelector("caffold-review-file-viewer")
+      .shadowRoot.querySelector("caffold-review-selected-file")
+      .shadowRoot.querySelector("caffold-review-file-viewer")
       .shadowRoot.querySelector(".viewer-header");
     const close = viewerHeader.querySelector(".viewer-close-button");
     const info = viewerHeader.querySelector(".viewer-info-button");
@@ -325,8 +327,8 @@ test("clamps the navigator so the shared viewer keeps its minimum width", { tag:
   ).toBeGreaterThan(before);
   await separator.press("End");
   const widths = await taskReview.evaluate((review) => ({
-    navigator: review.querySelector(".task-review-navigator-pane").getBoundingClientRect().width,
-    viewer: review.querySelector(".task-review-viewer-pane").getBoundingClientRect().width,
+    navigator: review.shadowRoot.querySelector(".task-review-navigator-pane").getBoundingClientRect().width,
+    viewer: review.shadowRoot.querySelector(".task-review-viewer-pane").getBoundingClientRect().width,
   }));
   expect(widths.navigator).toBeGreaterThanOrEqual(220);
   expect(widths.viewer).toBeGreaterThanOrEqual(360);
@@ -352,7 +354,7 @@ test("remembers the review navigator width across reloads", { tag: "@desktop" },
     .poll(() =>
       taskReview.evaluate((review) =>
         Math.round(
-          review.querySelector(".task-review-navigator-pane").getBoundingClientRect().width,
+          review.shadowRoot.querySelector(".task-review-navigator-pane").getBoundingClientRect().width,
         ),
       ),
     )
@@ -483,10 +485,10 @@ test("draws the shared separator as the pane line with a centered handle and a 3
   await expect(separator).toBeVisible();
 
   const split = await taskReview.evaluate((review) => {
-    const layout = review.querySelector(".task-review-layout").getBoundingClientRect();
-    const navigator = review.querySelector(".task-review-navigator-pane").getBoundingClientRect();
-    const viewer = review.querySelector(".task-review-viewer-pane").getBoundingClientRect();
-    const resizer = review.querySelector("caffold-pane-resizer");
+    const layout = review.shadowRoot.querySelector(".task-review-layout").getBoundingClientRect();
+    const navigator = review.shadowRoot.querySelector(".task-review-navigator-pane").getBoundingClientRect();
+    const viewer = review.shadowRoot.querySelector(".task-review-viewer-pane").getBoundingClientRect();
+    const resizer = review.shadowRoot.querySelector("caffold-pane-resizer");
     const bounds = resizer.getBoundingClientRect();
     const center = bounds.left + bounds.width / 2;
     const middle = bounds.top + bounds.height / 2;
@@ -502,7 +504,9 @@ test("draws the shared separator as the pane line with a centered handle and a 3
       navigatorEnd: navigator.right,
       separatorCenter: center,
       separatorMiddle: middle,
-      hitsSeparator: resizer.contains(document.elementFromPoint(center, middle)),
+      hitsSeparator: resizer.contains(
+        resizer.getRootNode().elementFromPoint(center, middle),
+      ),
       idleHighlight: getComputedStyle(resizer, "::after").backgroundColor,
       handleCenterX: handleBounds.left + handleBounds.width / 2,
       handleCenterY: handleBounds.top + handleBounds.height / 2,
@@ -554,12 +558,14 @@ test("gives the shared separator handle the Interface touch target", { tag: ["@d
   })).toBeVisible();
 
   const touch = await taskReview.evaluate((review) => {
-    const resizer = review.querySelector(".task-review-layout > caffold-pane-resizer");
+    const resizer = review.shadowRoot.querySelector(".task-review-layout > caffold-pane-resizer");
     const handle = resizer.shadowRoot.querySelector(".pane-resizer-handle").getBoundingClientRect();
     const centerX = handle.left + handle.width / 2;
     const centerY = handle.top + handle.height / 2;
     const hits = (dx, dy) =>
-      resizer.contains(document.elementFromPoint(centerX + dx, centerY + dy));
+      resizer.contains(
+        resizer.getRootNode().elementFromPoint(centerX + dx, centerY + dy),
+      );
     return {
       targetFloor: Number.parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue("--interface-target-floor"),
@@ -646,9 +652,10 @@ test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports"
       const modeSwitch = document.querySelector(
         "caffold-segmented-control[data-detail-view-switch]",
       );
-      const viewer = review.querySelector(".task-review-viewer-pane");
+      const viewer = review.shadowRoot.querySelector(".task-review-viewer-pane");
       const code = review
-        .querySelector("caffold-review-file-viewer")
+        .shadowRoot.querySelector("caffold-review-selected-file")
+        .shadowRoot.querySelector("caffold-review-file-viewer")
         ?.shadowRoot.querySelector("caffold-diff-viewer")
         ?.shadowRoot.querySelector(".diff-code");
       return {
@@ -656,7 +663,7 @@ test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports"
         modeSwitchOverflow: modeSwitch.scrollWidth > modeSwitch.clientWidth,
         viewerOverflow: viewer.scrollWidth > viewer.clientWidth,
         codeFontSize: code ? getComputedStyle(code).fontSize : null,
-        selectedInsets: [...review.querySelectorAll(
+        selectedInsets: [...review.shadowRoot.querySelectorAll(
           ".task-review-pane-axis > caffold-segmented-control",
         )].flatMap((control) => [
           ...control.shadowRoot.querySelectorAll('button[aria-pressed="true"] > span'),
@@ -668,7 +675,7 @@ test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports"
             top: visual.top - group.top,
           };
         })),
-        truncatedAxisLabels: [...review.querySelectorAll(
+        truncatedAxisLabels: [...review.shadowRoot.querySelectorAll(
           ".task-review-pane-axis > caffold-segmented-control",
         )]
           .flatMap((control) => [...control.shadowRoot.querySelectorAll("button > span")])
@@ -800,10 +807,10 @@ test("reflows Review at a desktop 200 percent effective viewport", { tag: "@desk
       return modeSwitch.scrollWidth > modeSwitch.clientWidth;
     })(),
     navigatorWidth: review
-      .querySelector(".task-review-navigator-pane")
+      .shadowRoot.querySelector(".task-review-navigator-pane")
       .getBoundingClientRect().width,
     viewerWidth: review
-      .querySelector(".task-review-viewer-pane")
+      .shadowRoot.querySelector(".task-review-viewer-pane")
       .getBoundingClientRect().width,
   }));
   expect(layout.overflow).toBe(false);

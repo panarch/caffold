@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -13,11 +13,14 @@ import {
   getGitHubPull,
   prepareGitHubPullHead,
 } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { type ScrollSurfacePull, ScrollSurfaces } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 
+import styles from "./github-pull.css.js";
+
 @customElement("caffold-github-pull-task-source")
-export class CaffoldGithubPullTaskSource extends LitElement {
+export class CaffoldGithubPullTaskSource extends CaffoldElement {
   @state()
   private accessor payload: GitHubPull | null = null;
   @state()
@@ -27,6 +30,8 @@ export class CaffoldGithubPullTaskSource extends LitElement {
   @state()
   private accessor locked = false;
 
+  static override styles = styles;
+
   private repository: GitRepository | null = null;
   private sourceRequestId = 0;
   private prepareRequestId = 0;
@@ -34,10 +39,6 @@ export class CaffoldGithubPullTaskSource extends LitElement {
   private readonly hints = new ActionHints(this);
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly relationship = new DrawnRef<HTMLDListElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const pull = this.payload?.pull;

@@ -120,7 +120,7 @@ test("normalizes and compacts shared file-tree statuses", { tag: "@all-viewports
   );
 
   const geometry = await changes.evaluate((changesTree) => {
-    const tree = changesTree.querySelector("caffold-file-tree");
+    const tree = changesTree.shadowRoot.querySelector("caffold-file-tree");
     const entry = tree.shadowRoot.querySelector(
       'button[data-file-tree-relative-path="planner.rs"]',
     );
@@ -1147,7 +1147,7 @@ test("keeps the Working Tree loading text while another reread starts", { tag: "
     await expect.poll(() => reviewScenario.gitStatusRequests).toBe(statusBefore + 2);
     expect(
       await changes.evaluate(
-        (tree) => tree.querySelector("caffold-loading-text") === window.__workingTreeLoadingText,
+        (tree) => tree.shadowRoot.querySelector("caffold-loading-text") === window.__workingTreeLoadingText,
       ),
     ).toBe(true);
   } finally {
@@ -1457,12 +1457,15 @@ test("keeps compact review controls and available panes inside the workspace", {
     ),
   ).toBeLessThanOrEqual(0.1);
   const changesAlignment = await taskReview.evaluate((review) => {
-    const pane = review.querySelector(".task-review-navigator-pane");
-    const header = review.querySelector(
-      "caffold-git-diff-changes-tree .changes-tree-panel > header",
+    const pane = review.shadowRoot.querySelector(".task-review-navigator-pane");
+    const changesTree = review.shadowRoot
+      .querySelector("caffold-review-working-tree-changes")
+      .shadowRoot.querySelector("caffold-git-diff-changes-tree");
+    const header = changesTree.shadowRoot.querySelector(
+      ".changes-tree-panel > header",
     );
     const count = header.querySelector(".change-count");
-    const controls = review.querySelector(
+    const controls = review.shadowRoot.querySelector(
       '.task-review-navigator-axis caffold-segmented-control[data-review-axis="navigator"]',
     );
     const paneRect = pane.getBoundingClientRect();
@@ -1516,7 +1519,7 @@ test("keeps compact review controls and available panes inside the workspace", {
   ).toBeLessThanOrEqual(0.1);
   const filesAlignment = await taskReview.evaluate((review, header) => {
     const count = header.querySelector(".entry-count");
-    const controls = review.querySelector(
+    const controls = review.shadowRoot.querySelector(
       '.task-review-navigator-axis caffold-segmented-control[data-review-axis="navigator"]',
     );
     const rootStyle = getComputedStyle(document.documentElement);
@@ -1546,11 +1549,11 @@ test("keeps compact review controls and available panes inside the workspace", {
   await expect(taskReview.locator(".task-review-toolbar")).toHaveCount(0);
 
   const layout = await taskReview.evaluate((element) => {
-    const workspace = element.querySelector(".task-review-workspace");
+    const workspace = element.shadowRoot.querySelector(".task-review-workspace");
     const pageRect = document.querySelector("caffold-tasks-page").getBoundingClientRect();
     const workspaceRect = workspace.getBoundingClientRect();
-    const navigator = element.querySelector(".task-review-navigator-pane");
-    const viewer = element.querySelector(".task-review-viewer-pane");
+    const navigator = element.shadowRoot.querySelector(".task-review-navigator-pane");
+    const viewer = element.shadowRoot.querySelector(".task-review-viewer-pane");
     const detailSwitch = document.querySelector(
       "caffold-segmented-control[data-detail-view-switch]",
     );
@@ -1594,7 +1597,7 @@ test("keeps compact review controls and available panes inside the workspace", {
         }),
       },
       axisControlWidths: Object.fromEntries(
-        [...element.querySelectorAll(".task-review-pane-axis")]
+        [...element.shadowRoot.querySelectorAll(".task-review-pane-axis")]
           .filter((axis) => axis.getClientRects().length > 0)
           .map((axis) => {
             const control = axis.querySelector("caffold-segmented-control");
@@ -1606,13 +1609,13 @@ test("keeps compact review controls and available panes inside the workspace", {
       ),
       layoutStartsAtWorkspaceTop:
         Math.abs(
-          element.querySelector(".task-review-layout").getBoundingClientRect().top -
+          element.shadowRoot.querySelector(".task-review-layout").getBoundingClientRect().top -
             workspaceRect.top,
         ) <= 1,
-      visiblePaneAxes: [...element.querySelectorAll(".task-review-pane-axis")]
+      visiblePaneAxes: [...element.shadowRoot.querySelectorAll(".task-review-pane-axis")]
         .filter((axis) => axis.getClientRects().length > 0)
         .map((axis) => axis.querySelector("caffold-segmented-control").getAttribute("aria-label")),
-      paneAxisClearances: [...element.querySelectorAll(".task-review-pane-axis")]
+      paneAxisClearances: [...element.shadowRoot.querySelectorAll(".task-review-pane-axis")]
         .filter((axis) => axis.getClientRects().length > 0)
         .map((axis) => {
           const axisBounds = axis.getBoundingClientRect();
@@ -1625,16 +1628,16 @@ test("keeps compact review controls and available panes inside the workspace", {
           };
         }),
       emptyViewerHeaderVisible:
-        element.querySelector(".task-review-viewer-empty-header").getClientRects().length > 0,
+        element.shadowRoot.querySelector(".task-review-viewer-empty-header").getClientRects().length > 0,
       visualControlHeights: [
-        ...element.querySelectorAll(
+        ...element.shadowRoot.querySelectorAll(
           ".task-review-pane-axis > caffold-segmented-control",
         ),
       ]
         .filter((control) => control.getClientRects().length > 0)
         .map((control) => control.getBoundingClientRect().height),
       directTouchControlHeights: [
-        ...element.querySelectorAll(
+        ...element.shadowRoot.querySelectorAll(
           ".task-review-pane-axis > caffold-segmented-control",
         ),
       ]

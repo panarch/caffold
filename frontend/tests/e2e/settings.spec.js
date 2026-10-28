@@ -3868,9 +3868,7 @@ async function representativeThemeStyles(page) {
     review.style.cssText =
       "position:fixed;inset:auto auto 0 -10000px;width:20rem;height:10rem";
     document.body.append(review);
-    review.innerHTML = `
-      <p class="task-review-error">Review error</p>
-    `;
+    await review.updateComplete;
 
     const diff = document.createElement("caffold-diff-viewer");
     diff.style.cssText =
@@ -3886,7 +3884,7 @@ async function representativeThemeStyles(page) {
     const result = {
       settings: colorPair(parts.settings),
       themeSelection: colorPair(parts.themeSelection),
-      reviewDanger: colorPair(review.querySelector(".task-review-error")),
+      reviewDanger: colorPair(review.shadowRoot.querySelector(".task-review-error")),
       code: colorPair(parts.code),
       diffAdded: colorPair(diff.shadowRoot.querySelector(".diff-row-added")),
       diffRemoved: colorPair(diff.shadowRoot.querySelector(".diff-row-removed")),

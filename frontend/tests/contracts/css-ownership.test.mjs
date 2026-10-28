@@ -64,6 +64,31 @@ const shadowRootStyles = new Map([
   ["pages/(task-workspace)/settings/notifications/page.css", "caffold-settings-notifications-page"],
   ["pages/(task-workspace)/settings/remote-access/page.css", "caffold-settings-remote-access-page"],
   ["pages/(task-workspace)/settings/voice/page.css", "caffold-settings-voice-page"],
+  ["pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css", "caffold-commit-changes-tree"],
+  ["pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css", "caffold-git-log-commit-page"],
+  ["pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css", "caffold-git-log-layout"],
+  ["pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css", "caffold-git-log-list-page"],
+  ["pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css", "caffold-git-compare-page"],
+  ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css", "caffold-git-review-controls"],
+  ["pages/(task-workspace)/tasks/(detail)/(git)/layout.css", "caffold-task-git-layout"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css", "caffold-github-issue-detail-page"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css", "caffold-github-issues-layout"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css", "caffold-github-issues-list-page"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css", "caffold-github-pull-detail-page"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css", "caffold-github-pull-files-tree"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css", "caffold-github-pull-files-page"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.css", "caffold-github-pulls-layout"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css", "caffold-github-pulls-list-page"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.css", "caffold-github-markdown"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css", "caffold-github-task-start-dialog"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.css", "caffold-github-issue-task-source"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css", "caffold-github-pull-task-source"],
+  ["pages/(task-workspace)/tasks/(detail)/(github)/layout.css", "caffold-task-github-layout"],
+  ["pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.css", "caffold-review-branch-changes"],
+  ["pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.css", "caffold-review-selected-file"],
+  ["pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css", "caffold-review-working-tree-changes"],
+  ["pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.css", "caffold-git-diff-changes-tree"],
+  ["pages/(task-workspace)/tasks/(detail)/(review)/layout.css", "caffold-task-review"],
   ["pages/(task-workspace)/tasks/components/active-task-list.css", "caffold-active-task-list"],
   ["pages/(task-workspace)/tasks/components/active-task-list/components/section.css", "caffold-active-task-section"],
   ["pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css", "caffold-active-task-row"],
@@ -90,22 +115,6 @@ const placedChildren = new Map([
   ["caffold-notes-workspace", ["caffold-notes-navigator"]],
 ]);
 const ownership = new Map([
-  [
-    "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes.css",
-    ["caffold-review-working-tree-changes"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(review)/components/working-tree-changes/components/changes-tree.css",
-    ["caffold-git-diff-changes-tree"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(review)/components/branch-changes.css",
-    ["caffold-review-branch-changes"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(review)/components/selected-file.css",
-    ["caffold-review-selected-file"],
-  ],
   ["pages/(task-workspace)/layout.css", ["caffold-task-workspace"]],
   [
     "pages/(task-workspace)/components/navigation.css",
@@ -256,88 +265,8 @@ const ownership = new Map([
     "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css",
     ["caffold-section-detail-summary"],
   ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(review)/layout.css",
-    ["caffold-task-review"],
-  ],
   ["pages/(task-workspace)/tasks/controls.css", ["caffold-tasks-page"]],
   ["pages/(task-workspace)/tasks/layout.css", ["caffold-tasks-page"]],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css",
-    ["caffold-commit-changes-tree"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css",
-    ["caffold-git-log-commit-page"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css",
-    ["caffold-git-log-layout"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css",
-    ["caffold-git-log-list-page"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css",
-    ["caffold-git-compare-page"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css",
-    ["caffold-git-review-controls"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(git)/layout.css",
-    ["caffold-task-git-layout"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css",
-    ["caffold-github-issue-detail-page"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css",
-    ["caffold-github-task-start-dialog"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.css",
-    ["caffold-github-issue-task-source"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css",
-    ["caffold-github-pull-task-source"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css",
-    ["caffold-github-issues-layout"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css",
-    ["caffold-github-issues-list-page"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css",
-    ["caffold-github-pull-detail-page"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css",
-    ["caffold-github-pull-files-tree"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css",
-    ["caffold-github-pull-files-page"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.css",
-    ["caffold-github-pulls-layout"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css",
-    ["caffold-github-pulls-list-page"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/(github)/layout.css",
-    ["caffold-task-github-layout"],
-  ],
   [
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css",
     ["caffold-codex-runtime-restart-dialog"],

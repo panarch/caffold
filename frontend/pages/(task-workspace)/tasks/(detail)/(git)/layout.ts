@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -17,6 +17,7 @@ import type { CaffoldGitLogLayout } from "./(log)/layout.js";
 import "./compare/page.js";
 import type { CaffoldGitComparePage } from "./compare/page.js";
 import "./components/controls.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { OpenCompareDiffDetail } from "#components/git-compare-tree.js";
 import type { OpenCommitDiffDetail } from "./(log)/commit/components/changes-tree.js";
 import type {
@@ -30,7 +31,8 @@ import {
 } from "./components/controls.js";
 
 import compactIconButton from "#app/component-styles/compact-icon-button.css.js";
-import { adoptScopedStyle } from "#app/scoped-style.js";
+import { scopedStyle } from "#app/scoped-style.js";
+import styles from "./layout.css.js";
 
 export interface RequestGitRouteDetail {
   route: GitRoute;
@@ -66,14 +68,8 @@ interface Chrome {
   controls: GitControlsSnapshot;
 }
 
-adoptScopedStyle(
-  compactIconButton,
-  "caffold-task-git-layout",
-  "> .task-git-surface > .task-domain-header > .task-domain-back",
-);
-
 @customElement("caffold-task-git-layout")
-export class CaffoldTaskGitLayout extends LitElement {
+export class CaffoldTaskGitLayout extends CaffoldElement {
   @state()
   private accessor chrome: Chrome = {
     mode: null,
@@ -84,6 +80,11 @@ export class CaffoldTaskGitLayout extends LitElement {
     backShown: false,
     controls: IDLE_CONTROLS,
   };
+
+  static override styles = [
+    scopedStyle(compactIconButton, ".task-domain-back"),
+    styles,
+  ];
 
   // Whether Detail has this layout on screen for a repository.
   active = false;
@@ -109,10 +110,6 @@ export class CaffoldTaskGitLayout extends LitElement {
   );
   private readonly compare = new DrawnRef<CaffoldGitComparePage>(this);
   private readonly log = new DrawnRef<CaffoldGitLogLayout>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

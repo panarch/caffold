@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -16,8 +16,11 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "../../components/markdown.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldGithubMarkdown } from "../../components/markdown.js";
 import type { StartGithubTaskDetail } from "../../layout.js";
+
+import styles from "./page.css.js";
 
 type IssueState =
   | { status: "empty" }
@@ -26,9 +29,11 @@ type IssueState =
   | { status: "error"; number: number | null; error: Error };
 
 @customElement("caffold-github-issue-detail-page")
-export class CaffoldGithubIssueDetailPage extends LitElement {
+export class CaffoldGithubIssueDetailPage extends CaffoldElement {
   @state()
   private accessor state: IssueState = { status: "empty" };
+
+  static override styles = styles;
 
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
@@ -37,10 +42,6 @@ export class CaffoldGithubIssueDetailPage extends LitElement {
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly markdown = new DrawnRef<CaffoldGithubMarkdown>(this);
   private readonly rawBody = new DrawnRef<HTMLElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();

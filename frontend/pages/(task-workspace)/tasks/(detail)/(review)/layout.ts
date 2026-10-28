@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   emptyActionHintScope,
@@ -30,6 +30,7 @@ import type {
 } from "./components/selected-file/content.js";
 import type { CaffoldReviewSelectedFile } from "./components/selected-file.js";
 import "./components/working-tree-changes.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { ParsedRoute } from "#app/navigation-routes.js";
 import type {
   FileNavigatorOpenFileDetail,
@@ -65,6 +66,8 @@ import {
   isFileRepresentation,
 } from "./representations.js";
 
+import styles from "./layout.css.js";
+
 export interface TaskReviewRouteIntentDetail {
   route: ParsedRoute;
 }
@@ -93,13 +96,15 @@ interface SyncOptions {
 }
 
 @customElement("caffold-task-review")
-export class CaffoldTaskReview extends LitElement {
+export class CaffoldTaskReview extends CaffoldElement {
   @state()
   private accessor route: ReviewRoute = normalizeReviewRoute();
   @state()
   private accessor errorMessage = "";
   @state()
   private accessor panelWidth: number | null = null;
+
+  static override styles = styles;
 
   private active = false;
   private task: ReviewTask | null = null;
@@ -124,10 +129,6 @@ export class CaffoldTaskReview extends LitElement {
   private readonly filesList = new DrawnRef<CaffoldFileNavigator>(this);
   private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
   private readonly fileViewer = new DrawnRef<CaffoldReviewSelectedFile>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -1021,7 +1022,10 @@ export class CaffoldTaskReview extends LitElement {
   private applySidePane() {
     this.toggleAttribute("data-side-pane-collapsed", this.sidePaneCollapsed());
     this.dispatchEvent(
-      new CustomEvent("caffold:side-pane-change", { bubbles: true }),
+      new CustomEvent("caffold:side-pane-change", {
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 

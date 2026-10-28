@@ -1210,7 +1210,8 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
     const countBounds = count.getBoundingClientRect();
     const branchBounds = branch.getBoundingClientRect();
     const refreshBounds = header
-      .querySelector(".git-review-refresh")
+      .querySelector("caffold-git-review-controls")
+      .shadowRoot.querySelector(".git-review-refresh")
       .getBoundingClientRect();
     const bounds = header.getBoundingClientRect();
     const paddingRight = Number.parseFloat(getComputedStyle(header).paddingRight);

@@ -584,7 +584,10 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
   private applySidePane() {
     this.toggleAttribute("data-side-pane-collapsed", this.sidePaneCollapsed());
     this.dispatchEvent(
-      new CustomEvent("caffold:side-pane-change", { bubbles: true }),
+      new CustomEvent("caffold:side-pane-change", {
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 
@@ -666,6 +669,7 @@ export class CaffoldGitCompareBrowser extends CaffoldElement {
         "caffold:git-compare-state-change",
         {
           bubbles: true,
+          composed: true,
           detail: {
             detailView: this.detailView,
             refsPayload: this.refsPayload,

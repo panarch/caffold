@@ -582,7 +582,7 @@ test("renders a route-owned Markdown Preview without changing file selection", {
   });
 
   const layout = await taskReview.evaluate((review, previewScroll) => {
-    const axis = review.querySelector(
+    const axis = review.shadowRoot.querySelector(
       '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
     );
     const labels = [...axis.shadowRoot.querySelectorAll("button > span")];
@@ -1314,7 +1314,7 @@ test("keeps the shared Review panes inside the task workspace", { tag: "@all-vie
       codexLeft: codexRect.left,
       codexRight: codexRect.right,
       codexBottom: codexRect.bottom,
-      navigatorWidth: review.querySelector(".task-review-navigator-pane").getBoundingClientRect().width,
+      navigatorWidth: review.shadowRoot.querySelector(".task-review-navigator-pane").getBoundingClientRect().width,
       overflow: review.scrollWidth > review.clientWidth,
     };
   });

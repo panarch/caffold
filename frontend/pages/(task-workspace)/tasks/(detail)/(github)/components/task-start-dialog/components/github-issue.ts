@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -11,7 +11,10 @@ import {
   type GitRepository,
   getGitRefs,
 } from "#app/api.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
+
+import styles from "./github-issue.css.js";
 
 interface TaskRef {
   name: string;
@@ -19,7 +22,7 @@ interface TaskRef {
 }
 
 @customElement("caffold-github-issue-task-source")
-export class CaffoldGithubIssueTaskSource extends LitElement {
+export class CaffoldGithubIssueTaskSource extends CaffoldElement {
   @state()
   private accessor payload: GitHubIssue | null = null;
   @state()
@@ -33,14 +36,12 @@ export class CaffoldGithubIssueTaskSource extends LitElement {
   @state()
   private accessor locked = false;
 
+  static override styles = styles;
+
   private repository: GitRepository | null = null;
   private refsRequestId = 0;
   private readonly hints = new ActionHints(this);
   private readonly baseRefSelect = new DrawnRef<HTMLSelectElement>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const placeholder = this.refsLoading

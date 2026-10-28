@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -17,8 +17,11 @@ import { DrawnRef, DrawnRefs, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "../../components/markdown.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldGithubMarkdown } from "../../components/markdown.js";
 import type { StartGithubTaskDetail } from "../../layout.js";
+
+import styles from "./page.css.js";
 
 export interface OpenGithubPullFilesDetail {
   number: number;
@@ -31,9 +34,11 @@ type PullState =
   | { status: "error"; number: number | null; error: Error };
 
 @customElement("caffold-github-pull-detail-page")
-export class CaffoldGithubPullDetailPage extends LitElement {
+export class CaffoldGithubPullDetailPage extends CaffoldElement {
   @state()
   private accessor state: PullState = { status: "empty" };
+
+  static override styles = styles;
 
   private readonly iconsReady = () => this.requestUpdate();
   private readonly hints = new ActionHints(this, {
@@ -43,10 +48,6 @@ export class CaffoldGithubPullDetailPage extends LitElement {
   private readonly details = new DrawnRef<HTMLDivElement>(this);
   // The Markdown blocks by the order they are drawn in.
   private readonly markdowns = new DrawnRefs<CaffoldGithubMarkdown>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -417,6 +418,7 @@ export class CaffoldGithubPullDetailPage extends LitElement {
         "caffold:open-github-pull-files",
         {
           bubbles: true,
+          composed: true,
           detail: { number: this.state.payload.pull.number },
         },
       ),

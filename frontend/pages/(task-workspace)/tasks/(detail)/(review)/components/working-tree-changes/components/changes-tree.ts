@@ -1,4 +1,4 @@
-import { html, LitElement, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   type ActionHintPull,
@@ -20,6 +20,9 @@ import {
   readyFileTreeChildren,
 } from "#components/file-tree.js";
 import "#components/loading-text.js";
+import { CaffoldElement } from "#app/caffold-element.js";
+
+import styles from "./changes-tree.css.js";
 
 export interface OpenGitDiffDetail {
   path: string;
@@ -47,17 +50,15 @@ type ChangesState =
   | { status: "error"; error: Error; repository: ChangesRepository | null };
 
 @customElement("caffold-git-diff-changes-tree")
-export class CaffoldGitDiffChangesTree extends LitElement {
+export class CaffoldGitDiffChangesTree extends CaffoldElement {
   @state()
   private accessor state: ChangesState = { status: "idle" };
+
+  static override styles = styles;
 
   private readonly treeElement = new DrawnRef<CaffoldFileTree>(this);
   private selectedPath = "";
   private fileKeyByPath = new Map<string, string>();
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     const state = this.state;
@@ -218,6 +219,7 @@ export class CaffoldGitDiffChangesTree extends LitElement {
     this.dispatchEvent(
       new CustomEvent<OpenGitDiffDetail>("caffold:open-git-diff", {
         bubbles: true,
+        composed: true,
         detail: {
           path: file.path,
           kind: file.untracked ? "untracked" : file.category,

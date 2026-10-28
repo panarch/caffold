@@ -2140,9 +2140,10 @@ The shared components in `frontend/components/`, the keyboard mode's
 presentation, Scroll selector, Scroll HUD, and shortcut help in
 `keyboard-navigation/components/`, the Action Hint dialog, pagination with its
 page button, Settings and Notes, the Caffold mark at the head of the left pane
-(`caffold-workspace-brand`), and the Tasks components in `tasks/components/`,
+(`caffold-workspace-brand`), the Tasks components in `tasks/components/`,
 `tasks/new/`, and `tasks/recovery/` (the Task list, the Composer, New Task, the
-recovery screens, and the Task dialogs) extend `CaffoldElement`
+recovery screens, and the Task dialogs), and Integrated Review, Git, and GitHub
+in Task Detail's `(review)/`, `(git)/`, and `(github)/` extend `CaffoldElement`
 (`frontend/caffold-element.ts`) and render into open shadow roots. Their
 stylesheets style the host as `:host` and the rest by local class, and reach the
 component as a module: beside each stylesheet the server build writes

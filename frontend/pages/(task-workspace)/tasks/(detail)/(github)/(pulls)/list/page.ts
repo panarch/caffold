@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
@@ -13,8 +13,11 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import { inlineIcon, warmIcons } from "#components/icons.js";
 import "#components/loading-text.js";
 import "#components/pagination.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { ChangePageDetail } from "#components/pagination/components/button.js";
 import type { CaffoldPagination } from "#components/pagination.js";
+
+import styles from "./page.css.js";
 
 export interface OpenGithubPullDetail {
   number: number;
@@ -34,11 +37,13 @@ type PullsState =
   | { status: "error"; error: Error };
 
 @customElement("caffold-github-pulls-list-page")
-export class CaffoldGithubPullsListPage extends LitElement {
+export class CaffoldGithubPullsListPage extends CaffoldElement {
   @state()
   private accessor state: PullsState = { status: "idle" };
   @state()
   private accessor selectedPullNumber: number | null = null;
+
+  static override styles = styles;
 
   private readonly list = new DrawnRef<HTMLOListElement>(this);
   private readonly pagination = new DrawnRef<CaffoldPagination>(this);
@@ -47,10 +52,6 @@ export class CaffoldGithubPullsListPage extends LitElement {
   });
   private readonly surfaces = new ScrollSurfaces(this);
   private readonly iconsReady = () => this.requestUpdate();
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -248,6 +249,7 @@ export class CaffoldGithubPullsListPage extends LitElement {
     this.dispatchEvent(
       new CustomEvent<OpenGithubPullDetail>("caffold:open-github-pull", {
         bubbles: true,
+        composed: true,
         detail: { number },
       }),
     );
@@ -260,6 +262,7 @@ export class CaffoldGithubPullsListPage extends LitElement {
         "caffold:change-github-pulls-page",
         {
           bubbles: true,
+          composed: true,
           detail: { page: event.detail.page },
         },
       ),

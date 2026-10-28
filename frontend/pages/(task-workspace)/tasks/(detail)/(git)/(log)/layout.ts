@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import type { ActionHintPull } from "#app/action-hints.js";
 import {
@@ -13,7 +13,10 @@ import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "./commit/page.js";
 import type { CaffoldGitLogCommitPage } from "./commit/page.js";
 import "./list/page.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldGitLogListPage } from "./list/page.js";
+
+import styles from "./layout.css.js";
 
 const LOADING_DELAY_MS = 180;
 
@@ -37,7 +40,9 @@ type FetchEvent =
   | { type: "reject"; pending: FetchState; error: Error };
 
 @customElement("caffold-git-log-layout")
-export class CaffoldGitLogLayout extends LitElement {
+export class CaffoldGitLogLayout extends CaffoldElement {
+  static override styles = styles;
+
   // What the Git layout reads back.
   repository: GitRepository | null = null;
   fetchState: FetchState = { status: "idle" };
@@ -49,10 +54,6 @@ export class CaffoldGitLogLayout extends LitElement {
   private logRequestId = 0;
   private readonly listPage = new DrawnRef<CaffoldGitLogListPage>(this);
   private readonly detailPage = new DrawnRef<CaffoldGitLogCommitPage>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     return html`

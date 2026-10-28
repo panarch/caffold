@@ -1,108 +1,104 @@
-caffold-git-review-controls {
+:host {
   display: block;
   flex: 0 1 auto;
   width: auto;
   max-width: 100%;
   min-width: 0;
+}
 
-  & .git-review-controls {
-    display: flex;
-    gap: max(
-      var(--interface-control-gap),
-      calc(var(--interface-compact-hit-outset) * 2)
-    );
-    align-items: center;
-    justify-content: flex-end;
-    min-width: 0;
-    width: auto;
-  }
+.git-review-controls {
+  display: flex;
+  gap: max(
+    var(--interface-control-gap),
+    calc(var(--interface-compact-hit-outset) * 2)
+  );
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  width: auto;
+}
 
-  & .git-review-refresh {
-    flex: 0 0 var(--interface-compact-hit-size);
-    margin-block: 0;
-    color: var(--control-fg);
-  }
+.git-review-refresh {
+  flex: 0 0 var(--interface-compact-hit-size);
+  margin-block: 0;
+  color: var(--control-fg);
+}
 
-  & .git-review-refresh:hover::before,
-  & .git-review-refresh:focus-visible::before {
-    border-color: var(--control-emphasis-border);
-    background: var(--control-hover-bg);
-  }
+.git-review-refresh:hover::before,
+.git-review-refresh:focus-visible::before {
+  border-color: var(--control-emphasis-border);
+  background: var(--control-hover-bg);
+}
 
-  & .git-review-refresh.is-unavailable,
-  & .git-review-refresh.is-error {
-    color: var(--warning);
-  }
+.git-review-refresh.is-unavailable,
+.git-review-refresh.is-error {
+  color: var(--warning);
+}
 
-  & .git-review-refresh-icon {
-    position: relative;
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-  }
+.git-review-refresh-icon {
+  position: relative;
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+}
 
-  & .git-review-refresh:disabled {
-    opacity: 1;
-    cursor: wait;
-  }
+.git-review-refresh:disabled {
+  opacity: 1;
+  cursor: wait;
+}
 
-  & .review-compare-ref-controls {
-    display: flex;
-    gap: var(--interface-control-gap);
-    align-items: center;
-    min-width: 0;
-    flex: 1 1 auto;
-    width: auto;
-    max-width: 100%;
-  }
+.review-compare-ref-controls {
+  display: flex;
+  gap: var(--interface-control-gap);
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+  width: auto;
+  max-width: 100%;
+}
 
-  & .review-compare-ref-controls label {
-    flex: 0 0 auto;
-  }
+.review-compare-ref-controls label {
+  flex: 0 0 auto;
+}
 
-  & .review-compare-ref-controls label,
-  & .review-compare-ref-separator {
-    color: var(--muted);
-    font-size: 0.72rem;
-    line-height: 1;
-  }
+.review-compare-ref-controls label,
+.review-compare-ref-separator {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1;
+}
 
-  & .review-compare-ref-controls select {
-    field-sizing: content;
-    min-width: max(10ch, 5rem);
-    max-width: 100%;
-    flex: 0 1 auto;
-    width: auto;
-    height: var(--interface-compact-control-size);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.78rem;
-  }
+.review-compare-ref-controls select {
+  field-sizing: content;
+  min-width: max(10ch, 5rem);
+  max-width: 100%;
+  flex: 0 1 auto;
+  width: auto;
+  height: var(--interface-compact-control-size);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
 }
 
 @media (max-width: 860px) {
-  caffold-git-review-controls {
-    & .review-compare-ref-controls {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto auto minmax(0, 1fr);
-      width: 100%;
-    }
+  .review-compare-ref-controls {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto minmax(0, 1fr);
+    width: 100%;
+  }
 
-    & .review-compare-ref-controls select {
-      field-sizing: fixed;
-      width: 100%;
-      max-width: 100%;
-    }
+  .review-compare-ref-controls select {
+    field-sizing: fixed;
+    width: 100%;
+    max-width: 100%;
   }
 }
 
 @media (max-width: 520px) {
-  caffold-task-git-layout[data-git-mode="compare"] caffold-git-review-controls {
-    & .review-compare-ref-controls select {
-      min-width: 0;
-    }
+  .review-compare-ref-controls select {
+    min-width: 0;
   }
 }

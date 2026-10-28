@@ -15,8 +15,8 @@ test("components take shared styles as modules and request no stylesheet for the
   await expect(page.locator("caffold-task-workspace-navigation")).toBeVisible();
   expect(requests).toContain("/assets/component-styles/compact-icon-button.css.js");
   expect(requests.filter((pathname) => !pathname.endsWith(".css.js"))).toEqual([]);
-  // 9 compact icon button scopes and 3 busy spin scopes.
-  expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(12);
+  // 6 compact icon button scopes and 2 busy spin scopes.
+  expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(8);
 });
 
 test("new consumers declare their own scope, retain local overrides and reconnect without extra sheets", { tag: "@desktop" }, async ({ page }) => {

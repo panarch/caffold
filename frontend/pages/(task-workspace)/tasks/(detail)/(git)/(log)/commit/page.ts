@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import {
   ACTION_HINT_ACTION,
@@ -31,8 +31,11 @@ import "#components/pane-resizer.js";
 import type { CaffoldPaneResizer } from "#components/pane-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "#components/review-responsive.js";
 import "./components/changes-tree.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { PaneResizeDetail } from "#components/pane-resizer.js";
 import type { CaffoldCommitChangesTree } from "./components/changes-tree.js";
+
+import styles from "./page.css.js";
 
 const LOADING_DELAY_MS = 180;
 
@@ -51,7 +54,9 @@ interface CommitContext {
 }
 
 @customElement("caffold-git-log-commit-page")
-export class CaffoldGitLogCommitPage extends LitElement {
+export class CaffoldGitLogCommitPage extends CaffoldElement {
+  static override styles = styles;
+
   // What the Log layout reads back.
   detailView: DetailView = "list";
   private currentPath = "";
@@ -65,10 +70,6 @@ export class CaffoldGitLogCommitPage extends LitElement {
   private readonly filesList = new DrawnRef<CaffoldCommitChangesTree>(this);
   private readonly paneResizer = new DrawnRef<CaffoldPaneResizer>(this);
   private readonly viewer = new DrawnRef<CaffoldReviewFileViewer>(this);
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     return html`
@@ -568,7 +569,10 @@ export class CaffoldGitLogCommitPage extends LitElement {
   private applySidePane() {
     this.toggleAttribute("data-side-pane-collapsed", this.sidePaneCollapsed());
     this.dispatchEvent(
-      new CustomEvent("caffold:side-pane-change", { bubbles: true }),
+      new CustomEvent("caffold:side-pane-change", {
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 

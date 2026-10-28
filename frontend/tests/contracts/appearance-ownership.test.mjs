@@ -19,7 +19,7 @@ const conversationOwners = new Set([
   "pages/(task-workspace)/tasks/(detail)/(task)/components/permission-instructions-dialog.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css",
-  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts",
+  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.css",
   "pages/(task-workspace)/settings/appearance/page.css",
   "settings.ts",
   "styles.css",
@@ -39,7 +39,7 @@ const codeOwners = new Set([
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
-  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts",
+  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css",
   "pages/(task-workspace)/settings/appearance/page.css",
   "settings.ts",
@@ -61,7 +61,7 @@ const typefaceOwners = new Set([
   "keyboard-navigation/components/selector.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css",
-  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.ts",
+  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.css",
   "pages/(task-workspace)/settings/appearance/page.css",
   "styles.css",
 ]);
@@ -421,7 +421,6 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
   const consumers = [
     ["pages/layout", "caffold-app-shell", "> .app-foreground-recovery > .app-foreground-recovery-spinner"],
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn", "caffold-task-active-turn", "> .task-active-turn-spinner"],
-    ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", "caffold-git-review-controls", "> .git-review-controls > .git-review-refresh.is-refreshing > .git-review-refresh-icon"],
   ];
   const declarations = [];
   const shadowDeclarations = [];
@@ -436,6 +435,7 @@ test("busy elements turn through one registered spin with reduced-motion fallbac
   // Components that render into a shadow root name the target in that root.
   assert.deepEqual(shadowDeclarations.map((entry) => entry.join(" ")).sort(), [
     "pages/(task-workspace)/settings/components/refresh-button button.is-refreshing > span > .settings-refresh-icon",
+    "pages/(task-workspace)/tasks/(detail)/(git)/components/controls .git-review-refresh.is-refreshing > .git-review-refresh-icon",
     "pages/(task-workspace)/tasks/components/archived-task-list .task-archived-action-button.is-loading > .task-archived-action-icon",
     "pages/(task-workspace)/tasks/components/composer .task-voice-button.is-busy > .task-voice-icon",
     "pages/(task-workspace)/tasks/components/task-status-chip .task-status-spinner",
@@ -968,10 +968,7 @@ test("compact icon controls declare shared styles at their own component boundar
     ["pages/(task-workspace)/tasks/(detail)/components/github-menu", "caffold-task-detail-github", "> .task-github-button"],
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info", "caffold-task-detail-info", "> .task-detail-info-button"],
     ["pages/(task-workspace)/layout", "caffold-task-workspace", "> .task-workspace-route-controls > .task-workspace-route-control"],
-    ["pages/(task-workspace)/tasks/(detail)/(git)/layout", "caffold-task-git-layout", "> .task-git-surface > .task-domain-header > .task-domain-back"],
-    ["pages/(task-workspace)/tasks/(detail)/(github)/layout", "caffold-task-github-layout", "> .task-github-surface > .task-domain-header > .task-domain-back"],
     ["pages/(task-workspace)/tasks/(detail)/terminal/page", "caffold-terminal-page", "> .terminal-page-bar > .terminal-page-button"],
-    ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", "caffold-git-review-controls", "> .git-review-controls > .git-review-refresh"],
   ];
   for (const [path, owner, target] of consumers) {
     const declarations = sharedStyleApplications(readFrontendModule(path), "compact-icon-button.css");
@@ -990,6 +987,9 @@ test("compact icon controls declare shared styles at their own component boundar
     ["pages/(task-workspace)/notes/components/navigator", ".notes-picker-back"],
     ["pages/(task-workspace)/notes/components/navigator", ".notes-picker-close"],
     ["pages/(task-workspace)/tasks/components/navigator", ".task-list-header-action"],
+    ["pages/(task-workspace)/tasks/(detail)/(git)/layout", ".task-domain-back"],
+    ["pages/(task-workspace)/tasks/(detail)/(github)/layout", ".task-domain-back"],
+    ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls", ".git-review-refresh"],
   ]) {
     const declarations = sharedStyleApplications(readFrontendModule(path), "compact-icon-button.css");
     assert.ok(declarations.some(([helper, selector]) => helper === "scopedStyle" && selector === target), path);

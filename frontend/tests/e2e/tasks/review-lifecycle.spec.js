@@ -211,16 +211,8 @@ test("does not reveal the selected Files entry again during canonical task sync"
 }, testInfo) => {
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
-  await page.addStyleTag({
-    content: `
-      caffold-task-review .task-review-navigator-pane,
-      caffold-task-review .task-review-navigator {
-        height: 180px !important;
-      }
-    `,
-  });
-
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await constrainReviewNavigator(taskReview);
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
   const fileList = taskReview.locator("caffold-file-navigator .file-tree-scroll");
   const selected = fileList.locator('button[data-file-tree-path="src/alpha.rs"]');
@@ -249,14 +241,6 @@ test("keeps both Review navigator scroll positions during unrelated live updates
         review.largeChangeSet = true;
       },
     });
-  await page.addStyleTag({
-    content: `
-      caffold-task-review .task-review-navigator-pane,
-      caffold-task-review .task-review-navigator {
-        height: 180px !important;
-      }
-    `,
-  });
   let directoryRequests = 0;
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/api/list") {
@@ -265,6 +249,7 @@ test("keeps both Review navigator scroll positions during unrelated live updates
   });
 
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await constrainReviewNavigator(taskReview);
   const changesList = taskReview.locator("caffold-git-diff-changes-tree .file-tree-scroll");
   await expect(
     taskReview.locator('caffold-git-diff-changes-tree button[data-file-tree-kind="file"]'),
@@ -549,6 +534,24 @@ test("keeps the first Branch loads running through Task updates", { tag: "@viewp
     await page.unrouteAll({ behavior: "wait" });
   }
 });
+
+// The navigator panes sit in the Review's shadow root, which a document style
+// does not reach.
+async function constrainReviewNavigator(taskReview) {
+  await taskReview.evaluate((review) => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(`
+      .task-review-navigator-pane,
+      .task-review-navigator {
+        height: 180px !important;
+      }
+    `);
+    review.shadowRoot.adoptedStyleSheets = [
+      ...review.shadowRoot.adoptedStyleSheets,
+      sheet,
+    ];
+  });
+}
 
 async function scrollAwayFromTop(locator) {
   return locator.evaluate(async (element) => {

@@ -1,20 +1,21 @@
-import { html, LitElement } from "lit";
+import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { ACTION_HINT_ACTION, type ActionHintPull } from "#app/action-hints.js";
 import type { ScrollSurfacePull } from "#app/scroll-scope.js";
 import { DrawnRef, drawn } from "#components/drawn-refs.js";
 import "#components/git-compare-browser.js";
+import { CaffoldElement } from "#app/caffold-element.js";
 import type { CaffoldGitCompareBrowser } from "#components/git-compare-browser.js";
 
+import styles from "./page.css.js";
+
 @customElement("caffold-git-compare-page")
-export class CaffoldGitComparePage extends LitElement {
+export class CaffoldGitComparePage extends CaffoldElement {
+  static override styles = styles;
+
   private readonly browserElement = new DrawnRef<CaffoldGitCompareBrowser>(
     this,
   );
-
-  override createRenderRoot() {
-    return this;
-  }
 
   override render() {
     return html`<caffold-git-compare-browser

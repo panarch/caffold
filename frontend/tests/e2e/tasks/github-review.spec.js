@@ -619,25 +619,32 @@ async function taskGithubPaneGeometry(page, options = {}) {
     const detailPane = document.querySelector(".task-workspace-detail-pane");
     const navigationPane = document.querySelector(".task-workspace-master-pane");
     const detailBounds = detailPane.getBoundingClientRect();
+    // The layout, the Issues or Pull Requests layout its mode shows, and the
+    // page each draw into a shadow root of their own.
+    const layoutRoot = layout.shadowRoot;
+    const mode = layoutRoot.querySelector(".github-review-view:not([hidden])");
+    const modeLayout = mode.querySelector(
+      "caffold-github-issues-layout, caffold-github-pulls-layout",
+    );
+    const pageElement = modeLayout.shadowRoot.querySelector(geometryOptions.pageSelector);
+    const roots = [layoutRoot, modeLayout.shadowRoot, pageElement.shadowRoot];
     const elements = [
       ["layout", layout],
-      ["surface", layout.querySelector(":scope > .task-github-surface")],
-      ["domain header", layout.querySelector(".task-domain-header")],
-      ["domain title", layout.querySelector(".task-domain-title")],
-      ["domain subtitle", layout.querySelector(".task-domain-subtitle")],
-      ["domain body", layout.querySelector(".task-domain-body")],
-      ["mode", layout.querySelector(".github-review-view:not([hidden])")],
-      ["page", layout.querySelector(geometryOptions.pageSelector)],
+      ["surface", layoutRoot.querySelector(".task-github-surface")],
+      ["domain header", layoutRoot.querySelector(".task-domain-header")],
+      ["domain title", layoutRoot.querySelector(".task-domain-title")],
+      ["domain subtitle", layoutRoot.querySelector(".task-domain-subtitle")],
+      ["domain body", layoutRoot.querySelector(".task-domain-body")],
+      ["mode", mode],
+      ["page", pageElement],
       ...geometryOptions.descendantSelectors.flatMap((selector) => {
-        const matches = [...layout.querySelectorAll(selector)];
+        const matches = roots.flatMap((root) => [...root.querySelectorAll(selector)]);
         return matches.length
           ? matches.map((element, index) => [`${selector} ${index}`, element])
           : [[`${selector} missing`, null]];
       }),
     ];
-    const markdown = layout.querySelector(
-      `${geometryOptions.pageSelector} caffold-github-markdown`,
-    );
+    const markdown = pageElement.shadowRoot.querySelector("caffold-github-markdown");
     const markdownRoot = markdown?.shadowRoot;
     const ordinaryMarkdownElements = [
       ...(markdownRoot?.querySelectorAll(".markdown-body, h1, p, ul") ?? []),
@@ -667,8 +674,8 @@ async function taskGithubPaneGeometry(page, options = {}) {
         );
       })
       .map(([name]) => name);
-    const title = layout.querySelector(geometryOptions.titleSelector);
-    const domainSubtitle = layout.querySelector(".task-domain-subtitle");
+    const title = pageElement.shadowRoot.querySelector(geometryOptions.titleSelector);
+    const domainSubtitle = layoutRoot.querySelector(".task-domain-subtitle");
 
     return {
       detailWidth: detailBounds.width,
@@ -1714,7 +1721,7 @@ test("holds Start Task while the chosen model's permission modes are still arriv
   const submit = () =>
     dialog.evaluate((element) => {
       element.querySelector("form").requestSubmit();
-      return element.parentElement.pending;
+      return element.getRootNode().host.pending;
     });
   expect(await submit()).toBe(false);
 
@@ -2417,8 +2424,8 @@ test("collapses the PR file tree from the corner toggle only while a diff is ope
   await expect(tree).toBeHidden();
   const fills = await files.evaluate((element) => {
     const bounds = element.getBoundingClientRect();
-    const viewer = element
-      .querySelector(":scope > caffold-review-file-viewer")
+    const viewer = element.shadowRoot
+      .querySelector("caffold-review-file-viewer")
       .getBoundingClientRect();
     return Math.abs(viewer.left - bounds.left) <= 1 &&
       Math.abs(viewer.width - bounds.width) <= 1;
@@ -2683,19 +2690,29 @@ for (const list of [
     await page.route(list.route, (route) => {
       pendingRoutes.push(route);
     });
-    await page.goto(`/tasks/${THREAD_ID}`);
-    // Fast-forwarding moves past the list's own wait without racing it.
-    await page.clock.install();
-    await page.evaluate((selector) => {
+    // The list draws its phrase into its shadow root, which a document observer
+    // does not see, so every root is observed as it is attached.
+    await page.addInitScript((selector) => {
       window.listLoadingPhrases = [];
-      new MutationObserver(() => {
-        for (const phrase of document.querySelectorAll(`${selector} caffold-loading-text`)) {
+      const observer = new MutationObserver(() => {
+        const list = window.listLoadingPhraseOwner;
+        for (const phrase of list?.shadowRoot?.querySelectorAll("caffold-loading-text") ?? []) {
           if (!window.listLoadingPhrases.includes(phrase)) {
             window.listLoadingPhrases.push(phrase);
           }
         }
-      }).observe(document.body, { childList: true, subtree: true });
+      });
+      const attachShadow = Element.prototype.attachShadow;
+      Element.prototype.attachShadow = function (init) {
+        const root = attachShadow.call(this, init);
+        if (this.matches(selector)) window.listLoadingPhraseOwner = this;
+        observer.observe(root, { childList: true, subtree: true });
+        return root;
+      };
     }, list.element);
+    await page.goto(`/tasks/${THREAD_ID}`);
+    // Fast-forwarding moves past the list's own wait without racing it.
+    await page.clock.install();
     const shownPhrases = () => page.evaluate(() => window.listLoadingPhrases.length);
 
     await chooseLinkedWorktreeGithubList(page, list.kind);

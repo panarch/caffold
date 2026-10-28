@@ -1,4 +1,4 @@
-caffold-task-github-layout {
+:host {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
@@ -6,95 +6,95 @@ caffold-task-github-layout {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
 
-  & > caffold-github-task-start-dialog {
-    display: contents;
-  }
+caffold-github-task-start-dialog {
+  display: contents;
+}
 
-  & .task-github-surface {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-  }
+.task-github-surface {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
 
-  & .task-domain-header {
-    display: flex;
-    align-items: center;
-    gap: var(--interface-space-3);
-    min-height: var(--task-workspace-header-size);
-    padding: 0 var(--task-detail-header-padding-inline);
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-  }
+.task-domain-header {
+  display: flex;
+  align-items: center;
+  gap: var(--interface-space-3);
+  min-height: var(--task-workspace-header-size);
+  padding: 0 var(--task-detail-header-padding-inline);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
 
-  & .task-domain-back {
-    flex: 0 0 var(--interface-compact-hit-size);
-    margin-block: 0;
-    margin-inline: calc(0rem - var(--interface-compact-hit-outset));
-    color: var(--control-fg);
-  }
+.task-domain-back {
+  flex: 0 0 var(--interface-compact-hit-size);
+  margin-block: 0;
+  margin-inline: calc(0rem - var(--interface-compact-hit-outset));
+  color: var(--control-fg);
+}
 
-  & .task-domain-back:hover::before,
-  & .task-domain-back:focus-visible::before {
-    border-color: var(--control-emphasis-border);
-    background: var(--control-subtle-hover-bg);
-  }
+.task-domain-back:hover::before,
+.task-domain-back:focus-visible::before {
+  border-color: var(--control-emphasis-border);
+  background: var(--control-subtle-hover-bg);
+}
 
-  & .task-domain-back[hidden] {
-    display: none;
-  }
+.task-domain-back[hidden] {
+  display: none;
+}
 
-  & .task-domain-back-icon {
-    position: relative;
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-    stroke-width: 2;
-  }
+.task-domain-back-icon {
+  position: relative;
+  display: block;
+  width: var(--interface-icon-size);
+  height: var(--interface-icon-size);
+  stroke-width: 2;
+}
 
-  & .task-domain-title {
-    display: flex;
-    min-width: 0;
-    flex: 1 1 auto;
-    align-items: baseline;
-    gap: var(--interface-space-3);
-  }
+.task-domain-title {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: var(--interface-space-3);
+}
 
-  & .task-domain-title h2 {
-    margin: 0;
-    font-size: var(--task-detail-header-title-size);
-    line-height: var(--interface-line-height);
-  }
+.task-domain-title h2 {
+  margin: 0;
+  font-size: var(--task-detail-header-title-size);
+  line-height: var(--interface-line-height);
+}
 
-  & .task-domain-subtitle {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.task-domain-subtitle {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  & .task-domain-body {
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-  }
+.task-domain-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 
-  & .github-review-view {
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-  }
+.github-review-view {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 
-  & .github-mode-issues,
-  & .github-mode-pulls {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-    height: 100%;
-  }
+.github-mode-issues,
+.github-mode-pulls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
 }
